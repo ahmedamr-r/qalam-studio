@@ -1,0 +1,1505 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`shared contrast fixes > leave extraction's output exactly as it was 1`] = `
+{
+  "fonts": [
+    {
+      "family": "Plus Jakarta Sans",
+      "googleFont": "Plus Jakarta Sans",
+    },
+    {
+      "family": "IBM Plex Sans Arabic",
+      "googleFont": "IBM Plex Sans Arabic",
+    },
+  ],
+  "notes": [
+    "Adjusted text.error #DC2F3A → #D52634 to reach 4.5:1 on bg.canvas.",
+    "Adjusted text.success #0C9C62 → #007D46 to reach 4.5:1 on bg.canvas.",
+    "Adjusted text.secondary #6E6880 → #68627A to reach 4.5:1 on bg.surface.",
+    "Adjusted text.error #D52634 → #CE1B2E to reach 4.5:1 on feedback.error-subtle.",
+    "Adjusted text.info #2563EB → #1F5CE4 to reach 4.5:1 on feedback.info-subtle.",
+    "Identified “Greycliff CF / geometric grotesque UI face”; rendering with Plus Jakarta Sans, the closest Google Font.",
+    "47 component recipe values fell back to the default recipe (resolved with this system's roles).",
+    "Made component text and icons legible on their fills (3): banner.brand.cta-fill made more transparent, banner.get.body → a darker/lighter shade, banner.get.cta-label → text.primary.",
+  ],
+  "tree": {
+    "$description": "Extracted from a screenshot. A lavender-tinted light fintech theme built around one violet→magenta hero gradient and a flat deep-violet action colour. Surfaces are pure white cards on a #F4F2F8 canvas, lifted by very soft low-alpha ambient shadows rather than borders; only chips and the search field use hairline outlines. Shape language is consistently soft (12/16/24 radius ladder) with no true pills, and colour is used spari",
+    "bg": {
+      "brand": {
+        "$description": "Observed: Bright violet mid-point of the balance-card gradient",
+        "$type": "color",
+        "$value": "{color.violet.500}",
+      },
+      "brand-strong": {
+        "$description": "Observed: 'Pay a bill' primary button fill",
+        "$type": "color",
+        "$value": "{color.violet.700}",
+      },
+      "brand-subtle": {
+        "$description": "Observed: 'LA' avatar square and transaction emoji icon tiles",
+        "$type": "color",
+        "$value": "{color.violet.100}",
+      },
+      "canvas": {
+        "$description": "Observed: Full-screen page background behind header, chips and cards",
+        "$type": "color",
+        "$value": "{color.neutral.100}",
+      },
+      "eat": {
+        "$description": "Inferred",
+        "$type": "color",
+        "$value": "{color.cream.200}",
+      },
+      "get": {
+        "$description": "Observed: Magenta end of the hero gradient, reusable as promo accent 2",
+        "$type": "color",
+        "$value": "{color.magenta.500}",
+      },
+      "go": {
+        "$description": "Observed: Violet end of the hero gradient, reusable as promo accent 1",
+        "$type": "color",
+        "$value": "{color.violet.600}",
+      },
+      "inverse": {
+        "$description": "Observed: Selected 'All' filter chip fill",
+        "$type": "color",
+        "$value": "{color.neutral.900}",
+      },
+      "pay": {
+        "$description": "Inferred",
+        "$type": "color",
+        "$value": "{color.indigo.900}",
+      },
+      "sky": {
+        "$description": "Inferred",
+        "$type": "color",
+        "$value": "{color.sky.100}",
+      },
+      "surface": {
+        "$description": "Observed: Search transactions field fill, one step darker than canvas",
+        "$type": "color",
+        "$value": "{color.neutral.150}",
+      },
+      "surface-raised": {
+        "$description": "Observed: Recent activity transaction card; unselected filter chips; bottom nav bar",
+        "$type": "color",
+        "$value": "{color.neutral.0}",
+      },
+    },
+    "border": {
+      "default": {
+        "$description": "Observed: Outline of the unselected Income / Spending / Bills chips and search field",
+        "$type": "color",
+        "$value": "{color.neutral.300}",
+      },
+      "error": {
+        "$description": "Inferred",
+        "$type": "color",
+        "$value": "{color.red.600}",
+      },
+      "focus": {
+        "$description": "Inferred",
+        "$type": "color",
+        "$value": "{color.violet.600}",
+      },
+      "strong": {
+        "$description": "Observed: Bottom-nav icon glyph outlines",
+        "$type": "color",
+        "$value": "{color.neutral.400}",
+      },
+      "subtle": {
+        "$description": "Observed: Hairline dividers between transaction rows inside the white card",
+        "$type": "color",
+        "$value": "{color.neutral.200}",
+      },
+    },
+    "border-width": {
+      "default": {
+        "$type": "dimension",
+        "$value": "1.5px",
+      },
+      "hairline": {
+        "$type": "dimension",
+        "$value": "1px",
+      },
+      "none": {
+        "$type": "dimension",
+        "$value": "0px",
+      },
+      "strong": {
+        "$type": "dimension",
+        "$value": "2px",
+      },
+    },
+    "color": {
+      "amber": {
+        "50": {
+          "$type": "color",
+          "$value": "#FDF3E2",
+        },
+        "600": {
+          "$type": "color",
+          "$value": "#B45309",
+        },
+      },
+      "blue": {
+        "50": {
+          "$type": "color",
+          "$value": "#E6EDFD",
+        },
+        "600": {
+          "$type": "color",
+          "$value": "#2563EB",
+        },
+      },
+      "cream": {
+        "200": {
+          "$type": "color",
+          "$value": "#FFE9B8",
+        },
+      },
+      "green": {
+        "50": {
+          "$type": "color",
+          "$value": "#E3F6EC",
+        },
+        "600": {
+          "$type": "color",
+          "$value": "#0C9C62",
+        },
+        "700": {
+          "$type": "color",
+          "$value": "#007D46",
+        },
+      },
+      "indigo": {
+        "900": {
+          "$type": "color",
+          "$value": "#1E1B4B",
+        },
+      },
+      "magenta": {
+        "400": {
+          "$type": "color",
+          "$value": "#F05BB0",
+        },
+        "500": {
+          "$type": "color",
+          "$value": "#E5218D",
+        },
+        "600": {
+          "$type": "color",
+          "$value": "#C4187A",
+        },
+      },
+      "neutral": {
+        "0": {
+          "$type": "color",
+          "$value": "#FFFFFF",
+        },
+        "100": {
+          "$type": "color",
+          "$value": "#F4F2F8",
+        },
+        "150": {
+          "$type": "color",
+          "$value": "#EDEAF4",
+        },
+        "200": {
+          "$type": "color",
+          "$value": "#EAE7F1",
+        },
+        "300": {
+          "$type": "color",
+          "$value": "#E0DCE9",
+        },
+        "400": {
+          "$type": "color",
+          "$value": "#C9C3D6",
+        },
+        "50": {
+          "$type": "color",
+          "$value": "#F8F7FB",
+        },
+        "500": {
+          "$type": "color",
+          "$value": "#9A94A8",
+        },
+        "600": {
+          "$type": "color",
+          "$value": "#6E6880",
+        },
+        "800": {
+          "$type": "color",
+          "$value": "#2E2440",
+        },
+        "900": {
+          "$type": "color",
+          "$value": "#1C1130",
+        },
+        "950": {
+          "$type": "color",
+          "$value": "#171021",
+        },
+      },
+      "red": {
+        "50": {
+          "$type": "color",
+          "$value": "#FDECEE",
+        },
+        "600": {
+          "$type": "color",
+          "$value": "#DC2F3A",
+        },
+      },
+      "sky": {
+        "100": {
+          "$type": "color",
+          "$value": "#E6EEFC",
+        },
+      },
+      "violet": {
+        "100": {
+          "$type": "color",
+          "$value": "#EDE6FB",
+        },
+        "300": {
+          "$type": "color",
+          "$value": "#C08BF2",
+        },
+        "50": {
+          "$type": "color",
+          "$value": "#F2EDFB",
+        },
+        "500": {
+          "$type": "color",
+          "$value": "#8B2BE2",
+        },
+        "600": {
+          "$type": "color",
+          "$value": "#7C22D6",
+        },
+        "700": {
+          "$type": "color",
+          "$value": "#6A21C8",
+        },
+        "800": {
+          "$type": "color",
+          "$value": "#571BA3",
+        },
+      },
+    },
+    "component": {
+      "alert": {
+        "border-width": {
+          "$value": "{border-width.none}",
+        },
+        "radius": {
+          "$value": "{radius.lg}",
+        },
+      },
+      "backdrop": {
+        "fill": {
+          "$type": "gradient",
+          "$value": {
+            "angle": 180,
+            "kind": "linear",
+            "stops": [
+              {
+                "color": "{bg.brand-subtle}",
+                "position": 0,
+              },
+              {
+                "color": "{bg.canvas}",
+                "position": 1,
+              },
+            ],
+          },
+        },
+        "sheet-radius": {
+          "$type": "dimension",
+          "$value": "0px",
+        },
+      },
+      "banner": {
+        "brand": {
+          "art-fill": {
+            "$type": "color",
+            "$value": "#FFFFFF1F",
+          },
+          "art-icon": {
+            "$value": "{icon.inverse}",
+          },
+          "body": {
+            "$value": "{text.inverse}",
+          },
+          "cta-fill": {
+            "$type": "color",
+            "$value": "#FFFFFF26",
+          },
+          "cta-label": {
+            "$value": "{text.inverse}",
+          },
+          "fill": {
+            "$value": "{gradient.brand}",
+          },
+          "title": {
+            "$value": "{text.on-brand-strong}",
+          },
+        },
+        "eat": {
+          "art-fill": {
+            "$value": "{bg.brand-subtle}",
+          },
+          "art-icon": {
+            "$value": "{icon.brand}",
+          },
+          "body": {
+            "$value": "{text.primary}",
+          },
+          "cta-fill": {
+            "$value": "{bg.brand-strong}",
+          },
+          "cta-label": {
+            "$value": "{text.on-brand-strong}",
+          },
+          "fill": {
+            "$value": "{bg.eat}",
+          },
+          "title": {
+            "$value": "{text.primary}",
+          },
+        },
+        "gap": {
+          "$value": "{space.300}",
+        },
+        "get": {
+          "art-fill": {
+            "$type": "color",
+            "$value": "#FFFFFF1F",
+          },
+          "art-icon": {
+            "$value": "{icon.inverse}",
+          },
+          "body": {
+            "$type": "color",
+            "$value": "#0D0D0D",
+          },
+          "cta-fill": {
+            "$type": "color",
+            "$value": "#FFFFFF2E",
+          },
+          "cta-label": {
+            "$value": "{text.primary}",
+          },
+          "fill": {
+            "$value": "{bg.get}",
+          },
+          "title": {
+            "$value": "{text.inverse}",
+          },
+        },
+        "go": {
+          "art-fill": {
+            "$type": "color",
+            "$value": "#FFFFFF1F",
+          },
+          "art-icon": {
+            "$value": "{icon.inverse}",
+          },
+          "body": {
+            "$value": "{text.inverse}",
+          },
+          "cta-fill": {
+            "$type": "color",
+            "$value": "#FFFFFF2E",
+          },
+          "cta-label": {
+            "$value": "{text.inverse}",
+          },
+          "fill": {
+            "$value": "{bg.go}",
+          },
+          "title": {
+            "$value": "{text.inverse}",
+          },
+        },
+        "padding": {
+          "$value": "{space.600}",
+        },
+        "pay": {
+          "art-fill": {
+            "$type": "color",
+            "$value": "#FFFFFF1F",
+          },
+          "art-icon": {
+            "$value": "{icon.inverse}",
+          },
+          "body": {
+            "$value": "{text.inverse}",
+          },
+          "cta-fill": {
+            "$value": "{bg.brand}",
+          },
+          "cta-label": {
+            "$value": "{text.on-brand}",
+          },
+          "fill": {
+            "$value": "{bg.pay}",
+          },
+          "title": {
+            "$value": "{text.inverse}",
+          },
+        },
+        "radius": {
+          "$value": "{radius.xl}",
+        },
+        "shadow": {
+          "$value": "{shadow.md}",
+        },
+      },
+      "button": {
+        "danger": {
+          "fill": {
+            "$value": "{feedback.error}",
+          },
+          "icon": {
+            "$value": "{icon.inverse}",
+          },
+          "label": {
+            "$value": "{text.inverse}",
+          },
+        },
+        "gap": {
+          "$value": "{space.200}",
+        },
+        "height-lg": {
+          "$type": "dimension",
+          "$value": "56px",
+        },
+        "height-md": {
+          "$type": "dimension",
+          "$value": "44px",
+        },
+        "height-sm": {
+          "$type": "dimension",
+          "$value": "36px",
+        },
+        "padding-x-lg": {
+          "$value": "{space.600}",
+        },
+        "padding-x-md": {
+          "$value": "{space.500}",
+        },
+        "padding-x-sm": {
+          "$value": "{space.400}",
+        },
+        "primary": {
+          "fill": {
+            "$value": "{bg.brand-strong}",
+          },
+          "icon": {
+            "$value": "{icon.on-brand-strong}",
+          },
+          "label": {
+            "$value": "{text.on-brand-strong}",
+          },
+        },
+        "radius": {
+          "$value": "{radius.lg}",
+        },
+        "secondary": {
+          "border": {
+            "$value": "{border.default}",
+          },
+          "border-width": {
+            "$value": "{border-width.default}",
+          },
+          "fill": {
+            "$value": "{bg.surface-raised}",
+          },
+          "icon": {
+            "$value": "{icon.primary}",
+          },
+          "label": {
+            "$value": "{text.primary}",
+          },
+        },
+        "shadow": {
+          "$value": "{shadow.md}",
+        },
+        "tertiary": {
+          "icon": {
+            "$value": "{icon.brand}",
+          },
+          "label": {
+            "$value": "{text.link}",
+          },
+        },
+      },
+      "card": {
+        "brand-fill": {
+          "$value": "{bg.brand-strong}",
+        },
+        "flat": {
+          "border": {
+            "$value": "{border.subtle}",
+          },
+          "border-width": {
+            "$value": "{border-width.hairline}",
+          },
+          "shadow": {
+            "$value": "{shadow.none}",
+          },
+        },
+        "gap": {
+          "$value": "{space.300}",
+        },
+        "radius": {
+          "$value": "{radius.xl}",
+        },
+        "raised": {
+          "border": {
+            "$value": "{border.subtle}",
+          },
+          "border-width": {
+            "$value": "{border-width.none}",
+          },
+          "shadow": {
+            "$value": "{shadow.sm}",
+          },
+        },
+      },
+      "chart": {
+        "bar": {
+          "$value": "{bg.brand}",
+        },
+        "bar-highlight": {
+          "$value": "{bg.brand-strong}",
+        },
+        "bar-radius": {
+          "$value": "{radius.xs}",
+        },
+        "grid": {
+          "$value": "{border.subtle}",
+        },
+        "label": {
+          "$value": "{text.secondary}",
+        },
+        "track": {
+          "$value": "{bg.surface}",
+        },
+      },
+      "chip": {
+        "border": {
+          "$value": "{border.default}",
+        },
+        "border-width": {
+          "$value": "{border-width.default}",
+        },
+        "fill": {
+          "$value": "{bg.surface-raised}",
+        },
+        "gap": {
+          "$value": "{space.200}",
+        },
+        "height": {
+          "$type": "dimension",
+          "$value": "36px",
+        },
+        "label": {
+          "$value": "{text.primary}",
+        },
+        "padding-x": {
+          "$value": "{space.400}",
+        },
+        "radius": {
+          "$value": "{radius.lg}",
+        },
+        "selected": {
+          "fill": {
+            "$value": "{bg.inverse}",
+          },
+          "label": {
+            "$value": "{text.inverse}",
+          },
+        },
+      },
+      "divider": {
+        "color": {
+          "$value": "{border.subtle}",
+        },
+        "thickness": {
+          "$value": "{border-width.hairline}",
+        },
+      },
+      "empty": {
+        "art-fill": {
+          "$value": "{bg.brand-subtle}",
+        },
+        "art-icon": {
+          "$value": "{icon.brand}",
+        },
+      },
+      "icon-button": {
+        "backdrop-fill": {
+          "$type": "color",
+          "$value": "#FFFFFFB3",
+        },
+        "border": {
+          "$value": "{border.default}",
+        },
+        "border-width": {
+          "$value": "{border-width.default}",
+        },
+        "brand-fill": {
+          "$value": "{bg.brand-strong}",
+        },
+        "brand-icon": {
+          "$value": "{icon.on-brand-strong}",
+        },
+        "icon": {
+          "$value": "{icon.primary}",
+        },
+        "outline-fill": {
+          "$value": "{bg.surface-raised}",
+        },
+        "radius": {
+          "$value": "{radius.lg}",
+        },
+        "size": {
+          "$value": "{size.touch-min}",
+        },
+      },
+      "input": {
+        "border": {
+          "$value": "{border.default}",
+        },
+        "border-error": {
+          "$value": "{border.error}",
+        },
+        "border-width": {
+          "$value": "{border-width.hairline}",
+        },
+        "border-width-error": {
+          "$value": "{border-width.strong}",
+        },
+        "fill": {
+          "$value": "{bg.surface}",
+        },
+        "gap": {
+          "$value": "{space.300}",
+        },
+        "height": {
+          "$type": "dimension",
+          "$value": "44px",
+        },
+        "padding-x": {
+          "$value": "{space.400}",
+        },
+        "radius": {
+          "$value": "{radius.lg}",
+        },
+        "shadow": {
+          "$value": "{shadow.inset}",
+        },
+      },
+      "list-item": {
+        "icon": {
+          "$value": "{icon.primary}",
+        },
+        "leading-fill": {
+          "$value": "{bg.surface}",
+        },
+        "leading-radius": {
+          "$value": "{radius.pill}",
+        },
+        "leading-size": {
+          "$type": "dimension",
+          "$value": "40px",
+        },
+        "min-height": {
+          "$type": "dimension",
+          "$value": "56px",
+        },
+        "style": {
+          "chevron": {
+            "$type": "string",
+            "$value": "hidden",
+          },
+          "divider": {
+            "$type": "string",
+            "$value": "none",
+          },
+          "leading": {
+            "$type": "string",
+            "$value": "contained",
+          },
+        },
+      },
+      "media": {
+        "fill": {
+          "$value": "{bg.brand-subtle}",
+        },
+        "radius": {
+          "$value": "{radius.md}",
+        },
+      },
+      "nav-bar": {
+        "active": {
+          "$value": "{icon.brand}",
+        },
+        "border": {
+          "$value": "{border.subtle}",
+        },
+        "border-width": {
+          "$value": "{border-width.hairline}",
+        },
+        "fill": {
+          "$value": "{bg.surface-raised}",
+        },
+        "height": {
+          "$type": "dimension",
+          "$value": "52px",
+        },
+        "inactive": {
+          "$value": "{icon.secondary}",
+        },
+        "indicator-fill": {
+          "$value": "{bg.surface}",
+        },
+        "indicator-size": {
+          "$type": "dimension",
+          "$value": "32px",
+        },
+        "indicator-width": {
+          "$type": "dimension",
+          "$value": "56px",
+        },
+        "inset": {
+          "$value": "{layout.gutter}",
+        },
+        "radius": {
+          "$value": "{radius.pill}",
+        },
+        "shadow": {
+          "$value": "{shadow.none}",
+        },
+        "style": {
+          "indicator": {
+            "$type": "string",
+            "$value": "none",
+          },
+          "labels": {
+            "$type": "string",
+            "$value": "all",
+          },
+          "placement": {
+            "$type": "string",
+            "$value": "docked",
+          },
+        },
+      },
+      "search": {
+        "backdrop-fill": {
+          "$type": "color",
+          "$value": "#FFFFFFBF",
+        },
+        "fill": {
+          "$value": "{component.input.fill}",
+        },
+        "height": {
+          "$value": "{component.input.height}",
+        },
+        "style": {
+          "icon": {
+            "$type": "string",
+            "$value": "start",
+          },
+        },
+      },
+      "segmented": {
+        "radius": {
+          "$value": "{radius.lg}",
+        },
+        "selected": {
+          "fill": {
+            "$value": "{bg.surface-raised}",
+          },
+          "shadow": {
+            "$value": "{shadow.sm}",
+          },
+        },
+        "track-fill": {
+          "$value": "{bg.surface}",
+        },
+      },
+      "sheet": {
+        "fill": {
+          "$value": "{bg.canvas}",
+        },
+        "handle": {
+          "$value": "{border.strong}",
+        },
+        "radius": {
+          "$value": "{radius.xl}",
+        },
+        "shadow": {
+          "$value": "{shadow.md}",
+        },
+      },
+      "table": {
+        "divider": {
+          "$value": "{border.subtle}",
+        },
+        "header-fill": {
+          "$value": "{bg.surface}",
+        },
+        "header-label": {
+          "$value": "{text.secondary}",
+        },
+        "radius": {
+          "$value": "{radius.sm}",
+        },
+        "row-height": {
+          "$type": "dimension",
+          "$value": "52px",
+        },
+      },
+      "tabs": {
+        "active-label": {
+          "$value": "{text.primary}",
+        },
+        "border": {
+          "$value": "{border.subtle}",
+        },
+        "border-width": {
+          "$value": "{border-width.hairline}",
+        },
+        "height": {
+          "$type": "dimension",
+          "$value": "44px",
+        },
+        "indicator": {
+          "$value": "{bg.brand-strong}",
+        },
+        "indicator-height": {
+          "$value": "{border-width.strong}",
+        },
+        "label": {
+          "$value": "{text.secondary}",
+        },
+        "pill-fill": {
+          "$value": "{bg.surface}",
+        },
+        "pill-radius": {
+          "$value": "{radius.pill}",
+        },
+        "style": {
+          "indicator": {
+            "$type": "string",
+            "$value": "underline",
+          },
+        },
+      },
+      "tag": {
+        "height": {
+          "$type": "dimension",
+          "$value": "24px",
+        },
+        "member-border": {
+          "$value": "{border.subtle}",
+        },
+        "member-fill": {
+          "$value": "{bg.surface}",
+        },
+        "member-label": {
+          "$value": "{text.link}",
+        },
+        "padding-x": {
+          "$value": "{space.200}",
+        },
+        "promo-fill": {
+          "$value": "{feedback.error}",
+        },
+        "promo-label": {
+          "$value": "{text.inverse}",
+        },
+        "radius": {
+          "$value": "{radius.sm}",
+        },
+      },
+      "tile": {
+        "border": {
+          "$value": "{border.subtle}",
+        },
+        "border-width": {
+          "$value": "{border-width.none}",
+        },
+        "fill": {
+          "$value": "{bg.brand-subtle}",
+        },
+        "gap": {
+          "$type": "dimension",
+          "$value": "8px",
+        },
+        "height": {
+          "$type": "dimension",
+          "$value": "40px",
+        },
+        "icon": {
+          "$value": "{icon.brand}",
+        },
+        "icon-fill": {
+          "$value": "{bg.brand-subtle}",
+        },
+        "icon-radius": {
+          "$value": "{radius.md}",
+        },
+        "icon-size": {
+          "$type": "dimension",
+          "$value": "40px",
+        },
+        "radius": {
+          "$value": "{radius.md}",
+        },
+        "shadow": {
+          "$value": "{shadow.none}",
+        },
+        "style": {
+          "layout": {
+            "$type": "string",
+            "$value": "card",
+          },
+        },
+      },
+      "top-bar": {
+        "border": {
+          "$value": "{border.subtle}",
+        },
+        "border-width": {
+          "$value": "{border-width.none}",
+        },
+        "brand-fill": {
+          "$value": "{bg.brand-strong}",
+        },
+        "fill": {
+          "$value": "{bg.canvas}",
+        },
+        "height": {
+          "$type": "dimension",
+          "$value": "56px",
+        },
+        "shadow": {
+          "$value": "{shadow.none}",
+        },
+        "style": {
+          "title": {
+            "$type": "string",
+            "$value": "center",
+          },
+        },
+      },
+    },
+    "feedback": {
+      "error": {
+        "$description": "Inferred",
+        "$type": "color",
+        "$value": "{color.red.600}",
+      },
+      "error-subtle": {
+        "$description": "Inferred",
+        "$type": "color",
+        "$value": "{color.red.50}",
+      },
+      "info": {
+        "$description": "Inferred",
+        "$type": "color",
+        "$value": "{color.blue.600}",
+      },
+      "info-subtle": {
+        "$description": "Inferred",
+        "$type": "color",
+        "$value": "{color.blue.50}",
+      },
+      "success": {
+        "$description": "Observed: Positive amount text colour, reused as the success meaning",
+        "$type": "color",
+        "$value": "{color.green.600}",
+      },
+      "success-subtle": {
+        "$description": "Inferred",
+        "$type": "color",
+        "$value": "{color.green.50}",
+      },
+      "warning": {
+        "$description": "Inferred",
+        "$type": "color",
+        "$value": "{color.amber.600}",
+      },
+      "warning-subtle": {
+        "$description": "Inferred",
+        "$type": "color",
+        "$value": "{color.amber.50}",
+      },
+    },
+    "font": {
+      "family": {
+        "arabic": {
+          "$type": "fontFamily",
+          "$value": "IBM Plex Sans Arabic",
+        },
+        "display": {
+          "$type": "fontFamily",
+          "$value": "Plus Jakarta Sans",
+        },
+        "fallback": {
+          "$type": "fontFamily",
+          "$value": "Plus Jakarta Sans",
+        },
+        "latin": {
+          "$type": "fontFamily",
+          "$value": "Plus Jakarta Sans",
+        },
+      },
+    },
+    "gradient": {
+      "brand": {
+        "$description": "Hero total-balance card fill — the single strongest brand signature",
+        "$type": "gradient",
+        "$value": {
+          "angle": 115,
+          "kind": "linear",
+          "stops": [
+            {
+              "color": "#7A18D8",
+              "position": 0,
+            },
+            {
+              "color": "#A81FBE",
+              "position": 0.5,
+            },
+            {
+              "color": "#E5218D",
+              "position": 1,
+            },
+          ],
+        },
+      },
+      "brand-glow": {
+        "$description": "Coloured halo bleeding below the hero card and the primary button",
+        "$type": "gradient",
+        "$value": {
+          "angle": 0,
+          "kind": "radial",
+          "stops": [
+            {
+              "color": "#C4187A38",
+              "position": 0,
+            },
+            {
+              "color": "#C4187A00",
+              "position": 1,
+            },
+          ],
+        },
+      },
+      "card-highlight": {
+        "$description": "Translucent white fills of the Top up / Send / Swap buttons over the gradient",
+        "$type": "gradient",
+        "$value": {
+          "angle": 180,
+          "kind": "linear",
+          "stops": [
+            {
+              "color": "#FFFFFF2E",
+              "position": 0,
+            },
+            {
+              "color": "#FFFFFF14",
+              "position": 1,
+            },
+          ],
+        },
+      },
+    },
+    "icon": {
+      "brand": {
+        "$description": "Observed: Active 'Home' nav icon and label",
+        "$type": "color",
+        "$value": "{color.violet.600}",
+      },
+      "inverse": {
+        "$description": "Inferred",
+        "$type": "color",
+        "$value": "{color.neutral.0}",
+      },
+      "on-brand-strong": {
+        "$description": "Observed: '+', '↗', '⇄' glyphs on the gradient action buttons",
+        "$type": "color",
+        "$value": "{color.neutral.0}",
+      },
+      "primary": {
+        "$description": "Observed: Status bar glyphs and default dark iconography",
+        "$type": "color",
+        "$value": "{color.neutral.950}",
+      },
+      "secondary": {
+        "$description": "Observed: Search magnifier and inactive nav labels",
+        "$type": "color",
+        "$value": "{color.neutral.600}",
+      },
+    },
+    "layout": {
+      "footer-gap": {
+        "$type": "dimension",
+        "$value": "12px",
+      },
+      "gutter": {
+        "$type": "dimension",
+        "$value": "16px",
+      },
+      "section-gap": {
+        "$type": "dimension",
+        "$value": "20px",
+      },
+    },
+    "radius": {
+      "lg": {
+        "$type": "dimension",
+        "$value": "16px",
+      },
+      "md": {
+        "$type": "dimension",
+        "$value": "12px",
+      },
+      "none": {
+        "$type": "dimension",
+        "$value": "0px",
+      },
+      "pill": {
+        "$type": "dimension",
+        "$value": "999px",
+      },
+      "sm": {
+        "$type": "dimension",
+        "$value": "8px",
+      },
+      "xl": {
+        "$type": "dimension",
+        "$value": "24px",
+      },
+      "xs": {
+        "$type": "dimension",
+        "$value": "4px",
+      },
+    },
+    "shadow": {
+      "focus": {
+        "$description": "Inferred",
+        "$type": "shadow",
+        "$value": [
+          {
+            "blur": "0px",
+            "color": "#7C22D659",
+            "offsetX": "0px",
+            "offsetY": "0px",
+            "spread": "3px",
+          },
+        ],
+      },
+      "inset": {
+        "$description": "Inferred",
+        "$type": "shadow",
+        "$value": [
+          {
+            "blur": "2px",
+            "color": "#1710210D",
+            "inset": true,
+            "offsetX": "0px",
+            "offsetY": "1px",
+            "spread": "0px",
+          },
+        ],
+      },
+      "lg": {
+        "$description": "Inferred",
+        "$type": "shadow",
+        "$value": [
+          {
+            "blur": "48px",
+            "color": "#17102130",
+            "offsetX": "0px",
+            "offsetY": "24px",
+            "spread": "-12px",
+          },
+          {
+            "blur": "16px",
+            "color": "#17102114",
+            "offsetX": "0px",
+            "offsetY": "8px",
+            "spread": "-4px",
+          },
+        ],
+      },
+      "md": {
+        "$description": "Observed: Hero balance card and 'Pay a bill' button each cast a soft coloured halo of roughly this geometry",
+        "$type": "shadow",
+        "$value": [
+          {
+            "blur": "28px",
+            "color": "#17102124",
+            "offsetX": "0px",
+            "offsetY": "10px",
+            "spread": "-6px",
+          },
+          {
+            "blur": "8px",
+            "color": "#1710210F",
+            "offsetX": "0px",
+            "offsetY": "3px",
+            "spread": "0px",
+          },
+        ],
+      },
+      "none": {
+        "$type": "shadow",
+        "$value": [],
+      },
+      "sm": {
+        "$description": "Observed: Recent activity white card — soft, near ambient-only lift off the lavender canvas",
+        "$type": "shadow",
+        "$value": [
+          {
+            "blur": "8px",
+            "color": "#17102110",
+            "offsetX": "0px",
+            "offsetY": "2px",
+            "spread": "0px",
+          },
+          {
+            "blur": "2px",
+            "color": "#1710210A",
+            "offsetX": "0px",
+            "offsetY": "1px",
+            "spread": "0px",
+          },
+        ],
+      },
+    },
+    "size": {
+      "icon-lg": {
+        "$type": "dimension",
+        "$value": "24px",
+      },
+      "icon-md": {
+        "$type": "dimension",
+        "$value": "20px",
+      },
+      "icon-sm": {
+        "$type": "dimension",
+        "$value": "16px",
+      },
+      "touch-min": {
+        "$type": "dimension",
+        "$value": "44px",
+      },
+    },
+    "space": {
+      "0": {
+        "$type": "dimension",
+        "$value": "0px",
+      },
+      "100": {
+        "$type": "dimension",
+        "$value": "4px",
+      },
+      "1000": {
+        "$type": "dimension",
+        "$value": "40px",
+      },
+      "1200": {
+        "$type": "dimension",
+        "$value": "48px",
+      },
+      "200": {
+        "$type": "dimension",
+        "$value": "8px",
+      },
+      "300": {
+        "$type": "dimension",
+        "$value": "12px",
+      },
+      "400": {
+        "$type": "dimension",
+        "$value": "16px",
+      },
+      "50": {
+        "$type": "dimension",
+        "$value": "2px",
+      },
+      "500": {
+        "$type": "dimension",
+        "$value": "20px",
+      },
+      "600": {
+        "$type": "dimension",
+        "$value": "24px",
+      },
+      "800": {
+        "$type": "dimension",
+        "$value": "32px",
+      },
+    },
+    "text": {
+      "error": {
+        "$description": "Inferred",
+        "$type": "color",
+        "$value": "#CE1B2E",
+      },
+      "info": {
+        "$description": "Inferred",
+        "$type": "color",
+        "$value": "#1F5CE4",
+      },
+      "inverse": {
+        "$description": "Observed: 'All' chip label on near-black fill; balance figure on gradient",
+        "$type": "color",
+        "$value": "{color.neutral.0}",
+      },
+      "link": {
+        "$description": "Observed: 'See all' action at the right of the Recent activity header",
+        "$type": "color",
+        "$value": "{color.violet.600}",
+      },
+      "on-brand": {
+        "$description": "Observed: White labels on the bright violet gradient area",
+        "$type": "color",
+        "$value": "{color.neutral.0}",
+      },
+      "on-brand-strong": {
+        "$description": "Observed: 'Pay a bill' label on the deep violet button",
+        "$type": "color",
+        "$value": "{color.neutral.0}",
+      },
+      "primary": {
+        "$description": "Observed: 'Hi, Layla', 'Recent activity', merchant names, amounts",
+        "$type": "color",
+        "$value": "{color.neutral.950}",
+      },
+      "secondary": {
+        "$description": "Observed: 'Good morning', 'Today · Coffee', inactive nav labels",
+        "$type": "color",
+        "$value": "#68627A",
+      },
+      "success": {
+        "$description": "Observed: '+AED 9,200' income amount",
+        "$type": "color",
+        "$value": "{color.green.700}",
+      },
+      "tertiary": {
+        "$description": "Inferred",
+        "$type": "color",
+        "$value": "{color.neutral.500}",
+      },
+      "warning": {
+        "$description": "Inferred",
+        "$type": "color",
+        "$value": "{color.amber.600}",
+      },
+    },
+    "type": {
+      "body": {
+        "$type": "typography",
+        "$value": {
+          "fontFamily": "{font.family.latin}",
+          "fontSize": "16px",
+          "fontWeight": 400,
+          "letterSpacing": "0px",
+          "lineHeight": "22px",
+        },
+      },
+      "body-strong": {
+        "$type": "typography",
+        "$value": {
+          "fontFamily": "{font.family.latin}",
+          "fontSize": "16px",
+          "fontWeight": 700,
+          "letterSpacing": "-0.1px",
+          "lineHeight": "22px",
+        },
+      },
+      "caption": {
+        "$type": "typography",
+        "$value": {
+          "fontFamily": "{font.family.latin}",
+          "fontSize": "12px",
+          "fontWeight": 400,
+          "letterSpacing": "0px",
+          "lineHeight": "16px",
+        },
+      },
+      "caption-strong": {
+        "$type": "typography",
+        "$value": {
+          "fontFamily": "{font.family.latin}",
+          "fontSize": "12px",
+          "fontWeight": 700,
+          "letterSpacing": "0.1px",
+          "lineHeight": "16px",
+        },
+      },
+      "display": {
+        "$type": "typography",
+        "$value": {
+          "fontFamily": "{font.family.display}",
+          "fontSize": "33px",
+          "fontWeight": 800,
+          "letterSpacing": "-1px",
+          "lineHeight": "40px",
+        },
+      },
+      "headline": {
+        "$type": "typography",
+        "$value": {
+          "fontFamily": "{font.family.latin}",
+          "fontSize": "17px",
+          "fontWeight": 700,
+          "letterSpacing": "-0.2px",
+          "lineHeight": "22px",
+        },
+      },
+      "label": {
+        "$type": "typography",
+        "$value": {
+          "fontFamily": "{font.family.latin}",
+          "fontSize": "15px",
+          "fontWeight": 600,
+          "letterSpacing": "0px",
+          "lineHeight": "20px",
+        },
+      },
+      "title": {
+        "$type": "typography",
+        "$value": {
+          "fontFamily": "{font.family.display}",
+          "fontSize": "20px",
+          "fontWeight": 800,
+          "letterSpacing": "-0.4px",
+          "lineHeight": "26px",
+        },
+      },
+      "title-lg": {
+        "$type": "typography",
+        "$value": {
+          "fontFamily": "{font.family.display}",
+          "fontSize": "24px",
+          "fontWeight": 800,
+          "letterSpacing": "-0.6px",
+          "lineHeight": "30px",
+        },
+      },
+    },
+  },
+}
+`;

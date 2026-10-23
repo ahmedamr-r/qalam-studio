@@ -1,0 +1,2179 @@
+{
+ "components": [
+  {
+   "component": "Stack",
+   "observed": true,
+   "purpose": "The invisible skeleton of every Aura screen: it sets the 16px screen gutter, the 20px gap between sections and the tighter 8\u201312px gaps inside a group. Almost every visible grouping in the home screen is a Stack around leaves.",
+   "whenToUse": [
+    "Wrapping the whole screen body in a vertical Stack with padding 400 and gap 500 (the section rhythm seen between hero card, search, chips, activity)",
+    "Pairing a caption over a title, e.g. 'Good morning' + 'Hi, Layla' with gap 100",
+    "Laying the three translucent quick actions of the balance card side by side with direction horizontal, gap 300",
+    "Section header rows: direction horizontal, justify between, align center ('Recent activity' / 'See all')"
+   ],
+   "whenNotToUse": [
+    "When the group needs a visible white rounded container with shadow \u2014 use Card, which owns radius.xl and shadow.sm",
+    "When the group is a run of tappable rows with hairlines \u2014 use a Card wrapping ListItem, not a Stack of Texts",
+    "For the pinned tab bar \u2014 use BottomNav in the footer region"
+   ],
+   "anatomy": [
+    "direction axis (vertical by default)",
+    "gap \u2014 space.* token between children",
+    "padding \u2014 space.* token, 400 at screen level",
+    "align / justify for cross- and main-axis",
+    "optional background (surface / raised / brand-subtle) + radius when a Stack is used as a soft tinted panel"
+   ],
+   "variants": [
+    {
+     "name": "direction=vertical, gap=500",
+     "usage": "Screen body rhythm: hero \u2192 search \u2192 chips \u2192 section \u2192 CTA"
+    },
+    {
+     "name": "direction=vertical, gap=100",
+     "usage": "Label-over-value pairs (greeting, 'Total balance' over the amount)"
+    },
+    {
+     "name": "direction=horizontal, gap=300",
+     "usage": "Quick-action rows inside the gradient balance card; chip-like button rows"
+    },
+    {
+     "name": "direction=horizontal, justify=between, align=center",
+     "usage": "Section header with a trailing tertiary link"
+    },
+    {
+     "name": "background=brand-subtle, radius=md",
+     "usage": "The 40\u00d740 violet tile behind a transaction glyph or an active nav icon"
+    }
+   ],
+   "content": "Stack carries no copy. Do not fake spacing with empty Text nodes.",
+   "placement": "Outermost body wrapper uses padding 400 (16px = layout.gutter). Nested Stacks inside a Card use padding 0 and let the Card's padding do the work.",
+   "states": "Stateless. Never attach press behaviour to a Stack \u2014 promote the row to ListItem or Button.",
+   "dos": [
+    "Use gap tokens exclusively; the observed ladder is 100 / 200 / 300 / 500",
+    "Keep one vertical Stack as the single body scroller so section gaps stay 20px",
+    "Use background=surface for the muted #EDEAF4 inputs/segment tracks"
+   ],
+   "donts": [
+    "Don't nest more than three Stacks deep \u2014 the screen flattens into Card + rows",
+    "Don't use gap 800 between sections; 500 is the system's section-gap",
+    "Don't put padding on both a Stack and the Card it wraps"
+   ],
+   "tokens": [
+    "space.100",
+    "space.200",
+    "space.300",
+    "space.500",
+    "layout.gutter",
+    "layout.section-gap",
+    "bg.surface",
+    "bg.brand-subtle",
+    "radius.md"
+   ]
+  },
+  {
+   "component": "Text",
+   "observed": true,
+   "purpose": "All typography in Aura Wallet is Plus Jakarta Sans. Hierarchy is carried by weight (800 display/titles vs 400 body) and tight negative letter-spacing, not by colour.",
+   "whenToUse": [
+    "Balance figures at style=display (33/40, -1px) on the gradient card",
+    "Screen and section titles at title-lg ('Hi, Layla') and title ('Recent activity')",
+    "Transaction names at body-strong, meta lines ('Today \u00b7 Coffee') at body with tone secondary",
+    "'See all' at label with tone link"
+   ],
+   "whenNotToUse": [
+    "For a tappable label \u2014 use Button variant=tertiary so it gets a 44px target",
+    "For a status pill like 'Pending' \u2014 use Tag",
+    "For a label/value receipt line \u2014 use SummaryRow, which aligns the value to the end"
+   ],
+   "anatomy": [
+    "single type token (type.display \u2192 type.caption-strong)",
+    "tone role from text.* (primary #171021, secondary #6E6880, link #7C22D6, success #007D46, error #D52634, inverse #FFFFFF)",
+    "optional maxLines with ellipsis",
+    "align (start by default; center only inside EmptyState or a centered sheet)"
+   ],
+   "variants": [
+    {
+     "name": "display",
+     "usage": "One per screen: the balance amount. Always on a gradient/inverse surface, tone inverse"
+    },
+    {
+     "name": "title-lg",
+     "usage": "Greeting / screen title in the scroll area, where there is no TopBar"
+    },
+    {
+     "name": "title",
+     "usage": "Section headers above a Card group"
+    },
+    {
+     "name": "headline",
+     "usage": "Card titles and sheet titles"
+    },
+    {
+     "name": "body-strong",
+     "usage": "Row titles and amounts; the signed amount in a transaction row"
+    },
+    {
+     "name": "body",
+     "usage": "Default paragraph and row subtitles (pair with tone secondary)"
+    },
+    {
+     "name": "label",
+     "usage": "Inline links, chip and button labels, nav labels"
+    },
+    {
+     "name": "caption / caption-strong",
+     "usage": "Eyebrows like 'Good morning', timestamps, tiny metadata"
+    }
+   ],
+   "content": "Sentence case everywhere \u2014 'Total balance', 'Recent activity', 'Pay a bill'. No ALL CAPS eyebrows. Currency is written as 'AED 12,480.50' with the code first, thousands separators, two decimals for balances; signed amounts prefix an en-dash or plus: '\u2212AED 24.00', '+AED 9,200'. Use '\u00b7' as the meta separator.",
+   "placement": "Eyebrow sits 4px above its title (gap 100). Section titles sit 20px below the previous block and 12px above their Card.",
+   "states": "Static. Truncate names with maxLines 1; never truncate a monetary value.",
+   "dos": [
+    "Reserve tone success for credits and tone error for failures \u2014 not for debits, which stay text.primary",
+    "Let weight 800 + tight tracking do the emphasis on numbers",
+    "Use tone secondary for every second line in a row"
+   ],
+   "donts": [
+    "Don't colour a debit red; in this product only incoming money is coloured",
+    "Don't use display for anything that isn't a currency figure",
+    "Don't set body copy in violet \u2014 violet text is reserved for links"
+   ],
+   "tokens": [
+    "type.display",
+    "type.title-lg",
+    "type.title",
+    "type.headline",
+    "type.body",
+    "type.body-strong",
+    "type.label",
+    "type.caption",
+    "text.primary",
+    "text.secondary",
+    "text.link",
+    "text.success",
+    "text.error",
+    "text.inverse",
+    "font.family.latin",
+    "font.family.arabic"
+   ]
+  },
+  {
+   "component": "TopBar",
+   "observed": false,
+   "purpose": "56px screen header for pushed screens (transaction detail, Send flow, settings). The home screen deliberately has none \u2014 it opens straight into the greeting \u2014 so the TopBar is the marker that you are one level deep.",
+   "whenToUse": [
+    "Any screen reached from Home that needs a back affordance",
+    "Flow screens (Top up, Send, Swap) where the trailing slot holds 'help' or 'close'",
+    "Brand variant on confirmation/receipt screens that continue the violet surface"
+   ],
+   "whenNotToUse": [
+    "On tab-root screens \u2014 use the GreetingHeader pattern (caption + title-lg + Avatar) instead",
+    "When the header must scroll away with content \u2014 put a Text title-lg in the body"
+   ],
+   "anatomy": [
+    "56px bar on bg.canvas with no border and no shadow",
+    "leading 24px icon (back / close / menu) in icon.primary",
+    "centred or leading title at type.headline",
+    "optional trailing icon at 24px, icon.primary (icon.inverse on brand variant)"
+   ],
+   "variants": [
+    {
+     "name": "default",
+     "usage": "Fill bg.canvas #F4F2F8 so the bar melts into the lilac page; title in text.primary"
+    },
+    {
+     "name": "brand",
+     "usage": "Fill bg.brand-strong #6A21C8, white title and icons \u2014 for money-movement flows that sit on violet"
+    }
+   ],
+   "content": "Title \u226424 chars, sentence case, noun phrase: 'Transaction', 'Send money', 'Card settings'.",
+   "placement": "Header region only, flush to the top, full bleed. Body starts immediately after with padding 400.",
+   "states": "Icons get a ghost 44\u00d744 target; pressed shows an 8% ink overlay. No elevation on scroll \u2014 the canvas and the surface share a family, so keep shadow.none.",
+   "dos": [
+    "Keep leading=back as the default and close only for modal flows",
+    "Match variant=brand to a brand-coloured body region so the seam is invisible"
+   ],
+   "donts": [
+    "Don't add a shadow or hairline under the default bar",
+    "Don't put the account avatar in the trailing slot on deep screens \u2014 it belongs to the home greeting"
+   ],
+   "tokens": [
+    "component.top-bar.height",
+    "component.top-bar.fill",
+    "component.top-bar.brand-fill",
+    "component.top-bar.shadow",
+    "component.top-bar.border-width",
+    "type.headline",
+    "icon.primary",
+    "icon.inverse"
+   ]
+  },
+  {
+   "component": "SearchBar",
+   "observed": true,
+   "purpose": "Sunken search field for finding transactions. It reads as a recess in the page \u2014 muted #EDEAF4 fill with an inset shadow \u2014 which is the opposite of the raised white cards below it.",
+   "whenToUse": [
+    "Directly under the balance hero on Home to search transactions",
+    "Top of any long list: all activity, beneficiaries, merchants"
+   ],
+   "whenNotToUse": [
+    "When the user must type a value you will submit \u2014 use TextField, which has a label and helper/error",
+    "When you only need to narrow a short list by category \u2014 use ChipGroup"
+   ],
+   "anatomy": [
+    "44px tall pill-ish container at radius.lg 16px",
+    "fill bg.surface #EDEAF4 with shadow.inset and a 1px border.default",
+    "leading search icon 20px in icon.secondary",
+    "placeholder at type.body in text.tertiary, 12px after the icon"
+   ],
+   "variants": [
+    {
+     "name": "default",
+     "usage": "The only variant; width is always full gutter-to-gutter"
+    }
+   ],
+   "content": "Placeholder names the corpus, sentence case, no ellipsis: 'Search transactions', 'Search merchants'.",
+   "placement": "Full width inside the body Stack, 20px below the hero card and 20px above the filter chips. Never inside a Card.",
+   "states": "Focus adds shadow.focus (3px violet 35%) and switches the border to border.focus. Typing swaps the trailing area for a clear \u2715 in icon.secondary.",
+   "dos": [
+    "Always pair with the ChipGroup underneath \u2014 search and filters are one unit in this product",
+    "Keep the inset shadow; it is what separates the field from the canvas"
+   ],
+   "donts": [
+    "Don't put the search bar on white \u2014 it needs the lilac canvas around it to read as sunken",
+    "Don't add a 'Search' button; filtering is live"
+   ],
+   "tokens": [
+    "component.input.radius",
+    "component.input.height",
+    "component.input.fill",
+    "component.input.border",
+    "component.input.shadow",
+    "component.input.padding-x",
+    "component.input.gap",
+    "text.tertiary",
+    "icon.secondary",
+    "size.icon-md"
+   ]
+  },
+  {
+   "component": "Button",
+   "observed": true,
+   "purpose": "The commitment control. Note for implementers: in Aura Wallet primary is **Violet 700 (#6A21C8) with a white label** \u2014 not the green described in the generic catalog. One primary button per screen, pinned above the tab bar.",
+   "whenToUse": [
+    "The single screen action pinned in the footer: 'Pay a bill', 'Send AED 250', 'Confirm top up'",
+    "Translucent quick actions inside the gradient balance card (Top up / Send / Swap) at size md",
+    "Inline tertiary links such as 'See all' next to a section title"
+   ],
+   "whenNotToUse": [
+    "Icon-only affordances \u2014 use IconButton (44\u00d744, accessible label required)",
+    "Choosing between mutually exclusive filters \u2014 use ChipGroup or SegmentedControl",
+    "A whole tappable row with title + subtitle \u2014 use ListItem with trailing chevron"
+   ],
+   "anatomy": [
+    "radius.lg 16px (not a full pill) \u2014 corners are soft rectangles like every other Aura surface",
+    "heights 56 / 44 / 36 for lg / md / sm; padding-x 24 / 20 / 16",
+    "optional 20px leading icon with 8px gap",
+    "label at type.label (weight 600); 17px-ish optical weight at size lg",
+    "shadow.md under the primary fill, which gives it the same lift as the hero card"
+   ],
+   "variants": [
+    {
+     "name": "primary",
+     "usage": "Fill bg.brand-strong #6A21C8, white label, shadow.md. Exactly one per screen, fullWidth, in the footer"
+    },
+    {
+     "name": "secondary",
+     "usage": "White fill, 1.5px border.default, ink label \u2014 the paired 'Cancel'/'Not now' or actions sitting on canvas"
+    },
+    {
+     "name": "tertiary",
+     "usage": "No fill, violet #7C22D6 label \u2014 'See all', 'Skip', 'Add note'. Size sm or md only"
+    },
+    {
+     "name": "danger",
+     "usage": "Fill feedback.error #DC2F3A, white label \u2014 'Block card', 'Delete beneficiary', only after a confirmation sheet"
+    }
+   ],
+   "content": "Verb-first and specific, sentence case, \u226424 chars: 'Pay a bill', 'Top up', 'Send', 'Swap'. Put the amount in the label when it reduces doubt ('Send AED 250'). No trailing punctuation, no 'Click'.",
+   "placement": "Primary lives in the footer region, fullWidth, 16px side margins, 12px (layout.footer-gap) above the BottomNav. Quick actions live in a horizontal Stack inside the hero card with gap 300 and equal widths.",
+   "states": "Pressed: fill darkens ~8% and shadow drops to sm. Disabled: fill at 38% opacity, no shadow, label keeps white. Loading: label replaced by a spinner, width held. Focus: shadow.focus ring.",
+   "dos": [
+    "Keep the footer CTA fullWidth so it reads as a shelf above the nav",
+    "Use the translucent #FFFFFF2E treatment for buttons sitting on the gradient card",
+    "Match tertiary buttons to text.link so links and buttons agree"
+   ],
+   "donts": [
+    "Don't stack two primaries; demote the second to secondary or tertiary",
+    "Don't use radius.pill \u2014 Aura buttons are 16px-cornered rectangles",
+    "Don't put a danger button in the footer of a normal task screen"
+   ],
+   "tokens": [
+    "component.button.radius",
+    "component.button.height-lg",
+    "component.button.height-md",
+    "component.button.height-sm",
+    "component.button.padding-x-lg",
+    "component.button.gap",
+    "component.button.shadow",
+    "component.button.primary.fill",
+    "component.button.primary.label",
+    "component.button.secondary.fill",
+    "component.button.secondary.border",
+    "component.button.tertiary.label",
+    "component.button.danger.fill",
+    "type.label"
+   ]
+  },
+  {
+   "component": "IconButton",
+   "observed": false,
+   "purpose": "A 44\u00d744 square-cornered (radius.lg) icon target for compact actions: notifications, scan-to-pay, card freeze, sheet close. It borrows the white-with-1.5px-border language of secondary Button.",
+   "whenToUse": [
+    "Trailing utility next to the greeting (bell, qr-code) on Home",
+    "Closing a BottomSheet",
+    "Toolbar of a card detail screen: freeze, settings, share"
+   ],
+   "whenNotToUse": [
+    "When the action needs to be discoverable by name \u2014 use Button with an icon",
+    "For the account entry point on Home \u2014 use Avatar with initials, as observed",
+    "For tab navigation \u2014 use BottomNav"
+   ],
+   "anatomy": [
+    "44\u00d744 box, radius.lg 16px",
+    "24px glyph centred, icon.primary (white on brand variant)",
+    "outline: white fill + 1.5px border.default; brand: #6A21C8 fill",
+    "required accessible label, never rendered"
+   ],
+   "variants": [
+    {
+     "name": "outline",
+     "usage": "Default on canvas \u2014 white square with a hairline, matching secondary Button"
+    },
+    {
+     "name": "brand",
+     "usage": "Violet filled square for the one emphasised utility, e.g. 'Scan to pay'"
+    },
+    {
+     "name": "ghost",
+     "usage": "No fill/border \u2014 inside TopBars, sheets and card headers where a box would add noise"
+    }
+   ],
+   "content": "Accessible label is a verb phrase: 'Open notifications', 'Scan QR to pay'.",
+   "placement": "End of a header row, 12px from its neighbour; groups of icon buttons use gap 200. Never below the fold as the main action.",
+   "states": "Pressed: 8% ink overlay (brand: 8% white). Disabled: 38% opacity. Badged: 8px feedback.error dot at the top-right, 2px canvas ring.",
+   "dos": [
+    "Always keep the full 44px target even when the glyph is 20px",
+    "Use no more than two icon buttons in a header"
+   ],
+   "donts": [
+    "Don't make icon buttons circular \u2014 squares with 16px radius are the Aura silhouette",
+    "Don't use brand variant twice on one screen"
+   ],
+   "tokens": [
+    "component.icon-button.size",
+    "component.icon-button.radius",
+    "component.icon-button.border",
+    "component.icon-button.border-width",
+    "component.icon-button.outline-fill",
+    "component.icon-button.brand-fill",
+    "component.icon-button.brand-icon",
+    "component.icon-button.icon",
+    "size.touch-min",
+    "size.icon-lg"
+   ]
+  },
+  {
+   "component": "TextField",
+   "observed": false,
+   "purpose": "Labelled input for money-movement flows (amount, IBAN, reference, card nickname). Shares the sunken #EDEAF4 recess of SearchBar so all inputs read as one family.",
+   "whenToUse": [
+    "Send / Top up / Swap forms",
+    "Adding a beneficiary or editing profile details",
+    "Entering a promo or reference code"
+   ],
+   "whenNotToUse": [
+    "Filtering an existing list \u2014 use SearchBar",
+    "Picking one of a few options \u2014 use SegmentedControl or ChipGroup",
+    "Displaying a computed value \u2014 use SummaryRow"
+   ],
+   "anatomy": [
+    "label above the field at type.label, text.secondary, 8px gap",
+    "44px field at radius.lg, fill bg.surface, 1px border.default, shadow.inset",
+    "optional 20px leading icon in icon.secondary, 12px gap",
+    "value at type.body text.primary; placeholder at text.tertiary",
+    "helper or error line below at type.caption (text.secondary / text.error), 4px gap"
+   ],
+   "variants": [
+    {
+     "name": "default",
+     "usage": "Standard single-line entry"
+    },
+    {
+     "name": "with icon",
+     "usage": "Semantic prefix: banknote for amount, user for beneficiary, credit-card for card number"
+    },
+    {
+     "name": "error",
+     "usage": "2px border.error + caption in text.error; used after submit or on blur, never while typing"
+    }
+   ],
+   "content": "Labels are short nouns in sentence case: 'Amount', 'Recipient IBAN'. Helper explains limits ('Daily limit AED 20,000 remaining'). Errors state the fix: 'Enter an amount of at least AED 5'.",
+   "placement": "Stacked vertically with gap 400 inside a body Stack with padding 400. Amount fields in money flows may render their value at type.display above a smaller field.",
+   "states": "Focus: border.focus + shadow.focus, inset shadow retained. Filled: text.primary. Disabled: fill bg.canvas, text.tertiary, no shadow. Error: border-width.strong in border.error.",
+   "dos": [
+    "Always show a label \u2014 placeholders alone are not used in this system",
+    "Show only one of helper or error at a time"
+   ],
+   "donts": [
+    "Don't use white fills for inputs; inputs are recesses, cards are raised",
+    "Don't validate on every keystroke for currency fields"
+   ],
+   "tokens": [
+    "component.input.radius",
+    "component.input.height",
+    "component.input.fill",
+    "component.input.border",
+    "component.input.border-width",
+    "component.input.border-error",
+    "component.input.border-width-error",
+    "component.input.shadow",
+    "text.secondary",
+    "text.tertiary",
+    "text.error",
+    "type.label",
+    "type.caption"
+   ]
+  },
+  {
+   "component": "ChipGroup",
+   "observed": true,
+   "purpose": "The activity filter rail \u2014 All / Income / Spending / Bills. Selection inverts to near-black ink (#1C1130), not violet, which keeps the violet reserved for the balance and the CTA.",
+   "whenToUse": [
+    "Filtering the transaction list under the search bar",
+    "Quick date ranges on Insights: This week / Month / Year",
+    "Category narrowing inside a full 'All activity' screen"
+   ],
+   "whenNotToUse": [
+    "Two or three exclusive views of the same data \u2014 use SegmentedControl (a shared track reads as a switch, chips read as filters)",
+    "Navigating to another screen \u2014 use ListItem or BottomNav",
+    "Displaying a non-interactive status \u2014 use Tag"
+   ],
+   "anatomy": [
+    "horizontal scrolling rail, 8px gap, first chip flush to the 16px gutter",
+    "chip: 36px tall, radius.lg 16px, padding-x 16px",
+    "unselected: white fill, 1.5px border.default, label text.primary at type.label",
+    "selected: fill bg.inverse #1C1130, label white, no border"
+   ],
+   "variants": [
+    {
+     "name": "selected=0 ('All')",
+     "usage": "Default state of every filter rail; 'All' is always the first chip"
+    },
+    {
+     "name": "selected=-1",
+     "usage": "No filter applied \u2014 only when the rail is additive rather than exclusive"
+    }
+   ],
+   "content": "One or two words, sentence case, \u226418 chars: 'All', 'Income', 'Spending', 'Bills'. Max 6 chips; put the most used first.",
+   "placement": "Directly below SearchBar with 20px gap, above the section title. Edge-to-edge scroll: bleed past the right gutter, but keep 16px leading inset.",
+   "states": "Selected = inverse ink fill. Pressed = 8% ink overlay on the border/fill. Disabled = 38% opacity. Counts may be appended in the label ('Bills 3').",
+   "dos": [
+    "Keep exactly one chip selected at a time in this pattern",
+    "Let the rail scroll horizontally rather than wrapping to two lines"
+   ],
+   "donts": [
+    "Don't colour the selected chip violet \u2014 that clashes with the hero and CTA",
+    "Don't exceed 6 chips; move the rest behind a 'filter' IconButton"
+   ],
+   "tokens": [
+    "component.chip.radius",
+    "component.chip.height",
+    "component.chip.padding-x",
+    "component.chip.gap",
+    "component.chip.fill",
+    "component.chip.border",
+    "component.chip.border-width",
+    "component.chip.selected.fill",
+    "component.chip.selected.label",
+    "type.label"
+   ]
+  },
+  {
+   "component": "Tag",
+   "observed": false,
+   "purpose": "Small 24px status or promo label for row-level metadata: 'Pending', 'Refund', 'Bill due', 'Plus'. It states, it never acts.",
+   "whenToUse": [
+    "Marking a transaction as Pending or Failed inside a ListItem",
+    "Flagging a subscription or recurring bill",
+    "Badging a card as Virtual / Frozen"
+   ],
+   "whenNotToUse": [
+    "Filtering \u2014 use ChipGroup (chips are 36px and tappable)",
+    "Full-width messaging \u2014 use InlineAlert",
+    "Counts on a service tile \u2014 use the ServiceGrid tile badge"
+   ],
+   "anatomy": [
+    "24px pill-ish box at radius.sm 8px, padding-x 8px",
+    "label at type.caption-strong (12/16, +0.1 tracking)",
+    "subtle tonal fill with a matching darker label; no border"
+   ],
+   "variants": [
+    {
+     "name": "brand",
+     "usage": "bg.brand-subtle + text.link \u2014 Aura-owned labels like 'Instant'"
+    },
+    {
+     "name": "plus",
+     "usage": "Gradient-adjacent premium marker for the paid tier"
+    },
+    {
+     "name": "success",
+     "usage": "feedback.success-subtle + text.success \u2014 'Received', 'Settled'"
+    },
+    {
+     "name": "warning",
+     "usage": "feedback.warning-subtle + text.warning \u2014 'Pending', 'Due soon'"
+    },
+    {
+     "name": "error",
+     "usage": "feedback.error-subtle + text.error \u2014 'Failed', 'Declined'"
+    },
+    {
+     "name": "info",
+     "usage": "feedback.info-subtle + text.info \u2014 'Scheduled'"
+    },
+    {
+     "name": "neutral",
+     "usage": "bg.surface + text.secondary \u2014 low-salience metadata"
+    }
+   ],
+   "content": "One word where possible, sentence case, \u226416 chars. Never a sentence, never a verb.",
+   "placement": "Inline after a row title with 8px gap, or in the trailing slot above the amount. Only one tag per row.",
+   "states": "Static and non-interactive.",
+   "dos": [
+    "Match tone to the semantic colour used elsewhere on the screen",
+    "Keep tags out of the gradient card \u2014 they lose contrast"
+   ],
+   "donts": [
+    "Don't use a tag as a button",
+    "Don't stack multiple tags on one transaction row"
+   ],
+   "tokens": [
+    "component.tag.radius",
+    "component.tag.height",
+    "component.tag.padding-x",
+    "type.caption-strong",
+    "feedback.success-subtle",
+    "feedback.warning-subtle",
+    "feedback.error-subtle",
+    "bg.brand-subtle",
+    "text.success",
+    "text.warning",
+    "text.error",
+    "text.link"
+   ]
+  },
+  {
+   "component": "Card",
+   "observed": true,
+   "purpose": "The raised white block with 24px corners and a soft shadow that holds every group of content in Aura. On Home there are two: the gradient balance hero and the white activity list.",
+   "whenToUse": [
+    "Wrapping a run of ListItems so the group floats off the lilac canvas",
+    "The balance hero (tone brand-strong with the brand gradient)",
+    "Grouping SummaryRows in a receipt, or a card-detail block"
+   ],
+   "whenNotToUse": [
+    "Single full-width messages \u2014 use InlineAlert",
+    "Promotional cross-sell with a CTA \u2014 use PromoBanner",
+    "Invisible grouping that only needs spacing \u2014 use Stack"
+   ],
+   "anatomy": [
+    "radius.xl 24px",
+    "tone fill: white (raised) / #EDEAF4 (surface) / violet-subtle / gradient (brand-strong) / #1C1130 (inverse)",
+    "shadow.sm on raised; brand-strong adds shadow.md plus the radial brand-glow beneath",
+    "internal gap space.300 between children",
+    "padding 300 for row lists (rows bring their own 16px), 400\u2013500 for content cards"
+   ],
+   "variants": [
+    {
+     "name": "raised",
+     "usage": "Default: white #FFFFFF, shadow.sm. Activity lists, detail blocks, receipts"
+    },
+    {
+     "name": "surface",
+     "usage": "Flat #EDEAF4 with a 1px hairline and no shadow \u2014 secondary information that shouldn't compete"
+    },
+    {
+     "name": "brand-subtle",
+     "usage": "#EDE6FB tint for informational or upsell blocks that stay quiet"
+    },
+    {
+     "name": "brand-strong",
+     "usage": "The gradient hero. Reserved for balance and money-movement summaries; max one per screen"
+    },
+    {
+     "name": "inverse",
+     "usage": "#1C1130 ink card for a virtual card face or a dark stat block"
+    }
+   ],
+   "content": "Optional title at type.headline, sentence case, \u226432 chars. Card titles are nouns; keep the verb in the CTA.",
+   "placement": "Full width between the 16px gutters, 20px from the block above. Cards never sit inside cards.",
+   "states": "Whole-card press (when it navigates) shows an 8% ink overlay and shadow dropping to none. Otherwise static; interactivity lives in the rows.",
+   "dos": [
+    "Use padding 300 when children are ListItems so the row's own inset defines the rhythm",
+    "Keep the gradient hero to a single instance per screen"
+   ],
+   "donts": [
+    "Don't nest a Card in a Card \u2014 switch the inner group to a Stack with background=surface",
+    "Don't put a border on the raised card; its border-width is 0 and elevation comes from shadow.sm",
+    "Don't use radius.lg \u2014 cards are 24px, buttons are 16px"
+   ],
+   "tokens": [
+    "component.card.radius",
+    "component.card.gap",
+    "component.card.raised.shadow",
+    "component.card.raised.border-width",
+    "component.card.flat.border",
+    "component.card.flat.shadow",
+    "bg.surface-raised",
+    "bg.surface",
+    "bg.brand-subtle",
+    "bg.inverse",
+    "gradient.brand",
+    "gradient.brand-glow",
+    "shadow.md",
+    "space.300"
+   ]
+  },
+  {
+   "component": "ListItem",
+   "observed": true,
+   "purpose": "The transaction row \u2014 and by extension every row in the app. Leading 40px violet-subtle tile, title + meta line, trailing value or chevron, hairline between siblings.",
+   "whenToUse": [
+    "Transactions inside the activity Card (merchant, 'Today \u00b7 Coffee', signed amount)",
+    "Settings and profile rows with trailing chevron or toggle",
+    "Beneficiaries and cards lists, using avatar initials as the leading element"
+   ],
+   "whenNotToUse": [
+    "Pure label/value with no leading element and no navigation \u2014 use SummaryRow",
+    "A tappable tile grid of services \u2014 use ServiceGrid",
+    "A promotional row with a CTA \u2014 use PromoBanner"
+   ],
+   "anatomy": [
+    "leading 40\u00d740 tile at radius.md 12px, fill bg.brand-subtle, glyph/emoji centred \u2014 or a 40px Avatar with initials",
+    "title at type.body-strong, text.primary, 1 line",
+    "subtitle at type.body, text.secondary, format 'When \u00b7 Category'",
+    "trailing: amount at type.body-strong (text.primary for debits, text.success for credits), or a 20px chevron in icon.secondary, or a toggle",
+    "1px border.subtle divider inset to the text column, never under the last row"
+   ],
+   "variants": [
+    {
+     "name": "trailing=text",
+     "usage": "Money rows: signed amount right-aligned, '\u2212AED 24.00' / '+AED 9,200'"
+    },
+    {
+     "name": "trailing=chevron",
+     "usage": "Navigational rows: transaction detail, settings"
+    },
+    {
+     "name": "trailing=toggle",
+     "usage": "Preference rows: notifications, card lock"
+    },
+    {
+     "name": "avatar",
+     "usage": "People and beneficiaries \u2014 two-letter initials replace the tile glyph"
+    },
+    {
+     "name": "trailing=none",
+     "usage": "Read-only history entries inside a detail screen"
+    }
+   ],
+   "content": "Title is the merchant or person exactly as billed, \u226440 chars, truncate with ellipsis. Subtitle is relative time then category, separated by '\u00b7': 'Today \u00b7 Coffee', 'Yesterday \u00b7 Income', 'Mon \u00b7 Transport'.",
+   "placement": "Stacked inside a Card with padding 300; row height ~72px with 16px horizontal inset. Dividers between rows only.",
+   "states": "Pressed: full-row 6% ink wash, corners respected at the card edges. Pending rows dim the amount to text.secondary and add a warning Tag. Disabled rows drop to 38% opacity.",
+   "dos": [
+    "Keep one consistent leading treatment per list (all tiles or all avatars)",
+    "Right-align amounts on a shared optical column so digits line up",
+    "Colour only credits (text.success); debits stay ink"
+   ],
+   "donts": [
+    "Don't let the subtitle wrap to two lines",
+    "Don't put both a tag and a chevron and an amount in the trailing area",
+    "Don't draw a divider after the final row"
+   ],
+   "tokens": [
+    "component.tile.icon-radius",
+    "component.tile.icon-fill",
+    "component.tile.icon",
+    "component.divider.color",
+    "component.divider.thickness",
+    "type.body-strong",
+    "type.body",
+    "text.primary",
+    "text.secondary",
+    "text.success",
+    "icon.secondary",
+    "space.400"
+   ]
+  },
+  {
+   "component": "ServiceGrid",
+   "observed": false,
+   "purpose": "A 3- or 4-up grid of violet-tiled shortcuts for the money services Aura offers beyond the balance card: bills, transfers, cards, rewards, exchange, splits.",
+   "whenToUse": [
+    "A 'Pay & transfer' hub screen or an expanded home section below the balance card",
+    "Surfacing 6\u20138 destinations that would be too long as a list"
+   ],
+   "whenNotToUse": [
+    "Fewer than four destinations \u2014 use ListItem rows, which carry subtitles",
+    "Actions on the balance itself (Top up / Send / Swap) \u2014 those live as translucent buttons inside the hero card",
+    "A single promoted service \u2014 use PromoBanner"
+   ],
+   "anatomy": [
+    "tile: 40px icon container at radius.md, fill bg.brand-subtle, glyph icon.brand 24px",
+    "label under the icon at type.caption, text.primary, centred, max 12 chars",
+    "optional badge pill at the tile's top-right using caption-strong on feedback.error",
+    "grid gap: 16px column, 20px row"
+   ],
+   "variants": [
+    {
+     "name": "columns=4",
+     "usage": "Default home shortcut strip, up to 8 tiles in two rows"
+    },
+    {
+     "name": "columns=3",
+     "usage": "Hub screens where labels are longer ('Exchange', 'Split bill')"
+    }
+   ],
+   "content": "Single-word labels where possible: 'Bills', 'Transfer', 'Cards', 'Rewards', 'Exchange', 'Split'. Badges are numeric or 'New'.",
+   "placement": "Inside a raised Card with padding 400, or directly on canvas between hero and activity. 20px above and below.",
+   "states": "Tile press scales the icon container to 0.96 and deepens the tint to violet 200. Unavailable services render at 38% opacity with no badge.",
+   "dos": [
+    "Keep every tile glyph in icon.brand on bg.brand-subtle for one consistent violet family",
+    "Fill the last row or reduce the count \u2014 no orphan single tile"
+   ],
+   "donts": [
+    "Don't mix multi-coloured tile fills; Aura's shortcuts are monochrome violet",
+    "Don't exceed 8 tiles \u2014 move overflow behind a 'More' tile"
+   ],
+   "tokens": [
+    "component.tile.radius",
+    "component.tile.height",
+    "component.tile.fill",
+    "component.tile.icon",
+    "component.tile.icon-fill",
+    "component.tile.icon-radius",
+    "type.caption",
+    "space.400",
+    "space.500"
+   ]
+  },
+  {
+   "component": "PromoBanner",
+   "observed": false,
+   "purpose": "Full-width 24px-radius promotional block in a vertical colour, with a translucent-white CTA. It is the only element allowed to introduce a non-violet hue to the page.",
+   "whenToUse": [
+    "Cross-sell below the activity list: cashback, a new card product, referral",
+    "Seasonal offers on an Insights or Rewards screen"
+   ],
+   "whenNotToUse": [
+    "System status or a blocking message \u2014 use InlineAlert",
+    "The balance hero \u2014 that is a Card tone=brand-strong with the brand gradient",
+    "Small metadata \u2014 use Tag"
+   ],
+   "anatomy": [
+    "24px radius container, padding 24px, internal gap 12px, shadow.md",
+    "title at type.title on the fill's title colour",
+    "subtitle at type.body \u226456 chars",
+    "CTA pill on a #FFFFFF2E wash (or solid violet on light fills)",
+    "decorative art circle at #FFFFFF1F with a white 24px glyph on the trailing edge"
+   ],
+   "variants": [
+    {
+     "name": "brand",
+     "usage": "The violet\u2192magenta gradient. Reserve for Aura's own flagship offers \u2014 do not use on the same screen as the balance hero"
+    },
+    {
+     "name": "go",
+     "usage": "Violet #7C22D6 flat \u2014 transfers and instant-payment promos"
+    },
+    {
+     "name": "get",
+     "usage": "Magenta #E5218D \u2014 rewards, cashback, referrals"
+    },
+    {
+     "name": "eat",
+     "usage": "Cream #FFE9B8 with ink text and a solid violet CTA \u2014 lifestyle and merchant offers"
+    },
+    {
+     "name": "pay",
+     "usage": "Deep indigo #1E1B4B with a violet CTA \u2014 cards, credit and premium tiers"
+    }
+   ],
+   "content": "Title is the benefit, \u226432 chars: 'Get 5% back on bills'. Subtitle qualifies it in one clause. CTA is 2\u20133 words: 'Activate', 'See offers'.",
+   "placement": "Full width between gutters, 20px below the preceding section. One banner per screen; never directly adjacent to the gradient hero.",
+   "states": "Pressed: 8% black overlay across the fill. Dismissible banners get a ghost close IconButton in the top-right.",
+   "dos": [
+    "Pick the tone by product area so colour stays meaningful",
+    "Keep body copy to one line on a 390px width"
+   ],
+   "donts": [
+    "Don't stack two banners",
+    "Don't use tone=brand when a gradient balance card is already on screen \u2014 two gradients cancel each other out"
+   ],
+   "tokens": [
+    "component.banner.radius",
+    "component.banner.padding",
+    "component.banner.gap",
+    "component.banner.shadow",
+    "component.banner.brand.fill",
+    "component.banner.go.fill",
+    "component.banner.get.fill",
+    "component.banner.eat.fill",
+    "component.banner.pay.fill",
+    "component.banner.brand.cta-fill",
+    "component.banner.brand.art-fill",
+    "type.title",
+    "type.body"
+   ]
+  },
+  {
+   "component": "ProgressTracker",
+   "observed": false,
+   "purpose": "Shows where money is in flight: a bar with an ETA for transfers being processed, or a vertical timeline of a transaction's lifecycle on the detail screen.",
+   "whenToUse": [
+    "'Arriving by 14:30' on an outgoing international transfer",
+    "Timeline of Initiated \u2192 Processing \u2192 Sent \u2192 Received on a transaction detail",
+    "Multi-step onboarding or KYC progress"
+   ],
+   "whenNotToUse": [
+    "A finished, single-state outcome \u2014 use InlineAlert tone=success or a Tag",
+    "A list of past events with amounts \u2014 use ListItem rows"
+   ],
+   "anatomy": [
+    "bar: 4px track in border.subtle with a violet #7C22D6 fill, title above at type.headline",
+    "timeline: 20px dots connected by a 2px rail; completed dots filled violet with a white check, current dot ringed with shadow.focus, future dots border.strong",
+    "step labels at type.body (current at body-strong), timestamps at type.caption text.secondary"
+   ],
+   "variants": [
+    {
+     "name": "bar",
+     "usage": "Compact in-flight status with an ETA title, inside a raised Card at the top of a screen"
+    },
+    {
+     "name": "timeline",
+     "usage": "Transaction detail: full ordered history with times"
+    }
+   ],
+   "content": "Title states the outcome and time: 'Arrives in 12 min', 'Arriving by 14:30'. Steps are past-tense or noun states \u226422 chars: 'Initiated', 'Processing', 'Received'.",
+   "placement": "Inside a Card padding 400, directly under the header or the amount. 20px from neighbours.",
+   "states": "Current step is violet and bold; completed steps are violet with reduced-weight labels; failed steps switch the dot and label to feedback.error.",
+   "dos": [
+    "Always pair a bar with a human ETA title",
+    "Keep steps to a maximum of 5"
+   ],
+   "donts": [
+    "Don't animate indefinitely without an ETA or state label",
+    "Don't use the timeline for anything without a guaranteed order"
+   ],
+   "tokens": [
+    "bg.brand",
+    "border.subtle",
+    "border.strong",
+    "shadow.focus",
+    "type.headline",
+    "type.body-strong",
+    "type.caption",
+    "text.secondary",
+    "feedback.error",
+    "space.300"
+   ]
+  },
+  {
+   "component": "MapPlaceholder",
+   "observed": false,
+   "purpose": "Rarely used in a wallet: a stylised map for merchant locations, ATM/top-up points and the location context on a card transaction.",
+   "whenToUse": [
+    "'Where was this spent?' block on a transaction detail",
+    "Finding nearby cash-in agents or partner ATMs"
+   ],
+   "whenNotToUse": [
+    "Any non-geographic media \u2014 use MediaPlaceholder",
+    "Progress of a transfer \u2014 use ProgressTracker"
+   ],
+   "anatomy": [
+    "rounded container at radius.md, tinted with bg.sky #E6EEFC",
+    "route/street lines in border.default; violet map-pin marker",
+    "optional pin label and ETA chip on a white pill with shadow.sm"
+   ],
+   "variants": [
+    {
+     "name": "inset (default)",
+     "usage": "Inside a Card at 160\u2013200px height, corners radius.md"
+    },
+    {
+     "name": "fullBleed",
+     "usage": "Edge-to-edge under the TopBar on a dedicated 'Find cash points' screen"
+    }
+   ],
+   "content": "Pin label is the merchant or place name \u226420 chars. ETA only when travel is implied.",
+   "placement": "Top of a detail Card, or full bleed directly beneath the header.",
+   "states": "Loading shows the flat sky tint with no pin. Location denied \u2192 swap for EmptyState with icon=map-pin.",
+   "dos": [
+    "Keep the map tint cool (#E6EEFC) so it doesn't compete with the violet system",
+    "Always label the pin"
+   ],
+   "donts": [
+    "Don't tint the map violet",
+    "Don't use a map as decoration on financial screens"
+   ],
+   "tokens": [
+    "bg.sky",
+    "border.default",
+    "component.media.radius",
+    "icon.brand",
+    "shadow.sm",
+    "type.caption-strong"
+   ]
+  },
+  {
+   "component": "Avatar",
+   "observed": true,
+   "purpose": "Two-letter initials mark for the account holder and for people in transfer lists. On Home it is the account entry point in the top-right \u2014 a violet-subtle tile with violet initials.",
+   "whenToUse": [
+    "Top-right of the greeting header ('LA' for Layla)",
+    "Beneficiary and split-bill rows, replacing the transaction tile",
+    "Profile screen header at size lg"
+   ],
+   "whenNotToUse": [
+    "Merchants and categories \u2014 use the violet ListItem tile with a category glyph",
+    "A navigational utility like notifications \u2014 use IconButton"
+   ],
+   "anatomy": [
+    "container at radius.md\u2013lg (Aura renders it as a soft square, not a circle) \u2014 56px at lg, 44px at md, 32px at sm",
+    "fill bg.brand-subtle #EDE6FB",
+    "initials, uppercase, at type.body-strong (lg: type.title) in icon.brand / text.link violet"
+   ],
+   "variants": [
+    {
+     "name": "lg",
+     "usage": "Home greeting and profile header"
+    },
+    {
+     "name": "md",
+     "usage": "ListItem leading slot in people lists"
+    },
+    {
+     "name": "sm",
+     "usage": "Inline attribution, e.g. inside a split-bill summary"
+    }
+   ],
+   "content": "Exactly two uppercase letters from first + last name. Never one letter, never three.",
+   "placement": "Trailing end of the greeting row, vertically centred against the two-line greeting. In rows it occupies the 40px leading slot.",
+   "states": "Pressed: tint deepens to violet 200. Unread account activity adds an 8px violet dot at the top-right with a 2px canvas ring.",
+   "dos": [
+    "Keep the violet-subtle-on-violet pairing for every avatar so identity reads as one colour idea",
+    "Give the Home avatar a 44px minimum target"
+   ],
+   "donts": [
+    "Don't render avatars as full circles \u2014 Aura's identity marks are squircles",
+    "Don't use photos in this system"
+   ],
+   "tokens": [
+    "bg.brand-subtle",
+    "icon.brand",
+    "text.link",
+    "radius.md",
+    "radius.lg",
+    "type.body-strong",
+    "type.title",
+    "size.touch-min"
+   ]
+  },
+  {
+   "component": "Divider",
+   "observed": true,
+   "purpose": "1px hairline in border.subtle #EAE7F1 that separates sibling rows inside a white card. It is the only separator in the system \u2014 sections are separated by space, not lines.",
+   "whenToUse": [
+    "Between ListItems in the activity Card",
+    "Between groups of SummaryRows in a receipt, above the emphasised total"
+   ],
+   "whenNotToUse": [
+    "Between page sections \u2014 use a 20px gap instead",
+    "Around cards \u2014 the shadow and radius already separate them"
+   ],
+   "anatomy": [
+    "1px line, full width minus a 16px leading inset that aligns with the row's text column",
+    "colour border.subtle"
+   ],
+   "variants": [
+    {
+     "name": "inset (default)",
+     "usage": "Inside row lists, starting at the text column so leading tiles stay connected"
+    },
+    {
+     "name": "full-bleed",
+     "usage": "Inside sheets and receipts where there is no leading element"
+    }
+   ],
+   "content": "None.",
+   "placement": "Between rows only; never after the last row and never immediately inside the card's top or bottom padding.",
+   "states": "Static.",
+   "dos": [
+    "Use the ListItem's own divider prop rather than inserting standalone Dividers",
+    "Keep it at border.subtle \u2014 never border.strong"
+   ],
+   "donts": [
+    "Don't put a divider under a TopBar or above a BottomNav (the nav's own 1px hairline covers it)",
+    "Don't use dividers on gradient or inverse surfaces"
+   ],
+   "tokens": [
+    "component.divider.thickness",
+    "component.divider.color",
+    "border.subtle",
+    "space.400"
+   ]
+  },
+  {
+   "component": "BottomSheet",
+   "observed": false,
+   "purpose": "The modal surface for confirmations and pickers in money flows. It carries 24px top corners, the canvas lilac fill and a grabber, so it reads as the page sliding up rather than a foreign dialog.",
+   "whenToUse": [
+    "Confirming a payment: amount, recipient, fee, then a primary Button",
+    "Picking a source card or account",
+    "Destructive confirmation ('Block this card?') with a danger Button"
+   ],
+   "whenNotToUse": [
+    "A passive message inside the page \u2014 use InlineAlert",
+    "A whole task with several inputs \u2014 push a screen with a TopBar",
+    "One-line success feedback \u2014 use a toast/InlineAlert"
+   ],
+   "anatomy": [
+    "radius.xl 24px top corners, fill component.sheet.fill #F4F2F8, shadow.md",
+    "36\u00d74 grabber in border.strong #C9C3D6, centred, 12px from the top",
+    "optional title at type.title, 16px gutters",
+    "content Stack, then a full-width primary Button 12px above the safe area"
+   ],
+   "variants": [
+    {
+     "name": "titled",
+     "usage": "Confirmations and pickers where the sheet has a clear noun heading"
+    },
+    {
+     "name": "untitled",
+     "usage": "Short menus of ListItems where the rows speak for themselves"
+    }
+   ],
+   "content": "Title \u226432 chars, sentence case, states the decision: 'Confirm payment', 'Pay from'. The CTA repeats the amount.",
+   "placement": "Footer region, anchored to the bottom, above a 40% ink scrim. It replaces the BottomNav while open.",
+   "states": "Drag-to-dismiss via the grabber. Scrim press dismisses non-destructive sheets only. Loading disables the CTA and keeps the sheet open.",
+   "dos": [
+    "Use SummaryRows inside a confirmation sheet, with emphasis on the total",
+    "Keep sheets under ~60% of viewport height"
+   ],
+   "donts": [
+    "Don't stack a sheet on a sheet",
+    "Don't fill the sheet white \u2014 the lilac canvas fill is what ties it to the page"
+   ],
+   "tokens": [
+    "component.sheet.radius",
+    "component.sheet.fill",
+    "component.sheet.shadow",
+    "component.sheet.handle",
+    "border.strong",
+    "type.title",
+    "layout.gutter",
+    "layout.footer-gap"
+   ]
+  },
+  {
+   "component": "BottomNav",
+   "observed": true,
+   "purpose": "Persistent 4-tab bar on white with a 1px top hairline. The active tab shows a violet-subtle rounded-square behind the glyph plus a violet label \u2014 the same tile language as the avatar and transaction icons.",
+   "whenToUse": [
+    "Every tab-root screen: Home, Cards, Insights, Profile",
+    "Any screen the user can reach without a back stack"
+   ],
+   "whenNotToUse": [
+    "Flow screens (Send, Top up, confirmation) \u2014 hide the nav and pin the primary Button instead",
+    "Modal sheets \u2014 the sheet covers the nav"
+   ],
+   "anatomy": [
+    "white fill #FFFFFF, 1px border.subtle top hairline, no shadow",
+    "4 items, equal width, 24px glyph over a type.caption label",
+    "active: glyph + label in icon.brand #7C22D6, with a bg.brand-subtle rounded-square behind the glyph",
+    "inactive: icon.secondary #6E6880 glyph and label"
+   ],
+   "variants": [
+    {
+     "name": "4 items",
+     "usage": "The observed configuration: Home / Cards / Insights / Profile"
+    },
+    {
+     "name": "5 items",
+     "usage": "Only if a Pay/scan destination is added; keep labels \u226410 chars"
+    }
+   ],
+   "content": "One-word nouns: 'Home', 'Cards', 'Insights', 'Profile'. Never verbs.",
+   "placement": "Footer region, below the pinned primary Button with 12px (layout.footer-gap) between them. Full bleed with safe-area padding.",
+   "states": "Active as above; pressed dims the glyph 8%; badges use a feedback.error dot with a 2px white ring.",
+   "dos": [
+    "Keep the active tile treatment \u2014 it is the system's signature selection marker",
+    "Keep labels visible at all times"
+   ],
+   "donts": [
+    "Don't use more than 5 tabs or add a central floating action button",
+    "Don't hide the nav on a tab root, and don't show it inside a money flow"
+   ],
+   "tokens": [
+    "component.nav-bar.fill",
+    "component.nav-bar.border",
+    "component.nav-bar.border-width",
+    "component.nav-bar.active",
+    "component.nav-bar.inactive",
+    "bg.brand-subtle",
+    "radius.md",
+    "type.caption",
+    "size.icon-lg"
+   ]
+  },
+  {
+   "component": "EmptyState",
+   "observed": false,
+   "purpose": "Centred placeholder for a list with nothing in it: no transactions yet, no cards, no results for a filter or search.",
+   "whenToUse": [
+    "'No transactions yet' when a new account has no activity",
+    "A filter chip or search returns nothing",
+    "No saved beneficiaries"
+   ],
+   "whenNotToUse": [
+    "An error the user must resolve \u2014 use InlineAlert tone=error",
+    "Content still loading \u2014 use skeleton rows in the Card"
+   ],
+   "anatomy": [
+    "64px violet-subtle rounded-square with a 32px icon.brand glyph",
+    "title at type.title, centred, text.primary",
+    "body at type.body, centred, text.secondary, \u226490 chars, max 2 lines",
+    "optional tertiary or secondary Button"
+   ],
+   "variants": [
+    {
+     "name": "in-card",
+     "usage": "Replaces the rows inside the activity Card when a filter yields nothing; 32px vertical padding"
+    },
+    {
+     "name": "full-screen",
+     "usage": "Whole tab is empty; sits centred in the body with the CTA in the footer as a primary Button"
+    }
+   ],
+   "content": "Title is a calm statement of fact: 'No spending yet'. Body gives the one next step. CTA \u226420 chars: 'Make a transfer'.",
+   "placement": "Centred in the region it replaces, keeping the surrounding search bar and chips in place so the user can change the filter.",
+   "states": "Static. Search-specific empties echo the query in the body.",
+   "dos": [
+    "Keep the icon in the violet-subtle tile so it matches the rest of the iconography",
+    "Preserve filters above the empty state"
+   ],
+   "donts": [
+    "Don't apologise or use exclamation marks",
+    "Don't put an empty state on the gradient hero"
+   ],
+   "tokens": [
+    "bg.brand-subtle",
+    "icon.brand",
+    "radius.lg",
+    "type.title",
+    "type.body",
+    "text.secondary",
+    "space.800"
+   ]
+  },
+  {
+   "component": "InlineAlert",
+   "observed": false,
+   "purpose": "A full-width tinted message block, 16px radius and borderless, for status the user must read in place: card declined, verification needed, transfer sent.",
+   "whenToUse": [
+    "Top of a flow when limits or verification block the action",
+    "Confirming an action inside the page after returning from a sheet",
+    "Explaining why a balance is on hold"
+   ],
+   "whenNotToUse": [
+    "Marketing \u2014 use PromoBanner",
+    "Row-level status \u2014 use Tag",
+    "A decision that needs confirming \u2014 use BottomSheet"
+   ],
+   "anatomy": [
+    "radius.lg 16px, no border, tonal subtle fill, padding 16px",
+    "20px leading icon in the tone colour",
+    "title at type.body-strong, body at type.body text.secondary, \u226490 chars",
+    "optional tertiary Button aligned to the start under the body"
+   ],
+   "variants": [
+    {
+     "name": "success",
+     "usage": "feedback.success-subtle + text.success, icon circle-check \u2014 'Transfer sent'"
+    },
+    {
+     "name": "warning",
+     "usage": "feedback.warning-subtle + text.warning, icon alert \u2014 approaching a limit"
+    },
+    {
+     "name": "error",
+     "usage": "feedback.error-subtle + text.error, icon circle-x \u2014 declined payment"
+    },
+    {
+     "name": "info",
+     "usage": "feedback.info-subtle + text.info, icon info \u2014 scheduled or informational notes"
+    }
+   ],
+   "content": "Title is the outcome in \u226440 chars: 'Payment declined'. Body says what to do next in one sentence.",
+   "placement": "Full width between gutters, directly above the content it concerns, 20px from siblings. Never inside the activity Card.",
+   "states": "Static; dismissible variants add a ghost close IconButton. Errors persist until resolved.",
+   "dos": [
+    "Keep the alert's tone consistent with the icon and any related Tag",
+    "Place error alerts above the field or card they refer to"
+   ],
+   "donts": [
+    "Don't use borders \u2014 alerts are flat tinted blocks in this system",
+    "Don't use an alert where a violet PromoBanner belongs"
+   ],
+   "tokens": [
+    "component.alert.radius",
+    "component.alert.border-width",
+    "feedback.success-subtle",
+    "feedback.warning-subtle",
+    "feedback.error-subtle",
+    "feedback.info-subtle",
+    "text.success",
+    "text.warning",
+    "text.error",
+    "text.info",
+    "type.body-strong",
+    "type.body",
+    "space.400"
+   ]
+  },
+  {
+   "component": "MediaPlaceholder",
+   "observed": true,
+   "purpose": "A tinted violet image slot. In this product its smallest form is the 40px rounded square in every transaction row (holding a merchant glyph or emoji); larger forms carry card art and merchant offers.",
+   "whenToUse": [
+    "Leading slot of a transaction row before the merchant logo loads",
+    "Card art on a Cards screen",
+    "Merchant or offer imagery inside a Card"
+   ],
+   "whenNotToUse": [
+    "Identity of a person \u2014 use Avatar initials",
+    "Navigational service shortcuts \u2014 use ServiceGrid tiles",
+    "Geography \u2014 use MapPlaceholder"
+   ],
+   "anatomy": [
+    "radius.md 12px, fill component.media.fill #EDE6FB",
+    "centred glyph in icon.brand, sized 20\u201332px by slot",
+    "optional caption label at type.caption text.secondary below"
+   ],
+   "variants": [
+    {
+     "name": "40px tile",
+     "usage": "ListItem leading slot \u2014 the observed transaction icon"
+    },
+    {
+     "name": "hero 160\u2013220px",
+     "usage": "Card art or offer imagery at the top of a Card, full card width"
+    }
+   ],
+   "content": "Label \u226424 chars, only when the image is meaningful on its own ('Aura Platinum').",
+   "placement": "Leading slot with 12px gap to the text column, or as the first child of a Card with the card's padding removed at the top edge.",
+   "states": "Loading: flat violet-subtle tint, no glyph. Loaded: the real merchant logo fills the same 12px-radius box.",
+   "dos": [
+    "Keep every media slot on the violet-subtle tint so unloaded rows still look intentional",
+    "Match the 12px radius across all sizes"
+   ],
+   "donts": [
+    "Don't use grey placeholders",
+    "Don't crop imagery to circles"
+   ],
+   "tokens": [
+    "component.media.radius",
+    "component.media.fill",
+    "component.tile.icon",
+    "icon.brand",
+    "type.caption",
+    "space.300"
+   ]
+  },
+  {
+   "component": "SummaryRow",
+   "observed": false,
+   "purpose": "Label on the left, value on the right \u2014 the receipt primitive for fees, rates, totals and transaction details. Same money typography as the transaction row, without the leading tile.",
+   "whenToUse": [
+    "Confirmation sheet: amount, fee, exchange rate, total",
+    "Transaction detail: date, reference, method, category",
+    "Statement summaries: money in, money out"
+   ],
+   "whenNotToUse": [
+    "When the row navigates or has a leading icon \u2014 use ListItem",
+    "When the value is a status word \u2014 use a ListItem with a trailing Tag"
+   ],
+   "anatomy": [
+    "label at type.body, text.secondary",
+    "value at type.body-strong, text.primary, aligned to the end",
+    "emphasis: label becomes body-strong and value becomes type.title, preceded by a Divider",
+    "44px minimum row height, 8px vertical padding"
+   ],
+   "variants": [
+    {
+     "name": "default",
+     "usage": "Fees, rates, references"
+    },
+    {
+     "name": "emphasis",
+     "usage": "The one total per group: 'Total AED 262.50', separated by a Divider above"
+    }
+   ],
+   "content": "Labels are short nouns without colons. Values follow the money format 'AED 12,480.50'; free items read 'Free', not 'AED 0.00'.",
+   "placement": "Inside a Card padding 400 or a BottomSheet, stacked with gap 200. Totals last.",
+   "states": "Static. A pending value renders in text.secondary with an em-dash until known.",
+   "dos": [
+    "Keep all values on one right-aligned optical column",
+    "Use exactly one emphasis row per group"
+   ],
+   "donts": [
+    "Don't colour values except a credit total in text.success",
+    "Don't use SummaryRow for tappable content"
+   ],
+   "tokens": [
+    "type.body",
+    "type.body-strong",
+    "type.title",
+    "text.secondary",
+    "text.primary",
+    "text.success",
+    "component.divider.color",
+    "space.200",
+    "space.400"
+   ]
+  },
+  {
+   "component": "Rating",
+   "observed": false,
+   "purpose": "Star rating with a count, used only where Aura shows merchant or partner quality \u2014 merchant offers, partner exchange providers, support feedback.",
+   "whenToUse": [
+    "Merchant offer cards in Rewards",
+    "Choosing between partner providers for an exchange or transfer",
+    "Post-support satisfaction display"
+   ],
+   "whenNotToUse": [
+    "Any core banking data \u2014 money screens carry no ratings",
+    "Category or status labelling \u2014 use Tag"
+   ],
+   "anatomy": [
+    "5 stars at 16px; filled stars in a warning amber, empty in border.strong",
+    "value optional at type.caption-strong text.primary",
+    "count at type.caption text.secondary in parentheses"
+   ],
+   "variants": [
+    {
+     "name": "with count",
+     "usage": "Lists where comparison matters: '4.8 (1,204)'"
+    },
+    {
+     "name": "stars only",
+     "usage": "Tight rows where the count would crowd the amount"
+    }
+   ],
+   "content": "One decimal place. Count abbreviated over 1,000 ('1.2k').",
+   "placement": "Under a merchant title inside a Card, 4px below, or in the row's subtitle line.",
+   "states": "Static; supports half-star rendering.",
+   "dos": [
+    "Keep the stars small so they don't compete with monetary values",
+    "Always show the count when ratings drive a choice"
+   ],
+   "donts": [
+    "Don't rate transactions or people",
+    "Don't tint stars violet"
+   ],
+   "tokens": [
+    "feedback.warning",
+    "border.strong",
+    "type.caption-strong",
+    "type.caption",
+    "text.secondary",
+    "size.icon-sm"
+   ]
+  },
+  {
+   "component": "SegmentedControl",
+   "observed": false,
+   "purpose": "A sunken #EDEAF4 track with a white sliding thumb, for switching between two to four views of the same data \u2014 Insights periods, Money in / Money out, Card / Account.",
+   "whenToUse": [
+    "Insights: Week / Month / Year",
+    "Statement: All / In / Out",
+    "Cards screen: Physical / Virtual"
+   ],
+   "whenNotToUse": [
+    "Filtering a list by category \u2014 use ChipGroup, which is the observed pattern on Home",
+    "More than four options or scrolling options \u2014 use ChipGroup",
+    "Navigating to different screens \u2014 use BottomNav"
+   ],
+   "anatomy": [
+    "track at radius.lg 16px, fill bg.surface #EDEAF4, 4px inner padding",
+    "thumb: white fill, radius 12px, shadow.sm",
+    "labels at type.label; selected text.primary, unselected text.secondary",
+    "equal-width segments, 36\u201344px tall"
+   ],
+   "variants": [
+    {
+     "name": "2 options",
+     "usage": "Binary views like Money in / Money out"
+    },
+    {
+     "name": "3\u20134 options",
+     "usage": "Time ranges; keep labels \u226414 chars so nothing truncates"
+    }
+   ],
+   "content": "One word per segment, sentence case: 'Week', 'Month', 'Year'.",
+   "placement": "Full width between gutters, directly under the screen title, 20px above the content it controls.",
+   "states": "Selected: white thumb with shadow.sm. Pressed: unselected label darkens to text.primary. Disabled: 38% opacity across the whole track.",
+   "dos": [
+    "Keep segment widths equal",
+    "Persist the selection while the user stays in the tab"
+   ],
+   "donts": [
+    "Don't mix a SegmentedControl and a ChipGroup in the same block",
+    "Don't colour the thumb violet \u2014 selection here is white-on-lilac, unlike chips which invert to ink"
+   ],
+   "tokens": [
+    "component.segmented.radius",
+    "component.segmented.track-fill",
+    "component.segmented.selected.fill",
+    "component.segmented.selected.shadow",
+    "type.label",
+    "text.primary",
+    "text.secondary",
+    "space.100"
+   ]
+  }
+ ],
+ "language": {
+  "name": "Luminous Violet Fintech",
+  "summary": "Aura Wallet sits on a pale lilac canvas (#F4F2F8) that is never pure white, so every white card floats with a soft, low-contrast shadow. One saturated violet\u2192magenta gradient carries the money \u2014 the balance hero \u2014 and everything else is quiet: ink-black numerals, grey-violet meta text, and violet-subtle tiles for iconography. Type is Plus Jakarta Sans with heavy 800 weights and tight negative tracking on numbers, which makes balances feel engineered rather than decorative. Corners are generous and consistent: 24px on cards and sheets, 16px on buttons, inputs and chips, 12px on the little tiles \u2014 nothing is a circle, nothing is a sharp rectangle.",
+  "personality": [
+   "Luminous",
+   "Confident",
+   "Soft-edged",
+   "Precise",
+   "Calm"
+  ],
+  "principles": [
+   {
+    "title": "One gradient per screen",
+    "body": "The violet\u2192magenta gradient is the money itself. Give it to the balance hero and nothing else; a second gradient halves the impact of both."
+   },
+   {
+    "title": "Raised versus recessed",
+    "body": "Content that holds value is raised (white, shadow.sm, 24px radius). Controls you type into are recessed (#EDEAF4, inset shadow). The page reads at a glance because of that one opposition."
+   },
+   {
+    "title": "Colour carries meaning, not decoration",
+    "body": "Violet means brand, action and selection-by-tile. Green means money coming in. Ink means everything else \u2014 debits are never red."
+   },
+   {
+    "title": "Numbers lead",
+    "body": "Every screen resolves to a figure. Set it at the heaviest weight available, tight-tracked, with the currency code first, and give it more space than any label around it."
+   },
+   {
+    "title": "Separate with space, not lines",
+    "body": "The only hairlines in the product are between rows inside a card and above the tab bar. Sections are separated by a 20px gap on lilac."
+   }
+  ],
+  "color": "Roughly 70% pale lilac canvas and white cards, 20% ink and grey-violet text, 10% saturated colour. The violet appears in exactly four places: the gradient balance hero (#7A18D8 \u2192 #A81FBE \u2192 #E5218D at 115\u00b0, with a radial magenta glow bleeding below it), the primary CTA fill (#6A21C8), links and the active tab (#7C22D6), and the #EDE6FB subtle tiles behind icons and avatars. Selection in chips inverts to near-black #1C1130 rather than violet, so filters never fight the CTA. Semantic colour is used sparingly: only credits get green (#007D46); debits stay ink #171021. Sub-brand fills (go violet, get magenta, eat cream, pay indigo) exist for promo banners only.",
+  "typography": "Plus Jakarta Sans throughout (IBM Plex Sans Arabic for RTL). Two registers: a display register at weight 800 with negative tracking (display 33/40 at -1px for balances, title-lg 24 for the greeting, title 20 for section headers) and a UI register at 400/600/700 (body 16, label 15 semibold for buttons and chips, caption 12 for eyebrows and tab labels). Hierarchy is driven by weight and size, never by colour or caps. Everything is sentence case; eyebrows like 'Good morning' are caption-weight, not uppercase.",
+  "shape": "A ladder of soft rectangles: 24px cards, sheets and banners; 16px buttons, inputs, chips and icon buttons; 12px media tiles, avatars and nav-active tiles; 8px tags. Nothing is fully circular \u2014 even the account avatar is a squircle. Pills are avoided so that the CTA and the chips share the same corner family as the cards.",
+  "depth": "Elevation is soft, violet-tinted and layered in three steps: shadow.sm on white cards (barely there, 2px/8px), shadow.md under the primary button and the gradient hero (10px/28px), and a radial brand-glow that leaks magenta light onto the canvas beneath the balance card. Inputs move the other direction with a 1px inset shadow. Borders are used only where there is no shadow: 1.5px on secondary buttons and unselected chips, 1px hairlines between rows and above the tab bar.",
+  "density": "Regular-to-airy. 16px gutters, 20px between sections, 12px inside groups, 72px transaction rows. Numbers and titles get breathing room; the screen shows about three blocks above the fold (greeting, hero, filters) and never more than two competing surfaces at once.",
+  "iconography": "Rounded, 2px-stroke line icons at 20px in rows and 24px in navigation, coloured icon.secondary when passive and icon.brand when active. Icons almost always sit inside a 40px #EDE6FB rounded square rather than floating free \u2014 that violet tile is the product's most repeated shape, appearing as transaction glyph, avatar, service tile and the active tab indicator. Merchant categories may be represented by emoji inside the same tile.",
+  "imagery": "Minimal photography. Image slots are violet-tinted 12px placeholders; brand expression comes from gradient and light, not pictures. Decorative art on banners is a translucent white circle behind an outlined glyph.",
+  "voice": "Warm and personal at the top of the screen ('Good morning', 'Hi, Layla'), then terse and factual everywhere money is involved ('Total balance', 'Today \u00b7 Coffee', '\u2212AED 24.00'). Actions are verb-first and short: 'Top up', 'Send', 'Swap', 'Pay a bill'. No exclamation marks, no finance jargon, no 'Dear customer'.",
+  "dos": [
+   "Open tab-root screens with a greeting header and no TopBar",
+   "Right-align every monetary value on a shared column",
+   "Wrap every run of rows in a white 24px-radius card with inset hairlines",
+   "Use the violet-subtle tile for every icon, avatar and active-tab indicator",
+   "Pin exactly one full-width primary button above the tab bar"
+  ],
+  "donts": [
+   "Don't put the gradient on more than one surface per screen",
+   "Don't colour debits red or use green for anything but incoming money",
+   "Don't use pill-shaped buttons or circular avatars",
+   "Don't place white cards on white \u2014 the lilac canvas is what makes elevation read",
+   "Don't introduce a second typeface or uppercase labels"
+  ]
+ },
+ "layout": {
+  "summary": "Screens are a single vertical scroll on lilac canvas with 16px gutters, built from three or four full-width blocks separated by 20px: an identity/greeting header, one hero value surface, a filter zone (search + chips), and a card of rows. Actions are pinned: one full-width primary button 12px above a white 4-tab bar. There is no TopBar on tab roots \u2014 the greeting is the header \u2014 and pushed screens swap the greeting for a 56px TopBar on the same canvas colour.",
+  "density": "regular",
+  "grid": "Single column, full-bleed background with 16px (layout.gutter) side margins for all content. Cards and buttons span gutter to gutter. Horizontal rails (ChipGroup) keep the 16px leading inset and bleed past the right edge. Inside cards, rows inset their text column by 52px (40px tile + 12px gap) and dividers align to that column.",
+  "rhythm": "20px (layout.section-gap) between blocks; 12px between a section title and its card; 12px between siblings inside a card; 8px between a label and its control; 4px between an eyebrow and its title. 72px transaction rows. 12px (layout.footer-gap) between the pinned CTA and the BottomNav; 24px between the last body block and the footer shelf.",
+  "navigation": "Persistent 4-item BottomNav (Home, Cards, Insights, Profile) on every tab root, active tab shown as a violet glyph over a violet-subtle tile. Drill-downs push a screen with a default TopBar (leading=back). Money flows (Top up, Send, Swap, Pay a bill) hide the BottomNav, use a TopBar with leading=close, and confirm in a BottomSheet whose CTA repeats the amount. Filtering never navigates: search and chips re-render the list in place.",
+  "hierarchy": "1) Who you are and the time of day (greeting + avatar). 2) How much you have (gradient hero with display figure and three quick actions). 3) How to narrow what follows (search, then chips). 4) What happened (section title with 'See all', then a card of rows). 5) What to do next (pinned primary button). 6) Where else to go (tab bar).",
+  "templates": [
+   {
+    "name": "Wallet home",
+    "whenToUse": "The default tab root: balance, filters and recent activity in one scroll.",
+    "regions": [
+     {
+      "region": "header",
+      "components": [],
+      "notes": "No TopBar; the greeting lives in the body so it scrolls away."
+     },
+     {
+      "region": "body",
+      "components": [
+       "Stack",
+       "Text",
+       "Avatar",
+       "Card",
+       "Button",
+       "SearchBar",
+       "ChipGroup",
+       "ListItem",
+       "Divider"
+      ],
+      "notes": "Greeting row \u2192 gradient Card hero with 3 quick-action Buttons \u2192 SearchBar \u2192 ChipGroup \u2192 section title + tertiary 'See all' \u2192 Card of ListItems."
+     },
+     {
+      "region": "footer",
+      "components": [
+       "Button",
+       "BottomNav"
+      ],
+      "notes": "Full-width primary Button, 12px gap, then BottomNav active=0."
+     }
+    ]
+   },
+   {
+    "name": "All activity (filtered list)",
+    "whenToUse": "Drill-down from 'See all' \u2014 long transaction history with filters retained.",
+    "regions": [
+     {
+      "region": "header",
+      "components": [
+       "TopBar",
+       "SearchBar",
+       "ChipGroup"
+      ],
+      "notes": "TopBar leading=back, trailing=filter; search and chips stick under it."
+     },
+     {
+      "region": "body",
+      "components": [
+       "Stack",
+       "Text",
+       "Card",
+       "ListItem",
+       "Divider",
+       "EmptyState"
+      ],
+      "notes": "Date group label at caption-strong, then a Card of rows per day; EmptyState in-card when a filter yields nothing."
+     },
+     {
+      "region": "footer",
+      "components": [
+       "BottomNav"
+      ],
+      "notes": "No CTA \u2014 this screen is for reading."
+     }
+    ]
+   },
+   {
+    "name": "Transaction detail",
+    "whenToUse": "Tapping a transaction row; shows the amount, status and receipt lines.",
+    "regions": [
+     {
+      "region": "header",
+      "components": [
+       "TopBar"
+      ],
+      "notes": "leading=back, trailing=share on canvas fill."
+     },
+     {
+      "region": "body",
+      "components": [
+       "Stack",
+       "MediaPlaceholder",
+       "Text",
+       "Tag",
+       "Card",
+       "SummaryRow",
+       "Divider",
+       "ProgressTracker",
+       "Button"
+      ],
+      "notes": "Centred merchant tile \u2192 merchant name (title) \u2192 signed amount at display \u2192 status Tag \u2192 Card of SummaryRows with an emphasised total \u2192 optional timeline."
+     },
+     {
+      "region": "footer",
+      "components": [
+       "Button"
+      ],
+      "notes": "Secondary Button 'Report an issue'; nav hidden."
+     }
+    ]
+   },
+   {
+    "name": "Money flow (Send / Top up)",
+    "whenToUse": "Any multi-step money movement that ends in a confirmation sheet.",
+    "regions": [
+     {
+      "region": "header",
+      "components": [
+       "TopBar"
+      ],
+      "notes": "leading=close, title names the flow."
+     },
+     {
+      "region": "body",
+      "components": [
+       "Stack",
+       "Text",
+       "TextField",
+       "ListItem",
+       "InlineAlert",
+       "SegmentedControl"
+      ],
+      "notes": "Amount at display above the field, recipient as an avatar ListItem, limits as an InlineAlert."
+     },
+     {
+      "region": "footer",
+      "components": [
+       "BottomSheet",
+       "Button"
+      ],
+      "notes": "Confirmation BottomSheet with SummaryRows and a primary Button carrying the amount; BottomNav hidden."
+     }
+    ]
+   }
+  ],
+  "rules": [
+   "Exactly one gradient surface (Card tone=brand-strong or PromoBanner tone=brand) per screen \u2014 on Home it is always the balance hero.",
+   "Exactly one primary Button per screen, fullWidth, in the footer, 12px above the BottomNav.",
+   "Tab roots have no TopBar; they start with a caption eyebrow + title-lg greeting and a trailing Avatar. Pushed screens always have a TopBar and no greeting.",
+   "Runs of two or more rows must be wrapped in a Card (padding 300) with inset dividers between rows and none after the last.",
+   "SearchBar and ChipGroup always appear together, in that order, with the ChipGroup's first chip being 'All' and selected by default.",
+   "Section titles use style=title with an optional tertiary Button ('See all') in a horizontal Stack, justify=between, align=center.",
+   "Monetary values are right-aligned at body-strong; credits use tone=success with a '+', debits stay tone=primary with '\u2212'.",
+   "Never nest a Card inside a Card; switch the inner grouping to a Stack with background=surface.",
+   "Body content stays within 16px gutters; only MapPlaceholder and BottomNav may be full bleed.",
+   "Hide the BottomNav inside money flows and behind BottomSheets; show it on every tab root.",
+   "Use a 20px gap between sections and never a Divider \u2014 hairlines exist only inside cards and above the tab bar.",
+   "Maximum four distinct surfaces per screen (canvas + hero + card + footer shelf); anything more should move to a new screen."
+  ]
+ },
+ "patterns": [
+  {
+   "name": "BalanceHeroCard",
+   "purpose": "The gradient card that states the account balance and offers the three money-movement actions directly on it.",
+   "guide": {
+    "component": "BalanceHeroCard",
+    "observed": true,
+    "purpose": "Aura's signature surface: a 24px-radius violet\u2192magenta gradient card carrying an eyebrow label, the balance at display weight, and three equal translucent action buttons. It is the visual anchor of the product.",
+    "whenToUse": [
+     "Top of the Home tab, immediately under the greeting",
+     "Top of a specific account or wallet screen, showing that account's balance",
+     "Top of the Cards tab showing available card balance"
+    ],
+    "whenNotToUse": [
+     "For promotional content \u2014 use PromoBanner with a sub-brand tone",
+     "For a secondary figure like 'Spent this month' \u2014 use a Card tone=surface with a title-lg figure",
+     "Inside a sheet, where the gradient overwhelms the lilac fill"
+    ],
+    "anatomy": [
+     "Card tone=brand-strong, radius 24px, padding 20\u201324px, shadow.md plus a radial brand-glow bleeding below",
+     "eyebrow 'Total balance' at type.body, white at ~80% opacity",
+     "amount at type.display (33/40, -1px tracking), text.inverse, currency code first",
+     "horizontal Stack of three Buttons on a #FFFFFF2E wash, equal widths, gap 12px, each with a leading glyph"
+    ],
+    "variants": [
+     {
+      "name": "3 actions (default)",
+      "usage": "Top up / Send / Swap \u2014 the observed configuration"
+     },
+     {
+      "name": "2 actions",
+      "usage": "Accounts that can't swap; keep buttons equal-width, don't stretch one to full width"
+     },
+     {
+      "name": "hidden balance",
+      "usage": "Privacy mode replaces digits with '\u2022\u2022\u2022\u2022\u2022\u2022' at the same display size, with an eye toggle in the trailing corner"
+     }
+    ],
+    "content": "Eyebrow is a plain noun phrase ('Total balance', 'Available to spend'). Amount is 'AED 12,480.50' \u2014 code, space, thousands separators, two decimals. Action labels are single verbs \u22648 chars.",
+    "placement": "First block of the body, 16px gutters, 20px below the greeting and 20px above the SearchBar. Only one per screen.",
+    "states": "Loading shows a shimmer bar at the amount's height. Buttons press to #FFFFFF3D. Negative balances render the amount in white with a warning Tag beside the eyebrow.",
+    "dos": [
+     "Keep the amount the largest thing on the screen",
+     "Keep all three action buttons the same width and the same translucent fill",
+     "Let the brand-glow spill onto the canvas \u2014 it is part of the effect"
+    ],
+    "donts": [
+     "Don't place a second gradient element on the same screen",
+     "Don't put dark text on the gradient",
+     "Don't add more than three quick actions \u2014 move extras to a ServiceGrid below"
+    ],
+    "tokens": [
+     "component.card.radius",
+     "gradient.brand",
+     "gradient.brand-glow",
+     "component.banner.shadow",
+     "component.banner.brand.cta-fill",
+     "component.banner.brand.cta-label",
+     "type.display",
+     "type.body",
+     "text.inverse",
+     "space.300",
+     "space.500"
+    ]
+   },
+   "composition": {
+    "component": "Card",
+    "props": {
+     "tone": "brand-strong",
+     "padding": "500"
+    },
+    "children": [
+     {
+      "component": "Text",
+      "props": {
+       "text": "Total balance",
+       "style": "body",
+       "tone": "inverse"
+      }
+     },
+     {
+      "component": "Text",
+      "props": {
+       "text": "AED 12,480.50",
+       "style": "display",
+       "tone": "inverse"
+      }
+     },
+     {
+      "component": "Stack",
+      "props": {
+       "direction": "horizontal",
+       "gap": "300",
+       "justify": "between",
+       "align": "center"
+      },
+      "children": [
+       {
+        "component": "Button",
+        "props": {
+         "label": "Top up",
+         "variant": "secondary",
+         "size": "md",
+         "icon": "plus"
+        }
+       },
+       {
+        "component": "Button",
+        "props": {
+         "label": "Send",
+         "variant": "secondary",
+         "size": "md",
+         "icon": "send"
+        }
+       },
+       {
+        "component": "Button",
+        "props": {
+         "label": "Swap",
+         "variant": "secondary",
+         "size": "md",
+         "icon": "arrow-right"
+        }
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "GreetingHeader",
+   "purpose": "The tab-root header: a time-of-day eyebrow, a personal title and the account avatar as the entry point to profile.",
+   "guide": {
+    "component": "GreetingHeader",
+    "observed": true,
+    "purpose": "Replaces the TopBar on tab roots. A caption eyebrow over a title-lg greeting on the left, and a 56px violet-subtle avatar squircle on the right that opens the account.",
+    "whenToUse": [
+     "Top of Home, Insights and any other tab root",
+     "Any screen with no back stack where a TopBar would feel formal"
+    ],
+    "whenNotToUse": [
+     "Pushed screens \u2014 use TopBar with leading=back",
+     "Modal money flows \u2014 use TopBar with leading=close"
+    ],
+    "anatomy": [
+     "horizontal Stack, justify=between, align=center, padding-x 16px",
+     "left: vertical Stack gap 100 \u2014 caption 'Good morning' in text.secondary, title-lg 'Hi, Layla' in text.primary",
+     "right: Avatar size lg, initials in icon.brand on bg.brand-subtle, 44px minimum target"
+    ],
+    "variants": [
+     {
+      "name": "greeting",
+      "usage": "Home \u2014 time-of-day eyebrow plus first name"
+     },
+     {
+      "name": "section title",
+      "usage": "Other tab roots \u2014 eyebrow states context ('This month') and the title names the screen ('Insights')"
+     }
+    ],
+    "content": "Eyebrow rotates with the clock: 'Good morning' / 'Good afternoon' / 'Good evening'. Title uses the first name only: 'Hi, Layla'. No punctuation beyond the comma.",
+    "placement": "First element of the body, 8px below the status bar, 20px above the balance hero. It scrolls away with the content.",
+    "states": "Avatar press deepens the tile tint; unread account notices add a violet dot with a canvas ring.",
+    "dos": [
+     "Keep the eyebrow at caption weight and the name at title-lg weight 800",
+     "Give the avatar a real tap target and a route to Profile"
+    ],
+    "donts": [
+     "Don't add a TopBar above the greeting",
+     "Don't use the full name or a username here"
+    ],
+    "tokens": [
+     "type.caption",
+     "type.title-lg",
+     "text.secondary",
+     "text.primary",
+     "bg.brand-subtle",
+     "icon.brand",
+     "space.100",
+     "layout.gutter"
+    ]
+   },
+   "composition": {
+    "component": "Stack",
+    "props": {
+     "direction": "horizontal",
+     "justify": "between",
+     "align": "center",
+     "padding": "0"
+    },
+    "children": [
+     {
+      "component": "Stack",
+      "props": {
+       "direction": "vertical",
+       "gap": "100"
+      },
+      "children": [
+       {
+        "component": "Text",
+        "props": {
+         "text": "Good morning",
+         "style": "body",
+         "tone": "secondary"
+        }
+       },
+       {
+        "component": "Text",
+        "props": {
+         "text": "Hi, Layla",
+         "style": "title-lg",
+         "tone": "primary"
+        }
+       }
+      ]
+     },
+     {
+      "component": "Stack",
+      "props": {
+       "direction": "vertical",
+       "align": "end"
+      },
+      "children": [
+       {
+        "component": "Avatar",
+        "props": {
+         "initials": "LA",
+         "size": "lg"
+        }
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "FilterRail",
+   "purpose": "The paired search field and category chip rail that scope the transaction list without leaving the screen.",
+   "guide": {
+    "component": "FilterRail",
+    "observed": true,
+    "purpose": "A sunken SearchBar directly above a horizontally scrolling ChipGroup whose selected chip inverts to near-black. Together they are the single filtering mechanism in Aura.",
+    "whenToUse": [
+     "Above any transaction list: Home activity, All activity, statement views",
+     "Above a beneficiaries or merchants list"
+    ],
+    "whenNotToUse": [
+     "When there are only two or three exclusive views of the same data \u2014 use SegmentedControl alone",
+     "When the list is under ~6 items \u2014 show the list unfiltered"
+    ],
+    "anatomy": [
+     "SearchBar: 44px, radius 16, fill #EDEAF4, inset shadow, leading search glyph",
+     "20px gap",
+     "ChipGroup: 36px chips, radius 16, white with 1.5px border; selected chip filled #1C1130 with white label",
+     "'All' is always first and is the default selection"
+    ],
+    "variants": [
+     {
+      "name": "search + chips",
+      "usage": "Default, as observed on Home"
+     },
+     {
+      "name": "chips only",
+      "usage": "Short lists where typing adds nothing"
+     },
+     {
+      "name": "search + chips + filter button",
+      "usage": "Long histories: a trailing outline IconButton with icon=filter opens a BottomSheet of advanced filters"
+     }
+    ],
+    "content": "Placeholder names the corpus ('Search transactions'). Chips are single nouns: All, Income, Spending, Bills.",
+    "placement": "Between the balance hero and the first section title, 20px above and below. In pushed list screens it pins under the TopBar.",
+    "states": "Selected chip is inverse ink. An active search shows a clear \u2715; combined search + chip filtering yields an in-card EmptyState when nothing matches.",
+    "dos": [
+     "Keep exactly one chip selected",
+     "Persist the chip selection when the user returns from a detail screen"
+    ],
+    "donts": [
+     "Don't wrap chips onto a second line",
+     "Don't colour the selected chip violet \u2014 that belongs to the CTA and the active tab"
+    ],
+    "tokens": [
+     "component.input.fill",
+     "component.input.shadow",
+     "component.input.radius",
+     "component.chip.fill",
+     "component.chip.border-width",
+     "component.chip.selected.fill",
+     "component.chip.selected.label",
+     "layout.section-gap"
+    ]
+   },
+   "composition": {
+    "component": "Stack",
+    "props": {
+     "direction": "vertical",
+     "gap": "500"
+    },
+    "children": [
+     {
+      "component": "SearchBar",
+      "props": {
+       "placeholder": "Search transactions"
+      }
+     },
+     {
+      "component": "ChipGroup",
+      "props": {
+       "chips": [
+        "All",
+        "Income",
+        "Spending",
+        "Bills"
+       ],
+       "selected": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "SectionHeaderRow",
+   "purpose": "A section title paired with a violet text link that opens the full list.",
+   "guide": {
+    "component": "SectionHeaderRow",
+    "observed": true,
+    "purpose": "Introduces a card of rows: a weight-800 title on the left and a violet tertiary action on the right, both on the lilac canvas outside the card.",
+    "whenToUse": [
+     "Above the recent activity Card on Home",
+     "Above any truncated list that has a fuller screen behind it",
+     "Above a ServiceGrid block ('Pay & transfer' / 'Edit')"
+    ],
+    "whenNotToUse": [
+     "Inside a Card \u2014 use the Card's own title prop at type.headline",
+     "When there is nothing to link to \u2014 use a plain Text at style=title"
+    ],
+    "anatomy": [
+     "horizontal Stack, justify=between, align=center, 16px gutters",
+     "title at type.title, text.primary",
+     "trailing tertiary Button at type.label in text.link #7C22D6, \u226412 chars, with a 44px target"
+    ],
+    "variants": [
+     {
+      "name": "with link",
+      "usage": "Truncated lists \u2014 'Recent activity' / 'See all'"
+     },
+     {
+      "name": "title only",
+      "usage": "Terminal sections with no deeper screen"
+     },
+     {
+      "name": "with count",
+      "usage": "Append a neutral Tag after the title when the number matters ('Bills' + '3 due')"
+     }
+    ],
+    "content": "Title is a two-word noun phrase in sentence case: 'Recent activity', 'Upcoming bills'. Link is 'See all' \u2014 not 'View more' or 'More \u2192'.",
+    "placement": "20px below the preceding block, 12px above its Card.",
+    "states": "Link press dims to violet 800; disabled when the full list is empty.",
+    "dos": [
+     "Keep the link as a tertiary Button, not a bare Text, so it is reachable",
+     "Align the title's baseline with the link's"
+    ],
+    "donts": [
+     "Don't add an icon to the 'See all' link",
+     "Don't place the header inside the card it introduces"
+    ],
+    "tokens": [
+     "type.title",
+     "type.label",
+     "text.primary",
+     "component.button.tertiary.label",
+     "layout.gutter",
+     "space.300"
+    ]
+   },
+   "composition": {
+    "component": "Stack",
+    "props": {
+     "direction": "horizontal",
+     "justify": "between",
+     "align": "center"
+    },
+    "children": [
+     {
+      "component": "Text",
+      "props": {
+       "text": "Recent activity",
+       "style": "title",
+       "tone": "primary"
+      }
+     },
+     {
+      "component": "Button",
+      "props": {
+       "label": "See all",
+       "variant": "tertiary",
+       "size": "sm"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "ActivityCard",
+   "purpose": "A white 24px-radius card holding the last few transactions as tiled rows with signed, right-aligned amounts.",
+   "guide": {
+    "component": "ActivityCard",
+    "observed": true,
+    "purpose": "The standard money-history block: two to five transaction rows inside a raised white card, each with a violet-subtle glyph tile, a 'When \u00b7 Category' meta line, and an amount coloured only when money came in.",
+    "whenToUse": [
+     "Recent activity on Home (3 rows, then 'See all')",
+     "Per-day groups in the full activity screen",
+     "Card-specific transactions on the Cards tab"
+    ],
+    "whenNotToUse": [
+     "Fee and total breakdowns \u2014 use a Card of SummaryRows",
+     "A single highlighted transaction \u2014 use the transaction detail template",
+     "Navigational settings rows \u2014 same ListItem, but no signed amounts"
+    ],
+    "anatomy": [
+     "Card tone=raised, padding 300, radius 24, shadow.sm",
+     "ListItem rows: 40px violet-subtle tile (glyph or merchant emoji) \u2192 title body-strong \u2192 subtitle 'Today \u00b7 Coffee' in text.secondary \u2192 trailing amount body-strong",
+     "1px border.subtle dividers between rows, inset to the text column, none after the last",
+     "optional trailing Tag on pending rows"
+    ],
+    "variants": [
+     {
+      "name": "preview (3 rows)",
+      "usage": "Home, always paired with a SectionHeaderRow carrying 'See all'"
+     },
+     {
+      "name": "grouped by day",
+      "usage": "Full activity screen: a caption-strong date label above each card"
+     },
+     {
+      "name": "empty",
+      "usage": "Card contains a compact EmptyState when a filter returns nothing; the FilterRail stays above it"
+     }
+    ],
+    "content": "Row title is the merchant as billed. Subtitle is relative time then category with a '\u00b7'. Amounts: '\u2212AED 24.00' for debits in ink, '+AED 9,200' for credits in text.success.",
+    "placement": "Directly under its SectionHeaderRow with a 12px gap, full width between 16px gutters, 24px above the footer shelf.",
+    "states": "Row press wash at 6% ink; pending rows dim the amount and add a warning Tag; failed rows strike no text but show an error Tag.",
+    "dos": [
+     "Cap the Home preview at three rows",
+     "Keep all amounts on one right-aligned column",
+     "Use the same leading treatment for every row in a card"
+    ],
+    "donts": [
+     "Don't colour debits red",
+     "Don't add a divider after the final row",
+     "Don't mix avatars and category tiles in one card"
+    ],
+    "tokens": [
+     "component.card.radius",
+     "component.card.raised.shadow",
+     "component.tile.icon-fill",
+     "component.tile.icon-radius",
+     "component.divider.color",
+     "type.body-strong",
+     "text.secondary",
+     "text.success",
+     "space.300"
+    ]
+   },
+   "composition": {
+    "component": "Card",
+    "props": {
+     "tone": "raised",
+     "padding": "300"
+    },
+    "children": [
+     {
+      "component": "ListItem",
+      "props": {
+       "title": "Brew & Co.",
+       "subtitle": "Today \u00b7 Coffee",
+       "leadingIcon": "coffee",
+       "trailing": "text",
+       "trailingText": "\u2212AED 24.00",
+       "divider": true
+      }
+     },
+     {
+      "component": "ListItem",
+      "props": {
+       "title": "Salary",
+       "subtitle": "Yesterday \u00b7 Income",
+       "leadingIcon": "banknote",
+       "trailing": "text",
+       "trailingText": "+AED 9,200",
+       "divider": true
+      }
+     },
+     {
+      "component": "ListItem",
+      "props": {
+       "title": "City Ride",
+       "subtitle": "Mon \u00b7 Transport",
+       "leadingIcon": "car",
+       "trailing": "text",
+       "trailingText": "\u2212AED 38.50",
+       "divider": false
+      }
+     }
+    ]
+   }
+  }
+ ]
+}

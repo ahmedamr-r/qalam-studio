@@ -1,0 +1,1087 @@
+{
+ "name": "Aura Wallet",
+ "summary": "A lavender-tinted light fintech theme built around one violet\u2192magenta hero gradient and a flat deep-violet action colour. Surfaces are pure white cards on a #F4F2F8 canvas, lifted by very soft low-alpha ambient shadows rather than borders; only chips and the search field use hairline outlines. Shape language is consistently soft (12/16/24 radius ladder) with no true pills, and colour is used sparingly \u2014 one green for positive amounts, near-black for the selected filter.",
+ "scale": 3,
+ "primitives": [
+  {
+   "name": "neutral.0",
+   "hex": "#FFFFFF"
+  },
+  {
+   "name": "neutral.50",
+   "hex": "#F8F7FB"
+  },
+  {
+   "name": "neutral.100",
+   "hex": "#F4F2F8"
+  },
+  {
+   "name": "neutral.150",
+   "hex": "#EDEAF4"
+  },
+  {
+   "name": "neutral.200",
+   "hex": "#EAE7F1"
+  },
+  {
+   "name": "neutral.300",
+   "hex": "#E0DCE9"
+  },
+  {
+   "name": "neutral.400",
+   "hex": "#C9C3D6"
+  },
+  {
+   "name": "neutral.500",
+   "hex": "#9A94A8"
+  },
+  {
+   "name": "neutral.600",
+   "hex": "#6E6880"
+  },
+  {
+   "name": "neutral.800",
+   "hex": "#2E2440"
+  },
+  {
+   "name": "neutral.900",
+   "hex": "#1C1130"
+  },
+  {
+   "name": "neutral.950",
+   "hex": "#171021"
+  },
+  {
+   "name": "violet.50",
+   "hex": "#F2EDFB"
+  },
+  {
+   "name": "violet.100",
+   "hex": "#EDE6FB"
+  },
+  {
+   "name": "violet.300",
+   "hex": "#C08BF2"
+  },
+  {
+   "name": "violet.500",
+   "hex": "#8B2BE2"
+  },
+  {
+   "name": "violet.600",
+   "hex": "#7C22D6"
+  },
+  {
+   "name": "violet.700",
+   "hex": "#6A21C8"
+  },
+  {
+   "name": "violet.800",
+   "hex": "#571BA3"
+  },
+  {
+   "name": "magenta.400",
+   "hex": "#F05BB0"
+  },
+  {
+   "name": "magenta.500",
+   "hex": "#E5218D"
+  },
+  {
+   "name": "magenta.600",
+   "hex": "#C4187A"
+  },
+  {
+   "name": "green.50",
+   "hex": "#E3F6EC"
+  },
+  {
+   "name": "green.600",
+   "hex": "#0C9C62"
+  },
+  {
+   "name": "green.700",
+   "hex": "#087A4D"
+  },
+  {
+   "name": "red.50",
+   "hex": "#FDECEE"
+  },
+  {
+   "name": "red.600",
+   "hex": "#DC2F3A"
+  },
+  {
+   "name": "amber.50",
+   "hex": "#FDF3E2"
+  },
+  {
+   "name": "amber.600",
+   "hex": "#B45309"
+  },
+  {
+   "name": "blue.50",
+   "hex": "#E6EDFD"
+  },
+  {
+   "name": "blue.600",
+   "hex": "#2563EB"
+  },
+  {
+   "name": "sky.100",
+   "hex": "#E6EEFC"
+  },
+  {
+   "name": "indigo.900",
+   "hex": "#1E1B4B"
+  },
+  {
+   "name": "cream.200",
+   "hex": "#FFE9B8"
+  }
+ ],
+ "colors": {
+  "bg": {
+   "canvas": {
+    "hex": "#F4F2F8",
+    "source": "observed",
+    "evidence": "Full-screen page background behind header, chips and cards",
+    "bbox": [
+     0.03,
+     0.492,
+     0.07,
+     0.507
+    ]
+   },
+   "surface": {
+    "hex": "#EDEAF4",
+    "source": "observed",
+    "evidence": "Search transactions field fill, one step darker than canvas",
+    "bbox": [
+     0.72,
+     0.378,
+     0.86,
+     0.398
+    ]
+   },
+   "surface-raised": {
+    "hex": "#FFFFFF",
+    "source": "observed",
+    "evidence": "Recent activity transaction card; unselected filter chips; bottom nav bar",
+    "bbox": [
+     0.55,
+     0.556,
+     0.63,
+     0.566
+    ]
+   },
+   "brand": {
+    "hex": "#8B2BE2",
+    "source": "observed",
+    "evidence": "Bright violet mid-point of the balance-card gradient",
+    "bbox": [
+     0.3,
+     0.155,
+     0.36,
+     0.172
+    ]
+   },
+   "brand-strong": {
+    "hex": "#6A21C8",
+    "source": "observed",
+    "evidence": "'Pay a bill' primary button fill",
+    "bbox": [
+     0.12,
+     0.833,
+     0.22,
+     0.85
+    ]
+   },
+   "brand-subtle": {
+    "hex": "#EDE6FB",
+    "source": "observed",
+    "evidence": "'LA' avatar square and transaction emoji icon tiles",
+    "bbox": [
+     0.852,
+     0.078,
+     0.872,
+     0.087
+    ]
+   },
+   "inverse": {
+    "hex": "#1C1130",
+    "source": "observed",
+    "evidence": "Selected 'All' filter chip fill",
+    "bbox": [
+     0.055,
+     0.447,
+     0.075,
+     0.458
+    ]
+   },
+   "go": {
+    "hex": "#7C22D6",
+    "source": "observed",
+    "evidence": "Violet end of the hero gradient, reusable as promo accent 1",
+    "bbox": [
+     0.09,
+     0.148,
+     0.14,
+     0.163
+    ]
+   },
+   "get": {
+    "hex": "#E5218D",
+    "source": "observed",
+    "evidence": "Magenta end of the hero gradient, reusable as promo accent 2",
+    "bbox": [
+     0.9,
+     0.19,
+     0.93,
+     0.21
+    ]
+   },
+   "eat": {
+    "hex": "#FFE9B8",
+    "source": "inferred",
+    "evidence": "Warm cream promo accent chosen to sit against the violet/magenta family with dark text",
+    "bbox": []
+   },
+   "pay": {
+    "hex": "#1E1B4B",
+    "source": "inferred",
+    "evidence": "Deep indigo promo accent derived from the near-black chip, stepped toward brand",
+    "bbox": []
+   },
+   "sky": {
+    "hex": "#E6EEFC",
+    "source": "inferred",
+    "evidence": "Soft decorative wash, cooler sibling of bg.brand-subtle",
+    "bbox": []
+   }
+  },
+  "text": {
+   "primary": {
+    "hex": "#171021",
+    "source": "observed",
+    "evidence": "'Hi, Layla', 'Recent activity', merchant names, amounts",
+    "bbox": [
+     0.06,
+     0.09,
+     0.25,
+     0.104
+    ]
+   },
+   "secondary": {
+    "hex": "#6E6880",
+    "source": "observed",
+    "evidence": "'Good morning', 'Today \u00b7 Coffee', inactive nav labels",
+    "bbox": [
+     0.23,
+     0.607,
+     0.42,
+     0.616
+    ]
+   },
+   "tertiary": {
+    "hex": "#9A94A8",
+    "source": "inferred",
+    "evidence": "Placeholder/disabled tone sitting between neutral.600 and neutral.400",
+    "bbox": []
+   },
+   "on-brand": {
+    "hex": "#FFFFFF",
+    "source": "observed",
+    "evidence": "White labels on the bright violet gradient area",
+    "bbox": [
+     0.13,
+     0.209,
+     0.2,
+     0.221
+    ]
+   },
+   "on-brand-strong": {
+    "hex": "#FFFFFF",
+    "source": "observed",
+    "evidence": "'Pay a bill' label on the deep violet button",
+    "bbox": [
+     0.435,
+     0.852,
+     0.455,
+     0.858
+    ]
+   },
+   "inverse": {
+    "hex": "#FFFFFF",
+    "source": "observed",
+    "evidence": "'All' chip label on near-black fill; balance figure on gradient",
+    "bbox": [
+     0.3,
+     0.212,
+     0.36,
+     0.219
+    ]
+   },
+   "link": {
+    "hex": "#7C22D6",
+    "source": "observed",
+    "evidence": "'See all' action at the right of the Recent activity header",
+    "bbox": [
+     0.855,
+     0.516,
+     0.875,
+     0.521
+    ]
+   },
+   "success": {
+    "hex": "#0C9C62",
+    "source": "observed",
+    "evidence": "'+AED 9,200' income amount",
+    "bbox": [
+     0.72,
+     0.671,
+     0.77,
+     0.677
+    ]
+   },
+   "error": {
+    "hex": "#DC2F3A",
+    "source": "inferred",
+    "evidence": "Destructive text; screen shows no error state",
+    "bbox": []
+   },
+   "warning": {
+    "hex": "#B45309",
+    "source": "inferred",
+    "evidence": "Warning text harmonised with the cream promo accent",
+    "bbox": []
+   },
+   "info": {
+    "hex": "#2563EB",
+    "source": "inferred",
+    "evidence": "Informational text, cool counterpart to brand violet",
+    "bbox": []
+   }
+  },
+  "border": {
+   "subtle": {
+    "hex": "#EAE7F1",
+    "source": "observed",
+    "evidence": "Hairline dividers between transaction rows inside the white card",
+    "bbox": [
+     0.3,
+     0.6365,
+     0.6,
+     0.6385
+    ]
+   },
+   "default": {
+    "hex": "#E0DCE9",
+    "source": "observed",
+    "evidence": "Outline of the unselected Income / Spending / Bills chips and search field",
+    "bbox": [
+     0.195,
+     0.4415,
+     0.35,
+     0.4435
+    ]
+   },
+   "strong": {
+    "hex": "#C9C3D6",
+    "source": "observed",
+    "evidence": "Bottom-nav icon glyph outlines",
+    "bbox": [
+     0.345,
+     0.912,
+     0.365,
+     0.917
+    ]
+   },
+   "focus": {
+    "hex": "#7C22D6",
+    "source": "inferred",
+    "evidence": "Focus ring uses the link/brand violet",
+    "bbox": []
+   },
+   "error": {
+    "hex": "#DC2F3A",
+    "source": "inferred",
+    "evidence": "Error outline matches feedback.error",
+    "bbox": []
+   }
+  },
+  "feedback": {
+   "success": {
+    "hex": "#0C9C62",
+    "source": "observed",
+    "evidence": "Positive amount text colour, reused as the success meaning",
+    "bbox": [
+     0.75,
+     0.671,
+     0.8,
+     0.677
+    ]
+   },
+   "success-subtle": {
+    "hex": "#E3F6EC",
+    "source": "inferred",
+    "evidence": "Tinted success background derived from green.600",
+    "bbox": []
+   },
+   "error": {
+    "hex": "#DC2F3A",
+    "source": "inferred",
+    "evidence": "Destructive fill; not present on screen",
+    "bbox": []
+   },
+   "error-subtle": {
+    "hex": "#FDECEE",
+    "source": "inferred",
+    "evidence": "Tinted error background",
+    "bbox": []
+   },
+   "warning": {
+    "hex": "#B45309",
+    "source": "inferred",
+    "evidence": "Warning fill",
+    "bbox": []
+   },
+   "warning-subtle": {
+    "hex": "#FDF3E2",
+    "source": "inferred",
+    "evidence": "Tinted warning background, sibling of bg.eat",
+    "bbox": []
+   },
+   "info": {
+    "hex": "#2563EB",
+    "source": "inferred",
+    "evidence": "Info fill",
+    "bbox": []
+   },
+   "info-subtle": {
+    "hex": "#E6EDFD",
+    "source": "inferred",
+    "evidence": "Tinted info background, sibling of bg.sky",
+    "bbox": []
+   }
+  },
+  "icon": {
+   "primary": {
+    "hex": "#171021",
+    "source": "observed",
+    "evidence": "Status bar glyphs and default dark iconography",
+    "bbox": [
+     0.845,
+     0.024,
+     0.865,
+     0.03
+    ]
+   },
+   "secondary": {
+    "hex": "#6E6880",
+    "source": "observed",
+    "evidence": "Search magnifier and inactive nav labels",
+    "bbox": [
+     0.098,
+     0.39,
+     0.108,
+     0.395
+    ]
+   },
+   "brand": {
+    "hex": "#7C22D6",
+    "source": "observed",
+    "evidence": "Active 'Home' nav icon and label",
+    "bbox": [
+     0.118,
+     0.928,
+     0.128,
+     0.934
+    ]
+   },
+   "on-brand-strong": {
+    "hex": "#FFFFFF",
+    "source": "observed",
+    "evidence": "'+', '\u2197', '\u21c4' glyphs on the gradient action buttons",
+    "bbox": [
+     0.165,
+     0.286,
+     0.175,
+     0.291
+    ]
+   },
+   "inverse": {
+    "hex": "#FFFFFF",
+    "source": "inferred",
+    "evidence": "Icons on dark or saturated fills",
+    "bbox": []
+   }
+  }
+ },
+ "fonts": {
+  "latin": {
+   "identified": "Greycliff CF / geometric grotesque UI face",
+   "googleFont": "Plus Jakarta Sans",
+   "category": "geometric",
+   "confidence": 0.55
+  },
+  "display": {
+   "identified": "Same family at ExtraBold for headings and the balance figure",
+   "googleFont": "Plus Jakarta Sans",
+   "category": "geometric",
+   "confidence": 0.55
+  },
+  "arabic": ""
+ },
+ "type": {
+  "display": {
+   "family": "display",
+   "weight": 800,
+   "size": 33,
+   "lineHeight": 40,
+   "letterSpacing": -1,
+   "source": "observed",
+   "evidence": "AED 12,480.50"
+  },
+  "title-lg": {
+   "family": "display",
+   "weight": 800,
+   "size": 24,
+   "lineHeight": 30,
+   "letterSpacing": -0.6,
+   "source": "observed",
+   "evidence": "Hi, Layla"
+  },
+  "title": {
+   "family": "display",
+   "weight": 800,
+   "size": 20,
+   "lineHeight": 26,
+   "letterSpacing": -0.4,
+   "source": "observed",
+   "evidence": "Recent activity"
+  },
+  "headline": {
+   "family": "latin",
+   "weight": 700,
+   "size": 17,
+   "lineHeight": 22,
+   "letterSpacing": -0.2,
+   "source": "observed",
+   "evidence": "Pay a bill / \u2212AED 24.00"
+  },
+  "body": {
+   "family": "latin",
+   "weight": 400,
+   "size": 16,
+   "lineHeight": 22,
+   "letterSpacing": 0,
+   "source": "observed",
+   "evidence": "Search transactions / Today \u00b7 Coffee"
+  },
+  "body-strong": {
+   "family": "latin",
+   "weight": 700,
+   "size": 16,
+   "lineHeight": 22,
+   "letterSpacing": -0.1,
+   "source": "observed",
+   "evidence": "Brew & Co."
+  },
+  "label": {
+   "family": "latin",
+   "weight": 600,
+   "size": 15,
+   "lineHeight": 20,
+   "letterSpacing": 0,
+   "source": "observed",
+   "evidence": "All / Income / Spending / Bills chip labels"
+  },
+  "caption": {
+   "family": "latin",
+   "weight": 400,
+   "size": 12,
+   "lineHeight": 16,
+   "letterSpacing": 0,
+   "source": "observed",
+   "evidence": "Cards / Insights / Profile nav labels"
+  },
+  "caption-strong": {
+   "family": "latin",
+   "weight": 700,
+   "size": 12,
+   "lineHeight": 16,
+   "letterSpacing": 0.1,
+   "source": "observed",
+   "evidence": "Home active nav label"
+  }
+ },
+ "radius": {
+  "none": 0,
+  "xs": 4,
+  "sm": 8,
+  "md": 12,
+  "lg": 16,
+  "xl": 24,
+  "pill": 999,
+  "evidence": "Emoji icon tiles \u224836px original corner \u2192 12; chips, search field and 'Pay a bill' \u224844-48px original \u2192 ~16; white activity card \u224856px \u2192 ~20-24; hero balance card \u224864px original \u2192 24. No true pill measured anywhere on screen."
+ },
+ "space": {
+  "0": 0,
+  "50": 2,
+  "100": 4,
+  "200": 8,
+  "300": 12,
+  "400": 16,
+  "500": 20,
+  "600": 24,
+  "800": 32,
+  "1000": 40,
+  "1200": 48,
+  "evidence": "48px original (16pt) screen gutter on every block; 24px original (8pt) icon-to-text gap; 36-40px original (12-14pt) row padding; ~50-64px original (17-21pt) between sections",
+  "baseUnit": 4
+ },
+ "size": {
+  "touch-min": 44,
+  "icon-sm": 16,
+  "icon-md": 20,
+  "icon-lg": 24,
+  "evidence": "Search magnifier \u224848px original (16pt); bottom-nav glyphs \u224872px original (24pt); avatar 43pt square; gradient action buttons 40pt tall inside a 44pt target"
+ },
+ "borderWidth": {
+  "none": 0,
+  "hairline": 1,
+  "default": 1.5,
+  "strong": 2,
+  "evidence": "Row dividers inside the white card \u22483px original \u2192 1pt hairline; chip and search outlines \u22484px original \u2192 1.5pt default"
+ },
+ "shadows": {
+  "sm": {
+   "layers": [
+    {
+     "x": 0,
+     "y": 2,
+     "blur": 8,
+     "spread": 0,
+     "color": "#17102110",
+     "inset": false
+    },
+    {
+     "x": 0,
+     "y": 1,
+     "blur": 2,
+     "spread": 0,
+     "color": "#1710210A",
+     "inset": false
+    }
+   ],
+   "source": "observed",
+   "evidence": "Recent activity white card \u2014 soft, near ambient-only lift off the lavender canvas"
+  },
+  "md": {
+   "layers": [
+    {
+     "x": 0,
+     "y": 10,
+     "blur": 28,
+     "spread": -6,
+     "color": "#17102124",
+     "inset": false
+    },
+    {
+     "x": 0,
+     "y": 3,
+     "blur": 8,
+     "spread": 0,
+     "color": "#1710210F",
+     "inset": false
+    }
+   ],
+   "source": "observed",
+   "evidence": "Hero balance card and 'Pay a bill' button each cast a soft coloured halo of roughly this geometry"
+  },
+  "lg": {
+   "layers": [
+    {
+     "x": 0,
+     "y": 24,
+     "blur": 48,
+     "spread": -12,
+     "color": "#17102130",
+     "inset": false
+    },
+    {
+     "x": 0,
+     "y": 8,
+     "blur": 16,
+     "spread": -4,
+     "color": "#17102114",
+     "inset": false
+    }
+   ],
+   "source": "inferred",
+   "evidence": "Modal elevation extrapolated from the card/sheet ramp"
+  },
+  "inset": {
+   "layers": [
+    {
+     "x": 0,
+     "y": 1,
+     "blur": 2,
+     "spread": 0,
+     "color": "#1710210D",
+     "inset": true
+    }
+   ],
+   "source": "inferred",
+   "evidence": "Recessed feel of the search field, which reads darker than the canvas"
+  },
+  "focus": {
+   "layers": [
+    {
+     "x": 0,
+     "y": 0,
+     "blur": 0,
+     "spread": 3,
+     "color": "#7C22D659",
+     "inset": false
+    }
+   ],
+   "source": "inferred",
+   "evidence": "Focus ring built from the brand violet at low alpha"
+  }
+ },
+ "gradients": [
+  {
+   "name": "brand",
+   "kind": "linear",
+   "angle": 115,
+   "stops": [
+    {
+     "hex": "#7A18D8",
+     "position": 0
+    },
+    {
+     "hex": "#A81FBE",
+     "position": 0.5
+    },
+    {
+     "hex": "#E5218D",
+     "position": 1
+    }
+   ],
+   "usage": "Hero total-balance card fill \u2014 the single strongest brand signature",
+   "source": "observed"
+  },
+  {
+   "name": "brand-glow",
+   "kind": "radial",
+   "angle": 0,
+   "stops": [
+    {
+     "hex": "#C4187A38",
+     "position": 0
+    },
+    {
+     "hex": "#C4187A00",
+     "position": 1
+    }
+   ],
+   "usage": "Coloured halo bleeding below the hero card and the primary button",
+   "source": "observed"
+  },
+  {
+   "name": "card-highlight",
+   "kind": "linear",
+   "angle": 180,
+   "stops": [
+    {
+     "hex": "#FFFFFF2E",
+     "position": 0
+    },
+    {
+     "hex": "#FFFFFF14",
+     "position": 1
+    }
+   ],
+   "usage": "Translucent white fills of the Top up / Send / Swap buttons over the gradient",
+   "source": "observed"
+  }
+ ],
+ "layout": {
+  "gutter": 16,
+  "section-gap": 20,
+  "footer-gap": 12,
+  "evidence": "All content blocks start 48px original (16pt) from each edge; hero card \u2192 search \u224822pt; search \u2192 chips \u224821pt; activity card \u2192 primary button \u224810pt, with a 16pt inset above the nav bar"
+ },
+ "components": {
+  "button": {
+   "radius": "{radius.lg}",
+   "gap": "{space.200}",
+   "height-sm": "36px",
+   "height-md": "44px",
+   "height-lg": "56px",
+   "padding-x-sm": "{space.400}",
+   "padding-x-md": "{space.500}",
+   "padding-x-lg": "{space.600}",
+   "shadow": "{shadow.md}",
+   "primary": {
+    "fill": "{bg.brand-strong}",
+    "label": "{text.on-brand-strong}",
+    "icon": "{icon.on-brand-strong}"
+   },
+   "secondary": {
+    "fill": "{bg.surface-raised}",
+    "label": "{text.primary}",
+    "icon": "{icon.primary}",
+    "border": "{border.default}",
+    "border-width": "{border-width.default}"
+   },
+   "tertiary": {
+    "label": "{text.link}",
+    "icon": "{icon.brand}"
+   },
+   "danger": {
+    "fill": "{feedback.error}",
+    "label": "{text.inverse}",
+    "icon": "{icon.inverse}"
+   }
+  },
+  "icon-button": {
+   "radius": "{radius.lg}",
+   "size": "{size.touch-min}",
+   "border": "{border.default}",
+   "border-width": "{border-width.default}",
+   "outline-fill": "{bg.surface-raised}",
+   "brand-fill": "{bg.brand-strong}",
+   "brand-icon": "{icon.on-brand-strong}",
+   "icon": "{icon.primary}"
+  },
+  "input": {
+   "radius": "{radius.lg}",
+   "height": "44px",
+   "padding-x": "{space.400}",
+   "gap": "{space.300}",
+   "fill": "{bg.surface}",
+   "border": "{border.default}",
+   "border-width": "{border-width.hairline}",
+   "border-error": "{border.error}",
+   "border-width-error": "{border-width.strong}",
+   "shadow": "{shadow.inset}"
+  },
+  "chip": {
+   "radius": "{radius.lg}",
+   "height": "36px",
+   "padding-x": "{space.400}",
+   "gap": "{space.200}",
+   "fill": "{bg.surface-raised}",
+   "label": "{text.primary}",
+   "border": "{border.default}",
+   "border-width": "{border-width.default}",
+   "selected": {
+    "fill": "{bg.inverse}",
+    "label": "{text.inverse}"
+   }
+  },
+  "tag": {
+   "radius": "{radius.sm}",
+   "height": "24px",
+   "padding-x": "{space.200}"
+  },
+  "card": {
+   "radius": "{radius.xl}",
+   "gap": "{space.300}",
+   "raised": {
+    "border": "{border.subtle}",
+    "border-width": "{border-width.none}",
+    "shadow": "{shadow.sm}"
+   },
+   "flat": {
+    "border": "{border.subtle}",
+    "border-width": "{border-width.hairline}",
+    "shadow": "{shadow.none}"
+   }
+  },
+  "tile": {
+   "radius": "{radius.md}",
+   "height": "40px",
+   "fill": "{bg.brand-subtle}",
+   "border": "{border.subtle}",
+   "border-width": "{border-width.none}",
+   "shadow": "{shadow.none}",
+   "icon-fill": "{bg.brand-subtle}",
+   "icon-radius": "{radius.md}",
+   "icon": "{icon.brand}"
+  },
+  "banner": {
+   "radius": "{radius.xl}",
+   "padding": "{space.600}",
+   "gap": "{space.300}",
+   "shadow": "{shadow.md}",
+   "brand": {
+    "fill": "{gradient.brand}",
+    "title": "{text.on-brand-strong}",
+    "body": "{text.inverse}",
+    "cta-fill": "#FFFFFF2E",
+    "cta-label": "{text.inverse}",
+    "art-fill": "#FFFFFF1F",
+    "art-icon": "{icon.inverse}"
+   },
+   "go": {
+    "fill": "{bg.go}",
+    "title": "{text.inverse}",
+    "body": "{text.inverse}",
+    "cta-fill": "#FFFFFF2E",
+    "cta-label": "{text.inverse}",
+    "art-fill": "#FFFFFF1F",
+    "art-icon": "{icon.inverse}"
+   },
+   "get": {
+    "fill": "{bg.get}",
+    "title": "{text.inverse}",
+    "body": "{text.inverse}",
+    "cta-fill": "#FFFFFF2E",
+    "cta-label": "{text.inverse}",
+    "art-fill": "#FFFFFF1F",
+    "art-icon": "{icon.inverse}"
+   },
+   "eat": {
+    "fill": "{bg.eat}",
+    "title": "{text.primary}",
+    "body": "{text.primary}",
+    "cta-fill": "{bg.brand-strong}",
+    "cta-label": "{text.on-brand-strong}",
+    "art-fill": "{bg.brand-subtle}",
+    "art-icon": "{icon.brand}"
+   },
+   "pay": {
+    "fill": "{bg.pay}",
+    "title": "{text.inverse}",
+    "body": "{text.inverse}",
+    "cta-fill": "{bg.brand}",
+    "cta-label": "{text.on-brand}",
+    "art-fill": "#FFFFFF1F",
+    "art-icon": "{icon.inverse}"
+   }
+  },
+  "media": {
+   "radius": "{radius.md}",
+   "fill": "{bg.brand-subtle}"
+  },
+  "sheet": {
+   "radius": "{radius.xl}",
+   "fill": "{bg.canvas}",
+   "shadow": "{shadow.md}",
+   "handle": "{border.strong}"
+  },
+  "top-bar": {
+   "height": "56px",
+   "fill": "{bg.canvas}",
+   "brand-fill": "{bg.brand-strong}",
+   "shadow": "{shadow.none}",
+   "border": "{border.subtle}",
+   "border-width": "{border-width.none}"
+  },
+  "nav-bar": {
+   "fill": "{bg.surface-raised}",
+   "border": "{border.subtle}",
+   "border-width": "{border-width.hairline}",
+   "shadow": "{shadow.none}",
+   "active": "{icon.brand}",
+   "inactive": "{icon.secondary}"
+  },
+  "alert": {
+   "radius": "{radius.lg}",
+   "border-width": "{border-width.none}"
+  },
+  "segmented": {
+   "radius": "{radius.lg}",
+   "track-fill": "{bg.surface}",
+   "selected": {
+    "fill": "{bg.surface-raised}",
+    "shadow": "{shadow.sm}"
+   }
+  },
+  "divider": {
+   "thickness": "{border-width.hairline}",
+   "color": "{border.subtle}"
+  }
+ },
+ "componentNotes": [
+  {
+   "component": "button",
+   "observed": true,
+   "notes": "'Pay a bill' measures ~56-58pt tall, full-bleed between gutters, with a ~16 radius \u2014 not a pill, so button.radius is {radius.lg}. It carries a soft violet halo, so button.shadow is {shadow.md} rather than none. Secondary is modelled on the outlined white chips; tertiary on the violet 'See all' link."
+  },
+  {
+   "component": "icon-button",
+   "observed": false,
+   "notes": "No standalone icon button on screen; derived from the 'LA' avatar (43pt square, ~16 radius) so it stays a rounded square rather than a circle, consistent with the no-pill language."
+  },
+  {
+   "component": "input",
+   "observed": true,
+   "notes": "Search field is filled (#EDEAF4, one step darker than canvas) with a barely-there hairline and a recessed read \u2014 filled + inset shadow, not an outlined field. ~42pt tall, radius 16, 16pt magnifier with a 12pt gap to the placeholder."
+  },
+  {
+   "component": "chip",
+   "observed": true,
+   "notes": "Four filter chips ~32-36pt tall, radius ~14-16 (visibly not pill), white fill with a 1.5pt #E0DCE9 outline. Selected inverts to near-black #1C1130 with a white label \u2014 the only appearance of the inverse surface."
+  },
+  {
+   "component": "tag",
+   "observed": false,
+   "notes": "Not shown. Since chips avoid pills, tags take the small radius (8) so they read as a tighter sibling of the chip rather than a lozenge."
+  },
+  {
+   "component": "card",
+   "observed": true,
+   "notes": "The Recent activity card is pure white on lavender canvas, radius ~24, with an extremely soft ambient shadow and no border. Internal rows are separated by 1pt #EAE7F1 dividers inset from both edges."
+  },
+  {
+   "component": "tile",
+   "observed": true,
+   "notes": "Transaction leading elements are 40pt lavender rounded squares (radius 12) holding an emoji \u2014 so tile.icon-radius is md, not pill, and the fill is {bg.brand-subtle}."
+  },
+  {
+   "component": "banner",
+   "observed": true,
+   "notes": "The hero balance card is the banner archetype: brand gradient at radius 24, ~20-24 padding, white copy, and translucent-white inner CTAs. The brand variant therefore uses white alphas for CTA and art instead of a second solid colour; go/get reuse the two gradient endpoints."
+  },
+  {
+   "component": "media",
+   "observed": true,
+   "notes": "Only media containers visible are the emoji tiles \u2014 radius md with the lavender brand-subtle fill; larger media inherits the same fill at card radius."
+  },
+  {
+   "component": "sheet",
+   "observed": false,
+   "notes": "Inferred from the 24 card/banner radius and the md elevation of the hero card; the handle uses the strongest neutral border so it stays visible against the canvas fill."
+  },
+  {
+   "component": "top-bar",
+   "observed": true,
+   "notes": "No chrome bar \u2014 the greeting and avatar sit directly on the canvas, so the top bar is canvas-coloured with no border and no shadow."
+  },
+  {
+   "component": "nav-bar",
+   "observed": true,
+   "notes": "Bottom bar is white, separated from the lavender canvas by a 1pt hairline, no shadow. Active item is violet (icon plus caption-strong label); inactive uses the secondary neutral."
+  },
+  {
+   "component": "alert",
+   "observed": false,
+   "notes": "Inferred as a borderless tinted block at radius 16, matching the flat, outline-free surface treatment of the cards."
+  },
+  {
+   "component": "segmented",
+   "observed": false,
+   "notes": "Not shown; modelled on the filter row \u2014 surface-coloured track with a white selected thumb carrying the resting card shadow, radius 16 to match chips."
+  },
+  {
+   "component": "divider",
+   "observed": true,
+   "notes": "Measured 1pt #EAE7F1 between transaction rows and above the nav bar; these are the only hairlines in the design."
+  }
+ ]
+}

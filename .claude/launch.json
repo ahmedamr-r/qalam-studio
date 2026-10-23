@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "studio",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["next", "dev", "--port", "3101"],
+      "port": 3101
+    }
+  ]
+}

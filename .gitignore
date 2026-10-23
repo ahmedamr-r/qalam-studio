@@ -1,0 +1,11 @@
+node_modules
+.next
+.vercel
+.env*.local
+.env
+next-env.d.ts
+*.tsbuildinfo
+
+# Dev-only imports for ?devImport=<name> (screenshots of real apps; never commit)
+.qalam-dev
+
