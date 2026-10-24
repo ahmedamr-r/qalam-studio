@@ -7,8 +7,22 @@ import { dirOf, hasLocale, locales } from "@/lib/i18n";
 
 import "../globals.css";
 
-const sans = localFont({ src: "../fonts/CubitSans-Variable.woff2", variable: "--font-cubit", display: "swap", weight: "100 900" });
-const mono = localFont({ src: "../fonts/CubitMono-Variable.woff2", variable: "--font-cubit-mono", display: "swap", weight: "100 900" });
+// No automatic fallback face for the Latin fonts: Next maps it to Arial, which has Arabic glyphs,
+// so Arabic text would stop there instead of reaching --font-ar (globals.css).
+const sans = localFont({
+  src: "../fonts/CubitSans-Variable.woff2",
+  variable: "--font-cubit",
+  display: "swap",
+  weight: "100 900",
+  adjustFontFallback: false,
+});
+const mono = localFont({
+  src: "../fonts/CubitMono-Variable.woff2",
+  variable: "--font-cubit-mono",
+  display: "swap",
+  weight: "100 900",
+  adjustFontFallback: false,
+});
 const arabic = localFont({
   src: [
     { path: "../fonts/IBMPlexSansArabic-400.woff2", weight: "400" },

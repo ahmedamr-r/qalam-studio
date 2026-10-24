@@ -25,3 +25,8 @@ robots.txt).
 
 Fonts: Cubit Sans and Cubit Mono (OFL, licences in `app/fonts`), IBM Plex Sans Arabic (OFL,
 subset to Arabic + Latin).
+
+Arabic text uses **Thmanyah Sans** when its files are present. Its licence forbids redistributing
+the files, so they are gitignored and never committed: download the family from thmanyah.com and
+copy `thmanyahsans-Regular.woff2`, `-Medium.woff2` and `-Bold.woff2` into `public/fonts/thmanyah/`.
+Without them (a fresh clone, or a deploy built from GitHub) Arabic falls back to IBM Plex Sans Arabic.

@@ -1,5 +1,29 @@
 @import "tailwindcss";
 
+/* Thmanyah Sans, served as shipped (its licence forbids modifying the files). If the files are
+   missing, the 404 falls through to IBM Plex Sans Arabic. */
+@font-face {
+  font-family: "Thmanyah Sans";
+  src: url("/fonts/thmanyah/thmanyahsans-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+  unicode-range: U+0600-06FF, U+0750-077F, U+08A0-08FF, U+FB50-FDFF, U+FE70-FEFF, U+200C-200F;
+}
+@font-face {
+  font-family: "Thmanyah Sans";
+  src: url("/fonts/thmanyah/thmanyahsans-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-display: swap;
+  unicode-range: U+0600-06FF, U+0750-077F, U+08A0-08FF, U+FB50-FDFF, U+FE70-FEFF, U+200C-200F;
+}
+@font-face {
+  font-family: "Thmanyah Sans";
+  src: url("/fonts/thmanyah/thmanyahsans-Bold.woff2") format("woff2");
+  font-weight: 600 700;
+  font-display: swap;
+  unicode-range: U+0600-06FF, U+0750-077F, U+08A0-08FF, U+FB50-FDFF, U+FE70-FEFF, U+200C-200F;
+}
+
 /* ───────────────────────────── Tokens ─────────────────────────────
    The studio's dark theme (app/globals.css in the studio): warm ink neutrals, pearl text, saffron
    used like gilding. Saffron as a FILL means "Qalam acts" (Generate, Design this, the nuqta);
@@ -43,7 +67,10 @@
   --nav-h: 60px;
   --thread-x: 20px;
 
-  --font-sans: var(--font-cubit), var(--font-plex-ar), ui-sans-serif, system-ui, sans-serif;
+  /* Arabic: Thmanyah Sans when its files are present (they're local-only, see site/README.md),
+     IBM Plex Sans Arabic otherwise. Latin always comes from Cubit Sans, which has no Arabic. */
+  --font-ar: "Thmanyah Sans", var(--font-plex-ar);
+  --font-sans: var(--font-cubit), var(--font-ar), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-cubit-mono), ui-monospace, "SF Mono", Menlo, monospace;
 }
 
@@ -258,7 +285,7 @@ kbd {
     border-color 0.18s var(--ease-ui);
 }
 .nav-lang:lang(ar) {
-  font-family: var(--font-plex-ar), var(--font-sans);
+  font-family: var(--font-ar), var(--font-sans);
 }
 .nav-lang:hover {
   color: var(--fg);
@@ -1218,7 +1245,7 @@ h3.caption-title {
   overflow: hidden;
   background: var(--t-bg);
   color: var(--t-ink);
-  font-family: var(--font-cubit), var(--font-plex-ar), system-ui, sans-serif;
+  font-family: var(--font-cubit), var(--font-ar), system-ui, sans-serif;
   font-size: 15px;
   line-height: 1.35;
   letter-spacing: -0.005em;
@@ -2661,7 +2688,7 @@ kbd {
 }
 .term-copy:lang(ar),
 :lang(ar) .term-copy {
-  font-family: var(--font-plex-ar), var(--font-sans);
+  font-family: var(--font-ar), var(--font-sans);
 }
 .term-body {
   display: flex;

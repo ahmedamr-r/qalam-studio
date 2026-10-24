@@ -4,3 +4,7 @@ node_modules
 next-env.d.ts
 *.tsbuildinfo
 .claude
+
+# Thmanyah Sans: its licence forbids redistributing the files, so they are never committed.
+# Copy them from the official download (thmanyah.com) into public/fonts/thmanyah/.
+public/fonts/thmanyah/
