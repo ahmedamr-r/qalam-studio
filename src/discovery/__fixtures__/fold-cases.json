@@ -1,0 +1,18 @@
+{
+  "about": "What quote matching folds text to (normalizeForMatch in src/discovery/quotes.ts). The bake-off's quote-survival metric (tools/asr) must fold the same way: both test suites read this file.",
+  "cases": [
+    { "why": "short vowels (harakat) and shadda drop", "in": "مُشْكِلَةٌ كَبِيرَة", "out": "مشكله كبيره" },
+    { "why": "superscript alef drops", "in": "هٰذا", "out": "هذا" },
+    { "why": "tatweel drops", "in": "جـــداً", "out": "جدا" },
+    { "why": "hamza forms of alef fold to bare alef", "in": "أنا إذا آخر ٱلناس", "out": "انا اذا اخر الناس" },
+    { "why": "alef maksura folds to ya", "in": "على مستوى", "out": "علي مستوي" },
+    { "why": "ta marbuta folds to ha", "in": "الخدمة سريعة", "out": "الخدمه سريعه" },
+    { "why": "Arabic-Indic digits fold to ASCII", "in": "٣٠ دقيقة", "out": "30 دقيقه" },
+    { "why": "Persian digits fold to ASCII", "in": "۱۲۳", "out": "123" },
+    { "why": "Arabic question mark, comma and semicolon fold", "in": "ليه؟ مش عارف، بس؛ كده", "out": "ليه? مش عارف, بس; كده" },
+    { "why": "zero-width and direction marks drop without breaking a run of spaces", "in": "التطبيق ‏‎  app ⁧بطيء⁩", "out": "التطبيق app بطيء" },
+    { "why": "Arabic letter mark drops", "in": "الـ؜app", "out": "الapp" },
+    { "why": "Latin words keep their letters, lower-cased", "in": "الـ Delivery مش On Time", "out": "ال delivery مش on time" },
+    { "why": "presentation forms read as their letters (NFKC)", "in": "ﻻ", "out": "لا" }
+  ]
+}

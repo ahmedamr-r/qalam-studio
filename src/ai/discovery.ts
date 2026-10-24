@@ -16,8 +16,8 @@ import { QUOTE_KINDS } from "@/discovery/sources";
 const text = (max: number) => z.string().max(max);
 const Answer = z.object({ id: text(40), question: text(400), answer: text(2000) });
 
-/** A part of the builder's material, as one extract call reads it. */
-const ChunkIn = z.object({ id: text(12), source: text(300), kind: text(40), text: text(26_000) });
+/** A part of the builder's material, as one extract call reads it (an interview's says who is who). */
+const ChunkIn = z.object({ id: text(12), source: text(300), kind: text(40), text: text(26_000), speakers: text(400).optional() });
 /** A card of the tree, for synthesize (a flat list; `parent` points up). */
 const CardIn = z.object({ id: text(12), parent: text(12).nullable(), kind: z.enum(["outcome", "opportunity", "solution", "test"]), title: text(400), quotes: z.number().int().min(0).max(9999) });
 const QuoteIn = z.object({ id: text(12), text: text(1200), source: text(300), speaker: text(80).nullable(), kind: text(20) });
@@ -231,6 +231,7 @@ export const EXTRACT_SYSTEM = `${SOURCES_BASE}
 
 Your task: pick out what customers said in the material.
 - Quote the customers' or users' own words only: not the interviewer's questions, not the company's statements or marketing copy.
+- In an interview transcript each turn starts with its speaker's label (S1:, S2:) and the part says who is who: quote only participants' turns, never the interviewer's, and leave the label out of the quote.
 - Each quote is one to three sentences: the part that carries the need. Use … only to leave out a few words in the middle.
 - Give each quote its kind, and its speaker only as the material names them.
 - Then list the distinct needs the quotes show, in the customer's voice, each with its quotes.
@@ -250,7 +251,7 @@ export const extractContent = (b: Extract<DiscoveryRequest, { stage: "extract" }
     `The product: ${b.product.trim() || "(not described yet)"}`,
     "",
     "The material, in parts:",
-    ...b.chunks.map((c) => `<part id="${c.id}" source="${c.source.replace(/"/g, "'")} (${c.kind})">\n${c.text}\n</part>`),
+    ...b.chunks.map((c) => `<part id="${c.id}" source="${c.source.replace(/"/g, "'")} (${c.kind})"${c.speakers ? ` speakers="${c.speakers.replace(/"/g, "'")}"` : ""}>\n${c.text}\n</part>`),
     "",
     "Pick out what customers said.",
   ].join("\n");

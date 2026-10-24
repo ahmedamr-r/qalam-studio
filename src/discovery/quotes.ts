@@ -3,13 +3,49 @@
  * sources (documents, pages, connected tools) as evidence; code only keeps a quote it finds in
  * what's quoted, and stores the source's own words, never the model's version of them. Matching
  * forgives what typing and models change without changing the words: letter case, curly quotes
- * and dashes, spacing, and Unicode forms (NFKC). A quote may leave words out with "…": each part
- * must then be in the text, in order, close together.
+ * and dashes, spacing, and Unicode forms (NFKC). In Arabic it also forgives what writers and
+ * speech engines spell either way: short vowels and tatweel, the hamza forms of alef, ى/ي, ة/ه,
+ * Arabic-Indic digits, Arabic punctuation and invisible direction marks. A quote may leave words
+ * out with "…": each part must then be in the text, in order, close together.
  */
 
 const QUOTES = /[‘’‚‛′`´]/g;
 const DQUOTES = /[“”„‟″«»]/g;
 const DASHES = /[‐‑‒–—―−]/g;
+
+/** Arabic letters spelled either way, as the one they're matched as. */
+const ARABIC_FOLD: Record<number, string> = {
+  0x0623: "ا", // أ
+  0x0625: "ا", // إ
+  0x0622: "ا", // آ
+  0x0671: "ا", // ٱ
+  0x0649: "ي", // ى
+  0x0629: "ه", // ة
+  0x061f: "?", // ؟
+  0x060c: ",", // ،
+  0x061b: ";", // ؛
+};
+
+/**
+ * What one code point counts as when matching: "" for marks that don't change the words (Arabic
+ * short vowels and other harakat, superscript alef, tatweel, zero-width and direction marks), a
+ * letter's common spelling for one spelled either way, an ASCII digit for an Arabic-Indic or
+ * Persian one; otherwise the character itself.
+ */
+export function foldChar(cp: number): string {
+  if ((cp >= 0x064b && cp <= 0x065f) || cp === 0x0670 || cp === 0x0640) return "";
+  if ((cp >= 0x200b && cp <= 0x200f) || cp === 0x061c || (cp >= 0x202a && cp <= 0x202e) || (cp >= 0x2066 && cp <= 0x2069)) return "";
+  if (cp >= 0x0660 && cp <= 0x0669) return String(cp - 0x0660);
+  if (cp >= 0x06f0 && cp <= 0x06f9) return String(cp - 0x06f0);
+  return ARABIC_FOLD[cp] ?? String.fromCodePoint(cp);
+}
+
+/** A string with every code point folded (see foldChar). */
+const fold = (s: string) => {
+  let out = "";
+  for (const ch of s) out += foldChar(ch.codePointAt(0)!);
+  return out;
+};
 
 /** `text` normalized for matching, and for each character of it the index of the original character it came from. */
 export function normalizeForMatch(text: string): { norm: string; map: number[] } {
@@ -20,8 +56,10 @@ export function normalizeForMatch(text: string): { norm: string; map: number[] }
     const cp = text.codePointAt(i)!;
     const ch = String.fromCodePoint(cp);
     const width = ch.length;
-    const n = ch.normalize("NFKC").replace(QUOTES, "'").replace(DQUOTES, '"').replace(DASHES, "-").replace(/…/g, "...").toLowerCase();
-    if (/^\s+$/.test(n)) {
+    const n = fold(ch.normalize("NFKC")).replace(QUOTES, "'").replace(DQUOTES, '"').replace(DASHES, "-").replace(/…/g, "...").toLowerCase();
+    if (!n) {
+      // A mark that doesn't change the words: it leaves nothing, and doesn't end a run of spaces.
+    } else if (/^\s+$/.test(n)) {
       // Runs of whitespace (and line breaks) count as one space.
       if (!space && norm.length) {
         norm += " ";
@@ -75,11 +113,17 @@ export interface QuoteMatch {
 
 type Hay = { text: string; norm: string; map: number[] };
 
+/** Arabic marks that belong to the letter before them (short vowels, superscript alef, tatweel). */
+const isArabicMark = (code: number) => (code >= 0x064b && code <= 0x065f) || code === 0x0670 || code === 0x0640;
+
 /** [start, end) in the original text of the normalized range [a, b). */
 function original(hay: Hay, a: number, b: number): [number, number] {
   const last = hay.map[b - 1];
-  // The end: past the whole last original character (a code point can be two units long).
-  return [hay.map[a], last + String.fromCodePoint(hay.text.codePointAt(last)!).length];
+  // The end: past the whole last original character (a code point can be two units long), and the
+  // marks on it (matching skips them, the source's words keep them).
+  let end = last + String.fromCodePoint(hay.text.codePointAt(last)!).length;
+  while (end < hay.text.length && isArabicMark(hay.text.charCodeAt(end))) end++;
+  return [hay.map[a], end];
 }
 
 function matchIn(hay: Hay, quote: string, min: number): QuoteMatch | null {

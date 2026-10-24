@@ -9,6 +9,7 @@ import { cardOf } from "@/discovery/ops";
 import { allCards, childCards } from "@/discovery/tree";
 import { SOURCE_KIND_LABEL, hasQuote, packCalls, unread, type SourceKind, type SourceRecord } from "@/discovery/sources";
 import { sanitizeExtract, sanitizeSynthesis, type CallChunk, type SynthCard, type SynthContext, type SynthQuote } from "@/discovery/synthesis";
+import { awaitingRoles, finishExtracted, finishInterviewQuotes, speakerNote, type SpeakerRole } from "@/discovery/transcript";
 import { currentProject } from "@/projects/session";
 import { offline } from "./ai";
 import { boardTree } from "./draft";
@@ -21,7 +22,8 @@ import { startReview } from "./review";
  * brought in from connected tools), kept as raw text, then Qalam AI picks out what customers said
  * (extract, a few parts per call) and maps it to the tree (synthesize). Code checks every quote
  * against the source and every proposal against the tree; the proposals wait as a ghost over the
- * tree until they're accepted or discarded.
+ * tree until they're accepted or discarded. An interview waits until the builder says who is who:
+ * Qalam AI quotes participants only, and code drops any quote outside their turns.
  */
 
 export type AddInput =
@@ -67,7 +69,7 @@ export async function addSources(inputs: AddInput[], opts: { map?: boolean } = {
       try {
         const read = input.kind === "file" ? [await ingestFile(input.file)] : input.kind === "url" ? [await ingestUrl(input.url, ctrl.signal)] : input.kind === "paste" ? [await ingestPaste(input.text, input.title)] : await fromTools(input, job, ctrl.signal);
         for (const r of read) {
-          const rec: SourceRecord = { v: 1, id: newId(), projectId, kind: r.kind, title: r.title, ...(r.origin ? { origin: r.origin } : {}), text: r.text, ...(r.pages ? { pages: r.pages } : {}), ...(r.truncated ? { truncated: true } : {}), addedAt: Date.now(), read: [], quotes: [], needs: [] };
+          const rec: SourceRecord = { v: 1, id: newId(), projectId, kind: r.kind, title: r.title, ...(r.origin ? { origin: r.origin } : {}), text: r.text, ...(r.pages ? { pages: r.pages } : {}), ...(r.truncated ? { truncated: true } : {}), ...(r.segments && r.transcript ? { segments: r.segments, transcript: r.transcript } : {}), addedAt: Date.now(), read: [], quotes: [], needs: [] };
           await addSourceRecord(rec);
           added.push(rec.id);
         }
@@ -82,6 +84,8 @@ export async function addSources(inputs: AddInput[], opts: { map?: boolean } = {
   try {
     if (!added.length || ctrl.signal.aborted) return;
     if (added.length === 1) useSources.setState({ open: { id: added[0] } });
+    const waiting = added.filter((id) => awaitingRoles(sourceOf(id) ?? { kind: "" })).length;
+    if (waiting && added.length > 1) useSources.setState({ notice: { text: `Say who is who in ${waiting === 1 ? "the interview" : `${waiting} interviews`} (open ${waiting === 1 ? "it" : "each"} from the list): Qalam AI reads ${waiting === 1 ? "it" : "them"} after that.` } });
     const found = await readSources(added, ctrl);
     if (opts.map !== false && found > 0 && !ctrl.signal.aborted && boardTree(studio().doc)) await mapQuotes({ sourceIds: added }, ctrl);
   } finally {
@@ -133,7 +137,8 @@ async function pool<T>(items: T[], n: number, fn: (t: T) => Promise<void>) {
  * reading"). Returns how many quotes code kept.
  */
 export async function readSources(ids: string[], given?: AbortController): Promise<number> {
-  const sources = ids.map(sourceOf).filter((s): s is SourceRecord => !!s);
+  // An interview waits until the builder says who is who.
+  const sources = ids.map(sourceOf).filter((s): s is SourceRecord => !!s && !awaitingRoles(s));
   if (!sources.length) return 0;
   if (await offline()) {
     useSources.setState({ notice: { text: "Qalam AI isn't set up here, so it can't pick out quotes. Select words in a source and drag them onto a card to quote them yourself." } });
@@ -154,9 +159,14 @@ export async function readSources(ids: string[], given?: AbortController): Promi
         return { ref: `c${i + 1}`, sourceId: c.sourceId, start: c.start, text: s.text.slice(c.start, c.end), ...(s.pages ? { pages: s.pages } : {}) };
       });
       try {
-        const { data } = await callAI<unknown>(PATH, { stage: "extract", product, chunks: chunks.map((c) => ({ id: c.ref, source: sourceOf(c.sourceId)!.title.slice(0, 300), kind: SOURCE_KIND_LABEL[sourceOf(c.sourceId)!.kind], text: c.text })) }, undefined, ctrl.signal);
+        const part = (c: CallChunk) => {
+          const s = sourceOf(c.sourceId)!;
+          return { id: c.ref, source: s.title.slice(0, 300), kind: SOURCE_KIND_LABEL[s.kind], text: c.text, ...(s.transcript ? { speakers: speakerNote(s.transcript) } : {}) };
+        };
+        const { data } = await callAI<unknown>(PATH, { stage: "extract", product, chunks: chunks.map(part) }, undefined, ctrl.signal);
         const taken = new Map(chunks.map((c) => [c.sourceId, (sourceOf(c.sourceId)?.quotes ?? []).map((q) => q.span)]));
-        const got = sanitizeExtract(data, chunks, taken);
+        // In an interview, only participants' words, with who said them and when (code's say).
+        const got = finishExtracted(sanitizeExtract(data, chunks, taken), sourceOf);
         found += got.quotes.length;
         for (const id of new Set(call.map((c) => c.sourceId)))
           await updateSource(id, (s) => ({
@@ -173,10 +183,33 @@ export async function readSources(ids: string[], given?: AbortController): Promi
     for (const id of touched) setJob(id, null);
     if (!given) end(ctrl);
   }
-  const left = ids.map(sourceOf).filter((s): s is SourceRecord => !!s).reduce((n, s) => n + unread(s).length, 0);
+  const left = ids.map(sourceOf).filter((s): s is SourceRecord => !!s && !awaitingRoles(s)).reduce((n, s) => n + unread(s).length, 0);
   if (failure) useSources.setState({ notice: { text: `Qalam AI couldn't read everything: ${failure}`, action: "read" } });
   else if (left && !ctrl.signal.aborted) useSources.setState({ notice: { text: `Qalam AI read what one go allows; ${left} ${left === 1 ? "part is" : "parts are"} still unread.`, action: "read" } });
   return found;
+}
+
+/**
+ * The builder says who is who in an interview. Quotes it already has stay only where they're a
+ * participant's words; the first time, Qalam AI then reads it and maps its quotes to the tree.
+ */
+export async function confirmSpeakers(id: string, roles: Record<string, SpeakerRole>) {
+  const first = awaitingRoles(sourceOf(id) ?? { kind: "" });
+  await updateSource(id, (s) => {
+    if (!s.transcript) return s;
+    const next = { ...s, transcript: { ...s.transcript, rolesConfirmed: true, speakers: s.transcript.speakers.map((sp) => ({ ...sp, role: roles[sp.id] ?? sp.role, roleBy: "user" as const })) } };
+    const quotes = finishInterviewQuotes(next, s.quotes);
+    const kept = new Set(quotes.map((q) => q.id));
+    return { ...next, quotes, needs: s.needs.map((n) => ({ ...n, quoteIds: n.quoteIds.filter((q) => kept.has(q)) })).filter((n) => n.quoteIds.length) };
+  });
+  if (!first) return;
+  const ctrl = begin();
+  try {
+    const found = await readSources([id], ctrl);
+    if (found > 0 && !ctrl.signal.aborted && boardTree(studio().doc)) await mapQuotes({ sourceIds: [id] }, ctrl);
+  } finally {
+    end(ctrl);
+  }
 }
 
 // ---------------------------------------------------------------------------

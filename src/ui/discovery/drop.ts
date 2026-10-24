@@ -110,7 +110,7 @@ export function boardDrop(e: DragEvent, world: Pt): boolean {
     }
     // On the empty board: the words on a sticky, with where they're from.
     const { frame, text } = makeSticky(world);
-    text.text = { ...text.text, content: `“${q.text}”\n— ${citation({ page: q.page, speaker: q.speaker }, src.title)}` };
+    text.text = { ...text.text, content: `“${q.text}”\n— ${citation({ page: q.page, speaker: q.speaker, time: q.time }, src.title)}` };
     s.mutate((d) => {
       d.nodes[frame.id] = frame;
       d.nodes[text.id] = text;

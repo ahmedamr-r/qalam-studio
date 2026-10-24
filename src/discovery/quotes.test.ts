@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { MAX_GAP, findQuote, findVerbatim, mentions, normalizeForMatch, numbersIn, quoteFinder, verbatim } from "./quotes";
+import { MAX_GAP, findQuote, findVerbatim, foldChar, mentions, normalizeForMatch, numbersIn, quoteFinder, verbatim } from "./quotes";
+import foldCases from "./__fixtures__/fold-cases.json";
 
 describe("findVerbatim", () => {
   const text = "People say they can’t find what they ordered last time.\n\nWe’ve talked about an “order again” shelf — maybe.";
@@ -78,6 +79,43 @@ describe("findVerbatim", () => {
     const { norm, map } = normalizeForMatch("A  b\n c");
     expect(norm).toBe("a b c");
     expect(map).toEqual([0, 1, 3, 4, 6]);
+  });
+});
+
+describe("Arabic spelled either way", () => {
+  it.each(foldCases.cases)("$why", ({ in: input, out }) => {
+    expect(normalizeForMatch(input).norm).toBe(out);
+  });
+
+  it("maps every folded character back to where it came from", () => {
+    const text = "مُشْكِلَةٌ ‏٣٠ دقيقة";
+    const { norm, map } = normalizeForMatch(text);
+    expect(map).toHaveLength(norm.length);
+    expect([...map].sort((a, b) => a - b)).toEqual(map);
+    expect(map.every((i) => i >= 0 && i < text.length)).toBe(true);
+  });
+
+  it("finds a quote the model re-spelled, and keeps the source's own spelling", () => {
+    const said = "S2: والله التوصيل بيتأخر ساعة كاملة، ومفيش حد بيرد على الشكوى.";
+    expect(verbatim(said, "التوصيل بيتاخر ساعه كامله، ومفيش حد بيرد علي الشكوي")).toBe("التوصيل بيتأخر ساعة كاملة، ومفيش حد بيرد على الشكوى");
+    expect(verbatim(said, "التوصيل بيتأخر ساعة كاملة؛ ومفيش حد")).toBeNull();
+  });
+
+  it("finds a plain quote in voweled text, and keeps the vowels on its last letter", () => {
+    const quran = "قالَ إِنَّ الخِدْمَةَ بَطِيئَةٌ جِدًّا";
+    const r = findVerbatim(quran, "ان الخدمة بطيئة جدا")!;
+    expect(quran.slice(r[0], r[1])).toBe("إِنَّ الخِدْمَةَ بَطِيئَةٌ جِدًّا");
+  });
+
+  it("matches Arabic-Indic numbers to the digits a model writes", () => {
+    expect(verbatim("بستنى ٤٥ دقيقة كل مرة", "بستنى 45 دقيقة")).toBe("بستنى ٤٥ دقيقة");
+  });
+
+  it("folds one code point at a time", () => {
+    expect(foldChar(0x064e)).toBe("");
+    expect(foldChar(0x0623)).toBe("ا");
+    expect(foldChar(0x0663)).toBe("3");
+    expect(foldChar("a".codePointAt(0)!)).toBe("a");
   });
 });
 

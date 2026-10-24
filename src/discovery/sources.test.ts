@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CHUNK, chunkText, hasQuote, packCalls, pageAt, quoteEvidence, unread, type ChunkRef, type SourceQuote } from "./sources";
+import { CHUNK, chunkText, citation, hasQuote, packCalls, pageAt, quoteEvidence, unread, type ChunkRef, type SourceQuote } from "./sources";
 
 const para = (i: number, n = 400) => `Paragraph ${i}. ${"word ".repeat(n / 5)}`.trim();
 
@@ -93,6 +93,14 @@ describe("quote evidence", () => {
     expect(e).toMatchObject({ kind: "quote", text: q.text, sourceId: "src", sourceTitle: "Interviews.pdf", span: [10, 40], page: 2, speaker: "P3", addedBy: "user", at: 5 });
     expect(e.stance).toBeUndefined();
     expect(quoteEvidence({ id: "src", title: "x" }, q, "ai", { against: true }).stance).toBe("against");
+  });
+
+  it("carries when an interview's words were said, and cites the moment", () => {
+    const said: SourceQuote = { ...q, page: undefined, speaker: "Omar Khalil", time: [754.2, 760] };
+    const e = quoteEvidence({ id: "iv", title: "Omar interview" }, said, "ai");
+    expect(e.time).toEqual([754.2, 760]);
+    expect(citation(e)).toBe("Omar interview · 12:34 · Omar Khalil");
+    expect(citation(quoteEvidence({ id: "src", title: "Interviews.pdf" }, q, "ai"))).toBe("Interviews.pdf · p. 2 · P3");
   });
 
   it("knows when a card already has the same words of the same source", () => {

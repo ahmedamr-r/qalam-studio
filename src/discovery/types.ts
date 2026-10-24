@@ -44,6 +44,8 @@ export interface OstEvidence {
   page?: number;
   /** Who said it, as the source names them. */
   speaker?: string;
+  /** Interviews: when the words were said ([start, end) seconds). */
+  time?: [number, number];
   /** The words speak against the card (they don't back it). */
   stance?: "against";
   addedBy: "user" | "ai";

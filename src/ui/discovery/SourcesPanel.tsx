@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import clsx from "clsx";
-import { ArrowLeft, ClipboardPaste, ExternalLink, FileText, Globe, Plug, Plus, Quote, Trash2, Upload, X } from "lucide-react";
+import { ArrowLeft, ClipboardPaste, ExternalLink, FileText, Globe, MessagesSquare, Plug, Plus, Quote, Trash2, Upload, X } from "lucide-react";
 import { studio, useStudio } from "@/doc/store";
 import type { Doc } from "@/doc/schema";
 import { newId } from "@/doc/factory";
@@ -8,6 +8,8 @@ import { aiStatus, type AIStatus } from "@/ai/client";
 import { revealCard } from "@/discovery/ops";
 import { allCards } from "@/discovery/tree";
 import { QUOTE_KIND_LABEL, SOURCE_KIND_LABEL, pageAt, unread, type SourceKind, type SourceQuote, type SourceRecord } from "@/discovery/sources";
+import { awaitingRoles, clock, finishInterviewQuotes } from "@/discovery/transcript";
+import { feedback } from "@/commands/feedback";
 import { Button, IconBtn, Segmented, Select, Spinner, Tag } from "../controls";
 import { r } from "../recipes";
 import { QalamAIGlyph } from "../brand/ai-glyph";
@@ -20,19 +22,21 @@ import { addSources, mapQuotes, readSources, stopSources, type AddInput } from "
 import { acceptAll, discardAll } from "./review";
 import { dragQuote, dragSource } from "./drop";
 import { openSource, removeSource, updateSource, useSources } from "./sources";
+import { SpeakersLine, SpeakersStep } from "./SpeakersStep";
 
 /*
  * The Sources tab of a Discovery board: the material customers' words come from (documents, web
- * pages, pasted notes, items from connected tools). Qalam AI picks out what customers said and
- * code keeps only quotes it finds word for word, highlighted in the source. Drag a quote onto an
- * opportunity or a solution to back it, or a source onto the board for a note of it. Words can
- * also be quoted by hand: select them in the source's text.
+ * pages, pasted notes, interviews' caption files, items from connected tools). Qalam AI picks out
+ * what customers said and code keeps only quotes it finds word for word, highlighted in the
+ * source. Drag a quote onto an opportunity or a solution to back it, or a source onto the board
+ * for a note of it. Words can also be quoted by hand: select them in the source's text. An
+ * interview first asks who is who: only participants are quoted.
  */
 
 const ICON = { size: 14, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 const SMALL = { size: 12, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 
-const KIND_ICON: Record<SourceKind, typeof FileText> = { pdf: FileText, docx: FileText, markdown: FileText, text: FileText, paste: ClipboardPaste, url: Globe, connector: Plug };
+const KIND_ICON: Record<SourceKind, typeof FileText> = { pdf: FileText, docx: FileText, markdown: FileText, text: FileText, paste: ClipboardPaste, url: Globe, connector: Plug, interview: MessagesSquare };
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
@@ -105,7 +109,9 @@ function SourceList() {
 
 function metaOf(s: SourceRecord): string {
   const left = unread(s).length;
-  return [SOURCE_KIND_LABEL[s.kind], s.pages ? plural(s.pages.length, "page") : "", plural(s.quotes.length, "quote"), left && s.read.length ? `${left} unread` : ""].filter(Boolean).join(" · ");
+  const t = s.transcript;
+  const talk = t ? [`${Math.max(1, Math.round(t.durationSec / 60))} min`, plural(t.speakers.length, "speaker")] : [];
+  return [SOURCE_KIND_LABEL[s.kind], ...talk, s.pages ? plural(s.pages.length, "page") : "", awaitingRoles(s) ? "Say who is who" : plural(s.quotes.length, "quote"), left && s.read.length ? `${left} unread` : ""].filter(Boolean).join(" · ");
 }
 
 function SourceRow({ source, quoting }: { source: SourceRecord; quoting: boolean }) {
@@ -336,7 +342,7 @@ function DropZone({ onFiles }: { onFiles: (files: File[]) => void }) {
       className={clsx("flex flex-col items-center gap-[8px] rounded-lg px-[12px] py-[16px] text-center [border:1px_dashed_var(--color-line-strong)]", over ? "bg-selection-subtle" : "bg-muted")}
     >
       <Upload {...ICON} className="text-fg-subtle" />
-      <span className="text-caption text-fg-muted">Drop PDF, Word, Markdown or text files</span>
+      <span className="text-caption text-fg-muted">Drop PDF, Word, Markdown, text or caption files (.vtt, .srt)</span>
       <Button size="sm" variant="secondary" onClick={() => input.current?.click()}>
         Choose files…
       </Button>
@@ -389,6 +395,8 @@ function SourceView({ source, focus }: { source: SourceRecord; focus?: string })
   const web = source.origin && /^https?:/i.test(source.origin) ? source.origin : null;
   const left = useMemo(() => unread(source).length, [source]);
   const quotes = source.quotes;
+  const [changing, setChanging] = useState(false);
+  const roles = awaitingRoles(source) || changing;
   return (
     <div className="flex flex-col gap-[10px] px-[12px] pt-[2px] pb-[16px]">
       <div className="flex items-start gap-[4px]">
@@ -410,6 +418,7 @@ function SourceView({ source, focus }: { source: SourceRecord; focus?: string })
           <Trash2 {...SMALL} />
         </IconBtn>
       </div>
+      {source.transcript && (roles ? <SpeakersStep source={source} onDone={changing ? () => setChanging(false) : undefined} /> : <SpeakersLine t={source.transcript} onChange={() => setChanging(true)} />)}
       <Segmented
         label="Show"
         value={tab}
@@ -426,7 +435,7 @@ function SourceView({ source, focus }: { source: SourceRecord; focus?: string })
       {tab === "quotes" ? (
         <div className="flex flex-col gap-[8px]">
           {quotes.length > 0 && <p className="text-micro text-fg-subtle">Drag a quote onto an opportunity or a solution to back it.</p>}
-          {!quotes.length && !quoting && (
+          {!quotes.length && !quoting && !awaitingRoles(source) && (
             <p className="text-caption text-fg-muted">
               No quotes yet. {source.read.length ? "Qalam AI found no customer's words in what it read." : ""} Select words in the text to quote them yourself.
             </p>
@@ -434,7 +443,7 @@ function SourceView({ source, focus }: { source: SourceRecord; focus?: string })
           {quotes.map((q) => (
             <QuoteCard key={q.id} source={source} q={q} cards={onCards.get(`${q.span[0]}:${q.span[1]}`) ?? []} onShow={() => openSource(source.id, q.id)} />
           ))}
-          {left > 0 && !busy && (
+          {left > 0 && !busy && !awaitingRoles(source) && (
             <Button size="sm" variant="secondary" className="self-start" onClick={() => void keepReading([source.id])}>
               <QalamAIGlyph size={12} /> {source.read.length ? `Keep reading (${plural(left, "part")} left)` : "Find quotes"}
             </Button>
@@ -448,7 +457,7 @@ function SourceView({ source, focus }: { source: SourceRecord; focus?: string })
 }
 
 function QuoteCard({ source, q, cards, onShow }: { source: SourceRecord; q: SourceQuote; cards: { id: string; title: string; against: boolean }[]; onShow: () => void }) {
-  const meta: ReactNode[] = [q.speaker, q.page ? `p. ${q.page}` : null, q.addedBy === "user" ? "Picked by you" : null].filter(Boolean);
+  const meta: ReactNode[] = [q.time ? clock(q.time[0]) : null, q.speaker, q.page ? `p. ${q.page}` : null, q.addedBy === "user" ? "Picked by you" : null].filter(Boolean);
   return (
     <figure
       draggable
@@ -548,10 +557,13 @@ const SourceText = memo(function SourceText({ source, focus }: { source: SourceR
 
   const keep = () => {
     if (!pick) return;
-    const q: SourceQuote = { id: newId(), text: source.text.slice(pick.start, pick.end), span: [pick.start, pick.end], ...(pageAt(source.pages, pick.start) ? { page: pageAt(source.pages, pick.start) } : {}), kind: "need", addedBy: "user", at: Date.now() };
-    void updateSource(source.id, (s) => ({ ...s, quotes: [...s.quotes, q].sort((x, y) => x.span[0] - y.span[0]) }));
+    const picked: SourceQuote = { id: newId(), text: source.text.slice(pick.start, pick.end), span: [pick.start, pick.end], ...(pageAt(source.pages, pick.start) ? { page: pageAt(source.pages, pick.start) } : {}), kind: "need", addedBy: "user", at: Date.now() };
     window.getSelection()?.removeAllRanges();
     setPick(null);
+    // In an interview, only a participant's words, within one person's turns (and who said them, when).
+    const [q] = source.transcript ? (awaitingRoles(source) ? [] : finishInterviewQuotes(source, [picked])) : [picked];
+    if (!q) return feedback(awaitingRoles(source) ? "Say who is who first: only participants' words are quoted" : "Only a participant's words can be quoted, from one person's turns", { id: "discovery.quote" });
+    void updateSource(source.id, (s) => ({ ...s, quotes: [...s.quotes, q].sort((x, y) => x.span[0] - y.span[0]) }));
     openSource(source.id, q.id);
   };
 

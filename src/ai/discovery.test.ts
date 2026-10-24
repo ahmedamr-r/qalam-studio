@@ -107,6 +107,11 @@ describe("Sources requests", () => {
     const text = extractContent({ stage: "extract", product: "A grocery app", chunks: [chunk("c1"), { ...chunk("c2"), source: 'Notes "v2"' }] });
     expect(text).toContain('<part id="c1" source="Interviews.pdf (PDF)">\nP3: I never know');
     expect(text).toContain("source=\"Notes 'v2' (PDF)\"");
+    // An interview's part says who is who.
+    const interview = { ...chunk("c1"), kind: "Interview", speakers: 'S1 (Lina "L") is the interviewer; S2 is a participant' };
+    expect(DiscoveryBody.safeParse({ stage: "extract", product: "", chunks: [interview] }).success).toBe(true);
+    expect(extractContent({ stage: "extract", product: "", chunks: [interview] })).toContain(`(Interview)" speakers="S1 (Lina 'L') is the interviewer; S2 is a participant">`);
+    expect(DiscoveryBody.safeParse({ stage: "extract", product: "", chunks: [{ ...interview, speakers: "x".repeat(401) }] }).success).toBe(false);
     const outline = synthesizeContent({ stage: "synthesize", product: "", tree, quotes, needs: [{ title: "Arrival times", quoteIds: ["q1"] }] });
     expect(outline).toContain("- c1 · outcome · More weekly reorders\n  - c2 · opportunity · I can't tell when my order arrives (2 quotes)\n    - c3 · solution · Live tracking");
     expect(outline).toContain("- q1 · pain · Interviews.pdf · P3: “I never know when the driver will turn up”");

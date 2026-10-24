@@ -1,9 +1,12 @@
 import type { SourceKind } from "@/discovery/sources";
+import type { TranscriptMeta, TranscriptSegment } from "@/discovery/transcript";
 
 /*
  * Bringing material onto a board, in the browser: each format's reader loads only when that format
  * comes in (pdf.js and mammoth are large). What comes out is the raw text the board keeps as the
- * source, which quotes are checked against; nothing is summarized or rewritten on the way.
+ * source, which quotes are checked against; nothing is summarized or rewritten on the way. A
+ * caption file with two or more speakers (Zoom, Teams) becomes an interview: its text is the
+ * transcript, turn by turn, with when each part was said and who said it.
  */
 
 export interface Ingested {
@@ -14,6 +17,9 @@ export interface Ingested {
   text: string;
   pages?: number[];
   truncated?: boolean;
+  /** Interviews. */
+  segments?: TranscriptSegment[];
+  transcript?: TranscriptMeta;
 }
 
 /** Something the builder can fix (a scan, a format Qalam can't read): its message is for them. */
@@ -23,15 +29,31 @@ const DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.doc
 const MAX_FILE = 40 * 1024 * 1024;
 
 /** What files the pickers offer. */
-export const ACCEPT = ".pdf,.docx,.md,.markdown,.txt,.text,.csv,.tsv,.vtt,.srt,.html,.htm,application/pdf,text/plain,text/markdown,text/csv,text/html," + DOCX;
+export const ACCEPT = ".pdf,.docx,.md,.markdown,.txt,.text,.csv,.tsv,.vtt,.srt,.html,.htm,application/pdf,text/plain,text/markdown,text/csv,text/html,text/vtt," + DOCX;
 
 const stem = (name: string) => name.replace(/\.[^.]+$/, "").trim() || name;
 
-async function capped(kind: SourceKind, title: string, origin: string | undefined, text: string, pages?: number[]): Promise<Ingested> {
+async function capped(kind: SourceKind, title: string, origin: string | undefined, text: string, pages?: number[], spoken?: Pick<Ingested, "segments" | "transcript">): Promise<Ingested> {
   const { capText } = await import("./text");
   const c = capText(text);
   if (!c.text.trim()) throw new IngestError(`${title} has no text in it.`);
-  return { kind, title: title.slice(0, 160), ...(origin ? { origin } : {}), text: c.text, ...(pages ? { pages: c.truncated ? pages.filter((p) => p < c.text.length) : pages } : {}), ...(c.truncated ? { truncated: true } : {}) };
+  let talk = spoken?.segments && spoken.transcript ? { segments: spoken.segments, transcript: spoken.transcript } : undefined;
+  if (talk && c.truncated) {
+    const { trimTranscript } = await import("@/discovery/transcript");
+    talk = trimTranscript(talk, c.text.length);
+  }
+  return { kind, title: title.slice(0, 160), ...(origin ? { origin } : {}), text: c.text, ...(pages ? { pages: c.truncated ? pages.filter((p) => p < c.text.length) : pages } : {}), ...(c.truncated ? { truncated: true } : {}), ...talk };
+}
+
+/** A caption file: an interview when two or more people speak in it, else its words as plain text. */
+async function fromCaptions(text: string, name: string, origin: string | undefined, format: "vtt" | "srt"): Promise<Ingested> {
+  const { captionText, parseCaptions, speakerCount } = await import("@/discovery/captions");
+  const raw = parseCaptions(text, format);
+  if (!raw.segments.length) throw new IngestError(`${name} has no captions in it.`);
+  if (speakerCount(raw) < 2) return capped("text", stem(name), origin, captionText(raw));
+  const { buildTranscript } = await import("@/discovery/transcript");
+  const b = buildTranscript(raw);
+  return capped("interview", stem(name), origin, b.text, undefined, b);
 }
 
 async function fromBytes(bytes: ArrayBuffer, type: string, name: string, origin?: string): Promise<Ingested> {
@@ -55,6 +77,8 @@ async function fromBytes(bytes: ArrayBuffer, type: string, name: string, origin?
   }
   if (ext === "doc") throw new IngestError(`${name} is an old Word file (.doc). Save it as .docx, then add it.`);
   const text = decodeText(bytes, type);
+  if (type === "text/vtt" || ext === "vtt" || /^﻿?WEBVTT/.test(text)) return fromCaptions(text, name, origin, "vtt");
+  if (ext === "srt" || type === "application/x-subrip") return fromCaptions(text, name, origin, "srt");
   if (type === "text/html" || type === "application/xhtml+xml" || ext === "html" || ext === "htm" || (!type && /^\s*<(!doctype|html)/i.test(text))) {
     const { htmlToText } = await import("./html");
     const r = htmlToText(text);
@@ -64,7 +88,7 @@ async function fromBytes(bytes: ArrayBuffer, type: string, name: string, origin?
     const { markdownToText } = await import("./markdown");
     return capped("markdown", stem(name), origin, markdownToText(text));
   }
-  if (type.startsWith("text/") || type === "application/json" || ["txt", "text", "csv", "tsv", "vtt", "srt", "log", "json"].includes(ext) || !type) {
+  if (type.startsWith("text/") || type === "application/json" || ["txt", "text", "csv", "tsv", "log", "json"].includes(ext) || !type) {
     const { cleanText } = await import("./text");
     return capped("text", stem(name), origin, cleanText(text));
   }

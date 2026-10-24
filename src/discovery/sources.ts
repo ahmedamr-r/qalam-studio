@@ -1,14 +1,15 @@
 import { newId } from "@/doc/factory";
 import type { OstCard, OstEvidence } from "./types";
+import { clock, type TranscriptMeta, type TranscriptSegment } from "./transcript";
 
 /*
- * A Discovery board's sources (pure): documents, web pages, pasted text and items from connected
- * tools, kept as the raw text code checks quotes against. Qalam AI reads a source in chunks of
- * about 20k characters (several small ones share a call), picks out what customers said, and code
- * keeps a quote only where it finds it in the chunk, word for word, with where it sits.
+ * A Discovery board's sources (pure): documents, web pages, pasted text, interviews and items from
+ * connected tools, kept as the raw text code checks quotes against. Qalam AI reads a source in
+ * chunks of about 20k characters (several small ones share a call), picks out what customers said,
+ * and code keeps a quote only where it finds it in the chunk, word for word, with where it sits.
  */
 
-export type SourceKind = "pdf" | "docx" | "markdown" | "text" | "paste" | "url" | "connector";
+export type SourceKind = "pdf" | "docx" | "markdown" | "text" | "paste" | "url" | "connector" | "interview";
 
 export const SOURCE_KIND_LABEL: Record<SourceKind, string> = {
   pdf: "PDF",
@@ -18,6 +19,7 @@ export const SOURCE_KIND_LABEL: Record<SourceKind, string> = {
   paste: "Pasted text",
   url: "Web page",
   connector: "Connected tool",
+  interview: "Interview",
 };
 
 /** What a quote shows about the customer. */
@@ -38,6 +40,10 @@ export interface SourceQuote {
   page?: number;
   /** Who said it, as the source names them (kept only if the source has the name). */
   speaker?: string;
+  /** Interviews: the speaker's id in the transcript, the turns the words are in, and when they were said ([start, end) seconds). Set by code. */
+  speakerId?: string;
+  turnIds?: string[];
+  time?: [number, number];
   kind: QuoteKind;
   /** Picked by Qalam AI, or selected by hand. */
   addedBy: "ai" | "user";
@@ -67,6 +73,9 @@ export interface SourceRecord {
   pages?: number[];
   /** Only the start of a longer text was kept. */
   truncated?: boolean;
+  /** Interviews: where each stretch of speech sits in `text` and when it was said, and who spoke. */
+  segments?: TranscriptSegment[];
+  transcript?: TranscriptMeta;
   addedAt: number;
   /** The chunks Qalam AI has read (indices into `chunkText(text)`). */
   read: number[];
@@ -179,6 +188,7 @@ export function quoteEvidence(source: Pick<SourceRecord, "id" | "title">, q: Sou
     span: [q.span[0], q.span[1]],
     ...(q.page ? { page: q.page } : {}),
     ...(q.speaker ? { speaker: q.speaker } : {}),
+    ...(q.time ? { time: [q.time[0], q.time[1]] as [number, number] } : {}),
     ...(opts.against ? { stance: "against" as const } : {}),
     addedBy,
     at: opts.now ?? Date.now(),
@@ -192,7 +202,7 @@ export const hasQuote = (card: Pick<OstCard, "evidence">, sourceId: string, span
 /** Cards a quote can back: needs and the solutions to them. */
 export const quotable = (card: Pick<OstCard, "kind"> | undefined) => card?.kind === "opportunity" || card?.kind === "solution";
 
-/** "Interviews.pdf · p. 3 · Sara": where a quote is from, for captions. */
-export function citation(e: Pick<OstEvidence, "sourceTitle" | "page" | "speaker">, sourceTitle?: string): string {
-  return [sourceTitle ?? e.sourceTitle, e.page ? `p. ${e.page}` : "", e.speaker ?? ""].filter(Boolean).join(" · ");
+/** "Interviews.pdf · p. 3 · Sara", "Omar interview · 12:30 · Omar": where a quote is from, for captions. */
+export function citation(e: Pick<OstEvidence, "sourceTitle" | "page" | "speaker" | "time">, sourceTitle?: string): string {
+  return [sourceTitle ?? e.sourceTitle, e.page ? `p. ${e.page}` : "", e.time ? clock(e.time[0]) : "", e.speaker ?? ""].filter(Boolean).join(" · ");
 }
