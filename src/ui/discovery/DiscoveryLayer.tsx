@@ -5,11 +5,12 @@ import StartSheet from "./StartSheet";
 import DesignThis from "./DesignThis";
 import ReviewLayer from "./ReviewLayer";
 import BrainDump from "./BrainDump";
+import WhyPrompt from "../decisions/WhyPrompt";
 
 /**
  * The Discovery board's DOM over the canvas: the title being typed, the bar over the selected
  * card, the start sheet (interview, sample, import, blank), the Design this card, Qalam AI's
- * proposals under review, and the brain dump card. Only in Discovery.
+ * proposals under review, the brain dump card, and the why a big decision asks for. Only in Discovery.
  */
 export default function DiscoveryLayer() {
   const ref = useRef<HTMLDivElement>(null);
@@ -29,6 +30,7 @@ export default function DiscoveryLayer() {
           <DesignThis vp={vp} />
           <ReviewLayer vp={vp} />
           <BrainDump vp={vp} />
+          <WhyPrompt />
           <StartSheet />
         </>
       )}

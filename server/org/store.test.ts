@@ -3,6 +3,7 @@ import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { Decision } from "@/decisions/model";
 import type { Doc } from "@/doc/schema";
 import type { SourceRecord } from "@/discovery/sources";
 import type { Project } from "@/projects/model";
@@ -197,6 +198,51 @@ describe("products and the organization", () => {
   });
 });
 
+describe("the decision log", () => {
+  const at = new Date(2026, 9, 27, 15).getTime();
+  const decision = (id: string, over: Partial<Decision> = {}): Decision => ({ id, at, kind: "stage", board: board.id, boardName: "Reorders Q2", card: "c1", cardTitle: "Saved baskets", what: "Dropped the solution “Saved baskets”", by: "you", big: true, ...over });
+
+  it("adds decisions to their month's file, once, and lists them newest first", async () => {
+    await store.appendDecisions([decision("d1"), decision("d2", { at: at + 1000, card: "c2" })]);
+    await store.appendDecisions([decision("d1"), decision("d3", { at: new Date(2026, 10, 2).getTime(), board: "other12345" })]);
+    expect((await readdir(path.join(dir, "decisions"))).sort()).toEqual(["2026-10.md", "2026-11.md"]);
+    const oct = await readFile(path.join(dir, "decisions", "2026-10.md"), "utf8");
+    expect(oct.match(/^## /gm)).toHaveLength(2);
+    expect(oct).toContain("## 2026-10-27 · Dropped the solution “Saved baskets” · Reorders Q2");
+    expect(await readFile(path.join(dir, ".gitattributes"), "utf8")).toBe("decisions/*.md merge=union\n");
+    expect(store.listDecisions().map((d) => d.id)).toEqual(["d3", "d2", "d1"]);
+    expect(store.listDecisions({ board: board.id, card: "c1" }).map((d) => d.id)).toEqual(["d1"]);
+    expect(events.filter((e) => e.kind === "decision")).toEqual([
+      { kind: "decision", ids: ["d1", "d2"], boards: [board.id] },
+      { kind: "decision", ids: ["d1", "d3"], boards: [board.id, "other12345"] },
+    ]);
+  });
+
+  it("writes a why and marks one undone, rewriting only that entry", async () => {
+    await store.appendDecisions([decision("d1"), decision("d2", { what: "Parked “Late slots”" })]);
+    const file = path.join(dir, "decisions", "2026-10.md");
+    const before = await readFile(file, "utf8");
+    await store.updateDecision("d1", { why: "Folded into the shelf" });
+    await store.updateDecision("d1", { undone: true });
+    const after = await readFile(file, "utf8");
+    expect(after).toContain("**Why:** Folded into the shelf");
+    expect(after).toContain("“Saved baskets” (undone) · Reorders Q2");
+    expect(after.slice(after.indexOf("## 2026-10-27 · Parked"))).toBe(before.slice(before.indexOf("## 2026-10-27 · Parked")));
+    expect(store.listDecisions().find((d) => d.id === "d1")).toMatchObject({ why: "Folded into the shelf", undone: true });
+    await expect(store.updateDecision("nope", { why: "x" })).rejects.toThrow();
+  });
+
+  it("reads a why written in the file by hand", async () => {
+    await store.appendDecisions([decision("d1")]);
+    const file = path.join(dir, "decisions", "2026-10.md");
+    await writeFile(file, (await readFile(file, "utf8")).replace("**Why:** —", "**Why:** Nobody used it"));
+    events.length = 0;
+    await store.reload("decisions/2026-10.md");
+    expect(events).toEqual([{ kind: "decision", ids: ["d1"], boards: [board.id] }]);
+    expect(store.listDecisions()[0].why).toBe("Nobody used it");
+  });
+});
+
 describe("changes made outside Qalam", () => {
   it("ignores its own writes and picks up an edit, a new file and a deletion", async () => {
     await store.putProject(board);
@@ -228,8 +274,10 @@ describe("changes made outside Qalam", () => {
     edited.name = "Renamed in Finder";
     await new Promise((r) => setTimeout(r, 100));
     await writeFile(file, JSON.stringify(edited));
-    for (let i = 0; i < 40 && !events.length; i++) await new Promise((r) => setTimeout(r, 50));
-    expect(events[0]).toMatchObject({ kind: "project", id: board.id, parts: ["record"] });
+    // The folder's own earlier writes can be reported late: wait for the board's.
+    const edit = () => events.find((e) => e.kind === "project");
+    for (let i = 0; i < 40 && !edit(); i++) await new Promise((r) => setTimeout(r, 50));
+    expect(edit()).toMatchObject({ kind: "project", id: board.id, parts: ["record"] });
     expect(store.getProject(board.id)?.record.name).toBe("Renamed in Finder");
   });
 });

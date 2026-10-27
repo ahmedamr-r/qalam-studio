@@ -21,6 +21,9 @@ import KindMark from "./KindMark";
 import { saveThenGo } from "./links";
 import { addFromOrganization, openSource, useSources } from "./sources";
 import { orgJson } from "@/org/client";
+import { useProject } from "@/projects/session";
+import DecisionRow from "../decisions/DecisionRow";
+import { useDecisions } from "../decisions/list";
 import { citation, fromSource, quoteOf, type SourceRecord } from "@/discovery/sources";
 
 const ICON = { size: 12, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
@@ -106,7 +109,24 @@ function OneCard({ id, card }: { id: string; card: OstCard }) {
       {card.kind === "solution" && <AssumptionsSection id={id} card={card} />}
       {card.kind === "solution" && <DesignsSection id={id} card={card} />}
       {card.kind === "test" && <TestSection id={id} card={card} />}
+      <HistorySection id={id} />
     </>
+  );
+}
+
+/** What was decided about this card, newest first, with what it rested on each time (the organization's decision log). */
+function HistorySection({ id }: { id: string }) {
+  const board = useProject((s) => s.project?.id);
+  const list = useDecisions(board ? { board, card: id, limit: 30 } : null);
+  if (!list?.length) return null;
+  return (
+    <Section title={`History · ${list.length}`}>
+      <div className="flex flex-col divide-y divide-line-subtle">
+        {list.map((d) => (
+          <DecisionRow key={d.id} d={d} />
+        ))}
+      </div>
+    </Section>
   );
 }
 

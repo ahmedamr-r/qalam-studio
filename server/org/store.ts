@@ -2,6 +2,8 @@ import { EventEmitter } from "node:events";
 import { watch, type FSWatcher } from "node:fs";
 import { readdir, readFile, rm } from "node:fs/promises";
 import path from "node:path";
+import { appendEntries, decisionsFromMarkdown, replaceEntry } from "@/decisions/format";
+import { monthOf, type Decision } from "@/decisions/model";
 import type { Doc } from "@/doc/schema";
 import type { OstCard } from "@/discovery/types";
 import type { SourceRecord } from "@/discovery/sources";
@@ -33,6 +35,7 @@ export type OrgEvent = { tab?: string } & (
   | { kind: "product"; id: string; removed?: boolean }
   | { kind: "about" }
   | { kind: "org" }
+  | { kind: "decision"; ids: string[]; boards: string[] }
 );
 
 /** An outcome on one of the organization's boards: the home's goals, by product. */
@@ -90,6 +93,9 @@ export class OrgStore {
   private chats = new Map<string, string>();
   private assets = new Map<string, string>();
   private products = new Map<string, string>();
+  /** The decision log: each month file's decisions. */
+  private decisions = new Map<string, Decision[]>();
+  private unionChecked = false;
   /** Each board's outcomes, as of its document's version. */
   private goals = new Map<string, { docV: string; goals: Omit<Goal, "boardName" | "product">[] }>();
   private local: LocalState = { projects: {} };
@@ -169,6 +175,7 @@ export class OrgStore {
     for (const md of await this.files("sources", ".md")) await this.indexSource(md);
     for (const file of await this.files("design-systems", ".json")) await this.indexSystem(file);
     for (const file of await this.files("products", ".md")) await this.indexProduct(file);
+    for (const file of await this.files("decisions", ".md")) await this.indexDecisions(file);
     for (const file of await this.files("assets", "")) this.assets.set(path.basename(file).replace(/\.[^.]+$/, ""), file);
     try {
       for (const d of await readdir(this.abs("chats"), { withFileTypes: true })) if (d.isDirectory()) for (const file of await this.files(`chats/${d.name}`, ".json")) await this.indexChat(file);
@@ -224,6 +231,17 @@ export class OrgStore {
       return p;
     } catch {
       return null;
+    }
+  }
+
+  private async indexDecisions(file: string): Promise<Decision[]> {
+    try {
+      const list = decisionsFromMarkdown(await readFile(file, "utf8"));
+      this.decisions.set(file, list);
+      return list;
+    } catch {
+      this.decisions.delete(file);
+      return [];
     }
   }
 
@@ -507,6 +525,82 @@ export class OrgStore {
   }
 
   // -------------------------------------------------------------------------
+  // Decisions: a log a month (decisions/<YYYY-MM>.md), added to as boards change.
+
+  /** Decisions, newest first: all of them, a board's, or a card's. */
+  listDecisions(q: { board?: string; card?: string; limit?: number } = {}): Decision[] {
+    const seen = new Set<string>();
+    const out: Decision[] = [];
+    for (const list of this.decisions.values())
+      for (const d of list) {
+        if (seen.has(d.id) || (q.board && d.board !== q.board) || (q.card && d.card !== q.card && !cardsOf(d).includes(q.card))) continue;
+        seen.add(d.id);
+        out.push(d);
+      }
+    out.sort((a, b) => b.at - a.at);
+    return q.limit ? out.slice(0, q.limit) : out;
+  }
+
+  /** Add decisions to their months' logs. One already there (a retried request) isn't added twice. */
+  async appendDecisions(list: Decision[], opts: { tab?: string } = {}): Promise<void> {
+    if (!list.length) return;
+    await this.unionMerge();
+    const byMonth = new Map<string, Decision[]>();
+    for (const d of list) byMonth.set(monthOf(d.at), [...(byMonth.get(monthOf(d.at)) ?? []), d]);
+    for (const [month, ds] of byMonth) {
+      const file = this.abs(`decisions/${month}.md`);
+      await locked(file, async () => {
+        const had = await readFile(file, "utf8").catch(() => null);
+        const known = new Set(decisionsFromMarkdown(had ?? "").map((d) => d.id));
+        const fresh = ds.filter((d) => !known.has(d.id));
+        if (!fresh.length) return;
+        const text = appendEntries(had, month, fresh);
+        await this.write(file, text);
+        this.decisions.set(file, decisionsFromMarkdown(text));
+      });
+    }
+    this.emit({ kind: "decision", ids: list.map((d) => d.id), boards: [...new Set(list.map((d) => d.board))], tab: opts.tab });
+  }
+
+  /** Write or correct a decision's why, or mark it undone (it stays in the log). */
+  async updateDecision(id: string, patch: { why?: string | null; undone?: boolean }, opts: { tab?: string } = {}): Promise<Decision> {
+    const file = [...this.decisions].find(([, list]) => list.some((d) => d.id === id))?.[0];
+    if (!file) throw new NotFoundError(id);
+    return locked(file, async () => {
+      const text = await readFile(file, "utf8");
+      const d = decisionsFromMarkdown(text).find((x) => x.id === id);
+      if (!d) throw new NotFoundError(id);
+      const next: Decision = { ...d };
+      if (patch.why !== undefined) {
+        if (patch.why?.trim()) next.why = patch.why.trim();
+        else delete next.why;
+      }
+      if (patch.undone !== undefined) {
+        if (patch.undone) next.undone = true;
+        else delete next.undone;
+      }
+      const out = replaceEntry(text, next);
+      if (out === null) throw new NotFoundError(id);
+      await this.write(file, out);
+      this.decisions.set(file, decisionsFromMarkdown(out));
+      this.emit({ kind: "decision", ids: [id], boards: [d.board], tab: opts.tab });
+      return next;
+    });
+  }
+
+  /** Two people adding to the same month's log keep both their entries when Git merges (.gitattributes). */
+  private async unionMerge() {
+    if (this.unionChecked) return;
+    this.unionChecked = true;
+    const file = this.abs(".gitattributes");
+    await locked(file, async () => {
+      const had = await readFile(file, "utf8").catch(() => "");
+      if (had.split(/\r?\n/).some((l) => l.trim().startsWith("decisions/"))) return;
+      await this.write(file, `${had}${had && !had.endsWith("\n") ? "\n" : ""}decisions/*.md merge=union\n`);
+    });
+  }
+
+  // -------------------------------------------------------------------------
   // Chats and AI traces (AI working memory: kept out of Git by .gitignore)
 
   async listChats(): Promise<unknown[]> {
@@ -717,11 +811,20 @@ export class OrgStore {
           this.emit({ kind: "product", id: gone[0], removed: true });
         }
       }
+    } else if (parts[0] === "decisions" && parts.length === 2 && rel.endsWith(".md")) {
+      const before = new Map((this.decisions.get(file) ?? []).map((d) => [d.id, JSON.stringify(d)]));
+      const after = bytes ? await this.indexDecisions(file) : [];
+      if (!bytes) this.decisions.delete(file);
+      const changed = after.filter((d) => before.get(d.id) !== JSON.stringify(d));
+      const gone = [...before.keys()].filter((id) => !after.some((d) => d.id === id));
+      const boards = new Set(changed.map((d) => d.board));
+      for (const id of gone) boards.add((JSON.parse(before.get(id)!) as Decision).board);
+      if (changed.length || gone.length) this.emit({ kind: "decision", ids: [...changed.map((d) => d.id), ...gone], boards: [...boards] });
     } else if (rel === "about.md") {
       this.emit({ kind: "about" });
     } else if (rel === "org.json" && bytes) {
       const info = await readJson<OrgInfo>(file);
-      if (info?.qalam === "org/1" && info.id === this.org.id) {
+      if (info?.qalam === "org/1" && info.id === this.org.id && stableStringify(info) !== stableStringify(this.org)) {
         this.org = info;
         this.emit({ kind: "org" });
       }
@@ -732,6 +835,9 @@ export class OrgStore {
     }
   }
 }
+
+/** The cards a batch decision touched (accepting or discarding Qalam AI's proposals). */
+const cardsOf = (d: Decision): unknown[] => (Array.isArray(d.detail?.cards) ? (d.detail.cards as unknown[]) : []);
 
 /** A board's outcomes, each with the outcome it sits under (sub-outcomes). */
 function goalsOf(record: Project, doc: Doc | null): Omit<Goal, "boardName" | "product">[] {

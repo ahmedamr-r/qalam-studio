@@ -22,6 +22,7 @@ import { loadSources, openSource, reloadSources, sourceOf, useSources } from "./
 import { evidenceToLink, linkEvidenceIn } from "@/hub/migrate";
 import { onOrgChange } from "@/org/live";
 import { ensureDumpHandlers, resumeDumps } from "./dump";
+import { startRecorder } from "../decisions/recorder";
 
 /**
  * A Discovery project opening: the board's layout pass, gestures and commands are installed (a
@@ -53,6 +54,8 @@ export function startDiscoveryStudio(p: Project): (doc: Doc) => void {
   if (!hasTree && stage !== "ready") useDiscovery.setState({ sheet: stage === "interview" ? "interview" : "start" });
 
   void refreshDesigns(p.id);
+  // What gets decided on the board goes to the organization's decision log.
+  startRecorder();
   ensureDumpHandlers();
   void loadSources(p.id).then(resumeDumps).then(linkEvidence).then(openSourceFromUrl);
   onOrgChange((c) => {

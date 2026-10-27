@@ -23,10 +23,13 @@ import { ContextCard, ContextEditorHost, editContext } from "../org/ContextEdito
 import { GoalsList, type Goal } from "../org/Goals";
 import { OrgSwitcher } from "../org/OrgSwitcher";
 import { SourcesList } from "../org/SourcesList";
+import { DecisionsList } from "../org/DecisionsList";
+import { useDecisions } from "../decisions/list";
+import { ago } from "../time";
 
 /**
- * An organization's home: what it and its products are, every board's goals, the boards and the
- * sources, by product. Design work (screens, design systems) waits below, on hold. Everything is
+ * An organization's home: what it and its products are, every board's goals, the boards, the
+ * sources and the decisions made on the boards, by product. Design work (screens, design systems) waits below, on hold. Everything is
  * saved in the organization's folder on disk.
  */
 
@@ -42,7 +45,8 @@ export default function Home() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [sources, setSources] = useState<SourceRecord[]>([]);
   const [scope, setScopeState] = useState<Scope>(readScope);
-  const [tab, setTab] = useState<"boards" | "sources">("boards");
+  const [tab, setTab] = useState<"boards" | "sources" | "decisions">("boards");
+  const decisions = useDecisions({ limit: 300 });
   const { products, about, loaded } = useOrgContext();
 
   const refresh = useCallback(() => {
@@ -106,6 +110,8 @@ export default function Home() {
   const design = (projects ?? []).filter((p) => p.type !== "discovery");
   const scopedGoals = goals.filter((g) => inScope(g.product, scope));
   const scopedSources = sources.filter((s) => inScope(s.product, scope));
+  // A decision is for its board's product as it is now (it records the one it had then, for a board since deleted).
+  const scopedDecisions = (decisions ?? []).filter((d) => inScope((projects ?? []).find((p) => p.id === d.board)?.product ?? d.product, scope));
   const orgName = org?.name ?? "Organization";
 
   return (
@@ -171,7 +177,7 @@ export default function Home() {
             {scopedGoals.length ? <GoalsList goals={scopedGoals} /> : <p className="text-body text-fg-muted">No outcomes yet. Every outcome on a board shows here, with the board it's on.</p>}
           </section>
 
-          <section aria-label="Boards and sources" className="flex flex-col gap-[12px]">
+          <section aria-label="Boards, sources and decisions" className="flex flex-col gap-[12px]">
             <div className="flex items-center justify-between gap-[12px]">
               <Segmented
                 label="Show"
@@ -180,6 +186,7 @@ export default function Home() {
                 options={[
                   { value: "boards", label: <span className="whitespace-nowrap px-[4px]">Boards{boards.length ? ` · ${boards.length}` : ""}</span> },
                   { value: "sources", label: <span className="whitespace-nowrap px-[4px]">Sources{scopedSources.length ? ` · ${scopedSources.length}` : ""}</span> },
+                  { value: "decisions", label: <span className="whitespace-nowrap px-[4px]">Decisions{scopedDecisions.length ? ` · ${scopedDecisions.length}` : ""}</span> },
                 ]}
               />
               {tab === "boards" && (
@@ -188,7 +195,9 @@ export default function Home() {
                 </Button>
               )}
             </div>
-            {tab === "sources" ? (
+            {tab === "decisions" ? (
+              <DecisionsList decisions={scopedDecisions} projects={projects ?? []} />
+            ) : tab === "sources" ? (
               <SourcesList sources={scopedSources} projects={projects ?? []} products={products} onChanged={refresh} />
             ) : projects === null ? (
               <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-[16px]" aria-hidden>
@@ -418,19 +427,6 @@ function ProjectCard({ p, products, onChanged }: { p: Project; products: Product
       </div>
     </div>
   );
-}
-
-const rtf = typeof Intl !== "undefined" ? new Intl.RelativeTimeFormat("en", { numeric: "auto" }) : null;
-
-/** "just now", "5 minutes ago", "yesterday"… */
-export function ago(ts: number, now = Date.now()): string {
-  const s = Math.round((ts - now) / 1000);
-  const abs = Math.abs(s);
-  if (!rtf || abs < 45) return "just now";
-  if (abs < 3600) return rtf.format(Math.round(s / 60), "minute");
-  if (abs < 86400) return rtf.format(Math.round(s / 3600), "hour");
-  if (abs < 86400 * 30) return rtf.format(Math.round(s / 86400), "day");
-  return new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
 /**

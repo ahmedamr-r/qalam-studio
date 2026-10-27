@@ -71,6 +71,8 @@ export interface OstAssumption {
   /** How much we already know (3 = strong evidence). */
   evidence?: 1 | 2 | 3;
   addedBy: "user" | "ai";
+  /** When it was added (stamped by the decision recorder). */
+  at?: number;
 }
 
 export interface OstMetric {
@@ -100,6 +102,8 @@ export interface OstCard {
   title: string;
   description?: string;
   stage: OstStage;
+  /** When it got its stage (stamped by the decision recorder): how long a test has run, an idea waited. */
+  stageAt?: number;
   /** Drafted by Qalam AI (an opportunity with no evidence then shows as Assumed) or written by hand. */
   createdBy: "user" | "ai";
   evidence: OstEvidence[];

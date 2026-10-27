@@ -136,6 +136,7 @@ All settings are optional and go in `.env.local`. `.env.example` lists them with
 - **Sources:** PDF, Word, Markdown, text, CSV, VTT/SRT transcripts, web pages (including public Google Docs), pasted text and items from connected tools. Qalam AI picks out what customers said. Code keeps a quote only if it finds it word for word in the source.
 - An opportunity that Qalam AI drafted with no evidence behind it is marked **Assumed** until someone attaches a quote, an answer or a note.
 - **Design this** carries a solution, the quotes behind it and its riskiest assumptions into a Screens project, where Qalam AI plans the screens with that context.
+- **Decision memory:** what you decide on a board is recorded as you go, by code and without the AI: a new target, a dropped solution, a parked opportunity, a merge, a deleted branch, a move, an outcome's new number. Each entry keeps what the card rested on that day (its quotes, what spoke against it, its tests). A big decision asks for a one-line why, which you can skip and add later. Undo marks the entry undone instead of deleting it. A card's **History** and the organization's **Decisions** tab show them, and each month is a Markdown file in `decisions/`.
 
 ### Knowledge hub
 
@@ -150,7 +151,7 @@ All settings are optional and go in `.env.local`. `.env.example` lists them with
 
 ## Privacy
 
-- **Your work stays on your computer, as files.** Each organization is a folder in `~/Qalam` (set `QALAM_HOME` to move it), or any folder you open as one. Projects are readable JSON (a Discovery board lists its cards at the top), a source's text is Markdown, what the organization and each product are is Markdown (`about.md`, `products/`), and images are kept once by their content. The folder is ready for Git. Its `.gitignore` leaves out `.qalam/` (this computer's state: when a project was last opened, thumbnails, the Knowledge hub's layout) and `chats/` (chats and AI traces). Nothing is uploaded to a Qalam server, because there isn't one: Qalam's own server runs on your machine and only answers this computer.
+- **Your work stays on your computer, as files.** Each organization is a folder in `~/Qalam` (set `QALAM_HOME` to move it), or any folder you open as one. Projects are readable JSON (a Discovery board lists its cards at the top), a source's text is Markdown, what the organization and each product are is Markdown (`about.md`, `products/`), decisions are a Markdown log per month (`decisions/`), and images are kept once by their content. The folder is ready for Git, and `.gitattributes` keeps both people's entries when two people add to the same month's log. Its `.gitignore` leaves out `.qalam/` (this computer's state: when a project was last opened, thumbnails, the Knowledge hub's layout) and `chats/` (chats and AI traces). Nothing is uploaded to a Qalam server, because there isn't one: Qalam's own server runs on your machine and only answers this computer.
 - **What goes to the AI.** When you use an AI tool, the local server sends Anthropic what that request needs. That can include your prompt, earlier turns in the chat, the design system (including its source screenshots), screenshots you add, renders and layer outlines of the screens you selected, and the text of documents and pages you add to a Discovery board. With `AI_BACKEND=cli` it goes through Claude Code under your Claude account. With an API key it goes to the Anthropic API under your key.
 - **Claude Code's access.** Qalam runs Claude Code with its tools turned off, from a temporary folder, without your settings or memory. It can't read or change your files. The research step allows only web search, web fetch and the MCP servers you configured.
 - **Other services.** Research queries go to the services you turn on: Anthropic's web search, Tavily, or your MCP servers. Your machine fetches the web pages you add to a Discovery board and any Google Fonts a design system names.
@@ -176,6 +177,7 @@ src/doc/            document model, store with undo/redo, ops, pages, auto layou
 src/design-system/  tokens (DTCG), component catalog and builders, pixel measurement, spec checks, extraction
 src/ai/             prompts, JSON schemas, the API and CLI backends, research connectors, recorded samples
 src/discovery/      Opportunity Solution Tree model, sources, quote matching, evidence, "Design this" handoff
+src/decisions/      decision memory: decisions found by comparing a board before and after, and the log's Markdown
 src/proto/          routes, recipes, expressions, the headless runner that checks prototypes
 src/codegen/        prototype compiler: screens → one React + Motion TSX file (no model call)
 src/lint/           deterministic lint rules and fixes (the source of truth; the AI only explains)

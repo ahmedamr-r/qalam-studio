@@ -1,6 +1,7 @@
 import { createReadStream } from "node:fs";
 import { Readable } from "node:stream";
 import { Hono } from "hono";
+import { sanitizeDecision, type Decision } from "@/decisions/model";
 import type { Doc } from "@/doc/schema";
 import type { SourceRecord } from "@/discovery/sources";
 import type { Project } from "@/projects/model";
@@ -107,6 +108,31 @@ export function orgRoutes(): Hono<Env> {
     return c.json({ ok: true });
   });
   r.get("/api/org/:org/goals", async (c) => c.json(await c.get("store").listGoals()));
+
+  // Decisions: the log, newest first (a board's or a card's), added to as boards change.
+  r.get("/api/org/:org/decisions", (c) => {
+    const { board, card, limit } = c.req.query();
+    const n = Number(limit);
+    return c.json(c.get("store").listDecisions({ board: board || undefined, card: card || undefined, limit: n > 0 ? Math.min(n, 1000) : undefined }));
+  });
+  r.post("/api/org/:org/decisions", async (c) => {
+    const body = (await c.req.json().catch(() => null)) as { decisions?: unknown[] } | null;
+    const list = Array.isArray(body?.decisions) && body.decisions.length <= 200 ? body.decisions.map(sanitizeDecision) : [];
+    if (!list.length || list.some((d) => !d)) return bad("Not decisions");
+    await c.get("store").appendDecisions(list as Decision[], { tab: tabOf(c.req.raw.headers) });
+    return c.json({ ok: true });
+  });
+  r.patch("/api/org/:org/decisions/:id", async (c) => {
+    const p = (await c.req.json().catch(() => null)) as { why?: unknown; undone?: unknown } | null;
+    const why = p?.why;
+    if (!p || (why !== undefined && why !== null && typeof why !== "string") || (p.undone !== undefined && typeof p.undone !== "boolean")) return bad("Not a change to a decision");
+    try {
+      const d = await c.get("store").updateDecision(c.req.param("id"), { why: typeof why === "string" ? why.replace(/\s+/g, " ").slice(0, 500) : (why as null | undefined), undone: p.undone as boolean | undefined }, { tab: tabOf(c.req.raw.headers) });
+      return c.json(d);
+    } catch (e) {
+      return failure(e);
+    }
+  });
 
   // Projects: records, then each one's document.
   r.get("/api/org/:org/projects", (c) => c.json(c.get("store").listProjects()));

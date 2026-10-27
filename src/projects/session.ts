@@ -179,6 +179,14 @@ export function startDocPersistence(onSaved?: (doc: Doc) => void) {
 export const flushDoc = (opts: { force?: boolean } = {}) => flushSaving?.(opts) ?? Promise.resolve();
 
 let skipNext = false;
+const fromElsewhere = new Set<(doc: Doc, before: Doc) => void>();
+
+/** Hear when the open document is replaced by one from elsewhere: not this window's change. */
+export function onDocFromElsewhere(fn: (doc: Doc, before: Doc) => void): () => void {
+  fromElsewhere.add(fn);
+  return () => fromElsewhere.delete(fn);
+}
+
 /** Show a document that came from elsewhere (another window, the folder) without saving it back. */
 export function showDocFromElsewhere(doc: Doc) {
   skipNext = true;
@@ -186,7 +194,9 @@ export function showDocFromElsewhere(doc: Doc) {
   useSaveConflict.setState({ conflict: null });
   const p = currentProject();
   if (p) void dropOutbox(p.id);
+  const before = useStudio.getState().doc;
   useStudio.getState().openDoc(doc);
+  for (const fn of fromElsewhere) fn(useStudio.getState().doc, before);
 }
 
 // ---------------------------------------------------------------------------

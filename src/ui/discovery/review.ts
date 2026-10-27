@@ -9,6 +9,7 @@ import { hasQuote, quoteEvidence } from "@/discovery/sources";
 import { dropProblem } from "@/discovery/ops";
 import { applyProposal, proposalDoc, proposalKey, touchedRoots, withDependents, withNeeds, type EvidenceOf, type Proposal } from "@/discovery/proposals";
 import type { DumpCounts } from "@/discovery/dump";
+import { recordAccepted, recordDiscarded } from "../decisions/recorder";
 import { sourceOf, updateSource, useSources } from "./sources";
 
 /*
@@ -168,27 +169,42 @@ export function startReview(origin: ReviewOrigin, proposals: Proposal[]): boolea
 /** The proposals on one card of the ghost (its id: a card they change or add, a note they add). */
 export const proposalsOn = (proposals: Proposal[], nodeId: string) => proposals.filter((p) => p.cardId === nodeId);
 
+/** Where proposals came from, for the decision log: the brain dump, or the sources they quote. */
+function fromOf(origin: ReviewOrigin | null, list: Proposal[]): string {
+  if (origin?.kind === "dump") return "your brain dump";
+  const ids = new Set(list.flatMap((p) => (p.kind === "attach" || p.kind === "against" ? [p.quote.sourceId] : p.kind === "card" ? p.backing.quotes.map((q) => q.sourceId) : [])));
+  const titles = [...ids].map((id) => sourceOf(id)?.title).filter((t): t is string => !!t);
+  if (!titles.length) return "your sources";
+  return titles.length > 2 ? `${titles.slice(0, 2).join(", ")} and ${titles.length - 2} more` : titles.join(" and ");
+}
+
 /** Carry out these proposals, and any they wait on (one undo step together). */
 export function acceptProposals(ids: string[]) {
   const { proposals: all, origin } = useReview.getState();
   const chosen = new Set(withNeeds(ids, all));
   if (!chosen.size) return;
   const n = { added: 0, attached: 0, against: 0, edited: 0, notes: 0 };
-  studio().mutate((d) => {
-    for (const p of all) {
-      if (!chosen.has(p.id) || !applyProposal(d, p, evidenceOf)) continue;
-      if (p.kind === "card") n.added++;
-      else if (p.kind === "attach") n.attached++;
-      else if (p.kind === "against") n.against++;
-      else if (p.kind === "note") n.notes++;
-      else n.edited++;
-    }
+  const plural = (k: number, one: string, many: string) => (k ? `${k} ${k === 1 ? one : many}` : "");
+  const summary = () => [plural(n.added, "card added", "cards added"), plural(n.attached, "quote attached", "quotes attached"), n.against && `${n.against} against noted`, plural(n.edited, "change made", "changes made"), plural(n.notes, "note added", "notes added")].filter(Boolean);
+  const list = all.filter((p) => chosen.has(p.id));
+  // Accepting is a decision: what it changed is recorded as Qalam AI's, with its reasons.
+  recordAccepted(list, fromOf(origin, list), () => {
+    studio().mutate((d) => {
+      for (const p of list) {
+        if (!applyProposal(d, p, evidenceOf)) continue;
+        if (p.kind === "card") n.added++;
+        else if (p.kind === "attach") n.attached++;
+        else if (p.kind === "against") n.against++;
+        else if (p.kind === "note") n.notes++;
+        else n.edited++;
+      }
+    });
+    return summary().join(" · ");
   });
   useReview.setState({ proposals: all.filter((p) => !chosen.has(p.id)) });
   show();
   void keep(origin, { added: n.added, attached: n.attached + n.against, edited: n.edited, notes: n.notes });
-  const plural = (k: number, one: string, many: string) => (k ? `${k} ${k === 1 ? one : many}` : "");
-  const said = [plural(n.added, "card added", "cards added"), plural(n.attached, "quote attached", "quotes attached"), n.against && `${n.against} against noted`, plural(n.edited, "change made", "changes made"), plural(n.notes, "note added", "notes added")].filter(Boolean);
+  const said = summary();
   if (said.length) feedback(said.join(" · "), { kind: "success", id: "discovery.review" });
 }
 
@@ -197,6 +213,7 @@ export function discardProposals(ids: string[]) {
   const { proposals: all, origin } = useReview.getState();
   const dropped = new Set(withDependents(ids, all));
   const gone = all.filter((p) => dropped.has(p.id));
+  recordDiscarded(gone, fromOf(origin, gone));
   useReview.setState({ proposals: all.filter((p) => !dropped.has(p.id)) });
   show();
   // Words discarded for a card aren't proposed for it again (kept on the quote).
