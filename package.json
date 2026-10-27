@@ -7,6 +7,9 @@
   "private": true,
   "type": "module",
   "main": "out/main.js",
+  "engines": {
+    "node": ">=24"
+  },
   "bin": {
     "qalam-studio": "bin/qalam-studio.mjs"
   },
@@ -28,7 +31,8 @@
     "desktop:dev": "pnpm build:desktop && node scripts/desktop-dev.mjs",
     "prepack": "pnpm build && pnpm build:desktop",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "eval:retrieval": "tsx eval/retrieval/run.ts"
   },
   "dependencies": {
     "electron": "^45.0.0"
@@ -76,5 +80,8 @@
     "yoga-layout": "^3.2.1",
     "zod": "^4.6.5",
     "zustand": "^5.0.15"
+  },
+  "optionalDependencies": {
+    "node-llama-cpp": "3.22.2"
   }
 }

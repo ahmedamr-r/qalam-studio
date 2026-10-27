@@ -1,0 +1,285 @@
+import type { Doc } from "@/doc/schema";
+import { dayOf, type Decision } from "@/decisions/model";
+import { metricText } from "@/discovery/dump";
+import { KIND_LABEL, stageLabel } from "@/discovery/kinds";
+import { QUOTE_KIND_LABEL, quotePiece, type SourceRecord } from "@/discovery/sources";
+import type { OstCard, OstEvidence } from "@/discovery/types";
+import { factHash } from "@/knowledge/refs";
+import type { ContextFields } from "@/org/context-md";
+import type { Project } from "@/projects/model";
+
+/**
+ * The organization's knowledge as pieces: small and typed, one fact each (a customer's words, a
+ * need, a card, an assumption, a decision, a line about a product). Single facts are found better
+ * than chunks of a document (Dense X Retrieval). Each piece says where it came from and links to
+ * the pieces it relates to (a card to the quotes behind it, a need to the quotes that show it),
+ * and code writes it a context line ("A pain Sara said in “Sara interview”, Oct 12 · Grocery")
+ * that goes into word and meaning search with it: Anthropic's contextual retrieval, without a
+ * model call. Pure: the index (server/index) builds pieces from the organization's files.
+ */
+
+export type PieceType = "quote" | "need" | "evidence" | "card" | "assumption" | "decision" | "context";
+
+export type EdgeKind =
+  /** A card rests on a piece of evidence. */
+  | "backs"
+  /** A piece of evidence speaks against a card. */
+  | "against"
+  /** A card sits under another. */
+  | "under"
+  /** A quote or need is in a source. */
+  | "in"
+  /** A need is shown by a quote. */
+  | "shows"
+  /** A decision is about a card. */
+  | "about"
+  /** An assumption is one a solution rests on. */
+  | "of";
+
+export interface HubEdge {
+  from: string;
+  to: string;
+  kind: EdgeKind;
+  /** Since when it holds (evidence: when it was attached). */
+  at?: number;
+}
+
+export interface HubPiece {
+  ref: string;
+  type: PieceType;
+  /** What kind of it: a quote's (pain, need…) or a brain dump piece's role, a card's kind, an evidence's, a decision's. */
+  sub?: string;
+  /** The words. */
+  text: string;
+  /** What it is and where it's from, written by code. */
+  line: string;
+  /** A short name for lists (a card's title, a source's). */
+  title?: string;
+  /** The product it's for (null: the whole organization). */
+  product: string | null;
+  board?: string;
+  card?: string;
+  source?: string;
+  speaker?: string;
+  stage?: string;
+  /** When it was said, written or decided. */
+  at: number;
+}
+
+/** Something pieces belong to: a source, a board. */
+export interface HubEntity {
+  ref: string;
+  kind: "source" | "board";
+  name: string;
+}
+
+export interface Built {
+  pieces: HubPiece[];
+  edges: HubEdge[];
+  entities: HubEntity[];
+}
+
+/** Names the context lines use. */
+export interface Names {
+  product: (id: string) => string | undefined;
+}
+
+export const cardRef = (board: string, card: string) => `hub:card:${board}:${card}`;
+export const sourceRef = (id: string) => `hub:source:${id}`;
+export const boardRef = (id: string) => `hub:board:${id}`;
+export const decisionRef = (id: string) => `hub:decision:${id}`;
+
+const date = (at: number) => (at > 0 ? new Date(at).toLocaleDateString("en", { month: "short", day: "numeric", year: "numeric" }) : "");
+const q = (t: string) => `“${t.replace(/\s+/g, " ").trim() || "Untitled"}”`;
+const join = (...parts: (string | false | null | undefined)[]) => parts.filter(Boolean).join(" · ");
+const forProduct = (product: string | null | undefined, n: Names) => (product ? (n.product(product) ?? null) : null);
+
+// ---------------------------------------------------------------------------
+// Sources: their quotes (a brain dump's pieces too) and the needs seen in them
+
+export function sourcePieces(s: SourceRecord, n: Names): Built {
+  const pieces: HubPiece[] = [];
+  const edges: HubEdge[] = [];
+  const src = sourceRef(s.id);
+  const product = s.product ?? null;
+  const where = `${q(s.title)}${date(s.addedAt) ? `, ${date(s.addedAt)}` : ""}`;
+  for (const quote of s.quotes) {
+    const ref = quotePiece(quote.id);
+    const dump = s.kind === "dump";
+    const what = dump ? `${quote.role ? `A ${quote.role}` : "A piece"} from the brain dump` : `${QUOTE_KIND_LABEL[quote.kind] ?? "A quote"}${quote.speaker ? ` ${quote.speaker} said` : " a customer said"}`;
+    pieces.push({
+      ref,
+      type: "quote",
+      sub: dump ? (quote.role ?? "dump") : quote.kind,
+      text: quote.text,
+      line: join(`${what} in ${where}`, forProduct(product, n)),
+      title: s.title,
+      product,
+      source: s.id,
+      ...(quote.speaker ? { speaker: quote.speaker } : {}),
+      at: quote.at || s.addedAt,
+    });
+    edges.push({ from: ref, to: src, kind: "in" });
+  }
+  for (const need of s.needs) {
+    const ref = `hub:need:${s.id}:${need.id}`;
+    pieces.push({ ref, type: "need", text: need.title, line: join(`A need seen in ${where}`, forProduct(product, n)), title: s.title, product, source: s.id, at: s.addedAt });
+    edges.push({ from: ref, to: src, kind: "in" });
+    for (const id of need.quoteIds) edges.push({ from: ref, to: quotePiece(id), kind: "shows" });
+  }
+  return { pieces, edges, entities: [{ ref: src, kind: "source", name: s.title }] };
+}
+
+// ---------------------------------------------------------------------------
+// Boards: cards, the evidence written on them, and solutions' assumptions
+
+type Node = { parentId?: string | null; meta?: { ost?: OstCard } };
+
+const EVIDENCE_WHAT: Record<OstEvidence["kind"], string> = { answer: "The team's answer", note: "A note", quote: "A quote", dump: "The team's words from a brain dump" };
+
+/** A card's words: its title, what it means, and its number or test. */
+function cardText(c: OstCard): string {
+  const test = c.test ? [c.test.method && `Method: ${c.test.method}`, c.test.criterion && `Pass if: ${c.test.criterion}`, c.test.result && `Result: ${c.test.result}`].filter(Boolean).join(". ") : "";
+  return [c.title, c.description, metricText(c.metric), test]
+    .map((x) => x?.trim().replace(/[.。]+$/, ""))
+    .filter(Boolean)
+    .join(". ");
+}
+
+export function boardPieces(p: Project, doc: Doc | null, n: Names): Built {
+  const pieces: HubPiece[] = [];
+  const edges: HubEdge[] = [];
+  const product = p.product ?? null;
+  const on = join(`on the board ${q(p.name)}`, forProduct(product, n));
+  const nodes = (doc?.nodes ?? {}) as unknown as Record<string, Node>;
+  for (const [id, node] of Object.entries(nodes)) {
+    const c = node.meta?.ost;
+    if (!c) continue;
+    const ref = cardRef(p.id, id);
+    let parent = node.parentId ?? null;
+    while (parent && !nodes[parent]?.meta?.ost) parent = nodes[parent]?.parentId ?? null;
+    const parentCard = parent ? nodes[parent].meta!.ost! : null;
+    pieces.push({
+      ref,
+      type: "card",
+      sub: c.kind,
+      text: cardText(c),
+      line: join(`${KIND_LABEL[c.kind]}, ${stageLabel(c.kind, c.stage).toLowerCase()}${parentCard ? `, under ${q(parentCard.title)}` : ""}`, on),
+      title: c.title,
+      product,
+      board: p.id,
+      card: id,
+      stage: c.stage,
+      at: c.stageAt ?? p.createdAt,
+    });
+    if (parent) edges.push({ from: ref, to: cardRef(p.id, parent), kind: "under" });
+    for (const e of c.evidence) {
+      // Words that are a source's piece link to it; the rest are pieces of their own, kept with the card.
+      const to = e.piece ?? `hub:evidence:${p.id}:${e.id}`;
+      edges.push({ from: ref, to, kind: e.stance === "against" ? "against" : "backs", at: e.at });
+      if (e.piece) continue;
+      const from = e.sourceTitle ? ` in ${q(e.sourceTitle)}` : "";
+      pieces.push({
+        ref: to,
+        type: "evidence",
+        sub: e.kind,
+        text: e.text,
+        line: join(`${EVIDENCE_WHAT[e.kind]}${e.speaker ? ` (${e.speaker})` : ""}${from}, ${e.stance === "against" ? "against" : "for"} ${q(c.title)}`, on),
+        ...(e.sourceTitle ? { title: e.sourceTitle } : {}),
+        product,
+        board: p.id,
+        card: id,
+        ...(e.sourceId ? { source: e.sourceId } : {}),
+        ...(e.speaker ? { speaker: e.speaker } : {}),
+        at: e.at,
+      });
+    }
+    for (const a of c.assumptions ?? []) {
+      const aref = `hub:assumption:${p.id}:${a.id}`;
+      pieces.push({ ref: aref, type: "assumption", sub: a.category, text: a.text, line: join(`A ${a.category} assumption behind ${q(c.title)}${a.importance === 3 ? ", which it fails without" : ""}`, on), product, board: p.id, card: id, at: a.at ?? c.stageAt ?? p.createdAt });
+      edges.push({ from: aref, to: ref, kind: "of" });
+    }
+  }
+  return { pieces, edges, entities: [{ ref: boardRef(p.id), kind: "board", name: p.name }] };
+}
+
+// ---------------------------------------------------------------------------
+// Decisions (an undone one isn't knowledge: the log keeps it, search doesn't)
+
+export function decisionPieces(list: Decision[], productOf: (board: string) => string | null | undefined, n: Names): Built {
+  const pieces: HubPiece[] = [];
+  const edges: HubEdge[] = [];
+  for (const d of list) {
+    if (d.undone) continue;
+    const ref = decisionRef(d.id);
+    const product = productOf(d.board) ?? d.product ?? null;
+    const knew = d.knew ? ` What we knew then: ${[d.knew.evidence, ...d.knew.pieces.slice(0, 2).map((x) => q(x.text))].join("; ")}.` : "";
+    pieces.push({
+      ref,
+      type: "decision",
+      sub: d.kind,
+      text: `${d.what}.${d.why ? ` Why: ${d.why}` : ""}${knew}`,
+      line: join(`A decision ${d.by === "qalam" ? "Qalam AI proposed and the team accepted" : "the team made"} on ${q(d.boardName)}, ${dayOf(d.at)}`, forProduct(product, n)),
+      title: d.cardTitle || d.boardName,
+      product,
+      board: d.board,
+      ...(d.card ? { card: d.card } : {}),
+      at: d.at,
+    });
+    const about = new Set([d.card, ...(Array.isArray(d.detail?.cards) ? (d.detail.cards as unknown[]) : [])].filter((x): x is string => typeof x === "string"));
+    for (const card of about) edges.push({ from: ref, to: cardRef(d.board, card), kind: "about", at: d.at });
+  }
+  return { pieces, edges, entities: [] };
+}
+
+// ---------------------------------------------------------------------------
+// What the organization and its products are (about.md, products/*.md)
+
+export function contextPieces(owner: { product: string | null; name: string; at: number }, c: ContextFields): Built {
+  const who = owner.product ? owner.name : `${owner.name} (the organization)`;
+  const items: [string, string, string][] = [
+    ["audience", `Who ${who} is for`, c.audience],
+    ...c.goals.map((g): [string, string, string] => ["goal", `A goal of ${who}`, g]),
+    ["context", `About ${who}`, c.context],
+    // One piece for all of them: a name like "New customers" alone is near everything in meaning.
+    ["segments", `The kinds of customer ${who} tells apart`, c.segments.join("; ")],
+    ["notes", `Notes on ${who}`, c.notes ?? ""],
+  ];
+  const pieces: HubPiece[] = [];
+  for (const [sub, line, text] of items) {
+    if (!text.trim()) continue;
+    pieces.push({ ref: `hub:context:${owner.product ?? "org"}:${sub}:${factHash(text)}`, type: "context", sub, text: text.trim(), line, title: owner.name, product: owner.product, at: owner.at });
+  }
+  return { pieces, edges: [], entities: [] };
+}
+
+// ---------------------------------------------------------------------------
+
+/** What word and meaning search read for a piece: its line, the cards it's about, its words. */
+export function searchText(p: Pick<HubPiece, "line" | "text">, topics: string[] = []): string {
+  return `${p.line}${topics.length ? ` · about ${topics.map(q).join(", ")}` : ""}\n${p.text}`;
+}
+
+/**
+ * What meaning search embeds for a piece: what it is in a word or two, the cards it's about, and
+ * its words. Measured on the eval set (eval/retrieval): the full context line (source, date,
+ * product) is as long as a quote and drowns its meaning, so it stays out; the cards a piece is
+ * about are the best context it has. Lines about the organization keep theirs ("A goal of …").
+ */
+export function meaningText(p: Pick<HubPiece, "line" | "text" | "type" | "sub">, topics: string[] = []): string {
+  if (p.type === "context") return `${p.line}: ${p.text}`;
+  const what = p.type === "quote" ? `A customer ${p.sub ?? "quote"}` : p.type === "card" ? (p.sub ?? "card") : p.type;
+  return `${what}. ${topics.length ? `About ${topics.map(q).join(", ")}. ` : ""}${p.text}`;
+}
+
+/** Built pieces, edges and entities, merged (a ref seen twice keeps the first). */
+export function merge(...parts: Built[]): Built {
+  const seen = new Set<string>();
+  const out: Built = { pieces: [], edges: [], entities: [] };
+  for (const b of parts) {
+    for (const p of b.pieces) if (!seen.has(p.ref)) (seen.add(p.ref), out.pieces.push(p));
+    out.edges.push(...b.edges);
+    out.entities.push(...b.entities);
+  }
+  return out;
+}

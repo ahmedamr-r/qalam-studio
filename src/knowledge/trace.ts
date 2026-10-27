@@ -42,7 +42,7 @@ export const dsEntries = (systemId: string, facts: DsFact[]): ManifestEntry[] =>
 export const researchEntries = (turnId: string, notes: string | undefined): ManifestEntry[] => (notes?.trim() ? [entry("r1", ref.research(turnId), notes)] : []);
 
 const ID = /^\[?\s*([a-z])\s*(\d{1,4})\s*\]?$/i;
-const IDS_IN_TEXT = /\s*\[(?:[dbqcrp]\d{1,4})(?:\s*,\s*[dbqcrp]?\d{1,4})*\]/gi;
+const IDS_IN_TEXT = /\s*\[(?:[dbqcrpk]\d{1,4})(?:\s*,\s*[dbqcrpk]?\d{1,4})*\]/gi;
 
 /** Take the ids a model might have written into prose out again ("Keep it calm [d12]" → "Keep it calm"). */
 export const stripFactIds = (s: string) => s.replace(IDS_IN_TEXT, "").replace(/\s{2,}/g, " ").trim();

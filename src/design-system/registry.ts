@@ -198,14 +198,15 @@ export function systemFor(id: string | undefined): DesignSystem {
   return getSystem(id) ?? BUILTIN_SYSTEM;
 }
 
-const sets = new Map<string, { at: number; ts: TokenSet }>();
+/** Keyed by the tree itself: every edit makes a new one, and two edits can share a millisecond (updatedAt). */
+const sets = new Map<string, { tree: Tree; ts: TokenSet }>();
 export function tokenSetFor(id: string | undefined): TokenSet {
   const ds = getSystem(id);
   if (!ds || ds.id === BUILTIN_ID) return BUILTIN;
   const hit = sets.get(ds.id);
-  if (hit && hit.at === ds.updatedAt) return hit.ts;
+  if (hit && hit.tree === ds.tree) return hit.ts;
   const ts = new TokenSet(ds.tree);
-  sets.set(ds.id, { at: ds.updatedAt, ts });
+  sets.set(ds.id, { tree: ds.tree, ts });
   return ts;
 }
 

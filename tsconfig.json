@@ -28,6 +28,7 @@
     "src",
     "server",
     "electron",
+    "eval",
     "vite.config.ts",
     "vite.desktop.config.ts",
     "vitest.config.mts"

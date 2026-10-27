@@ -3,15 +3,16 @@ import path from "node:path";
 import { defineConfig } from "vite";
 
 /**
- * The desktop app's two Node entries: the Electron main process and the core (a background
- * process). Everything they use is bundled in, so the installed app needs only Electron.
- * The UI itself is built by vite.config.ts into dist/.
+ * The desktop app's Node entries: the Electron main process, the core (a background process) and
+ * the models process the core starts for search. Everything they use is bundled in, so the
+ * installed app needs only Electron, and node-llama-cpp (native, an optional dependency) for the
+ * models. The UI itself is built by vite.config.ts into dist/.
  */
 export default defineConfig({
   // public/ belongs to the UI build (dist/), not here.
   publicDir: false,
   resolve: { alias: { "@": path.resolve(import.meta.dirname, "src") } },
-  ssr: { noExternal: true, external: ["electron"] },
+  ssr: { noExternal: true, external: ["electron", "node-llama-cpp"] },
   // The preload is plain CommonJS (a sandboxed page's preload can't be a module): copied as it is.
   plugins: [
     {
@@ -29,7 +30,7 @@ export default defineConfig({
     sourcemap: true,
     minify: false,
     rolldownOptions: {
-      input: { main: "electron/main.ts", core: "server/core.ts" },
+      input: { main: "electron/main.ts", core: "server/core.ts", models: "server/models/worker.ts" },
       output: { format: "es", entryFileNames: "[name].js", chunkFileNames: "chunks/[name]-[hash].js" },
     },
   },

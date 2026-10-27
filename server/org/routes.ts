@@ -6,6 +6,11 @@ import type { Doc } from "@/doc/schema";
 import type { SourceRecord } from "@/discovery/sources";
 import type { Project } from "@/projects/model";
 import type { ContextFields, Product } from "@/org/context-md";
+import { IndexUnavailable } from "../index/db";
+import { topicsOf, type OrgIndex, type PieceRow } from "../index/indexer";
+import { indexFor } from "../index/registry";
+import { packFor, search, type Hit } from "../index/search";
+import { orgGraph } from "@/hub/graph";
 import { chooseFolder, createOrg, currentOrg, listOrgs, openFolder, qalamHome, rememberOrg, storeFor } from "./home";
 import { ConflictError, NotFoundError, type OrgEvent, type OrgStore } from "./store";
 
@@ -133,6 +138,46 @@ export function orgRoutes(): Hono<Env> {
       return failure(e);
     }
   });
+
+  // Search: what the organization knows, by words, meaning and links; and a budget of it for a model call.
+  r.get("/api/org/:org/search", (c) =>
+    withIndex(c.get("store"), async (ix) => {
+      const { q, anchor, product, limit } = c.req.query();
+      const { hits, used } = await search(ix, { query: q ?? "", anchor: anchor || undefined, product: productParam(product), limit: clamp(limit, 1, 100, 20) });
+      return c.json({ hits: hits.map(publicPiece), used, index: ix.status(), models: ix.models?.state() ?? null });
+    }),
+  );
+  r.post("/api/org/:org/pack", async (c) => {
+    const b = (await c.req.json().catch(() => null)) as { query?: unknown; anchor?: unknown; product?: unknown; budget?: unknown; wholeTop?: unknown } | null;
+    if (!b || typeof b.query !== "string") return bad("Say what the call is about");
+    return withIndex(c.get("store"), async (ix) => {
+      const p = await packFor(ix, {
+        query: b.query as string,
+        anchor: typeof b.anchor === "string" ? b.anchor : undefined,
+        product: b.product === null ? null : typeof b.product === "string" ? b.product : undefined,
+        budget: clamp(b.budget, 200, 100_000, 6000),
+        wholeTop: clamp(b.wholeTop, 0, 50, 8),
+      });
+      return c.json({ block: p.block, items: p.items, tokens: p.tokens, left: p.left, used: p.used });
+    });
+  });
+  r.get("/api/org/:org/pieces", (c) =>
+    withIndex(c.get("store"), (ix) => {
+      const ref = c.req.query("ref") ?? "";
+      const row = ix.piecesByRef([ref]).get(ref);
+      if (!row) return c.json({ error: "not_found" }, 404);
+      const links = ix.links(ref);
+      const near = ix.piecesByRef(links.map((l) => l.ref));
+      return c.json({ ...publicPiece(row), links: links.map((l) => ({ ...l, title: near.get(l.ref)?.title ?? null, type: near.get(l.ref)?.type ?? null })) });
+    }),
+  );
+  r.get("/api/org/:org/index", (c) => withIndex(c.get("store"), (ix) => c.json({ ...ix.status(), models: ix.models?.state() ?? null })));
+  r.get("/api/org/:org/graph", (c) =>
+    withIndex(c.get("store"), (ix) => {
+      const { pieces, links } = ix.everything();
+      return c.json(orgGraph(pieces, links, { product: productParam(c.req.query("product")) }));
+    }),
+  );
 
   // Projects: records, then each one's document.
   r.get("/api/org/:org/projects", (c) => c.json(c.get("store").listProjects()));
@@ -325,6 +370,30 @@ export function orgRoutes(): Hono<Env> {
   });
 
   return r;
+}
+
+/** Run with the organization's index, or say why there's none here. */
+async function withIndex(store: OrgStore, fn: (ix: OrgIndex) => Response | Promise<Response>): Promise<Response> {
+  try {
+    return await fn(indexFor(store));
+  } catch (e) {
+    if (e instanceof IndexUnavailable) return Response.json({ error: "index_unavailable", message: e.message }, { status: 503 });
+    return failure(e);
+  }
+}
+
+/** "org": the whole organization; a product's id; nothing: no product in hand. */
+const productParam = (v: string | undefined) => (v === "org" ? null : v && ID.test(v) ? v : undefined);
+
+function clamp(v: unknown, min: number, max: number, fallback: number): number {
+  const n = Number(v);
+  return Number.isFinite(n) && v !== "" && v !== null && v !== undefined ? Math.min(max, Math.max(min, Math.round(n))) : fallback;
+}
+
+/** A piece as the API shows it. */
+function publicPiece(p: PieceRow | Hit) {
+  const { id: _id, key: _key, hash: _hash, topics: _topics, ...rest } = p;
+  return { ...rest, topics: topicsOf(p) };
 }
 
 const isContext = (c: unknown): c is ContextFields => {

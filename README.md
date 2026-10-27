@@ -14,7 +14,7 @@ Early. Qalam runs locally on your own machine; there is no hosted version. Expec
 
 ### Requirements
 
-- **Node.js 22.12 or newer.** Vite 8 and the test runner need it.
+- **Node.js 24 or newer** (`nvm use` picks it from `.nvmrc`). Its built-in SQLite has the full-text search the knowledge index uses, the same as the desktop app's. On Node 22 everything else works and search says it needs Node 24.
 - **pnpm.** Run `corepack enable`, or `npm install -g pnpm`.
 - **Claude Code, installed and signed in with your own Claude account.** Follow the [Claude Code quickstart](https://code.claude.com/docs/en/quickstart). Qalam AI runs Claude Code in the background for each request, so usage counts against your Claude plan. If you'd rather use an API key, see [Use an Anthropic API key instead](#use-an-anthropic-api-key-instead).
 - **Chrome or Edge** (recommended). The canvas draws with WebGL.
@@ -136,6 +136,7 @@ All settings are optional and go in `.env.local`. `.env.example` lists them with
 - **Sources:** PDF, Word, Markdown, text, CSV, VTT/SRT transcripts, web pages (including public Google Docs), pasted text and items from connected tools. Qalam AI picks out what customers said. Code keeps a quote only if it finds it word for word in the source.
 - An opportunity that Qalam AI drafted with no evidence behind it is marked **Assumed** until someone attaches a quote, an answer or a note.
 - **Design this** carries a solution, the quotes behind it and its riskiest assumptions into a Screens project, where Qalam AI plans the screens with that context.
+- **Search across the organization:** every quote, need, card, assumption, decision and line about a product is a small piece in a local index (`.qalam/index.sqlite`, rebuilt from the files whenever needed). Search combines the words (SQLite FTS5), the meaning (a small embedding model that runs on your computer) and the links (a card's evidence, a need's quotes), and puts what's for the product in hand first. It's the ground for the next steps: Qalam AI's calls get only the pieces that matter, within a token budget.
 - **Decision memory:** what you decide on a board is recorded as you go, by code and without the AI: a new target, a dropped solution, a parked opportunity, a merge, a deleted branch, a move, an outcome's new number. Each entry keeps what the card rested on that day (its quotes, what spoke against it, its tests). A big decision asks for a one-line why, which you can skip and add later. Undo marks the entry undone instead of deleting it. A card's **History** and the organization's **Decisions** tab show them, and each month is a Markdown file in `decisions/`.
 
 ### Knowledge hub
@@ -153,6 +154,7 @@ All settings are optional and go in `.env.local`. `.env.example` lists them with
 
 - **Your work stays on your computer, as files.** Each organization is a folder in `~/Qalam` (set `QALAM_HOME` to move it), or any folder you open as one. Projects are readable JSON (a Discovery board lists its cards at the top), a source's text is Markdown, what the organization and each product are is Markdown (`about.md`, `products/`), decisions are a Markdown log per month (`decisions/`), and images are kept once by their content. The folder is ready for Git, and `.gitattributes` keeps both people's entries when two people add to the same month's log. Its `.gitignore` leaves out `.qalam/` (this computer's state: when a project was last opened, thumbnails, the Knowledge hub's layout) and `chats/` (chats and AI traces). Nothing is uploaded to a Qalam server, because there isn't one: Qalam's own server runs on your machine and only answers this computer.
 - **What goes to the AI.** When you use an AI tool, the local server sends Anthropic what that request needs. That can include your prompt, earlier turns in the chat, the design system (including its source screenshots), screenshots you add, renders and layer outlines of the screens you selected, and the text of documents and pages you add to a Discovery board. With `AI_BACKEND=cli` it goes through Claude Code under your Claude account. With an API key it goes to the Anthropic API under your key.
+- **Search runs on your computer.** The first search downloads a small embedding model (bge-small-en-v1.5, about 37 MB) from Hugging Face into your cache folder (`~/Library/Caches/Qalam/models` on a Mac). After that, nothing about your knowledge leaves the machine to be searched.
 - **Claude Code's access.** Qalam runs Claude Code with its tools turned off, from a temporary folder, without your settings or memory. It can't read or change your files. The research step allows only web search, web fetch and the MCP servers you configured.
 - **Other services.** Research queries go to the services you turn on: Anthropic's web search, Tavily, or your MCP servers. Your machine fetches the web pages you add to a Discovery board and any Google Fonts a design system names.
 - **Nothing is sent to the author.** Qalam has no analytics, telemetry or tracking.
@@ -178,6 +180,10 @@ src/design-system/  tokens (DTCG), component catalog and builders, pixel measure
 src/ai/             prompts, JSON schemas, the API and CLI backends, research connectors, recorded samples
 src/discovery/      Opportunity Solution Tree model, sources, quote matching, evidence, "Design this" handoff
 src/decisions/      decision memory: decisions found by comparing a board before and after, and the log's Markdown
+src/hub/            the organization's knowledge as pieces and links, search fusion, and packing pieces into a token budget
+server/index/       the search index (SQLite: FTS5 words, vectors, links), kept current with the organization's folder
+server/models/      the models process: the local embedding model (node-llama-cpp), apart from the core
+eval/retrieval/     a sample organization and labelled questions that measure search (pnpm eval:retrieval)
 src/proto/          routes, recipes, expressions, the headless runner that checks prototypes
 src/codegen/        prototype compiler: screens → one React + Motion TSX file (no model call)
 src/lint/           deterministic lint rules and fixes (the source of truth; the AI only explains)
@@ -193,6 +199,7 @@ src/ui/             panels, toolbar, AI chat, prototype mode, Discovery and inte
 pnpm dev         # start the studio (UI and server) on 127.0.0.1:3101
 pnpm typecheck   # tsc --noEmit
 pnpm test        # vitest
+pnpm eval:retrieval  # how well search finds what answers each question on the sample organization
 pnpm build       # build the UI into dist/
 pnpm start       # serve dist/ and the server from one process (after a build)
 pnpm desktop     # build and open the desktop app (Electron)
