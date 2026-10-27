@@ -10,6 +10,18 @@
         "3101"
       ],
       "port": 3101
+    },
+    {
+      "name": "studio-test",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "QALAM_HOME=.qalam-dev/home",
+        "npx",
+        "vite",
+        "--port",
+        "3102"
+      ],
+      "port": 3102
     }
   ]
 }

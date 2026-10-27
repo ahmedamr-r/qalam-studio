@@ -24,7 +24,7 @@ export async function saveInterview(name: string): Promise<void> {
   const systems = useSystems.getState();
   if (existing && existing.source !== "builtin") systems.update(ds.id, { name: ds.name, tree: ds.tree, docs: ds.docs, fonts: ds.fonts, notes: ds.notes });
   else systems.add(ds, false);
-  flushSystems();
+  await flushSystems();
 
   const list = scenariosFor(state.read);
   // The canvas gets the keystone too: the piece the components were shaped around.

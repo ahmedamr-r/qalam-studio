@@ -1,12 +1,14 @@
 /**
- * AI chats are kept in IndexedDB, one record per chat. Generated screen specs make them too big
- * for localStorage. Each chat records its project (chats saved before projects belong to the first
- * project, the one the old single document became).
+ * AI chats are kept in the organization's folder, one file per chat under its project
+ * (chats/<projectId>/, kept out of Git as AI working memory). Chats saved before projects have no
+ * project and belong to the first one, the one the old single document became.
  */
-import { openStores } from "../idb";
+import { orgFetch, orgJson } from "@/org/client";
 
-const chats = openStores("qalam-chats", 1, ["chats"])("chats");
-
-export const loadAll = <T>() => chats.getAll<T>();
-export const put = (id: string, value: unknown) => chats.put(id, value);
-export const remove = (id: string) => chats.remove(id);
+export const loadAll = <T>() => orgJson<T[]>("/chats");
+export const put = async (id: string, value: unknown) => {
+  await orgFetch(`/chats/${id}`, { method: "PUT", json: value });
+};
+export const remove = async (id: string) => {
+  await orgFetch(`/chats/${id}`, { method: "DELETE" });
+};

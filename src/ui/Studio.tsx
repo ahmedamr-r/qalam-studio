@@ -11,7 +11,7 @@ import { startAutoLayout } from "@/engine/autolayout-live";
 import { startSystemSync } from "./systemSync";
 import { installDevHooks } from "./devhooks";
 import { ensureFonts } from "@/engine/fonts";
-import { getSystem, pruneLooks, tokenSetFor, useSystems } from "@/design-system/registry";
+import { flushSystems, getSystem, pruneLooks, tokenSetFor, useSystems } from "@/design-system/registry";
 import { useStudio } from "@/doc/store";
 import { onComponentsPage, wholeDoc } from "@/doc/pages";
 import type { Doc } from "@/doc/schema";
@@ -20,7 +20,10 @@ import { startComponentsPage } from "./components-page/runtime";
 import ComponentsPagePanel from "./components-page/Panel";
 import { ensureMigrated, legacyProjectId } from "@/projects/migrate";
 import { isProjectId, projectHref, type Project, type ProjectType } from "@/projects/model";
-import { openProject, startDocPersistence, updateProject } from "@/projects/session";
+import { flushDoc, openProject, startDocPersistence, updateProject, useSaveConflict } from "@/projects/session";
+import { currentOrg } from "@/org/client";
+import { ConflictBanner } from "@/org/ConflictBanner";
+import { followOpenProject } from "@/org/live";
 import { setChatScope } from "./ai/chats";
 import { setKnowledgeScope } from "@/knowledge/store";
 import { scheduleThumbnail } from "./projectThumbnail";
@@ -97,6 +100,7 @@ export default function Studio({ projectId, mode = "screens" }: { projectId: str
         if (p.type === "discovery") {
           installDevHooks();
           startDocPersistence(startDiscoveryStudio(p));
+          keepCurrent();
           return setState("ready");
         }
         // Screens follow their design system live (components edited in Assets, by AI or in Tokens).
@@ -108,6 +112,7 @@ export default function Studio({ projectId, mode = "screens" }: { projectId: str
           scheduleThumbnail(wholeDoc(doc));
           if (p.type === "screens") syncServes(wholeDoc(doc));
         });
+        keepCurrent();
         if (p.type === "system") openSystemProject(p);
         else followProjectSystem(p);
         // Screens projects keep a Components page, drawn live from their design system.
@@ -139,9 +144,22 @@ export default function Studio({ projectId, mode = "screens" }: { projectId: str
   return (
     <>
       {state === "ready" && <Shell />}
+      {state === "ready" && <ConflictBanner />}
       <BootScreen state={state} boot={boot} error={error} />
     </>
   );
+}
+
+/**
+ * Keep the open project current with changes made elsewhere (src/org/live.ts), and let the
+ * desktop app finish saving before its window closes.
+ */
+function keepCurrent() {
+  followOpenProject();
+  (window as unknown as { __qalamBeforeClose?: () => Promise<void> }).__qalamBeforeClose = async () => {
+    await flushDoc();
+    await flushSystems();
+  };
 }
 
 /**
@@ -343,11 +361,14 @@ function SaveState() {
       clearTimeout(timer);
     };
   }, []);
+  const conflict = useSaveConflict((s) => !!s.conflict);
+  const [dir, setDir] = useState("");
+  useEffect(() => void currentOrg().then((o) => setDir(o.dir), () => {}), []);
   return (
-    <Tip label="Saved in this browser (local storage)" side="top">
+    <Tip label={conflict ? "Not saved: it changed elsewhere too (see the choice at the top)" : `Saved to ${dir || "your organization's folder"}`} side="top">
       <span className="inline-flex items-center gap-[6px]" aria-live="polite">
-        <span aria-hidden className={clsx("size-[6px] rounded-full transition-colors duration-fast", saving ? "bg-fg-faint" : "bg-success")} />
-        {saving ? "Saving…" : "Saved"}
+        <span aria-hidden className={clsx("size-[6px] rounded-full transition-colors duration-fast", conflict ? "bg-warning" : saving ? "bg-fg-faint" : "bg-success")} />
+        {conflict ? "Not saved" : saving ? "Saving…" : "Saved"}
       </span>
     </Tip>
   );
@@ -374,12 +395,12 @@ function BootScreen({ state, boot, error }: { state: BootState; boot: Boot; erro
   );
 }
 
-/** A link to a project that isn't in this browser (deleted, or made in another browser). */
+/** A link to a project that isn't in this organization (deleted, or kept in another one). */
 export function ProjectMissing() {
   return (
     <div className="flex w-[300px] flex-col items-center gap-[12px] text-center">
       <p className="text-title font-medium text-fg">Project not found</p>
-      <p className="text-body text-fg-muted">Projects are saved in this browser. This one was deleted, or it was made in another browser.</p>
+      <p className="text-body text-fg-muted">It isn't in this organization's folder. It was deleted, or it's still saved in a browser: the projects home can bring those in.</p>
       <a href="/" className={clsx(r.button, r.buttonSecondary)}>
         Back to projects
       </a>

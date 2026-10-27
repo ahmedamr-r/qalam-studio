@@ -72,11 +72,11 @@ function Card({ id }: { id: string }) {
       if (target === "new") {
         dest = await createProject("screens", name.trim() || h.solution.title || "Untitled", { handoff, systemId: useSystems.getState().activeId });
       } else {
-        // Read the record fresh and write only the hand-off: the project's own tab owns the rest.
+        // Write only the hand-off: the project's own window owns the rest of its record.
         const fresh = await projectsDb.get(target);
-        if (!fresh) throw new Error("That project isn't in this browser any more.");
+        if (!fresh) throw new Error("That project isn't in this organization any more.");
         dest = { ...fresh, handoff };
-        await projectsDb.put(dest);
+        await projectsDb.patch(target, { handoff });
       }
       studio().mutate((d) => updateCardIn(d, id, (c) => void (c.designs = [...(c.designs ?? []).filter((x) => x.projectId !== dest.id), { projectId: dest.id, at: Date.now() }])));
       close();

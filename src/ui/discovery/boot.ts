@@ -18,7 +18,8 @@ import { useDiscovery, type DesignLink } from "./store";
 import { dropStaleEdit } from "./editing";
 import { scheduleBoardThumbnail } from "./thumbnail";
 import { ensureHandlers } from "./draft";
-import { loadSources } from "./sources";
+import { loadSources, reloadSources } from "./sources";
+import { onOrgChange } from "@/org/live";
 import { ensureDumpHandlers, resumeDumps } from "./dump";
 
 /**
@@ -53,6 +54,9 @@ export function startDiscoveryStudio(p: Project): (doc: Doc) => void {
   void refreshDesigns(p.id);
   ensureDumpHandlers();
   void loadSources(p.id).then(resumeDumps);
+  onOrgChange((c) => {
+    if (c.kind === "source" && c.board === p.id) void reloadSources(p.id);
+  });
   const refresh = () => document.visibilityState === "visible" && void refreshDesigns(p.id);
   document.addEventListener("visibilitychange", refresh);
   window.addEventListener("focus", refresh);

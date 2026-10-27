@@ -36,7 +36,7 @@ function useAsset(ref: string | undefined): string | null {
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
-    // assetURL caches its object URLs, so they aren't revoked here.
+    // assetURL gives the image's address in the organization: nothing to revoke.
     if (ref) void assetURL(ref).then((u) => live && setUrl(u));
     return () => {
       live = false;

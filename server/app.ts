@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { orgRoutes } from "./org/routes";
 import * as audit from "./routes/audit";
 import * as component from "./routes/component";
 import * as critique from "./routes/critique";
@@ -56,6 +57,8 @@ export function createApi(): Hono {
     if (route.GET) api.get(`/api/${name}`, (c) => route.GET!(c.req.raw));
     if (route.POST) api.post(`/api/${name}`, (c) => route.POST!(c.req.raw));
   }
+  // The organization's files (projects, sources, chats, images…): server/org.
+  api.route("/", orgRoutes());
   api.all("/api/*", (c) => c.json({ error: "not_found", message: `No ${c.req.method} ${new URL(c.req.url).pathname}` }, 404));
   return api;
 }

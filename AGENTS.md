@@ -9,6 +9,7 @@
   - `pnpm desktop` builds and opens it; `pnpm desktop:dev` opens the window on the Vite dev server.
   - `bin/qalam-studio.mjs` is the `npx qalam-studio` launcher.
   - The page's security policy is in `electron/assets.ts`. It allows `unsafe-eval` only because the prototype runner evaluates compiled code (`src/ui/prototype/runtime.ts`).
+- **Storage:** an organization is a folder in `~/Qalam` (`QALAM_HOME` moves it; tests and browser checks must point it at a scratch folder). `server/org/` owns it: `codecs.ts` turns projects and sources into readable files, `store.ts` keeps the index, versions (409 on a stale document save) and the folder watcher, `routes.ts` serves `/api/orgs` and `/api/org/:org/*`. The browser side is `src/org/` (client, startup gate, live changes, conflict choice, import from browser storage); the repos in `src/projects/db.ts`, `src/discovery/db.ts`, `src/knowledge/db.ts` and `src/ui/ai/chatDb.ts` go through it.
 - **Server-only code:** `src/ai/{server,cli,research,connectors}.ts` read secrets or spawn processes. Browser code must never import them; the build fails if it does (`serverOnly()` in `server/vite.ts`).
 - **Settings:** the server reads `.env.local`, then `.env` (`server/env.ts`); a variable already in the environment wins.
 - **Model output:** the model proposes and code verifies. Quotes are found word for word, numbers only where the source has them, ids only from what was sent. Keep it that way in new features.

@@ -1,11 +1,11 @@
 import { create } from "zustand";
 import { nanoid } from "nanoid";
-import { clearKnowledgeData, tracesDb } from "./db";
+import { tracesDb } from "./db";
 import type { DecisionTrace } from "./types";
 
 /**
  * The open project's decision traces: what each AI request was given and what it relied on.
- * Loaded when a project opens; every write goes straight to IndexedDB.
+ * Loaded when a project opens; every write goes straight to the organization's folder.
  */
 
 interface KnowledgeState {
@@ -75,5 +75,3 @@ export function decisionByFrame(frameId: string): DecisionTrace | null {
   for (const t of get().traces) if (t.produced.frames?.includes(frameId) && (!hit || t.at >= hit.at)) hit = t;
   return hit;
 }
-
-export { clearKnowledgeData };

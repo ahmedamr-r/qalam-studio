@@ -1,12 +1,11 @@
 /**
- * Image bytes live in IndexedDB; image nodes reference them as "asset:<hash>". Keeping them out of
- * the localStorage document matters: a couple of screenshots as data URLs exceed the quota, and a
- * failed save silently stops the whole document from persisting.
+ * Image bytes live in the organization's folder (assets/<hash>.<ext>); image nodes reference them
+ * as "asset:<hash>". The hash is the first 12 bytes of the content's SHA-256, so the same image is
+ * kept once, and the server checks the bytes match the name before keeping them.
  */
-import { openStores } from "@/ui/idb";
+import { orgFetch, orgPath } from "@/org/client";
 
 export const ASSET_PREFIX = "asset:";
-const blobs = openStores("qalam-assets", 1, ["blobs"])("blobs");
 
 async function hash(buf: ArrayBuffer): Promise<string> {
   const d = new Uint8Array(await crypto.subtle.digest("SHA-256", buf));
@@ -15,18 +14,29 @@ async function hash(buf: ArrayBuffer): Promise<string> {
 
 export const isAsset = (src: string) => src.startsWith(ASSET_PREFIX);
 
+/** Images this window already sent (or found there): sending one again is a no-op, so skip it. */
+const kept = new Set<string>();
+
 /** Store a blob (deduplicated by content) and return its "asset:" reference. */
 export async function putAsset(blob: Blob): Promise<string> {
   const buf = await blob.arrayBuffer();
   const key = await hash(buf);
-  await blobs.put(key, { type: blob.type || "application/octet-stream", bytes: buf });
+  if (!kept.has(key)) {
+    await orgFetch(`/assets/${key}`, { method: "PUT", body: buf, headers: { "content-type": blob.type || "application/octet-stream" } });
+    kept.add(key);
+  }
   return ASSET_PREFIX + key;
 }
 
+/** The address an image is served from (immutable: the browser caches it). */
+const assetHref = (src: string) => orgPath(`/assets/${src.slice(ASSET_PREFIX.length)}`);
+
 export async function getAssetBlob(src: string): Promise<Blob | null> {
   if (!isAsset(src)) return null;
-  const rec = await blobs.get<{ type: string; bytes: ArrayBuffer }>(src.slice(ASSET_PREFIX.length));
-  return rec ? new Blob([rec.bytes], { type: rec.type }) : null;
+  const r = await fetch(await assetHref(src));
+  if (!r.ok) return null;
+  kept.add(src.slice(ASSET_PREFIX.length));
+  return r.blob();
 }
 
 /** Bytes of any image source: asset reference, data URL or URL. */
@@ -45,14 +55,7 @@ export async function sourceBlob(src: string): Promise<Blob | null> {
   return r.ok ? r.blob() : null;
 }
 
-const urls = new Map<string, Promise<string | null>>();
-/** An object URL for <img> previews in panels. */
+/** An address for <img> previews in panels. */
 export function assetURL(src: string): Promise<string | null> {
-  if (!isAsset(src)) return Promise.resolve(src);
-  let p = urls.get(src);
-  if (!p) {
-    p = getAssetBlob(src).then((b) => (b ? URL.createObjectURL(b) : null));
-    urls.set(src, p);
-  }
-  return p;
+  return isAsset(src) ? assetHref(src) : Promise.resolve(src);
 }

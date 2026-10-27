@@ -5,6 +5,7 @@ import { BUILTIN, TokenSet, type Tree } from "./resolve";
 import { upgradeTree } from "./contract";
 import { BUILTIN_DOCS, type DesignDocs } from "./docs";
 import { withPatternProps } from "./component-props";
+import { orgFetch, orgJson } from "@/org/client";
 import type { Provenance } from "@/knowledge/types";
 import type { Knobs } from "./interview/knobs";
 
@@ -78,27 +79,22 @@ interface RegistryState {
   setFreeform: (on: boolean) => void;
 }
 
-const STORAGE_KEY = "ds-studio/systems/v1";
+/**
+ * Design systems belong to the organization: one file each in its design-systems/ folder. They
+ * load once when a window opens (hydrateSystems, before anything is drawn); after that each
+ * changed system is written on its own and a removed one is deleted. Which system is active is
+ * this window's choice, remembered per organization on this computer.
+ */
+const activeKey = (orgId: string) => `qalam/active-system/${orgId}`;
 
-function load(): { systems: DesignSystem[]; activeId: string } {
-  if (typeof window === "undefined") return { systems: [], activeId: BUILTIN_ID };
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const d = JSON.parse(raw) as { systems: DesignSystem[]; activeId: string };
-      // Systems saved before the contract grew get the new tokens, as references to their own roles,
-      // and their own components get props, so screens place them instead of copying their parts.
-      const systems = Array.isArray(d.systems) ? d.systems.filter((s) => s && s.id && s.tree).map((s) => ({ ...s, tree: upgradeTree(s.tree), docs: withPatternProps(s.docs) })) : [];
-      const activeId = systems.some((s) => s.id === d.activeId) ? d.activeId : BUILTIN_ID;
-      return { systems, activeId };
-    }
-  } catch {
-    /* storage unavailable */
-  }
-  return { systems: [], activeId: BUILTIN_ID };
-}
+/** Systems saved before the contract grew get the new tokens, and their own components get props. */
+const upgrade = (s: DesignSystem): DesignSystem => ({ ...s, tree: upgradeTree(s.tree), docs: withPatternProps(s.docs) });
 
-const initial = load();
+/** The systems as they are in the organization's folder (by id): what changed since is written. */
+let saved = new Map<string, DesignSystem>();
+let orgId: string | null = null;
+
+const initial = { systems: [] as DesignSystem[], activeId: BUILTIN_ID };
 
 export const useSystems = create<RegistryState>((set, get) => ({
   systems: [BUILTIN_SYSTEM, ...initial.systems],
@@ -118,14 +114,54 @@ export const useSystems = create<RegistryState>((set, get) => ({
 }));
 
 let persistTimer: ReturnType<typeof setTimeout> | undefined;
-function persist() {
+let persisting: Promise<void> = Promise.resolve();
+
+/** Write what changed since the last write: each changed system, and the removal of each one gone. */
+function persist(): Promise<void> {
   clearTimeout(persistTimer);
   const { systems, activeId } = useSystems.getState();
+  if (!orgId) return persisting;
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ systems: systems.filter((x) => x.source !== "builtin"), activeId }));
+    window.localStorage.setItem(activeKey(orgId), activeId);
   } catch {
-    /* quota: keep working in memory */
+    /* storage unavailable: the active system resets next time */
   }
+  const now = new Map(systems.filter((x) => x.source !== "builtin").map((x) => [x.id, x]));
+  const changed = [...now.values()].filter((x) => saved.get(x.id) !== x);
+  const gone = [...saved.keys()].filter((id) => !now.has(id));
+  saved = now;
+  if (!changed.length && !gone.length) return persisting;
+  persisting = persisting.then(async () => {
+    for (const x of changed) await orgFetch(`/systems/${x.id}`, { method: "PUT", json: x }).catch(() => {});
+    for (const id of gone) await orgFetch(`/systems/${id}`, { method: "DELETE" }).catch(() => {});
+  });
+  return persisting;
+}
+
+/** Load the organization's design systems (before anything that draws with them). */
+export async function hydrateSystems(org: string) {
+  const list = await orgJson<DesignSystem[]>("/systems").catch(() => [] as DesignSystem[]);
+  const systems = list.filter((x) => x && x.id && x.tree).map(upgrade);
+  let activeId: string = BUILTIN_ID;
+  try {
+    activeId = window.localStorage.getItem(activeKey(org)) ?? BUILTIN_ID;
+  } catch {
+    /* storage unavailable */
+  }
+  orgId = org;
+  saved = new Map(systems.map((x) => [x.id, x]));
+  useSystems.setState({ systems: [BUILTIN_SYSTEM, ...systems], activeId: systems.some((x) => x.id === activeId) ? activeId : BUILTIN_ID });
+}
+
+/** The organization's systems changed elsewhere (another window, the folder): load them again, keeping what's open here. */
+export async function reloadSystems() {
+  if (!orgId) return;
+  const list = await orgJson<DesignSystem[]>("/systems").catch(() => null);
+  if (!list) return;
+  const systems = list.filter((x) => x && x.id && x.tree).map(upgrade);
+  saved = new Map(systems.map((x) => [x.id, x]));
+  const { activeId } = useSystems.getState();
+  useSystems.setState({ systems: [BUILTIN_SYSTEM, ...systems], activeId: systems.some((x) => x.id === activeId) ? activeId : BUILTIN_ID });
 }
 
 /**
@@ -139,9 +175,7 @@ export function pruneLooks(projectId: string, used: ReadonlySet<string>) {
 }
 
 /** Write the systems now (before the page reloads or navigates). */
-export const flushSystems = () => {
-  if (typeof window !== "undefined") persist();
-};
+export const flushSystems = (): Promise<void> => (typeof window !== "undefined" ? persist() : Promise.resolve());
 
 if (typeof window !== "undefined") {
   // Debounced: component edits can change a system many times a second while scrubbing.

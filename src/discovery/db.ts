@@ -1,26 +1,18 @@
-import { openStores } from "@/ui/idb";
+import { orgFetch, orgJson } from "@/org/client";
 import type { SourceRecord } from "./sources";
 
 /*
- * A Discovery board's own data, in its own IndexedDB database: its sources (the raw text quotes
- * are checked against) and, later, its weekly snapshots. It's separate from "qalam-projects" so
- * that database's version never changes: an upgrade there would wait on every open tab. Keys
- * start with the project's id ("<projectId>:<id>"), so a project's data goes with it.
+ * A Discovery board's sources live in the organization's folder: each one's text as Markdown
+ * (quotes are checked against it) with its quotes and needs beside it (server/org/codecs.ts).
+ * Deleting a board deletes its own sources there too.
  */
 
-const open = openStores("qalam-discovery", 1, ["sources", "snapshots"]);
-const sources = open("sources");
-const snapshots = open("snapshots");
-
-const prefix = (projectId: string) => `${projectId}:`;
-
 export const sourcesDb = {
-  list: (projectId: string) => sources.getPrefixed<SourceRecord>(prefix(projectId)),
-  put: (s: SourceRecord) => sources.put(`${prefix(s.projectId)}${s.id}`, s),
-  remove: (projectId: string, id: string) => sources.remove(`${prefix(projectId)}${id}`),
+  list: (projectId: string) => orgJson<SourceRecord[]>(`/sources?board=${encodeURIComponent(projectId)}`),
+  put: async (s: SourceRecord) => {
+    await orgFetch(`/sources/${s.id}`, { method: "PUT", json: s });
+  },
+  remove: async (_projectId: string, id: string) => {
+    await orgFetch(`/sources/${id}`, { method: "DELETE" });
+  },
 };
-
-/** Everything a project kept here, gone (the project is being deleted). */
-export async function clearDiscoveryData(projectId: string) {
-  await Promise.all([sources.removePrefixed(prefix(projectId)), snapshots.removePrefixed(prefix(projectId))]);
-}

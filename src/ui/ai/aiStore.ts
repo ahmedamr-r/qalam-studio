@@ -1,3 +1,4 @@
+import { orgFetch, orgJson } from "@/org/client";
 import type { Suggestion } from "@/ai/schemas";
 
 export type Decision = "approved" | "rejected" | undefined;
@@ -10,9 +11,9 @@ export interface DetectiveRow extends Suggestion {
 }
 
 // ---------------------------------------------------------------------------
-// Naming decisions persist per browser so later suggestions follow the designer's style.
-
-const DECISIONS_KEY = "ds-studio/naming-decisions/v1";
+// Naming decisions belong to the organization (design-systems/naming.json), so later suggestions
+// follow the designer's style in every window. Loaded when a window opens (hydrateNaming), then
+// read from memory.
 
 export interface NamingDecision {
   value: string;
@@ -21,26 +22,23 @@ export interface NamingDecision {
   final: string;
 }
 
+let decisions: NamingDecision[] = [];
+let saveTimer: ReturnType<typeof setTimeout> | undefined;
+
+export async function hydrateNaming() {
+  decisions = await orgJson<NamingDecision[]>("/naming").catch(() => decisions);
+}
+
 export function loadDecisions(): NamingDecision[] {
-  try {
-    return JSON.parse(localStorage.getItem(DECISIONS_KEY) ?? "[]") as NamingDecision[];
-  } catch {
-    return [];
-  }
+  return decisions;
 }
 
 export function saveDecisions(list: NamingDecision[]) {
-  try {
-    localStorage.setItem(DECISIONS_KEY, JSON.stringify(list.slice(-40)));
-  } catch {
-    /* best effort */
-  }
+  decisions = list.slice(-40);
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => void orgFetch("/naming", { method: "PUT", json: decisions }).catch(() => {}), 300);
 }
 
 export function clearDecisions() {
-  try {
-    localStorage.removeItem(DECISIONS_KEY);
-  } catch {
-    /* ignore */
-  }
+  saveDecisions([]);
 }

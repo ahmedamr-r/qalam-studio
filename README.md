@@ -45,6 +45,8 @@ pnpm dev
 
 Open the address it prints, http://127.0.0.1:3101. If Qalam AI says Claude Code isn't signed in, run `claude auth login` in a terminal and try again.
 
+Projects you made before Qalam saved to disk are still in the browser you made them in, at that address. Open it there (for example `pnpm dev --port 3000`, then http://localhost:3000) and the home page offers to move them into your organization. The browser keeps its copy.
+
 To open Qalam as a desktop app instead of in the browser:
 
 ```bash
@@ -148,7 +150,7 @@ All settings are optional and go in `.env.local`. `.env.example` lists them with
 
 ## Privacy
 
-- **Your work stays in your browser.** Projects, documents, chats, images, Discovery sources and the knowledge hub are stored in your browser's IndexedDB. Design systems and preferences are stored in localStorage. Nothing is uploaded to a Qalam server, because there isn't one: Qalam's own server runs on your machine and only answers this computer.
+- **Your work stays on your computer, as files.** Each organization is a folder in `~/Qalam` (set `QALAM_HOME` to move it). Projects are readable JSON (a Discovery board lists its cards at the top), a source's text is Markdown, and images are kept once by their content. The folder is ready for Git. Its `.gitignore` leaves out `.qalam/` (this computer's state: when a project was last opened, thumbnails, the Knowledge hub's layout) and `chats/` (chats and AI traces). Nothing is uploaded to a Qalam server, because there isn't one: Qalam's own server runs on your machine and only answers this computer.
 - **What goes to the AI.** When you use an AI tool, the local server sends Anthropic what that request needs. That can include your prompt, earlier turns in the chat, the design system (including its source screenshots), screenshots you add, renders and layer outlines of the screens you selected, and the text of documents and pages you add to a Discovery board. With `AI_BACKEND=cli` it goes through Claude Code under your Claude account. With an API key it goes to the Anthropic API under your key.
 - **Claude Code's access.** Qalam runs Claude Code with its tools turned off, from a temporary folder, without your settings or memory. It can't read or change your files. The research step allows only web search, web fetch and the MCP servers you configured.
 - **Other services.** Research queries go to the services you turn on: Anthropic's web search, Tavily, or your MCP servers. Your machine fetches the web pages you add to a Discovery board and any Google Fonts a design system names.
@@ -179,7 +181,7 @@ src/codegen/        prototype compiler: screens → one React + Motion TSX file 
 src/lint/           deterministic lint rules and fixes (the source of truth; the AI only explains)
 src/knowledge/      the knowledge hub's facts, decision traces and graph
 src/commands/       command registry, keyboard dispatcher, Figma shortcut catalog
-src/projects/       projects and their storage (IndexedDB)
+src/projects/       projects and saving them (to the organization's folder, through server/org)
 src/ui/             panels, toolbar, AI chat, prototype mode, Discovery and interview screens
 ```
 

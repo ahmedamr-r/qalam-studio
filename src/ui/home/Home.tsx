@@ -3,6 +3,9 @@ import clsx from "clsx";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { Frame, MoreHorizontal, Network, Palette } from "lucide-react";
 import type { AIStatus } from "@/ai/client";
+import { currentOrg, type OrgRef } from "@/org/client";
+import { browserProjectsToMove, moveBrowserProjects } from "@/org/import-browser";
+import { onOrgChange } from "@/org/live";
 import { getSystem } from "@/design-system/registry";
 import { projectHref, statusOf, type Project, type ProjectType } from "@/projects/model";
 import { createProject } from "@/projects/session";
@@ -16,7 +19,7 @@ import { confirmDialog, DialogHost, promptDialog } from "../surfaces/dialog";
 /**
  * The projects home: start a design system (the brand interview), a screens canvas or a Discovery
  * board (the product's opportunity tree), and reopen recent work. Unfinished interviews show their
- * step, so this is also the resume list. Projects are saved in this browser.
+ * step, so this is also the resume list. Projects are saved in the organization's folder on disk.
  */
 
 const TYPE_LABEL: Record<ProjectType, string> = { system: "Design system", screens: "Screens", discovery: "Discovery" };
@@ -27,6 +30,7 @@ const ICON = { size: 16, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const
 export default function Home() {
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [legacy, setLegacy] = useState(false);
+  const [org, setOrg] = useState<OrgRef | null>(null);
 
   const refresh = useCallback(() => {
     void listProjects()
@@ -39,10 +43,14 @@ export default function Home() {
 
   useEffect(() => {
     refresh();
+    void currentOrg().then(setOrg, () => {});
     const onVisible = () => document.visibilityState === "visible" && refresh();
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("pageshow", refresh);
+    // Projects made, renamed or deleted in another window, or in the folder itself.
+    const off = onOrgChange((c) => c.kind === "project" && c.parts.includes("record") && refresh());
     return () => {
+      off();
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("pageshow", refresh);
     };
@@ -83,6 +91,7 @@ export default function Home() {
           </section>
 
           <ClaudeNotice />
+          <MoveFromBrowser org={org} onMoved={refresh} />
 
           {legacy && (
             <div role="status" className="flex flex-wrap items-center justify-between gap-[12px] rounded-lg bg-raised px-[12px] py-[10px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
@@ -123,7 +132,7 @@ export default function Home() {
               </ul>
             )}
           </section>
-          <p className="text-caption text-fg-subtle">Projects are saved in this browser.</p>
+          <p className="text-caption text-fg-subtle">{org ? `Projects are saved in ${org.name}, at ${org.dir}.` : "Projects are saved in your organization's folder."}</p>
         </main>
       </div>
       <DialogHost />
@@ -198,7 +207,7 @@ function ProjectCard({ p, onChanged }: { p: Project; onChanged: () => void }) {
   const remove = async () => {
     const ok = await confirmDialog({
       title: `Delete “${p.name}”?`,
-      body: p.type === "discovery" ? "Its board, sources and chats are removed from this browser. This can't be undone." : "Its canvas and chats are removed from this browser. This can't be undone.",
+      body: p.type === "discovery" ? "Its board, sources and chats are removed from the organization's folder. This can't be undone." : "Its canvas and chats are removed from the organization's folder. This can't be undone.",
       confirmLabel: "Delete project",
       danger: true,
     });
@@ -275,4 +284,44 @@ export function ago(ts: number, now = Date.now()): string {
   if (abs < 86400) return rtf.format(Math.round(s / 3600), "hour");
   if (abs < 86400 * 30) return rtf.format(Math.round(s / 86400), "day");
   return new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+/**
+ * Projects saved in this browser before Qalam saved to disk: offered once, at the address they
+ * were made at, and moved into the organization (the browser keeps its copy).
+ */
+function MoveFromBrowser({ org, onMoved }: { org: OrgRef | null; onMoved: () => void }) {
+  const [waiting, setWaiting] = useState<Project[]>([]);
+  const [step, setStep] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+  useEffect(() => void browserProjectsToMove().then(setWaiting, () => {}), []);
+  if (!org || (!waiting.length && !done)) return null;
+  const move = async () => {
+    setStep("Starting");
+    try {
+      const r = await moveBrowserProjects(setStep);
+      setDone(`Moved ${r.projects} ${r.projects === 1 ? "project" : "projects"} into ${org.name}${r.systems ? `, with ${r.systems} design ${r.systems === 1 ? "system" : "systems"}` : ""}.`);
+      setWaiting([]);
+      onMoved();
+    } catch (e) {
+      setDone(`Couldn't move them: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setStep(null);
+    }
+  };
+  return (
+    <div role="status" className="flex flex-wrap items-center justify-between gap-[12px] rounded-lg bg-raised px-[12px] py-[10px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
+      <p className="text-body text-fg-muted">
+        {done ??
+          (step
+            ? `Moving… ${step}`
+            : `${waiting.length} ${waiting.length === 1 ? "project is" : "projects are"} saved in this browser at ${window.location.host}. Move ${waiting.length === 1 ? "it" : "them"} into ${org.name}, so ${waiting.length === 1 ? "it's" : "they're"} saved on disk and open anywhere? The browser keeps its copy.`)}
+      </p>
+      {!done && (
+        <Button variant="secondary" size="sm" disabled={!!step} onClick={() => void move()}>
+          {step ? "Moving…" : `Move into ${org.name}`}
+        </Button>
+      )}
+    </div>
+  );
 }

@@ -58,7 +58,7 @@ if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
 export const sourcesState = () => useSources.getState();
 export const sourceOf = (id: string | undefined) => (id ? useSources.getState().list.find((s) => s.id === id) : undefined);
 
-/** The board's sources, from this browser's storage. */
+/** The board's sources, from the organization's folder. */
 export async function loadSources(projectId: string) {
   if (useSources.getState().projectId === projectId && useSources.getState().loaded) return;
   useSources.setState({ projectId, loaded: false, list: [] });
@@ -67,8 +67,15 @@ export async function loadSources(projectId: string) {
   useSources.setState({ list: list.sort((a, b) => a.addedAt - b.addedAt), loaded: true });
 }
 
+/** The board's sources changed elsewhere (another window, the folder on disk): read them again. */
+export async function reloadSources(projectId: string) {
+  const list = await sourcesDb.list(projectId).catch(() => null);
+  if (!list || useSources.getState().projectId !== projectId) return;
+  useSources.setState({ list: list.sort((a, b) => a.addedAt - b.addedAt), loaded: true });
+}
+
 async function persist(s: SourceRecord) {
-  await sourcesDb.put(s).catch(() => feedback("Couldn't keep the source in this browser's storage", { kind: "error", id: "discovery.sources" }));
+  await sourcesDb.put(s).catch(() => feedback("Couldn't save the source to your organization's folder", { kind: "error", id: "discovery.sources" }));
 }
 
 export async function addSourceRecord(s: SourceRecord) {

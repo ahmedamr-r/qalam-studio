@@ -98,6 +98,15 @@ function createWindow() {
   win.once("ready-to-show", () => {
     if (!HIDDEN) win.show();
   });
+  // Edits save 400 ms after they settle: give the page a moment to finish before the window goes.
+  let closing = false;
+  win.on("close", (e) => {
+    if (closing) return;
+    closing = true;
+    e.preventDefault();
+    const flushed = win.webContents.executeJavaScript("window.__qalamBeforeClose ? window.__qalamBeforeClose() : null", true).catch(() => {});
+    void Promise.race([flushed, new Promise((r) => setTimeout(r, 3000))]).finally(() => win.destroy());
+  });
   const home = DEV_URL ?? `${ORIGIN}/`;
   const ours = (url: string) => (DEV_URL ? url.startsWith(new URL(DEV_URL).origin + "/") : url.startsWith(`${ORIGIN}/`));
   win.webContents.on("will-navigate", (e, url) => {
