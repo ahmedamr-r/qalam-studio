@@ -226,8 +226,9 @@ export function quoteEvidence(source: Pick<SourceRecord, "id" | "title"> & { kin
 export const fromSource = (e: Pick<OstEvidence, "kind">) => e.kind === "quote" || e.kind === "dump";
 
 /** The same words of the same source are already on the card. */
-export const hasQuote = (card: Pick<OstCard, "evidence">, sourceId: string, span: [number, number]) =>
-  card.evidence.some((e) => fromSource(e) && e.sourceId === sourceId && e.span?.[0] === span[0] && e.span?.[1] === span[1]);
+/** The card already rests on these words: the same quote (its piece), or the same words of the same source. */
+export const hasQuote = (card: Pick<OstCard, "evidence">, sourceId: string, span: [number, number], piece?: string) =>
+  card.evidence.some((e) => fromSource(e) && ((!!piece && e.piece === piece) || (e.sourceId === sourceId && e.span?.[0] === span[0] && e.span?.[1] === span[1])));
 
 /** Cards a quote can back: needs and the solutions to them; a brain dump's words can also be where a goal came from. */
 export const quotable = (card: Pick<OstCard, "kind"> | undefined, sourceKind?: SourceKind) =>

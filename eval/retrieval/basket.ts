@@ -454,7 +454,9 @@ function boardDoc(b: BoardIn): Doc {
       const against = raw.startsWith("!");
       const id = raw.replace(/^!/, "");
       const { q, s } = quote.get(id)!;
-      return { id: `${c.id}-e${i}`, kind: s.kind === "dump" ? "dump" : "quote", text: q.text, sourceId: s.id, sourceTitle: s.title, piece: quoteRef(id), ...(s.speaker ? { speaker: s.speaker } : {}), ...(against ? { stance: "against" as const } : {}), addedBy: "ai", at };
+      // As the app attaches a quote: its words, where they sit in the source, and the piece they are.
+      const span = findQuote(s.text, q.text)!.span;
+      return { id: `${c.id}-e${i}`, kind: s.kind === "dump" ? "dump" : "quote", text: q.text, sourceId: s.id, sourceTitle: s.title, span, piece: quoteRef(id), ...(s.speaker ? { speaker: s.speaker } : {}), ...(against ? { stance: "against" as const } : {}), addedBy: "ai", at };
     });
     const ost: OstCard = {
       v: 1,

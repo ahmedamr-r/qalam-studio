@@ -116,6 +116,33 @@ describe("placing a brain dump", () => {
     ]);
   });
 
+  it("rests new cards on, and attaches to cards, what customers said in the organization's other sources", () => {
+    const { ctx, raw, cards } = sample();
+    const ref = (t: string) => cards.find((c) => c.title === t)!.ref;
+    const hub = new Map([
+      ["k1", { quote: { sourceId: "s9", quoteId: "q1" }, span: [0, 20] as [number, number] }],
+      ["k2", { quote: { sourceId: "s9", quoteId: "q2" }, span: [30, 50] as [number, number] }],
+      ["k3", { quote: { sourceId: "s9", quoteId: "q3" }, span: [60, 80] as [number, number] }],
+    ]);
+    const r = raw as { cards: Record<string, unknown>[] };
+    const withHub = {
+      ...r,
+      cards: r.cards.map((c) => (c.id === "n3" ? { ...c, pieceIds: ["k2", "k404"] } : c)),
+      quotes: [
+        { pieceId: "k1", cardId: ref("I'm never sure when my order will arrive"), stance: "for", why: "Sara can't plan around the window" },
+        { pieceId: "k3", cardId: ref("I'm never sure when my order will arrive"), stance: "against", why: "already there" },
+        { pieceId: "k404", cardId: ref("I'm never sure when my order will arrive"), stance: "for", why: "not sent" },
+      ],
+    };
+    const proposals = sanitizePlace(withHub, { ...ctx, hub, hasQuote: (_card, q) => q.quoteId === "q3" }, new Map(), 1);
+    const attached = proposals.filter((p): p is Extract<Proposal, { kind: "attach" | "against" }> => (p.kind === "attach" || p.kind === "against") && p.quote.sourceId === "s9");
+    expect(attached.map((p) => [p.kind, p.quote.quoteId])).toEqual([["attach", "q1"]]);
+    const card = proposals.find((p): p is Extract<Proposal, { kind: "card" }> => p.kind === "card" && p.card.title === "I get the wrong brand and nobody asks me")!;
+    expect(card.backing.quotes.filter((q) => q.sourceId === "s9")).toEqual([{ sourceId: "s9", quoteId: "q2" }]);
+    // Without the organization's pieces, the same answer places as before.
+    expect(sanitizePlace(withHub, ctx, new Map(), 1).some((p) => (p.kind === "attach" || p.kind === "against") && p.quote.sourceId === "s9")).toBe(false);
+  });
+
   it("rewords, moves and merges only as the tree allows", () => {
     const { proposals, byTitle } = sample();
     const [goal] = ofKind(proposals, "card");

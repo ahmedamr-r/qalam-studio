@@ -8,7 +8,8 @@ import type { ResearchInfo } from "@/ai/research-shared";
 import { feedback } from "@/commands/feedback";
 import { cardOf } from "@/discovery/ops";
 import { allCards, childCards, outcomeLines } from "@/discovery/tree";
-import { SOURCE_KIND_LABEL, hasQuote, packCalls, unread, type SourceKind, type SourceRecord } from "@/discovery/sources";
+import { SOURCE_KIND_LABEL, hasQuote, packCalls, quotePiece, unread, type SourceKind, type SourceQuote, type SourceRecord } from "@/discovery/sources";
+import { orgContext } from "@/org/pack";
 import { sanitizeExtract, sanitizeSynthesis, type CallChunk, type SynthCard, type SynthContext, type SynthQuote } from "@/discovery/synthesis";
 import { awaitingRoles, finishExtracted, finishInterviewQuotes, speakerNote, type SpeakerRole } from "@/discovery/transcript";
 import { currentProject } from "@/projects/session";
@@ -16,6 +17,7 @@ import { offline } from "./ai";
 import { hasOutcome, treeFor } from "./draft";
 import { IngestError, ingestFile, ingestPaste, ingestUrl, type Ingested } from "./ingest";
 import { addSourceRecord, setJob, sourceOf, updateSource, useSources } from "./sources";
+import { boardCardRefs, hubQuotes, packProduct, recordCall } from "./knowledge";
 import { startReview } from "./review";
 
 /*
@@ -24,7 +26,9 @@ import { startReview } from "./review";
  * (extract, a few parts per call) and maps it to the tree (synthesize). Code checks every quote
  * against the source and every proposal against the tree; the proposals wait as a ghost over the
  * tree until they're accepted or discarded. An interview waits until the builder says who is who:
- * Qalam AI quotes participants only, and code drops any quote outside their turns.
+ * Qalam AI quotes participants only, and code drops any quote outside their turns. Both calls carry
+ * what the organization already knows: the needs it has named (one need, one name) and, for
+ * mapping, what customers said in its other sources, its decisions and its other boards.
  */
 
 export type AddInput =
@@ -150,6 +154,8 @@ export async function readSources(ids: string[], given?: AbortController): Promi
   const touched = new Set(calls.flat().map((c) => c.sourceId));
   for (const id of touched) setJob(id, { phase: "quoting" });
   const product = productLine(studio().doc);
+  // The needs the organization already names, so the same need reads the same everywhere.
+  const org = await orgContext({ query: [product, ...sources.map((s) => s.title)].join("\n"), product: packProduct(), budget: 1200, types: ["need", "card"] });
   let found = 0;
   let failure: string | null = null;
   try {
@@ -164,11 +170,13 @@ export async function readSources(ids: string[], given?: AbortController): Promi
           const s = sourceOf(c.sourceId)!;
           return { id: c.ref, source: s.title.slice(0, 300), kind: SOURCE_KIND_LABEL[s.kind], text: c.text, ...(s.transcript ? { speakers: speakerNote(s.transcript) } : {}) };
         };
-        const { data } = await callAI<unknown>(PATH, { stage: "extract", product, chunks: chunks.map(part) }, undefined, ctrl.signal);
+        const { data, model } = await callAI<unknown>(PATH, { stage: "extract", product, chunks: chunks.map(part), ...(org ? { context: org.context } : {}) }, undefined, ctrl.signal);
         const taken = new Map(chunks.map((c) => [c.sourceId, (sourceOf(c.sourceId)?.quotes ?? []).map((q) => q.span)]));
         // In an interview, only participants' words, with who said them and when (code's say).
         const got = finishExtracted(sanitizeExtract(data, chunks, taken), sourceOf);
         found += got.quotes.length;
+        const titles = [...new Set(chunks.map((c) => sourceOf(c.sourceId)?.title ?? ""))].filter(Boolean);
+        recordCall({ title: `Picked out what customers said in ${titles.map((t) => `“${t}”`).join(", ")}`, org, raw: data, model, produced: { refs: got.quotes.map((q) => quotePiece(q.quote.id)) } });
         for (const id of new Set(call.map((c) => c.sourceId)))
           await updateSource(id, (s) => ({
             ...s,
@@ -230,8 +238,11 @@ function depthOf(doc: Doc, id: string): number {
 const MAX_QUOTES = 150;
 const MAX_CARDS = 400;
 
-/** The synthesize request and what code checks its answer against. */
-export function synthesizeInput(doc: Doc, given: SourceRecord[]) {
+/**
+ * The synthesize request and what code checks its answer against. `elsewhere`: what customers said
+ * in the organization's other sources that bears on the tree, mapped like the board's own quotes.
+ */
+export function synthesizeInput(doc: Doc, given: SourceRecord[], elsewhere: { s: SourceRecord; q: SourceQuote }[] = []) {
   // The builder's own thinking (a brain dump) is never mapped as customers' words.
   const sources = given.filter((s) => s.kind !== "dump");
   const cards = allCards(doc).slice(0, MAX_CARDS);
@@ -249,10 +260,11 @@ export function synthesizeInput(doc: Doc, given: SourceRecord[]) {
     };
   });
   // Quotes no card has yet first, then the rest, up to what one call takes.
-  const on = new Set(cards.flatMap(({ card }) => card.evidence.flatMap((e) => (e.kind === "quote" && e.sourceId && e.span ? [`${e.sourceId}:${e.span[0]}:${e.span[1]}`] : []))));
+  const on = new Set(cards.flatMap(({ card }) => card.evidence.flatMap((e) => [...(e.kind === "quote" && e.sourceId && e.span ? [`${e.sourceId}:${e.span[0]}:${e.span[1]}`] : []), ...(e.piece ? [e.piece] : [])])));
   const all = sources.flatMap((s) => s.quotes.map((q) => ({ s, q })));
-  const placed = (x: (typeof all)[number]) => on.has(`${x.s.id}:${x.q.span[0]}:${x.q.span[1]}`);
-  const picked = [...all.filter((x) => !placed(x)), ...all.filter(placed)].slice(0, MAX_QUOTES);
+  const placed = (x: (typeof all)[number]) => on.has(`${x.s.id}:${x.q.span[0]}:${x.q.span[1]}`) || on.has(quotePiece(x.q.id));
+  const fromElsewhere = elsewhere.filter((x) => x.s.kind !== "dump" && !placed(x) && !all.some((y) => y.q.id === x.q.id));
+  const picked = [...all.filter((x) => !placed(x)), ...fromElsewhere, ...all.filter(placed)].slice(0, MAX_QUOTES);
   const quotes: SynthQuote[] = picked.map((x, i) => ({ ref: `q${i + 1}`, sourceId: x.s.id, quoteId: x.q.id, span: x.q.span, ...(x.q.dismissed?.length ? { dismissed: x.q.dismissed } : {}) }));
   const refByQuote = new Map(picked.map((x, i) => [x.q.id, `q${i + 1}`]));
   const root = treeFor(doc, studio().selection);
@@ -272,7 +284,7 @@ export function synthesizeInput(doc: Doc, given: SourceRecord[]) {
     outcomeRef: root ? (refOf.get(root) ?? null) : null,
     has: (cardId, q) => {
       const c = cardOf(studio().doc, cardId);
-      return !!c && hasQuote(c, q.sourceId, q.span);
+      return !!c && hasQuote(c, q.sourceId, q.span, quotePiece(q.quoteId));
     },
   };
   return { body, ctx };
@@ -290,11 +302,28 @@ export async function mapQuotes(opts: { sourceIds?: string[] } = {}, given?: Abo
   const sources = [...all.filter((s) => want.has(s.id)), ...all.filter((s) => !want.has(s.id))].filter((s) => s.kind !== "dump" && s.quotes.length);
   if (!sources.length) return void useSources.setState({ notice: { text: "No quotes to map yet: add a source, and Qalam AI picks out what customers said." } });
   const ctrl = given ?? begin();
-  const { body, ctx } = synthesizeInput(doc, sources);
   useSources.setState({ mapping: { started: Date.now(), tokens: 0 } });
+  // What the organization knows beyond this board: what customers said in its other sources (mapped
+  // like the board's own quotes), and its decisions and other boards (context for the mapping).
+  const query = allCards(doc)
+    .slice(0, 60)
+    .map((c) => c.card.title)
+    .join("\n");
+  const own = sources.flatMap((s) => s.quotes.map((q) => quotePiece(q.id)));
+  const [quotes, org] = await Promise.all([
+    orgContext({ query, product: packProduct(), budget: 2500, wholeTop: 0, types: ["quote"], exclude: own }),
+    orgContext({ query, product: packProduct(), budget: 1500, types: ["decision", "card", "need", "assumption", "context", "evidence"], exclude: boardCardRefs(doc) }),
+  ]);
+  const elsewhere = [...(await hubQuotes(quotes)).values()].flatMap((h) => {
+    const s = sourceOf(h.quote.sourceId);
+    const q = s?.quotes.find((x) => x.id === h.quote.quoteId);
+    return s && q ? [{ s, q }] : [];
+  });
+  const { body, ctx } = synthesizeInput(studio().doc, sources, elsewhere);
   try {
-    const { data } = await callAI<unknown>(PATH, body, (tokens) => useSources.setState((s) => (s.mapping ? { mapping: { ...s.mapping, tokens } } : {})), ctrl.signal);
+    const { data, model } = await callAI<unknown>(PATH, { ...body, ...(org ? { context: org.context } : {}) }, (tokens) => useSources.setState((s) => (s.mapping ? { mapping: { ...s.mapping, tokens } } : {})), ctrl.signal);
     const proposals = sanitizeSynthesis(data, ctx);
+    recordCall({ title: "Mapped quotes to the tree", org, also: quotes, raw: data, model, status: "proposed", produced: { refs: proposals.map((p) => p.cardId) } });
     if (!proposals.length) feedback("Qalam AI found nothing to add: the tree already reflects these quotes", { id: "discovery.map" });
     else startReview({ kind: "sources" }, proposals);
   } catch (e) {

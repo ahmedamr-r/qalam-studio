@@ -10,7 +10,7 @@ import { dropProblem } from "@/discovery/ops";
 import { applyProposal, proposalDoc, proposalKey, touchedRoots, withDependents, withNeeds, type EvidenceOf, type Proposal } from "@/discovery/proposals";
 import type { DumpCounts } from "@/discovery/dump";
 import { recordAccepted, recordDiscarded } from "../decisions/recorder";
-import { sourceOf, updateSource, useSources } from "./sources";
+import { adoptSources, sourceOf, updateSource, useSources } from "./sources";
 
 /*
  * Qalam AI's proposals for the board, under review: the board as it would be is drawn over the
@@ -49,7 +49,7 @@ function fits(p: Proposal, all: Proposal[]): boolean {
     case "against": {
       const ev = evidenceOf(p.quote, false);
       const c = cardOf(doc, p.cardId);
-      return !!c && !!ev && !hasQuote(c, ev.sourceId!, ev.span!);
+      return !!c && !!ev && !hasQuote(c, ev.sourceId!, ev.span!, ev.piece);
     }
     case "card": {
       if (doc.nodes[p.cardId] || (p.parentId && !here(p.parentId) && !pending(p.parentId))) return false;
@@ -203,6 +203,8 @@ export function acceptProposals(ids: string[]) {
   });
   useReview.setState({ proposals: all.filter((p) => !chosen.has(p.id)) });
   show();
+  // Quotes from the organization's other sources are on the board now: so are their sources.
+  void adoptSources(list.flatMap((p) => (p.kind === "attach" || p.kind === "against" ? [p.quote.sourceId] : p.kind === "card" ? p.backing.quotes.map((q) => q.sourceId) : [])));
   void keep(origin, { added: n.added, attached: n.attached + n.against, edited: n.edited, notes: n.notes });
   const said = summary();
   if (said.length) feedback(said.join(" · "), { kind: "success", id: "discovery.review" });

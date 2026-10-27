@@ -60,6 +60,8 @@ describe("pieces of the organization's files", () => {
     ]);
     expect(b.pieces[0].line).toBe("Pain Sara said in “Sara interview”, Oct 12, 2026 · Grocery");
     expect(b.pieces[1].line).toBe("Pain a customer said in “Sara interview”, Oct 12, 2026 · Grocery");
+    const dump = sourcePieces({ ...source, kind: "dump", quotes: [{ ...source.quotes[0], role: "assumption" }, { ...source.quotes[1], role: "goal" }] }, names);
+    expect(dump.pieces.filter((p) => p.type === "quote").map((p) => p.line.split(" in ")[0])).toEqual(["An assumption from the brain dump", "A goal from the brain dump"]);
     expect(b.edges).toContainEqual({ from: "hub:need:s1:n1", to: "hub:quote:q1", kind: "shows" });
     expect(b.edges).toContainEqual({ from: "hub:quote:q1", to: "hub:source:s1", kind: "in" });
   });

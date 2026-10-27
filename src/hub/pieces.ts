@@ -106,7 +106,7 @@ export function sourcePieces(s: SourceRecord, n: Names): Built {
   for (const quote of s.quotes) {
     const ref = quotePiece(quote.id);
     const dump = s.kind === "dump";
-    const what = dump ? `${quote.role ? `A ${quote.role}` : "A piece"} from the brain dump` : `${QUOTE_KIND_LABEL[quote.kind] ?? "A quote"}${quote.speaker ? ` ${quote.speaker} said` : " a customer said"}`;
+    const what = dump ? `${quote.role ? `${/^[aeiou]/i.test(quote.role) ? "An" : "A"} ${quote.role}` : "A piece"} from the brain dump` : `${QUOTE_KIND_LABEL[quote.kind] ?? "A quote"}${quote.speaker ? ` ${quote.speaker} said` : " a customer said"}`;
     pieces.push({
       ref,
       type: "quote",

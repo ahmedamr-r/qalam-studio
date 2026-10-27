@@ -188,6 +188,16 @@ describe.skipIf(!fts5)("the organization's search index", () => {
     expect(p.block).toContain("[k2] Pain Sara said in “Sara interview”, Oct 12, 2026 · Grocery · about “Late deliveries ruin the evening”\nThe courier never says when he will come");
   });
 
+  it("packs only the types asked for, leaving out what the call already carries", async () => {
+    ix = OrgIndex.open(store, null);
+    await ix.sync();
+    const quotes = await packFor(ix, { query: "courier", budget: 4000, types: ["quote"], exclude: ["hub:quote:q2"] });
+    expect(quotes.items.map((i) => i.ref)).toEqual(["hub:quote:q1"]);
+    expect(quotes.rows[0]).toMatchObject({ type: "quote", source: "src1", speaker: "Sara" });
+    const rest = await packFor(ix, { query: "courier", budget: 4000, exclude: [cardRef(board.id, "s1"), cardRef(board.id, "n1")] });
+    expect(rest.items.some((i) => i.ref === cardRef(board.id, "s1") || i.ref === cardRef(board.id, "n1"))).toBe(false);
+  });
+
   it("starts over when the index was made by another version", async () => {
     ix = OrgIndex.open(store, null);
     await ix.sync();

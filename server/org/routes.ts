@@ -148,8 +148,9 @@ export function orgRoutes(): Hono<Env> {
     }),
   );
   r.post("/api/org/:org/pack", async (c) => {
-    const b = (await c.req.json().catch(() => null)) as { query?: unknown; anchor?: unknown; product?: unknown; budget?: unknown; wholeTop?: unknown } | null;
+    const b = (await c.req.json().catch(() => null)) as { query?: unknown; anchor?: unknown; product?: unknown; budget?: unknown; wholeTop?: unknown; types?: unknown; exclude?: unknown } | null;
     if (!b || typeof b.query !== "string") return bad("Say what the call is about");
+    const strings = (v: unknown, max: number) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.length <= 200).slice(0, max) : undefined);
     return withIndex(c.get("store"), async (ix) => {
       const p = await packFor(ix, {
         query: b.query as string,
@@ -157,8 +158,15 @@ export function orgRoutes(): Hono<Env> {
         product: b.product === null ? null : typeof b.product === "string" ? b.product : undefined,
         budget: clamp(b.budget, 200, 100_000, 6000),
         wholeTop: clamp(b.wholeTop, 0, 50, 8),
+        types: strings(b.types, 10),
+        exclude: strings(b.exclude, 2000),
       });
-      return c.json({ block: p.block, items: p.items, tokens: p.tokens, left: p.left, used: p.used });
+      // Each piece as the call sends it, with what the board needs to use it (a quote's source).
+      const items = p.items.map((it, i) => {
+        const r = p.rows[i];
+        return { ...it, type: r.type, sub: r.sub, text: r.text, title: r.title, source: r.source, speaker: r.speaker, board: r.board, card: r.card };
+      });
+      return c.json({ block: p.block, items, tokens: p.tokens, left: p.left, used: p.used });
     });
   });
   r.get("/api/org/:org/pieces", (c) =>

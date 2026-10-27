@@ -18,6 +18,8 @@ export const sourcesDb = {
   },
   /** Every source in the organization. */
   all: () => orgJson<SourceRecord[]>("/sources"),
+  /** One of the organization's sources, on this board or not. */
+  get: (id: string) => orgJson<SourceRecord>(`/sources/${encodeURIComponent(id)}`),
   /** Delete a source from the organization: every board loses it. */
   remove: async (id: string) => {
     await orgFetch(`/sources/${id}`, { method: "DELETE" });

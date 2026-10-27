@@ -147,16 +147,33 @@ export function withNeighbours<T extends PieceRow>(index: OrgIndex, hits: T[], s
   return [...hits.slice(0, after), ...rows.values(), ...hits.slice(after)];
 }
 
+export interface PackOpts extends SearchOpts {
+  budget: number;
+  wholeTop?: number;
+  /** Only pieces of these types. */
+  types?: string[];
+  /** Pieces the call already carries (the board's own cards, the quotes it sends): left out. */
+  exclude?: string[];
+}
+
 /** The organization's knowledge for one model call, within `budget` tokens (everything, when it all fits). */
-export async function packFor(index: OrgIndex, o: SearchOpts & { budget: number; wholeTop?: number }): Promise<Packed & { used: string[] }> {
+export async function packFor(index: OrgIndex, o: PackOpts): Promise<Packed & { used: string[]; rows: PieceRow[] }> {
+  const types = o.types?.length ? new Set(o.types) : null;
+  const out = new Set(o.exclude ?? []);
+  const keep = (p: PieceRow) => (!types || types.has(p.type)) && !out.has(p.ref);
   const { hits, used } = await search(index, { ...o, limit: o.limit ?? 120 });
-  let list: PieceRow[] = withNeighbours(index, hits);
-  const all = index.db.prepare("select * from pieces order by at desc").all() as unknown as PieceRow[];
+  let list: PieceRow[] = withNeighbours(index, hits).filter(keep);
+  const all = (index.db.prepare("select * from pieces order by at desc").all() as unknown as PieceRow[]).filter(keep);
   const whole = all.reduce((s, p) => s + tokensOf(searchText(p, topicsOf(p))) + 8, 0);
   if (whole <= o.budget) {
     // It all fits: what was found first, then the rest, newest first.
     const seen = new Set(list.map((h) => h.ref));
     list = [...list, ...all.filter((p) => !seen.has(p.ref))];
   }
-  return { ...pack(list.map((p) => ({ ref: p.ref, text: p.text, line: p.line, topics: topicsOf(p) })), { budget: o.budget, wholeTop: o.wholeTop }), used };
+  const packed = pack(
+    list.map((p) => ({ ref: p.ref, text: p.text, line: p.line, topics: topicsOf(p) })),
+    { budget: o.budget, wholeTop: o.wholeTop },
+  );
+  const byRef = new Map(list.map((p) => [p.ref, p]));
+  return { ...packed, used, rows: packed.items.map((i) => byRef.get(i.ref)!) };
 }

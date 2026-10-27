@@ -6,7 +6,7 @@ import { useGhosts } from "@/doc/ghosts";
 import { feedback } from "@/commands/feedback";
 import { cardAt } from "@/engine/ost-tools";
 import { cardOf, updateCardIn } from "@/discovery/ops";
-import { SOURCE_KIND_LABEL, citation, hasQuote, quotable, quoteEvidence } from "@/discovery/sources";
+import { SOURCE_KIND_LABEL, citation, hasQuote, quotable, quoteEvidence, quotePiece } from "@/discovery/sources";
 import { makeSourceNote, makeSticky } from "@/discovery/sticky";
 import { useDiscovery } from "./store";
 import { sourceOf } from "./sources";
@@ -71,7 +71,7 @@ export function attachQuote(cardId: string, sourceId: string, quoteId: string): 
     feedback(dump ? "Your words back outcomes, opportunities and solutions" : "Quotes back opportunities and solutions", { id: "discovery.quote" });
     return false;
   }
-  if (hasQuote(card, s.id, q.span)) {
+  if (hasQuote(card, s.id, q.span, quotePiece(q.id))) {
     feedback(dump ? "Those words are already on the card" : "That quote is already on the card", { id: "discovery.quote" });
     return false;
   }

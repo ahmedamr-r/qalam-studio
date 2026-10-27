@@ -14,11 +14,15 @@ import {
   dumpReadSchema,
   extractContent,
   extractSchema,
+  knowledgeBlock,
+  KNOWLEDGE_NOTE,
   placeIds,
   quotableIds,
   synthesizeContent,
   synthesizeIds,
   synthesizeSchema,
+  withKnowledge,
+  withPieceReliance,
 } from "./discovery";
 import { SAMPLE_ANSWERS, SAMPLE_DUMP_TEXT } from "./fixtures-discovery";
 
@@ -169,7 +173,7 @@ describe("brain dump requests", () => {
   it("lets answers name only the cards, pieces and answers that were sent", () => {
     const body = { stage: "dump-place" as const, ...base, ...read, answers: [{ id: "a1", question: "Which goal?", answer: "Reorders" }] };
     const ids = placeIds(body);
-    expect(ids).toEqual({ cards: ["c1", "c2", "c3", "c4"], holders: ["c1", "c2", "c3"], solutions: ["c3"], outcomes: ["c1"], fragments: ["f1", "f2"], answers: ["a1"] });
+    expect(ids).toEqual({ cards: ["c1", "c2", "c3", "c4"], holders: ["c1", "c2", "c3"], solutions: ["c3"], outcomes: ["c1"], fragments: ["f1", "f2"], answers: ["a1"], quotes: [] });
     const p = dumpPlaceSchema(ids).properties as unknown as Props;
     expect(p.cards.items!.properties.parentCard.anyOf![0].enum).toEqual(["c1", "c2", "c3"]);
     expect(p.metrics.items!.properties.cardId.enum).toEqual(["c1"]);
@@ -207,5 +211,40 @@ describe("brain dump requests", () => {
     expect(follow).toContain("(skipped)");
     expect(follow).toContain("That was the last round");
     expect(dumpPlaceContent({ stage: "dump-place", ...base, ...read, answers: [{ id: "a1", question: "Which goal?", answer: "Reorders" }] })).toContain("- a1: Which goal?\n  Reorders");
+  });
+});
+describe("calls that carry what the organization knows", () => {
+  const context = { block: "[k1] Pain Sara said in “Sara interview”\nThey swap it without asking\n[k2] A decision the team made: Dropped saved baskets", ids: ["k1", "k2"], quotes: ["k1"] };
+
+  it("accepts the packed pieces with the calls that use them, its quote ids among its ids", () => {
+    const draft = { stage: "draft", answers: SAMPLE_ANSWERS.slice(0, 2), context };
+    expect(DiscoveryBody.safeParse(draft).success).toBe(true);
+    expect(DiscoveryBody.safeParse({ ...draft, context: { ...context, quotes: ["k9"] } }).success).toBe(false);
+    expect(DiscoveryBody.safeParse({ ...draft, context: { ...context, ids: ["k1", "x2"] } }).success).toBe(false);
+  });
+
+  it("gives the model the pieces as material from elsewhere, and asks which shaped its answer, by the ids sent", () => {
+    expect(knowledgeBlock(undefined)).toEqual([]);
+    expect(knowledgeBlock(context).join("\n")).toContain("<organization>\n[k1] Pain Sara said");
+    expect(draftContent({ stage: "draft", answers: SAMPLE_ANSWERS.slice(0, 1), context })).toContain("</organization>\n\nDraft the tree.");
+    expect(withKnowledge("SYSTEM", undefined)).toBe("SYSTEM");
+    expect(withKnowledge("SYSTEM", context, "EXTRA")).toBe(`SYSTEM\n\n${KNOWLEDGE_NOTE}\nEXTRA`);
+    const schema = withPieceReliance(extractSchema(["c1"]), context) as unknown as { properties: Record<string, { items: { properties: { id: { enum: string[] } } } }>; required: string[] };
+    expect(schema.required.at(-1)).toBe("reliedOn");
+    expect(schema.properties.reliedOn.items.properties.id.enum).toEqual(["k1", "k2"]);
+    expect(withPieceReliance(extractSchema(["c1"]), undefined)).toEqual(extractSchema(["c1"]));
+    expect(openRequired(schema)).toEqual([]);
+  });
+
+  it("lets a draft's needs and a brain dump's cards rest on the organization's customer quotes, only those sent", () => {
+    const draft = draftSchema(["pains"], ["k1"]) as unknown as { properties: { opportunities: { items: { properties: Record<string, { items: { enum: string[] } }> } } } };
+    expect(draft.properties.opportunities.items.properties.pieces.items.enum).toEqual(["k1"]);
+    expect(Object.keys((draftSchema(["pains"]) as unknown as typeof draft).properties.opportunities.items.properties)).not.toContain("pieces");
+    const ids = { cards: ["c1"], holders: ["c1"], solutions: [], outcomes: ["c1"], fragments: ["f1"], answers: [], quotes: ["k1"] };
+    const place = dumpPlaceSchema(ids) as unknown as { properties: Record<string, { items: { properties: Record<string, { enum?: string[]; items?: { enum: string[] } }> } }> };
+    expect(place.properties.cards.items.properties.pieceIds.items?.enum).toEqual(["k1"]);
+    expect(place.properties.quotes.items.properties.pieceId.enum).toEqual(["k1"]);
+    expect(Object.keys((dumpPlaceSchema({ ...ids, quotes: [] }) as unknown as typeof place).properties)).not.toContain("quotes");
+    expect(openRequired(place)).toEqual([]);
   });
 });

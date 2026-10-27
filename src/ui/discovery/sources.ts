@@ -22,6 +22,11 @@ export interface SourcesUI {
   projectId: string | null;
   loaded: boolean;
   list: SourceRecord[];
+  /**
+   * The organization's sources a call quoted that aren't on the board: here so their quotes show
+   * and attach while proposals wait; one joins the board when a proposal quoting it is accepted.
+   */
+  visiting: SourceRecord[];
   /** By source id (or a placeholder id while a source is still being read). */
   jobs: Record<string, SourceJob>;
   /** What couldn't be added, and why (until dismissed). */
@@ -42,6 +47,7 @@ export const useSources = create<SourcesUI>(() => ({
   projectId: null,
   loaded: false,
   list: [],
+  visiting: [],
   jobs: {},
   failed: [],
   open: null,
@@ -56,12 +62,17 @@ if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
 }
 
 export const sourcesState = () => useSources.getState();
-export const sourceOf = (id: string | undefined) => (id ? useSources.getState().list.find((s) => s.id === id) : undefined);
+export const sourceOf = (id: string | undefined) => {
+  if (!id) return undefined;
+  const st = useSources.getState();
+  return st.list.find((s) => s.id === id) ?? st.visiting.find((s) => s.id === id);
+};
+const onBoard = (id: string) => useSources.getState().list.some((s) => s.id === id);
 
 /** The board's sources, from the organization's folder. */
 export async function loadSources(projectId: string) {
   if (useSources.getState().projectId === projectId && useSources.getState().loaded) return;
-  useSources.setState({ projectId, loaded: false, list: [] });
+  useSources.setState({ projectId, loaded: false, list: [], visiting: [] });
   const list = await sourcesDb.list(projectId).catch(() => [] as SourceRecord[]);
   if (useSources.getState().projectId !== projectId) return;
   useSources.setState({ list: list.sort((a, b) => a.addedAt - b.addedAt), loaded: true });
@@ -71,7 +82,26 @@ export async function loadSources(projectId: string) {
 export async function reloadSources(projectId: string) {
   const list = await sourcesDb.list(projectId).catch(() => null);
   if (!list || useSources.getState().projectId !== projectId) return;
-  useSources.setState({ list: list.sort((a, b) => a.addedAt - b.addedAt), loaded: true });
+  // A visiting source that joined the board is the board's now.
+  useSources.setState((s) => ({ list: list.sort((a, b) => a.addedAt - b.addedAt), loaded: true, visiting: s.visiting.filter((v) => !list.some((x) => x.id === v.id)) }));
+}
+
+/** Load the organization's sources these quotes are from that aren't on the board (for the proposals that quote them). */
+export async function visitSources(ids: (string | null | undefined)[]) {
+  const st = useSources.getState();
+  const want = [...new Set(ids.filter((id): id is string => !!id))].filter((id) => !onBoard(id) && !st.visiting.some((v) => v.id === id));
+  if (!want.length) return;
+  const got = (await Promise.all(want.map((id) => sourcesDb.get(id).catch(() => null)))).filter((s): s is SourceRecord => !!s?.id);
+  if (got.length) useSources.setState((s) => ({ visiting: [...s.visiting.filter((v) => !got.some((g) => g.id === v.id)), ...got] }));
+}
+
+/** Put on the board the visiting sources among these: something from them is on the board now. */
+export async function adoptSources(ids: string[]) {
+  const board = useSources.getState().projectId;
+  const join = [...new Set(ids)].filter((id) => !onBoard(id) && useSources.getState().visiting.some((v) => v.id === id));
+  if (!board || !join.length) return;
+  for (const id of join) await sourcesDb.link(id, board, true).catch(() => {});
+  await reloadSources(board);
 }
 
 async function persist(s: SourceRecord) {
@@ -88,7 +118,7 @@ export async function updateSource(id: string, fn: (s: SourceRecord) => SourceRe
   const cur = sourceOf(id);
   if (!cur) return;
   const next = fn(cur);
-  useSources.setState((st) => ({ list: st.list.map((x) => (x.id === id ? next : x)) }));
+  useSources.setState((st) => ({ list: st.list.map((x) => (x.id === id ? next : x)), visiting: st.visiting.map((x) => (x.id === id ? next : x)) }));
   await persist(next);
 }
 

@@ -1,12 +1,16 @@
 import {
+  DRAFT_KNOWLEDGE,
   DRAFT_SYSTEM,
   DUMP_FOLLOWUP_SYSTEM,
+  DUMP_PLACE_KNOWLEDGE,
   DUMP_PLACE_SYSTEM,
   DUMP_READ_SYSTEM,
   DiscoveryBody,
+  EXTRACT_KNOWLEDGE,
   EXTRACT_SYSTEM,
   FOLLOWUPS_SCHEMA,
   FOLLOWUPS_SYSTEM,
+  SYNTHESIZE_KNOWLEDGE,
   SYNTHESIZE_SYSTEM,
   draftContent,
   draftSchema,
@@ -25,6 +29,8 @@ import {
   synthesizeContent,
   synthesizeIds,
   synthesizeSchema,
+  withKnowledge,
+  withPieceReliance,
 } from "@/ai/discovery";
 import { aiConfigured, jsonError, rateLimited, streamResearch, streamStructured } from "@/ai/server";
 
@@ -40,6 +46,8 @@ const DISCOVERY_MODEL = process.env.DISCOVERY_MODEL || process.env.GENERATE_MODE
  * a quote only where it finds it in the material, and shows the mapping as proposals to accept.
  * A brain dump: read it (what Qalam AI took from it, its pieces, pushback, a round of questions),
  * read each round of answers, then place it (streamed, so the proposals take shape on the board).
+ * Drafting, extracting, mapping and placing can carry what the organization already knows
+ * (`context`): the prompt gets it, and the answer says which pieces it relied on.
  */
 export async function POST(req: Request) {
   if (!aiConfigured()) return jsonError(501, "no_key", "AI is not configured on this deployment.");
@@ -52,19 +60,19 @@ export async function POST(req: Request) {
     case "followups":
       return streamStructured({ ...call, system: FOLLOWUPS_SYSTEM, schema: FOLLOWUPS_SCHEMA, effort: "medium", maxTokens: 8000, content: [{ type: "text", text: followupsContent(b) }] });
     case "draft":
-      return streamStructured({ ...call, system: DRAFT_SYSTEM, schema: draftSchema(quotableIds(b)), effort: "high", maxTokens: 24000, deltas: true, content: [{ type: "text", text: draftContent(b) }] });
+      return streamStructured({ ...call, system: withKnowledge(DRAFT_SYSTEM, b.context, DRAFT_KNOWLEDGE), schema: withPieceReliance(draftSchema(quotableIds(b), b.context?.quotes), b.context), effort: "high", maxTokens: 24000, deltas: true, content: [{ type: "text", text: draftContent(b) }] });
     case "extract":
-      return streamStructured({ ...call, system: EXTRACT_SYSTEM, schema: extractSchema(b.chunks.map((c) => c.id)), effort: "medium", maxTokens: 24000, content: [{ type: "text", text: extractContent(b) }] });
+      return streamStructured({ ...call, system: withKnowledge(EXTRACT_SYSTEM, b.context, EXTRACT_KNOWLEDGE), schema: withPieceReliance(extractSchema(b.chunks.map((c) => c.id)), b.context), effort: "medium", maxTokens: 24000, content: [{ type: "text", text: extractContent(b) }] });
     case "synthesize": {
       const ids = synthesizeIds(b);
-      return streamStructured({ ...call, system: SYNTHESIZE_SYSTEM, schema: synthesizeSchema(ids.cards, ids.parents, ids.quotes), effort: "high", maxTokens: 24000, content: [{ type: "text", text: synthesizeContent(b) }] });
+      return streamStructured({ ...call, system: withKnowledge(SYNTHESIZE_SYSTEM, b.context, SYNTHESIZE_KNOWLEDGE), schema: withPieceReliance(synthesizeSchema(ids.cards, ids.parents, ids.quotes), b.context), effort: "high", maxTokens: 24000, content: [{ type: "text", text: synthesizeContent(b) }] });
     }
     case "dump-read":
       return streamStructured({ ...call, system: DUMP_READ_SYSTEM, schema: dumpReadSchema(b.tree.map((c) => c.id)), effort: "high", maxTokens: 16000, content: [{ type: "text", text: dumpReadContent(b) }] });
     case "dump-followup":
       return streamStructured({ ...call, system: DUMP_FOLLOWUP_SYSTEM, schema: dumpFollowupSchema(b.tree.map((c) => c.id), b.fragments.map((f) => f.id)), effort: "medium", maxTokens: 8000, content: [{ type: "text", text: dumpFollowupContent(b) }] });
     case "dump-place":
-      return streamStructured({ ...call, system: DUMP_PLACE_SYSTEM, schema: dumpPlaceSchema(placeIds(b)), effort: "high", maxTokens: 24000, deltas: true, content: [{ type: "text", text: dumpPlaceContent(b) }] });
+      return streamStructured({ ...call, system: withKnowledge(DUMP_PLACE_SYSTEM, b.context, b.context?.quotes.length ? DUMP_PLACE_KNOWLEDGE : ""), schema: withPieceReliance(dumpPlaceSchema(placeIds(b)), b.context), effort: "high", maxTokens: 24000, deltas: true, content: [{ type: "text", text: dumpPlaceContent(b) }] });
     case "import": {
       // Connected tools only: a web page comes in through its address (/api/fetch-url).
       const connectors = b.connectors.filter((id) => id !== "web");

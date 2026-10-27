@@ -27,7 +27,8 @@ import {
   type DumpSession,
   type PlaceCard,
 } from "@/discovery/dump";
-import { hasQuote, type SourceRecord } from "@/discovery/sources";
+import { hasQuote, quotePiece, type SourceRecord } from "@/discovery/sources";
+import { orgContext } from "@/org/pack";
 import { cardOf } from "@/discovery/ops";
 import { KIND_LABEL } from "@/discovery/kinds";
 import { arrangeNew, type Proposal } from "@/discovery/proposals";
@@ -42,6 +43,7 @@ import { placeFor, placeSample, routeTurns, treeFor } from "./draft";
 import { REVIEW_TURN, evidenceOf, ghostsFor, startReview, useReview } from "./review";
 import { ingestPaste } from "./ingest";
 import { addSourceRecord, sourceOf, updateSource, useSources } from "./sources";
+import { boardCardRefs, hubQuotes, packProduct, recordCall } from "./knowledge";
 import { useDiscovery } from "./store";
 
 /*
@@ -276,10 +278,15 @@ export async function readAnswers(sourceId: string) {
 // ---------------------------------------------------------------------------
 // Place (proposals on the board, to accept or discard)
 
+/** Tokens of the organization's knowledge a placement carries. */
+const PLACE_BUDGET = 3000;
+
 /**
  * Have Qalam AI place the dump: what it proposes takes shape over the board as it's written (a
  * ghost, under the Strategist's cursor), then waits there for the builder to accept or discard,
- * checked by code (place.ts) first. Stop keeps the proposals that were complete.
+ * checked by code (place.ts) first. Stop keeps the proposals that were complete. The call carries
+ * what the organization already knows about what the dump says (beyond this board), so Qalam AI can
+ * rest cards on what customers said in other sources.
  */
 export async function placeDump(sourceId: string) {
   const s = sourceOf(sourceId);
@@ -304,7 +311,15 @@ export async function placeDump(sourceId: string) {
     },
     anchor: session.anchor,
   };
-  const body = { stage: "dump-place", product: product(), dump: s.text, tree, ...fields, answers: answers.map(({ ref, question, answer }) => ({ id: ref, question: question.slice(0, 400), answer })) };
+  // What the organization knows about what the dump says, beyond the board's cards and the dump itself.
+  const org = session.sample ? null : await orgContext({ query: s.text.slice(0, 4000), product: packProduct(), budget: PLACE_BUDGET, exclude: [...boardCardRefs(studio().doc), ...s.quotes.map((q) => quotePiece(q.id))] });
+  const hub = await hubQuotes(org);
+  ctx.hub = new Map([...hub].map(([k, h]) => [k, { quote: h.quote, span: h.span }]));
+  ctx.hasQuote = (cardId, q, span) => {
+    const c = cardOf(studio().doc, cardId);
+    return !!c && hasQuote(c, q.sourceId, span, quotePiece(q.quoteId));
+  };
+  const body = { stage: "dump-place", product: product(), dump: s.text, tree, ...fields, answers: answers.map(({ ref, question, answer }) => ({ id: ref, question: question.slice(0, 400), answer })), ...(org ? { context: org.context } : {}) };
   const origin = placeFor(studio().doc, null);
   const ids = new Map<string, string>();
   const turn = session.turn ?? { chatId: "", turnId: `dump:${sourceId}` };
@@ -352,7 +367,9 @@ export async function placeDump(sourceId: string) {
     const { raw, sample, model } = await call(sourceId, "Qalam AI is placing your brain dump", body, () => sampleRaw(SAMPLE_DUMP_PLACE_RAW, cards), 9000, onDelta);
     clearTimeout(timer);
     clearGhosts(preview);
-    await review(proposalsNow(raw, false));
+    const list = proposalsNow(raw, false);
+    recordCall({ title: `Placed the brain dump “${s.title}”`, summary: (raw as { summary?: unknown } | null)?.summary as string | undefined, org, raw, model, sample, status: "proposed", produced: { refs: list.map((p) => p.cardId) } });
+    await review(list);
     turnDone(sourceId, { model, sample });
   } catch (e) {
     clearTimeout(timer);

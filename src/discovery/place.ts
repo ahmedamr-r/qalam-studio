@@ -34,6 +34,8 @@ export const PLACE_LIMITS = {
   /** Opportunities below their outcome. */
   depth: 3,
   piecesPerCard: 6,
+  /** Customers' quotes from the organization's other sources, per new card. */
+  hubPerCard: 3,
   answersPerCard: 2,
   perCard: 6,
   perPiece: 3,
@@ -67,6 +69,10 @@ export interface PlaceContext {
   has: (cardId: string, span: [number, number]) => boolean;
   /** The tree the dump was pasted beside: a note about nothing in particular goes by it. */
   anchor: string | null;
+  /** Customers' quotes from the organization's knowledge the call was given, by their ids (k…). */
+  hub?: Map<string, { quote: QuoteRef; span: [number, number] }>;
+  /** The card already rests on these words of that source. */
+  hasQuote?: (cardId: string, q: QuoteRef, span: [number, number]) => boolean;
 }
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
@@ -160,6 +166,11 @@ export function sanitizePlace(raw: unknown, ctx: PlaceContext, ids: Map<string, 
       .filter((q): q is SourceQuote => !!q && !seen.has(q.id) && !!seen.add(q.id))
       .slice(0, L.piecesPerCard)
       .map(quoteRef);
+    // What customers said elsewhere in the organization, that the card rests on too.
+    for (const id of (Array.isArray(x.pieceIds) ? x.pieceIds : []).slice(0, L.hubPerCard)) {
+      const h = ctx.hub?.get(String(id));
+      if (h && !quotes.some((q) => q.sourceId === h.quote.sourceId && q.quoteId === h.quote.quoteId)) quotes.push(h.quote);
+    }
     const words: OstEvidence[] = [];
     for (const a of items(x.answers)) {
       const ans = answerOf.get(String(a.answerId));
@@ -297,6 +308,22 @@ export function sanitizePlace(raw: unknown, ctx: PlaceContext, ids: Map<string, 
     if (stance === "against") against++;
     words.push({ id: idOf(`p:${stance}:${c.id}:${q.id}`), kind: stance, cardId: c.id, quote: quoteRef(q), why: why(x) });
   }
+  // Customers' quotes from the organization's other sources, on cards that are there.
+  for (const x of items(r.quotes)) {
+    const id = live(cardAt(x.cardId)?.id);
+    const c = id ? cardById.get(id) : undefined;
+    const h = ctx.hub?.get(String(x.pieceId));
+    if (!c || !h || !(c.kind === "opportunity" || c.kind === "solution" || c.kind === "outcome")) continue;
+    const stance = x.stance === "against" ? "against" : "attach";
+    const q = `${h.quote.sourceId}:${h.quote.quoteId}`;
+    if (ctx.hasQuote?.(c.id, h.quote, h.span) || pairs.has(`${c.id}:${q}`)) continue;
+    if ((perCard.get(c.id) ?? 0) >= L.perCard || (perPiece.get(q) ?? 0) >= L.perPiece || (stance === "against" && against >= L.against)) continue;
+    pairs.add(`${c.id}:${q}`);
+    perCard.set(c.id, (perCard.get(c.id) ?? 0) + 1);
+    perPiece.set(q, (perPiece.get(q) ?? 0) + 1);
+    if (stance === "against") against++;
+    words.push({ id: idOf(`p:${stance}:${c.id}:${q}`), kind: stance, cardId: c.id, quote: h.quote, why: why(x) });
+  }
 
   // Beliefs about solutions that are there, one proposal per solution.
   const beliefs = new Map<string, Extract<Proposal, { kind: "assumption" }>>();
@@ -368,7 +395,7 @@ export function partialPlace(partial: unknown, ctx: PlaceContext, ids: Map<strin
   const r = rec(partial);
   const closed = (v: unknown) => (Array.isArray(v) ? v.filter((x) => !!x && !isPartial(x)) : []);
   return sanitizePlace(
-    { cards: closed(r.cards), evidence: closed(r.evidence), assumptions: closed(r.assumptions), metrics: closed(r.metrics), edits: closed(r.edits), moves: closed(r.moves), merges: closed(r.merges), notes: closed(r.notes) },
+    { cards: closed(r.cards), evidence: closed(r.evidence), quotes: closed(r.quotes), assumptions: closed(r.assumptions), metrics: closed(r.metrics), edits: closed(r.edits), moves: closed(r.moves), merges: closed(r.merges), notes: closed(r.notes) },
     ctx,
     ids,
   );

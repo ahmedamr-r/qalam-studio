@@ -21,6 +21,17 @@ describe("sanitizeDraft", () => {
     expect(m.timeframe).toBe("by March");
   });
 
+  it("backs a need with what customers said in the organization's sources, only quotes it was sent", () => {
+    const raw = SAMPLE_DRAFT_RAW as { opportunities: Record<string, unknown>[] };
+    const withPieces = { ...raw, opportunities: raw.opportunities.map((o) => (o.title === "I forget to reorder until I've run out" ? { ...o, pieces: ["k1", "k1", "k404"] } : o)) };
+    const said = { id: "e9", kind: "quote" as const, text: "Then I forgot the app existed.", sourceId: "layla", sourceTitle: "Layla interview", piece: "hub:quote:layla-3", addedBy: "ai" as const, at: 1 };
+    const d = sanitizeDraft(withPieces, SAMPLE_ANSWERS, 1, new Map([["k1", () => ({ ...said })]]));
+    const o5 = d.cards.find((c) => c.card.title === "I forget to reorder until I've run out")!.card;
+    expect(o5.evidence).toEqual([said]);
+    // A customer's words back it: it isn't Assumed any more.
+    expect(isAssumed(o5)).toBe(false);
+  });
+
   it("keeps a quote only if the builder said it, in their own words", () => {
     const o1 = byTitle("I can't find what I ordered last time");
     expect(o1.card.evidence.map((e) => e.text)).toEqual(["can't find what they ordered last time"]);

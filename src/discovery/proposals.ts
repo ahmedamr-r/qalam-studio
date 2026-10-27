@@ -153,7 +153,7 @@ export function applyProposal(d: Doc, p: Proposal, evidence: EvidenceOf): boolea
     case "against": {
       const c = card(p.cardId);
       const ev = c && evidence(p.quote, p.kind === "against");
-      if (!c || !ev || !quotable(c, ev.kind === "dump" ? "dump" : undefined) || hasQuote(c, ev.sourceId!, ev.span!)) return false;
+      if (!c || !ev || !quotable(c, ev.kind === "dump" ? "dump" : undefined) || hasQuote(c, ev.sourceId!, ev.span!, ev.piece)) return false;
       c.evidence.push(ev);
       return true;
     }

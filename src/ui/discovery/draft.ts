@@ -18,7 +18,10 @@ import { updateProject } from "@/projects/session";
 import { openTurn, patchTurn, registerTurnHandlers } from "../ai/chats";
 import { appendThought, endAgent, narrate, startAgent, updateAgent } from "../ai/agents";
 import { getController } from "../CanvasView";
-import { runDraft } from "./ai";
+import { offline, runDraft } from "./ai";
+import { orgContext } from "@/org/pack";
+import { boardCardRefs, hubQuotes, packProduct, recordCall } from "./knowledge";
+import { adoptSources } from "./sources";
 import { SAMPLE_ANSWERS, SAMPLE_DRAFT_RAW } from "@/ai/fixtures-discovery";
 import { useDiscovery } from "./store";
 
@@ -26,7 +29,9 @@ import { useDiscovery } from "./store";
  * Qalam AI drafting a board's tree from the product interview. The tree takes shape where it will
  * land while the answer is written (a ghost, under the Strategist's cursor), then lands as one undo
  * step, checked by code (sanitize.ts) first. Stop keeps the cards that were complete. The run is a
- * turn in the board's chat; Try again there runs it again with the same answers.
+ * turn in the board's chat; Try again there runs it again with the same answers. It carries what
+ * the organization already knows about the product, so a new board starts from what the team
+ * learned: customers' quotes from its sources can back the needs it drafts.
  */
 
 interface Run {
@@ -148,7 +153,7 @@ export async function draftTree(input: { answers: InterviewAnswer[]; followUps?:
   let shown = 0;
   const show = () => {
     timer = undefined;
-    const d = partialDraft(parsePartial(buffer), all);
+    const d = partialDraft(parsePartial(buffer), all, hub);
     const built = draftToDoc(d, at);
     if (!built) return;
     ghost(built.doc);
@@ -172,12 +177,19 @@ export async function draftTree(input: { answers: InterviewAnswer[]; followUps?:
     timer ??= setTimeout(show, 150);
   };
 
+  // What the organization already knows about what the builder said (none for the sample).
+  const org = input.sample || (await offline()) ? null : await orgContext({ query: all.map((a) => `${a.question} ${a.answer}`).join("\n"), product: packProduct(), budget: 3000, exclude: boardCardRefs(studio().doc) });
+  const hub = new Map([...(await hubQuotes(org))].map(([k, h]) => [k, () => h.evidence()]));
+  /** The sources whose quotes the tree rests on join the board with it. */
+  const adopt = (d: Draft) => void adoptSources([...(d.outcome ? [d.outcome] : []), ...d.cards.map((c) => c.card)].flatMap((c) => c.evidence.flatMap((e) => (e.sourceId ? [e.sourceId] : []))));
   try {
-    const { raw, sample, model } = await runDraft(input.answers, followUps, { sample: input.sample, signal: ctrl.signal, onDelta, onProgress: (tokens) => patchTurn(chatId, turnId, { tokens }) });
+    const { raw, sample, model } = await runDraft(input.answers, followUps, { sample: input.sample, signal: ctrl.signal, onDelta, onProgress: (tokens) => patchTurn(chatId, turnId, { tokens }), ...(org ? { context: org.context } : {}) });
     clearTimeout(timer);
-    const draft = sanitizeDraft(raw, all);
+    const draft = sanitizeDraft(raw, all, Date.now(), hub);
     if (!draft.outcome) throw new AIError("parse", "Qalam AI didn't return an outcome. Try again.");
     const rootId = place(draft, at, replace, all);
+    adopt(draft);
+    recordCall({ title: "Drafted the tree from the interview", summary: draft.summary, org, raw, model, sample, produced: { refs: rootId ? [rootId] : [] } });
     patchTurn(chatId, turnId, { status: "done", model, sample, outcome: { kind: "discovery", action: "draft", summary: draft.summary, counts: countsOf(draft), ...(rootId ? { rootId } : {}) } });
     runs.delete(turnId);
     void updateProject((p) => ({ discovery: { ...(p.discovery ?? { v: 1, stage: "start" }), stage: "ready" } }), { touch: false });
@@ -185,8 +197,9 @@ export async function draftTree(input: { answers: InterviewAnswer[]; followUps?:
     clearTimeout(timer);
     if ((e as Error).name === "AbortError") {
       // Stopped: what was complete stays (one undo step), marked as unfinished in the chat.
-      const d = partialDraft(parsePartial(buffer), all);
+      const d = partialDraft(parsePartial(buffer), all, hub);
       const rootId = d.outcome ? place(d, at, replace, all) : null;
+      if (rootId) adopt(d);
       patchTurn(chatId, turnId, { status: "stopped", ...(rootId ? { outcome: { kind: "discovery", action: "draft", summary: d.summary, counts: countsOf(d), rootId, partial: true } } : {}) });
       void updateProject((p) => ({ discovery: { ...(p.discovery ?? { v: 1, stage: "start" }), stage: rootId ? "ready" : "interview" } }), { touch: false });
     } else {

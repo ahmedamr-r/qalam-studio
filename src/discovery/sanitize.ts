@@ -66,7 +66,11 @@ function evidenceFrom(answers: Map<string, string>, answerId: unknown, quote: un
   return words ? { id: newId(), kind: "answer", text: words, answerId: id, addedBy: "ai", at: now } : null;
 }
 
-export function sanitizeDraft(raw: unknown, answers: InterviewAnswer[], now = Date.now()): Draft {
+/**
+ * `hub`: customers' quotes from the organization's knowledge the draft was given, by their ids
+ * (k…), each made into evidence for the opportunity that lists it.
+ */
+export function sanitizeDraft(raw: unknown, answers: InterviewAnswer[], now = Date.now(), hub?: Map<string, () => OstEvidence>): Draft {
   const r = rec(raw);
   const said = new Map(answers.map((a) => [a.id, a.answer]));
   const everything = answers.map((a) => a.answer).join("\n");
@@ -120,6 +124,11 @@ export function sanitizeDraft(raw: unknown, answers: InterviewAnswer[], now = Da
       .map((e) => evidenceFrom(said, e.answerId, e.quote, now))
       .filter((e): e is OstEvidence => !!e)
       .filter((e, i, a) => a.findIndex((y) => y.text === e.text) === i);
+    // What customers said elsewhere in the organization that shows the need.
+    for (const id of (Array.isArray(x.pieces) ? x.pieces : []).slice(0, 3)) {
+      const e = hub?.get(String(id))?.();
+      if (e && !evidence.some((y) => y.text === e.text)) evidence.push(e);
+    }
     const description = clip(x.description, LIMITS.description);
     known.set(ref, { kind: "opportunity", parent, depth: parent ? known.get(parent)!.depth + 1 : 1 });
     cards.push({ ref, parent, card: { v: 1, kind: "opportunity", title, stage: "exploring", createdBy: "ai", evidence, ...(description ? { description } : {}) } });
@@ -166,7 +175,7 @@ export function sanitizeDraft(raw: unknown, answers: InterviewAnswer[], now = Da
  * What a draft still being written already settles: the outcome once it's complete, then each
  * opportunity and solution once its object has closed (a half-written card never shows).
  */
-export function partialDraft(partial: unknown, answers: InterviewAnswer[]): Draft {
+export function partialDraft(partial: unknown, answers: InterviewAnswer[], hub?: Map<string, () => OstEvidence>): Draft {
   const r = rec(partial);
   const done = (v: unknown) => !!v && !isPartial(v);
   const closed = (v: unknown) => (Array.isArray(v) ? v.filter(done) : []);
@@ -180,5 +189,7 @@ export function partialDraft(partial: unknown, answers: InterviewAnswer[]): Draf
       recommendedTarget: typeof r.recommendedTarget === "string" && !(isPartial(r) && partialKey(r) === "recommendedTarget") ? r.recommendedTarget : null,
     },
     answers,
+    Date.now(),
+    hub,
   );
 }
