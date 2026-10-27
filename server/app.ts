@@ -18,6 +18,7 @@ import * as prototype from "./routes/prototype";
 import * as repair from "./routes/repair";
 import * as restyle from "./routes/restyle";
 import * as status from "./routes/status";
+import * as topics from "./routes/topics";
 import * as translate from "./routes/translate";
 import * as tuneSystem from "./routes/tune-system";
 
@@ -43,6 +44,7 @@ const ROUTES: Record<string, { GET?: Handler; POST?: Handler }> = {
   repair,
   restyle,
   status,
+  topics,
   translate,
   "tune-system": tuneSystem,
 };

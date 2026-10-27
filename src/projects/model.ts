@@ -59,6 +59,9 @@ export const setLinkOrg = (id: string | null) => void (linkOrg = id);
 /** The organization's home (the projects home when no organization is known yet). */
 export const orgHref = (org: string | null = linkOrg) => (org ? `/o/${org}` : "/");
 
+/** A topic page of the organization (src/hub/topics.ts). */
+export const topicHref = (id: string, org: string | null = linkOrg) => `${org ? `/o/${org}` : ""}/t/${encodeURIComponent(id)}`;
+
 /** Where a project opens. */
 export const projectHref = (p: Pick<Project, "id" | "type">, org: string | null = linkOrg) => `${org ? `/o/${org}` : ""}/${projectLetter(p.type)}/${p.id}`;
 

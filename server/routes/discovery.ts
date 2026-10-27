@@ -35,7 +35,7 @@ import {
 import { aiConfigured, jsonError, rateLimited, streamResearch, streamStructured } from "@/ai/server";
 
 /** Drafting a product's tree runs on the generation model (Opus 5.5 by default). */
-const DISCOVERY_MODEL = process.env.DISCOVERY_MODEL || process.env.GENERATE_MODEL || "claude-opus-5-5";
+export const DISCOVERY_MODEL = process.env.DISCOVERY_MODEL || process.env.GENERATE_MODEL || "claude-opus-5-5";
 
 /**
  * Discovery boards: read the product interview (and ask up to three follow-ups), then draft the

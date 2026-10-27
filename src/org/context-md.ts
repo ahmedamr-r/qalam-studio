@@ -32,13 +32,13 @@ export const PRODUCT_HEADINGS: Record<Field, string> = { audience: "Who it's for
 export const ABOUT_HEADINGS: Record<Field, string> = { audience: "Who we serve", goals: "Goals", context: "What we do", segments: "Segments" };
 
 /** Front matter values are JSON, which YAML reads too. */
-function frontMatter(fields: Record<string, unknown>): string {
+export function frontMatter(fields: Record<string, unknown>): string {
   return `---\n${Object.entries(fields)
     .map(([k, v]) => `${k}: ${JSON.stringify(v)}`)
     .join("\n")}\n---\n\n`;
 }
 
-function readFrontMatter(md: string): { fields: Record<string, unknown>; body: string } {
+export function readFrontMatter(md: string): { fields: Record<string, unknown>; body: string } {
   if (!md.startsWith("---\n")) return { fields: {}, body: md };
   const end = md.indexOf("\n---", 4);
   if (end < 0) return { fields: {}, body: md };

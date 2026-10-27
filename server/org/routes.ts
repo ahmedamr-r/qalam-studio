@@ -9,8 +9,9 @@ import type { ContextFields, Product } from "@/org/context-md";
 import { IndexUnavailable } from "../index/db";
 import { topicsOf, type OrgIndex, type PieceRow } from "../index/indexer";
 import { indexFor } from "../index/registry";
-import { packFor, search, type Hit } from "../index/search";
+import { packFor, search, showsUp, type Hit } from "../index/search";
 import { orgGraph } from "@/hub/graph";
+import { filingShape, topicShape, type Topic } from "@/hub/topics";
 import { chooseFolder, createOrg, currentOrg, listOrgs, openFolder, qalamHome, rememberOrg, storeFor } from "./home";
 import { ConflictError, NotFoundError, type OrgEvent, type OrgStore } from "./store";
 
@@ -164,7 +165,7 @@ export function orgRoutes(): Hono<Env> {
       // Each piece as the call sends it, with what the board needs to use it (a quote's source).
       const items = p.items.map((it, i) => {
         const r = p.rows[i];
-        return { ...it, type: r.type, sub: r.sub, text: r.text, title: r.title, source: r.source, speaker: r.speaker, board: r.board, card: r.card };
+        return { ...it, type: r.type, sub: r.sub, text: r.text, title: r.title, product: r.product, source: r.source, speaker: r.speaker, board: r.board, card: r.card, stage: r.stage };
       });
       return c.json({ block: p.block, items, tokens: p.tokens, left: p.left, used: p.used });
     });
@@ -186,6 +187,42 @@ export function orgRoutes(): Hono<Env> {
       return c.json(orgGraph(pieces, links, { product: productParam(c.req.query("product")) }));
     }),
   );
+
+  // Topic pages: what the organization knows about each need, segment and product (hub/topics).
+  r.get("/api/org/:org/topics", async (c) => c.json(await c.get("store").listTopics()));
+  r.get("/api/org/:org/topics/:id", async (c) => {
+    const store = c.get("store");
+    const t = await store.getTopic(c.req.param("id"));
+    if (!t) return c.json({ error: "not_found" }, 404);
+    return c.json({ topic: t, ...(await topicContext(store, t)) }, 200, { etag: etag(t.version) });
+  });
+  r.put("/api/org/:org/topics/:id", async (c) => {
+    const t = topicShape(await c.req.json().catch(() => null), c.req.param("id"));
+    if (!t) return bad("Not a topic page");
+    try {
+      const v = await c.get("store").putTopic(t, { ifMatch: ifMatch(c.req.raw.headers), tab: tabOf(c.req.raw.headers) });
+      return c.json({ version: v }, 200, { etag: etag(v) });
+    } catch (e) {
+      return failure(e);
+    }
+  });
+  r.delete("/api/org/:org/topics/:id", async (c) => {
+    await c.get("store").removeTopic(c.req.param("id"), { tab: tabOf(c.req.raw.headers) });
+    return c.json({ ok: true });
+  });
+  /** What Qalam AI filed into the pages, as code kept it, and the quotes the pages have now seen. */
+  r.post("/api/org/:org/topics/file", async (c) => {
+    const b = (await c.req.json().catch(() => null)) as { filing?: unknown; from?: unknown; filed?: unknown } | null;
+    const f = filingShape(b?.filing);
+    if (!f || typeof b?.from !== "string" || b.from.length > 400) return bad("Not a filing");
+    const filed: Record<string, string[]> = {};
+    for (const [id, quotes] of Object.entries((b.filed ?? {}) as Record<string, unknown>).slice(0, 200)) {
+      if (!ID.test(id) || !Array.isArray(quotes)) return bad("Not a list of filed quotes");
+      filed[id] = quotes.filter((q): q is string => typeof q === "string" && ID.test(q)).slice(0, 2000);
+    }
+    const res = await c.get("store").fileTopics(f, { from: b.from, filed, tab: tabOf(c.req.raw.headers) });
+    return c.json({ created: res.created, counts: res.counts, pages: res.pages.map((p) => ({ id: p.id, title: p.title, kind: p.kind })) });
+  });
 
   // Projects: records, then each one's document.
   r.get("/api/org/:org/projects", (c) => c.json(c.get("store").listProjects()));
@@ -387,6 +424,29 @@ async function withIndex(store: OrgStore, fn: (ix: OrgIndex) => Response | Promi
   } catch (e) {
     if (e instanceof IndexUnavailable) return Response.json({ error: "index_unavailable", message: e.message }, { status: 503 });
     return failure(e);
+  }
+}
+
+/**
+ * What a page's lines cite, as the page shows them (a quote's source with the boards that use it,
+ * to open it on one), and the cards on boards that rest on the same pieces. Without the index here
+ * (Node without full-text search) the page shows its lines alone.
+ */
+async function topicContext(store: OrgStore, t: Topic) {
+  try {
+    const ix = indexFor(store);
+    const refs = [...new Set(t.lines.flatMap((l) => [...l.cites, ...(l.disputes ?? []).flatMap((d) => d.cites)]))];
+    const rows = ix.piecesByRef(refs);
+    const cited = Object.fromEntries([...rows].map(([ref, row]) => [ref, publicPiece(row)]));
+    const sources: Record<string, { title: string; boards: string[] }> = {};
+    for (const id of new Set([...rows.values()].map((r) => r.source).filter((x): x is string => !!x))) {
+      const s = await store.getSource(id);
+      if (s) sources[id] = { title: s.title, boards: (s.boards ?? []).filter((b) => store.getProject(b)) };
+    }
+    const shows = showsUp(ix, t.title, refs).map((s) => ({ ...s, boardName: store.getProject(s.board)?.record.name ?? null }));
+    return { cited, sources, shows };
+  } catch {
+    return { cited: {}, sources: {}, shows: [] };
   }
 }
 

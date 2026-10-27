@@ -16,10 +16,12 @@ export interface PackedPiece {
   sub: string | null;
   text: string;
   title: string | null;
+  product: string | null;
   source: string | null;
   speaker: string | null;
   board: string | null;
   card: string | null;
+  stage: string | null;
 }
 
 export interface OrgContext {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { orgHref, projectHref } from "@/projects/model";
+import { orgHref, projectHref, topicHref } from "@/projects/model";
 import { routeOf } from "./routes";
 
 describe("routeOf", () => {
@@ -14,6 +14,13 @@ describe("routeOf", () => {
     expect(routeOf("/o/R02vmeVH/p/abc123def0")).toEqual({ kind: "project", org: "R02vmeVH", type: "screens", id: "abc123def0" });
     expect(routeOf("/o/R02vmeVH/d/abc123def0")).toEqual({ kind: "project", org: "R02vmeVH", type: "discovery", id: "abc123def0" });
     expect(routeOf("/o/R02vmeVH/s/abc123def0/")).toEqual({ kind: "project", org: "R02vmeVH", type: "system", id: "abc123def0" });
+  });
+
+  it("reads a topic page, only inside its organization", () => {
+    expect(routeOf(topicHref("Xk2_9aLm0q", "R02vmeVH"))).toEqual({ kind: "topic", org: "R02vmeVH", id: "Xk2_9aLm0q" });
+    expect(routeOf("/o/R02vmeVH/t/h1abc~2")).toEqual({ kind: "topic", org: "R02vmeVH", id: "h1abc~2" });
+    expect(routeOf("/t/Xk2_9aLm0q")).toEqual({ kind: "missing" });
+    expect(routeOf("/o/R02vmeVH/t/a%2Fb")).toEqual({ kind: "missing" });
   });
 
   it("reads addresses from before organizations", () => {

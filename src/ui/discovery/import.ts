@@ -19,6 +19,7 @@ import { IngestError, ingestFile, ingestPaste, ingestUrl, type Ingested } from "
 import { addSourceRecord, setJob, sourceOf, updateSource, useSources } from "./sources";
 import { boardCardRefs, hubQuotes, packProduct, recordCall } from "./knowledge";
 import { startReview } from "./review";
+import { fileAfterReading } from "../topics/filing";
 
 /*
  * Bringing sources onto a board: each is read in the browser (or fetched through the server, or
@@ -28,7 +29,8 @@ import { startReview } from "./review";
  * tree until they're accepted or discarded. An interview waits until the builder says who is who:
  * Qalam AI quotes participants only, and code drops any quote outside their turns. Both calls carry
  * what the organization already knows: the needs it has named (one need, one name) and, for
- * mapping, what customers said in its other sources, its decisions and its other boards.
+ * mapping, what customers said in its other sources, its decisions and its other boards. What
+ * customers said is then filed into the organization's topic pages, in the background.
  */
 
 export type AddInput =
@@ -155,7 +157,7 @@ export async function readSources(ids: string[], given?: AbortController): Promi
   for (const id of touched) setJob(id, { phase: "quoting" });
   const product = productLine(studio().doc);
   // The needs the organization already names, so the same need reads the same everywhere.
-  const org = await orgContext({ query: [product, ...sources.map((s) => s.title)].join("\n"), product: packProduct(), budget: 1200, types: ["need", "card"] });
+  const org = await orgContext({ query: [product, ...sources.map((s) => s.title)].join("\n"), product: packProduct(), budget: 1200, types: ["need", "card", "page"] });
   let found = 0;
   let failure: string | null = null;
   try {
@@ -192,6 +194,8 @@ export async function readSources(ids: string[], given?: AbortController): Promi
     for (const id of touched) setJob(id, null);
     if (!given) end(ctrl);
   }
+  // What customers said goes on the organization's topic pages too (in the background).
+  if (found > 0 && !ctrl.signal.aborted) void fileAfterReading([...touched], currentProject()?.product ?? null);
   const left = ids.map(sourceOf).filter((s): s is SourceRecord => !!s && !awaitingRoles(s)).reduce((n, s) => n + unread(s).length, 0);
   if (failure) useSources.setState({ notice: { text: `Qalam AI couldn't read everything: ${failure}`, action: "read" } });
   else if (left && !ctrl.signal.aborted) useSources.setState({ notice: { text: `Qalam AI read what one go allows; ${left} ${left === 1 ? "part is" : "parts are"} still unread.`, action: "read" } });
@@ -312,7 +316,7 @@ export async function mapQuotes(opts: { sourceIds?: string[] } = {}, given?: Abo
   const own = sources.flatMap((s) => s.quotes.map((q) => quotePiece(q.id)));
   const [quotes, org] = await Promise.all([
     orgContext({ query, product: packProduct(), budget: 2500, wholeTop: 0, types: ["quote"], exclude: own }),
-    orgContext({ query, product: packProduct(), budget: 1500, types: ["decision", "card", "need", "assumption", "context", "evidence"], exclude: boardCardRefs(doc) }),
+    orgContext({ query, product: packProduct(), budget: 1500, types: ["page", "decision", "card", "need", "assumption", "context", "evidence"], exclude: boardCardRefs(doc) }),
   ]);
   const elsewhere = [...(await hubQuotes(quotes)).values()].flatMap((h) => {
     const s = sourceOf(h.quote.sourceId);

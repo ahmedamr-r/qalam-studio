@@ -2,11 +2,15 @@ import { EventEmitter } from "node:events";
 import { watch, type FSWatcher } from "node:fs";
 import { readdir, readFile, rm } from "node:fs/promises";
 import path from "node:path";
+import { nanoid } from "nanoid";
 import { appendEntries, decisionsFromMarkdown, replaceEntry } from "@/decisions/format";
 import { monthOf, type Decision } from "@/decisions/model";
 import type { Doc } from "@/doc/schema";
 import type { OstCard } from "@/discovery/types";
 import type { SourceRecord } from "@/discovery/sources";
+import { topicFromMarkdown, topicToMarkdown } from "@/hub/topic-md";
+import { applyFiling, type Applied, type Filing, type Topic, type TopicInfo } from "@/hub/topics";
+import { factHash } from "@/knowledge/refs";
 import { aboutFromMarkdown, aboutToMarkdown, emptyContext, productFromMarkdown, productToMarkdown, type ContextFields, type Product } from "@/org/context-md";
 import type { Project, ProjectType } from "@/projects/model";
 import { assetExt, assetType, decodeProject, decodeSource, docVersion, encodeProject, encodeSource, isLocalField, recordVersion, splitLocal, type LocalFields } from "./codecs";
@@ -36,7 +40,9 @@ export type OrgEvent = { tab?: string } & (
   | { kind: "about" }
   | { kind: "org" }
   | { kind: "decision"; ids: string[]; boards: string[] }
+  | { kind: "topic"; id: string; removed?: boolean }
 );
+
 
 /** An outcome on one of the organization's boards: the home's goals, by product. */
 export interface Goal {
@@ -79,6 +85,8 @@ interface SourceEntry {
   /** The boards it's on. A source belongs to the organization; boards use it. */
   boards: string[];
   product: string | null;
+  /** Its quotes the topic pages have seen (Qalam AI filed them). */
+  filed: string[];
 }
 
 interface LocalState {
@@ -95,6 +103,8 @@ export class OrgStore {
   private products = new Map<string, string>();
   /** The decision log: each month file's decisions. */
   private decisions = new Map<string, Decision[]>();
+  /** Topic pages (hub/topics/*.md), by id. */
+  private topics = new Map<string, string>();
   private unionChecked = false;
   /** Each board's outcomes, as of its document's version. */
   private goals = new Map<string, { docV: string; goals: Omit<Goal, "boardName" | "product">[] }>();
@@ -176,6 +186,7 @@ export class OrgStore {
     for (const file of await this.files("design-systems", ".json")) await this.indexSystem(file);
     for (const file of await this.files("products", ".md")) await this.indexProduct(file);
     for (const file of await this.files("decisions", ".md")) await this.indexDecisions(file);
+    for (const file of await this.files("hub/topics", ".md")) await this.indexTopic(file);
     for (const file of await this.files("assets", "")) this.assets.set(path.basename(file).replace(/\.[^.]+$/, ""), file);
     try {
       for (const d of await readdir(this.abs("chats"), { withFileTypes: true })) if (d.isDirectory()) for (const file of await this.files(`chats/${d.name}`, ".json")) await this.indexChat(file);
@@ -209,7 +220,7 @@ export class OrgStore {
     try {
       const s = decodeSource(await readFile(md, "utf8"), await readFile(data, "utf8"));
       if (!s) return null;
-      this.sources.set(s.id, { md, data, boards: s.boards ?? [], product: s.product ?? null });
+      this.sources.set(s.id, { md, data, boards: s.boards ?? [], product: s.product ?? null, filed: s.filed ?? [] });
       return s;
     } catch {
       return null;
@@ -242,6 +253,23 @@ export class OrgStore {
     } catch {
       this.decisions.delete(file);
       return [];
+    }
+  }
+
+  /** A page written by hand without Qalam's front matter is named after its file. */
+  private topicIdFor = (file: string) => `h${factHash(path.basename(file))}`;
+
+  private async indexTopic(file: string): Promise<Topic | null> {
+    try {
+      const t = topicFromMarkdown(await readFile(file, "utf8"), this.topicIdFor(file));
+      if (!t) return null;
+      // Two files with the same id (a copied page): the first one keeps it.
+      const had = this.topics.get(t.id);
+      if (had && had !== file) return null;
+      this.topics.set(t.id, file);
+      return t;
+    } catch {
+      return null;
     }
   }
 
@@ -411,8 +439,10 @@ export class OrgStore {
         const used = new Set([...this.sources.values()].map((x) => x.md));
         md = path.join(dir, uniqueName(`${date}-${slugify(s.title, "source")}`, ".md", (n) => used.has(path.join(dir, n))));
       }
-      const files = encodeSource({ ...s, boards, product });
-      const entry: SourceEntry = { md, data: md.replace(/\.md$/, ".json"), boards, product };
+      // What the topic pages have seen only grows: a board saving its copy doesn't forget it.
+      const filed = [...new Set([...(prev?.filed ?? []), ...(s.filed ?? [])])];
+      const files = encodeSource({ ...s, boards, product, ...(filed.length ? { filed } : {}) });
+      const entry: SourceEntry = { md, data: md.replace(/\.md$/, ".json"), boards, product, filed };
       await this.write(entry.md, files.md);
       await this.write(entry.data, files.data);
       this.sources.set(s.id, entry);
@@ -447,6 +477,106 @@ export class OrgStore {
       this.sources.delete(id);
       this.emit({ kind: "source", id, boards: s.boards, removed: true, tab: opts.tab });
     });
+  }
+
+  /** Some of a source's quotes are now on the topic pages (or were read for them and left off). */
+  private markFiled(id: string, quotes: string[], opts: { tab?: string } = {}): Promise<void> {
+    return locked(`source:${id}`, async () => {
+      const e = this.sources.get(id);
+      if (!e || quotes.every((q) => e.filed.includes(q))) return;
+      const rec = await this.readSource(e);
+      if (!rec) return;
+      const filed = [...new Set([...e.filed, ...(rec.filed ?? []), ...quotes])];
+      const files = encodeSource({ ...rec, filed });
+      await this.write(e.md, files.md);
+      await this.write(e.data, files.data);
+      this.sources.set(id, { ...e, filed });
+      this.emit({ kind: "source", id, boards: e.boards, tab: opts.tab });
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Topic pages: what the organization knows about each need, segment and product (hub/topics).
+
+  private async readTopic(id: string): Promise<TopicInfo | null> {
+    const file = this.topics.get(id);
+    if (!file) return null;
+    try {
+      const text = await readFile(file, "utf8");
+      const t = topicFromMarkdown(text, this.topicIdFor(file));
+      return t ? { ...t, id, version: contentHash(text), file: path.relative(this.dir, file) } : null;
+    } catch {
+      return null; // removed meanwhile
+    }
+  }
+
+  async listTopics(): Promise<TopicInfo[]> {
+    const out: TopicInfo[] = [];
+    for (const id of this.topics.keys()) {
+      const t = await this.readTopic(id);
+      if (t) out.push(t);
+    }
+    return out.sort((a, b) => b.updatedAt - a.updatedAt);
+  }
+
+  getTopic(id: string): Promise<TopicInfo | null> {
+    return this.readTopic(id);
+  }
+
+  /** Write a page's file (a new page gets one named after its title). */
+  private async writeTopic(t: Topic): Promise<string> {
+    let file = this.topics.get(t.id);
+    if (!file) {
+      const dir = this.abs("hub/topics");
+      const used = new Set(this.topics.values());
+      file = path.join(dir, uniqueName(slugify(t.title, "topic"), ".md", (n) => used.has(path.join(dir, n))));
+    }
+    const { version: _v, file: _f, ...page } = t as TopicInfo;
+    const text = topicToMarkdown(page);
+    await this.write(file, text);
+    this.topics.set(t.id, file);
+    return contentHash(text);
+  }
+
+  /** Save a page as people changed it. Conflicts when it changed since `ifMatch` (Qalam AI filed something, another window, an editor). */
+  putTopic(t: Topic, opts: { ifMatch?: string; tab?: string } = {}): Promise<string> {
+    return locked("topics", async () => {
+      const cur = await this.readTopic(t.id);
+      if (cur && opts.ifMatch && opts.ifMatch !== cur.version) throw new ConflictError(cur.version, cur);
+      const v = await this.writeTopic({ ...t, updatedAt: Date.now() });
+      this.emit({ kind: "topic", id: t.id, tab: opts.tab });
+      return v;
+    });
+  }
+
+  removeTopic(id: string, opts: { tab?: string } = {}): Promise<void> {
+    return locked("topics", async () => {
+      const file = this.topics.get(id);
+      if (file) await rm(file, { force: true });
+      this.topics.delete(id);
+      this.emit({ kind: "topic", id, removed: true, tab: opts.tab });
+    });
+  }
+
+  /**
+   * File what Qalam AI proposed (checked by code first, src/hub/topics.ts sanitizeFiling) into the
+   * pages as they are now, and note which quotes the pages have now seen. `from` names the material.
+   */
+  async fileTopics(f: Filing, o: { from: string; filed?: Record<string, string[]>; tab?: string }): Promise<Applied> {
+    const r = await locked("topics", async () => {
+      const pages = new Map<string, Topic>();
+      for (const ref of new Set([...f.add, ...f.revise, ...f.retire, ...f.dispute].map((x) => x.topic))) {
+        if (ref.startsWith("new:")) continue;
+        const t = await this.readTopic(ref);
+        if (t) pages.set(ref, t);
+      }
+      const applied = applyFiling(pages, f, { now: Date.now(), newId: () => nanoid(10), from: o.from });
+      for (const t of applied.pages) await this.writeTopic(t);
+      return applied;
+    });
+    for (const [id, quotes] of Object.entries(o.filed ?? {})) await this.markFiled(id, quotes, o);
+    for (const t of r.pages) this.emit({ kind: "topic", id: t.id, tab: o.tab });
+    return r;
   }
 
   // -------------------------------------------------------------------------
@@ -820,6 +950,16 @@ export class OrgStore {
       const boards = new Set(changed.map((d) => d.board));
       for (const id of gone) boards.add((JSON.parse(before.get(id)!) as Decision).board);
       if (changed.length || gone.length) this.emit({ kind: "decision", ids: [...changed.map((d) => d.id), ...gone], boards: [...boards] });
+    } else if (parts[0] === "hub" && parts[1] === "topics" && parts.length === 3 && rel.endsWith(".md")) {
+      const t = bytes ? await this.indexTopic(file) : null;
+      if (t) this.emit({ kind: "topic", id: t.id });
+      else {
+        const gone = [...this.topics].find(([, f]) => f === file);
+        if (gone) {
+          this.topics.delete(gone[0]);
+          this.emit({ kind: "topic", id: gone[0], removed: true });
+        }
+      }
     } else if (rel === "about.md") {
       this.emit({ kind: "about" });
     } else if (rel === "org.json" && bytes) {

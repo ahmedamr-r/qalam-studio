@@ -7,6 +7,7 @@ import type { OstCard, OstEvidence } from "@/discovery/types";
 import { factHash } from "@/knowledge/refs";
 import type { ContextFields } from "@/org/context-md";
 import type { Project } from "@/projects/model";
+import { SECTION_HEADING, type Topic, type TopicSection } from "./topics";
 
 /**
  * The organization's knowledge as pieces: small and typed, one fact each (a customer's words, a
@@ -18,7 +19,7 @@ import type { Project } from "@/projects/model";
  * model call. Pure: the index (server/index) builds pieces from the organization's files.
  */
 
-export type PieceType = "quote" | "need" | "evidence" | "card" | "assumption" | "decision" | "context";
+export type PieceType = "quote" | "need" | "evidence" | "card" | "assumption" | "decision" | "context" | "page";
 
 export type EdgeKind =
   /** A card rests on a piece of evidence. */
@@ -34,7 +35,9 @@ export type EdgeKind =
   /** A decision is about a card. */
   | "about"
   /** An assumption is one a solution rests on. */
-  | "of";
+  | "of"
+  /** A topic page's line rests on a piece. */
+  | "cites";
 
 export interface HubEdge {
   from: string;
@@ -66,10 +69,10 @@ export interface HubPiece {
   at: number;
 }
 
-/** Something pieces belong to: a source, a board. */
+/** Something pieces belong to: a source, a board, a topic page. */
 export interface HubEntity {
   ref: string;
-  kind: "source" | "board";
+  kind: "source" | "board" | "topic";
   name: string;
 }
 
@@ -88,6 +91,8 @@ export const cardRef = (board: string, card: string) => `hub:card:${board}:${car
 export const sourceRef = (id: string) => `hub:source:${id}`;
 export const boardRef = (id: string) => `hub:board:${id}`;
 export const decisionRef = (id: string) => `hub:decision:${id}`;
+export const topicRef = (id: string) => `hub:topic:${id}`;
+export const topicLineRef = (topic: string, line: string) => `hub:topic:${topic}:${line}`;
 
 const date = (at: number) => (at > 0 ? new Date(at).toLocaleDateString("en", { month: "short", day: "numeric", year: "numeric" }) : "");
 const q = (t: string) => `“${t.replace(/\s+/g, " ").trim() || "Untitled"}”`;
@@ -110,7 +115,8 @@ export function sourcePieces(s: SourceRecord, n: Names): Built {
     pieces.push({
       ref,
       type: "quote",
-      sub: dump ? (quote.role ?? "dump") : quote.kind,
+      // A brain dump's pieces are the team's words, never a customer's: their kind says so.
+      sub: dump ? `dump:${quote.role ?? "piece"}` : quote.kind,
       text: quote.text,
       line: join(`${what} in ${where}`, forProduct(product, n)),
       title: s.title,
@@ -254,6 +260,45 @@ export function contextPieces(owner: { product: string | null; name: string; at:
 }
 
 // ---------------------------------------------------------------------------
+// Topic pages: each line a piece, linked to the pieces it cites (hub/topics/*.md)
+
+const ABOUT_TOPIC: Record<Topic["kind"], string> = { need: "the need", segment: "the segment", product: "the product" };
+const SECTION_LINE: Record<TopicSection, string> = {
+  know: "What the organization knows about",
+  believe: "What the team believes about",
+  against: "What speaks against",
+  open: "An open question about",
+};
+
+export function topicPieces(t: Topic, n: Names): Built {
+  const pieces: HubPiece[] = [];
+  const edges: HubEdge[] = [];
+  const page = topicRef(t.id);
+  // One product's page is that product's; one about several (or none) is the whole organization's.
+  const product = t.products.length === 1 ? t.products[0] : null;
+  for (const l of t.lines) {
+    const ref = topicLineRef(t.id, l.id);
+    const against = (l.disputes ?? []).map((d) => ` Disputed: ${d.text}`).join("");
+    pieces.push({
+      ref,
+      type: "page",
+      sub: l.section,
+      text: `${l.text}${against}`,
+      line: join(`${SECTION_LINE[l.section]} ${ABOUT_TOPIC[t.kind]} ${q(t.title)}, on its topic page${l.by === "person" ? ", in the team's words" : ""}`, forProduct(product, n)),
+      title: t.title,
+      product,
+      at: l.at || t.updatedAt,
+    });
+    edges.push({ from: ref, to: page, kind: "in" });
+    for (const c of [...l.cites, ...(l.disputes ?? []).flatMap((d) => d.cites)]) edges.push({ from: ref, to: c, kind: "cites" });
+  }
+  return { pieces, edges, entities: [{ ref: page, kind: "topic", name: t.title }] };
+}
+
+/** "We know" for a page line's part (search results show it). */
+export const sectionOf = (sub: string | null | undefined) => (sub && sub in SECTION_HEADING ? SECTION_HEADING[sub as TopicSection] : null);
+
+// ---------------------------------------------------------------------------
 
 /** What word and meaning search read for a piece: its line, the cards it's about, its words. */
 export function searchText(p: Pick<HubPiece, "line" | "text">, topics: string[] = []): string {
@@ -266,9 +311,12 @@ export function searchText(p: Pick<HubPiece, "line" | "text">, topics: string[] 
  * product) is as long as a quote and drowns its meaning, so it stays out; the cards a piece is
  * about are the best context it has. Lines about the organization keep theirs ("A goal of …").
  */
-export function meaningText(p: Pick<HubPiece, "line" | "text" | "type" | "sub">, topics: string[] = []): string {
+export function meaningText(p: Pick<HubPiece, "line" | "text" | "type" | "sub"> & { title?: string | null }, topics: string[] = []): string {
   if (p.type === "context") return `${p.line}: ${p.text}`;
-  const what = p.type === "quote" ? `A customer ${p.sub ?? "quote"}` : p.type === "card" ? (p.sub ?? "card") : p.type;
+  // A page's line is about its topic: the topic's name is its context.
+  if (p.type === "page") return `${sectionOf(p.sub) ?? "Topic page"}, about ${q(p.title ?? "")}: ${p.text}`;
+  const team = p.type === "quote" && p.sub?.startsWith("dump:");
+  const what = team ? `The team's ${p.sub!.slice(5)}` : p.type === "quote" ? `A customer ${p.sub ?? "quote"}` : p.type === "card" ? (p.sub ?? "card") : p.type;
   return `${what}. ${topics.length ? `About ${topics.map(q).join(", ")}. ` : ""}${p.text}`;
 }
 

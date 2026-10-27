@@ -43,6 +43,7 @@ import { placeFor, placeSample, routeTurns, treeFor } from "./draft";
 import { REVIEW_TURN, evidenceOf, ghostsFor, startReview, useReview } from "./review";
 import { ingestPaste } from "./ingest";
 import { addSourceRecord, sourceOf, updateSource, useSources } from "./sources";
+import { fileAfterReading } from "../topics/filing";
 import { boardCardRefs, hubQuotes, packProduct, recordCall } from "./knowledge";
 import { useDiscovery } from "./store";
 
@@ -371,6 +372,8 @@ export async function placeDump(sourceId: string) {
     recordCall({ title: `Placed the brain dump “${s.title}”`, summary: (raw as { summary?: unknown } | null)?.summary as string | undefined, org, raw, model, sample, status: "proposed", produced: { refs: list.map((p) => p.cardId) } });
     await review(list);
     turnDone(sourceId, { model, sample });
+    // The dump's pieces are what the team believes: on the topic pages too (in the background).
+    if (!sample) void fileAfterReading([sourceId], currentProject()?.product ?? null);
   } catch (e) {
     clearTimeout(timer);
     clearGhosts(preview);

@@ -13,7 +13,7 @@ import { unit, type Models } from "../models/client";
 import { OrgStore } from "../org/store";
 import { INDEX_VERSION } from "./db";
 import { OrgIndex } from "./indexer";
-import { packFor, search } from "./search";
+import { packFor, search, showsUp } from "./search";
 
 const fts5 = (() => {
   try {
@@ -208,5 +208,37 @@ describe.skipIf(!fts5)("the organization's search index", () => {
     expect(ix.status().pieces).toBe(0);
     await ix.sync();
     expect(ix.status().pieces).toBe(7);
+  });
+
+  it("indexes topic pages line by line, linked to what they cite, and packs them first", async () => {
+    const r = await store.fileTopics(
+      {
+        create: [{ key: "n1", kind: "need", title: "I never know when the courier will come", products: ["grocery"] }],
+        add: [
+          { topic: "new:n1", section: "know", text: "Customers can't plan their evening around the courier.", cites: ["hub:quote:q1"], from: ["Sara interview"], products: ["grocery"] },
+          { topic: "new:n1", section: "open", text: "Would a narrower window be enough?", cites: ["hub:quote:q1"], from: ["Sara interview"], products: ["grocery"] },
+        ],
+        revise: [],
+        retire: [],
+        dispute: [],
+      },
+      { from: "“Sara interview”" },
+    );
+    const id = r.created[0];
+    ix = OrgIndex.open(store, null);
+    await ix.sync();
+    const page = (await store.getTopic(id))!;
+    const know = `hub:topic:${id}:${page.lines[0].id}`;
+    expect(ix.piecesByRef([know]).get(know)).toMatchObject({ type: "page", sub: "know", title: "I never know when the courier will come", product: "grocery" });
+    expect(ix.links(know)).toEqual(expect.arrayContaining([{ ref: "hub:quote:q1", kind: "cites", out: true }, { ref: `hub:topic:${id}`, kind: "in", out: true }]));
+    expect(ix.words('"evening"')).toContain(know);
+    // The card that rests on the same quote is where the page shows up.
+    expect(showsUp(ix, page.title, ["hub:quote:q1"])).toMatchObject([{ board: board.id, card: "n1", title: "Late deliveries ruin the evening", shared: 1 }]);
+    const p = await packFor(ix, { query: "courier evening", budget: 2000 });
+    expect(p.rows[0].type).toBe("page");
+    // A page edited away goes from the index too.
+    await store.removeTopic(id);
+    await ix.settled();
+    expect(ix.piecesByRef([know]).size).toBe(0);
   });
 });

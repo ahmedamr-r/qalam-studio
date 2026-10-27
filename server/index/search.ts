@@ -1,6 +1,7 @@
 import { dot, mmr, rrf, scoped, TIER_WEIGHT, type RankedList, type Tier } from "@/hub/fuse";
 import { pack, tokensOf, type Packed } from "@/hub/pack";
 import { searchText } from "@/hub/pieces";
+import { sameTopic } from "@/hub/topics";
 import { ftsQuery } from "@/hub/words";
 import { topicsOf, type OrgIndex, type PieceRow } from "./indexer";
 
@@ -32,12 +33,15 @@ export interface Hit extends PieceRow {
   ranks: Record<string, number>;
 }
 
+/** Topic page lines found this high in a pack's list go first. */
+const PAGES_FROM = 30;
+
 /** Two pieces this near in meaning say the same thing: the second waits behind something different. */
 const NEAR_COPY = 0.85;
 
 /** How strongly a link ties two pieces, by kind. */
-const LINK_WEIGHT: Record<string, number> = { backs: 1, against: 1, of: 0.9, about: 0.8, shows: 0.8, under: 0.6, in: 0.2 };
-const isEntity = (ref: string) => ref.startsWith("hub:source:") || ref.startsWith("hub:board:");
+const LINK_WEIGHT: Record<string, number> = { backs: 1, against: 1, of: 0.9, cites: 0.9, about: 0.8, shows: 0.8, under: 0.6, in: 0.2 };
+const isEntity = (ref: string) => ref.startsWith("hub:source:") || ref.startsWith("hub:board:") || /^hub:topic:[^:]+$/.test(ref);
 
 /** Pieces near a card by its links, nearest first; `direct` are one link away. */
 export function nearby(index: OrgIndex, anchor: string, depth = 2): { refs: string[]; direct: Set<string> } {
@@ -163,6 +167,10 @@ export async function packFor(index: OrgIndex, o: PackOpts): Promise<Packed & { 
   const keep = (p: PieceRow) => (!types || types.has(p.type)) && !out.has(p.ref);
   const { hits, used } = await search(index, { ...o, limit: o.limit ?? 120 });
   let list: PieceRow[] = withNeighbours(index, hits).filter(keep);
+  // A topic page's line says what many pieces show: the ones found near the top go first, the
+  // pieces they cite after them (Karpathy's LLM Wiki: the wiki before the raw sources).
+  const pages = list.slice(0, PAGES_FROM).filter((p) => p.type === "page");
+  if (pages.length) list = [...pages, ...list.filter((p) => !pages.includes(p))];
   const all = (index.db.prepare("select * from pieces order by at desc").all() as unknown as PieceRow[]).filter(keep);
   const whole = all.reduce((s, p) => s + tokensOf(searchText(p, topicsOf(p))) + 8, 0);
   if (whole <= o.budget) {
@@ -176,4 +184,32 @@ export async function packFor(index: OrgIndex, o: PackOpts): Promise<Packed & { 
   );
   const byRef = new Map(list.map((p) => [p.ref, p]));
   return { ...packed, used, rows: packed.items.map((i) => byRef.get(i.ref)!) };
+}
+
+/** A card on a board that a topic page shows up on. */
+export interface ShowsUp {
+  ref: string;
+  board: string;
+  card: string;
+  title: string;
+  kind: string;
+  stage: string | null;
+  /** How many of the page's pieces it rests on (or speaks against). */
+  shared: number;
+}
+
+/** The cards that rest on (or are spoken against by) pieces a page cites, and cards named like it; most shared first. */
+export function showsUp(index: OrgIndex, title: string, refs: string[]): ShowsUp[] {
+  const count = new Map<string, number>();
+  for (const ref of refs)
+    for (const l of index.links(ref)) if (!l.out && (l.kind === "backs" || l.kind === "against") && l.ref.startsWith("hub:card:")) count.set(l.ref, (count.get(l.ref) ?? 0) + 1);
+  for (const row of index.db.prepare("select ref, title from pieces where type = 'card' and title is not null").all() as { ref: string; title: string }[])
+    if (!count.has(row.ref) && sameTopic(row.title, title)) count.set(row.ref, 0);
+  const rows = index.piecesByRef([...count.keys()]);
+  return [...count]
+    .flatMap(([ref, shared]) => {
+      const r = rows.get(ref);
+      return r?.board && r.card ? [{ ref, board: r.board, card: r.card, title: r.title ?? r.text, kind: r.sub ?? "card", stage: r.stage, shared }] : [];
+    })
+    .sort((a, b) => b.shared - a.shared || a.title.localeCompare(b.title));
 }

@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
-import { boardPieces, contextPieces, decisionPieces, meaningText, sourcePieces, type Built, type HubPiece, type Names } from "@/hub/pieces";
+import { boardPieces, contextPieces, decisionPieces, meaningText, sourcePieces, topicPieces, type Built, type HubPiece, type Names } from "@/hub/pieces";
 import { fold } from "@/hub/words";
 import type { Models } from "../models/client";
 import { contentHash, stableStringify } from "../org/fsx";
@@ -9,7 +9,7 @@ import { openIndexDb, tx } from "./db";
 
 /**
  * One organization's search index, kept current with its folder. Each thing the folder holds (a
- * board, a source, the decision log, a product, about.md) is built into pieces and links
+ * board, a source, the decision log, a product, about.md, a topic page) is built into pieces and links
  * (src/hub/pieces.ts) under its key; only what changed is written again, so an edit to one board
  * costs that board. Links that go away are kept, marked when they stopped (expired_at). The cards
  * a piece backs become its "topics", searched with it. Vectors for meaning search are made in the
@@ -145,6 +145,7 @@ export class OrgIndex {
     if (e.kind === "project") this.queue.add(`board:${e.id}`);
     else if (e.kind === "source") this.queue.add(`source:${e.id}`);
     else if (e.kind === "decision") this.queue.add("decisions");
+    else if (e.kind === "topic") this.queue.add(`topic:${e.id}`);
     else if (e.kind === "about" || e.kind === "org") this.queue.add("context:org");
     // A product's name is in the lines of everything for it: look at everything again.
     else if (e.kind === "product") this.queue.add("*");
@@ -174,6 +175,7 @@ export class OrgIndex {
     for (const p of this.store.listProjects()) if (p.type === "discovery") keys.add(`board:${p.id}`);
     for (const s of await this.store.listSources()) keys.add(`source:${s.id}`);
     for (const p of await this.store.listProducts()) keys.add(`context:${p.id}`);
+    for (const t of await this.store.listTopics()) keys.add(`topic:${t.id}`);
     return keys;
   }
 
@@ -193,6 +195,10 @@ export class OrgIndex {
       }
       case "decisions":
         return decisionPieces(store.listDecisions(), (board) => store.getProject(board)?.record.product, names);
+      case "topic": {
+        const t = await store.getTopic(id);
+        return t ? topicPieces(t, names) : null;
+      }
       case "context": {
         if (id === "org") return contextPieces({ product: null, name: store.info.name, at: store.info.createdAt }, await store.getAbout());
         const p = (await store.listProducts()).find((x) => x.id === id);
@@ -279,7 +285,7 @@ export class OrgIndex {
        where e.dst = ? and e.kind in ('backs', 'against') and e.expired_at is null and p.title is not null order by p.title`,
     );
     for (const ref of refs) {
-      const row = db.prepare("select id, type, sub, line, text, topics, hash from pieces where ref = ?").get(ref) as Pick<PieceRow, "id" | "type" | "sub" | "line" | "text" | "topics" | "hash"> | undefined;
+      const row = db.prepare("select id, type, sub, line, text, title, topics, hash from pieces where ref = ?").get(ref) as Pick<PieceRow, "id" | "type" | "sub" | "line" | "text" | "title" | "topics" | "hash"> | undefined;
       if (!row) continue;
       const list = (titles.all(ref) as { t: string }[]).map((x) => x.t);
       const topics = list.join(TOPIC_SEP);
@@ -306,8 +312,8 @@ export class OrgIndex {
     for (;;) {
       if (this.closed) return;
       const rows = db
-        .prepare("select p.id, p.type, p.sub, p.line, p.text, p.topics, p.hash from pieces p left join vectors v on v.id = p.id where v.id is null or v.hash != p.hash or v.model != ? limit 32")
-        .all(models.embedder) as Pick<PieceRow, "id" | "type" | "sub" | "line" | "text" | "topics" | "hash">[];
+        .prepare("select p.id, p.type, p.sub, p.line, p.text, p.title, p.topics, p.hash from pieces p left join vectors v on v.id = p.id where v.id is null or v.hash != p.hash or v.model != ? limit 32")
+        .all(models.embedder) as Pick<PieceRow, "id" | "type" | "sub" | "line" | "text" | "title" | "topics" | "hash">[];
       if (!rows.length) return;
       let vecs: Float32Array[];
       try {

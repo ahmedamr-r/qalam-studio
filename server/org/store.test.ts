@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Decision } from "@/decisions/model";
 import type { Doc } from "@/doc/schema";
+import type { Filing } from "@/hub/topics";
 import type { SourceRecord } from "@/discovery/sources";
 import type { Project } from "@/projects/model";
 import { ConflictError, OrgStore, type OrgEvent } from "./store";
@@ -279,5 +280,64 @@ describe("changes made outside Qalam", () => {
     for (let i = 0; i < 40 && !edit(); i++) await new Promise((r) => setTimeout(r, 50));
     expect(edit()).toMatchObject({ kind: "project", id: board.id, parts: ["record"] });
     expect(store.getProject(board.id)?.record.name).toBe("Renamed in Finder");
+  });
+});
+
+describe("topic pages", () => {
+  const quote = (id: string, text: string) => ({ id, text, span: [0, text.length] as [number, number], kind: "pain" as const, addedBy: "ai" as const, at: 1 });
+  const filing = (): Filing => ({
+    create: [{ key: "n1", kind: "need", title: "We wait too long for deliveries", products: [] }],
+    add: [{ topic: "new:n1", section: "know", text: "Customers waited 50 minutes.", cites: ["hub:quote:q1"], from: ["Call notes"], products: [] }],
+    revise: [],
+    retire: [],
+    dispute: [],
+  });
+
+  it("files Qalam AI's lines into a new page's file, and notes the quotes the pages have seen", async () => {
+    await store.putSource({ ...source("s1abcdefgh", board.id), quotes: [quote("q1", "We waited 50 minutes.")] });
+    events.length = 0;
+    const r = await store.fileTopics(filing(), { from: "“Call notes”", filed: { s1abcdefgh: ["q1"] }, tab: "t1" });
+    expect(r.counts.added).toBe(1);
+    expect(await readdir(path.join(dir, "hub", "topics"))).toEqual(["we-wait-too-long-for-deliveries.md"]);
+    const md = await readFile(path.join(dir, "hub", "topics", "we-wait-too-long-for-deliveries.md"), "utf8");
+    expect(md).toContain("# We wait too long for deliveries\n\n## We know\n\n- Customers waited 50 minutes. *(Call notes)* <!-- qalam ");
+    expect(md).toContain("· Qalam AI started this page from “Call notes”, with 1 line.");
+    expect(events).toEqual(expect.arrayContaining([{ kind: "topic", id: r.created[0], tab: "t1" }, { kind: "source", id: "s1abcdefgh", boards: [board.id], tab: "t1" }]));
+    expect((await store.getSource("s1abcdefgh"))?.filed).toEqual(["q1"]);
+    // A board saving its copy of the source (from before) doesn't forget what was filed.
+    await store.putSource({ ...source("s1abcdefgh", board.id), quotes: [quote("q1", "We waited 50 minutes.")] });
+    expect((await store.getSource("s1abcdefgh"))?.filed).toEqual(["q1"]);
+    const [page] = await store.listTopics();
+    expect(page).toMatchObject({ id: r.created[0], title: "We wait too long for deliveries", file: "hub/topics/we-wait-too-long-for-deliveries.md" });
+  });
+
+  it("saves people's changes, unless the page changed since", async () => {
+    const r = await store.fileTopics(filing(), { from: "“Call notes”" });
+    const page = (await store.getTopic(r.created[0]))!;
+    const v = await store.putTopic({ ...page, lines: [...page.lines, { id: "p1", section: "open", text: "Is it worse at night?", by: "person", cites: [], from: [], at: 2 }] }, { ifMatch: page.version });
+    await expect(store.putTopic(page, { ifMatch: page.version })).rejects.toBeInstanceOf(ConflictError);
+    const now = (await store.getTopic(page.id))!;
+    expect(now.version).toBe(v);
+    expect(now.lines.map((l) => [l.section, l.by, l.text])).toEqual([
+      ["know", "qalam", "Customers waited 50 minutes."],
+      ["open", "person", "Is it worse at night?"],
+    ]);
+    await store.removeTopic(page.id);
+    expect(await store.listTopics()).toEqual([]);
+  });
+
+  it("picks up pages written or edited in the folder", async () => {
+    const r = await store.fileTopics(filing(), { from: "“Call notes”" });
+    const file = path.join(dir, "hub", "topics", "we-wait-too-long-for-deliveries.md");
+    await writeFile(file, (await readFile(file, "utf8")).replace("Customers waited 50 minutes.", "Customers waited almost an hour."));
+    events.length = 0;
+    await store.reload("hub/topics/we-wait-too-long-for-deliveries.md");
+    expect(events).toEqual([{ kind: "topic", id: r.created[0] }]);
+    expect((await store.getTopic(r.created[0]))!.lines[0]).toMatchObject({ by: "person", text: "Customers waited almost an hour." });
+    await writeFile(path.join(dir, "hub", "topics", "parents.md"), "# Parents of young children\n\n## We believe\n\n- They order on Sunday nights.\n");
+    await store.reload("hub/topics/parents.md");
+    const hand = (await store.listTopics()).find((t) => t.title === "Parents of young children");
+    expect(hand?.lines).toMatchObject([{ section: "believe", by: "person", text: "They order on Sunday nights." }]);
+    expect(events.at(-1)).toEqual({ kind: "topic", id: hand!.id });
   });
 });

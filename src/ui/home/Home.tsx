@@ -2,8 +2,11 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import clsx from "clsx";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { ChevronRight, Frame, MoreHorizontal, Network, Palette, Plus } from "lucide-react";
+import { nanoid } from "nanoid";
 import type { AIStatus } from "@/ai/client";
 import type { SourceRecord } from "@/discovery/sources";
+import type { Topic } from "@/hub/topics";
+import { topicsDb } from "@/org/topics";
 import { currentOrg, orgJson, type OrgRef } from "@/org/client";
 import { newProduct, saveProduct, useOrgContext } from "@/org/context";
 import type { Product } from "@/org/context-md";
@@ -11,7 +14,7 @@ import { projectsDb } from "@/projects/db";
 import { browserProjectsToMove, moveBrowserProjects } from "@/org/import-browser";
 import { onOrgChange } from "@/org/live";
 import { getSystem } from "@/design-system/registry";
-import { projectHref, statusOf, type Project, type ProjectType } from "@/projects/model";
+import { projectHref, statusOf, topicHref, type Project, type ProjectType } from "@/projects/model";
 import { createProject } from "@/projects/session";
 import { deleteProject, hasLegacyChanges, importLegacy, listProjects, renameProjectById } from "@/projects/library";
 import { QalamMark, Wordmark } from "../brand";
@@ -24,13 +27,16 @@ import { GoalsList, type Goal } from "../org/Goals";
 import { OrgSwitcher } from "../org/OrgSwitcher";
 import { SourcesList } from "../org/SourcesList";
 import { DecisionsList } from "../org/DecisionsList";
+import { TopicsList } from "../org/TopicsList";
+import { useTopics } from "../topics/list";
 import { useDecisions } from "../decisions/list";
 import { ago } from "../time";
 
 /**
  * An organization's home: what it and its products are, every board's goals, the boards, the
- * sources and the decisions made on the boards, by product. Design work (screens, design systems) waits below, on hold. Everything is
- * saved in the organization's folder on disk.
+ * topic pages (what the organization knows about each need, segment and product), the sources and
+ * the decisions made on the boards, by product. Design work (screens, design systems) waits below,
+ * on hold. Everything is saved in the organization's folder on disk.
  */
 
 const TYPE_LABEL: Record<ProjectType, string> = { system: "Design system", screens: "Screens", discovery: "Discovery" };
@@ -45,8 +51,9 @@ export default function Home() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [sources, setSources] = useState<SourceRecord[]>([]);
   const [scope, setScopeState] = useState<Scope>(readScope);
-  const [tab, setTab] = useState<"boards" | "sources" | "decisions">("boards");
+  const [tab, setTabState] = useState<Tab>(readTab);
   const decisions = useDecisions({ limit: 300 });
+  const topics = useTopics();
   const { products, about, loaded } = useOrgContext();
 
   const refresh = useCallback(() => {
@@ -78,6 +85,14 @@ export default function Home() {
     };
   }, [refresh]);
 
+  const setTab = (t: Tab) => {
+    setTabState(t);
+    const u = new URL(window.location.href);
+    if (t === "boards") u.searchParams.delete("tab");
+    else u.searchParams.set("tab", t);
+    history.replaceState(null, "", u);
+  };
+
   const setScope = (s: Scope) => {
     setScopeState(s);
     const u = new URL(window.location.href);
@@ -97,6 +112,23 @@ export default function Home() {
     window.location.assign(projectHref(p));
   };
 
+  /** A page started by hand: a need or a kind of customer, for the product in view. */
+  const newPage = async (kind: "need" | "segment") => {
+    const title = await promptDialog({
+      title: kind === "need" ? "New need" : "New segment",
+      body: kind === "need" ? "A need in the customer's words: what they need, struggle with or wish for. Qalam AI files what customers say about it here." : "A kind of customer the team tells apart. Qalam AI files what's true of them here.",
+      label: "Title",
+      placeholder: kind === "need" ? "I can't plan my day around the delivery window" : "Parents of young children",
+      confirmLabel: "Add page",
+      validate: (v) => (v.trim() ? null : "Name it"),
+    });
+    if (!title) return;
+    const now = Date.now();
+    const t: Topic = { id: nanoid(10), kind, title: title.trim().replace(/\s+/g, " ").slice(0, 100), products: product ? [product.id] : [], createdAt: now, updatedAt: now, lines: [], history: [] };
+    await topicsDb.put(t, null);
+    window.location.assign(topicHref(t.id));
+  };
+
   const addProduct = async () => {
     const name = await promptDialog({ title: "New product", body: "Boards and sources can be for one product, or for the whole organization.", label: "Name", placeholder: "Grocery app", confirmLabel: "Add product", validate: (v) => (v.trim() ? null : "Name it") });
     if (!name) return;
@@ -110,6 +142,7 @@ export default function Home() {
   const design = (projects ?? []).filter((p) => p.type !== "discovery");
   const scopedGoals = goals.filter((g) => inScope(g.product, scope));
   const scopedSources = sources.filter((s) => inScope(s.product, scope));
+  const scopedTopics = topics?.filter((t) => (scope === "all" ? true : scope === "org" ? !t.products.length : t.products.includes(scope))) ?? null;
   // A decision is for its board's product as it is now (it records the one it had then, for a board since deleted).
   const scopedDecisions = (decisions ?? []).filter((d) => inScope((projects ?? []).find((p) => p.id === d.board)?.product ?? d.product, scope));
   const orgName = org?.name ?? "Organization";
@@ -177,7 +210,7 @@ export default function Home() {
             {scopedGoals.length ? <GoalsList goals={scopedGoals} /> : <p className="text-body text-fg-muted">No outcomes yet. Every outcome on a board shows here, with the board it's on.</p>}
           </section>
 
-          <section aria-label="Boards, sources and decisions" className="flex flex-col gap-[12px]">
+          <section aria-label="Boards, topics, sources and decisions" className="flex flex-col gap-[12px]">
             <div className="flex items-center justify-between gap-[12px]">
               <Segmented
                 label="Show"
@@ -185,6 +218,7 @@ export default function Home() {
                 onChange={setTab}
                 options={[
                   { value: "boards", label: <span className="whitespace-nowrap px-[4px]">Boards{boards.length ? ` · ${boards.length}` : ""}</span> },
+                  { value: "topics", label: <span className="whitespace-nowrap px-[4px]">Topics{scopedTopics?.length ? ` · ${scopedTopics.length}` : ""}</span> },
                   { value: "sources", label: <span className="whitespace-nowrap px-[4px]">Sources{scopedSources.length ? ` · ${scopedSources.length}` : ""}</span> },
                   { value: "decisions", label: <span className="whitespace-nowrap px-[4px]">Decisions{scopedDecisions.length ? ` · ${scopedDecisions.length}` : ""}</span> },
                 ]}
@@ -194,8 +228,25 @@ export default function Home() {
                   New board
                 </Button>
               )}
+              {tab === "topics" && (
+                <Menu
+                  label="New page"
+                  align="end"
+                  className="w-[180px]"
+                  trigger={
+                    <button type="button" className={clsx(r.buttonSm, r.buttonSecondary)}>
+                      New page
+                    </button>
+                  }
+                >
+                  <MenuItem onSelect={() => void newPage("need")}>A need…</MenuItem>
+                  <MenuItem onSelect={() => void newPage("segment")}>A kind of customer…</MenuItem>
+                </Menu>
+              )}
             </div>
-            {tab === "decisions" ? (
+            {tab === "topics" ? (
+              <TopicsList topics={scopedTopics} sources={scopedSources} products={products} onFiled={refresh} />
+            ) : tab === "decisions" ? (
               <DecisionsList decisions={scopedDecisions} projects={projects ?? []} />
             ) : tab === "sources" ? (
               <SourcesList sources={scopedSources} projects={projects ?? []} products={products} onChanged={refresh} />
@@ -260,6 +311,13 @@ export default function Home() {
     </Tooltip.Provider>
   );
 }
+
+type Tab = "boards" | "topics" | "sources" | "decisions";
+const TABS: Tab[] = ["boards", "topics", "sources", "decisions"];
+const readTab = (): Tab => {
+  const t = new URLSearchParams(window.location.search).get("tab");
+  return TABS.includes(t as Tab) ? (t as Tab) : "boards";
+};
 
 /** Which part of the organization the home shows: everything, what's for the whole organization, or one product. */
 type Scope = "all" | "org" | (string & {});

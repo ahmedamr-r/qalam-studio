@@ -12,6 +12,7 @@ const loading = (
 const Studio = lazy(() => import("./Studio"));
 const Home = lazy(() => import("./home/Home"));
 const SystemProject = lazy(() => import("./SystemProject"));
+const TopicPage = lazy(() => import("./topics/TopicPage"));
 
 const Loading = ({ children }: { children: ReactNode }) => <Suspense fallback={loading}>{children}</Suspense>;
 
@@ -37,6 +38,15 @@ export function SystemProjectLoader({ projectId }: { projectId: string }) {
   return (
     <Loading>
       <SystemProject projectId={projectId} />
+    </Loading>
+  );
+}
+
+/** One of the organization's topic pages. */
+export function TopicLoader({ id }: { id: string }) {
+  return (
+    <Loading>
+      <TopicPage id={id} />
     </Loading>
   );
 }

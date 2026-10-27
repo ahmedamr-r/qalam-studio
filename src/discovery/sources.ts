@@ -92,6 +92,8 @@ export interface SourceRecord {
   read: number[];
   quotes: SourceQuote[];
   needs: SourceNeed[];
+  /** Quotes the organization's topic pages have seen (Qalam AI filed them; src/hub/topics.ts). */
+  filed?: string[];
   /** A brain dump: what Qalam AI made of it, the questions asked and answered, its proposals. */
   dump?: DumpSession;
 }
