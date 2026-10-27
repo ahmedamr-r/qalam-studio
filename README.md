@@ -18,7 +18,7 @@ Early. Qalam runs locally on your own machine; there is no hosted version. Expec
 - **pnpm.** Run `corepack enable`, or `npm install -g pnpm`.
 - **Claude Code, installed and signed in with your own Claude account.** Follow the [Claude Code quickstart](https://code.claude.com/docs/en/quickstart). Qalam AI runs Claude Code in the background for each request, so usage counts against your Claude plan. If you'd rather use an API key, see [Use an Anthropic API key instead](#use-an-anthropic-api-key-instead).
 - **Chrome or Edge** (recommended). The canvas draws with WebGL.
-- **An internet connection.** The browser loads the canvas engine (CanvasKit) from jsDelivr, and the AI calls go to Anthropic.
+- **An internet connection** for the AI calls, which go to Anthropic. The canvas engine (CanvasKit) ships with Qalam.
 
 ### Steps
 
@@ -44,6 +44,14 @@ pnpm dev
 ```
 
 Open the address it prints, http://127.0.0.1:3101. If Qalam AI says Claude Code isn't signed in, run `claude auth login` in a terminal and try again.
+
+To open Qalam as a desktop app instead of in the browser:
+
+```bash
+pnpm desktop
+```
+
+The desktop app runs Qalam AI on your own Claude Code, so you don't need `.env.local` for it.
 
 On the home page, start a **Design system**, **Screens** or **Discovery** project. In a Screens project, **File ▸ Load demo screens** puts example screens on the canvas so you can try the tools right away.
 
@@ -143,7 +151,7 @@ All settings are optional and go in `.env.local`. `.env.example` lists them with
 - **Your work stays in your browser.** Projects, documents, chats, images, Discovery sources and the knowledge hub are stored in your browser's IndexedDB. Design systems and preferences are stored in localStorage. Nothing is uploaded to a Qalam server, because there isn't one: Qalam's own server runs on your machine and only answers this computer.
 - **What goes to the AI.** When you use an AI tool, the local server sends Anthropic what that request needs. That can include your prompt, earlier turns in the chat, the design system (including its source screenshots), screenshots you add, renders and layer outlines of the screens you selected, and the text of documents and pages you add to a Discovery board. With `AI_BACKEND=cli` it goes through Claude Code under your Claude account. With an API key it goes to the Anthropic API under your key.
 - **Claude Code's access.** Qalam runs Claude Code with its tools turned off, from a temporary folder, without your settings or memory. It can't read or change your files. The research step allows only web search, web fetch and the MCP servers you configured.
-- **Other services.** Research queries go to the services you turn on: Anthropic's web search, Tavily, or your MCP servers. Your machine fetches the web pages you add to a Discovery board and any Google Fonts a design system names. The browser loads CanvasKit from jsDelivr.
+- **Other services.** Research queries go to the services you turn on: Anthropic's web search, Tavily, or your MCP servers. Your machine fetches the web pages you add to a Discovery board and any Google Fonts a design system names.
 - **Nothing is sent to the author.** Qalam has no analytics, telemetry or tracking.
 
 ## How it works
@@ -183,6 +191,8 @@ pnpm typecheck   # tsc --noEmit
 pnpm test        # vitest
 pnpm build       # build the UI into dist/
 pnpm start       # serve dist/ and the server from one process (after a build)
+pnpm desktop     # build and open the desktop app (Electron)
+pnpm desktop:dev # the desktop window on the dev server, with hot reload
 ```
 
 Rules and checks must work across products, not just one app: name things by role, trigger on measurable conditions, and test on several kinds of product (see `src/proto/fixtures/`).
@@ -191,7 +201,7 @@ Rules and checks must work across products, not just one app: name things by rol
 
 ## Roadmap
 
-- One-command install (`npx`), so you can try Qalam without cloning the repo.
+- One-command install: publish to npm so `npx qalam-studio` opens the desktop app, then a signed macOS app on GitHub Releases.
 - Interview recordings on Discovery boards: drop in audio or video and get an Arabic or English transcript to quote from. Today, transcripts come in as VTT or SRT.
 - More ways to bring in an existing design system, beyond screenshots, briefs and pasted tokens.
 - More of Figma's editing features. The shortcuts panel lists what's missing.

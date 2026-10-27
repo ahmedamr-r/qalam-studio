@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import clsx from "clsx";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { Frame, MoreHorizontal, Network, Palette } from "lucide-react";
+import type { AIStatus } from "@/ai/client";
 import { getSystem } from "@/design-system/registry";
 import { projectHref, statusOf, type Project, type ProjectType } from "@/projects/model";
 import { createProject } from "@/projects/session";
@@ -81,6 +82,8 @@ export default function Home() {
             </div>
           </section>
 
+          <ClaudeNotice />
+
           {legacy && (
             <div role="status" className="flex flex-wrap items-center justify-between gap-[12px] rounded-lg bg-raised px-[12px] py-[10px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
               <p className="text-body text-fg-muted">An older tab saved changes to your first project after it moved here.</p>
@@ -125,6 +128,46 @@ export default function Home() {
       </div>
       <DialogHost />
     </Tooltip.Provider>
+  );
+}
+
+type ClaudeCheck = NonNullable<AIStatus["claude"]>;
+
+/** Qalam AI runs on the user's own Claude Code: say what to do first when it's missing or signed out. */
+function ClaudeNotice() {
+  const [claude, setClaude] = useState<ClaudeCheck | null>(null);
+  const [checking, setChecking] = useState(false);
+  const check = useCallback(() => {
+    setChecking(true);
+    void fetch("/api/status")
+      .then((r) => r.json() as Promise<AIStatus>)
+      .then((s) => setClaude(s.backend === "cli" ? (s.claude ?? null) : null))
+      .catch(() => setClaude(null))
+      .finally(() => setChecking(false));
+  }, []);
+  useEffect(check, [check]);
+  if (!claude || (claude.found && claude.signedIn !== false)) return null;
+  return (
+    <div role="status" className="flex flex-wrap items-center justify-between gap-[12px] rounded-lg bg-raised px-[12px] py-[10px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
+      <p className="text-body text-fg-muted">
+        {claude.found ? (
+          <>
+            Qalam AI runs on your own Claude Code, which isn't signed in. Run <code className="font-mono text-fg">claude auth login</code> in a terminal, then check again.
+          </>
+        ) : (
+          <>
+            Qalam AI runs on your own Claude Code, which isn't installed.{" "}
+            <a className="text-fg underline" href="https://code.claude.com/docs/en/quickstart" target="_blank" rel="noreferrer">
+              Install it
+            </a>
+            , run <code className="font-mono text-fg">claude auth login</code>, then check again.
+          </>
+        )}
+      </p>
+      <Button variant="secondary" size="sm" disabled={checking} onClick={check}>
+        {checking ? "Checking…" : "Check again"}
+      </Button>
+    </div>
   );
 }
 

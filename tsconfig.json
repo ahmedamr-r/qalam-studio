@@ -27,12 +27,15 @@
   "include": [
     "src",
     "server",
+    "electron",
     "vite.config.ts",
+    "vite.desktop.config.ts",
     "vitest.config.mts"
   ],
   "exclude": [
     "node_modules",
     ".claude",
-    "dist"
+    "dist",
+    "out"
   ]
 }

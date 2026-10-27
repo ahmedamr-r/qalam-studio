@@ -1,9 +1,10 @@
 import type { CanvasKit, Path, TypefaceFontProvider } from "canvaskit-wasm";
+import ckScript from "canvaskit-wasm/bin/canvaskit.js?url";
+import ckWasm from "canvaskit-wasm/bin/canvaskit.wasm?url";
 import type { Seg } from "@/design-system/svg-path";
 import { type Area, type BoolOp, type PathOps, setPathOps } from "@/doc/path-ops";
 
-const CK_VERSION = "0.42.0";
-const CK_CDN = `https://cdn.jsdelivr.net/npm/canvaskit-wasm@${CK_VERSION}/bin/`;
+// CanvasKit ships with the app (bundled from canvaskit-wasm), so the canvas works offline.
 
 export const FONT_FILES: { family: string; file: string }[] = [
   ...[400, 500, 600, 700].map((w) => ({ family: "Inter", file: `/fonts/Inter-${w}.ttf` })),
@@ -45,8 +46,8 @@ export function loadEngine(): Promise<Engine> {
     const fontBuffers = Promise.all(
       FONT_FILES.map(async (f) => ({ family: f.family, bytes: await (await fetch(f.file)).arrayBuffer() })),
     );
-    await loadScript(`${CK_CDN}canvaskit.js`);
-    const ck = await window.CanvasKitInit!({ locateFile: (file) => CK_CDN + file });
+    await loadScript(ckScript);
+    const ck = await window.CanvasKitInit!({ locateFile: () => ckWasm });
     const fonts = ck.TypefaceFontProvider.Make();
     for (const f of await fontBuffers) fonts.registerFont(f.bytes, f.family);
     setPathOps(makePathOps(ck));

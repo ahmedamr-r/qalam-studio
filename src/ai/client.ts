@@ -17,6 +17,8 @@ export interface AIStatus {
   hosted?: boolean;
   /** What the AI can look things up with (the composer's connectors menu). */
   connectors?: ConnectorInfo[];
+  /** With the CLI backend: whether Claude Code was found and is signed in (null: couldn't tell). */
+  claude?: { found: boolean; signedIn: boolean | null };
 }
 
 /** What the model is writing, as it writes (routes that opt in with `deltas`). */
