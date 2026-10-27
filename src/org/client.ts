@@ -14,15 +14,31 @@ export interface OrgRef {
 export const TAB = Math.random().toString(36).slice(2, 10);
 
 let org: Promise<OrgRef> | null = null;
+let chosen: string | null = null;
 
-/** The org this window opens (the server makes "Personal" the first time). */
+/** The organization in the address isn't on this computer. */
+export class OrgMissing extends Error {
+  constructor(readonly id: string) {
+    super("This organization isn't on this computer");
+  }
+}
+
+/** Work in this organization (from the address); null: the one opened last. */
+export function chooseOrg(id: string | null) {
+  if (chosen === id && org) return;
+  chosen = id;
+  org = null;
+}
+
+/** The org this window works in: the one in its address, or the one opened last (the server makes "Personal" the first time). */
 export function currentOrg(): Promise<OrgRef> {
   org ??= fetch("/api/orgs")
     .then(async (r) => {
       if (!r.ok) throw new Error(`Qalam can't reach its files (${r.status})`);
       const j = (await r.json()) as { current: string; orgs: OrgRef[] };
-      const o = j.orgs.find((x) => x.id === j.current);
-      if (!o) throw new Error("No organization to open");
+      const want = chosen ?? j.current;
+      const o = j.orgs.find((x) => x.id === want);
+      if (!o) throw new OrgMissing(want);
       return o;
     })
     .catch((e) => {
@@ -30,6 +46,60 @@ export function currentOrg(): Promise<OrgRef> {
       throw e;
     });
   return org;
+}
+
+/** Every organization on this computer, and the one a new window opens. */
+export async function listOrgs(): Promise<{ current: string; orgs: OrgRef[] }> {
+  const r = await fetch("/api/orgs");
+  if (!r.ok) throw new Error(`Qalam can't reach its files (${r.status})`);
+  return r.json();
+}
+
+/** Where a new window goes next time. */
+export const rememberOrg = (id: string) =>
+  fetch("/api/orgs/last", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id }) }).then(
+    () => {},
+    () => {},
+  );
+
+async function orgsRequest(path: string, body: unknown): Promise<Response> {
+  const r = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  if (!r.ok) throw new OrgRequestError(r.status, ((await r.json().catch(() => ({}))) as { message?: string }).message ?? r.statusText);
+  return r;
+}
+
+/** A new organization: a folder in ~/Qalam. */
+export const createOrg = async (name: string): Promise<OrgRef> => (await orgsRequest("/api/orgs", { name })).json();
+
+/** The desktop app's bridge (electron/preload.cjs): the system's own folder picker. */
+const desktop = () => (globalThis as { qalamDesktop?: { chooseFolder(title: string): Promise<string | null> } }).qalamDesktop;
+
+/**
+ * Open a folder as an organization. The desktop app asks with its own picker; in a browser the
+ * Qalam server asks with the Mac's. Null: nothing picked. `path` skips the picker.
+ */
+export async function openOrgFolder(path?: string): Promise<OrgRef | null> {
+  let dir = path;
+  if (!dir && desktop()) {
+    dir = (await desktop()!.chooseFolder("Choose a folder for the organization")) ?? undefined;
+    if (!dir) return null;
+  }
+  const j = (await (await orgsRequest("/api/orgs/open", dir ? { path: dir } : {})).json()) as OrgRef & { cancelled?: boolean };
+  return j.cancelled ? null : j;
+}
+
+/** Rename the organization this window works in. */
+export async function renameOrg(name: string): Promise<OrgRef> {
+  const r = await fetch(await orgPath("/info"), { method: "PATCH", headers: { "content-type": "application/json", "x-qalam-tab": TAB }, body: JSON.stringify({ name }) });
+  if (!r.ok) throw new OrgRequestError(r.status, ((await r.json().catch(() => ({}))) as { message?: string }).message ?? r.statusText);
+  const next = (await r.json()) as OrgRef;
+  org = Promise.resolve(next);
+  return next;
+}
+
+/** The organization changed elsewhere (renamed in another window or in its org.json): read it again. */
+export function forgetOrg() {
+  org = null;
 }
 
 /** The org's address for a path, e.g. "/projects/<id>". */

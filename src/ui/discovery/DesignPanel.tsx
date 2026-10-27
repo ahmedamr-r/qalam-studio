@@ -8,7 +8,9 @@ import { runCommand } from "@/commands/registry";
 import { cardOf, updateCardIn } from "@/discovery/ops";
 import { allCards, childCards, outcomeRoots } from "@/discovery/tree";
 import { isAssumed } from "@/discovery/evidence";
-import { Button, CommandKbd, Field, Section, Segmented } from "../controls";
+import { Button, CommandKbd, Field, Section, Segmented, Select } from "../controls";
+import { useOrgContext } from "@/org/context";
+import { updateProject, useProject } from "@/projects/session";
 import { r } from "../recipes";
 import PropertiesPanel from "../PropertiesPanel";
 import { getController } from "../CanvasView";
@@ -122,6 +124,7 @@ function TreePanel() {
         </Section>
       )}
       <Section title="Product">
+        <BoardProduct />
         <p className="text-caption text-fg-muted">The outcome and first opportunities come from a short interview about your product.</p>
         <Button size="sm" variant="secondary" className="self-start" onClick={() => runCommand("discovery.redo-interview", "toolbar")}>
           {roots.length ? "Redo the interview…" : "Answer the questions…"}
@@ -167,5 +170,25 @@ function OutcomeButton({ id, depth }: { id: string; depth: number }) {
         </span>
       )}
     </button>
+  );
+}
+
+/**
+ * The product this board is for (or the whole organization): Qalam AI reads what that product is,
+ * and the board and its new sources are listed under it on the home.
+ */
+function BoardProduct() {
+  const products = useOrgContext((s) => s.products);
+  const product = useProject((s) => s.project?.product ?? null);
+  const value = product && products.some((p) => p.id === product) ? product : "org";
+  return (
+    <Field label="For">
+      <Select
+        ariaLabel="The product this board is for"
+        value={value}
+        options={[{ value: "org", label: "The whole organization" }, ...products.map((p) => ({ value: p.id, label: p.name }))]}
+        onChange={(v) => void updateProject({ product: v === "org" ? undefined : v })}
+      />
+    </Field>
   );
 }

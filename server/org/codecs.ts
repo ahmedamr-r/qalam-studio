@@ -145,8 +145,8 @@ function readFrontMatter(md: string): { fields: Record<string, unknown>; body: s
 
 /** A source as its two files: the text (with who/what/when on top) and the rest. */
 export function encodeSource(s: SourceRecord): { md: string; data: string } {
-  const { text, id, kind, title, origin, projectId, addedAt, ...rest } = s;
-  const md = frontMatter({ id, kind, title, origin, board: projectId, addedAt, textHash: contentHash(text) }) + text;
+  const { text, id, kind, title, origin, projectId, boards, product, addedAt, ...rest } = s;
+  const md = frontMatter({ id, kind, title, origin, board: projectId, boards: boards ?? [projectId], product: product ?? null, addedAt, textHash: contentHash(text) }) + text;
   return { md, data: stableStringify({ qalam: SOURCE_FILE, id, ...rest }) };
 }
 
@@ -165,7 +165,9 @@ export function decodeSource(md: string, dataText: string): SourceRecord | null 
   if (!front || data.qalam !== SOURCE_FILE || typeof front.fields.id !== "string") return null;
   const f = front.fields;
   const { qalam: _q, ...rest } = data;
-  const s = { ...rest, id: f.id, kind: f.kind, title: f.title, origin: f.origin, projectId: f.board, addedAt: f.addedAt, text: front.body } as SourceRecord;
+  // `board` is where it was added; `boards` all that use it (files from before sharing have only `board`).
+  const boards = Array.isArray(f.boards) ? (f.boards as string[]) : typeof f.board === "string" ? [f.board] : [];
+  const s = { ...rest, id: f.id, kind: f.kind, title: f.title, origin: f.origin, projectId: f.board, boards, product: (f.product as string | null | undefined) ?? null, addedAt: f.addedAt, text: front.body } as SourceRecord;
   if (f.origin === undefined) delete s.origin;
   if (f.textHash !== contentHash(front.body)) s.quotes = reanchor(front.body, s.quotes ?? []);
   return s;

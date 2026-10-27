@@ -5,7 +5,7 @@ import { Check } from "lucide-react";
 import { bootEngine } from "@/engine/boot";
 import { Renderer } from "@/engine/renderer";
 import type { InterviewStage } from "@/projects/interview";
-import type { Project } from "@/projects/model";
+import { orgHref, type Project } from "@/projects/model";
 import { QalamMark } from "../brand";
 import { Tag } from "../controls";
 import { DialogHost } from "../surfaces/dialog";
@@ -73,7 +73,7 @@ function Header() {
   const at = STEPS.findIndex((s) => s.stage === state.stage);
   const home = async () => {
     await flushInterview();
-    window.location.assign("/");
+    window.location.assign(orgHref());
   };
   return (
     <header className="flex h-[48px] shrink-0 items-center gap-[12px] border-b border-line-subtle px-[12px] lg:grid lg:grid-cols-[1fr_auto_1fr]">

@@ -1,3 +1,4 @@
+import { projectHref } from "@/projects/model";
 import { TriangleAlert } from "lucide-react";
 import { studio, useStudio } from "@/doc/store";
 import { runCommand } from "@/commands/registry";
@@ -98,7 +99,7 @@ function HandoffView({ o }: { o: DiscoveryOutcome }) {
       <Lineage h={h} lead="Designing" />
       <EvidenceList evidence={h.evidence} />
       <RiskiestAssumptions assumptions={h.assumptions} />
-      <a href={`/d/${h.from.projectId}?card=${h.from.cardId}`} onClick={saveThenGo} className={linkBtn}>
+      <a href={`${projectHref({ id: h.from.projectId, type: "discovery" })}?card=${h.from.cardId}`} onClick={saveThenGo} className={linkBtn}>
         Open {h.from.projectName} in Discovery
       </a>
     </div>

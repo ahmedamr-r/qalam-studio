@@ -18,7 +18,8 @@ import { useDiscovery, type DesignLink } from "./store";
 import { dropStaleEdit } from "./editing";
 import { scheduleBoardThumbnail } from "./thumbnail";
 import { ensureHandlers } from "./draft";
-import { loadSources, reloadSources } from "./sources";
+import { loadSources, openSource, reloadSources, sourceOf, useSources } from "./sources";
+import { evidenceToLink, linkEvidenceIn } from "@/hub/migrate";
 import { onOrgChange } from "@/org/live";
 import { ensureDumpHandlers, resumeDumps } from "./dump";
 
@@ -53,9 +54,9 @@ export function startDiscoveryStudio(p: Project): (doc: Doc) => void {
 
   void refreshDesigns(p.id);
   ensureDumpHandlers();
-  void loadSources(p.id).then(resumeDumps);
+  void loadSources(p.id).then(resumeDumps).then(linkEvidence).then(openSourceFromUrl);
   onOrgChange((c) => {
-    if (c.kind === "source" && c.board === p.id) void reloadSources(p.id);
+    if (c.kind === "source" && c.boards.includes(p.id)) void reloadSources(p.id);
   });
   const refresh = () => document.visibilityState === "visible" && void refreshDesigns(p.id);
   document.addEventListener("visibilitychange", refresh);
@@ -102,6 +103,22 @@ export async function refreshDesigns(projectId: string) {
   }
   const prev = useDiscovery.getState().designs;
   if (JSON.stringify(prev) !== JSON.stringify(designs)) useDiscovery.setState({ designs });
+}
+
+/** A board from before shared sources: its quotes name the quote they are, once (src/hub/migrate.ts). */
+function linkEvidence() {
+  const links = evidenceToLink(studio().doc, useSources.getState().list);
+  if (links.size) studio().mutate((d) => linkEvidenceIn(d, links), { history: false });
+}
+
+/** …/d/<id>?source=<sourceId>: open that source in the Sources tab (the organization's sources list links here). */
+function openSourceFromUrl() {
+  const params = new URLSearchParams(location.search);
+  const id = params.get("source");
+  if (!id) return;
+  params.delete("source");
+  history.replaceState(null, "", `${location.pathname}${params.size ? `?${params}` : ""}`);
+  if (sourceOf(id)) openSource(id);
 }
 
 /** /d/<id>?card=<cardId>: select that card and bring it into view (a Screens project's link back). */

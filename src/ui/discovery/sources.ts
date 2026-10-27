@@ -92,14 +92,23 @@ export async function updateSource(id: string, fn: (s: SourceRecord) => SourceRe
   await persist(next);
 }
 
+/** Take a source off this board. It stays in the organization, for other boards (and this one again). */
 export async function removeSource(id: string) {
-  const s = sourceOf(id);
-  if (!s) return;
+  const board = useSources.getState().projectId;
+  if (!sourceOf(id) || !board) return;
   useSources.setState((st) => ({
     list: st.list.filter((x) => x.id !== id),
     open: st.open?.id === id ? null : st.open,
   }));
-  await sourcesDb.remove(s.projectId, id).catch(() => {});
+  await sourcesDb.link(id, board, false).catch(() => {});
+}
+
+/** Put one of the organization's sources on this board. */
+export async function addFromOrganization(id: string) {
+  const board = useSources.getState().projectId;
+  if (!board) return;
+  await sourcesDb.link(id, board, true);
+  await reloadSources(board);
 }
 
 export function setJob(id: string, job: SourceJob | null) {

@@ -1,3 +1,4 @@
+import { contextFor } from "@/org/context";
 import { create } from "zustand";
 import { studio } from "@/doc/store";
 import { newId } from "@/doc/factory";
@@ -63,7 +64,8 @@ export const useDump = create<DumpUI>(() => ({ open: null, minimised: false, bus
 
 const runs = new Map<string, AbortController>();
 
-const product = () => studio().doc.brief?.summary?.slice(0, 2000) ?? "";
+/** What the board's product (or the organization) is, then the board's own notes. */
+const product = () => [contextFor(currentProject()?.product), studio().doc.brief?.summary ?? ""].filter(Boolean).join("\n").slice(0, 2000);
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /** A dump's session (null when the source isn't a dump). */

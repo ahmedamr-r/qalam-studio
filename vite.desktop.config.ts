@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { defineConfig } from "vite";
 
@@ -11,6 +12,15 @@ export default defineConfig({
   publicDir: false,
   resolve: { alias: { "@": path.resolve(import.meta.dirname, "src") } },
   ssr: { noExternal: true, external: ["electron"] },
+  // The preload is plain CommonJS (a sandboxed page's preload can't be a module): copied as it is.
+  plugins: [
+    {
+      name: "qalam-preload",
+      generateBundle() {
+        this.emitFile({ type: "asset", fileName: "preload.cjs", source: readFileSync(path.resolve(import.meta.dirname, "electron/preload.cjs"), "utf8") });
+      },
+    },
+  ],
   build: {
     ssr: true,
     outDir: "out",

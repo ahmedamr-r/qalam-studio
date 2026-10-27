@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import clsx from "clsx";
 import * as Tooltip from "@radix-ui/react-tooltip";
-import { Frame, MoreHorizontal, Network, Palette } from "lucide-react";
+import { ChevronRight, Frame, MoreHorizontal, Network, Palette, Plus } from "lucide-react";
 import type { AIStatus } from "@/ai/client";
-import { currentOrg, type OrgRef } from "@/org/client";
+import type { SourceRecord } from "@/discovery/sources";
+import { currentOrg, orgJson, type OrgRef } from "@/org/client";
+import { newProduct, saveProduct, useOrgContext } from "@/org/context";
+import type { Product } from "@/org/context-md";
+import { projectsDb } from "@/projects/db";
 import { browserProjectsToMove, moveBrowserProjects } from "@/org/import-browser";
 import { onOrgChange } from "@/org/live";
 import { getSystem } from "@/design-system/registry";
@@ -11,15 +15,19 @@ import { projectHref, statusOf, type Project, type ProjectType } from "@/project
 import { createProject } from "@/projects/session";
 import { deleteProject, hasLegacyChanges, importLegacy, listProjects, renameProjectById } from "@/projects/library";
 import { QalamMark, Wordmark } from "../brand";
-import { Button } from "../controls";
-import { Menu, MenuItem, MenuSeparator } from "../menu";
+import { Button, Segmented } from "../controls";
+import { Menu, MenuItem, MenuSeparator, SubMenu } from "../menu";
 import { r } from "../recipes";
 import { confirmDialog, DialogHost, promptDialog } from "../surfaces/dialog";
+import { ContextCard, ContextEditorHost, editContext } from "../org/ContextEditor";
+import { GoalsList, type Goal } from "../org/Goals";
+import { OrgSwitcher } from "../org/OrgSwitcher";
+import { SourcesList } from "../org/SourcesList";
 
 /**
- * The projects home: start a design system (the brand interview), a screens canvas or a Discovery
- * board (the product's opportunity tree), and reopen recent work. Unfinished interviews show their
- * step, so this is also the resume list. Projects are saved in the organization's folder on disk.
+ * An organization's home: what it and its products are, every board's goals, the boards and the
+ * sources, by product. Design work (screens, design systems) waits below, on hold. Everything is
+ * saved in the organization's folder on disk.
  */
 
 const TYPE_LABEL: Record<ProjectType, string> = { system: "Design system", screens: "Screens", discovery: "Discovery" };
@@ -31,6 +39,11 @@ export default function Home() {
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [legacy, setLegacy] = useState(false);
   const [org, setOrg] = useState<OrgRef | null>(null);
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const [sources, setSources] = useState<SourceRecord[]>([]);
+  const [scope, setScopeState] = useState<Scope>(readScope);
+  const [tab, setTab] = useState<"boards" | "sources">("boards");
+  const { products, about, loaded } = useOrgContext();
 
   const refresh = useCallback(() => {
     void listProjects()
@@ -39,6 +52,8 @@ export default function Home() {
         setLegacy(hasLegacyChanges());
       })
       .catch(() => setProjects([]));
+    void orgJson<Goal[]>("/goals").then(setGoals, () => {});
+    void orgJson<SourceRecord[]>("/sources").then(setSources, () => {});
   }, []);
 
   useEffect(() => {
@@ -47,8 +62,11 @@ export default function Home() {
     const onVisible = () => document.visibilityState === "visible" && refresh();
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("pageshow", refresh);
-    // Projects made, renamed or deleted in another window, or in the folder itself.
-    const off = onOrgChange((c) => c.kind === "project" && c.parts.includes("record") && refresh());
+    // Projects, sources and the organization changed in another window, or in the folder itself.
+    const off = onOrgChange((c) => {
+      if (c.kind === "project" || c.kind === "source") refresh();
+      if (c.kind === "org") void currentOrg().then(setOrg, () => {});
+    });
     return () => {
       off();
       document.removeEventListener("visibilitychange", onVisible);
@@ -56,10 +74,39 @@ export default function Home() {
     };
   }, [refresh]);
 
+  const setScope = (s: Scope) => {
+    setScopeState(s);
+    const u = new URL(window.location.href);
+    if (s === "all") u.searchParams.delete("product");
+    else u.searchParams.set("product", s);
+    history.replaceState(null, "", u);
+  };
+  const product = scope !== "all" && scope !== "org" ? products.find((p) => p.id === scope) : undefined;
+  // A product deleted meanwhile (or a stale link): back to everything.
+  useEffect(() => {
+    if (loaded && scope !== "all" && scope !== "org" && !products.some((p) => p.id === scope)) setScope("all");
+  }, [loaded, products, scope]);
+
   const start = async (type: ProjectType) => {
-    const p = await createProject(type, type === "system" ? "Untitled system" : type === "discovery" ? "Untitled discovery" : "Untitled");
+    const extra = type === "discovery" && product ? { product: product.id } : {};
+    const p = await createProject(type, type === "system" ? "Untitled system" : type === "discovery" ? "Untitled board" : "Untitled", extra);
     window.location.assign(projectHref(p));
   };
+
+  const addProduct = async () => {
+    const name = await promptDialog({ title: "New product", body: "Boards and sources can be for one product, or for the whole organization.", label: "Name", placeholder: "Grocery app", confirmLabel: "Add product", validate: (v) => (v.trim() ? null : "Name it") });
+    if (!name) return;
+    const p = newProduct(name);
+    await saveProduct(p);
+    setScope(p.id);
+    editContext({ kind: "product", product: p });
+  };
+
+  const boards = (projects ?? []).filter((p) => p.type === "discovery" && inScope(p.product, scope));
+  const design = (projects ?? []).filter((p) => p.type !== "discovery");
+  const scopedGoals = goals.filter((g) => inScope(g.product, scope));
+  const scopedSources = sources.filter((s) => inScope(s.product, scope));
+  const orgName = org?.name ?? "Organization";
 
   return (
     <Tooltip.Provider delayDuration={500}>
@@ -67,29 +114,12 @@ export default function Home() {
         <header className="flex h-[48px] items-center gap-[10px] border-b border-line-subtle px-[16px]">
           <QalamMark size={20} />
           <Wordmark />
+          <span aria-hidden className="text-fg-faint">
+            /
+          </span>
+          {org && <OrgSwitcher org={org} onRenamed={setOrg} />}
         </header>
-        <main className="mx-auto flex w-full max-w-[1080px] flex-col gap-[32px] px-[16px] py-[32px]">
-          <section aria-labelledby="start" className="flex flex-col gap-[12px]">
-            <h1 id="start" className="text-heading font-medium">
-              Start something
-            </h1>
-            <div className="grid gap-[12px] sm:grid-cols-3">
-              <StartTile
-                icon={<Palette {...ICON} />}
-                title="Design system"
-                body="Tell Qalam AI about your brand. It proposes three directions you can shape on real screens, then saves your tokens."
-                onClick={() => void start("system")}
-              />
-              <StartTile icon={<Frame {...ICON} />} title="Screens" body="A blank canvas for screens and flows, with Qalam AI and your systems." onClick={() => void start("screens")} />
-              <StartTile
-                icon={<Network {...ICON} />}
-                title="Discovery"
-                body="Map the outcome you're after, your customers' needs and the solutions to try, as a tree. Start from six questions, your research or a blank board."
-                onClick={() => void start("discovery")}
-              />
-            </div>
-          </section>
-
+        <main className="mx-auto flex w-full max-w-[1080px] flex-col gap-[28px] px-[16px] py-[28px]">
           <ClaudeNotice />
           <MoveFromBrowser org={org} onMoved={refresh} />
 
@@ -110,33 +140,134 @@ export default function Home() {
             </div>
           )}
 
-          <section aria-labelledby="recent" className="flex flex-col gap-[12px]">
-            <h2 id="recent" className="text-title font-medium">
-              Recent
+          <nav aria-label="Products" className="flex flex-wrap items-center gap-[6px]">
+            <ScopeChip on={scope === "all"} onClick={() => setScope("all")}>
+              Everything
+            </ScopeChip>
+            <ScopeChip on={scope === "org"} onClick={() => setScope("org")} title="Boards and sources that aren't for one product">
+              Whole organization
+            </ScopeChip>
+            {products.map((p) => (
+              <ScopeChip key={p.id} on={scope === p.id} onClick={() => setScope(p.id)}>
+                {p.name}
+              </ScopeChip>
+            ))}
+            <button type="button" onClick={() => void addProduct()} className={clsx(r.button, r.buttonGhost, "h-[28px] gap-[4px] px-[8px] text-caption")}>
+              <Plus size={12} absoluteStrokeWidth strokeWidth={1.25} />
+              Product
+            </button>
+          </nav>
+
+          {product ? (
+            <ContextCard title={product.name} context={product} onEdit={() => editContext({ kind: "product", product })} empty={`Tell Qalam AI what ${product.name} is: who it's for and what you're trying to move. Every board for it starts from this.`} />
+          ) : (
+            <ContextCard title={`About ${orgName}`} context={about} onEdit={() => editContext({ kind: "org", name: orgName, about })} empty={`Tell Qalam AI what ${orgName} does and who it serves. Every board starts from this.`} />
+          )}
+
+          <section aria-labelledby="goals" className="flex flex-col gap-[8px]">
+            <h2 id="goals" className="text-title font-medium">
+              Goals
             </h2>
-            {projects === null ? (
+            {scopedGoals.length ? <GoalsList goals={scopedGoals} /> : <p className="text-body text-fg-muted">No outcomes yet. Every outcome on a board shows here, with the board it's on.</p>}
+          </section>
+
+          <section aria-label="Boards and sources" className="flex flex-col gap-[12px]">
+            <div className="flex items-center justify-between gap-[12px]">
+              <Segmented
+                label="Show"
+                value={tab}
+                onChange={setTab}
+                options={[
+                  { value: "boards", label: <span className="whitespace-nowrap px-[4px]">Boards{boards.length ? ` · ${boards.length}` : ""}</span> },
+                  { value: "sources", label: <span className="whitespace-nowrap px-[4px]">Sources{scopedSources.length ? ` · ${scopedSources.length}` : ""}</span> },
+                ]}
+              />
+              {tab === "boards" && (
+                <Button size="sm" onClick={() => void start("discovery")}>
+                  New board
+                </Button>
+              )}
+            </div>
+            {tab === "sources" ? (
+              <SourcesList sources={scopedSources} projects={projects ?? []} products={products} onChanged={refresh} />
+            ) : projects === null ? (
               <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-[16px]" aria-hidden>
                 {[0, 1, 2].map((i) => (
                   <div key={i} className={clsx(r.skeleton, "aspect-[4/3] rounded-lg")} />
                 ))}
               </div>
-            ) : projects.length === 0 ? (
-              <p className="text-body text-fg-muted">No projects yet. Start a design system, a screens canvas or a Discovery board above.</p>
+            ) : boards.length === 0 ? (
+              <StartTile
+                icon={<Network {...ICON} />}
+                title="Start a board"
+                body="Map the outcome you're after, your customers' needs and the solutions to try, as a tree. Start from six questions, your research or a brain dump."
+                onClick={() => void start("discovery")}
+              />
             ) : (
               <ul className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-[16px]">
-                {projects.map((p) => (
+                {boards.map((p) => (
                   <li key={p.id}>
-                    <ProjectCard p={p} onChanged={refresh} />
+                    <ProjectCard p={p} products={products} onChanged={refresh} />
                   </li>
                 ))}
               </ul>
             )}
           </section>
-          <p className="text-caption text-fg-subtle">{org ? `Projects are saved in ${org.name}, at ${org.dir}.` : "Projects are saved in your organization's folder."}</p>
+
+          <details className="group flex flex-col gap-[12px]">
+            <summary className="cursor-pointer list-none text-title font-medium text-fg-muted marker:hidden hover:text-fg">
+              <span className="inline-flex items-center gap-[6px]">
+                <ChevronRight size={14} absoluteStrokeWidth strokeWidth={1.25} className="transition-transform group-open:rotate-90" />
+                Design <span className="text-caption font-normal text-fg-subtle">· screens and design systems{design.length ? ` · ${design.length}` : ""}</span>
+              </span>
+            </summary>
+            <div className="mt-[12px] flex flex-col gap-[16px]">
+              <div className="grid gap-[12px] sm:grid-cols-2">
+                <StartTile
+                  icon={<Palette {...ICON} />}
+                  title="Design system"
+                  body="Tell Qalam AI about your brand. It proposes three directions you can shape on real screens, then saves your tokens."
+                  onClick={() => void start("system")}
+                />
+                <StartTile icon={<Frame {...ICON} />} title="Screens" body="A blank canvas for screens and flows, with Qalam AI and your systems." onClick={() => void start("screens")} />
+              </div>
+              {!!design.length && (
+                <ul className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-[16px]">
+                  {design.map((p) => (
+                    <li key={p.id}>
+                      <ProjectCard p={p} products={products} onChanged={refresh} />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </details>
+
+          <p className="text-caption text-fg-subtle">{org ? `Saved in ${org.name}, at ${org.dir}.` : "Saved in your organization's folder."}</p>
         </main>
       </div>
+      <ContextEditorHost />
       <DialogHost />
     </Tooltip.Provider>
+  );
+}
+
+/** Which part of the organization the home shows: everything, what's for the whole organization, or one product. */
+type Scope = "all" | "org" | (string & {});
+const readScope = (): Scope => new URLSearchParams(window.location.search).get("product") ?? "all";
+const inScope = (product: string | null | undefined, scope: Scope) => scope === "all" || (scope === "org" ? !product : product === scope);
+
+function ScopeChip({ on, onClick, title, children }: { on: boolean; onClick: () => void; title?: string; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      title={title}
+      onClick={onClick}
+      className={clsx("q-item h-[28px] rounded-md px-[10px] text-caption font-medium", on ? "bg-raised text-fg shadow-button" : "text-fg-muted hover:bg-hover hover:text-fg")}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -196,7 +327,11 @@ function StartTile({ icon, title, body, onClick }: { icon: ReactNode; title: str
   );
 }
 
-function ProjectCard({ p, onChanged }: { p: Project; onChanged: () => void }) {
+function ProjectCard({ p, products, onChanged }: { p: Project; products: Product[]; onChanged: () => void }) {
+  const moveTo = async (product: string | null) => {
+    await projectsDb.patch(p.id, { product: product ?? undefined });
+    onChanged();
+  };
   const href = projectHref(p);
   const TypeIcon = TYPE_ICON[p.type];
   const rename = async () => {
@@ -207,7 +342,7 @@ function ProjectCard({ p, onChanged }: { p: Project; onChanged: () => void }) {
   const remove = async () => {
     const ok = await confirmDialog({
       title: `Delete “${p.name}”?`,
-      body: p.type === "discovery" ? "Its board, sources and chats are removed from the organization's folder. This can't be undone." : "Its canvas and chats are removed from the organization's folder. This can't be undone.",
+      body: p.type === "discovery" ? "The board and its chats are removed from the organization's folder. Its sources stay in the organization. This can't be undone." : "Its canvas and chats are removed from the organization's folder. This can't be undone.",
       confirmLabel: "Delete project",
       danger: true,
     });
@@ -263,6 +398,18 @@ function ProjectCard({ p, onChanged }: { p: Project; onChanged: () => void }) {
         >
           <MenuItem onSelect={() => window.location.assign(href)}>Open</MenuItem>
           <MenuItem onSelect={() => void rename()}>Rename…</MenuItem>
+          {p.type === "discovery" && (
+            <SubMenu label="For" checks>
+              <MenuItem checked={!p.product} onSelect={() => void moveTo(null)}>
+                The whole organization
+              </MenuItem>
+              {products.map((x) => (
+                <MenuItem key={x.id} checked={p.product === x.id} onSelect={() => void moveTo(x.id)}>
+                  {x.name}
+                </MenuItem>
+              ))}
+            </SubMenu>
+          )}
           <MenuSeparator />
           <MenuItem danger onSelect={() => void remove()}>
             Delete…

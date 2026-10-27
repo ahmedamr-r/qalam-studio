@@ -41,6 +41,12 @@ export interface OstEvidence {
   answerId?: string;
   /** The source the words are in (a document, page or connected tool's item: the Sources tab). */
   sourceId?: string;
+  /**
+   * The piece of the organization's knowledge these words are: "hub:quote:<quoteId>" for a
+   * source's quote (or a brain dump's piece). It finds the words even after the source's text
+   * changed; `text` keeps them as they were attached.
+   */
+  piece?: string;
   /** Its title when the words were attached, for where the source isn't at hand. */
   sourceTitle?: string;
   /** Where the words sit in the source's text (characters), to highlight them there. */

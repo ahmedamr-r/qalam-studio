@@ -2,9 +2,9 @@ import { orgFetch, orgJson } from "@/org/client";
 import type { SourceRecord } from "./sources";
 
 /*
- * A Discovery board's sources live in the organization's folder: each one's text as Markdown
- * (quotes are checked against it) with its quotes and needs beside it (server/org/codecs.ts).
- * Deleting a board deletes its own sources there too.
+ * Sources belong to the organization (its sources/ folder: each one's text as Markdown, quotes
+ * are checked against it, with its quotes and needs beside it; server/org/codecs.ts). A board
+ * uses some of them; deleting a board leaves them in the organization.
  */
 
 export const sourcesDb = {
@@ -12,7 +12,14 @@ export const sourcesDb = {
   put: async (s: SourceRecord) => {
     await orgFetch(`/sources/${s.id}`, { method: "PUT", json: s });
   },
-  remove: async (_projectId: string, id: string) => {
+  /** Put a source on a board, or take it off (it stays in the organization). */
+  link: async (id: string, board: string, on: boolean) => {
+    await orgFetch(`/sources/${id}/boards`, { method: "POST", json: { board, on } });
+  },
+  /** Every source in the organization. */
+  all: () => orgJson<SourceRecord[]>("/sources"),
+  /** Delete a source from the organization: every board loses it. */
+  remove: async (id: string) => {
     await orgFetch(`/sources/${id}`, { method: "DELETE" });
   },
 };

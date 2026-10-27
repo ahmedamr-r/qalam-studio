@@ -1,3 +1,4 @@
+import { contextFor } from "@/org/context";
 import { newId } from "@/doc/factory";
 import { studio } from "@/doc/store";
 import type { Doc } from "@/doc/schema";
@@ -118,7 +119,8 @@ async function fromTools(input: Extract<AddInput, { kind: "connector" }>, job: s
 /** The product and its outcomes, for Qalam AI to read the material with. */
 export function productLine(doc: Doc): string {
   const outcomes = outcomeLines(doc);
-  return [doc.brief?.summary ?? "", outcomes.length ? `The outcomes the team wants to move (sub-outcomes under theirs):\n${outcomes.join("\n")}` : ""]
+  // What the board's product (or the organization) is, from its own file, then the board's own notes.
+  return [contextFor(currentProject()?.product), doc.brief?.summary ?? "", outcomes.length ? `The outcomes the team wants to move (sub-outcomes under theirs):\n${outcomes.join("\n")}` : ""]
     .filter(Boolean)
     .join("\n")
     .slice(0, 2000);

@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { projectHref } from "@/projects/model";
+import { useEffect, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import clsx from "clsx";
 import { ExternalLink, Plus, Quote, X } from "lucide-react";
@@ -18,8 +19,9 @@ import { CommitArea, CommitInput, CommitNumber } from "./fields";
 import { useDiscovery } from "./store";
 import KindMark from "./KindMark";
 import { saveThenGo } from "./links";
-import { openSource, useSources } from "./sources";
-import { citation, fromSource } from "@/discovery/sources";
+import { addFromOrganization, openSource, useSources } from "./sources";
+import { orgJson } from "@/org/client";
+import { citation, fromSource, quoteOf, type SourceRecord } from "@/discovery/sources";
 
 const ICON = { size: 12, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 
@@ -199,7 +201,10 @@ function EvidenceSection({ id, card }: { id: string; card: OstCard }) {
 
 /** Where words are from (a source, its page, the speaker; or the builder's brain dump), linking to them highlighted in the Sources tab. */
 function SourceCite({ e }: { e: OstEvidence }) {
-  const source = useSources((s) => s.list.find((x) => x.id === e.sourceId));
+  const onBoard = useSources((s) => s.list.find((x) => x.id === e.sourceId));
+  // Taken off this board, a source is still the organization's: its quote still reads from it.
+  const inOrg = useOrgSource(onBoard ? undefined : e.sourceId);
+  const source = onBoard ?? inOrg;
   const label = e.kind === "dump" ? SOURCE.dump : citation(e, source?.title) || "Quote";
   const against = e.stance === "against" && <span className="font-medium text-danger">Against · </span>;
   if (!source)
@@ -207,18 +212,52 @@ function SourceCite({ e }: { e: OstEvidence }) {
       <span>
         {against}
         {label}
-        {e.sourceId ? " · source removed" : ""}
+        {e.sourceId && inOrg === null ? " · source deleted" : ""}
       </span>
     );
-  const q = source.quotes.find((x) => e.span && x.span[0] === e.span[0] && x.span[1] === e.span[1]);
+  const q = quoteOf(source, e);
+  // The source's text was edited since: its words read differently now.
+  const changed = q && q.text !== e.text && <span className="text-warning"> · changed in the source</span>;
+  if (!onBoard)
+    return (
+      <span>
+        {against}
+        <button type="button" className="text-left underline decoration-fg/20 underline-offset-2 hover:text-fg" title="Put the source back on this board and show it" onClick={() => void addFromOrganization(source.id).then(() => openSource(source.id, q?.id))}>
+          {label}
+        </button>
+        <span className="text-fg-subtle"> · not on this board</span>
+        {changed}
+      </span>
+    );
   return (
     <span>
       {against}
       <button type="button" className="text-left underline decoration-fg/20 underline-offset-2 hover:text-fg" title="Show it in the source" onClick={() => openSource(source.id, q?.id)}>
         {label}
       </button>
+      {changed}
     </span>
   );
+}
+
+/** One of the organization's sources, read once (null: it's gone from the organization). */
+const orgSources = new Map<string, Promise<SourceRecord | null>>();
+function useOrgSource(id: string | undefined): SourceRecord | null | undefined {
+  const [s, setS] = useState<SourceRecord | null | undefined>(undefined);
+  useEffect(() => {
+    if (!id) return setS(undefined);
+    let live = true;
+    let p = orgSources.get(id);
+    if (!p) {
+      p = orgJson<SourceRecord>(`/sources/${id}`).catch(() => null);
+      orgSources.set(id, p);
+    }
+    void p.then((x) => live && setS(x));
+    return () => {
+      live = false;
+    };
+  }, [id]);
+  return s;
 }
 
 function AssumptionsSection({ id, card }: { id: string; card: OstCard }) {
@@ -261,7 +300,7 @@ function DesignsSection({ id, card }: { id: string; card: OstCard }) {
   return (
     <Section title="Design">
       {links.map((l) => (
-        <a key={l.projectId} href={`/p/${l.projectId}${l.first ? `?focus=${l.first}` : ""}`} onClick={saveThenGo} className="q-item flex h-[28px] items-center gap-[8px] rounded-md px-[6px] text-caption text-fg-muted hover:bg-hover hover:text-fg">
+        <a key={l.projectId} href={`${projectHref({ id: l.projectId, type: "screens" })}${l.first ? `?focus=${l.first}` : ""}`} onClick={saveThenGo} className="q-item flex h-[28px] items-center gap-[8px] rounded-md px-[6px] text-caption text-fg-muted hover:bg-hover hover:text-fg">
           <span className="min-w-0 flex-1 truncate">{l.projectName}</span>
           <span className="tnum text-fg-subtle">
             {l.frames} {l.frames === 1 ? "screen" : "screens"}

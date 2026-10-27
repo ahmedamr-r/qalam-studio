@@ -55,7 +55,7 @@ pnpm desktop
 
 The desktop app runs Qalam AI on your own Claude Code, so you don't need `.env.local` for it.
 
-On the home page, start a **Design system**, **Screens** or **Discovery** project. In a Screens project, **File ▸ Load demo screens** puts example screens on the canvas so you can try the tools right away.
+Qalam opens your organization's home: what the organization and its products are, every board's goals, the boards and the sources. Make a product with **+ Product** to keep boards and sources for different products apart; a board can be for one product or the whole organization. Start a board with **New board**. Screens and design systems are under **Design**. The organization menu at the top makes new organizations (each is a folder in `~/Qalam`) and opens any folder as one. In a Screens project, **File ▸ Load demo screens** puts example screens on the canvas so you can try the tools right away.
 
 ### Use an Anthropic API key instead
 
@@ -150,7 +150,7 @@ All settings are optional and go in `.env.local`. `.env.example` lists them with
 
 ## Privacy
 
-- **Your work stays on your computer, as files.** Each organization is a folder in `~/Qalam` (set `QALAM_HOME` to move it). Projects are readable JSON (a Discovery board lists its cards at the top), a source's text is Markdown, and images are kept once by their content. The folder is ready for Git. Its `.gitignore` leaves out `.qalam/` (this computer's state: when a project was last opened, thumbnails, the Knowledge hub's layout) and `chats/` (chats and AI traces). Nothing is uploaded to a Qalam server, because there isn't one: Qalam's own server runs on your machine and only answers this computer.
+- **Your work stays on your computer, as files.** Each organization is a folder in `~/Qalam` (set `QALAM_HOME` to move it), or any folder you open as one. Projects are readable JSON (a Discovery board lists its cards at the top), a source's text is Markdown, what the organization and each product are is Markdown (`about.md`, `products/`), and images are kept once by their content. The folder is ready for Git. Its `.gitignore` leaves out `.qalam/` (this computer's state: when a project was last opened, thumbnails, the Knowledge hub's layout) and `chats/` (chats and AI traces). Nothing is uploaded to a Qalam server, because there isn't one: Qalam's own server runs on your machine and only answers this computer.
 - **What goes to the AI.** When you use an AI tool, the local server sends Anthropic what that request needs. That can include your prompt, earlier turns in the chat, the design system (including its source screenshots), screenshots you add, renders and layer outlines of the screens you selected, and the text of documents and pages you add to a Discovery board. With `AI_BACKEND=cli` it goes through Claude Code under your Claude account. With an API key it goes to the Anthropic API under your key.
 - **Claude Code's access.** Qalam runs Claude Code with its tools turned off, from a temporary folder, without your settings or memory. It can't read or change your files. The research step allows only web search, web fetch and the MCP servers you configured.
 - **Other services.** Research queries go to the services you turn on: Anthropic's web search, Tavily, or your MCP servers. Your machine fetches the web pages you add to a Discovery board and any Google Fonts a design system names.

@@ -6,7 +6,7 @@ import { ConflictError } from "@/org/client";
 import { loadedDocVersion, projectsDb, type ProjectRepo } from "./db";
 import { openStores } from "@/ui/idb";
 import { frameCount } from "./migrate";
-import { newProject, projectHref, type Project, type ProjectType } from "./model";
+import { newProject, orgHref, projectHref, type Project, type ProjectType } from "./model";
 
 /**
  * The project open in this page. Opening another project is a full page load, so everything
@@ -215,5 +215,5 @@ export async function reopenInterview() {
 
 export async function goHome() {
   await flushDoc();
-  window.location.assign("/");
+  window.location.assign(orgHref());
 }

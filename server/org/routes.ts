@@ -4,7 +4,8 @@ import { Hono } from "hono";
 import type { Doc } from "@/doc/schema";
 import type { SourceRecord } from "@/discovery/sources";
 import type { Project } from "@/projects/model";
-import { defaultOrg, listOrgs, qalamHome, storeFor } from "./home";
+import type { ContextFields, Product } from "@/org/context-md";
+import { chooseFolder, createOrg, currentOrg, listOrgs, openFolder, qalamHome, rememberOrg, storeFor } from "./home";
 import { ConflictError, NotFoundError, type OrgEvent, type OrgStore } from "./store";
 
 /**
@@ -33,10 +34,37 @@ const bad = (message: string) => Response.json({ error: "bad_request", message }
 export function orgRoutes(): Hono<Env> {
   const r = new Hono<Env>();
 
+  // Organizations: which there are, the one a new window opens, making and opening them.
   r.get("/api/orgs", async (c) => {
-    const current = await defaultOrg();
+    const current = await currentOrg();
     const orgs = await listOrgs();
     return c.json({ home: qalamHome(), current: current.id, orgs: orgs.map(({ id, name, dir }) => ({ id, name, dir })) });
+  });
+  r.post("/api/orgs", async (c) => {
+    const { name } = (await c.req.json().catch(() => ({}))) as { name?: string };
+    if (!name?.trim()) return bad("Name the organization");
+    return c.json(await createOrg(name));
+  });
+  /** Open a folder as an organization: the one given, or one picked with the Mac's own picker. */
+  r.post("/api/orgs/open", async (c) => {
+    let { path: dir } = (await c.req.json().catch(() => ({}))) as { path?: string };
+    if (!dir) {
+      const picked = await chooseFolder("Choose a folder for the organization");
+      if (picked === "unsupported") return c.json({ error: "no_picker", message: "Type the folder's path instead." }, 400);
+      if (!picked) return c.json({ cancelled: true });
+      dir = picked;
+    }
+    try {
+      return c.json(await openFolder(dir));
+    } catch (e) {
+      return bad(e instanceof Error ? e.message : String(e));
+    }
+  });
+  r.post("/api/orgs/last", async (c) => {
+    const { id } = (await c.req.json().catch(() => ({}))) as { id?: string };
+    if (!id || !ID.test(id) || !(await listOrgs()).some((o) => o.id === id)) return bad("No such organization");
+    await rememberOrg(id);
+    return c.json({ ok: true });
   });
 
   r.use("/api/org/:org/*", async (c, next) => {
@@ -46,6 +74,39 @@ export function orgRoutes(): Hono<Env> {
     c.set("store", store);
     await next();
   });
+
+  r.get("/api/org/:org/info", (c) => {
+    const { id, name } = c.get("store").info;
+    return c.json({ id, name, dir: c.get("store").dir });
+  });
+  r.patch("/api/org/:org/info", async (c) => {
+    const { name } = (await c.req.json().catch(() => ({}))) as { name?: string };
+    if (!name?.trim()) return bad("Name the organization");
+    await c.get("store").rename(name);
+    const { id, name: n } = c.get("store").info;
+    return c.json({ id, name: n, dir: c.get("store").dir });
+  });
+
+  // What the organization and its products are (about.md, products/*.md), and their goals.
+  r.get("/api/org/:org/about", async (c) => c.json(await c.get("store").getAbout()));
+  r.put("/api/org/:org/about", async (c) => {
+    const a = (await c.req.json()) as ContextFields;
+    if (!isContext(a)) return bad("Not an organization's context");
+    await c.get("store").putAbout(a, { tab: tabOf(c.req.raw.headers) });
+    return c.json({ ok: true });
+  });
+  r.get("/api/org/:org/products", async (c) => c.json(await c.get("store").listProducts()));
+  r.put("/api/org/:org/products/:id", async (c) => {
+    const p = (await c.req.json()) as Product;
+    if (!p || p.id !== c.req.param("id") || !ID.test(p.id) || typeof p.name !== "string" || !p.name.trim() || !isContext(p)) return bad("Not a product");
+    await c.get("store").putProduct({ ...p, name: p.name.trim().slice(0, 80) }, { tab: tabOf(c.req.raw.headers) });
+    return c.json({ ok: true });
+  });
+  r.delete("/api/org/:org/products/:id", async (c) => {
+    await c.get("store").removeProduct(c.req.param("id"), { tab: tabOf(c.req.raw.headers) });
+    return c.json({ ok: true });
+  });
+  r.get("/api/org/:org/goals", async (c) => c.json(await c.get("store").listGoals()));
 
   // Projects: records, then each one's document.
   r.get("/api/org/:org/projects", (c) => c.json(c.get("store").listProjects()));
@@ -92,8 +153,22 @@ export function orgRoutes(): Hono<Env> {
     }
   });
 
-  // Discovery sources.
+  // Sources: the organization's, each on the boards that use it.
   r.get("/api/org/:org/sources", async (c) => c.json(await c.get("store").listSources(c.req.query("board") || undefined)));
+  r.get("/api/org/:org/sources/:id", async (c) => {
+    const s = await c.get("store").getSource(c.req.param("id"));
+    return s ? c.json(s) : c.json({ error: "not_found" }, 404);
+  });
+  r.post("/api/org/:org/sources/:id/boards", async (c) => {
+    const { board, on } = (await c.req.json().catch(() => ({}))) as { board?: string; on?: boolean };
+    if (!board || !ID.test(board) || typeof on !== "boolean") return bad("Say which board, and whether it's on it");
+    try {
+      await c.get("store").linkSource(c.req.param("id"), board, on, { tab: tabOf(c.req.raw.headers) });
+      return c.json({ ok: true });
+    } catch (e) {
+      return failure(e);
+    }
+  });
   r.put("/api/org/:org/sources/:id", async (c) => {
     const s = (await c.req.json()) as SourceRecord;
     if (!s || s.id !== c.req.param("id") || !ID.test(s.id) || typeof s.text !== "string") return bad("Not a source");
@@ -225,3 +300,8 @@ export function orgRoutes(): Hono<Env> {
 
   return r;
 }
+
+const isContext = (c: unknown): c is ContextFields => {
+  const x = c as ContextFields;
+  return !!x && typeof x.audience === "string" && typeof x.context === "string" && Array.isArray(x.goals) && x.goals.every((g) => typeof g === "string") && Array.isArray(x.segments) && x.segments.every((g) => typeof g === "string");
+};

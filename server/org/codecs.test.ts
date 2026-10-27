@@ -86,10 +86,22 @@ const source: SourceRecord = {
 describe("source files", () => {
   it("round-trips: text verbatim in the Markdown body, the rest beside it", () => {
     const { md, data } = encodeSource(source);
-    expect(md.startsWith('---\nid: "s1abcdefgh"\nkind: "interview"\ntitle: "Sara interview"\norigin: "sara.vtt"\nboard: "b1abcdefgh"\naddedAt: 5\ntextHash: ')).toBe(true);
+    expect(md.startsWith('---\nid: "s1abcdefgh"\nkind: "interview"\ntitle: "Sara interview"\norigin: "sara.vtt"\nboard: "b1abcdefgh"\nboards: ["b1abcdefgh"]\nproduct: null\naddedAt: 5\ntextHash: ')).toBe(true);
     expect(md.endsWith(source.text)).toBe(true);
     expect(JSON.parse(data).quotes[0].id).toBe("q1");
-    expect(decodeSource(md, data)).toEqual(source);
+    expect(decodeSource(md, data)).toEqual({ ...source, boards: ["b1abcdefgh"], product: null });
+  });
+
+  it("keeps every board that uses a source, and its product", () => {
+    const shared = { ...source, boards: ["b1abcdefgh", "b2abcdefgh"], product: "pGrocery1" };
+    const { md, data } = encodeSource(shared);
+    expect(decodeSource(md, data)).toEqual(shared);
+  });
+
+  it("reads a source file from before sharing: the board it was added on uses it", () => {
+    const { md, data } = encodeSource(source);
+    const old = md.replace('boards: ["b1abcdefgh"]\n', "").replace("product: null\n", "");
+    expect(decodeSource(old, data)).toMatchObject({ projectId: "b1abcdefgh", boards: ["b1abcdefgh"], product: null });
   });
 
   it("finds quotes again when the text was edited outside Qalam", () => {

@@ -68,7 +68,12 @@ export interface SourceNeed {
 export interface SourceRecord {
   v: 1;
   id: string;
+  /** The board it was added on. */
   projectId: string;
+  /** The boards that use it: a source belongs to the organization, and any board can use it. */
+  boards?: string[];
+  /** The organization's product it's about; none: the whole organization. */
+  product?: string | null;
   kind: SourceKind;
   title: string;
   /** Where it came from: a file's name, a page's address, the tool and what was asked of it. */
@@ -187,12 +192,25 @@ export function pageAt(pages: number[] | undefined, offset: number): number | un
 // Evidence
 
 /** A quote as evidence on a card (a brain dump's words are the builder's own). */
+/** The ref of a source's quote as a piece of the organization's knowledge (OstEvidence.piece). */
+export const quotePiece = (quoteId: string) => `hub:quote:${quoteId}`;
+
+/** The quote a card's evidence is: by its piece, else (attached before pieces) by where it sits. */
+export function quoteOf(source: Pick<SourceRecord, "quotes">, e: Pick<OstEvidence, "piece" | "span">): SourceQuote | undefined {
+  if (e.piece) {
+    const q = source.quotes.find((x) => quotePiece(x.id) === e.piece);
+    if (q) return q;
+  }
+  return e.span ? source.quotes.find((x) => x.span[0] === e.span![0] && x.span[1] === e.span![1]) : undefined;
+}
+
 export function quoteEvidence(source: Pick<SourceRecord, "id" | "title"> & { kind?: SourceKind }, q: SourceQuote, addedBy: "user" | "ai", opts: { against?: boolean; now?: number } = {}): OstEvidence {
   return {
     id: newId(),
     kind: source.kind === "dump" ? "dump" : "quote",
     text: q.text,
     sourceId: source.id,
+    piece: quotePiece(q.id),
     sourceTitle: source.title,
     span: [q.span[0], q.span[1]],
     ...(q.page ? { page: q.page } : {}),

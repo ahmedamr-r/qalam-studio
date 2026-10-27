@@ -42,13 +42,25 @@ export interface Project {
   serves?: ServesLink[];
   /** The document from before projects existed. */
   legacy?: true;
+  /** The organization's product it's for (products/<slug>.md); none: the whole organization. */
+  product?: string | null;
 }
 
 export const newProjectId = () => nanoid(10);
 export const isProjectId = (id: string) => /^[A-Za-z0-9_-]{6,24}$/.test(id);
 
+/** The letter a project's address starts with. */
+export const projectLetter = (type: ProjectType) => (type === "system" ? "s" : type === "discovery" ? "d" : "p");
+
+/** The organization this window's links point into (set once the window knows it). */
+let linkOrg: string | null = null;
+export const setLinkOrg = (id: string | null) => void (linkOrg = id);
+
+/** The organization's home (the projects home when no organization is known yet). */
+export const orgHref = (org: string | null = linkOrg) => (org ? `/o/${org}` : "/");
+
 /** Where a project opens. */
-export const projectHref = (p: Pick<Project, "id" | "type">) => `/${p.type === "system" ? "s" : p.type === "discovery" ? "d" : "p"}/${p.id}`;
+export const projectHref = (p: Pick<Project, "id" | "type">, org: string | null = linkOrg) => `${org ? `/o/${org}` : ""}/${projectLetter(p.type)}/${p.id}`;
 
 const STAGE_LABEL: Record<InterviewState["stage"], string> = {
   brief: "Brief",

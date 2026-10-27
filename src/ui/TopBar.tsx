@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import clsx from "clsx";
 import { ChevronDown, Play, Redo2, Undo2 } from "lucide-react";
 import { useStudio, studio } from "@/doc/store";
@@ -15,6 +16,7 @@ import { usePreviewedDraft } from "./ai/extractChat";
 import Presence from "./ai/Presence";
 import { loadDemo } from "./demo";
 import { goHome, renameProject, reopenInterview, useProject } from "@/projects/session";
+import { currentOrg } from "@/org/client";
 import { promptDialog } from "./surfaces/dialog";
 import { useProjectType } from "@/projects/mode";
 import { allCards } from "@/discovery/tree";
@@ -372,11 +374,13 @@ function Crumbs() {
   const project = useProject((s) => s.project?.name);
   const board = useProjectType() === "discovery";
   const cards = useStudio((s) => (board ? allCards(s.doc).length : 0));
+  const [org, setOrg] = useState<string | null>(null);
+  useEffect(() => void currentOrg().then((o) => setOrg(o.name), () => {}), []);
   return (
     <nav aria-label="Location" className={clsx(r.crumbs, "max-[1180px]:hidden")}>
-      <Tip label="Back to projects" side="bottom">
-        <button type="button" onClick={() => void goHome()} className="q-item inline-flex h-[28px] items-center rounded-md px-[6px] hover:bg-hover hover:text-fg-muted">
-          Projects
+      <Tip label={org ? `Back to ${org}` : "Back to projects"} side="bottom">
+        <button type="button" onClick={() => void goHome()} className="q-item inline-flex h-[28px] max-w-[160px] items-center rounded-md px-[6px] hover:bg-hover hover:text-fg-muted">
+          <span className="truncate">{org ?? "Projects"}</span>
         </button>
       </Tip>
       <span aria-hidden className={clsx(r.crumbSep, "-mx-[2px]")}>

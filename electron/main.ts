@@ -1,4 +1,4 @@
-import { app, BrowserWindow, MessageChannelMain, protocol, session, shell, utilityProcess } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, MessageChannelMain, protocol, session, shell, utilityProcess, type WebContents } from "electron";
 import { readFileSync, statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -84,6 +84,37 @@ function openOutside(url: string) {
   if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
 }
 
+/** The app's own pages: qalam://app, or the dev server in desktop:dev. */
+const ours = (url: string) => (DEV_URL ? url.startsWith(new URL(DEV_URL).origin + "/") : url.startsWith(`${ORIGIN}/`));
+
+const webPreferences = { contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: false, backgroundThrottling: !HIDDEN, preload: path.join(ROOT, "out", "preload.cjs") };
+
+/**
+ * Every window stays on the app's pages: a link elsewhere opens in the user's browser, and a page
+ * of the app asked for in a new window (a project "in a new tab") gets an app window of its own.
+ */
+function guard(contents: WebContents) {
+  contents.on("will-navigate", (e, url) => {
+    if (ours(url)) return;
+    e.preventDefault();
+    openOutside(url);
+  });
+  contents.setWindowOpenHandler(({ url }) => {
+    if (ours(url)) return { action: "allow", overrideBrowserWindowOptions: { width: 1440, height: 900, minWidth: 900, minHeight: 600, backgroundColor: "#090908", webPreferences } };
+    openOutside(url);
+    return { action: "deny" };
+  });
+}
+
+/** The system's folder picker, for the page's "Open a folder as an organization" (electron/preload.cjs). */
+ipcMain.handle("qalam:choose-folder", async (e, title: string) => {
+  if (!ours(e.senderFrame?.url ?? "")) return null;
+  const win = BrowserWindow.fromWebContents(e.sender);
+  const opts = { title: title.slice(0, 120), buttonLabel: "Open", properties: ["openDirectory", "createDirectory"] as ("openDirectory" | "createDirectory")[] };
+  const r = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts);
+  return r.canceled ? null : (r.filePaths[0] ?? null);
+});
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1440,
@@ -93,7 +124,7 @@ function createWindow() {
     show: false,
     title: "Qalam Studio",
     backgroundColor: "#090908",
-    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: false, backgroundThrottling: !HIDDEN },
+    webPreferences,
   });
   win.once("ready-to-show", () => {
     if (!HIDDEN) win.show();
@@ -107,18 +138,7 @@ function createWindow() {
     const flushed = win.webContents.executeJavaScript("window.__qalamBeforeClose ? window.__qalamBeforeClose() : null", true).catch(() => {});
     void Promise.race([flushed, new Promise((r) => setTimeout(r, 3000))]).finally(() => win.destroy());
   });
-  const home = DEV_URL ?? `${ORIGIN}/`;
-  const ours = (url: string) => (DEV_URL ? url.startsWith(new URL(DEV_URL).origin + "/") : url.startsWith(`${ORIGIN}/`));
-  win.webContents.on("will-navigate", (e, url) => {
-    if (ours(url)) return;
-    e.preventDefault();
-    openOutside(url);
-  });
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    openOutside(url);
-    return { action: "deny" };
-  });
-  void win.loadURL(home);
+  void win.loadURL(DEV_URL ?? `${ORIGIN}/`);
 }
 
 if (!app.requestSingleInstanceLock()) app.quit();
@@ -132,6 +152,7 @@ else {
   });
   app.on("before-quit", () => (quitting = true));
   app.on("window-all-closed", () => app.quit());
+  app.on("web-contents-created", (_e, contents) => guard(contents));
   void app.whenReady().then(() => {
     // Clipboard for copy and paste on the canvas; every other permission (camera, location…) is refused.
     session.defaultSession.setPermissionRequestHandler((_wc, permission, done) => done(permission === "clipboard-read" || permission === "clipboard-sanitized-write" || permission === "fullscreen"));

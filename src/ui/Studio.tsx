@@ -19,7 +19,7 @@ import { startPages } from "./pages";
 import { startComponentsPage } from "./components-page/runtime";
 import ComponentsPagePanel from "./components-page/Panel";
 import { ensureMigrated, legacyProjectId } from "@/projects/migrate";
-import { isProjectId, projectHref, type Project, type ProjectType } from "@/projects/model";
+import { isProjectId, orgHref, projectHref, type Project, type ProjectType } from "@/projects/model";
 import { flushDoc, openProject, startDocPersistence, updateProject, useSaveConflict } from "@/projects/session";
 import { currentOrg } from "@/org/client";
 import { ConflictBanner } from "@/org/ConflictBanner";
@@ -401,7 +401,7 @@ export function ProjectMissing() {
     <div className="flex w-[300px] flex-col items-center gap-[12px] text-center">
       <p className="text-title font-medium text-fg">Project not found</p>
       <p className="text-body text-fg-muted">It isn't in this organization's folder. It was deleted, or it's still saved in a browser: the projects home can bring those in.</p>
-      <a href="/" className={clsx(r.button, r.buttonSecondary)}>
+      <a href={orgHref()} className={clsx(r.button, r.buttonSecondary)}>
         Back to projects
       </a>
     </div>

@@ -3,7 +3,9 @@ import { watch, type FSWatcher } from "node:fs";
 import { readdir, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import type { Doc } from "@/doc/schema";
+import type { OstCard } from "@/discovery/types";
 import type { SourceRecord } from "@/discovery/sources";
+import { aboutFromMarkdown, aboutToMarkdown, emptyContext, productFromMarkdown, productToMarkdown, type ContextFields, type Product } from "@/org/context-md";
 import type { Project, ProjectType } from "@/projects/model";
 import { assetExt, assetType, decodeProject, decodeSource, docVersion, encodeProject, encodeSource, isLocalField, recordVersion, splitLocal, type LocalFields } from "./codecs";
 import { assetHash, atomicWrite, contentHash, inside, locked, readJson, slugify, stableStringify, uniqueName } from "./fsx";
@@ -24,11 +26,27 @@ export interface OrgInfo {
 
 export type OrgEvent = { tab?: string } & (
   | { kind: "project"; id: string; parts: ("record" | "doc")[]; removed?: boolean }
-  | { kind: "source"; id: string; board: string | null; removed?: boolean }
+  | { kind: "source"; id: string; boards: string[]; removed?: boolean }
   | { kind: "system"; id: string; removed?: boolean }
   | { kind: "chat"; id: string; removed?: boolean }
   | { kind: "naming" }
+  | { kind: "product"; id: string; removed?: boolean }
+  | { kind: "about" }
+  | { kind: "org" }
 );
+
+/** An outcome on one of the organization's boards: the home's goals, by product. */
+export interface Goal {
+  board: string;
+  boardName: string;
+  product: string | null;
+  /** The card's id on its board. */
+  id: string;
+  title: string;
+  metric?: OstCard["metric"];
+  /** The outcome it sits under on its board (a sub-outcome), if any. */
+  parent: string | null;
+}
 
 export class ConflictError extends Error {
   constructor(
@@ -55,7 +73,9 @@ interface ProjectEntry {
 interface SourceEntry {
   md: string;
   data: string;
-  board: string | null;
+  /** The boards it's on. A source belongs to the organization; boards use it. */
+  boards: string[];
+  product: string | null;
 }
 
 interface LocalState {
@@ -69,6 +89,9 @@ export class OrgStore {
   private systems = new Map<string, string>();
   private chats = new Map<string, string>();
   private assets = new Map<string, string>();
+  private products = new Map<string, string>();
+  /** Each board's outcomes, as of its document's version. */
+  private goals = new Map<string, { docV: string; goals: Omit<Goal, "boardName" | "product">[] }>();
   private local: LocalState = { projects: {} };
   /** Files Qalam itself wrote, by content hash: the watcher skips them. */
   private written = new Map<string, string>();
@@ -77,9 +100,22 @@ export class OrgStore {
 
   private constructor(
     readonly dir: string,
-    readonly info: OrgInfo,
+    private org: OrgInfo,
   ) {
     this.events.setMaxListeners(100);
+  }
+
+  get info(): OrgInfo {
+    return this.org;
+  }
+
+  /** Rename the organization (its folder keeps its name). */
+  async rename(name: string) {
+    const n = name.trim().replace(/\s+/g, " ").slice(0, 80);
+    if (!n) return;
+    this.org = { ...this.org, name: n };
+    await this.write(this.abs("org.json"), stableStringify(this.org));
+    this.emit({ kind: "org" });
   }
 
   static async open(dir: string): Promise<OrgStore> {
@@ -90,11 +126,15 @@ export class OrgStore {
     return store;
   }
 
-  /** Make a new organization's folder. */
+  /** Make a new organization's folder, or turn an existing folder into one (its files stay as they are). */
   static async create(dir: string, info: Omit<OrgInfo, "qalam">): Promise<OrgStore> {
     await atomicWrite(path.join(dir, "org.json"), stableStringify({ qalam: "org/1", ...info }));
-    // Local state, caches and AI working memory stay out of Git.
-    await atomicWrite(path.join(dir, ".gitignore"), ".qalam/\nchats/\n");
+    // Local state, caches and AI working memory stay out of Git: added to a .gitignore already there.
+    const ignore = path.join(dir, ".gitignore");
+    const had = await readFile(ignore, "utf8").catch(() => "");
+    const lines = had.split(/\r?\n/).map((l) => l.trim());
+    const missing = [".qalam/", "chats/"].filter((l) => !lines.includes(l) && !lines.includes(l.slice(0, -1)));
+    if (missing.length) await atomicWrite(ignore, `${had}${had && !had.endsWith("\n") ? "\n" : ""}${missing.join("\n")}\n`);
     return OrgStore.open(dir);
   }
 
@@ -128,6 +168,7 @@ export class OrgStore {
     for (const dir of Object.values(PROJECT_DIRS)) for (const file of await this.files(dir, ".json")) await this.indexProject(file);
     for (const md of await this.files("sources", ".md")) await this.indexSource(md);
     for (const file of await this.files("design-systems", ".json")) await this.indexSystem(file);
+    for (const file of await this.files("products", ".md")) await this.indexProduct(file);
     for (const file of await this.files("assets", "")) this.assets.set(path.basename(file).replace(/\.[^.]+$/, ""), file);
     try {
       for (const d of await readdir(this.abs("chats"), { withFileTypes: true })) if (d.isDirectory()) for (const file of await this.files(`chats/${d.name}`, ".json")) await this.indexChat(file);
@@ -161,7 +202,7 @@ export class OrgStore {
     try {
       const s = decodeSource(await readFile(md, "utf8"), await readFile(data, "utf8"));
       if (!s) return null;
-      this.sources.set(s.id, { md, data, board: s.projectId ?? null });
+      this.sources.set(s.id, { md, data, boards: s.boards ?? [], product: s.product ?? null });
       return s;
     } catch {
       return null;
@@ -174,6 +215,16 @@ export class OrgStore {
     if (!s?.id) return null;
     this.systems.set(s.id, file);
     return s.id;
+  }
+
+  private async indexProduct(file: string): Promise<Product | null> {
+    try {
+      const p = productFromMarkdown(await readFile(file, "utf8"));
+      if (p) this.products.set(p.id, file);
+      return p;
+    } catch {
+      return null;
+    }
   }
 
   private async indexChat(file: string): Promise<string | null> {
@@ -282,7 +333,7 @@ export class OrgStore {
     });
   }
 
-  /** A project and everything that's only its: chats, AI traces, the board's own sources, local state. */
+  /** A project and everything that's only its: chats, AI traces, local state. Sources stay in the organization; the board leaves them. */
   removeProject(id: string, opts: { tab?: string } = {}): Promise<void> {
     return locked(`project:${id}`, async () => {
       const e = this.projects.get(id);
@@ -291,47 +342,84 @@ export class OrgStore {
       await rm(this.abs(`chats/${id}`), { recursive: true, force: true });
       for (const [cid, file] of this.chats) if (path.dirname(file) === this.abs(`chats/${id}`)) this.chats.delete(cid);
       await rm(this.abs(`.qalam/local/layout/${id}.json`), { force: true });
-      for (const [sid, s] of [...this.sources]) if (s.board === id) await this.removeSource(sid, opts);
+      for (const [sid, s] of [...this.sources]) if (s.boards.includes(id)) await this.linkSource(sid, id, false, opts);
       await this.setLocal(id, null);
       this.emit({ kind: "project", id, parts: ["record", "doc"], removed: true, tab: opts.tab });
     });
   }
 
   // -------------------------------------------------------------------------
-  // Sources
+  // Sources: the organization's; each lists the boards that use it.
 
+  private async readSource(e: SourceEntry): Promise<SourceRecord | null> {
+    try {
+      const rec = decodeSource(await readFile(e.md, "utf8"), await readFile(e.data, "utf8"));
+      return rec ? { ...rec, boards: e.boards, product: e.product } : null;
+    } catch {
+      return null; // removed meanwhile
+    }
+  }
+
+  /** The organization's sources, or the ones a board uses. */
   async listSources(board?: string): Promise<SourceRecord[]> {
     const out: SourceRecord[] = [];
-    for (const [, s] of this.sources) {
-      if (board && s.board !== board) continue;
-      try {
-        const rec = decodeSource(await readFile(s.md, "utf8"), await readFile(s.data, "utf8"));
-        if (rec) out.push(rec);
-      } catch {
-        // removed meanwhile
-      }
+    for (const e of this.sources.values()) {
+      if (board && !e.boards.includes(board)) continue;
+      const rec = await this.readSource(e);
+      if (rec) out.push(rec);
     }
     return out.sort((a, b) => a.addedAt - b.addedAt);
   }
 
+  async getSource(id: string): Promise<SourceRecord | null> {
+    const e = this.sources.get(id);
+    return e ? this.readSource(e) : null;
+  }
+
+  /**
+   * Save a source. A new one is on the board it was added on, for that board's product. A change
+   * that doesn't say which boards use it keeps the boards it had (two boards adding it at once
+   * don't undo each other).
+   */
   putSource(s: SourceRecord, opts: { tab?: string } = {}): Promise<void> {
     return locked(`source:${s.id}`, async () => {
-      let entry = this.sources.get(s.id);
-      if (!entry) {
+      const prev = this.sources.get(s.id);
+      const boards = [...new Set(s.boards ?? prev?.boards ?? (s.projectId ? [s.projectId] : []))];
+      const product = s.product !== undefined ? s.product : (prev?.product ?? (s.projectId ? (this.projects.get(s.projectId)?.record.product ?? null) : null));
+      let md = prev?.md;
+      if (!md) {
         const date = new Date(s.addedAt || Date.now()).toISOString().slice(0, 10);
         const dir = this.abs("sources");
         const used = new Set([...this.sources.values()].map((x) => x.md));
-        const md = path.join(dir, uniqueName(`${date}-${slugify(s.title, "source")}`, ".md", (n) => used.has(path.join(dir, n))));
-        entry = { md, data: md.replace(/\.md$/, ".json"), board: s.projectId ?? null };
+        md = path.join(dir, uniqueName(`${date}-${slugify(s.title, "source")}`, ".md", (n) => used.has(path.join(dir, n))));
       }
-      const { md, data } = encodeSource(s);
-      await this.write(entry.md, md);
-      await this.write(entry.data, data);
-      this.sources.set(s.id, { ...entry, board: s.projectId ?? null });
-      this.emit({ kind: "source", id: s.id, board: s.projectId ?? null, tab: opts.tab });
+      const files = encodeSource({ ...s, boards, product });
+      const entry: SourceEntry = { md, data: md.replace(/\.md$/, ".json"), boards, product };
+      await this.write(entry.md, files.md);
+      await this.write(entry.data, files.data);
+      this.sources.set(s.id, entry);
+      this.emit({ kind: "source", id: s.id, boards, tab: opts.tab });
     });
   }
 
+  /** Put a source on a board, or take it off (it stays in the organization). */
+  linkSource(id: string, board: string, on: boolean, opts: { tab?: string } = {}): Promise<void> {
+    return locked(`source:${id}`, async () => {
+      const e = this.sources.get(id);
+      if (!e) throw new NotFoundError(id);
+      if (e.boards.includes(board) === on) return;
+      const rec = await this.readSource(e);
+      if (!rec) throw new NotFoundError(id);
+      const boards = on ? [...e.boards, board] : e.boards.filter((b) => b !== board);
+      const files = encodeSource({ ...rec, boards });
+      await this.write(e.md, files.md);
+      await this.write(e.data, files.data);
+      this.sources.set(id, { ...e, boards });
+      this.emit({ kind: "source", id, boards: [...new Set([...e.boards, ...boards])], tab: opts.tab });
+    });
+  }
+
+  /** Delete a source from the organization (every board loses it). */
   removeSource(id: string, opts: { tab?: string } = {}): Promise<void> {
     return locked(`source:${id}`, async () => {
       const s = this.sources.get(id);
@@ -339,8 +427,83 @@ export class OrgStore {
       await rm(s.md, { force: true });
       await rm(s.data, { force: true });
       this.sources.delete(id);
-      this.emit({ kind: "source", id, board: s.board, removed: true, tab: opts.tab });
+      this.emit({ kind: "source", id, boards: s.boards, removed: true, tab: opts.tab });
     });
+  }
+
+  // -------------------------------------------------------------------------
+  // The organization and its products: what they are, for people and for Qalam AI.
+
+  async getAbout(): Promise<ContextFields> {
+    try {
+      return aboutFromMarkdown(await readFile(this.abs("about.md"), "utf8"));
+    } catch {
+      return emptyContext();
+    }
+  }
+
+  async putAbout(c: ContextFields, opts: { tab?: string } = {}): Promise<void> {
+    const file = this.abs("about.md");
+    await locked(file, () => this.write(file, aboutToMarkdown(c)));
+    this.emit({ kind: "about", tab: opts.tab });
+  }
+
+  async listProducts(): Promise<Product[]> {
+    const out: Product[] = [];
+    for (const file of this.products.values()) {
+      try {
+        const p = productFromMarkdown(await readFile(file, "utf8"));
+        if (p) out.push(p);
+      } catch {
+        // removed meanwhile
+      }
+    }
+    return out.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  putProduct(p: Product, opts: { tab?: string } = {}): Promise<void> {
+    return locked(`product:${p.id}`, async () => {
+      let file = this.products.get(p.id);
+      if (!file) {
+        const dir = this.abs("products");
+        const used = new Set(this.products.values());
+        file = path.join(dir, uniqueName(slugify(p.name, "product"), ".md", (n) => used.has(path.join(dir, n))));
+      }
+      await this.write(file, productToMarkdown(p));
+      this.products.set(p.id, file);
+      this.emit({ kind: "product", id: p.id, tab: opts.tab });
+    });
+  }
+
+  /** Delete a product: its boards and sources become the whole organization's. */
+  async removeProduct(id: string, opts: { tab?: string } = {}): Promise<void> {
+    await locked(`product:${id}`, async () => {
+      const file = this.products.get(id);
+      if (file) await rm(file, { force: true });
+      this.products.delete(id);
+    });
+    for (const e of [...this.projects.values()]) if (e.record.product === id) await this.patchProject(e.record.id, { product: null }, opts);
+    for (const [sid, e] of [...this.sources]) {
+      if (e.product !== id) continue;
+      const rec = await this.readSource(e);
+      if (rec) await this.putSource({ ...rec, product: null }, opts);
+    }
+    this.emit({ kind: "product", id, removed: true, tab: opts.tab });
+  }
+
+  /** Every board's outcomes (and sub-outcomes), for the organization's goals. */
+  async listGoals(): Promise<Goal[]> {
+    const out: Goal[] = [];
+    for (const e of this.projects.values()) {
+      if (e.record.type !== "discovery") continue;
+      let cached = this.goals.get(e.record.id);
+      if (!cached || cached.docV !== e.docV) {
+        cached = { docV: e.docV, goals: goalsOf(e.record, await this.readDoc(e).catch(() => null)) };
+        this.goals.set(e.record.id, cached);
+      }
+      out.push(...cached.goals.map((g) => ({ ...g, boardName: e.record.name, product: e.record.product ?? null })));
+    }
+    return out;
   }
 
   // -------------------------------------------------------------------------
@@ -524,12 +687,12 @@ export class OrgStore {
       // Either file of a source changed: read the pair again (gone when its text is gone).
       const md = file.replace(/\.json$/, ".md");
       const s = await this.indexSource(md);
-      if (s) this.emit({ kind: "source", id: s.id, board: s.projectId ?? null });
+      if (s) this.emit({ kind: "source", id: s.id, boards: s.boards ?? [] });
       else {
         const gone = [...this.sources].find(([, e]) => e.md === md);
         if (gone) {
           this.sources.delete(gone[0]);
-          this.emit({ kind: "source", id: gone[0], board: gone[1].board, removed: true });
+          this.emit({ kind: "source", id: gone[0], boards: gone[1].boards, removed: true });
         }
       }
     } else if (parts[0] === "design-systems" && parts.length === 2 && rel.endsWith(".json")) {
@@ -544,10 +707,47 @@ export class OrgStore {
           this.emit({ kind: "system", id: gone[0], removed: true });
         }
       }
+    } else if (parts[0] === "products" && parts.length === 2 && rel.endsWith(".md")) {
+      const p = bytes ? await this.indexProduct(file) : null;
+      if (p) this.emit({ kind: "product", id: p.id });
+      else {
+        const gone = [...this.products].find(([, f]) => f === file);
+        if (gone) {
+          this.products.delete(gone[0]);
+          this.emit({ kind: "product", id: gone[0], removed: true });
+        }
+      }
+    } else if (rel === "about.md") {
+      this.emit({ kind: "about" });
+    } else if (rel === "org.json" && bytes) {
+      const info = await readJson<OrgInfo>(file);
+      if (info?.qalam === "org/1" && info.id === this.org.id) {
+        this.org = info;
+        this.emit({ kind: "org" });
+      }
     } else if (parts[0] === "assets" && parts.length === 2) {
       const hash = parts[1].replace(/\.[^.]+$/, "");
       if (bytes) this.assets.set(hash, file);
       else this.assets.delete(hash);
     }
   }
+}
+
+/** A board's outcomes, each with the outcome it sits under (sub-outcomes). */
+function goalsOf(record: Project, doc: Doc | null): Omit<Goal, "boardName" | "product">[] {
+  if (!doc) return [];
+  type Card = { parentId?: string | null; meta?: { ost?: OstCard } };
+  const nodes = doc.nodes as unknown as Record<string, Card>;
+  const outcome = (id: string | null | undefined) => (id && nodes[id]?.meta?.ost?.kind === "outcome" ? id : null);
+  const parentOutcome = (id: string): string | null => {
+    for (let p = nodes[id]?.parentId; p; p = nodes[p]?.parentId) if (outcome(p)) return p;
+    return null;
+  };
+  const out: Omit<Goal, "boardName" | "product">[] = [];
+  for (const [id, n] of Object.entries(nodes)) {
+    const c = n.meta?.ost;
+    if (c?.kind !== "outcome") continue;
+    out.push({ board: record.id, id, title: c.title, ...(c.metric ? { metric: c.metric } : {}), parent: parentOutcome(id) });
+  }
+  return out;
 }

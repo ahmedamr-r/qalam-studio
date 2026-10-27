@@ -1,3 +1,4 @@
+import { projectHref } from "@/projects/model";
 import { X } from "lucide-react";
 import { updateProject, useProject } from "@/projects/session";
 import { IconBtn } from "../controls";
@@ -17,7 +18,7 @@ export default function ServingBanner() {
       <span className="min-w-0 flex-1 truncate">
         Designing for <b className="font-medium text-fg">{serving.cardTitle || "a solution"}</b> · {serving.projectName}
       </span>
-      <a href={`/d/${serving.projectId}?card=${serving.cardId}`} onClick={saveThenGo} className="shrink-0 font-medium text-fg underline decoration-fg/40 underline-offset-2 hover:decoration-fg">
+      <a href={`${projectHref({ id: serving.projectId, type: "discovery" })}?card=${serving.cardId}`} onClick={saveThenGo} className="shrink-0 font-medium text-fg underline decoration-fg/40 underline-offset-2 hover:decoration-fg">
         Open in Discovery
       </a>
       <IconBtn size="sm" label="Stop linking new screens to it" onClick={() => void updateProject({ serving: undefined }, { touch: false })}>

@@ -12,10 +12,13 @@ import { orgPath, TAB } from "./client";
 
 export type OrgChange = { tab?: string } & (
   | { kind: "project"; id: string; parts: ("record" | "doc")[]; removed?: boolean }
-  | { kind: "source"; id: string; board: string | null; removed?: boolean }
+  | { kind: "source"; id: string; boards: string[]; removed?: boolean }
   | { kind: "system"; id: string; removed?: boolean }
   | { kind: "chat"; id: string; removed?: boolean }
   | { kind: "naming" }
+  | { kind: "product"; id: string; removed?: boolean }
+  | { kind: "about" }
+  | { kind: "org" }
 );
 
 const listeners = new Set<(c: OrgChange) => void>();

@@ -1,13 +1,16 @@
+import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { readdir } from "node:fs/promises";
+import { access, constants, readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
-import { readJson } from "./fsx";
+import { atomicWrite, readJson, stableStringify } from "./fsx";
 import { OrgStore, type OrgInfo } from "./store";
 
 /**
- * Where organizations live: one folder each under ~/Qalam (QALAM_HOME moves it, for tests).
- * The first time Qalam runs it makes "Personal", so there's always somewhere to save.
+ * Where organizations live: one folder each under ~/Qalam (QALAM_HOME moves it, for tests), plus
+ * any folder opened as one from elsewhere (a repository, a shared drive). ~/Qalam/.qalam.json
+ * remembers those folders and the organization opened last. The first time Qalam runs it makes
+ * "Personal", so there's always somewhere to save.
  */
 
 export const qalamHome = () => path.resolve(process.env.QALAM_HOME || path.join(homedir(), "Qalam"));
@@ -20,39 +23,145 @@ export interface OrgListing {
   dir: string;
 }
 
+interface Registry {
+  v: 1;
+  /** The organization opened last: where a new window goes. */
+  last?: string;
+  /** Organizations kept outside ~/Qalam. */
+  folders?: string[];
+}
+
+const registryFile = (home: string) => path.join(home, ".qalam.json");
+const readRegistry = async (home: string): Promise<Registry> => (await readJson<Registry>(registryFile(home))) ?? { v: 1 };
+const writeRegistry = (home: string, r: Registry) => atomicWrite(registryFile(home), stableStringify(r));
+
+async function orgAt(dir: string): Promise<OrgListing | null> {
+  const info = await readJson<OrgInfo>(path.join(dir, "org.json"));
+  return info?.qalam === "org/1" && info.id ? { id: info.id, name: info.name, dir } : null;
+}
+
 export async function listOrgs(home = qalamHome()): Promise<OrgListing[]> {
-  let names: string[] = [];
+  const dirs: string[] = [];
   try {
-    names = (await readdir(home, { withFileTypes: true })).filter((d) => d.isDirectory() && !d.name.startsWith(".")).map((d) => d.name);
+    for (const d of await readdir(home, { withFileTypes: true })) if (d.isDirectory() && !d.name.startsWith(".")) dirs.push(path.join(home, d.name));
   } catch {
-    return [];
+    // no ~/Qalam yet
   }
+  const reg = await readRegistry(home);
+  for (const f of reg.folders ?? []) if (!dirs.includes(f)) dirs.push(f);
   const out: OrgListing[] = [];
-  for (const name of names.sort()) {
-    const info = await readJson<OrgInfo>(path.join(home, name, "org.json"));
-    if (info?.qalam === "org/1" && info.id) out.push({ id: info.id, name: info.name, dir: path.join(home, name) });
+  const seen = new Set<string>();
+  for (const dir of dirs) {
+    const org = await orgAt(dir);
+    if (org && !seen.has(org.id)) {
+      seen.add(org.id);
+      out.push(org);
+    }
   }
-  return out;
+  return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 const newOrgId = () => randomBytes(6).toString("base64url");
 
-/** The org to open: the first there is, or a new "Personal" one. */
-export async function defaultOrg(home = qalamHome()): Promise<OrgListing> {
-  const orgs = await listOrgs(home);
-  if (orgs[0]) return orgs[0];
-  const dir = path.join(home, DEFAULT_ORG);
-  const store = await OrgStore.create(dir, { id: newOrgId(), name: DEFAULT_ORG, createdAt: Date.now() });
+/** A folder name from an organization's name: what a file system allows, kept readable (any script). */
+function folderName(name: string): string {
+  const n = name
+    .normalize("NFC")
+    .replace(/[/\\:*?"<>|\u0000-\u001f]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^\.+/, "")
+    .slice(0, 60)
+    .trim();
+  return n || "Organization";
+}
+
+/** A new organization: a folder in ~/Qalam named after it. */
+export async function createOrg(name: string, home = qalamHome()): Promise<OrgListing> {
+  const base = folderName(name);
+  let dir = path.join(home, base);
+  for (let n = 2; await exists(dir); n++) dir = path.join(home, `${base} ${n}`);
+  const store = await OrgStore.create(dir, { id: newOrgId(), name: name.trim().slice(0, 80) || base, createdAt: Date.now() });
   stores().set(store.info.id, Promise.resolve(store));
   store.watch();
   return { id: store.info.id, name: store.info.name, dir };
 }
 
+/** The organization a new window opens: the last one opened, else the first there is, else a new "Personal". */
+export async function currentOrg(home = qalamHome()): Promise<OrgListing> {
+  const orgs = await listOrgs(home);
+  const last = (await readRegistry(home)).last;
+  const found = orgs.find((o) => o.id === last) ?? orgs[0];
+  if (found) return found;
+  const made = await createOrg(DEFAULT_ORG, home);
+  await rememberOrg(made.id, home);
+  return made;
+}
+
+/** Remember the organization opened last. */
+export async function rememberOrg(id: string, home = qalamHome()) {
+  const reg = await readRegistry(home);
+  if (reg.last === id) return;
+  await writeRegistry(home, { ...reg, last: id });
+}
+
+const exists = (p: string) =>
+  stat(p).then(
+    () => true,
+    () => false,
+  );
+
+/** Places that can't be an organization: the disk's root, your home itself, system folders. */
+function refused(dir: string, home: string): string | null {
+  const parts = dir.split(path.sep).filter(Boolean);
+  if (parts.length < 2) return "Pick a folder inside your home or another drive, not the disk itself.";
+  if (dir === homedir()) return "Pick a folder inside your home folder, not the home folder itself.";
+  if (dir === home) return `That's where Qalam keeps organizations; pick a folder inside it, or another one.`;
+  if (/^\/(System|usr|bin|sbin|etc|Library|Applications|dev|cores)(\/|$)/.test(dir)) return "That's a system folder.";
+  return null;
+}
+
+/**
+ * Use a folder as an organization: one that is already an organization is opened; any other
+ * folder becomes one (named after the folder), its files left as they are. Remembered so it's
+ * listed next time.
+ */
+export async function openFolder(raw: string, home = qalamHome()): Promise<OrgListing> {
+  const dir = path.resolve(raw.replace(/^~(?=$|\/)/, homedir()));
+  const why = refused(dir, home);
+  if (why) throw new Error(why);
+  const s = await stat(dir).catch(() => null);
+  if (!s?.isDirectory()) throw new Error("That folder doesn't exist.");
+  await access(dir, constants.W_OK).catch(() => {
+    throw new Error("Qalam can't write in that folder.");
+  });
+  let org = await orgAt(dir);
+  if (!org) {
+    const store = await OrgStore.create(dir, { id: newOrgId(), name: path.basename(dir), createdAt: Date.now() });
+    stores().set(store.info.id, Promise.resolve(store));
+    store.watch();
+    org = { id: store.info.id, name: store.info.name, dir };
+  }
+  if (path.dirname(dir) !== home) {
+    const reg = await readRegistry(home);
+    if (!(reg.folders ?? []).includes(dir)) await writeRegistry(home, { ...reg, folders: [...(reg.folders ?? []), dir] });
+  }
+  return org;
+}
+
+/** Ask for a folder with the Mac's own picker (the dev server and the browser mode; the desktop app asks itself). */
+export function chooseFolder(prompt: string): Promise<string | null | "unsupported"> {
+  if (process.platform !== "darwin") return Promise.resolve("unsupported");
+  return new Promise((resolve) => {
+    execFile("osascript", ["-e", `POSIX path of (choose folder with prompt ${JSON.stringify(prompt)})`], { timeout: 300_000 }, (err, out) => resolve(err ? null : out.trim().replace(/\/$/, "") || null));
+  });
+}
+
 // One store per org for the life of the process. The dev server reloads this module when its code
 // changes: the stores the old copy opened stop watching, and this copy opens its own.
 const MODULE = Symbol("org-stores");
-type Registry = { owner: symbol; map: Map<string, Promise<OrgStore>>; home: string };
-const g = globalThis as { __qalamOrgStores?: Registry };
+type Stores = { owner: symbol; map: Map<string, Promise<OrgStore>>; home: string };
+const g = globalThis as { __qalamOrgStores?: Stores };
 
 function stores(): Map<string, Promise<OrgStore>> {
   const home = qalamHome();

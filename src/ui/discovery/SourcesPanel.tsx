@@ -22,7 +22,8 @@ import { ACCEPT } from "./ingest";
 import { addSources, mapQuotes, readSources, stopSources, type AddInput } from "./import";
 import { acceptAll, discardAll, useReview } from "./review";
 import { dragQuote, dragSource } from "./drop";
-import { openSource, removeSource, updateSource, useSources } from "./sources";
+import { addFromOrganization, openSource, removeSource, updateSource, useSources } from "./sources";
+import { sourcesDb } from "@/discovery/db";
 import { SpeakersLine, SpeakersStep } from "./SpeakersStep";
 import { openBrainDump } from "./dump";
 
@@ -138,7 +139,7 @@ function SourceRow({ source, quoting }: { source: SourceRecord; quoting: boolean
         <span className={clsx("truncate text-micro", quoting ? "q-shimmer-text text-fg-muted" : "text-fg-subtle")}>{quoting ? "Qalam AI is picking out quotes…" : metaOf(source)}</span>
       </span>
       <span className={r.layerTail} onClick={(e) => e.stopPropagation()}>
-        <IconBtn size="sm" label="Remove the source" onClick={() => void confirmRemove(source)}>
+        <IconBtn size="sm" label="Remove it from this board" onClick={() => void confirmRemove(source)}>
           <Trash2 {...SMALL} />
         </IconBtn>
       </span>
@@ -147,8 +148,58 @@ function SourceRow({ source, quoting }: { source: SourceRecord; quoting: boolean
 }
 
 async function confirmRemove(s: SourceRecord) {
-  const ok = await confirmDialog({ title: `Remove “${s.title}”?`, body: "Its quotes stay on the cards they back, without the link back to it.", confirmLabel: "Remove", danger: true });
+  const ok = await confirmDialog({ title: `Remove “${s.title}” from this board?`, body: "It stays in the organization's sources, for other boards (and this one again). Its quotes stay on the cards they back.", confirmLabel: "Remove from board" });
   if (ok) void removeSource(s.id);
+}
+
+/** The organization's sources this board doesn't use yet: another board's interviews, a brain dump on the home. */
+function FromOrganization() {
+  const board = useSources((s) => s.projectId);
+  const [list, setList] = useState<SourceRecord[] | null>(null);
+  const [adding, setAdding] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    void sourcesDb
+      .all()
+      .then((all) => live && setList(all.filter((x) => !(x.boards ?? []).includes(board ?? "")).sort((a, b) => b.addedAt - a.addedAt)))
+      .catch(() => live && setList([]));
+    return () => {
+      live = false;
+    };
+  }, [board]);
+  if (!list) return <Spinner />;
+  if (!list.length) return <p className="text-caption text-fg-muted">Every source in the organization is on this board already.</p>;
+  return (
+    <ul className="flex max-h-[280px] flex-col gap-[2px] overflow-y-auto">
+      {list.map((x) => (
+        <li key={x.id} className="flex items-center gap-[8px] rounded-md px-[6px] py-[4px] hover:bg-hover">
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="truncate text-caption text-fg">{x.title}</span>
+            <span className="truncate text-micro text-fg-subtle">
+              {SOURCE_KIND_LABEL[x.kind]} · {x.quotes.length} {x.quotes.length === 1 ? "quote" : "quotes"}
+            </span>
+          </span>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={!!adding}
+            onClick={() => {
+              setAdding(x.id);
+              void addFromOrganization(x.id)
+                .then(() => {
+                  setList((l) => l?.filter((y) => y.id !== x.id) ?? null);
+                  useSources.setState({ adding: false, open: { id: x.id } });
+                })
+                .catch(() => feedback("Couldn't add it to this board", { kind: "error", id: "discovery.sources" }))
+                .finally(() => setAdding(null));
+            }}
+          >
+            {adding === x.id ? "Adding…" : "Add"}
+          </Button>
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 /** What the last run has to say, with what to do about it. */
@@ -232,7 +283,7 @@ function MapBar() {
 // ---------------------------------------------------------------------------
 // Adding a source
 
-type Mode = "file" | "url" | "paste" | "tool";
+type Mode = "file" | "url" | "paste" | "tool" | "org";
 
 /** What a source can come from: files, a web page, pasted text, a connected tool. Shared with the start sheet. */
 export function AddSource({ onAdd, compact }: { onAdd?: (inputs: AddInput[]) => void; compact?: boolean }) {
@@ -255,11 +306,14 @@ export function AddSource({ onAdd, compact }: { onAdd?: (inputs: AddInput[]) => 
     { value: "url", label: "Page" },
     { value: "paste", label: "Text" },
     ...(tools.length ? [{ value: "tool" as const, label: "Tool" }] : []),
+    // On a board: the organization's other sources (interviews another board read, say).
+    ...(onAdd ? [] : [{ value: "org" as const, label: "Organization" }]),
   ];
   return (
     <section aria-label="Add a source" className={clsx("flex flex-col gap-[8px]", !compact && "rounded-lg p-[10px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]")}>
       <Segmented label="Add from" value={mode} options={modes} onChange={setMode} />
       {mode === "file" && <DropZone onFiles={(files) => add(files.map((file) => ({ kind: "file", file })))} />}
+      {mode === "org" && <FromOrganization />}
       {mode === "url" && (
         <form
           className="flex flex-col gap-[6px]"
@@ -419,7 +473,7 @@ function SourceView({ source, focus }: { source: SourceRecord; focus?: string })
             <ExternalLink {...SMALL} />
           </IconBtn>
         )}
-        <IconBtn size="sm" label="Remove the source" onClick={() => void confirmRemove(source)}>
+        <IconBtn size="sm" label="Remove it from this board" onClick={() => void confirmRemove(source)}>
           <Trash2 {...SMALL} />
         </IconBtn>
       </div>
