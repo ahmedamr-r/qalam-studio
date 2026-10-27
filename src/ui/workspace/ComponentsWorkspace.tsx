@@ -207,7 +207,6 @@ function Reference({ src }: { src: string }) {
     <div className="flex flex-col gap-[8px]">
       <span className="text-caption text-fg-subtle">The screenshot it was read from</span>
       <div className="grid place-items-center rounded-xl bg-stage p-[16px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={url} alt="" draggable={false} className="max-h-[240px] max-w-full object-contain" />
       </div>
     </div>

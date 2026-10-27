@@ -1,5 +1,3 @@
-"use client";
-
 import { SAMPLE_ANSWERS } from "@/ai/fixtures-interview";
 import type { FlowState } from "../ai/questionFlow";
 import { initialFlow, REVIEW, type Answers } from "../ai/questionFlow";

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNo
 import { flushSync } from "react-dom";
 
 /*
- * Motion helpers. The motion itself is CSS (tokens + .q-* classes in app/globals.css); these only
+ * Motion helpers. The motion itself is CSS (tokens + .q-* classes in src/ui/globals.css); these only
  * measure, gate and keep things mounted long enough to animate out. No animation library.
  */
 

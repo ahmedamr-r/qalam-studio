@@ -1,4 +1,3 @@
-import "server-only";
 import type Anthropic from "@anthropic-ai/sdk";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";

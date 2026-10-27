@@ -1,4 +1,3 @@
-import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { streamViaCli } from "./cli";
 import { runResearch, type ResearchRequest } from "./research";

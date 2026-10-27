@@ -1,5 +1,3 @@
-"use client";
-
 import { createContext, useContext, useMemo, useState } from "react";
 import clsx from "clsx";
 import { ChevronDown, Lock, LockOpen, Redo2, Undo2 } from "lucide-react";

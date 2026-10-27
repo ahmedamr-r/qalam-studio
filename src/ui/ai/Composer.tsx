@@ -475,7 +475,6 @@ function ContextRow({
       chips.push(
         <div key="img" className="flex w-full items-center gap-[8px]">
           <div className="relative">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={image.url} alt="Attached screenshot" className="h-[56px] max-w-[160px] rounded-md bg-stage object-contain shadow-swatch" />
             <button type="button" aria-label="Remove screenshot" onClick={onClearImage} className="q-press q-press-icon absolute -top-[6px] -right-[6px] grid size-[16px] place-items-center rounded-full bg-inverse text-fg-inverse shadow-raised">
               <X size={10} strokeWidth={2} />
@@ -526,7 +525,6 @@ function ContextRow({
     chips.push(
       <div key="img" className="flex w-full items-center gap-[8px]">
         <div className="relative">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={image.url} alt="Attached screenshot" className="h-[56px] w-[40px] rounded-md bg-stage object-cover object-top shadow-swatch" />
           <button type="button" aria-label="Remove screenshot" onClick={onClearImage} className="q-press q-press-icon absolute -top-[6px] -right-[6px] grid size-[16px] place-items-center rounded-full bg-inverse text-fg-inverse shadow-raised">
             <X size={10} strokeWidth={2} />

@@ -1,4 +1,3 @@
-import "server-only";
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";

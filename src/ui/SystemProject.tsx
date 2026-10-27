@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useState } from "react";
 import { projectsDb } from "@/projects/db";
 import { ensureMigrated } from "@/projects/migrate";

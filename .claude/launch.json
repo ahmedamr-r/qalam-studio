@@ -4,7 +4,11 @@
     {
       "name": "studio",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["next", "dev", "--port", "3101"],
+      "runtimeArgs": [
+        "vite",
+        "--port",
+        "3101"
+      ],
       "port": 3101
     }
   ]

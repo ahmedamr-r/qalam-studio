@@ -14,7 +14,7 @@ Early. Qalam runs locally on your own machine; there is no hosted version. Expec
 
 ### Requirements
 
-- **Node.js 22.12 or newer.** Next.js 16 needs 20.9 or newer, and the test runner needs 22.12 or newer.
+- **Node.js 22.12 or newer.** Vite 8 and the test runner need it.
 - **pnpm.** Run `corepack enable`, or `npm install -g pnpm`.
 - **Claude Code, installed and signed in with your own Claude account.** Follow the [Claude Code quickstart](https://code.claude.com/docs/en/quickstart). Qalam AI runs Claude Code in the background for each request, so usage counts against your Claude plan. If you'd rather use an API key, see [Use an Anthropic API key instead](#use-an-anthropic-api-key-instead).
 - **Chrome or Edge** (recommended). The canvas draws with WebGL.
@@ -43,7 +43,7 @@ Then start the studio:
 pnpm dev
 ```
 
-Open the localhost URL it prints, usually http://localhost:3000. If Qalam AI says Claude Code isn't signed in, run `claude auth login` in a terminal and try again.
+Open the address it prints, http://127.0.0.1:3101. If Qalam AI says Claude Code isn't signed in, run `claude auth login` in a terminal and try again.
 
 On the home page, start a **Design system**, **Screens** or **Discovery** project. In a Screens project, **File ▸ Load demo screens** puts example screens on the canvas so you can try the tools right away.
 
@@ -140,11 +140,11 @@ All settings are optional and go in `.env.local`. `.env.example` lists them with
 
 ## Privacy
 
-- **Your work stays in your browser.** Projects, documents, chats, images, Discovery sources and the knowledge hub are stored in your browser's IndexedDB. Design systems and preferences are stored in localStorage. Nothing is uploaded to a Qalam server, because there isn't one: the Next.js server runs on your machine.
+- **Your work stays in your browser.** Projects, documents, chats, images, Discovery sources and the knowledge hub are stored in your browser's IndexedDB. Design systems and preferences are stored in localStorage. Nothing is uploaded to a Qalam server, because there isn't one: Qalam's own server runs on your machine and only answers this computer.
 - **What goes to the AI.** When you use an AI tool, the local server sends Anthropic what that request needs. That can include your prompt, earlier turns in the chat, the design system (including its source screenshots), screenshots you add, renders and layer outlines of the screens you selected, and the text of documents and pages you add to a Discovery board. With `AI_BACKEND=cli` it goes through Claude Code under your Claude account. With an API key it goes to the Anthropic API under your key.
 - **Claude Code's access.** Qalam runs Claude Code with its tools turned off, from a temporary folder, without your settings or memory. It can't read or change your files. The research step allows only web search, web fetch and the MCP servers you configured.
 - **Other services.** Research queries go to the services you turn on: Anthropic's web search, Tavily, or your MCP servers. Your machine fetches the web pages you add to a Discovery board and any Google Fonts a design system names. The browser loads CanvasKit from jsDelivr.
-- **Nothing is sent to the author.** Qalam has no analytics, telemetry or tracking. The Next.js CLI collects its own anonymous usage data; turn it off with `pnpm exec next telemetry disable`.
+- **Nothing is sent to the author.** Qalam has no analytics, telemetry or tracking.
 
 ## How it works
 
@@ -152,7 +152,7 @@ For contributors. The design rule throughout: **the AI chooses, code computes.**
 
 **Stack**
 
-- Next.js 16 (App Router) and React 19. The API routes in `app/api` are the only place model calls happen.
+- React 19, built with Vite. A small local server (Hono) answers `/api/*`; its routes in `server/routes` are the only place model calls happen. In development it runs inside the Vite dev server, so the UI and the API share one address.
 - CanvasKit (Skia over WebGL) for the canvas. Text goes through Skia's paragraph engine (HarfBuzz shaping, ICU bidi), so mixed Arabic and Latin lay out correctly.
 - Yoga for auto layout and generated screens. zustand + immer for document state with transactional undo.
 - Claude through `@anthropic-ai/sdk` with structured outputs, or through the local Claude Code CLI (`src/ai/cli.ts`). Both stream the same NDJSON to the browser.
@@ -160,7 +160,7 @@ For contributors. The design rule throughout: **the AI chooses, code computes.**
 **Key folders**
 
 ```
-app/api/            AI routes: generate, plan, critique, extract-ds, tune-system, prototype, discovery, …
+server/             the local server: routes (generate, plan, critique, extract-ds, tune-system, prototype, discovery, …), request guard
 src/engine/         CanvasKit renderer, controller (tools, handles, snapping), vector tools, text, rulers
 src/doc/            document model, store with undo/redo, ops, pages, auto layout, RTL mirroring, prototype data
 src/design-system/  tokens (DTCG), component catalog and builders, pixel measurement, spec checks, extraction
@@ -178,15 +178,16 @@ src/ui/             panels, toolbar, AI chat, prototype mode, Discovery and inte
 **Commands**
 
 ```bash
-pnpm dev         # start the studio
+pnpm dev         # start the studio (UI and server) on 127.0.0.1:3101
 pnpm typecheck   # tsc --noEmit
 pnpm test        # vitest
-pnpm build       # production build
+pnpm build       # build the UI into dist/
+pnpm start       # serve dist/ and the server from one process (after a build)
 ```
 
 Rules and checks must work across products, not just one app: name things by role, trigger on measurable conditions, and test on several kinds of product (see `src/proto/fixtures/`).
 
-This project uses a Next.js version with breaking changes from older releases. Read [AGENTS.md](AGENTS.md) and the guides in `node_modules/next/dist/docs/` before changing framework code.
+[AGENTS.md](AGENTS.md) has the notes for coding agents: where the UI, the server and the shared modules live, and what must never reach the browser.
 
 ## Roadmap
 

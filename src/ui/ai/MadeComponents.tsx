@@ -51,7 +51,6 @@ function MadeCard({ chatId, turnId, def, o, dsId, live }: { chatId: string; turn
     <div className="flex flex-col gap-[8px] rounded-lg p-[10px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
       {preview && preview !== "error" && (
         <div className="q-fade flex max-h-[160px] items-center justify-center overflow-hidden rounded-md bg-stage p-[8px]">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={preview.url} alt={def.name} className="max-h-[144px] max-w-full object-contain" />
         </div>
       )}

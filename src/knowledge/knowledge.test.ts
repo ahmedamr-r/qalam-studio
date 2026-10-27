@@ -250,7 +250,7 @@ describe("labels and keyboard walking", () => {
 
 describe("group colours", () => {
   it("stand out from the panel and canvas in both themes (3:1, WCAG 1.4.11)", () => {
-    const css = readFileSync(path.resolve(__dirname, "../../app/globals.css"), "utf8");
+    const css = readFileSync(path.resolve(__dirname, "../ui/globals.css"), "utf8");
     const light = css.indexOf(':root[data-theme="light"] {');
     const darkBlock = css.slice(css.indexOf("@theme static"), light);
     const lightBlock = css.slice(light);

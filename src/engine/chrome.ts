@@ -1,6 +1,6 @@
 /*
  * Canvas chrome palette: selection, handles, labels, guides, measure pills, rulers. The values
- * come from the theme's CSS custom properties (app/globals.css), read once per theme switch and
+ * come from the theme's CSS custom properties (src/ui/globals.css), read once per theme switch and
  * normalised to #RRGGBBAA, so the renderer never parses CSS while drawing. Content is never
  * coloured from here: exports must look the same in either theme.
  */

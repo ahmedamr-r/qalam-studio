@@ -1,5 +1,3 @@
-"use client";
-
 import { useState, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { AXES, AXIS_POLES, DOMAINS, DOMAIN_LABEL, type AxisId, type Domain, type ReadBack } from "@/design-system/interview/knobs";

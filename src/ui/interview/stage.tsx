@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import { componentBoxes, describeCounts, diffInstances, diffTokens, type ChangedInstance } from "@/design-system/interview/diff";
@@ -84,7 +82,6 @@ export function PreviewStage({ knobs, read, scenario, maxSide, hover, onSize, hi
       <div ref={box} className="relative min-h-0 flex-1 overflow-hidden p-[24px]" style={{ boxSizing: "border-box" }}>
         {showing ? (
           <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ width: showing.w * fit * 0.94, height: showing.h * fit * 0.94 }}>
-            {/* eslint-disable-next-line @next/next/no-img-element -- a rendered preview (object URL) */}
             <img src={showing.url} alt={`${scenario.label} with your system`} className="h-full w-full rounded-lg shadow-floating" />
             {highlight && !glow && <UsedOverlay boxes={componentBoxes(showing.nodes, highlight)} w={showing.w} h={showing.h} />}
             {mode === "now" && glow && <GlowOverlay key={glow.key} changed={glow.changed} w={showing.w} h={showing.h} onDone={clear} />}

@@ -1,9 +1,11 @@
-<!-- BEGIN:nextjs-agent-rules -->
+# Qalam Studio: notes for coding agents
 
-# This is NOT the Next.js you know
-
-This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
-
-This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
-
-<!-- END:nextjs-agent-rules -->
+- **UI:** a React single-page app built with Vite. `index.html` loads `src/main.tsx`, and `src/ui/App.tsx` picks the page from the address (`src/ui/routes.ts`). Moving between pages is a full page load, so there is no client router.
+- **Server:** `server/` is a small Hono app (`server/app.ts`). Each route in `server/routes/*.ts` takes a standard `Request` and returns a `Response`; AI routes stream NDJSON. Model calls happen only there.
+  - `pnpm dev` runs Vite on 127.0.0.1:3101 with the server mounted at `/api/*` (`server/vite.ts`). An edit to a route or to `src/ai` takes effect on the next request.
+  - `pnpm build && pnpm start` serves `dist/` and the server from one Node process (`server/serve.ts`).
+  - Requests are checked by `server/guard.ts` (Host must be this machine; writes must come from this origin; optional launch token).
+- **Server-only code:** `src/ai/{server,cli,research,connectors}.ts` read secrets or spawn processes. Browser code must never import them; the build fails if it does (`serverOnly()` in `server/vite.ts`).
+- **Settings:** the server reads `.env.local`, then `.env` (`server/env.ts`); a variable already in the environment wins.
+- **Model output:** the model proposes and code verifies. Quotes are found word for word, numbers only where the source has them, ids only from what was sent. Keep it that way in new features.
+- **Checks:** `pnpm typecheck` and `pnpm test`.

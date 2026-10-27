@@ -51,7 +51,6 @@ function Drawing({ def, dsId, width }: { def: ComponentDef; dsId: string; width:
   const preview = useComponentPreview(`import:${hash(JSON.stringify(def))}:${width}`, inst, dsId, { width });
   if (preview === "error") return <span className="text-caption text-[#55524e]">It can&apos;t be drawn with this system.</span>;
   if (!preview) return <div className="q-breathe h-[48px] w-[70%] rounded-md bg-black/[0.06]" />;
-  // eslint-disable-next-line @next/next/no-img-element
   return <img src={preview.url} alt={def.name} className="q-fade max-h-[220px] max-w-full object-contain" />;
 }
 
@@ -107,7 +106,6 @@ export function ComponentView({ chatId, t, o }: { chatId: string; t: ChatTurn; o
           <div className="flex min-w-0 flex-col gap-[4px]">
             <span className={wellLabel}>Screenshot</span>
             <div className={well}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
               {shot ? <img src={shot} alt="The component's screenshot" onLoad={(e) => setShape(e.currentTarget.naturalWidth / Math.max(1, e.currentTarget.naturalHeight))} className="max-h-[220px] max-w-full object-contain" /> : <div className="q-skeleton h-[48px] w-[70%] rounded-md" />}
             </div>
           </div>

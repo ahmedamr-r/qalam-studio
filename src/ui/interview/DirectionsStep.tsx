@@ -1,5 +1,3 @@
-"use client";
-
 import { useMemo } from "react";
 import clsx from "clsx";
 import { KNOB_SPECS, hueName, type Direction, type ReadBack } from "@/design-system/interview/knobs";
@@ -124,7 +122,6 @@ function Shot({ url, label }: { url?: string; label: string }) {
   return (
     <div className="grid aspect-[390/844] place-items-center overflow-hidden rounded-lg bg-stage shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
       {url ? (
-        // eslint-disable-next-line @next/next/no-img-element -- a rendered preview (object URL)
         <img src={url} alt={label} className="h-full w-full object-contain object-top" />
       ) : (
         <span className="q-skeleton h-full w-full" aria-label={`Drawing ${label}`} />

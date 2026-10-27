@@ -224,7 +224,6 @@ function AssetThumb({ src }: { src: string }) {
       live = false;
     };
   }, [src]);
-  // eslint-disable-next-line @next/next/no-img-element
   return url ? <img src={url} alt="Attached screenshot" className="max-h-[160px] self-start rounded-md bg-stage object-contain" /> : <div className="q-skeleton h-[64px] w-[48px] rounded-md" />;
 }
 

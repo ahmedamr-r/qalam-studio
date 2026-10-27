@@ -107,7 +107,6 @@ export function ShotsRow({ shots }: { shots: Shots }) {
           {shots.items.map((s) => (
             <div key={s.key} className="q-fade relative shrink-0" title={s.name}>
               {/* Screenshots are user content: a light stage behind them in both themes. */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
               {s.url ? <img src={s.url} alt={s.name} className="h-[56px] w-[40px] rounded-md bg-stage object-cover object-top shadow-swatch" /> : <div className="q-skeleton h-[56px] w-[40px] rounded-md" />}
               <button type="button" aria-label={`Remove ${s.name}`} onClick={() => shots.remove(s.key)} className="q-press q-press-icon absolute -top-[6px] -right-[6px] grid size-[16px] place-items-center rounded-full bg-inverse text-fg-inverse shadow-raised">
                 <X size={10} strokeWidth={2} />

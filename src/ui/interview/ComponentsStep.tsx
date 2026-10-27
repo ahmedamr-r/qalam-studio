@@ -1,5 +1,3 @@
-"use client";
-
 import { useMemo, useState } from "react";
 import clsx from "clsx";
 import { Check, ChevronDown, Layers3, RotateCcw, Triangle } from "lucide-react";

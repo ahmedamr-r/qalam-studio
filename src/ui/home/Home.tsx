@@ -1,5 +1,3 @@
-"use client";
-
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import clsx from "clsx";
 import * as Tooltip from "@radix-ui/react-tooltip";
@@ -183,7 +181,6 @@ function ProjectCard({ p, onChanged }: { p: Project; onChanged: () => void }) {
         className="q-item grid aspect-[4/3] place-items-center overflow-hidden rounded-lg bg-stage shadow-[inset_0_0_0_1px_var(--color-line-subtle)] hover:shadow-[inset_0_0_0_1px_var(--color-line-strong)]"
       >
         {p.thumbnail ? (
-          // eslint-disable-next-line @next/next/no-img-element -- a data URL from this browser
           <img src={p.thumbnail} alt="" className="max-h-[86%] max-w-[86%] rounded-sm object-contain" />
         ) : (
           <span className="text-fg-faint">

@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Qalam Studio</title>
+    <meta name="description" content="An open-source, Arabic-first AI design studio for design tokens, RTL and accessibility." />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <!-- Runs before first paint so a light-theme user never sees a dark flash (and vice versa).
+         Keep the keys in sync with src/ui/theme.ts (THEME_KEY) and src/ui/motion.ts (MOTION_KEY). -->
+    <script>try{var k="qalam.theme",m=localStorage.getItem(k)||"dark",r=m==="system"?(matchMedia("(prefers-color-scheme: light)").matches?"light":"dark"):m==="light"?"light":"dark";var h=document.documentElement;h.dataset.theme=r;h.style.colorScheme=r;var mo=localStorage.getItem("qalam.motion");if(mo==="reduced"||mo==="full")h.dataset.motion=mo}catch(e){}</script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

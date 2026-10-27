@@ -1,7 +1,7 @@
 /*
  * The Discovery board's colours. Cards follow the studio's theme while you work (dark cards on
  * the dark canvas), and exports, copied images and the home's thumbnail are always light, so they
- * paste cleanly into docs and slides. Values mirror the theme tokens in app/globals.css (the
+ * paste cleanly into docs and slides. Values mirror the theme tokens in src/ui/globals.css (the
  * palette test fails if the shared ones drift); cards sit a step above the canvas in each theme.
  */
 

@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, type ReactNode } from "react";
 import clsx from "clsx";
 import * as Tooltip from "@radix-ui/react-tooltip";
