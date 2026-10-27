@@ -89,17 +89,18 @@ export const BUCKET_MAX = 6;
 /** Buckets of questions in one plan, at most: the last one's answers are analysed, then Generate runs. */
 export const MAX_BUCKETS = 5;
 
-const QUESTION_ITEM = {
+/** One question in a bucket, as the model writes it (`who` answers it; `several` is when to pick more than one). */
+export const questionItem = (who = "designer", several = "which panels or tools should be visible") => ({
   type: "object",
   additionalProperties: false,
   properties: {
     id: str("Short kebab-case id"),
     title: str("The question, under 70 characters"),
     why: str("One short line: what changes with the answer"),
-    multi: { type: "boolean", description: "Several answers can be picked (e.g. which panels or tools should be visible)" },
+    multi: { type: "boolean", description: `Several answers can be picked (e.g. ${several})` },
     options: {
       type: "array",
-      description: "2–4 concrete options written for this product; none for an open question the designer answers in their own words",
+      description: `2–4 concrete options written for this product; none for an open question the ${who} answers in their own words`,
       items: {
         type: "object",
         additionalProperties: false,
@@ -111,7 +112,9 @@ const QUESTION_ITEM = {
     allowOther: { type: "boolean", description: "Offer a free-text answer too" },
   },
   required: ["id", "title", "why", "multi", "options", "recommended", "allowOther"],
-};
+});
+
+const QUESTION_ITEM = questionItem();
 
 export const PLAN_SCHEMA: Record<string, unknown> = {
   type: "object",
@@ -247,7 +250,7 @@ const StandardPayload = z.object({
   research: z.string().max(6000).optional(),
 });
 
-const QA = z.object({ question: z.string().max(200), answer: z.string().max(600) });
+export const QA = z.object({ question: z.string().max(200), answer: z.string().max(600) });
 
 const PlanObject = z.object({
   product: z.string().max(200),

@@ -1,5 +1,8 @@
 import {
   DRAFT_SYSTEM,
+  DUMP_FOLLOWUP_SYSTEM,
+  DUMP_PLACE_SYSTEM,
+  DUMP_READ_SYSTEM,
   DiscoveryBody,
   EXTRACT_SYSTEM,
   FOLLOWUPS_SCHEMA,
@@ -7,10 +10,17 @@ import {
   SYNTHESIZE_SYSTEM,
   draftContent,
   draftSchema,
+  dumpFollowupContent,
+  dumpFollowupSchema,
+  dumpPlaceContent,
+  dumpPlaceSchema,
+  dumpReadContent,
+  dumpReadSchema,
   extractContent,
   extractSchema,
   followupsContent,
   importTask,
+  placeIds,
   quotableIds,
   synthesizeContent,
   synthesizeIds,
@@ -30,6 +40,8 @@ const DISCOVERY_MODEL = process.env.DISCOVERY_MODEL || process.env.GENERATE_MODE
  * Sources: bring material in from connected tools (import), pick out what customers said in it
  * (extract, a few parts per call), and map those quotes to the tree (synthesize). The client keeps
  * a quote only where it finds it in the material, and shows the mapping as proposals to accept.
+ * A brain dump: read it (what Qalam AI took from it, its pieces, pushback, a round of questions),
+ * read each round of answers, then place it (streamed, so the proposals take shape on the board).
  */
 export async function POST(req: Request) {
   if (!aiConfigured()) return jsonError(501, "no_key", "AI is not configured on this deployment.");
@@ -49,6 +61,12 @@ export async function POST(req: Request) {
       const ids = synthesizeIds(b);
       return streamStructured({ ...call, system: SYNTHESIZE_SYSTEM, schema: synthesizeSchema(ids.cards, ids.parents, ids.quotes), effort: "high", maxTokens: 24000, content: [{ type: "text", text: synthesizeContent(b) }] });
     }
+    case "dump-read":
+      return streamStructured({ ...call, system: DUMP_READ_SYSTEM, schema: dumpReadSchema(b.tree.map((c) => c.id)), effort: "high", maxTokens: 16000, content: [{ type: "text", text: dumpReadContent(b) }] });
+    case "dump-followup":
+      return streamStructured({ ...call, system: DUMP_FOLLOWUP_SYSTEM, schema: dumpFollowupSchema(b.tree.map((c) => c.id), b.fragments.map((f) => f.id)), effort: "medium", maxTokens: 8000, content: [{ type: "text", text: dumpFollowupContent(b) }] });
+    case "dump-place":
+      return streamStructured({ ...call, system: DUMP_PLACE_SYSTEM, schema: dumpPlaceSchema(placeIds(b)), effort: "high", maxTokens: 24000, deltas: true, content: [{ type: "text", text: dumpPlaceContent(b) }] });
     case "import": {
       // Connected tools only: a web page comes in through its address (/api/fetch-url).
       const connectors = b.connectors.filter((id) => id !== "web");

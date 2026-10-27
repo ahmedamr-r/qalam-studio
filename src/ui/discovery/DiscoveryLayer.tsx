@@ -4,11 +4,12 @@ import CardBar from "./CardBar";
 import StartSheet from "./StartSheet";
 import DesignThis from "./DesignThis";
 import ReviewLayer from "./ReviewLayer";
+import BrainDump from "./BrainDump";
 
 /**
  * The Discovery board's DOM over the canvas: the title being typed, the bar over the selected
- * card, the start sheet (interview, sample, import, blank), the Design this card, and Qalam AI's
- * proposals from the sources under review. Only in Discovery.
+ * card, the start sheet (interview, sample, import, blank), the Design this card, Qalam AI's
+ * proposals under review, and the brain dump card. Only in Discovery.
  */
 export default function DiscoveryLayer() {
   const ref = useRef<HTMLDivElement>(null);
@@ -27,6 +28,7 @@ export default function DiscoveryLayer() {
           <CardBar vp={vp} />
           <DesignThis vp={vp} />
           <ReviewLayer vp={vp} />
+          <BrainDump vp={vp} />
           <StartSheet />
         </>
       )}

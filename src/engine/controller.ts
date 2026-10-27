@@ -230,6 +230,8 @@ export class Controller {
       this.pasteOverAt = -Infinity;
       e.preventDefault();
       if (files.length && !text.startsWith(CLIP_MARKER)) void placeImages(files).then((ids) => this.zoomToFit(ids));
+      // Someone's own text (a Discovery board takes a brain dump): the mode's to decide.
+      else if (text.trim() && !text.startsWith(CLIP_MARKER) && canvasDelegate()?.pasteText?.(text)) return;
       else pasteClipboard({ over });
     };
     window.addEventListener("copy", copy);

@@ -20,9 +20,12 @@ import { addSources } from "./import";
 
 export const QUOTE_MIME = "application/x-qalam-quote";
 export const SOURCE_MIME = "application/x-qalam-source";
+/** Also set on a brain dump's piece: a drag's data can't be read until the drop, its types can. */
+const DUMP_MIME = "application/x-qalam-dump";
 
 export function dragQuote(e: DragEvent, sourceId: string, quoteId: string, text: string) {
   e.dataTransfer.setData(QUOTE_MIME, JSON.stringify({ sourceId, quoteId }));
+  if (sourceOf(sourceId)?.kind === "dump") e.dataTransfer.setData(DUMP_MIME, "1");
   e.dataTransfer.setData("text/plain", text);
   e.dataTransfer.effectAllowed = "copy";
 }
@@ -63,16 +66,17 @@ export function attachQuote(cardId: string, sourceId: string, quoteId: string): 
   const q = s?.quotes.find((x) => x.id === quoteId);
   const card = cardOf(studio().doc, cardId);
   if (!s || !q || !card) return false;
-  if (!quotable(card)) {
-    feedback("Quotes back opportunities and solutions", { id: "discovery.quote" });
+  const dump = s.kind === "dump";
+  if (!quotable(card, s.kind)) {
+    feedback(dump ? "Your words back outcomes, opportunities and solutions" : "Quotes back opportunities and solutions", { id: "discovery.quote" });
     return false;
   }
   if (hasQuote(card, s.id, q.span)) {
-    feedback("That quote is already on the card", { id: "discovery.quote" });
+    feedback(dump ? "Those words are already on the card" : "That quote is already on the card", { id: "discovery.quote" });
     return false;
   }
   studio().mutate((d) => updateCardIn(d, cardId, (c) => void c.evidence.push(quoteEvidence(s, q, "user"))));
-  feedback(`Quote attached to “${card.title.length > 48 ? `${card.title.slice(0, 47)}…` : card.title}”`, { kind: "success", id: "discovery.quote" });
+  feedback(`${dump ? "Your words" : "Quote"} attached to “${card.title.length > 48 ? `${card.title.slice(0, 47)}…` : card.title}”`, { kind: "success", id: "discovery.quote" });
   return true;
 }
 
@@ -82,7 +86,7 @@ export function boardDragOver(e: DragEvent, world: Pt): boolean {
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
     const id = cardAt(studio().doc, world);
-    setTarget(id ? { target: id, ok: quotable(cardOf(studio().doc, id) ?? undefined) && !covered(id) } : null);
+    setTarget(id ? { target: id, ok: quotable(cardOf(studio().doc, id) ?? undefined, carries(e, DUMP_MIME) ? "dump" : undefined) && !covered(id) } : null);
     return true;
   }
   if (carries(e, SOURCE_MIME) || fileDrag(e)) {
@@ -124,7 +128,8 @@ export function boardDrop(e: DragEvent, world: Pt): boolean {
     const src = sourceOf(read<{ sourceId: string }>(e, SOURCE_MIME)?.sourceId);
     if (!src) return true;
     const n = src.quotes.length;
-    const { frame, texts } = makeSourceNote(world, src, `${SOURCE_KIND_LABEL[src.kind]}${n ? ` · ${n} ${n === 1 ? "quote" : "quotes"}` : ""}`);
+    const unit = src.kind === "dump" ? ["piece", "pieces"] : ["quote", "quotes"];
+    const { frame, texts } = makeSourceNote(world, src, `${SOURCE_KIND_LABEL[src.kind]}${n ? ` · ${n} ${n === 1 ? unit[0] : unit[1]}` : ""}`);
     s.mutate((d) => {
       d.nodes[frame.id] = frame;
       for (const t of texts) d.nodes[t.id] = t;

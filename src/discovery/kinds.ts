@@ -6,12 +6,19 @@ export const KINDS: readonly OstKind[] = ["outcome", "opportunity", "solution", 
 
 export const KIND_LABEL: Record<OstKind, string> = { outcome: "Outcome", opportunity: "Opportunity", solution: "Solution", test: "Test" };
 
+/** An outcome under another outcome, as the board names it. */
+export const SUB_OUTCOME_LABEL = "Sub-outcome";
+
 /** How a kind is named in prose ("Add an opportunity"). */
 export const KIND_NOUN: Record<OstKind, string> = { outcome: "an outcome", opportunity: "an opportunity", solution: "a solution", test: "a test" };
 
-/** What a card of each kind can hold. An opportunity splits into smaller ones or gets solutions. */
+/**
+ * What a card of each kind can hold. An outcome splits into sub-outcomes (a business goal into the
+ * product outcomes that move it) or gets opportunities; an opportunity splits into smaller ones or
+ * gets solutions.
+ */
 export const CHILD_KINDS: Record<OstKind, readonly OstKind[]> = {
-  outcome: ["opportunity"],
+  outcome: ["outcome", "opportunity"],
   opportunity: ["opportunity", "solution"],
   solution: ["test"],
   test: [],
@@ -56,12 +63,13 @@ export const stageLabel = (kind: OstKind, stage: OstStage) => STAGES[kind].find(
 export const CARD_WIDTH: Record<OstKind, number> = { outcome: 320, opportunity: 248, solution: 232, test: 216 };
 
 /**
- * The kind of a new child card: an outcome gets opportunities and a solution tests. An
- * opportunity gets what it already holds; with nothing yet, the target gets solutions (that's
- * what a target is for) and any other one splits into smaller opportunities.
+ * The kind of a new child card: a solution gets tests, and an outcome opportunities unless it
+ * only holds sub-outcomes so far. An opportunity gets what it already holds; with nothing yet,
+ * the target gets solutions (that's what a target is for) and any other one splits into smaller
+ * opportunities.
  */
 export function defaultChildKind(parent: OstCard, childKinds: readonly OstKind[]): OstKind | null {
-  if (parent.kind === "outcome") return "opportunity";
+  if (parent.kind === "outcome") return childKinds.length && childKinds.every((k) => k === "outcome") ? "outcome" : "opportunity";
   if (parent.kind === "solution") return "test";
   if (parent.kind === "test") return null;
   if (childKinds.length) return childKinds.every((k) => k === "solution") ? "solution" : "opportunity";

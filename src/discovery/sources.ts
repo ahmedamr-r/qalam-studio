@@ -1,15 +1,18 @@
 import { newId } from "@/doc/factory";
 import type { OstCard, OstEvidence } from "./types";
 import { clock, type TranscriptMeta, type TranscriptSegment } from "./transcript";
+import type { DumpRole, DumpSession } from "./dump";
 
 /*
  * A Discovery board's sources (pure): documents, web pages, pasted text, interviews and items from
  * connected tools, kept as the raw text code checks quotes against. Qalam AI reads a source in
  * chunks of about 20k characters (several small ones share a call), picks out what customers said,
  * and code keeps a quote only where it finds it in the chunk, word for word, with where it sits.
+ * A brain dump is the builder's own thinking: it's read its own way (dump.ts), and its pieces are
+ * the builder's words, never a customer's.
  */
 
-export type SourceKind = "pdf" | "docx" | "markdown" | "text" | "paste" | "url" | "connector" | "interview";
+export type SourceKind = "pdf" | "docx" | "markdown" | "text" | "paste" | "url" | "connector" | "interview" | "dump";
 
 export const SOURCE_KIND_LABEL: Record<SourceKind, string> = {
   pdf: "PDF",
@@ -20,6 +23,7 @@ export const SOURCE_KIND_LABEL: Record<SourceKind, string> = {
   url: "Web page",
   connector: "Connected tool",
   interview: "Interview",
+  dump: "Brain dump",
 };
 
 /** What a quote shows about the customer. */
@@ -45,6 +49,8 @@ export interface SourceQuote {
   turnIds?: string[];
   time?: [number, number];
   kind: QuoteKind;
+  /** A brain dump's piece: what it is to the tree (a goal, a need, an idea…). */
+  role?: DumpRole;
   /** Picked by Qalam AI, or selected by hand. */
   addedBy: "ai" | "user";
   at: number;
@@ -81,6 +87,8 @@ export interface SourceRecord {
   read: number[];
   quotes: SourceQuote[];
   needs: SourceNeed[];
+  /** A brain dump: what Qalam AI made of it, the questions asked and answered, its proposals. */
+  dump?: DumpSession;
 }
 
 /** The most text a source keeps (characters). */
@@ -153,8 +161,9 @@ export function packCalls(pending: ChunkRef[], budget = CALL_BUDGET, maxCalls = 
   return calls;
 }
 
-/** A source's chunks Qalam AI hasn't read yet. */
-export function unread(s: Pick<SourceRecord, "id" | "text" | "read">): ChunkRef[] {
+/** A source's chunks Qalam AI hasn't read yet (a brain dump has none: it isn't read for customers' words). */
+export function unread(s: Pick<SourceRecord, "id" | "text" | "read"> & { kind?: SourceKind }): ChunkRef[] {
+  if (s.kind === "dump") return [];
   const done = new Set(s.read);
   return chunkText(s.text)
     .filter((c) => !done.has(c.index))
@@ -177,11 +186,11 @@ export function pageAt(pages: number[] | undefined, offset: number): number | un
 // ---------------------------------------------------------------------------
 // Evidence
 
-/** A quote as evidence on a card. */
-export function quoteEvidence(source: Pick<SourceRecord, "id" | "title">, q: SourceQuote, addedBy: "user" | "ai", opts: { against?: boolean; now?: number } = {}): OstEvidence {
+/** A quote as evidence on a card (a brain dump's words are the builder's own). */
+export function quoteEvidence(source: Pick<SourceRecord, "id" | "title"> & { kind?: SourceKind }, q: SourceQuote, addedBy: "user" | "ai", opts: { against?: boolean; now?: number } = {}): OstEvidence {
   return {
     id: newId(),
-    kind: "quote",
+    kind: source.kind === "dump" ? "dump" : "quote",
     text: q.text,
     sourceId: source.id,
     sourceTitle: source.title,
@@ -195,12 +204,16 @@ export function quoteEvidence(source: Pick<SourceRecord, "id" | "title">, q: Sou
   };
 }
 
+/** Words that sit in a source (a quote, or a brain dump's piece). */
+export const fromSource = (e: Pick<OstEvidence, "kind">) => e.kind === "quote" || e.kind === "dump";
+
 /** The same words of the same source are already on the card. */
 export const hasQuote = (card: Pick<OstCard, "evidence">, sourceId: string, span: [number, number]) =>
-  card.evidence.some((e) => e.kind === "quote" && e.sourceId === sourceId && e.span?.[0] === span[0] && e.span?.[1] === span[1]);
+  card.evidence.some((e) => fromSource(e) && e.sourceId === sourceId && e.span?.[0] === span[0] && e.span?.[1] === span[1]);
 
-/** Cards a quote can back: needs and the solutions to them. */
-export const quotable = (card: Pick<OstCard, "kind"> | undefined) => card?.kind === "opportunity" || card?.kind === "solution";
+/** Cards a quote can back: needs and the solutions to them; a brain dump's words can also be where a goal came from. */
+export const quotable = (card: Pick<OstCard, "kind"> | undefined, sourceKind?: SourceKind) =>
+  card?.kind === "opportunity" || card?.kind === "solution" || (sourceKind === "dump" && card?.kind === "outcome");
 
 /** "Interviews.pdf · p. 3 · Sara", "Omar interview · 12:30 · Omar": where a quote is from, for captions. */
 export function citation(e: Pick<OstEvidence, "sourceTitle" | "page" | "speaker" | "time">, sourceTitle?: string): string {

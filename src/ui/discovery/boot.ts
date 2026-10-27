@@ -19,6 +19,7 @@ import { dropStaleEdit } from "./editing";
 import { scheduleBoardThumbnail } from "./thumbnail";
 import { ensureHandlers } from "./draft";
 import { loadSources } from "./sources";
+import { ensureDumpHandlers, resumeDumps } from "./dump";
 
 /**
  * A Discovery project opening: the board's layout pass, gestures and commands are installed (a
@@ -50,7 +51,8 @@ export function startDiscoveryStudio(p: Project): (doc: Doc) => void {
   if (!hasTree && stage !== "ready") useDiscovery.setState({ sheet: stage === "interview" ? "interview" : "start" });
 
   void refreshDesigns(p.id);
-  void loadSources(p.id);
+  ensureDumpHandlers();
+  void loadSources(p.id).then(resumeDumps);
   const refresh = () => document.visibilityState === "visible" && void refreshDesigns(p.id);
   document.addEventListener("visibilitychange", refresh);
   window.addEventListener("focus", refresh);
@@ -73,9 +75,10 @@ function relayoutTrees() {
 }
 
 export function countsOf(doc: Doc): DiscoveryCounts {
-  const c: DiscoveryCounts = { opportunities: 0, solutions: 0, tests: 0, assumed: 0 };
+  const c: DiscoveryCounts = { outcomes: 0, opportunities: 0, solutions: 0, tests: 0, assumed: 0 };
   for (const { card } of allCards(doc)) {
-    if (card.kind === "opportunity") c.opportunities++;
+    if (card.kind === "outcome") c.outcomes!++;
+    else if (card.kind === "opportunity") c.opportunities++;
     else if (card.kind === "solution") c.solutions++;
     else if (card.kind === "test") c.tests++;
     if (isAssumed(card)) c.assumed++;

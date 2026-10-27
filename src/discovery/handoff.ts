@@ -1,7 +1,7 @@
 import type { BriefAnswer, BriefTopic, Doc, ProjectBrief } from "@/doc/schema";
 import { isOstCard } from "@/doc/board";
 import { cardOf } from "./ops";
-import { opportunityPath, outcomeOf } from "./tree";
+import { opportunityPath, outcomeOf, outcomePath } from "./tree";
 import { ASSUMPTION_LABEL } from "./kinds";
 import type { DesignHandoff, ServesLink } from "./types";
 
@@ -12,7 +12,7 @@ import type { DesignHandoff, ServesLink } from "./types";
  * project's Knowledge hub is seeded from it, so critiques judge the screens against the need.
  */
 
-const SOURCE = { answer: "the builder's interview", note: "a team note", quote: "a source" } as const;
+const SOURCE = { answer: "the builder's interview", note: "a team note", quote: "a source", dump: "the builder's brain dump" } as const;
 const metricLine = (m: NonNullable<ReturnType<typeof cardOf>>["metric"]) =>
   m?.name ? `${m.name}${m.baseline !== null && m.target !== null ? `, ${m.baseline} → ${m.target}${m.unit ? ` ${m.unit}` : ""}` : ""}${m.timeframe ? ` ${m.timeframe}` : ""}` : "";
 
@@ -28,6 +28,10 @@ export function buildHandoff(doc: Doc, cardId: string, from: { projectId: string
   if (!sol || sol.kind !== "solution") return null;
   const outcomeId = outcomeOf(doc, cardId);
   const outcome = outcomeId ? cardOf(doc, outcomeId) : null;
+  const above = outcomePath(doc, cardId)
+    .slice(0, -1)
+    .map((id) => cardOf(doc, id)?.title.trim() ?? "")
+    .filter(Boolean);
   const path = opportunityPath(doc, cardId);
   const evidence = [cardId, ...path.slice().reverse()]
     .flatMap((id) => (cardOf(doc, id)?.evidence ?? []).map((e) => ({ e, about: id === cardId ? ("solution" as const) : ("need" as const) })))
@@ -47,6 +51,7 @@ export function buildHandoff(doc: Doc, cardId: string, from: { projectId: string
     from: { ...from, cardId },
     prompt: "",
     outcome: { title: outcome?.title ?? "", metric: metricLine(outcome?.metric) || undefined },
+    ...(above.length ? { outcomes: above } : {}),
     path: path.map((id) => cardOf(doc, id)?.title ?? "").filter(Boolean),
     solution: { title: sol.title, ...(sol.description ? { description: sol.description } : {}) },
     assumptions,
@@ -60,11 +65,14 @@ export function buildHandoff(doc: Doc, cardId: string, from: { projectId: string
   return h;
 }
 
+/** "part of “Grow orders” › “Win back lapsed customers”": the goals a sub-outcome serves. */
+const partOf = (h: Pick<DesignHandoff, "outcomes">) => (h.outcomes?.length ? `part of ${h.outcomes.map((t) => `“${t}”`).join(" › ")}` : "");
+
 /** What seeds the Screens project's Knowledge hub (the critic reads it). */
 export function handoffBrief(h: DesignHandoff): { topic: BriefTopic; question: string; answer: string }[] {
   const out: { topic: BriefTopic; question: string; answer: string }[] = [];
   const add = (topic: BriefTopic, question: string, answer: string | undefined) => answer?.trim() && out.push({ topic, question, answer: answer.trim().slice(0, 600) });
-  add("goal", "What outcome should these screens move?", [h.outcome.title, h.outcome.metric].filter(Boolean).join(" · "));
+  add("goal", "What outcome should these screens move?", [h.outcome.title, h.outcome.metric, partOf(h)].filter(Boolean).join(" · "));
   add("audience", "Who is it for?", h.product.audience);
   add("problem", "What customer need does it address?", [h.path.join(" › "), ...h.evidence.filter((e) => e.about !== "solution").map((e) => `“${e.text}”`)].filter(Boolean).join(" — "));
   add("primary-action", "What's the solution?", [h.solution.title, h.solution.description].filter(Boolean).join(": "));
@@ -89,7 +97,7 @@ export function handoffLines(h: DesignHandoff): string[] {
   const lines = [
     `Solution to design: “${h.solution.title}”${h.solution.description ? `: ${h.solution.description}` : ""}`,
     h.path.length ? `It addresses the customers' need “${h.path[h.path.length - 1]}”${h.path.length > 1 ? ` (within: ${h.path.slice(0, -1).map((p) => `“${p}”`).join(" › ")})` : ""}` : "",
-    h.outcome.title ? `Outcome it should move: “${h.outcome.title}”${h.outcome.metric ? ` (${h.outcome.metric})` : ""}` : "",
+    h.outcome.title ? `Outcome it should move: “${h.outcome.title}”${h.outcome.metric ? ` (${h.outcome.metric})` : ""}${h.outcomes?.length ? `, ${partOf(h)}` : ""}` : "",
     said("Said about the need, word for word", h.evidence.filter((e) => e.about !== "solution")),
     said("Said about this solution, word for word", h.evidence.filter((e) => e.about === "solution")),
     h.assumptions.length ? `Riskiest assumptions, to make testable in the screens: ${h.assumptions.map((a) => `${ASSUMPTION_LABEL[a.category].toLowerCase()}: ${a.text}`).join("; ")}` : "",

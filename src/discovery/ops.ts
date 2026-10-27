@@ -1,10 +1,11 @@
 import type { Doc, FrameNode } from "@/doc/schema";
 import { studio } from "@/doc/store";
-import { isOstCard, treeRootOf } from "@/doc/board";
+import { isOstCard } from "@/doc/board";
 import { type Pt, isDescendant } from "@/doc/geometry";
 import { newId } from "@/doc/factory";
 import { reparentIn } from "@/doc/ops";
 import { CARD_WIDTH, CHILD_KINDS, DEFAULT_STAGE, KIND_LABEL, canHold, defaultChildKind } from "./kinds";
+import { targetScope } from "./tree";
 import type { OstCard, OstKind, OstStage } from "./types";
 
 /*
@@ -83,6 +84,8 @@ export function moveCardsIn(d: Doc, ids: string[], target: string | null, index?
     index -= before;
   }
   reparentIn(d, ids, target, index);
+  // Which way a tree grows is its root's to say.
+  if (target) for (const id of ids) delete cardOf(d, id)?.orientation;
   return true;
 }
 
@@ -126,11 +129,14 @@ export function updateCardIn(d: Doc, id: string, fn: (c: OstCard) => void) {
   if (n.name !== n.meta.ost!.title) n.name = n.meta.ost!.title;
 }
 
-/** Make an opportunity the tree's target (there is one at a time); returns the title of the one it replaced. */
+/**
+ * Make an opportunity its outcome's target (each outcome has one at a time, a sub-outcome its
+ * own); returns the title of the one it replaced.
+ */
 export function setTargetIn(d: Doc, id: string): string | null {
   const c = cardOf(d, id);
-  const root = treeRootOf(d, id);
-  if (!c || c.kind !== "opportunity" || !root) return null;
+  const scope = targetScope(d, id);
+  if (!c || c.kind !== "opportunity" || !scope) return null;
   let was: string | null = null;
   const walk = (cid: string) => {
     const k = cardOf(d, cid);
@@ -138,9 +144,10 @@ export function setTargetIn(d: Doc, id: string): string | null {
       k.stage = "exploring";
       was = k.title;
     }
-    for (const ch of d.nodes[cid]?.children ?? []) walk(ch);
+    // A sub-outcome's cards have their own target.
+    for (const ch of d.nodes[cid]?.children ?? []) if (cardOf(d, ch)?.kind !== "outcome") walk(ch);
   };
-  walk(root);
+  walk(scope);
   c.stage = "target";
   return was;
 }

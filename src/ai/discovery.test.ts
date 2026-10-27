@@ -1,6 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { DiscoveryBody, EXTRACT_MAX_CHARS, FOLLOWUPS_SCHEMA, draftContent, draftSchema, extractContent, extractSchema, quotableIds, synthesizeContent, synthesizeIds, synthesizeSchema } from "./discovery";
-import { SAMPLE_ANSWERS } from "./fixtures-discovery";
+import {
+  DiscoveryBody,
+  EXTRACT_MAX_CHARS,
+  FOLLOWUPS_SCHEMA,
+  draftContent,
+  draftSchema,
+  dumpFollowupContent,
+  dumpFollowupSchema,
+  dumpOutline,
+  dumpPlaceContent,
+  dumpPlaceSchema,
+  dumpReadContent,
+  dumpReadSchema,
+  extractContent,
+  extractSchema,
+  placeIds,
+  quotableIds,
+  synthesizeContent,
+  synthesizeIds,
+  synthesizeSchema,
+} from "./discovery";
+import { SAMPLE_ANSWERS, SAMPLE_DUMP_TEXT } from "./fixtures-discovery";
 
 /** Structured outputs need every property required and no open objects. */
 function openRequired(node: unknown, path = "#"): string[] {
@@ -116,5 +136,76 @@ describe("Sources requests", () => {
     expect(outline).toContain("- c1 · outcome · More weekly reorders\n  - c2 · opportunity · I can't tell when my order arrives (2 quotes)\n    - c3 · solution · Live tracking");
     expect(outline).toContain("- q1 · pain · Interviews.pdf · P3: “I never know when the driver will turn up”");
     expect(outline).toContain("- Arrival times (q1)");
+  });
+});
+
+describe("brain dump requests", () => {
+  const card = (id: string, parent: string | null, kind: "outcome" | "opportunity" | "solution" | "test", title: string, more: Record<string, unknown> = {}) => ({ id, parent, kind, title, quotes: 0, description: "", metric: null, assumptions: [], words: 0, against: 0, ...more });
+  const tree = [
+    card("c1", null, "outcome", "More customers reorder every week", { metric: "Weekly reorders · 1.2 now → 1.5" }),
+    card("c2", "c1", "opportunity", "I can't find what I ordered", { quotes: 2, words: 1, against: 1, description: "Finding past orders is slow." }),
+    card("c3", "c2", "solution", "Order again shelf", { assumptions: ["They notice it", "They reorder the same things"] }),
+    card("c4", "c3", "test", "5-user test"),
+  ];
+  const base = { product: "Basket, a grocery app", dump: SAMPLE_DUMP_TEXT, tree };
+  const fragments = [
+    { id: "f1", quote: "They want us at 2M dirhams a month", role: "goal" as const },
+    { id: "f2", quote: "Parents hate substitutions", role: "need" as const },
+  ];
+  const read = { understanding: "Orders, reorders.", fragments, challenges: [{ kind: "conflict" as const, fragmentId: "f2", cardId: "c2", text: "It conflicts." }] };
+
+  it("schemas require every property", () => {
+    expect(openRequired(dumpReadSchema(["c1"]))).toEqual([]);
+    expect(openRequired(dumpReadSchema([]))).toEqual([]);
+    expect(openRequired(dumpFollowupSchema(["c1"], ["f1"]))).toEqual([]);
+    expect(openRequired(dumpPlaceSchema({ cards: ["c1"], holders: ["c1"], solutions: [], outcomes: ["c1"], fragments: ["f1"], answers: [] }))).toEqual([]);
+  });
+
+  it("streams the reading first and the new cards before the changes", () => {
+    expect(Object.keys(dumpReadSchema(["c1"]).properties)).toEqual(["understanding", "fragments", "challenges", "questions"]);
+    expect(Object.keys(dumpPlaceSchema({ cards: [], holders: [], solutions: [], outcomes: [], fragments: [], answers: [] }).properties)).toEqual(["summary", "cards", "evidence", "assumptions", "metrics", "edits", "moves", "merges", "notes"]);
+  });
+
+  it("lets answers name only the cards, pieces and answers that were sent", () => {
+    const body = { stage: "dump-place" as const, ...base, ...read, answers: [{ id: "a1", question: "Which goal?", answer: "Reorders" }] };
+    const ids = placeIds(body);
+    expect(ids).toEqual({ cards: ["c1", "c2", "c3", "c4"], holders: ["c1", "c2", "c3"], solutions: ["c3"], outcomes: ["c1"], fragments: ["f1", "f2"], answers: ["a1"] });
+    const p = dumpPlaceSchema(ids).properties as unknown as Props;
+    expect(p.cards.items!.properties.parentCard.anyOf![0].enum).toEqual(["c1", "c2", "c3"]);
+    expect(p.metrics.items!.properties.cardId.enum).toEqual(["c1"]);
+    expect(p.assumptions.items!.properties.cardId.enum).toEqual(["c3"]);
+    const r = dumpReadSchema(["c1", "c2"]).properties as unknown as Props;
+    expect(r.challenges.items!.properties.cardId.anyOf![0].enum).toEqual(["c1", "c2"]);
+    const f = dumpFollowupSchema(["c1"], ["f1", "f2"]).properties as unknown as Props;
+    expect(f.roles.items!.properties.fragmentId.enum).toEqual(["f1", "f2"]);
+  });
+
+  it("accepts a brain dump up to its size, a board up to 400 cards, three rounds", () => {
+    expect(DiscoveryBody.safeParse({ stage: "dump-read", ...base }).success).toBe(true);
+    expect(DiscoveryBody.safeParse({ stage: "dump-read", ...base, tree: [] }).success).toBe(true);
+    expect(DiscoveryBody.safeParse({ stage: "dump-read", ...base, dump: "   too short   " }).success).toBe(false);
+    expect(DiscoveryBody.safeParse({ stage: "dump-read", ...base, dump: "a ".repeat(10_001) }).success).toBe(false);
+    expect(DiscoveryBody.safeParse({ stage: "dump-read", ...base, tree: Array.from({ length: 401 }, (_, i) => card(`c${i}`, null, "outcome", "x")) }).success).toBe(false);
+    const round = { answers: [{ question: "Which goal?", answer: "Reorders" }] };
+    expect(DiscoveryBody.safeParse({ stage: "dump-followup", ...base, ...read, rounds: [round], last: false }).success).toBe(true);
+    expect(DiscoveryBody.safeParse({ stage: "dump-followup", ...base, ...read, rounds: [round, round, round, round], last: true }).success).toBe(false);
+  });
+
+  it("gives the model the board with what each card says and rests on, then the dump as material", () => {
+    expect(dumpOutline(tree)).toEqual([
+      "- c1 · outcome · More customers reorder every week [Weekly reorders · 1.2 now → 1.5]",
+      "  - c2 · opportunity · I can't find what I ordered — Finding past orders is slow. (2 customer quotes · 1 of the builder's own · 1 against)",
+      "    - c3 · solution · Order again shelf {assumes: They notice it; They reorder the same things}",
+      "      - c4 · test · 5-user test",
+    ]);
+    const text = dumpReadContent({ stage: "dump-read", ...base });
+    expect(text).toContain(`<brain_dump>\n${SAMPLE_DUMP_TEXT}\n</brain_dump>`);
+    expect(dumpReadContent({ stage: "dump-read", ...base, tree: [] })).toContain("The board is empty.");
+    const follow = dumpFollowupContent({ stage: "dump-followup", ...base, ...read, rounds: [{ answers: [{ question: "Which goal?", answer: "" }] }], last: true });
+    expect(follow).toContain("- f2 · need: “Parents hate substitutions”");
+    expect(follow).toContain("- conflict · f2 · c2: It conflicts.");
+    expect(follow).toContain("(skipped)");
+    expect(follow).toContain("That was the last round");
+    expect(dumpPlaceContent({ stage: "dump-place", ...base, ...read, answers: [{ id: "a1", question: "Which goal?", answer: "Reorders" }] })).toContain("- a1: Which goal?\n  Reorders");
   });
 });

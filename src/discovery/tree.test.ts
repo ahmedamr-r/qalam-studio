@@ -4,7 +4,9 @@ import { emptyDoc, type FrameNode, type TextProps } from "@/doc/schema";
 import { setTextMeasurer } from "@/doc/measure";
 import { makeFrame, makeText } from "@/doc/factory";
 import { worldBounds } from "@/doc/geometry";
-import { ostPass } from "./pass";
+import { TREE_GAP, ostPass } from "./pass";
+import { allCards, isSubOutcome, kindLabel, outcomeOf, outcomePath, outcomeRoots } from "./tree";
+import { treeRootOf } from "@/doc/board";
 import { addCardIn, deleteKeepIn, dropProblem, makeCardNode, moveCardsIn, newCard, reorderCardIn, setTargetIn, updateCardIn } from "./ops";
 import { neighbor } from "./navigate";
 import { evidenceLabel, isAIIdea, isAssumed, tierOf } from "./evidence";
@@ -136,7 +138,7 @@ describe("editing the tree", () => {
     const a = add("opportunity", o);
     const s = add("solution", a);
     const loose = add("solution", null, "Loose", { x: 900, y: 0 });
-    expect(dropProblem(doc(), [loose], o)).toBe("Outcome cards hold opportunities");
+    expect(dropProblem(doc(), [loose], o)).toBe("Outcome cards hold outcomes and opportunities");
     expect(dropProblem(doc(), [loose], a)).toBeNull();
     const need = add("opportunity", null, "Loose need", { x: 900, y: 400 });
     expect(dropProblem(doc(), [need], s)).toBe("Solution cards hold tests");
@@ -181,13 +183,86 @@ describe("editing the tree", () => {
     expect(node(b).meta.ost!.stage).toBe("target");
   });
 
+  it("keeps one target per outcome: a sub-outcome has its own", () => {
+    const o = add("outcome", null, "Grow orders");
+    const a = add("opportunity", o, "A");
+    const sub = add("outcome", o, "Reorder weekly");
+    const b = add("opportunity", sub, "B");
+    const c = add("opportunity", sub, "C");
+    studio().mutate((d) => void setTargetIn(d, a));
+    studio().mutate((d) => void setTargetIn(d, b));
+    expect(node(a).meta.ost!.stage).toBe("target");
+    expect(node(b).meta.ost!.stage).toBe("target");
+    let was: string | null = null;
+    studio().mutate((d) => void (was = setTargetIn(d, c)));
+    expect(was).toBe("B");
+    expect(node(a).meta.ost!.stage).toBe("target");
+  });
+
+  it("nests outcomes: a sub-outcome goes under an outcome, never under an opportunity", () => {
+    const o = add("outcome", null, "Grow orders");
+    const a = add("opportunity", o, "A");
+    const goal = add("outcome", null, "Reorder weekly", { x: 900, y: 0 });
+    studio().mutate((d) => updateCardIn(d, goal, (c) => void (c.orientation = "lr")));
+    expect(dropProblem(doc(), [goal], a)).toBe("Opportunity cards hold opportunities and solutions");
+    expect(dropProblem(doc(), [goal], o)).toBeNull();
+    studio().mutate((d) => void moveCardsIn(d, [goal], o));
+    expect(node(o).children).toEqual([a, goal]);
+    // Which way a tree grows is its root's to say.
+    expect(node(goal).meta.ost!.orientation).toBeUndefined();
+    const s = add("solution", a);
+    expect(kindLabel(doc(), goal)).toBe("Sub-outcome");
+    expect(kindLabel(doc(), o)).toBe("Outcome");
+    expect(isSubOutcome(doc(), o)).toBe(false);
+    const need = add("opportunity", goal, "Need");
+    expect(outcomeOf(doc(), need)).toBe(goal);
+    expect(outcomeOf(doc(), s)).toBe(o);
+    expect(outcomePath(doc(), need)).toEqual([o, goal]);
+    expect(outcomeRoots(doc())).toEqual([o]);
+  });
+
   it("picks a new child's kind from what the parent is and holds", () => {
     expect(defaultChildKind(newCard("outcome"), [])).toBe("opportunity");
+    expect(defaultChildKind(newCard("outcome"), ["outcome"])).toBe("outcome");
+    expect(defaultChildKind(newCard("outcome"), ["outcome", "opportunity"])).toBe("opportunity");
     expect(defaultChildKind(newCard("opportunity"), [])).toBe("opportunity");
     expect(defaultChildKind(newCard("opportunity", { stage: "target" }), [])).toBe("solution");
     expect(defaultChildKind(newCard("opportunity"), ["solution"])).toBe("solution");
     expect(defaultChildKind(newCard("solution"), [])).toBe("test");
     expect(defaultChildKind(newCard("test"), [])).toBeNull();
+  });
+});
+
+describe("trees side by side", () => {
+  /** A tree's left and right edges on the board. */
+  const span = (root: string) => {
+    const ids = [root, ...allCards(doc()).filter((c) => treeRootOf(doc(), c.id) === root).map((c) => c.id)];
+    const boxes = ids.map((id) => worldBounds(doc(), id));
+    return { x0: Math.min(...boxes.map((b) => b.x)), x1: Math.max(...boxes.map((b) => b.x + b.w)) };
+  };
+
+  it("pushes the next tree aside when one grows into it, and the one after that in turn", () => {
+    const a = add("outcome", null, "A", { x: 0, y: 0 });
+    const b = add("outcome", null, "B", { x: 520, y: 0 });
+    const c = add("outcome", null, "C", { x: 1040, y: 0 });
+    const before = node(c).x;
+    for (let i = 0; i < 4; i++) add("opportunity", a, `Need ${i}`);
+    expect(span(b).x0 - span(a).x1).toBeGreaterThanOrEqual(TREE_GAP);
+    expect(span(c).x0 - span(b).x1).toBeGreaterThanOrEqual(TREE_GAP);
+    expect(node(c).x).toBeGreaterThan(before);
+    // The tree that grew stays put.
+    expect(node(a).x).toBe(0);
+  });
+
+  it("leaves a tree dragged next to another where it was put", () => {
+    const a = add("outcome", null, "A", { x: 0, y: 0 });
+    add("opportunity", a, "Need");
+    const b = add("outcome", null, "B", { x: 2000, y: 0 });
+    studio().mutate((d) => void (d.nodes[b].x = 100));
+    expect(node(b).x).toBe(100);
+    // An edit that doesn't grow it leaves the overlap alone too.
+    studio().mutate((d) => updateCardIn(d, a, (c) => void (c.stage = "paused")));
+    expect(node(b).x).toBe(100);
   });
 });
 
@@ -231,6 +306,16 @@ describe("evidence", () => {
     expect(evidenceLabel(backed)).toBe("From your answers");
     expect(isAssumed(newCard("opportunity"))).toBe(false);
     expect(evidenceLabel(newCard("opportunity"))).toBe("No evidence yet");
+  });
+
+  it("counts the builder's brain dump as their own words, never a customer's", () => {
+    const words = { id: "e", kind: "dump" as const, text: "parents hate substitutions", sourceId: "d", span: [0, 26] as [number, number], addedBy: "ai" as const, at };
+    const need = newCard("opportunity", { createdBy: "ai", evidence: [words] });
+    expect(isAssumed(need)).toBe(false);
+    expect(tierOf(need)).toBe("answers");
+    expect(evidenceLabel(need)).toBe("From your brain dump");
+    // Their own idea, named in the dump, isn't Qalam AI's.
+    expect(isAIIdea(newCard("solution", { createdBy: "ai", evidence: [words] }))).toBe(false);
   });
 
   it("labels Qalam AI's own solution ideas", () => {

@@ -13,9 +13,12 @@ export default function BoardComposer() {
   return (
     <div className="flex shrink-0 flex-col gap-[8px] border-t border-line-subtle px-[14px] py-[12px]">
       <p className="text-caption text-fg-muted">
-        Qalam AI drafts the tree from your answers. Select a solution and choose <b className="font-medium text-fg">Design this</b> to send it to a Screens project, where Qalam AI plans the screens with you.
+        Qalam AI drafts the tree from your answers, and reads a <b className="font-medium text-fg">brain dump</b> (paste it on the board) into it. Select a solution and choose <b className="font-medium text-fg">Design this</b> to send it to a Screens project, where Qalam AI plans the screens with you.
       </p>
       <div className="flex flex-wrap gap-[6px]">
+        <Button size="sm" variant="secondary" onClick={() => runCommand("discovery.brain-dump", "toolbar")}>
+          Brain dump…
+        </Button>
         <Button size="sm" variant="secondary" onClick={() => runCommand("discovery.redo-interview", "toolbar")}>
           Redo the interview…
         </Button>

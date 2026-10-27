@@ -22,7 +22,7 @@ function Line({ kind, strong, children }: { kind: OstKind; strong?: boolean; chi
 }
 
 /** ▸ the solution, ○ for the need it addresses, ◉ to move the outcome (and its metric). */
-export function Lineage({ h, lead }: { h: Pick<DesignHandoff, "solution" | "path" | "outcome">; lead?: string }) {
+export function Lineage({ h, lead }: { h: Pick<DesignHandoff, "solution" | "path" | "outcome" | "outcomes">; lead?: string }) {
   const need = h.path[h.path.length - 1];
   return (
     <div className="flex flex-col gap-[4px] text-caption">
@@ -37,6 +37,7 @@ export function Lineage({ h, lead }: { h: Pick<DesignHandoff, "solution" | "path
           {h.outcome.metric && <span className="text-fg-subtle tnum"> · {h.outcome.metric}</span>}
         </Line>
       )}
+      {!!h.outcomes?.length && <Line kind="outcome">part of {h.outcomes.join(" › ")}</Line>}
     </div>
   );
 }

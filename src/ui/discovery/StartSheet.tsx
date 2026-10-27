@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import clsx from "clsx";
-import { ArrowLeft, FileUp, MessagesSquare, Network, Play, X } from "lucide-react";
+import { ArrowLeft, FileUp, MessagesSquare, Network, NotebookPen, Play, X } from "lucide-react";
 import { studio, useStudio } from "@/doc/store";
 import { addCardIn, makeCardNode, newCard } from "@/discovery/ops";
 import { CORE_QUESTIONS, followUpQuestions, interviewAnswers, type InterviewAnswer } from "@/discovery/interview";
@@ -16,9 +16,10 @@ import { r } from "../recipes";
 import { QalamAIGlyph } from "../brand/ai-glyph";
 import { confirmDialog } from "../surfaces/dialog";
 import { getController } from "../CanvasView";
-import { boardTree, draftTree, stopDraft } from "./draft";
+import { draftTree, hasOutcome, stopDraft, treeFor } from "./draft";
 import { runFollowups } from "./ai";
 import { useDiscovery } from "./store";
+import { openBrainDump } from "./dump";
 import { startTitleEdit } from "./editing";
 import { AddSource } from "./SourcesPanel";
 import { addSources, type AddInput } from "./import";
@@ -69,7 +70,7 @@ function close() {
 }
 
 function Start() {
-  const hasTree = useStudio((s) => !!boardTree(s.doc));
+  const hasTree = useStudio((s) => hasOutcome(s.doc));
   return (
     <>
       <Header title={hasTree ? "Start over" : "Map your product's opportunities"} />
@@ -79,6 +80,7 @@ function Start() {
         </p>
         <div className="flex flex-col gap-[8px]">
           <Option icon={<MessagesSquare {...ICON} />} title="Answer six questions" body="About the product, who it's for and what you've heard. Takes two minutes; Qalam AI may ask up to three more." onClick={() => useDiscovery.setState({ sheet: "interview" })} primary />
+          <Option icon={<NotebookPen {...ICON} />} title="Start from a brain dump" body="Paste your thinking as it comes: goals, needs, ideas, numbers. Qalam AI pushes back, asks, then places it on the board for you to accept." onClick={() => openBrainDump()} />
           <Option icon={<FileUp {...ICON} />} title="Import research" body="Interview notes, transcripts, support tickets, survey answers or a web page. Qalam AI picks out what customers said and proposes opportunities from it." onClick={() => useDiscovery.setState({ sheet: "import" })} />
           <Option icon={<Play {...ICON} />} title="Try a sample" body="Watch Qalam AI draft a tree for Basket, a fictional grocery app." onClick={() => void sample()} />
           {!hasTree && <Option icon={<Network {...ICON} />} title="Start with a blank tree" body="Name your outcome and build the tree yourself: ⇥ adds a card under one, ↵ next to it." onClick={blank} />}
@@ -109,9 +111,11 @@ function Option({ icon, title, body, onClick, primary }: { icon: ReactNode; titl
 
 /** Replacing a tree asks first (⌘Z brings it back). */
 async function replaceOk(): Promise<string | null | false> {
-  const tree = boardTree(studio().doc);
+  const s = studio();
+  const tree = treeFor(s.doc, s.selection);
   if (!tree) return null;
-  const ok = await confirmDialog({ title: "Replace the current tree?", body: "Qalam AI drafts a new tree from your answers in its place. Undo brings the old one back.", confirmLabel: "Replace the tree" });
+  const title = s.doc.nodes[tree].meta.ost?.title.trim();
+  const ok = await confirmDialog({ title: title ? `Replace “${title}”?` : "Replace the current tree?", body: "Qalam AI drafts a new tree from your answers in its place. Undo brings the old one back.", confirmLabel: "Replace the tree" });
   return ok ? tree : false;
 }
 
@@ -141,7 +145,7 @@ function blank() {
 const itemLabel = (i: AddInput) => (i.kind === "file" ? i.file.name : i.kind === "url" ? i.url : i.kind === "paste" ? `Pasted text · ${i.text.trim().slice(0, 40)}…` : `${i.label}: ${i.request}`);
 
 function ImportStep() {
-  const hasTree = useStudio((s) => !!boardTree(s.doc));
+  const hasTree = useStudio((s) => hasOutcome(s.doc));
   const [outcome, setOutcome] = useState("");
   const [items, setItems] = useState<AddInput[]>([]);
   const ready = items.length > 0 && (hasTree || outcome.trim().length >= 3);

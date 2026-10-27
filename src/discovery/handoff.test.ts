@@ -56,6 +56,23 @@ describe("Design this", () => {
     expect(h.at).toBe(5);
   });
 
+  it("names the nearest outcome under a goal, and the goals it's part of", () => {
+    const b = board();
+    const goal = makeCardNode(newCard("outcome", { title: "2M a month in orders" }));
+    addCardIn(b.d, goal, null);
+    b.d.roots = b.d.roots.filter((id) => id !== b.outcome);
+    b.d.nodes[b.outcome].parentId = goal.id;
+    b.d.nodes[goal.id].children.push(b.outcome);
+    const h = buildHandoff(b.d, b.solution, FROM)!;
+    expect(h.outcome.title).toBe("More customers reorder every week");
+    expect(h.outcomes).toEqual(["2M a month in orders"]);
+    expect(handoffLines(h)).toContain("Outcome it should move: “More customers reorder every week” (Weekly reorders per customer, 1.2 → 1.5 orders by March), part of “2M a month in orders”");
+    expect(handoffBrief(h).find((a) => a.topic === "goal")?.answer).toContain("part of “2M a month in orders”");
+    // A tree with one outcome carries no chain.
+    const plain = board();
+    expect(buildHandoff(plain.d, plain.solution, FROM)).not.toHaveProperty("outcomes");
+  });
+
   it("brings what was said nearest the solution first, once each, at most six", () => {
     const b = board();
     const h = buildHandoff(b.d, b.solution, FROM)!;

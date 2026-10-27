@@ -19,6 +19,8 @@ export interface CanvasDelegate {
   cursor(screen: Pt): string | null;
   /** What the renderer draws for it this frame (cards being dragged, the drop target, folds). */
   render(): OstRenderInput | null;
+  /** Text pasted onto the canvas (not the studio's own copied layers): true when it took it. */
+  pasteText?(text: string): boolean;
 }
 
 let current: CanvasDelegate | null = null;

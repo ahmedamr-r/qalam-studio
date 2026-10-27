@@ -319,7 +319,7 @@ export function planRounds(state: PlanState): PlanRoundsT {
 }
 
 /** An answer in words the model can use: labels with their descriptions, and anything typed. */
-function answerText(q: Question, a: Answer): string {
+export function answerText(q: Question, a: Answer): string {
   if (a.kind === "skipped") return "No preference";
   if (a.kind === "single" && q.kind === "single") {
     if (a.value === OTHER) return a.other?.trim() || "No preference";

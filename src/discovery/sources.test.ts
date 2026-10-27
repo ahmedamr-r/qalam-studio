@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CHUNK, chunkText, citation, hasQuote, packCalls, pageAt, quoteEvidence, unread, type ChunkRef, type SourceQuote } from "./sources";
+import { CHUNK, chunkText, citation, hasQuote, packCalls, pageAt, quotable, quoteEvidence, unread, type ChunkRef, type SourceQuote } from "./sources";
 
 const para = (i: number, n = 400) => `Paragraph ${i}. ${"word ".repeat(n / 5)}`.trim();
 
@@ -70,6 +70,27 @@ describe("unread", () => {
     const left = unread({ id: "s", text, read: [0] });
     expect(left.map((c) => c.index)).toEqual(all.slice(1).map((c) => c.index));
     expect(left.every((c) => c.sourceId === "s")).toBe(true);
+  });
+});
+
+describe("a brain dump as a source", () => {
+  const piece: SourceQuote = { id: "q", text: "parents hate substitutions", span: [10, 36], kind: "need", role: "need", addedBy: "ai", at: 1 };
+  it("is never read for customers' words", () => {
+    expect(unread({ id: "d", kind: "dump", text: "x ".repeat(30_000), read: [] })).toEqual([]);
+  });
+
+  it("gives the builder's own words as evidence, kept apart from customers' quotes", () => {
+    const e = quoteEvidence({ id: "d", title: "Brain dump", kind: "dump" }, piece, "ai", { now: 1 });
+    expect(e.kind).toBe("dump");
+    expect(e.span).toEqual([10, 36]);
+    expect(quoteEvidence({ id: "p", title: "Notes" }, piece, "ai").kind).toBe("quote");
+    expect(hasQuote({ evidence: [e] }, "d", [10, 36])).toBe(true);
+  });
+
+  it("can back a goal, not only needs and solutions", () => {
+    expect(quotable({ kind: "outcome" }, "dump")).toBe(true);
+    expect(quotable({ kind: "outcome" })).toBe(false);
+    expect(quotable({ kind: "test" }, "dump")).toBe(false);
   });
 });
 

@@ -1,10 +1,12 @@
 import { useShallow } from "zustand/react/shallow";
+import clsx from "clsx";
 import { LucideProvider } from "lucide-react";
 import { studio, useStudio } from "@/doc/store";
+import type { Doc } from "@/doc/schema";
 import { isOstCard } from "@/doc/board";
 import { runCommand } from "@/commands/registry";
 import { cardOf, updateCardIn } from "@/discovery/ops";
-import { allCards } from "@/discovery/tree";
+import { allCards, childCards, outcomeRoots } from "@/discovery/tree";
 import { isAssumed } from "@/discovery/evidence";
 import { Button, CommandKbd, Field, Section, Segmented } from "../controls";
 import { r } from "../recipes";
@@ -42,42 +44,35 @@ const KEYS: [string, string][] = [
   ["tool.sticky", "Sticky note"],
 ];
 
+/** Every outcome on the board, sub-outcomes indented under theirs. */
+function outcomeList(doc: Doc): { id: string; depth: number }[] {
+  const out: { id: string; depth: number }[] = [];
+  const walk = (id: string, depth: number) => {
+    if (cardOf(doc, id)?.kind !== "outcome") return;
+    out.push({ id, depth });
+    for (const c of childCards(doc, id)) walk(c, depth + 1);
+  };
+  for (const r of outcomeRoots(doc)) walk(r, 0);
+  return out;
+}
+
 function TreePanel() {
   const doc = useStudio((s) => s.doc);
   const cards = allCards(doc);
-  const outcomeId = doc.roots.find((id) => cardOf(doc, id)?.kind === "outcome") ?? null;
-  const outcome = outcomeId ? cardOf(doc, outcomeId) : null;
+  const outcomes = outcomeList(doc);
+  const roots = outcomeRoots(doc);
   const count = (k: string) => cards.filter((c) => c.card.kind === k).length;
   const assumed = cards.filter((c) => isAssumed(c.card)).length;
-  const lr = outcome?.orientation === "lr";
-  const m = outcome?.metric;
+  const lr = roots.length > 0 && roots.every((id) => cardOf(doc, id)?.orientation === "lr");
 
   return (
     <div aria-label="Tree" data-region="design" className="flex flex-col pb-[24px]">
-      <Section title="Outcome">
-        {outcome ? (
-          <button
-            type="button"
-            onClick={() => {
-              studio().select([outcomeId!]);
-              getController()?.glideToFit([outcomeId!]);
-            }}
-            className="q-item flex flex-col items-start gap-[4px] rounded-lg bg-muted px-[10px] py-[8px] text-left shadow-[inset_0_0_0_1px_var(--color-line-subtle)] hover:bg-hover"
-          >
-            <span className="flex items-center gap-[6px] text-body font-medium text-fg">
-              <KindMark kind="outcome" className="shrink-0 text-fg" />
-              {outcome.title || "Untitled outcome"}
-            </span>
-            {m?.name && (
-              <span className="text-caption text-fg-muted tnum">
-                {m.name}
-                {m.baseline !== null && m.target !== null ? ` · ${m.baseline} → ${m.target}${m.unit ? ` ${m.unit}` : ""}` : ""}
-              </span>
-            )}
-          </button>
+      <Section title={outcomes.length > 1 ? "Outcomes" : "Outcome"}>
+        {outcomes.length ? (
+          outcomes.map(({ id, depth }) => <OutcomeButton key={id} id={id} depth={depth} />)
         ) : (
           <>
-            <p className="text-caption text-fg-muted">A tree starts from one outcome: a change in what your customers do that the team can move.</p>
+            <p className="text-caption text-fg-muted">A tree starts from an outcome: a change in what your customers do that the team can move.</p>
             <Button size="sm" className="self-start" onClick={() => useDiscovery.setState({ sheet: "start" })}>
               Start the tree…
             </Button>
@@ -108,9 +103,9 @@ function TreePanel() {
           )}
         </Section>
       )}
-      {outcome && (
+      {roots.length > 0 && (
         <Section title="Layout">
-          <Field label="The tree grows">
+          <Field label={roots.length > 1 ? "The trees grow" : "The tree grows"}>
             <Segmented
               value={lr ? "lr" : "tb"}
               options={[
@@ -119,7 +114,7 @@ function TreePanel() {
               ]}
               onChange={(v) => {
                 if ((v === "lr") === lr) return;
-                studio().mutate((d) => updateCardIn(d, outcomeId!, (c) => (v === "lr" ? (c.orientation = "lr") : delete c.orientation)));
+                studio().mutate((d) => roots.forEach((id) => updateCardIn(d, id, (c) => (v === "lr" ? (c.orientation = "lr") : delete c.orientation))));
                 requestAnimationFrame(() => getController()?.glideToFit());
               }}
             />
@@ -129,7 +124,7 @@ function TreePanel() {
       <Section title="Product">
         <p className="text-caption text-fg-muted">The outcome and first opportunities come from a short interview about your product.</p>
         <Button size="sm" variant="secondary" className="self-start" onClick={() => runCommand("discovery.redo-interview", "toolbar")}>
-          {outcome ? "Redo the interview…" : "Answer the questions…"}
+          {roots.length ? "Redo the interview…" : "Answer the questions…"}
         </Button>
       </Section>
       <Section title="Keys">
@@ -143,5 +138,34 @@ function TreePanel() {
         </ul>
       </Section>
     </div>
+  );
+}
+
+/** An outcome in the tree's overview: its title and metric; a click picks it and brings it into view. */
+function OutcomeButton({ id, depth }: { id: string; depth: number }) {
+  const outcome = useStudio((s) => cardOf(s.doc, id));
+  if (!outcome) return null;
+  const m = outcome.metric;
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        studio().select([id]);
+        getController()?.glideToFit([id]);
+      }}
+      style={depth ? { marginLeft: Math.min(depth, 3) * 12 } : undefined}
+      className="q-item flex flex-col items-start gap-[4px] rounded-lg bg-muted px-[10px] py-[8px] text-left shadow-[inset_0_0_0_1px_var(--color-line-subtle)] hover:bg-hover"
+    >
+      <span className={clsx("flex items-center gap-[6px] text-body text-fg", !depth && "font-medium")}>
+        <KindMark kind="outcome" className={clsx("shrink-0", depth ? "text-fg-subtle" : "text-fg")} />
+        {outcome.title || (depth ? "Untitled sub-outcome" : "Untitled outcome")}
+      </span>
+      {m?.name && (
+        <span className="text-caption text-fg-muted tnum">
+          {m.name}
+          {m.baseline !== null && m.target !== null ? ` · ${m.baseline} → ${m.target}${m.unit ? ` ${m.unit}` : ""}` : ""}
+        </span>
+      )}
+    </button>
   );
 }

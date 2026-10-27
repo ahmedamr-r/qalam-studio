@@ -1,13 +1,10 @@
-import { produce } from "immer";
 import { newId } from "@/doc/factory";
-import { emptyDoc, type Doc } from "@/doc/schema";
-import { isOstCard } from "@/doc/board";
 import { quoteFinder } from "./quotes";
-import { QUOTE_KINDS, hasQuote, pageAt, quotable, type QuoteKind, type SourceNeed, type SourceQuote } from "./sources";
-import { addCardIn, makeCardNode, newCard } from "./ops";
+import { QUOTE_KINDS, pageAt, quotable, type QuoteKind, type SourceNeed, type SourceQuote } from "./sources";
+import { newCard } from "./ops";
 import { canHold } from "./kinds";
-import { layoutDocTrees } from "./pass";
-import type { OstEvidence, OstKind } from "./types";
+import type { Proposal, QuoteRef } from "./proposals";
+import type { OstKind } from "./types";
 
 /*
  * What Qalam AI makes of a board's sources, made safe (pure). The model proposes; code decides:
@@ -17,7 +14,7 @@ import type { OstEvidence, OstKind } from "./types";
  *   - synthesize: a quote can back (or speak against) an opportunity or a solution that exists;
  *     a new opportunity must rest on at least one kept quote, under the outcome or an opportunity,
  *     not repeating a card already there. Nothing lands on the board until it's accepted: until
- *     then the proposals are a ghost over the tree.
+ *     then the proposals are a ghost over the tree (proposals.ts).
  */
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
@@ -113,15 +110,6 @@ export function sanitizeExtract(raw: unknown, chunks: CallChunk[], taken: Map<st
 
 export const SYNTH_LIMITS = { mappings: 60, perCard: 6, perQuote: 3, against: 12, opportunities: 8, perParent: 4, depth: 3, title: 90, description: 280, why: 200 } as const;
 
-/** A quote by where it lives. */
-export interface QuoteRef {
-  sourceId: string;
-  quoteId: string;
-}
-
-export type Proposal =
-  | { id: string; kind: "attach" | "against"; cardId: string; quote: QuoteRef; why: string }
-  | { id: string; kind: "opportunity"; /** The new card's id (it keeps it once accepted). */ cardId: string; parentId: string; title: string; description?: string; quotes: QuoteRef[]; why: string };
 
 /** A card as the synthesize call names it. */
 export interface SynthCard {
@@ -215,7 +203,8 @@ export function sanitizeSynthesis(raw: unknown, ctx: SynthContext): Proposal[] {
     freshCount.set(parent.ref, (freshCount.get(parent.ref) ?? 0) + 1);
     made++;
     const description = clip(x.description, SYNTH_LIMITS.description);
-    out.push({ id: newId(), kind: "opportunity", cardId: newId(), parentId: parent.id, title, ...(description ? { description } : {}), quotes: backed.map(ref), why: clip(x.why, SYNTH_LIMITS.why) });
+    const card = newCard("opportunity", { title, createdBy: "ai", ...(description ? { description } : {}) });
+    out.push({ id: newId(), kind: "card", cardId: newId(), parentId: parent.id, card, backing: { quotes: backed.map(ref), words: [] }, why: clip(x.why, SYNTH_LIMITS.why) });
   }
 
   // Words against a card: never the same words that were just proposed to back it.
@@ -229,53 +218,4 @@ export function sanitizeSynthesis(raw: unknown, ctx: SynthContext): Proposal[] {
     out.push({ id: newId(), kind: "against", cardId: ok.card.id, quote: ref(ok.q), why: clip(x.why, SYNTH_LIMITS.why) });
   }
   return out;
-}
-
-// ---------------------------------------------------------------------------
-// Proposals on the board
-
-/** A quote as evidence (null when its source or the quote is gone). */
-export type EvidenceOf = (q: QuoteRef, against: boolean) => OstEvidence | null;
-
-/** Where a proposal lands: the card it changes, or the parent of the card it adds. */
-export const proposalTarget = (p: Proposal) => (p.kind === "opportunity" ? p.parentId : p.cardId);
-
-/** Carry out one proposal on a draft document. False when it no longer fits (the card is gone, the words are already there). */
-export function applyProposal(d: Doc, p: Proposal, evidence: EvidenceOf): boolean {
-  if (p.kind === "opportunity") {
-    const parent = d.nodes[p.parentId];
-    if (!isOstCard(parent) || !canHold(parent.meta.ost.kind, "opportunity") || d.nodes[p.cardId]) return false;
-    const ev = p.quotes.map((q) => evidence(q, false)).filter((e): e is OstEvidence => !!e);
-    if (!ev.length) return false;
-    const node = { ...makeCardNode(newCard("opportunity", { title: p.title, createdBy: "ai", evidence: ev, ...(p.description ? { description: p.description } : {}) })), id: p.cardId };
-    addCardIn(d, node, p.parentId);
-    return true;
-  }
-  const n = d.nodes[p.cardId];
-  if (!isOstCard(n) || !quotable(n.meta.ost)) return false;
-  const ev = evidence(p.quote, p.kind === "against");
-  if (!ev || hasQuote(n.meta.ost, ev.sourceId!, ev.span!)) return false;
-  n.meta.ost.evidence.push(ev);
-  return true;
-}
-
-/**
- * The tree under `rootId` as it would be with the proposals carried out, laid out: the ghost drawn
- * over the real tree while they're reviewed. Cards a proposal doesn't touch keep their data
- * object, so the board draws them as they are and only what would change as a ghost.
- */
-export function proposalDoc(doc: Doc, rootId: string, proposals: Proposal[], evidence: EvidenceOf): Doc | null {
-  if (!isOstCard(doc.nodes[rootId])) return null;
-  const nodes: Doc["nodes"] = {};
-  const walk = (id: string) => {
-    const n = doc.nodes[id];
-    if (!n) return;
-    nodes[id] = n;
-    if (n.type === "frame") n.children.forEach(walk);
-  };
-  walk(rootId);
-  const next = produce({ ...emptyDoc(), nodes, roots: [rootId] } as Doc, (d) => {
-    for (const p of proposals) applyProposal(d, p, evidence);
-  });
-  return layoutDocTrees(next);
 }

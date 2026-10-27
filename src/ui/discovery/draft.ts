@@ -1,7 +1,7 @@
 import { studio } from "@/doc/store";
 import type { Doc } from "@/doc/schema";
 import { emptyBrief } from "@/doc/brief";
-import { isOstCard, rootBounds, visibleCards } from "@/doc/board";
+import { rootBounds, treeRootOf, visibleCards } from "@/doc/board";
 import { type Box, type Pt, boundsOf, worldBounds } from "@/doc/geometry";
 import { clearGhosts, setGhost } from "@/doc/ghosts";
 import { descendants } from "@/doc/geometry";
@@ -13,11 +13,13 @@ import { draftToDoc, placeholderDoc } from "@/discovery/draft-doc";
 import { briefFromAnswers, type InterviewAnswer } from "@/discovery/interview";
 import { isAssumed } from "@/discovery/evidence";
 import { KIND_LABEL } from "@/discovery/kinds";
+import { outcomeRoots } from "@/discovery/tree";
 import { updateProject } from "@/projects/session";
 import { openTurn, patchTurn, registerTurnHandlers } from "../ai/chats";
 import { appendThought, endAgent, narrate, startAgent, updateAgent } from "../ai/agents";
 import { getController } from "../CanvasView";
 import { runDraft } from "./ai";
+import { SAMPLE_ANSWERS, SAMPLE_DRAFT_RAW } from "@/ai/fixtures-discovery";
 import { useDiscovery } from "./store";
 
 /*
@@ -38,14 +40,30 @@ interface Run {
 
 const runs = new Map<string, Run>();
 
+/** Other work on the board that runs as a Discovery turn (a brain dump), with its own Stop and Try again. */
+interface TurnRoute {
+  owns: (turnId: string) => boolean;
+  stop: (turnId: string) => void;
+  retry: (turnId: string) => void;
+}
+const routes: TurnRoute[] = [];
+export const routeTurns = (r: TurnRoute) => void routes.push(r);
+const routeOf = (turnId: string) => routes.find((r) => r.owns(turnId));
+
 let handlersOn = false;
 /** Stop and Try again on the board's draft turns (at boot, so a reloaded chat's Try again works too). */
 export function ensureHandlers() {
   if (handlersOn) return;
   handlersOn = true;
   registerTurnHandlers("discovery", {
-    stop: (_chatId, turnId) => runs.get(turnId)?.ctrl.abort(),
+    stop: (_chatId, turnId) => {
+      const route = routeOf(turnId);
+      if (route) return route.stop(turnId);
+      runs.get(turnId)?.ctrl.abort();
+    },
     retry: (_chatId, turnId) => {
+      const route = routeOf(turnId);
+      if (route) return route.retry(turnId);
       const r = runs.get(turnId);
       // After a reload the answers are on the project: back to the interview to send them again.
       if (!r) return useDiscovery.setState({ sheet: "interview" });
@@ -55,7 +73,7 @@ export function ensureHandlers() {
 }
 
 /** Where a new tree goes: in view on an empty board, else to the right of what's there. */
-function placeFor(doc: Doc, replace: string | null): Pt {
+export function placeFor(doc: Doc, replace: string | null): Pt {
   if (replace && doc.nodes[replace]) return { x: doc.nodes[replace].x, y: doc.nodes[replace].y };
   const roots = doc.roots.filter((id) => doc.nodes[id]);
   if (!roots.length) {
@@ -184,11 +202,25 @@ export async function draftTree(input: { answers: InterviewAnswer[]; followUps?:
   }
 }
 
+/** Basket's sample tree, straight onto the board (no turn): a brain dump's sample merges into it. */
+export function placeSample(): string | null {
+  return place(sanitizeDraft(SAMPLE_DRAFT_RAW, SAMPLE_ANSWERS), placeFor(studio().doc, null), null, SAMPLE_ANSWERS);
+}
+
 /** Stop the draft running on the board. */
 export function stopDraft() {
   const d = useDiscovery.getState().drafting;
   if (d) runs.get(d.turnId)?.ctrl.abort();
 }
 
-/** The board's tree (its outcome's root), for Redo the interview to replace. */
-export const boardTree = (doc: Doc) => doc.roots.find((id) => isOstCard(doc.nodes[id]) && doc.nodes[id].meta.ost?.kind === "outcome") ?? null;
+/** The outcome tree work on the board is about: the one a selected card is in, else the first on the board. */
+export function treeFor(doc: Doc, selection: readonly string[] = []): string | null {
+  for (const id of selection) {
+    const root = treeRootOf(doc, id);
+    if (root && doc.nodes[root].meta.ost?.kind === "outcome") return root;
+  }
+  return outcomeRoots(doc)[0] ?? null;
+}
+
+/** The board has a tree that starts at an outcome. */
+export const hasOutcome = (doc: Doc) => outcomeRoots(doc).length > 0;

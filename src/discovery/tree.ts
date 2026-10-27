@@ -1,6 +1,7 @@
-import type { Doc } from "@/doc/schema";
+import type { Doc, SceneNode } from "@/doc/schema";
 import { isOstCard, treeRootOf } from "@/doc/board";
 import type { Orientation } from "./layout";
+import { KIND_LABEL, SUB_OUTCOME_LABEL } from "./kinds";
 import type { OstCard } from "./types";
 
 /** Reading the tree (pure). */
@@ -58,8 +59,59 @@ export function opportunityPath(doc: Doc, id: string): string[] {
   return out;
 }
 
-/** The outcome at the top of a card's tree, if the tree has one. */
+/** The nearest outcome a card sits under (itself for an outcome), if its tree has one. */
 export function outcomeOf(doc: Doc, id: string): string | null {
-  const root = treeRootOf(doc, id);
-  return root && doc.nodes[root].meta.ost?.kind === "outcome" ? root : null;
+  let n: SceneNode | undefined = doc.nodes[id];
+  while (isOstCard(n)) {
+    if (n.meta.ost.kind === "outcome") return n.id;
+    n = n.parentId ? doc.nodes[n.parentId] : undefined;
+  }
+  return null;
+}
+
+/** An outcome under another outcome: a goal split into the outcomes that move it. */
+export function isSubOutcome(doc: Doc, id: string): boolean {
+  const n = doc.nodes[id];
+  const p = n?.parentId ? doc.nodes[n.parentId] : undefined;
+  return isOstCard(n) && n.meta.ost.kind === "outcome" && isOstCard(p) && p.meta.ost.kind === "outcome";
+}
+
+/** What a card is called on the board ("Sub-outcome" for an outcome under another). */
+export function kindLabel(doc: Doc, id: string): string {
+  const c = doc.nodes[id]?.meta.ost;
+  if (!c) return "";
+  return isSubOutcome(doc, id) ? SUB_OUTCOME_LABEL : KIND_LABEL[c.kind];
+}
+
+/** The trees that start at an outcome, in board order. */
+export const outcomeRoots = (doc: Doc): string[] => doc.roots.filter((id) => isOstCard(doc.nodes[id]) && doc.nodes[id].meta.ost?.kind === "outcome");
+
+/** The outcomes from the tree's root down to a card's nearest outcome (empty when it has none). */
+export function outcomePath(doc: Doc, id: string): string[] {
+  const out: string[] = [];
+  let n: SceneNode | undefined = doc.nodes[outcomeOf(doc, id) ?? ""];
+  while (isOstCard(n) && n.meta.ost.kind === "outcome") {
+    out.unshift(n.id);
+    n = n.parentId ? doc.nodes[n.parentId] : undefined;
+  }
+  return out;
+}
+
+/** Where a card's target is picked among: its nearest outcome's cards, or its tree's when there's none. */
+export const targetScope = (doc: Doc, id: string): string | null => outcomeOf(doc, id) ?? treeRootOf(doc, id);
+
+/** Each outcome on the board as a line for Qalam AI ("More weekly reorders (Weekly reorders per customer)"), sub-outcomes indented under theirs. */
+export function outcomeLines(doc: Doc): string[] {
+  const lines: string[] = [];
+  const walk = (id: string, depth: number) => {
+    const n = doc.nodes[id];
+    if (!isOstCard(n)) return;
+    const c = n.meta.ost;
+    if (c.kind !== "outcome") return;
+    const title = c.title.replace(/\s+/g, " ").trim() || "(untitled)";
+    lines.push(`${"  ".repeat(depth)}- ${title}${c.metric?.name ? ` (${c.metric.name})` : ""}`);
+    for (const k of n.children) walk(k, depth + 1);
+  };
+  for (const r of outcomeRoots(doc)) walk(r, 0);
+  return lines;
 }

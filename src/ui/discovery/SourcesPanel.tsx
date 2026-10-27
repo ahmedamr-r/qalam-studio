@@ -1,13 +1,14 @@
 import { memo, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import clsx from "clsx";
-import { ArrowLeft, ClipboardPaste, ExternalLink, FileText, Globe, MessagesSquare, Plug, Plus, Quote, Trash2, Upload, X } from "lucide-react";
+import { ArrowLeft, ClipboardPaste, ExternalLink, FileText, Globe, MessagesSquare, NotebookPen, Plug, Plus, Quote, Trash2, Upload, X } from "lucide-react";
 import { studio, useStudio } from "@/doc/store";
 import type { Doc } from "@/doc/schema";
 import { newId } from "@/doc/factory";
 import { aiStatus, type AIStatus } from "@/ai/client";
 import { revealCard } from "@/discovery/ops";
 import { allCards } from "@/discovery/tree";
-import { QUOTE_KIND_LABEL, SOURCE_KIND_LABEL, pageAt, unread, type SourceKind, type SourceQuote, type SourceRecord } from "@/discovery/sources";
+import { QUOTE_KIND_LABEL, SOURCE_KIND_LABEL, fromSource, pageAt, unread, type SourceKind, type SourceQuote, type SourceRecord } from "@/discovery/sources";
+import { ROLE_LABEL } from "@/discovery/dump";
 import { awaitingRoles, clock, finishInterviewQuotes } from "@/discovery/transcript";
 import { feedback } from "@/commands/feedback";
 import { Button, IconBtn, Segmented, Select, Spinner, Tag } from "../controls";
@@ -19,10 +20,11 @@ import { getController } from "../CanvasView";
 import { glideToLayer } from "./canvas";
 import { ACCEPT } from "./ingest";
 import { addSources, mapQuotes, readSources, stopSources, type AddInput } from "./import";
-import { acceptAll, discardAll } from "./review";
+import { acceptAll, discardAll, useReview } from "./review";
 import { dragQuote, dragSource } from "./drop";
 import { openSource, removeSource, updateSource, useSources } from "./sources";
 import { SpeakersLine, SpeakersStep } from "./SpeakersStep";
+import { openBrainDump } from "./dump";
 
 /*
  * The Sources tab of a Discovery board: the material customers' words come from (documents, web
@@ -36,7 +38,7 @@ import { SpeakersLine, SpeakersStep } from "./SpeakersStep";
 const ICON = { size: 14, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 const SMALL = { size: 12, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 
-const KIND_ICON: Record<SourceKind, typeof FileText> = { pdf: FileText, docx: FileText, markdown: FileText, text: FileText, paste: ClipboardPaste, url: Globe, connector: Plug, interview: MessagesSquare };
+const KIND_ICON: Record<SourceKind, typeof FileText> = { pdf: FileText, docx: FileText, markdown: FileText, text: FileText, paste: ClipboardPaste, url: Globe, connector: Plug, interview: MessagesSquare, dump: NotebookPen };
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
@@ -111,7 +113,8 @@ function metaOf(s: SourceRecord): string {
   const left = unread(s).length;
   const t = s.transcript;
   const talk = t ? [`${Math.max(1, Math.round(t.durationSec / 60))} min`, plural(t.speakers.length, "speaker")] : [];
-  return [SOURCE_KIND_LABEL[s.kind], ...talk, s.pages ? plural(s.pages.length, "page") : "", awaitingRoles(s) ? "Say who is who" : plural(s.quotes.length, "quote"), left && s.read.length ? `${left} unread` : ""].filter(Boolean).join(" · ");
+  const pieces = s.kind === "dump" ? plural(s.quotes.length, "piece") : plural(s.quotes.length, "quote");
+  return [SOURCE_KIND_LABEL[s.kind], ...talk, s.pages ? plural(s.pages.length, "page") : "", awaitingRoles(s) ? "Say who is who" : pieces, left && s.read.length ? `${left} unread` : ""].filter(Boolean).join(" · ");
 }
 
 function SourceRow({ source, quoting }: { source: SourceRecord; quoting: boolean }) {
@@ -179,10 +182,10 @@ async function keepReading(ids?: string[]) {
 
 /** The foot of the list: Qalam AI's proposals waiting, the run in progress, or "Map quotes to the tree". */
 function MapBar() {
-  const proposals = useSources((s) => s.proposals.length);
+  const proposals = useReview((s) => (s.origin?.kind === "sources" ? s.proposals.length : 0));
   const mapping = useSources((s) => s.mapping);
   const busy = useSources((s) => s.busy);
-  const quotes = useSources((s) => s.list.reduce((n, x) => n + x.quotes.length, 0));
+  const quotes = useSources((s) => s.list.reduce((n, x) => n + (x.kind === "dump" ? 0 : x.quotes.length), 0));
   const hasTree = useStudio((s) => s.doc.roots.some((id) => s.doc.nodes[id]?.meta.ost));
   if (proposals)
     return (
@@ -369,7 +372,7 @@ function cardsByQuote(doc: Doc, sourceId: string) {
   const m = new Map<string, { id: string; title: string; against: boolean }[]>();
   for (const { id, card } of allCards(doc))
     for (const e of card.evidence) {
-      if (e.kind !== "quote" || e.sourceId !== sourceId || !e.span) continue;
+      if (!fromSource(e) || e.sourceId !== sourceId || !e.span) continue;
       const k = `${e.span[0]}:${e.span[1]}`;
       m.set(k, [...(m.get(k) ?? []), { id, title: card.title || "Untitled", against: e.stance === "against" }]);
     }
@@ -397,6 +400,8 @@ function SourceView({ source, focus }: { source: SourceRecord; focus?: string })
   const quotes = source.quotes;
   const [changing, setChanging] = useState(false);
   const roles = awaitingRoles(source) || changing;
+  // A brain dump's pieces are the builder's own words, cut by what they are to the tree.
+  const dump = source.kind === "dump";
   return (
     <div className="flex flex-col gap-[10px] px-[12px] pt-[2px] pb-[16px]">
       <div className="flex items-start gap-[4px]">
@@ -418,12 +423,17 @@ function SourceView({ source, focus }: { source: SourceRecord; focus?: string })
           <Trash2 {...SMALL} />
         </IconBtn>
       </div>
+      {dump && (
+        <Button size="sm" variant="secondary" className="self-start" onClick={() => openBrainDump({ sourceId: source.id })}>
+          <QalamAIGlyph size={12} /> Continue with Qalam AI
+        </Button>
+      )}
       {source.transcript && (roles ? <SpeakersStep source={source} onDone={changing ? () => setChanging(false) : undefined} /> : <SpeakersLine t={source.transcript} onChange={() => setChanging(true)} />)}
       <Segmented
         label="Show"
         value={tab}
         options={[
-          { value: "quotes", label: `Quotes · ${quotes.length}` },
+          { value: "quotes", label: `${dump ? "Pieces" : "Quotes"} · ${quotes.length}` },
           { value: "text", label: "Text" },
         ]}
         onChange={(t) => {
@@ -434,10 +444,10 @@ function SourceView({ source, focus }: { source: SourceRecord; focus?: string })
       {quoting && <p className="q-shimmer-text text-caption text-fg-muted">Qalam AI is picking out what customers said…</p>}
       {tab === "quotes" ? (
         <div className="flex flex-col gap-[8px]">
-          {quotes.length > 0 && <p className="text-micro text-fg-subtle">Drag a quote onto an opportunity or a solution to back it.</p>}
+          {quotes.length > 0 && <p className="text-micro text-fg-subtle">{dump ? "Your own words, by what they are to the tree. Drag one onto a card to rest it on them." : "Drag a quote onto an opportunity or a solution to back it."}</p>}
           {!quotes.length && !quoting && !awaitingRoles(source) && (
             <p className="text-caption text-fg-muted">
-              No quotes yet. {source.read.length ? "Qalam AI found no customer's words in what it read." : ""} Select words in the text to quote them yourself.
+              {dump ? "No pieces yet. Select words in the text to keep them yourself." : <>No quotes yet. {source.read.length ? "Qalam AI found no customer's words in what it read." : ""} Select words in the text to quote them yourself.</>}
             </p>
           )}
           {quotes.map((q) => (
@@ -469,7 +479,7 @@ function QuoteCard({ source, q, cards, onShow }: { source: SourceRecord; q: Sour
         <span>{q.text}</span>
       </blockquote>
       <figcaption className="flex flex-wrap items-center gap-x-[6px] gap-y-[4px] pl-[18px] text-micro text-fg-subtle">
-        <Tag>{QUOTE_KIND_LABEL[q.kind]}</Tag>
+        <Tag>{source.kind === "dump" ? ROLE_LABEL[q.role ?? "context"] : QUOTE_KIND_LABEL[q.kind]}</Tag>
         {meta.map((m, i) => (
           <span key={i}>{m}</span>
         ))}
@@ -557,7 +567,7 @@ const SourceText = memo(function SourceText({ source, focus }: { source: SourceR
 
   const keep = () => {
     if (!pick) return;
-    const picked: SourceQuote = { id: newId(), text: source.text.slice(pick.start, pick.end), span: [pick.start, pick.end], ...(pageAt(source.pages, pick.start) ? { page: pageAt(source.pages, pick.start) } : {}), kind: "need", addedBy: "user", at: Date.now() };
+    const picked: SourceQuote = { id: newId(), text: source.text.slice(pick.start, pick.end), span: [pick.start, pick.end], ...(pageAt(source.pages, pick.start) ? { page: pageAt(source.pages, pick.start) } : {}), kind: "need", ...(source.kind === "dump" ? { role: "context" as const } : {}), addedBy: "user", at: Date.now() };
     window.getSelection()?.removeAllRanges();
     setPick(null);
     // In an interview, only a participant's words, within one person's turns (and who said them, when).

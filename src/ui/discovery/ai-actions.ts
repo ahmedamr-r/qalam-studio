@@ -3,6 +3,7 @@ import { isOstCard } from "@/doc/board";
 import { cardOf } from "@/discovery/ops";
 import type { AIAction } from "../surfaces/ai-actions";
 import { useDiscovery } from "./store";
+import { openBrainDump } from "./dump";
 
 /**
  * Qalam AI on a Discovery board, for the ⌘K palette and the context menu (the Screens actions,
@@ -21,6 +22,15 @@ export function boardAIActions(doc: Doc, selection: string[]): AIAction[] {
       keywords: ["design", "screens", "generate", "handoff", "solution", "build"],
       enabled: one?.kind === "solution" ? true : "Select a solution to design",
       run: () => useDiscovery.setState({ designFor: selection[0] }),
+    },
+    {
+      id: "ai:brain-dump",
+      label: "Brain dump…",
+      sub: one?.title || undefined,
+      state: "Asks first",
+      keywords: ["brain dump", "paste", "notes", "thinking", "goals", "ideas", "distribute", "place"],
+      enabled: drafting ?? true,
+      run: () => openBrainDump(),
     },
     {
       id: "ai:draft-tree",

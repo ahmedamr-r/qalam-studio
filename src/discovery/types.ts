@@ -29,11 +29,15 @@ export type AssumptionCategory = "desirability" | "viability" | "feasibility" | 
  */
 export interface OstEvidence {
   id: string;
-  /** answer: the builder's own interview words · note: written by hand · quote: from a source (documents, pages). */
-  kind: "answer" | "note" | "quote";
+  /**
+   * answer: the builder's own words answering Qalam AI (the interview, or its questions about a
+   * brain dump) · note: written by hand · quote: from a source (documents, pages) · dump: the
+   * builder's own words in a brain dump (theirs, not their customers').
+   */
+  kind: "answer" | "note" | "quote" | "dump";
   /** The words themselves: what the source says, never the model's rewording of it. */
   text: string;
-  /** The interview question the words answer. */
+  /** The question the words answer (an interview's, or `dump:<sourceId>:<question>` for a brain dump's). */
   answerId?: string;
   /** The source the words are in (a document, page or connected tool's item: the Sources tab). */
   sourceId?: string;
@@ -124,6 +128,8 @@ export interface ServesMeta {
 // Project records
 
 export interface DiscoveryCounts {
+  /** Every outcome, sub-outcomes too (records saved before outcomes nested have none). */
+  outcomes?: number;
   opportunities: number;
   solutions: number;
   tests: number;
@@ -154,7 +160,10 @@ export interface DesignHandoff {
   from: { projectId: string; projectName: string; cardId: string };
   /** The request Qalam AI plans from (short; the lineage below goes along as context). */
   prompt: string;
+  /** The nearest outcome above the solution. */
   outcome: { title: string; metric?: string };
+  /** The outcomes it's part of, from the tree's root down (a sub-outcome's goals). */
+  outcomes?: string[];
   /** The opportunities from the outcome down to the solution's own. */
   path: string[];
   solution: { title: string; description?: string };

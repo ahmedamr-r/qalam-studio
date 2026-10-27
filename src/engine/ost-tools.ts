@@ -12,6 +12,8 @@ import { makeSticky } from "@/discovery/sticky";
 import { discovery, useDiscovery } from "@/ui/discovery/store";
 import { startTitleEdit } from "@/ui/discovery/editing";
 import { openSource } from "@/ui/discovery/sources";
+import { openBrainDump } from "@/ui/discovery/dump";
+import { looksLikeDump } from "@/discovery/dump";
 import { hitPath, pickTarget } from "./hit-test";
 import type { CanvasDelegate } from "./canvas-delegate";
 import type { OstRenderInput } from "./ost-painter";
@@ -143,6 +145,12 @@ export function createOstTools(): CanvasDelegate {
   };
 
   return {
+    // Someone's thinking pasted onto the board opens the brain dump with it; a word or a link doesn't.
+    pasteText: (text) => {
+      if (!looksLikeDump(text)) return false;
+      openBrainDump({ text });
+      return true;
+    },
     pointerDown(p: PointerInfo) {
       if (p.button !== 0) return false;
       const s = studio();

@@ -68,7 +68,8 @@ export function statusOf(p: Project): string {
     const c = d?.counts;
     if (!c || !(c.opportunities + c.solutions + c.tests)) return d?.stage === "ready" ? "Empty board" : "New";
     const part = (n: number, one: string, many: string) => (n ? `${n} ${n === 1 ? one : many}` : "");
-    return [part(c.opportunities, "opportunity", "opportunities"), part(c.solutions, "solution", "solutions"), part(c.tests, "test", "tests")].filter(Boolean).join(" · ");
+    // Outcomes count once a board has more than one goal.
+    return [(c.outcomes ?? 0) > 1 ? part(c.outcomes!, "outcome", "outcomes") : "", part(c.opportunities, "opportunity", "opportunities"), part(c.solutions, "solution", "solutions"), part(c.tests, "test", "tests")].filter(Boolean).join(" · ");
   }
   if (p.type === "system") {
     const stage = p.interview?.stage ?? "brief";

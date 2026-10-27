@@ -3,8 +3,9 @@ import type { OstCard, OstEvidence } from "./types";
 /*
  * What a card rests on, decided by code from its evidence (pure). An opportunity Qalam AI drafted
  * with nothing behind it is Assumed until someone attaches words that back it: a customer quote,
- * the builder's own interview answer, or a note. Words that speak against a card are kept on it
- * and counted, but never back it.
+ * the builder's own words (an interview answer, a brain dump), or a note. The builder's words
+ * never count as a customer's. Words that speak against a card are kept on it and counted, but
+ * never back it.
  */
 
 export type EvidenceTier = "customer" | "answers" | "note" | "none";
@@ -19,7 +20,7 @@ export const againstCount = (card: Pick<OstCard, "evidence">) => card.evidence.f
 export function tierOf(card: Pick<OstCard, "evidence">): EvidenceTier {
   const kinds = new Set(backing(card).map((e) => e.kind));
   if (kinds.has("quote")) return "customer";
-  if (kinds.has("answer")) return "answers";
+  if (kinds.has("answer") || kinds.has("dump")) return "answers";
   if (kinds.has("note")) return "note";
   return "none";
 }
@@ -29,7 +30,7 @@ export const isAssumed = (card: Pick<OstCard, "kind" | "createdBy" | "evidence">
 
 /** A solution Qalam AI came up with (not one the builder named). */
 export const isAIIdea = (card: Pick<OstCard, "kind" | "createdBy" | "evidence">) =>
-  card.kind === "solution" && card.createdBy === "ai" && !backing(card).some((e) => e.kind === "answer" || e.kind === "quote");
+  card.kind === "solution" && card.createdBy === "ai" && !backing(card).some((e) => e.kind === "answer" || e.kind === "quote" || e.kind === "dump");
 
 /** The evidence chip's words on a card ("" when a card has nothing to say about it). */
 export function evidenceLabel(card: Pick<OstCard, "kind" | "createdBy" | "evidence">): string {
@@ -41,6 +42,7 @@ export function evidenceLabel(card: Pick<OstCard, "kind" | "createdBy" | "eviden
   const quotes = n("quote");
   if (quotes) return `${quotes} ${quotes === 1 ? "quote" : "quotes"}${tail}`;
   if (n("answer")) return `From your answers${tail}`;
+  if (n("dump")) return `From your brain dump${tail}`;
   if (n("note")) return `${n("note") === 1 ? "Your note" : `${n("note")} notes`}${tail}`;
   if (against) return `${against} against`;
   return card.kind === "opportunity" ? "No evidence yet" : "";

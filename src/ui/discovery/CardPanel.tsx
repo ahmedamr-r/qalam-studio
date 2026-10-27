@@ -7,7 +7,8 @@ import { newId } from "@/doc/factory";
 import { isOstCard } from "@/doc/board";
 import { runCommand } from "@/commands/registry";
 import { cardOf, kindsFor, setKindIn, setStage, setTargetIn, updateCardIn } from "@/discovery/ops";
-import { ASSUMPTION_CATEGORIES, ASSUMPTION_HINT, ASSUMPTION_LABEL, KIND_LABEL, STAGES } from "@/discovery/kinds";
+import { ASSUMPTION_CATEGORIES, ASSUMPTION_HINT, ASSUMPTION_LABEL, KIND_LABEL, STAGES, SUB_OUTCOME_LABEL } from "@/discovery/kinds";
+import { kindLabel } from "@/discovery/tree";
 import { evidenceLabel, isAIIdea, isAssumed } from "@/discovery/evidence";
 import { feedback } from "@/commands/feedback";
 import type { AssumptionCategory, OstCard, OstEvidence, OstStage } from "@/discovery/types";
@@ -18,7 +19,7 @@ import { useDiscovery } from "./store";
 import KindMark from "./KindMark";
 import { saveThenGo } from "./links";
 import { openSource, useSources } from "./sources";
-import { citation } from "@/discovery/sources";
+import { citation, fromSource } from "@/discovery/sources";
 
 const ICON = { size: 12, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 
@@ -55,12 +56,15 @@ function ManyCards({ ids, cards }: { ids: string[]; cards: OstCard[] }) {
 function OneCard({ id, card }: { id: string; card: OstCard }) {
   const assumed = isAssumed(card);
   const kinds = useStudio(useShallow((s) => kindsFor(s.doc, id)));
+  const label = useStudio((s) => kindLabel(s.doc, id));
+  // Under an outcome, an outcome is a sub-outcome.
+  const underOutcome = useStudio((s) => cardOf(s.doc, s.doc.nodes[id]?.parentId)?.kind === "outcome");
   return (
     <>
       <section className={r.section}>
         <div className="flex h-[32px] items-center gap-[8px]">
           <KindMark kind={card.kind} />
-          <h3 className={r.sectionTitle}>{KIND_LABEL[card.kind]}</h3>
+          <h3 className={r.sectionTitle}>{label}</h3>
           <span className="flex-1" />
           {card.createdBy === "ai" && <Tag tone="ai">Drafted</Tag>}
         </div>
@@ -68,7 +72,7 @@ function OneCard({ id, card }: { id: string; card: OstCard }) {
           <CommitArea ariaLabel="Title" value={card.title} placeholder="Name it" onCommit={(v) => edit(id, (c) => void (c.title = v.replace(/\s*\n\s*/g, " ").trim()))} />
           {kinds.length > 1 && (
             <Field label="Kind">
-              <Segmented value={card.kind} options={kinds.map((k) => ({ value: k, label: KIND_LABEL[k] }))} onChange={(k) => studio().mutate((d) => setKindIn(d, id, k))} />
+              <Segmented value={card.kind} options={kinds.map((k) => ({ value: k, label: k === "outcome" && underOutcome ? SUB_OUTCOME_LABEL : KIND_LABEL[k] }))} onChange={(k) => studio().mutate((d) => setKindIn(d, id, k))} />
             </Field>
           )}
           <Field label="Stage">
@@ -96,7 +100,7 @@ function OneCard({ id, card }: { id: string; card: OstCard }) {
         <CommitArea ariaLabel="Description" value={card.description ?? ""} placeholder="What it means, why it matters" rows={3} onCommit={(v) => edit(id, (c) => (v.trim() ? (c.description = v.trim()) : delete c.description))} />
       </Section>
       {card.kind === "outcome" && <MetricSection id={id} card={card} />}
-      {(card.kind === "opportunity" || card.kind === "solution") && <EvidenceSection id={id} card={card} />}
+      {(card.kind === "opportunity" || card.kind === "solution" || (card.kind === "outcome" && card.evidence.length > 0)) && <EvidenceSection id={id} card={card} />}
       {card.kind === "solution" && <AssumptionsSection id={id} card={card} />}
       {card.kind === "solution" && <DesignsSection id={id} card={card} />}
       {card.kind === "test" && <TestSection id={id} card={card} />}
@@ -138,7 +142,7 @@ function MetricSection({ id, card }: { id: string; card: OstCard }) {
   );
 }
 
-const SOURCE: Record<OstEvidence["kind"], string> = { answer: "From your answers", note: "Your note", quote: "Quote" };
+const SOURCE: Record<OstEvidence["kind"], string> = { answer: "From your answers", note: "Your note", quote: "Quote", dump: "From your brain dump" };
 
 function EvidenceSection({ id, card }: { id: string; card: OstCard }) {
   const [note, setNote] = useState("");
@@ -165,7 +169,7 @@ function EvidenceSection({ id, card }: { id: string; card: OstCard }) {
             <Quote size={12} className="mt-[2px] shrink-0 text-fg-subtle" />
             <span className="leading-[18px]">{e.text}</span>
           </blockquote>
-          <figcaption className="pl-[18px] text-micro text-fg-subtle">{e.kind === "quote" ? <QuoteCite e={e} /> : SOURCE[e.kind]}</figcaption>
+          <figcaption className="pl-[18px] text-micro text-fg-subtle">{fromSource(e) && e.sourceId ? <SourceCite e={e} /> : SOURCE[e.kind]}</figcaption>
           <span className="absolute top-[4px] right-[4px] hidden group-hover:block">
             <IconBtn size="sm" label="Remove" onClick={() => edit(id, (c) => void (c.evidence = c.evidence.filter((x) => x.id !== e.id)))}>
               <X {...ICON} />
@@ -193,10 +197,10 @@ function EvidenceSection({ id, card }: { id: string; card: OstCard }) {
   );
 }
 
-/** Where a quote is from (its source, page, speaker), linking to it highlighted in the Sources tab. */
-function QuoteCite({ e }: { e: OstEvidence }) {
+/** Where words are from (a source, its page, the speaker; or the builder's brain dump), linking to them highlighted in the Sources tab. */
+function SourceCite({ e }: { e: OstEvidence }) {
   const source = useSources((s) => s.list.find((x) => x.id === e.sourceId));
-  const label = citation(e, source?.title) || "Quote";
+  const label = e.kind === "dump" ? SOURCE.dump : citation(e, source?.title) || "Quote";
   const against = e.stance === "against" && <span className="font-medium text-danger">Against · </span>;
   if (!source)
     return (

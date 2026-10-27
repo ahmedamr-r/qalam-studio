@@ -116,10 +116,12 @@ export interface CritiqueOutcome {
   fixedIssues?: number;
 }
 
-/** Discovery: Qalam AI drafted a board's tree, or (in a Screens project) a solution arrived to design. */
+/** Discovery: Qalam AI drafted a board's tree or read a brain dump, or (in a Screens project) a solution arrived to design. */
 export interface DiscoveryOutcome {
   kind: "discovery";
-  action: "draft" | "handoff";
+  action: "draft" | "handoff" | "dump";
+  /** dump: the brain dump's source (how it's going lives there). */
+  sourceId?: string;
   /** draft: Qalam AI's words back to the builder. */
   summary?: string;
   counts?: { opportunities: number; solutions: number; assumed: number };

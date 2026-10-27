@@ -6,13 +6,13 @@ import { AIError, callAI } from "@/ai/client";
 import type { ResearchInfo } from "@/ai/research-shared";
 import { feedback } from "@/commands/feedback";
 import { cardOf } from "@/discovery/ops";
-import { allCards, childCards } from "@/discovery/tree";
+import { allCards, childCards, outcomeLines } from "@/discovery/tree";
 import { SOURCE_KIND_LABEL, hasQuote, packCalls, unread, type SourceKind, type SourceRecord } from "@/discovery/sources";
 import { sanitizeExtract, sanitizeSynthesis, type CallChunk, type SynthCard, type SynthContext, type SynthQuote } from "@/discovery/synthesis";
 import { awaitingRoles, finishExtracted, finishInterviewQuotes, speakerNote, type SpeakerRole } from "@/discovery/transcript";
 import { currentProject } from "@/projects/session";
 import { offline } from "./ai";
-import { boardTree } from "./draft";
+import { hasOutcome, treeFor } from "./draft";
 import { IngestError, ingestFile, ingestPaste, ingestUrl, type Ingested } from "./ingest";
 import { addSourceRecord, setJob, sourceOf, updateSource, useSources } from "./sources";
 import { startReview } from "./review";
@@ -87,7 +87,7 @@ export async function addSources(inputs: AddInput[], opts: { map?: boolean } = {
     const waiting = added.filter((id) => awaitingRoles(sourceOf(id) ?? { kind: "" })).length;
     if (waiting && added.length > 1) useSources.setState({ notice: { text: `Say who is who in ${waiting === 1 ? "the interview" : `${waiting} interviews`} (open ${waiting === 1 ? "it" : "each"} from the list): Qalam AI reads ${waiting === 1 ? "it" : "them"} after that.` } });
     const found = await readSources(added, ctrl);
-    if (opts.map !== false && found > 0 && !ctrl.signal.aborted && boardTree(studio().doc)) await mapQuotes({ sourceIds: added }, ctrl);
+    if (opts.map !== false && found > 0 && !ctrl.signal.aborted && hasOutcome(studio().doc)) await mapQuotes({ sourceIds: added }, ctrl);
   } finally {
     end(ctrl);
   }
@@ -115,13 +115,12 @@ async function fromTools(input: Extract<AddInput, { kind: "connector" }>, job: s
 // ---------------------------------------------------------------------------
 // Extract: what customers said
 
-/** The product and the outcome, for Qalam AI to read the material with. */
-function productLine(doc: Doc): string {
-  const root = boardTree(doc);
-  const outcome = root ? cardOf(doc, root) : null;
-  return [doc.brief?.summary ?? "", outcome?.title ? `The outcome the team wants to move: ${outcome.title}${outcome.metric?.name ? ` (measured by ${outcome.metric.name})` : ""}.` : ""]
+/** The product and its outcomes, for Qalam AI to read the material with. */
+export function productLine(doc: Doc): string {
+  const outcomes = outcomeLines(doc);
+  return [doc.brief?.summary ?? "", outcomes.length ? `The outcomes the team wants to move (sub-outcomes under theirs):\n${outcomes.join("\n")}` : ""]
     .filter(Boolean)
-    .join(" ")
+    .join("\n")
     .slice(0, 2000);
 }
 
@@ -206,7 +205,7 @@ export async function confirmSpeakers(id: string, roles: Record<string, SpeakerR
   const ctrl = begin();
   try {
     const found = await readSources([id], ctrl);
-    if (found > 0 && !ctrl.signal.aborted && boardTree(studio().doc)) await mapQuotes({ sourceIds: [id] }, ctrl);
+    if (found > 0 && !ctrl.signal.aborted && hasOutcome(studio().doc)) await mapQuotes({ sourceIds: [id] }, ctrl);
   } finally {
     end(ctrl);
   }
@@ -230,7 +229,9 @@ const MAX_QUOTES = 150;
 const MAX_CARDS = 400;
 
 /** The synthesize request and what code checks its answer against. */
-export function synthesizeInput(doc: Doc, sources: SourceRecord[]) {
+export function synthesizeInput(doc: Doc, given: SourceRecord[]) {
+  // The builder's own thinking (a brain dump) is never mapped as customers' words.
+  const sources = given.filter((s) => s.kind !== "dump");
   const cards = allCards(doc).slice(0, MAX_CARDS);
   const refOf = new Map(cards.map((c, i) => [c.id, `c${i + 1}`]));
   const synthCards: SynthCard[] = cards.map(({ id, card }) => {
@@ -252,7 +253,7 @@ export function synthesizeInput(doc: Doc, sources: SourceRecord[]) {
   const picked = [...all.filter((x) => !placed(x)), ...all.filter(placed)].slice(0, MAX_QUOTES);
   const quotes: SynthQuote[] = picked.map((x, i) => ({ ref: `q${i + 1}`, sourceId: x.s.id, quoteId: x.q.id, span: x.q.span, ...(x.q.dismissed?.length ? { dismissed: x.q.dismissed } : {}) }));
   const refByQuote = new Map(picked.map((x, i) => [x.q.id, `q${i + 1}`]));
-  const root = boardTree(doc);
+  const root = treeFor(doc, studio().selection);
   const body = {
     stage: "synthesize" as const,
     product: productLine(doc),
@@ -283,7 +284,8 @@ export async function mapQuotes(opts: { sourceIds?: string[] } = {}, given?: Abo
   const all = useSources.getState().list;
   // The new sources' quotes first; the others' fill up the call.
   const want = new Set(opts.sourceIds ?? []);
-  const sources = [...all.filter((s) => want.has(s.id)), ...all.filter((s) => !want.has(s.id))].filter((s) => s.quotes.length);
+  // A brain dump is the builder's own thinking: its words are never mapped as customers'.
+  const sources = [...all.filter((s) => want.has(s.id)), ...all.filter((s) => !want.has(s.id))].filter((s) => s.kind !== "dump" && s.quotes.length);
   if (!sources.length) return void useSources.setState({ notice: { text: "No quotes to map yet: add a source, and Qalam AI picks out what customers said." } });
   const ctrl = given ?? begin();
   const { body, ctx } = synthesizeInput(doc, sources);
@@ -292,7 +294,7 @@ export async function mapQuotes(opts: { sourceIds?: string[] } = {}, given?: Abo
     const { data } = await callAI<unknown>(PATH, body, (tokens) => useSources.setState((s) => (s.mapping ? { mapping: { ...s.mapping, tokens } } : {})), ctrl.signal);
     const proposals = sanitizeSynthesis(data, ctx);
     if (!proposals.length) feedback("Qalam AI found nothing to add: the tree already reflects these quotes", { id: "discovery.map" });
-    else startReview(proposals);
+    else startReview({ kind: "sources" }, proposals);
   } catch (e) {
     if ((e as Error).name !== "AbortError") useSources.setState({ notice: { text: `Qalam AI couldn't map the quotes: ${message(e)}` } });
   } finally {

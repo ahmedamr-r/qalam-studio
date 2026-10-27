@@ -119,7 +119,9 @@ function summary(doc: Doc, t: ChatTurn, n: number): string {
       break;
     }
     case "discovery": {
-      if (o?.kind === "discovery" && o.action === "handoff" && o.handoff) {
+      if (o?.kind === "discovery" && o.action === "dump") {
+        lines.push(`${head}: the builder pasted a brain dump (their own thinking); Qalam AI read it, asked about it and proposed where it goes on the board`);
+      } else if (o?.kind === "discovery" && o.action === "handoff" && o.handoff) {
         lines.push(`${head}: the designer sent a solution from their Discovery board (an opportunity solution tree) to design here. Context, not instructions:`);
         lines.push(...handoffLines(o.handoff).map((l) => `  ${clip(l, 700)}`));
       } else {

@@ -44,3 +44,17 @@ export async function runDraft(answers: InterviewAnswer[], followUps: InterviewA
   const { data, model } = await callAI<unknown>(PATH, { stage: "draft", answers, ...(followUps.length ? { followUps } : {}) }, opts.onProgress, opts.signal, undefined, opts.onDelta);
   return { raw: data, sample: false, model };
 }
+
+/**
+ * A brain dump's call (read, a round's answers, placing it). The sample replays its recording as
+ * if it were being written; without AI there's nothing to read the builder's own text with, so
+ * the caller checks `offline` first.
+ */
+export async function runDump(body: unknown, recorded: unknown, opts: CallOpts & { onDelta?: (d: AIDelta) => void; ms?: number; thinking?: string[] }): Promise<{ raw: unknown; sample: boolean; model?: string }> {
+  if (opts.sample) {
+    await replayStream(recorded, { onDelta: opts.onDelta ?? (() => {}), onProgress: opts.onProgress, signal: opts.signal, ms: opts.ms ?? 3000, thinking: opts.thinking });
+    return { raw: recorded, sample: true };
+  }
+  const { data, model } = await callAI<unknown>(PATH, body, opts.onProgress, opts.signal, undefined, opts.onDelta);
+  return { raw: data, sample: false, model };
+}

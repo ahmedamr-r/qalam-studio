@@ -3,8 +3,8 @@ import type { Doc } from "@/doc/schema";
 import { type CardNode, isOstCard } from "@/doc/board";
 import type { Pt } from "@/doc/geometry";
 import { CARD, cardBox, placeholderTitle, titleProps } from "@/discovery/metrics";
-import { foldToggle, orientationOf } from "@/discovery/tree";
-import { KIND_LABEL, stageLabel } from "@/discovery/kinds";
+import { foldToggle, isSubOutcome, kindLabel, orientationOf } from "@/discovery/tree";
+import { stageLabel } from "@/discovery/kinds";
 import { isAssumed } from "@/discovery/evidence";
 import { NUQTA_POLYGON, PENCIL_POLYGONS } from "@/ui/brand/pencil";
 import type { OstCard, OstKind } from "@/discovery/types";
@@ -354,8 +354,9 @@ export class OstPainter {
     this.fill.setColor(this.col(st.bg));
     canvas.drawRRect(this.rrect(sx, CARD.pad - 1, sw, 18, 5), this.fill);
     canvas.drawParagraph(sp, sx + 6, CARD.pad - 1 + (18 - sp.getHeight()) / 2);
-    this.kindMark(canvas, card.kind, CARD.pad + 6, CARD.pad + CARD.kindRow / 2, card.kind === "outcome" ? p.ink : p.muted);
-    const kp = this.label(KIND_LABEL[card.kind].toUpperCase(), p.muted, 10.5, 600, Math.max(10, sx - CARD.pad - 24), 0.6);
+    // A sub-outcome's mark is muted, so the goal above it reads first.
+    this.kindMark(canvas, card.kind, CARD.pad + 6, CARD.pad + CARD.kindRow / 2, card.kind === "outcome" && !isSubOutcome(doc, n.id) ? p.ink : p.muted);
+    const kp = this.label(kindLabel(doc, n.id).toUpperCase(), p.muted, 10.5, 600, Math.max(10, sx - CARD.pad - 24), 0.6);
     canvas.drawParagraph(kp, CARD.pad + 18, CARD.pad + (CARD.kindRow - kp.getHeight()) / 2);
 
     // Title (not while it's being typed over).

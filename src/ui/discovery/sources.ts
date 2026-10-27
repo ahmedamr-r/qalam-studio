@@ -3,12 +3,11 @@ import { studio } from "@/doc/store";
 import { feedback } from "@/commands/feedback";
 import { sourcesDb } from "@/discovery/db";
 import type { SourceKind, SourceRecord } from "@/discovery/sources";
-import type { Proposal } from "@/discovery/synthesis";
 
 /*
  * A Discovery board's sources in the page: the list (kept in IndexedDB, see discovery/db.ts), what
- * is being read or quoted right now, the source open in the Sources tab, and Qalam AI's proposals
- * for the tree while they wait to be accepted or discarded.
+ * is being read or quoted right now, and the source open in the Sources tab (Qalam AI's proposals
+ * waiting for review are review.ts's).
  */
 
 export interface SourceJob {
@@ -33,8 +32,6 @@ export interface SourcesUI {
   adding: boolean;
   /** Qalam AI is mapping quotes to the tree. */
   mapping: { started: number; tokens: number } | null;
-  /** Qalam AI's proposals for the tree, waiting to be accepted or discarded (a ghost over the tree). */
-  proposals: Proposal[];
   /** Something the last run has to say ("Read 3 of 5 parts…"), with what to do about it. */
   notice: { text: string; action?: "read" } | null;
   /** Something is being read, quoted or mapped (Stop stops all of it). */
@@ -50,7 +47,6 @@ export const useSources = create<SourcesUI>(() => ({
   open: null,
   adding: false,
   mapping: null,
-  proposals: [],
   notice: null,
   busy: false,
 }));
@@ -95,7 +91,6 @@ export async function removeSource(id: string) {
   useSources.setState((st) => ({
     list: st.list.filter((x) => x.id !== id),
     open: st.open?.id === id ? null : st.open,
-    proposals: st.proposals.filter((p) => (p.kind === "opportunity" ? p.quotes.every((q) => q.sourceId !== id) : p.quote.sourceId !== id)),
   }));
   await sourcesDb.remove(s.projectId, id).catch(() => {});
 }

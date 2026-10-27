@@ -6,7 +6,11 @@ import { addCardIn, makeCardNode, newCard } from "./ops";
 import { layoutDocTrees } from "./pass";
 import { isAssumed } from "./evidence";
 import { quoteEvidence, type SourceQuote } from "./sources";
-import { applyProposal, proposalDoc, sanitizeExtract, sanitizeSynthesis, type CallChunk, type EvidenceOf, type Proposal, type SynthCard, type SynthContext, type SynthQuote } from "./synthesis";
+import { sanitizeExtract, sanitizeSynthesis, type CallChunk, type SynthCard, type SynthContext, type SynthQuote } from "./synthesis";
+import { applyProposal, proposalDoc, type EvidenceOf, type Proposal } from "./proposals";
+
+/** A proposal's quote, when it attaches one. */
+const quoteOf = (p: Proposal) => (p.kind === "attach" || p.kind === "against" ? p.quote : null);
 
 // ---------------------------------------------------------------------------
 // Extract
@@ -122,7 +126,7 @@ describe("sanitizeSynthesis", () => {
       },
       ctx(),
     );
-    expect(out.map((p) => (p.kind === "opportunity" ? p.title : [p.kind, p.cardId, p.quote.quoteId, p.why]))).toEqual([
+    expect(out.map((p) => (p.kind === "card" ? p.card.title : [p.kind, p.cardId, quoteOf(p)!.quoteId, p.why]))).toEqual([
       ["attach", "id-c2", "quote-q1", "timing"],
       ["attach", "id-c3", "quote-q2", "asks for it"],
     ]);
@@ -152,14 +156,14 @@ describe("sanitizeSynthesis", () => {
       },
       ctx(),
     );
-    const made = out.filter((p): p is Extract<Proposal, { kind: "opportunity" }> => p.kind === "opportunity");
-    expect(made.map((p) => [p.title, p.parentId, p.quotes.map((q) => q.quoteId)])).toEqual([
+    const made = out.filter((p): p is Extract<Proposal, { kind: "card" }> => p.kind === "card");
+    expect(made.map((p) => [p.card.title, p.parentId, p.backing.quotes.map((q) => q.quoteId)])).toEqual([
       ["I don't trust the substitutions", "id-c1", ["quote-q2"]],
       ["Under a solution", "id-c1", ["quote-q1"]],
       ["Too deep for the tree", "id-c5", ["quote-q3"]],
       ["Somewhere unknown", "id-c1", ["quote-q3"]],
     ]);
-    expect(made[0].description).toBe("Swaps arrive unannounced.");
+    expect(made[0].card).toMatchObject({ kind: "opportunity", createdBy: "ai", description: "Swaps arrive unannounced." });
     expect(new Set(made.map((p) => p.cardId)).size).toBe(4);
   });
 
@@ -175,7 +179,7 @@ describe("sanitizeSynthesis", () => {
       },
       ctx(),
     );
-    expect(out.map((p) => (p.kind === "opportunity" ? "" : `${p.kind}:${p.cardId}:${p.quote.quoteId}`))).toEqual(["attach:id-c2:quote-q1", "against:id-c4:quote-q3"]);
+    expect(out.map((p) => (p.kind === "card" ? "" : `${p.kind}:${p.cardId}:${quoteOf(p)!.quoteId}`))).toEqual(["attach:id-c2:quote-q1", "against:id-c4:quote-q3"]);
   });
 
   it("returns nothing for output that isn't what was asked for", () => {
@@ -207,9 +211,9 @@ describe("proposals", () => {
     const b = board();
     const proposals: Proposal[] = [
       { id: "p1", kind: "attach", cardId: b.opp, quote: { sourceId: "s", quoteId: "q1" }, why: "" },
-      { id: "p2", kind: "opportunity", cardId: "new-card", parentId: b.outcome, title: "Prices confuse me", quotes: [{ sourceId: "s", quoteId: "q1" }], why: "" },
+      { id: "p2", kind: "card", cardId: "new-card", parentId: b.outcome, card: newCard("opportunity", { title: "Prices confuse me", createdBy: "ai" }), backing: { quotes: [{ sourceId: "s", quoteId: "q1" }], words: [] }, why: "" },
     ];
-    const g = proposalDoc(b.doc, b.outcome, proposals, evidenceOf)!;
+    const g = proposalDoc(b.doc, [b.outcome], proposals, evidenceOf)!;
     expect(g.roots).toEqual([b.outcome]);
     // Untouched cards keep their data object: drawn as they are.
     expect(g.nodes[b.sol].meta.ost).toBe(b.doc.nodes[b.sol].meta.ost);
@@ -240,7 +244,7 @@ describe("proposals", () => {
       first = applyProposal(d, attach, evidenceOf);
       second = applyProposal(d, attach, evidenceOf);
       gone = applyProposal(d, { ...attach, quote: { sourceId: "s", quoteId: "deleted" } }, evidenceOf);
-      under = applyProposal(d, { id: "p3", kind: "opportunity", cardId: "x", parentId: b.sol, title: "Under a solution", quotes: [attach.quote], why: "" }, evidenceOf);
+      under = applyProposal(d, { id: "p3", kind: "card", cardId: "x", parentId: b.sol, card: newCard("opportunity", { title: "Under a solution" }), backing: { quotes: [attach.quote], words: [] }, why: "" }, evidenceOf);
     });
     expect([first, second, gone, under]).toEqual([true, false, false, false]);
     expect(after.nodes[b.opp].meta.ost!.evidence).toHaveLength(1);

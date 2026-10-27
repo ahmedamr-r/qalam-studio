@@ -4,7 +4,7 @@ import { studio } from "@/doc/store";
 import { isNote, isOstCard, treeRootOf } from "@/doc/board";
 import { worldBounds } from "@/doc/geometry";
 import { deleteNodes, topLevelOf } from "@/doc/ops";
-import { addChild, addSibling, cardOf, deleteKeepIn, reorderCardIn, setStage, setTargetIn, toggleCollapsed, updateCardIn } from "@/discovery/ops";
+import { addCardIn, addChild, addSibling, cardOf, deleteKeepIn, makeCardNode, newCard, reorderCardIn, setStage, setTargetIn, toggleCollapsed, updateCardIn } from "@/discovery/ops";
 import { neighbor, type Dir } from "@/discovery/navigate";
 import { allCards } from "@/discovery/tree";
 import { isAssumed } from "@/discovery/evidence";
@@ -16,6 +16,8 @@ import { startTitleEdit } from "./editing";
 import { useSources } from "./sources";
 import { mapQuotes } from "./import";
 import { acceptAll, discardAll, reviewing } from "./review";
+import { placeFor } from "./draft";
+import { openBrainDump } from "./dump";
 
 /*
  * Discovery's commands, registered when a Discovery board boots (a page holds one project, so
@@ -396,9 +398,30 @@ export function registerDiscoveryCommands() {
       enabled: () => (reviewing() ? true : "Nothing to review"),
       run: discardAll,
     },
+    { ...addKind("outcome"), label: "Add a sub-outcome", keywords: ["add", "new", "outcome", "sub-outcome", "goal", "sub-goal"] },
     addKind("opportunity"),
     addKind("solution"),
     addKind("test"),
+    {
+      id: "discovery.brain-dump",
+      label: "Brain dump…",
+      category: "discovery",
+      keywords: ["paste", "notes", "thinking", "goals", "ideas", "distribute", "qalam ai"],
+      enabled: () => (useDiscovery.getState().drafting ? "Qalam AI is drafting the tree" : true),
+      run: () => openBrainDump(),
+    },
+    {
+      id: "discovery.new-tree",
+      label: "New outcome tree",
+      category: "discovery",
+      keywords: ["add", "new", "outcome", "goal", "tree", "root"],
+      run: () => {
+        const node = makeCardNode(newCard("outcome"), placeFor(s().doc, null));
+        s().beginTx();
+        s().mutate((d) => addCardIn(d, node, null));
+        created(node.id, () => s().cancelTx(), "");
+      },
+    },
     ...stageCommands(),
     // The layers panel is the tree's outline here, and Library holds the product's context.
     { ...getCommand("panels.layers")!, label: "Show Outline" },
