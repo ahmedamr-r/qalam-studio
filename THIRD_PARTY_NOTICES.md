@@ -4,13 +4,14 @@ Qalam Studio is licensed under the Apache License 2.0 (see [LICENSE](LICENSE)). 
 
 Versions are the ones `pnpm install` installs from `pnpm-lock.yaml`. Each license and repository was read from the package's own `package.json` and license file in `node_modules`.
 
-## Runtime dependencies
+## Bundled into the app
 
-The `dependencies` in `package.json`:
+`package.json` lists only Electron under `dependencies`. Vite bundles these into the window and the core:
 
 | Package | Version | License | Repository |
 | --- | --- | --- | --- |
 | @anthropic-ai/sdk | 0.128.0 | MIT | https://github.com/anthropics/anthropic-sdk-typescript |
+| @assistant-ui/react | 0.15.28 | MIT | https://github.com/assistant-ui/assistant-ui |
 | @radix-ui/react-popover | 1.1.23 | MIT | https://github.com/radix-ui/primitives |
 | @radix-ui/react-tabs | 1.1.21 | MIT | https://github.com/radix-ui/primitives |
 | @radix-ui/react-tooltip | 1.2.16 | MIT | https://github.com/radix-ui/primitives |
@@ -24,13 +25,11 @@ The `dependencies` in `package.json`:
 | mammoth | 1.13.0 | BSD-2-Clause | https://github.com/mwilliamson/mammoth.js |
 | motion | 13.4.6 | MIT | https://github.com/motiondivision/motion |
 | nanoid | 6.0.1 | MIT | https://github.com/ai/nanoid |
-| next | 16.3.6 | MIT | https://github.com/vercel/next.js |
 | pdfjs-dist | 6.3.289 | Apache-2.0 | https://github.com/mozilla/pdf.js |
 | postcss | 8.5.28 | MIT | https://github.com/postcss/postcss |
 | react | 19.3.0 | MIT | https://github.com/react/react |
 | react-colorful | 5.8.1 | MIT | https://github.com/omgovich/react-colorful |
 | react-dom | 19.3.0 | MIT | https://github.com/react/react |
-| server-only | 0.0.1 | MIT | https://github.com/facebook/react (no `repository` field; taken from its `bugs` field) |
 | sucrase | 3.35.1 | MIT | https://github.com/alangpierce/sucrase |
 | yoga-layout | 3.2.1 | MIT | https://github.com/facebook/yoga |
 | zod | 4.6.5 | MIT | https://github.com/colinhacks/zod |
@@ -39,6 +38,7 @@ The `dependencies` in `package.json`:
 Notes:
 
 - The `lucide` and `lucide-react` license is ISC, with an MIT notice (Copyright (c) 2013-present Cole Bemis) for the icons that come from the Feather project. The list of those icons is in the package's `LICENSE` file.
+- `@assistant-ui/react` brings in `@assistant-ui/core` 0.3.27, `@assistant-ui/store` 0.3.19, `@assistant-ui/tap` 0.9.23, `assistant-stream` 0.3.50, `assistant-cloud` 0.2.7 and `safe-content-frame` 0.0.34 (all MIT, from the same repository), plus `radix-ui` 1.8.1 (MIT), `react-textarea-autosize` 8.5.9 (MIT) and `secure-json-parse` 4.1.1 (BSD-3-Clause). `pnpm.overrides` in `package.json` pins them. Qalam uses only its unstyled primitives and never calls assistant-ui's cloud.
 - `pdfjs-dist` also ships license files for its `wasm/` image decoders (`LICENSE_JBIG2`, `LICENSE_OPENJPEG`, `LICENSE_QCMS` and the matching `LICENSE_PDFJS_*` files).
 - These packages have dependencies of their own, each under its own license. `pnpm licenses list --prod` prints the full list.
 - The `devDependencies` (TypeScript, Vitest, Tailwind CSS, type packages and the others in `package.json`) are build and test tools. Each is under its own license.
