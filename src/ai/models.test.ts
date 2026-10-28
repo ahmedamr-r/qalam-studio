@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
-import { isCallKind, modelFamily, modelFor, supportsFallback, TIER_OF, tierOf, type CallKind, type Tier } from "./models";
+import { isCallKind, modelFamily, modelFor, READS_THAT_HOLD, supportsFallback, TIER_OF, tierFor, tierOf, type CallKind, type Tier } from "./models";
 import { extractCall, synthesizeCall } from "./discovery";
 import { topicsCall } from "./topics";
 import { setupCall } from "./setup";
@@ -9,8 +9,8 @@ import { jobsCall } from "./jobs";
 import { bearingsCall } from "./goals";
 import { readerCall } from "./code";
 
-const api = { backend: "api" as const, mix: "balanced" as const, env: {} };
-const cli = { backend: "cli" as const, mix: "balanced" as const, env: {} };
+const api = { backend: "api" as const, env: {} };
+const cli = { backend: "cli" as const, env: {} };
 
 describe("the model each call runs on", () => {
   it("reads on Sonnet, decides on Opus and fetches on Haiku, by default on each engine", () => {
@@ -19,10 +19,13 @@ describe("the model each call runs on", () => {
     expect((["decide", "read", "fetch"] as Tier[]).map((t) => modelFor(t, cli))).toEqual(["claude-opus-5-5", "sonnet", "haiku"]);
   });
 
-  it('runs reads on the decide model with "best", and leaves fetch where it is', () => {
-    expect(modelFor("read", { ...api, mix: "best" })).toBe("claude-opus-5-5");
-    expect(modelFor("read", { ...cli, mix: "best", env: { CLAUDE_MODEL: "claude-fable-5-1" } })).toBe("claude-fable-5-1");
-    expect(modelFor("fetch", { ...api, mix: "best" })).toBe("claude-haiku-5-5");
+  it('sends every read to the read tier with "balanced", and with "best" only the reads that held there in the eval', () => {
+    const reads = (Object.keys(TIER_OF) as CallKind[]).filter((k) => TIER_OF[k] === "read");
+    expect(reads.map((k) => tierFor(k, "balanced"))).toEqual(reads.map(() => "read"));
+    expect(Object.fromEntries(reads.map((k) => [k, tierFor(k, "best")]))).toEqual({ extract: "decide", topics: "decide", "setup-shape": "read", claims: "read", reader: "decide", research: "decide" });
+    expect([...READS_THAT_HOLD].every((k) => TIER_OF[k] === "read")).toBe(true);
+    // Deciding and fetching stay where they are with either mix; a call with no kind decides.
+    for (const mix of ["balanced", "best"] as const) expect([tierFor("synthesize", mix), tierFor("connector", mix), tierFor(undefined, mix)]).toEqual(["decide", "fetch", "decide"]);
   });
 
   it("lets the environment win: the tier's own variable, then the older ones, in their order", () => {
@@ -30,7 +33,7 @@ describe("the model each call runs on", () => {
     expect(modelFor("decide", { ...api, env: { DISCOVERY_MODEL: "b", GENERATE_MODEL: "c", CLAUDE_MODEL: "d" } })).toBe("b");
     expect(modelFor("decide", { ...api, env: { GENERATE_MODEL: "c", CLAUDE_MODEL: "d" } })).toBe("c");
     expect(modelFor("decide", { ...cli, env: { CLAUDE_MODEL: "d" } })).toBe("d");
-    expect(modelFor("read", { ...api, mix: "best", env: { QALAM_MODEL_READ: "r", DISCOVERY_MODEL: "b" } })).toBe("r");
+    expect(modelFor("read", { ...api, env: { QALAM_MODEL_READ: "r", DISCOVERY_MODEL: "b" } })).toBe("r");
     // The older variables set decide, not a balanced read.
     expect(modelFor("read", { ...api, env: { DISCOVERY_MODEL: "b" } })).toBe("claude-sonnet-5-5");
     expect(modelFor("fetch", { ...cli, env: { CONNECTOR_MODEL: "sonnet" } })).toBe("sonnet");

@@ -3,8 +3,8 @@ import { orOnModelError, streamViaCli } from "./cli";
 import { runResearch, type ResearchRequest } from "./research";
 import { researchBlock } from "./research-shared";
 import { deltaBatcher } from "./deltas";
-import { apiKey, backend, modelOf, readModelFailed, tierModel } from "./engine";
-import { supportsFallback, tierOf, type CallKind } from "./models";
+import { apiKey, backend, modelOf, readModelFailed, tierModel, tierNow } from "./engine";
+import { supportsFallback, type CallKind } from "./models";
 import { fromApiUsage, reportUsage } from "./usage";
 
 /**
@@ -85,7 +85,7 @@ export function streamStructured(opts: CallOpts): Response {
   if (backend() === "cli") {
     // A read call Claude Code can't run on its model here runs once more on the decide model, and so do later ones.
     const decide = tierModel("decide");
-    if (opts.model || tierOf(opts.kind) !== "read" || model === decide) return streamViaCli(opts, model);
+    if (opts.model || tierNow(opts.kind) !== "read" || model === decide) return streamViaCli(opts, model);
     return orOnModelError(streamViaCli(opts, model), () => {
       console.warn(`[qalam] Claude Code can't use ${model} here; read calls run on ${decide} from now on`);
       readModelFailed(model);

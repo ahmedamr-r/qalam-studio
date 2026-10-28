@@ -342,7 +342,7 @@ async function main() {
   const { cases: every, dispose } = await casesFor(dir, problems);
   const cases = every.filter((c) => !only || only.has(c.kind));
   try {
-    const models = Object.fromEntries(CONFIGS.map((c) => [c.id, modelFor(c.tier, { backend: engine, mix: "balanced", env: {} })]));
+    const models = Object.fromEntries(CONFIGS.map((c) => [c.id, modelFor(c.tier, { backend: engine, env: {} })]));
     console.log(`Tier eval on the Basket sample · engine: ${engine === "api" ? "an API key" : "Claude Code"} · ${cases.length} cases · ${CONFIGS.map((c) => `${c.name} (${models[c.id]})`).join(", ")}\n`);
     const sent = await plan(cases);
     printEstimate(sent, runs, engine, problems);
