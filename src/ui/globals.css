@@ -93,6 +93,7 @@
   --color-canvas: #1e1d1b;       /* a step lighter than panels so the work leads */
   --color-pixel-grid: rgb(128 128 128 / 0.24); /* NEW 1px pixel grid at high zoom (src/engine/chrome.ts) */
   --color-stage: #f4f3f1;        /* preview wells stay light in both themes */
+  --color-stage-fg: #1c1a18;     /* NEW ink on the stage in both themes: a connector glyph too pale for it */
 
   /* Text */
   --color-fg: #f2f0ed;
@@ -334,6 +335,7 @@
   --color-canvas: #efedea;
   --color-pixel-grid: rgb(0 0 0 / 0.09);
   --color-stage: #f4f3f1;
+  --color-stage-fg: #1c1a18;
 
   --color-fg: #1c1a18;
   --color-fg-muted: #55524e;
