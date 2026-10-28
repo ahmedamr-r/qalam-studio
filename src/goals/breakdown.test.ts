@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { OstMetric } from "@/discovery/types";
 import type { PackedPiece } from "@/org/pack";
 import { breakdownMaterial, sanitizeBreakdown } from "./breakdown";
-import { checkParts } from "./math";
+import { checkParts, funnelDrops } from "./math";
 import { claimsMaterial, numbersByPage, pageExcerpt, sanitizeClaims, type Benchmark } from "./outside";
 import { ordered } from "./tree";
 import type { Goal, GoalTree } from "./types";
@@ -31,6 +31,15 @@ describe("whether a goal's parts add up", () => {
     expect(checkParts(metric({ current: 640 }), [metric({ current: 430 }), metric({ current: 180 })], "sum")?.now?.holds).toBe(true);
     expect(checkParts(metric({ current: 640 }), [metric({ current: 400 }), metric()], "sum")?.line).toBe("Code checks the arithmetic once every part has its number.");
     expect(checkParts(metric({ current: 640 }), [metric({ current: 400 })], "sum")).toBeNull();
+  });
+
+  it("marks a funnel's biggest drop", () => {
+    expect(funnelDrops([{ label: "a", count: 200 }, { label: "b", count: 90 }, { label: "c", count: 60 }])).toEqual([
+      { label: "a", count: 200, rate: null, biggest: false },
+      { label: "b", count: 90, rate: 0.45, biggest: true },
+      { label: "c", count: 60, rate: 60 / 90, biggest: false },
+    ]);
+    expect(funnelDrops([{ label: "a", count: 0 }, { label: "b", count: 0 }]).map((d) => d.biggest)).toEqual([false, false]);
   });
 });
 

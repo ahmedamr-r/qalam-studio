@@ -7,6 +7,7 @@ import type { Decision } from "@/decisions/model";
 import { metricProgress } from "@/discovery/metric";
 import type { OstMetric } from "@/discovery/types";
 import { changeGoal, goalsNow, removeGoal, setMine, setNorth, useGoals } from "@/goals/client";
+import type { MapFlow, ProductMap } from "@/code/map";
 import type { GoalWork } from "@/goals/breakdown";
 import type { Gap } from "@/goals/gaps";
 import { metricLine } from "@/goals/goals-md";
@@ -29,6 +30,7 @@ import { confirmDialog, promptDialog } from "../surfaces/dialog";
 import { startBoardForGoal } from "../topics/start-board";
 import { Meter, StatusDot } from "../viz";
 import { GoalsUnder, OtherAims } from "./Breakdown";
+import { Funnel } from "./Funnel";
 import { Unknowns } from "./Unknowns";
 
 /**
@@ -51,6 +53,7 @@ interface PageData {
   gaps: Gap[];
   jobs: Job[];
   work: GoalWork;
+  funnel: { map: ProductMap; flow: MapFlow } | null;
   unlinked: { id: string; title: string; sources: number; quotes: number }[];
   decisions: Decision[];
   indexed: boolean;
@@ -89,7 +92,7 @@ export default function GoalPage({ id }: { id: string }) {
   useEffect(() => {
     load();
     return onOrgChange((c) => {
-      if (c.kind === "goal" || c.kind === "bearing" || c.kind === "job" || (c.kind === "goalwork" && c.goal === id) || c.kind === "topic" || c.kind === "decision" || c.kind === "project") load();
+      if (c.kind === "goal" || c.kind === "bearing" || c.kind === "job" || (c.kind === "goalwork" && c.goal === id) || c.kind === "map" || c.kind === "topic" || c.kind === "decision" || c.kind === "project") load();
     });
   }, [load]);
   // This window's own changes to goals come back through the goals store.
@@ -211,6 +214,8 @@ export default function GoalPage({ id }: { id: string }) {
         </header>
 
         <NumberBlock goal={g} />
+
+        <Funnel goal={g} funnel={page.funnel} numbers={page.work.funnel} onChanged={load} />
 
         <section aria-label="The board working on it" className="flex flex-wrap items-center justify-between gap-[12px] rounded-lg bg-panel px-[14px] py-[10px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
           {board ? (

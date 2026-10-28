@@ -92,8 +92,14 @@ describe("an outcome's number from PostHog", () => {
   });
 
   it("reads a funnel's conversion and one SQL value, and nothing it can't read as one number", () => {
-    const funnel = JSON.stringify({ query: { kind: "FunnelsQuery" }, results: [{ count: 200 }, { count: 90 }, { count: 50 }] });
+    const funnel = JSON.stringify({ query: { kind: "FunnelsQuery" }, results: [{ count: 200, name: "chat_submit" }, { count: 90, name: "fragment_generated", custom_name: "Got an app" }, { count: 50, name: "sandbox_created" }] });
     expect(insightNumbers(funnel).series).toEqual([{ label: "Conversion", value: 25 }]);
+    // Each step, as PostHog counts it.
+    expect(insightNumbers(funnel).steps).toEqual([
+      { label: "chat_submit", count: 200 },
+      { label: "Got an app", count: 90 },
+      { label: "sandbox_created", count: 50 },
+    ]);
     expect(insightNumbers(JSON.stringify({ query: { kind: "HogQLQuery" }, results: [[1234, "x"]] })).series).toEqual([{ label: "Value", value: 1234 }]);
     expect(insightNumbers(JSON.stringify({ query: { kind: "RetentionQuery" }, results: [{ values: [] }] })).series).toEqual([]);
     expect(insightNumbers("not json").series).toEqual([]);

@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
-import { boardPieces, contextPieces, decisionPieces, goalPieces, meaningText, sourcePieces, topicPieces, type Built, type HubPiece, type Names } from "@/hub/pieces";
+import { boardPieces, contextPieces, decisionPieces, goalPieces, mapPieces, meaningText, sourcePieces, topicPieces, type Built, type HubPiece, type Names } from "@/hub/pieces";
 import { fold } from "@/hub/words";
 import type { Models } from "../models/client";
 import { contentHash, stableStringify } from "../org/fsx";
@@ -149,6 +149,7 @@ export class OrgIndex {
     else if (e.kind === "relation") this.queue.add("relations");
     else if (e.kind === "about" || e.kind === "org") this.queue.add("context:org");
     else if (e.kind === "goal") this.queue.add("goals");
+    else if (e.kind === "map") this.queue.add(`map:${e.key}`);
     // A product's name is in the lines of everything for it: look at everything again.
     else if (e.kind === "product") this.queue.add("*");
     else return;
@@ -178,6 +179,7 @@ export class OrgIndex {
     for (const s of await this.store.listSources()) keys.add(`source:${s.id}`);
     for (const p of await this.store.listProducts()) keys.add(`context:${p.id}`);
     for (const t of await this.store.listTopics()) keys.add(`topic:${t.id}`);
+    for (const m of await this.store.listMaps()) keys.add(`map:${m.key}`);
     return keys;
   }
 
@@ -209,6 +211,10 @@ export class OrgIndex {
       case "goals": {
         const t = await store.getGoals();
         return t.goals.length ? goalPieces(t, names, store.info.name) : null;
+      }
+      case "map": {
+        const m = (await store.listMaps()).find((x) => x.key === id);
+        return m?.flows.length ? mapPieces(m, names) : null;
       }
       case "context": {
         if (id === "org") return contextPieces({ product: null, name: store.info.name, at: store.info.createdAt }, await store.getAbout());

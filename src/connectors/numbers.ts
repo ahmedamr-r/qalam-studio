@@ -62,6 +62,8 @@ export interface InsightNumbers {
   url?: string;
   /** One number per series ("Readers who unlocked · /pricing"); empty when there's no one number to read. */
   series: { label: string; value: number }[];
+  /** A funnel's steps, each with how many reached it (its first breakdown's, when it has several). */
+  steps?: { label: string; count: number }[];
 }
 
 /** The numbers in an insight's results. */
@@ -74,6 +76,8 @@ export function insightNumbers(text: string): InsightNumbers {
   if (kind === "FunnelsQuery") {
     // Steps, or one list of steps per breakdown: the conversion from the first step to the last.
     const lists = (Array.isArray(results[0]) ? results : [results]) as Record<string, unknown>[][];
+    const counted = (lists[0] ?? []).flatMap((s) => (num(s?.count) !== undefined ? [{ label: str(s.custom_name) ?? str(s.name) ?? "A step", count: num(s.count)! }] : []));
+    if (counted.length >= 2) out.steps = counted;
     for (const steps of lists) {
       const first = num(steps[0]?.count);
       const last = num(steps[steps.length - 1]?.count);

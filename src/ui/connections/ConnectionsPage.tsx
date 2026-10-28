@@ -5,10 +5,11 @@ import { PageFrame } from "../frame/PageFrame";
 import { EngineCard } from "./EngineCard";
 import { ThisMac } from "./ThisMac";
 import { Connectors } from "./Connectors";
+import { ProductCode } from "./ProductCode";
 
 /**
  * Connections: what Qalam AI runs on (the engine, who pays, what it used), the tools the
- * organization's material comes from, and This Mac's health.
+ * organization's material comes from, the products' code it reads, and This Mac's health.
  */
 export default function ConnectionsPage() {
   return (
@@ -22,6 +23,10 @@ export default function ConnectionsPage() {
         <div className="flex flex-col gap-[8px]">
           <h2 className="text-micro font-medium text-fg-subtle">Connectors</h2>
           <Connectors />
+        </div>
+        <div className="flex flex-col gap-[8px]">
+          <h2 className="text-micro font-medium text-fg-subtle">Product code</h2>
+          <ProductCode />
         </div>
         <div className="flex flex-col gap-[8px]">
           <div className="flex items-center justify-between gap-[12px]">

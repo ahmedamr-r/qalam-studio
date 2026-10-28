@@ -17,6 +17,7 @@ import { addGoal, goalById, ordered, patchGoal as patchInTree, removeGoal as rem
 import { emptyGoals, type Goal, type GoalPatch, type GoalsAt, type GoalTree } from "@/goals/types";
 import type { BearingLog } from "@/goals/bearings";
 import type { GoalWork } from "@/goals/breakdown";
+import { mapFromMarkdown, mapToMarkdown, type CodeRepo, type ProductMap } from "@/code/map";
 import type { JobLog } from "@/goals/jobs";
 import { sameTopic } from "@/hub/topics";
 import type { SourceRecord } from "@/discovery/sources";
@@ -63,6 +64,8 @@ export type OrgEvent = { tab?: string } & (
   | { kind: "job" }
   /** What others report for a goal, or the goals proposed under it, changed (hub/goals/<goal>.json). */
   | { kind: "goalwork"; goal: string }
+  /** What a product does today, from its code, changed (hub/maps/<key>.md). */
+  | { kind: "map"; key: string; removed?: boolean }
   | { kind: "notice" }
   | { kind: "relation" }
   /** Something changed in the inbox folder (server/inbox.ts reads what's new). */
@@ -127,6 +130,8 @@ interface LocalState {
   visit?: number;
   /** The goals that are this computer's person's ("Which goals are yours?"). */
   mine?: string[];
+  /** The repositories and folders this computer reads for the products. */
+  code?: CodeRepo[];
 }
 
 /** A line of hub/notices.jsonl: a notice dismissed or brought back, a review's finding, a review ran. */
@@ -723,6 +728,52 @@ export class OrgStore {
     this.emit({ kind: "job", tab: opts.tab });
   }
 
+  // What each product does today, from its code (hub/maps/<key>.md), and the repositories this
+  // computer reads for them (.qalam/local).
+
+  private mapFile(key: string) {
+    if (!/^[A-Za-z0-9_.-]{1,140}$/.test(key) || key.startsWith(".")) throw new NotFoundError("No such map");
+    return this.abs(`hub/maps/${key}.md`);
+  }
+
+  async listMaps(): Promise<ProductMap[]> {
+    const names = await readdir(this.abs("hub/maps")).catch(() => [] as string[]);
+    const out: ProductMap[] = [];
+    for (const n of names.filter((n) => n.endsWith(".md")).sort()) {
+      const m = mapFromMarkdown(await readFile(this.abs(`hub/maps/${n}`), "utf8").catch(() => ""));
+      if (m) out.push(m);
+    }
+    return out;
+  }
+
+  async putMap(map: ProductMap, opts: { tab?: string } = {}): Promise<void> {
+    const file = this.mapFile(map.key);
+    const products = await this.listProducts();
+    const goals = await this.getGoals();
+    await locked(file, () => this.write(file, mapToMarkdown(map, { productName: products.find((p) => p.id === map.product)?.name, goalTitle: (id) => goalById(goals, id)?.title })));
+    this.emit({ kind: "map", key: map.key, tab: opts.tab });
+  }
+
+  async removeMap(key: string, opts: { tab?: string } = {}): Promise<void> {
+    await rm(this.mapFile(key), { force: true });
+    this.emit({ kind: "map", key, removed: true, tab: opts.tab });
+  }
+
+  get codeRepos(): CodeRepo[] {
+    return this.local.code ?? [];
+  }
+
+  async setCodeRepos(list: CodeRepo[]): Promise<void> {
+    this.local.code = list;
+    await locked(this.abs(".qalam/local/state.json"), () => atomicWrite(this.abs(".qalam/local/state.json"), stableStringify(this.local)));
+  }
+
+  /** Where this computer keeps its copy of a repository's code (never shared: .qalam is out of Git). */
+  codeDir(key: string): string {
+    if (!/^[A-Za-z0-9_.-]{1,140}$/.test(key) || key.startsWith(".")) throw new NotFoundError("No such repository");
+    return this.abs(`.qalam/code/${key}`);
+  }
+
   // A goal's work in progress (hub/goals/<goal>.json): what others report for it, and the goals
   // Qalam AI proposed under it until each is accepted or discarded.
 
@@ -733,7 +784,7 @@ export class OrgStore {
 
   async getGoalWork(goal: string): Promise<GoalWork> {
     const j = await readJson<GoalWork & { qalam?: string }>(this.goalWorkFile(goal));
-    return j?.qalam === "goal-work/1" ? { ...(j.outside ? { outside: j.outside } : {}), ...(j.breakdown ? { breakdown: j.breakdown } : {}) } : {};
+    return j?.qalam === "goal-work/1" ? { ...(j.outside ? { outside: j.outside } : {}), ...(j.breakdown ? { breakdown: j.breakdown } : {}), ...(j.funnel ? { funnel: j.funnel } : {}) } : {};
   }
 
   async changeGoalWork(goal: string, fn: (w: GoalWork) => GoalWork, opts: { tab?: string } = {}): Promise<GoalWork> {
@@ -741,7 +792,7 @@ export class OrgStore {
     let next: GoalWork = {};
     await locked(file, async () => {
       next = fn(await this.getGoalWork(goal));
-      if (next.outside || next.breakdown) await this.write(file, stableStringify({ qalam: "goal-work/1", goal, ...next }));
+      if (next.outside || next.breakdown || next.funnel) await this.write(file, stableStringify({ qalam: "goal-work/1", goal, ...next }));
       else await rm(file, { force: true });
     });
     this.emit({ kind: "goalwork", goal, tab: opts.tab });
@@ -1410,6 +1461,8 @@ export class OrgStore {
       this.emit({ kind: "job" });
     } else if (parts[0] === "hub" && parts[1] === "goals" && parts.length === 3 && rel.endsWith(".json")) {
       this.emit({ kind: "goalwork", goal: path.basename(rel, ".json") });
+    } else if (parts[0] === "hub" && parts[1] === "maps" && parts.length === 3 && rel.endsWith(".md")) {
+      this.emit({ kind: "map", key: path.basename(rel, ".md"), ...(bytes ? {} : { removed: true }) });
     } else if (rel === "about.md") {
       this.emit({ kind: "about" });
     } else if (rel === GOALS) {

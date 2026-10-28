@@ -5,6 +5,7 @@ import { setMine, useGoals } from "@/goals/client";
 import { metricLine } from "@/goals/goals-md";
 import { childrenOf, goalById } from "@/goals/tree";
 import type { GoalTree } from "@/goals/types";
+import { codeDb } from "@/org/code";
 import { connectorsDb, type ConnectorState } from "@/org/connectors";
 import { goalHref, orgHref, placeHref } from "@/projects/model";
 import { Button, Checkbox } from "../controls";
@@ -98,7 +99,12 @@ export function Yours({ onNext }: { onNext: () => void }) {
 export function Connect() {
   const goals = useGoals();
   const [tools, setTools] = useState<ConnectorState[] | null>(null);
-  useEffect(() => void connectorsDb.list().then((v) => setTools(v.connectors), () => setTools([])), []);
+  // Who this Mac's GitHub CLI is: the product's code can be read through it.
+  const [gh, setGh] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    void connectorsDb.list().then((v) => setTools(v.connectors), () => setTools([]));
+    void codeDb.view().then((v) => setGh(v.gh ?? (v.signedIn ? "Qalam's sign-in" : null)), () => setGh(null));
+  }, []);
   const hasNumbers = goals.goals.some((g) => !!g.metric?.name);
   return (
     <section aria-labelledby="connect-title" className="flex flex-col gap-[14px]">
@@ -111,9 +117,9 @@ export function Connect() {
       <ul className="flex flex-col gap-[6px]">
         {connectFor(hasNumbers).map((c) => {
           const t = tools?.find((x) => x.id === c.id);
-          // Reading the product's code comes next: GitHub's card today is for work linked to solutions.
-          const word = c.id === "github" ? "Coming next" : (t?.word ?? "");
-          const tone = c.id === "github" ? "off" : (t?.tone ?? "off");
+          // GitHub here is reading the product's code (its card in Connectors is for work linked to solutions).
+          const word = c.id === "github" ? (gh ? `Through ${gh.includes(" ") ? gh : `this Mac's CLI, ${gh}`}` : "Not connected") : (t?.word ?? "");
+          const tone = c.id === "github" ? (gh ? "ok" : "off") : (t?.tone ?? "off");
           return (
             <li key={c.id} className={clsx(qr.inset, "flex items-center gap-[10px] px-[12px] py-[8px]")}>
               <span className="flex min-w-0 flex-1 flex-col">

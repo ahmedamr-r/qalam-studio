@@ -42,10 +42,18 @@ export interface Breakdown {
   decided: Record<string, "accepted" | "discarded">;
 }
 
-/** A goal's work in progress (hub/goals/<goal>.json): what others report for it, and the goals proposed under it. */
+/** A goal's funnel as PostHog counts it: a saved funnel insight's steps, read by code from PostHog's own answer. */
+export interface FunnelNumbers {
+  at: number;
+  insight: { ref: string; name: string; url?: string };
+  steps: { label: string; count: number }[];
+}
+
+/** A goal's work in progress (hub/goals/<goal>.json): what others report for it, the goals proposed under it, its funnel's numbers. */
 export interface GoalWork {
   outside?: Outside;
   breakdown?: Breakdown;
+  funnel?: FunnelNumbers;
 }
 
 export const BREAKDOWN_LIMITS = { parts: 5, title: 100, why: 240 } as const;

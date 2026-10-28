@@ -8,6 +8,7 @@ import { changeGoal } from "@/goals/client";
 import type { Gap } from "@/goals/gaps";
 import type { Job } from "@/goals/jobs";
 import type { Goal } from "@/goals/types";
+import { codeDb } from "@/org/code";
 import { connectorsDb, type ConnectorState } from "@/org/connectors";
 import { jobsDb } from "@/org/jobs";
 import { placeHref, topicHref } from "@/projects/model";
@@ -38,7 +39,12 @@ export function Unknowns({ goal, gaps, jobs, onChanged }: { goal: Goal; gaps: Ga
   const [planned, setPlanned] = useState<{ added: number } | null>(null);
   const [open, setOpen] = useState<string | null>(null);
   const [tools, setTools] = useState<ConnectorState[] | null>(null);
-  useEffect(() => void connectorsDb.list().then((v) => setTools(v.connectors), () => setTools([])), []);
+  // Whether a product's code is read here: a read-code job can run.
+  const [hasCode, setHasCode] = useState(false);
+  useEffect(() => {
+    void connectorsDb.list().then((v) => setTools(v.connectors), () => setTools([]));
+    void codeDb.view().then((v) => setHasCode(v.repos.length > 0), () => {});
+  }, []);
 
   const todo = jobs.filter((j) => j.status === "todo");
   const done = jobs.filter((j) => j.status === "done");
@@ -65,7 +71,7 @@ export function Unknowns({ goal, gaps, jobs, onChanged }: { goal: Goal; gaps: Ga
     onChanged();
   };
 
-  const row = (j: Job) => <JobRow key={j.id} job={j} goal={goal} tools={tools} open={open === j.id} onOpen={() => setOpen(open === j.id ? null : j.id)} onChange={(p) => void change(j, p)} onChanged={onChanged} />;
+  const row = (j: Job) => <JobRow key={j.id} job={j} goal={goal} tools={tools} hasCode={hasCode} open={open === j.id} onOpen={() => setOpen(open === j.id ? null : j.id)} onChange={(p) => void change(j, p)} onChanged={onChanged} />;
 
   return (
     <section aria-labelledby="unknowns" className="flex flex-col gap-[10px]">
@@ -137,13 +143,15 @@ export function Unknowns({ goal, gaps, jobs, onChanged }: { goal: Goal; gaps: Ga
 }
 
 /** A job: what it is, why, and the one thing to do with it (run it, connect its tool first, hand it over). */
-function JobRow({ job, goal, tools, open, onOpen, onChange, onChanged }: { job: Job; goal: Goal; tools: ConnectorState[] | null; open: boolean; onOpen: () => void; onChange: (p: { status: Job["status"]; outcome?: string }) => void; onChanged: () => void }) {
+function JobRow({ job, goal, tools, hasCode, open, onOpen, onChange, onChanged }: { job: Job; goal: Goal; tools: ConnectorState[] | null; hasCode: boolean; open: boolean; onOpen: () => void; onChange: (p: { status: Job["status"]; outcome?: string }) => void; onChanged: () => void }) {
   const Icon = KIND_ICON[job.kind];
   const tool = job.connector ? tools?.find((t) => t.id === job.connector) : undefined;
   const connected = tool?.tone === "ok";
   const action =
-    job.kind === "read-code" ? (
-      <span className="text-caption text-fg-subtle">Waits for GitHub</span>
+    job.kind === "read-code" && !hasCode ? (
+      <a href={placeHref("connections")} className={clsx(r.buttonSm, r.buttonGhost)}>
+        Connect the code
+      </a>
     ) : (job.kind === "search" || job.kind === "numbers") && tools && !connected ? (
       <a href={placeHref("connections")} className={clsx(r.buttonSm, r.buttonGhost)}>
         Connect {tool?.label ?? job.connector}
@@ -179,9 +187,10 @@ function JobRow({ job, goal, tools, open, onOpen, onChange, onChanged }: { job: 
           {job.kind === "search" && tool && <SearchRun job={job} tool={tool} onDone={onChanged} />}
           {job.kind === "numbers" && <NumbersRun job={job} goal={goal} onDone={(outcome) => onChange({ status: "done", outcome })} />}
           {job.kind === "talk" && <TalkRun job={job} goal={goal} onDone={() => onChange({ status: "done" })} />}
+          {job.kind === "read-code" && <CodeRun job={job} onDone={onChanged} />}
         </div>
       )}
-      {job.kind === "read-code" && job.questions?.[0] && <p className="ml-[24px] text-caption text-fg-subtle">Qalam reads the product&apos;s code once GitHub is connected (coming next): {job.questions[0]}</p>}
+      {job.kind === "read-code" && job.questions?.[0] && !open && <p className="ml-[24px] text-caption text-fg-subtle">{hasCode ? "Qalam AI answers it from the product's code" : "Qalam AI answers it from the product's code, once it's connected"}: {job.questions[0]}</p>}
     </li>
   );
 }
@@ -284,6 +293,39 @@ function NumbersRun({ job, goal, onDone }: { job: Job; goal: Goal; onDone: (outc
     );
   };
   return <MetricSource m={m} onChange={read} query={job.query} open />;
+}
+
+/** A question for the product's code: Qalam AI reads it, and the answer stands only where the code says it. */
+function CodeRun({ job, onDone }: { job: Job; onDone: () => void }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [answer, setAnswer] = useState<string | null | undefined>(undefined);
+  const [error, setError] = useState<string | null>(null);
+  const run = async () => {
+    setBusy("Qalam AI is reading the code");
+    setError(null);
+    try {
+      setAnswer((await codeDb.answer(job.id, setBusy)).text);
+      onDone();
+    } catch (e) {
+      setError(message(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <div className="flex flex-col gap-[6px]">
+      <span className="text-caption text-fg">{job.questions?.[0]}</span>
+      {answer === undefined && !busy && (
+        <Button size="sm" className="self-start" onClick={() => void run()}>
+          Read the code for it
+        </Button>
+      )}
+      {busy && <p className="q-shimmer-text text-caption text-fg-muted">{busy}…</p>}
+      {answer === null && <p className="text-caption text-fg-muted">Qalam AI couldn&apos;t point to the code that answers it.</p>}
+      {answer && <p className="text-caption text-fg-muted">{answer}</p>}
+      {error && <p className="text-caption text-danger">{error}</p>}
+    </div>
+  );
 }
 
 /** A job handed over: the questions to ask and who to ask, and a place for the notes when they come back. */

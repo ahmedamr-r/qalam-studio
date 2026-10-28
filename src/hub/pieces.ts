@@ -1,4 +1,5 @@
 import type { Doc } from "@/doc/schema";
+import type { ProductMap } from "@/code/map";
 import { dayOf, type Decision } from "@/decisions/model";
 import { metricText } from "@/discovery/dump";
 import { KIND_LABEL, stageLabel } from "@/discovery/kinds";
@@ -290,6 +291,26 @@ export function goalPieces(t: GoalTree, n: Names, orgName: string): Built {
     if (g.on) edges.push({ from: cardRef(g.on.board, g.on.card), to: ref, kind: "for" });
     for (const c of g.cites) edges.push({ from: ref, to: c, kind: "backs" });
   }
+  return { pieces, edges, entities: [] };
+}
+
+// ---------------------------------------------------------------------------
+// What a product does today, from its code (hub/maps/*.md): each step of a flow a piece, the
+// flow's first linked to the goal it measures
+
+export const mapRef = (key: string, flow: number, step: number) => `hub:map:${key}:${flow}:${step}`;
+
+export function mapPieces(m: ProductMap, n: Names): Built {
+  const pieces: HubPiece[] = [];
+  const edges: HubEdge[] = [];
+  const who = m.product ? (n.product(m.product) ?? "a product") : "the organization";
+  m.flows.forEach((f, fi) =>
+    f.steps.forEach((s, si) => {
+      const ref = mapRef(m.key, fi, si);
+      pieces.push({ ref, type: "context", sub: "map", text: `${f.name}, step ${si + 1}: ${s.title}${s.events.length ? ` (sends ${s.events.join(", ")})` : ""}`, line: join(`What ${who} does today, from its code`, `in ${s.file}`), title: f.name, product: m.product, at: m.readAt });
+      if (f.goal && si === 0) edges.push({ from: ref, to: goalRef(f.goal), kind: "for" });
+    }),
+  );
   return { pieces, edges, entities: [] };
 }
 

@@ -62,3 +62,13 @@ export function checkParts(goal: OstMetric | null | undefined, parts: (OstMetric
   if (!lines.length) lines.push("Code checks the arithmetic once every part has its number.");
   return { relation, now, target, line: lines.join(" ") };
 }
+
+/** A funnel's steps with how many of the step before reached each, and the biggest drop marked. */
+export function funnelDrops(steps: { label: string; count: number }[]): { label: string; count: number; rate: number | null; biggest: boolean }[] {
+  const rates = steps.map((s, i) => (i && steps[i - 1].count > 0 ? s.count / steps[i - 1].count : null));
+  let worst = -1;
+  rates.forEach((r, i) => {
+    if (r !== null && (worst < 0 || r < rates[worst]!)) worst = i;
+  });
+  return steps.map((s, i) => ({ ...s, rate: rates[i], biggest: i === worst && rates[i]! < 1 }));
+}

@@ -4,6 +4,7 @@ import { aiConfigured, structured } from "@/ai/server";
 import { bearingMaterial, foldBearings, goalAndUnder, problemsInScope, sanitizeBearings, type BearingLog } from "@/goals/bearings";
 import { gapsOf } from "@/goals/gaps";
 import { foldJobs, jobsOf } from "@/goals/jobs";
+import { funnelOf } from "@/code/map";
 import { rankForGoal } from "@/goals/problems";
 import { chainOf, childrenOf, goalById } from "@/goals/tree";
 import type { Goal } from "@/goals/types";
@@ -52,6 +53,8 @@ export async function goalPage(store: OrgStore, id: string) {
     jobs: jobsOf(foldJobs(await store.listJobLog()), id),
     /** What others report for it, and the goals proposed under it (hub/goals/<goal>.json). */
     work: await store.getGoalWork(id),
+    /** The flow in the product's code whose events measure it (hub/maps). */
+    funnel: funnelOf(goal, await store.listMaps()),
     /** Need pages in its scope with no link to it yet, the best-backed first: what "Link a problem" picks from. */
     unlinked: problemsInScope(k.topics, goal)
       .filter((t) => !links.some((l) => l.need === t.id && scope.includes(l.goal)))

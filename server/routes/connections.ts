@@ -10,6 +10,8 @@ import type { OstWork } from "@/discovery/types";
 import { readInsight, searchInsights } from "../connectors/numbers";
 import { cancelSignIn, keepApp, signIn } from "../connectors/oauth";
 import { workStatuses } from "../connectors/work";
+import { forgetGitHub, pollGitHubSignIn, startGitHubSignIn } from "../code/github";
+import { chooseFolder } from "../org/home";
 
 /**
  * Connections' API: the engine Qalam AI runs on (which one, who pays, a test, a key kept in the
@@ -134,6 +136,23 @@ export function connectionsRoutes(): Hono {
     } catch (e) {
       return c.json({ error: "posthog", message: e instanceof Error ? e.message : String(e) }, 400);
     }
+  });
+  // Reading a product's code: Qalam's own GitHub sign-in (device flow, read-only), or a folder on this Mac.
+  r.post("/api/code/github/signin", async (c) => {
+    try {
+      return c.json(await startGitHubSignIn());
+    } catch (e) {
+      return c.json({ error: "github", message: e instanceof Error ? e.message : String(e) }, 400);
+    }
+  });
+  r.post("/api/code/github/signin/:id", async (c) => c.json({ state: await pollGitHubSignIn(c.req.param("id")) }));
+  r.delete("/api/code/github", async (c) => {
+    await forgetGitHub();
+    return c.json({ ok: true });
+  });
+  r.post("/api/code/folder", async (c) => {
+    const picked = await chooseFolder("Choose the folder with the product's code");
+    return picked === "unsupported" ? c.json({ error: "no_picker", message: "Type the folder's path instead." }, 400) : c.json({ path: picked });
   });
   // Where the work linked to solutions stands (Linear, GitHub), kept per computer.
   r.post("/api/org/:org/work/status", async (c) => {

@@ -17,11 +17,13 @@ import { TopicsList } from "../org/TopicsList";
 import { useOrgData } from "../org/useOrgData";
 import { useTopics } from "../topics/list";
 import { PlaceHead } from "./PlaceHead";
+import { ProductMaps } from "./ProductMaps";
 
 /**
  * What the organization has heard and read, for the product in view: its sources (interviews,
- * tickets, documents, pages, brain dumps) with the boards that use each, and the pages on its
- * segments and products. The problems themselves have a place of their own.
+ * tickets, documents, pages, brain dumps) with the boards that use each, the pages on its
+ * segments and products, and what the product does today, from its code. The problems themselves
+ * have a place of their own.
  */
 export default function EvidencePage() {
   const [scope, setScope] = useScope();
@@ -70,6 +72,7 @@ export default function EvidencePage() {
             <TopicsList topics={pages} sources={scopedSources} products={products} onFiled={refresh} banner={false} />
           </section>
         )}
+        <ProductMaps product={product} products={products} />
       </div>
     </PageFrame>
   );

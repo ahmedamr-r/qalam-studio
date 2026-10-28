@@ -30,6 +30,7 @@ import type { Hit as ConnectorHit } from "@/connectors/recipes";
 import { findProblems, goalPage, linkByHand } from "./goals";
 import { changeJob, noteForJob, openJobs, planJobs, searchForJob, takeInForJob } from "./jobs";
 import { breakDown, decidePart, lookOutside } from "./outside";
+import { addRepo, answerFromCode, codeView, readRepo, removeRepo, type NewRepo } from "../code";
 import { GOAL_LEVERS, type GoalLever } from "@/goals/types";
 import { ConflictError, GoalCycleError, GoalInUseError, NotFoundError, type OrgEvent, type OrgStore } from "./store";
 
@@ -185,6 +186,53 @@ export function orgRoutes(): Hono<Env> {
     const b = (await c.req.json().catch(() => null)) as { need?: unknown; goal?: unknown; on?: unknown; how?: unknown; bears?: unknown } | null;
     if (!b || typeof b.need !== "string" || !ID.test(b.need) || typeof b.goal !== "string" || !ID.test(b.goal) || typeof b.on !== "boolean") return bad("Name a problem, a goal, and whether they're linked");
     await linkByHand(c.get("store"), { need: b.need, goal: b.goal, on: b.on, how: typeof b.how === "string" ? b.how : undefined, bears: b.bears === "some" ? "some" : "direct" }, { tab: tabOf(c.req.raw.headers) });
+    return c.json({ ok: true });
+  });
+  // The product's code, read-only (server/code): the repositories this computer reads, and what each product does today.
+  const KEY = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,139}$/;
+  r.get("/api/org/:org/code", async (c) => c.json(await codeView(c.get("store"))));
+  r.post("/api/org/:org/code", async (c) => {
+    if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't read the code." }, 503);
+    const b = ((await c.req.json().catch(() => null)) ?? {}) as { kind?: unknown; repo?: unknown; path?: unknown; product?: unknown };
+    const product = typeof b.product === "string" && ID.test(b.product) ? b.product : null;
+    const input: NewRepo | null = b.kind === "github" && typeof b.repo === "string" ? { kind: "github", repo: b.repo.slice(0, 220), product } : b.kind === "folder" && typeof b.path === "string" ? { kind: "folder", path: b.path.slice(0, 2000), product } : null;
+    if (!input) return bad("Name a repository or a folder");
+    const store = c.get("store");
+    return streamed(c.req.raw.signal, async (emit, signal) => {
+      const repo = await addRepo(store, input);
+      return { repo, ...(await readRepo(store, repo.key, emit, signal)) };
+    });
+  });
+  r.post("/api/org/:org/code/:key/read", async (c) => {
+    if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't read the code." }, 503);
+    if (!KEY.test(c.req.param("key"))) return bad("No such repository");
+    const store = c.get("store");
+    return streamed(c.req.raw.signal, (emit, signal) => readRepo(store, c.req.param("key"), emit, signal));
+  });
+  r.delete("/api/org/:org/code/:key", async (c) => {
+    if (!KEY.test(c.req.param("key"))) return bad("No such repository");
+    try {
+      await removeRepo(c.get("store"), c.req.param("key"));
+      return c.json({ ok: true });
+    } catch (e) {
+      return failure(e);
+    }
+  });
+  r.post("/api/org/:org/jobs/:id/code", async (c) => {
+    if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't read the code." }, 503);
+    const store = c.get("store");
+    return streamed(c.req.raw.signal, (emit, signal) => answerFromCode(store, c.req.param("id"), emit, signal));
+  });
+  // A goal's funnel counted in PostHog: a saved funnel insight's steps, as code read them from PostHog's answer.
+  r.put("/api/org/:org/goals/:id/funnel", async (c) => {
+    const b = ((await c.req.json().catch(() => null)) ?? {}) as { insight?: { ref?: unknown; name?: unknown; url?: unknown }; steps?: unknown };
+    const steps = (Array.isArray(b.steps) ? b.steps : []).flatMap((s: { label?: unknown; count?: unknown }) => (typeof s?.label === "string" && typeof s.count === "number" && Number.isFinite(s.count) && s.count >= 0 ? [{ label: s.label.slice(0, 120), count: Math.round(s.count) }] : [])).slice(0, 20);
+    const ref = typeof b.insight?.ref === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(b.insight.ref) ? b.insight.ref : null;
+    if (!ref || steps.length < 2 || !ID.test(c.req.param("id"))) return bad("A funnel's steps, from a saved insight");
+    const url = typeof b.insight?.url === "string" && /^https:\/\//.test(b.insight.url) ? b.insight.url.slice(0, 500) : undefined;
+    const store = c.get("store");
+    if (!goalById(await store.getGoals(), c.req.param("id"))) return c.json({ error: "not_found", message: "No such goal" }, 404);
+    await store.changeGoalWork(c.req.param("id"), (w) => ({ ...w, funnel: { at: Date.now(), insight: { ref, name: typeof b.insight?.name === "string" ? b.insight.name.slice(0, 160) : ref, ...(url ? { url } : {}) }, steps } }), { tab: tabOf(c.req.raw.headers) });
     return c.json({ ok: true });
   });
   // What others aim for, and breaking a goal down (server/org/outside.ts).
