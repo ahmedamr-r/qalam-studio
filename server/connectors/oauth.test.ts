@@ -10,19 +10,34 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { Hono } from "hono";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Ingested } from "@/discovery/ingest/core";
+import type { OrgStore } from "../org/store";
 import { resetSecrets, secrets } from "../secrets";
 import { readSettings } from "../settings";
 
-vi.mock("../capture", () => ({ captureSource: async () => {} }));
+const captured: Ingested[] = [];
+vi.mock("../capture", () => ({ captureSource: async (_s: unknown, ing: Ingested) => void captured.push(ing) }));
 
 const { cancelSignIn, signIn } = await import("./oauth");
-const { connectorsView, forgetConnector, searchConnector } = await import("./index");
+const { connectorsView, forgetConnector, importItems, searchConnector } = await import("./index");
 
 /*
- * A stand-in for Notion's hosted server: OAuth discovery, registration, the page a person approves
- * on, tokens (PKCE checked), revocation, and an MCP server with notion-search and notion-fetch that
- * takes only the access tokens it gave.
+ * A stand-in for a service's hosted server (Notion's, Intercom's): OAuth discovery, registration,
+ * the page a person approves on, tokens (PKCE checked), revocation, and an MCP server with their
+ * tools that takes only the access tokens it gave.
  */
+const ALL_TOOLS = ["notion-search", "notion-fetch", "notion-get-self", "search", "fetch"];
+const conversation = {
+  id: "42",
+  source: { body: "<p>We export to sheets every Friday.</p>", author: { type: "user", name: "Dana Lee" } },
+  conversation_parts: { conversation_parts: [{ part_type: "comment", body: "<p>Which sheet?</p>", author: { type: "admin", name: "Omar" } }] },
+};
+const ANSWERS: Record<string, (args: Record<string, unknown> | undefined) => unknown> = {
+  "notion-search": (a) => ({ results: [{ id: "p1", title: `Interview: ${String(a?.query)}`, url: "https://www.notion.so/p1" }] }),
+  "notion-fetch": () => ({ text: "Dana: we export to spreadsheets every Friday." }),
+  search: (a) => ({ total_in_page: 1, results: [{ id: "conversation_42", title: "Exports", text: `<p>${String(a?.query)}</p>`, url: "https://app.intercom.com/a/inbox/x/inbox/conversation/42" }], pages: {} }),
+  fetch: (a) => ({ id: a?.id, title: "Exports", text: JSON.stringify(conversation), url: "https://app.intercom.com/a/inbox/x/inbox/conversation/42" }),
+};
 function standIn() {
   const s = {
     base: "",
@@ -37,6 +52,10 @@ function standIn() {
     down: false,
     /** What the approval page sends back instead of a code. */
     deny: false,
+    /** The tools its MCP server lists. */
+    tools: ALL_TOOLS,
+    /** The scope the last registration and approval page asked for. */
+    asked: { register: "" as string | undefined, authorize: "" as string | undefined },
     iss: "" as string | null,
   };
   const app = new Hono();
@@ -45,7 +64,8 @@ function standIn() {
     c.json({ issuer: s.base, authorization_endpoint: `${s.base}/authorize`, token_endpoint: `${s.base}/token`, registration_endpoint: `${s.base}/register`, revocation_endpoint: `${s.base}/revoke`, response_types_supported: ["code"], grant_types_supported: ["authorization_code", "refresh_token"], code_challenge_methods_supported: ["S256"], token_endpoint_auth_methods_supported: ["none"], authorization_response_iss_parameter_supported: true }),
   );
   app.post("/register", async (c) => {
-    const m = (await c.req.json()) as { redirect_uris: string[] };
+    const m = (await c.req.json()) as { redirect_uris: string[]; scope?: string };
+    s.asked.register = m.scope;
     const id = `client-${++s.n}`;
     s.clients.set(id, m.redirect_uris);
     return c.json({ ...m, client_id: id, client_id_issued_at: 1 }, 201);
@@ -53,6 +73,7 @@ function standIn() {
   // The person approves; the page sends them back to Qalam with a code.
   app.get("/authorize", (c) => {
     const q = c.req.query();
+    s.asked.authorize = q.scope;
     if (!s.clients.get(q.client_id)?.includes(q.redirect_uri) || q.code_challenge_method !== "S256" || !q.state) return c.text("bad request", 400);
     const back = new URL(q.redirect_uri);
     back.searchParams.set("state", q.state);
@@ -89,10 +110,8 @@ function standIn() {
     if (!s.access.has(c.req.header("authorization")?.replace(/^Bearer /, "") ?? "")) return c.body(null, 401, { "www-authenticate": `Bearer resource_metadata="${s.base}/.well-known/oauth-protected-resource/mcp", scope="default"` });
     if (c.req.method !== "POST") return c.body(null, 405);
     const server = new Server({ name: "notion-stand-in", version: "1" }, { capabilities: { tools: {} } });
-    server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: ["notion-search", "notion-fetch", "notion-get-self"].map((name) => ({ name, inputSchema: { type: "object" as const } })) }));
-    server.setRequestHandler(CallToolRequestSchema, async (r) => ({
-      content: [{ type: "text", text: r.params.name === "notion-search" ? JSON.stringify({ results: [{ id: "p1", title: `Interview: ${String(r.params.arguments?.query)}`, url: "https://www.notion.so/p1" }] }) : JSON.stringify({ text: "Dana: we export to spreadsheets every Friday." }) }],
-    }));
+    server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: s.tools.map((name) => ({ name, inputSchema: { type: "object" as const } })) }));
+    server.setRequestHandler(CallToolRequestSchema, async (r) => ({ content: [{ type: "text", text: JSON.stringify(ANSWERS[r.params.name]?.(r.params.arguments) ?? {}) }] }));
     const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
     await server.connect(transport);
     return transport.handleRequest(c.req.raw);
@@ -133,8 +152,9 @@ beforeEach(async () => {
   process.env.QALAM_HOME = dir;
   process.env.QALAM_SECRETS = "memory";
   resetSecrets();
-  Object.assign(s, { refuseRefresh: false, down: false, deny: false, iss: "" });
+  Object.assign(s, { refuseRefresh: false, down: false, deny: false, iss: "", tools: ALL_TOOLS });
   landed = null;
+  captured.length = 0;
 });
 afterEach(async () => {
   cancelSignIn("notion");
@@ -249,5 +269,24 @@ describe("Qalam's own sign-in to a connector's MCP server", () => {
     expect(await secrets().get("connector:notion:oauth")).toBeNull();
     expect(await secrets().get("connector:notion:client")).toBeNull();
     expect(await card()).toMatchObject({ via: null, word: "Not connected" });
+  });
+
+  it("asks Intercom only for the scope Qalam needs, and reads a conversation as who said what", async () => {
+    await signIn("intercom", { serverUrl: mcpUrl, open: browser });
+    expect(s.asked).toEqual({ register: "mcp", authorize: "mcp" });
+    expect((await readSettings()).connectors?.intercom).toEqual({ via: "oauth", url: mcpUrl });
+    const hits = await searchConnector("intercom", 'sheets" OR object_type:contacts');
+    expect(hits).toEqual([{ id: "conversation_42", title: "Exports", url: "https://app.intercom.com/a/inbox/x/inbox/conversation/42", snippet: 'object_type:conversations q:"sheets OR object_type:contacts" limit:20' }]);
+    const store = { listSources: async () => [] } as unknown as OrgStore;
+    expect(await importItems(store, "intercom", hits, () => {})).toEqual({ added: ["Exports"], skipped: [], failed: [] });
+    expect(captured).toEqual([{ kind: "connector", title: "Exports", origin: "https://app.intercom.com/a/inbox/x/inbox/conversation/42", text: "Customer (Dana Lee): We export to sheets every Friday.\n\nTeam (Omar): Which sheet?" }]);
+  });
+
+  it("keeps nothing when the server lacks the tools Qalam reads with", async () => {
+    s.tools = ["notion-search", "notion-fetch"];
+    await expect(signIn("intercom", { serverUrl: mcpUrl, open: browser })).rejects.toThrow("Intercom's server doesn't offer search or fetch.");
+    expect((await landed)?.text).toContain("Intercom isn't connected");
+    expect(await secrets().get("connector:intercom:oauth")).toBeNull();
+    expect((await readSettings()).connectors?.intercom).toBeUndefined();
   });
 });

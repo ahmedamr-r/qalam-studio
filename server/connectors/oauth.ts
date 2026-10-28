@@ -140,7 +140,8 @@ export async function signIn(id: string, o: SignInOptions = {}): Promise<void> {
     const state = randomBytes(32).toString("base64url");
     let page: URL | undefined;
     const p = provider(k, { redirectUrl: back.url, state, register: true, onRedirect: (url) => void (page = url) });
-    if ((await auth(p, { serverUrl, fetchFn: o.fetchFn }).catch((e: unknown) => Promise.reject(new Error(`${def.label} didn't let Qalam start a sign-in: ${message(e)}`)))) !== "REDIRECT" || !page) throw new Error(`${def.label} didn't offer a sign-in page.`);
+    const scope = def.mcp?.scope;
+    if ((await auth(p, { serverUrl, scope, fetchFn: o.fetchFn }).catch((e: unknown) => Promise.reject(new Error(`${def.label} didn't let Qalam start a sign-in: ${message(e)}`)))) !== "REDIRECT" || !page) throw new Error(`${def.label} didn't offer a sign-in page.`);
     const where = webAddress(page);
     const answered = back.answer(state);
     answered.catch(() => {});
@@ -153,7 +154,7 @@ export async function signIn(id: string, o: SignInOptions = {}): Promise<void> {
       const meta = k.discovery?.authorizationServerMetadata as { issuer?: string; authorization_response_iss_parameter_supported?: boolean } | undefined;
       if ((a.iss !== undefined || meta?.authorization_response_iss_parameter_supported === true) && a.iss !== meta?.issuer) throw new Error(`That answer didn't come from ${def.label}.`);
       if (!a.code) throw new Error(`${def.label} sent no code back.`);
-      await auth(p, { serverUrl, authorizationCode: a.code, fetchFn: o.fetchFn }).catch((e: unknown) => Promise.reject(new Error(`${def.label} didn't finish the sign-in: ${message(e)}`)));
+      await auth(p, { serverUrl, scope, authorizationCode: a.code, fetchFn: o.fetchFn }).catch((e: unknown) => Promise.reject(new Error(`${def.label} didn't finish the sign-in: ${message(e)}`)));
       // One call with the new token before it's kept: it works, and the tools Qalam reads with are there.
       const tools = await withMcp(serverUrl, provider(k, { redirectUrl: back.url, register: false, onRedirect: () => Promise.reject(new SignInAgain(def.label)) }), (_call, list) => list(), o.fetchFn);
       const recipe = RECIPES[id];

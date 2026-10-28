@@ -25,8 +25,12 @@ export interface ConnectorDef {
   claudeCode: RegExp;
   /** A token Qalam can keep for it in the Keychain, and where one is made. */
   token?: { label: string; href: string; placeholder: string };
-  /** The service's own MCP server, which Qalam can sign in to itself in the browser (server/connectors/oauth.ts). */
-  mcp?: { url: string };
+  /**
+   * The service's own MCP server, which Qalam can sign in to itself in the browser
+   * (server/connectors/oauth.ts): the scope Qalam asks for (else all the server lists), and the
+   * servers of the regions a workspace may live in (the first is `url`'s).
+   */
+  mcp?: { url: string; scope?: string; regions?: readonly { id: string; label: string; url: string }[] };
   imports: boolean;
   /** Its items' status shows on solution cards linked to them: with a token, or with none (public). */
   status?: "token" | "public";
@@ -39,7 +43,23 @@ export const CATALOG: readonly ConnectorDef[] = [
   { id: "drive", label: "Google Drive", group: "docs", feeds: "material", claudeCode: /google[ _]drive/i, imports: false },
   { id: "confluence", label: "Confluence", group: "docs", feeds: "material", claudeCode: /confluence|atlassian/i, imports: false },
   { id: "slack", label: "Slack", group: "voice", feeds: "material", claudeCode: /\bslack\b/i, imports: false },
-  { id: "intercom", label: "Intercom", group: "voice", feeds: "material", claudeCode: /intercom/i, imports: false },
+  // Read access only: "operator" is Fin Operator's, which Qalam doesn't use.
+  {
+    id: "intercom",
+    label: "Intercom",
+    group: "voice",
+    feeds: "material",
+    claudeCode: /intercom/i,
+    mcp: {
+      url: "https://mcp.intercom.com/mcp",
+      scope: "mcp",
+      regions: [
+        { id: "us", label: "US", url: "https://mcp.intercom.com/mcp" },
+        { id: "eu", label: "EU", url: "https://mcp.eu.intercom.com/mcp" },
+      ],
+    },
+    imports: true,
+  },
   { id: "zendesk", label: "Zendesk", group: "voice", feeds: "material", claudeCode: /zendesk/i, imports: false },
   { id: "calls", label: "Call recordings", group: "voice", feeds: "material", claudeCode: /granola|gong|fireflies|fathom/i, imports: false },
   { id: "linear", label: "Linear", group: "build", feeds: "work", claudeCode: /\blinear\b/i, token: { label: "Personal API key", href: "https://linear.app/settings/account/security", placeholder: "lin_api_…" }, imports: false, status: "token" },

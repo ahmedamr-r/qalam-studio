@@ -5,7 +5,7 @@ import { GROUPS } from "@/connectors/catalog";
 import type { Hit } from "@/connectors/recipes";
 import { connectorsDb, type ConnectorState, type ImportResult } from "@/org/connectors";
 import { placeHref } from "@/projects/model";
-import { Button, Checkbox, IconBtn, Spinner } from "../controls";
+import { Button, Checkbox, IconBtn, Segmented, Spinner } from "../controls";
 import { r } from "../recipes";
 import { ago } from "../time";
 import { StatusDot } from "../viz";
@@ -84,6 +84,8 @@ function Card({ c, onView, onImport }: { c: ConnectorState; onView: (v: View) =>
   const [note, setNote] = useState<string | null>(null);
   /** A sign-in under way in the browser, and its page once Qalam has it. */
   const [signing, setSigning] = useState<{ page: string | null } | null>(null);
+  /** Where the workspace lives, for a service with a server per region. */
+  const [region, setRegion] = useState(c.regions?.[0]?.id ?? "");
   const act = async (fn: () => Promise<View>) => {
     setBusy(true);
     setNote(null);
@@ -108,7 +110,7 @@ function Card({ c, onView, onImport }: { c: ConnectorState; onView: (v: View) =>
     setSigning({ page: null });
     setNote(null);
     try {
-      onView(await connectorsDb.signIn(c.id, (page) => setSigning({ page })));
+      onView(await connectorsDb.signIn(c.id, (page) => setSigning({ page }), c.regions ? region : undefined));
     } catch (e) {
       setNote(e instanceof Error ? e.message : String(e));
     } finally {
@@ -159,6 +161,7 @@ function Card({ c, onView, onImport }: { c: ConnectorState; onView: (v: View) =>
               Sign in
             </Button>
           )}
+          {c.canSignIn && (!c.via || expired) && c.regions && <Segmented label="Where the workspace is" value={region} onChange={setRegion} className="w-[84px]" options={c.regions.map((x) => ({ value: x.id, label: x.label }))} />}
           {!c.via && (c.imports || c.status === "token") && c.canToken && !tokenOpen && (
             <button type="button" className={clsx(r.buttonSm, r.buttonGhost)} onClick={() => setTokenOpen(true)}>
               Add a token

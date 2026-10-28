@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { IngestError } from "@/discovery/ingest/core";
-import { htmlText, ingestPath } from "./ingest";
+import { htmlText } from "@/discovery/ingest/text";
+import { ingestPath } from "./ingest";
 
 /** A one-page PDF with a line of text (Helvetica), with a correct cross-reference table. */
 function tinyPdf(text: string): Buffer {

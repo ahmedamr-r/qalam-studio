@@ -69,11 +69,16 @@ export function connectionsRoutes(): Hono {
     }
   });
   // Qalam's own sign-in to the service, in the system's browser: the page's address, then the connectors once it's done.
-  r.post("/api/connectors/:id/signin", (c) => {
+  r.post("/api/connectors/:id/signin", async (c) => {
     const id = c.req.param("id");
-    if (!connectorDef(id)?.mcp) return c.json({ error: "bad_request", message: "Qalam can't sign in to this one itself yet." }, 400);
+    const mcp = connectorDef(id)?.mcp;
+    if (!mcp) return c.json({ error: "bad_request", message: "Qalam can't sign in to this one itself yet." }, 400);
+    // Only a server the catalog names: the region picks one of them.
+    const { region } = (await c.req.json().catch(() => ({}))) as { region?: unknown };
+    const serverUrl = typeof region === "string" ? mcp.regions?.find((x) => x.id === region)?.url : mcp.url;
+    if (!serverUrl) return c.json({ error: "bad_request", message: "Which region is the workspace in?" }, 400);
     return ndjson(async (_emit, send) => {
-      await signIn(id, { onUrl: (url) => send({ type: "open", url }) });
+      await signIn(id, { serverUrl, onUrl: (url) => send({ type: "open", url }) });
       return connectorsView();
     });
   });

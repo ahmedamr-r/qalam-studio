@@ -1,3 +1,5 @@
+import { captureText, cleanText, htmlText } from "@/discovery/ingest/text";
+
 /*
  * How Qalam reads a connector (pure): the tool and the arguments for a search and for one item,
  * the items in a search's answer, and an item's words. Code picks the calls; the words that come
@@ -26,6 +28,8 @@ export interface Recipe {
   search: (query: string) => ToolCall;
   hits: (result: string) => Hit[];
   fetch: (hit: Hit) => ToolCall;
+  /** A fetched item's words (default `itemText`). */
+  text?: (result: string) => string;
 }
 
 const json = (text: string): unknown => {
@@ -47,11 +51,75 @@ export function notionHits(result: string): Hit[] {
   });
 }
 
+/*
+ * Intercom's hosted server: `search` takes a query in its own language (`object_type:conversations`
+ * first, `q:` for words) and answers {results:[{id,title,text,url}]}, ids prefixed `conversation_`;
+ * `fetch` takes such an id and answers the conversation with its parts.
+ */
+export function intercomHits(result: string): Hit[] {
+  const j = json(result) as { results?: Record<string, unknown>[] } | null;
+  return (j?.results ?? []).flatMap((r) => {
+    const id = str(r.id);
+    if (!id?.startsWith("conversation_")) return [];
+    const said = str(r.text) ? htmlText(str(r.text)!).text : "";
+    const title = str(r.title) ?? (said.split("\n")[0].slice(0, 80).trim() || `Conversation ${id.slice("conversation_".length)}`);
+    return [{ id, title, ...(str(r.url) ? { url: str(r.url) } : {}), ...(said ? { snippet: said.slice(0, 200) } : {}) }];
+  });
+}
+
+/** Who wrote a part of a conversation, by its author's type. */
+const WHO: Record<string, string> = { user: "Customer", lead: "Customer", contact: "Customer", admin: "Team", team: "Team", bot: "Bot" };
+
+/** One message: who wrote it, then its words without the markup ("Note" when only the team sees it). */
+function message(author: unknown, body: unknown, note: boolean): string | null {
+  if (typeof body !== "string" || !body.trim()) return null;
+  const words = htmlText(body).text;
+  if (!words) return null;
+  const a = (author ?? {}) as { type?: unknown; name?: unknown };
+  const who = (typeof a.type === "string" && WHO[a.type]) || "Someone";
+  return `${note ? "Note, " : ""}${who}${typeof a.name === "string" && a.name.trim() ? ` (${a.name.trim()})` : ""}: ${words}`;
+}
+
+/** A conversation as Intercom's API shapes it (its first message in `source`, the rest in `conversation_parts`), as messages. */
+function conversationText(c: Record<string, unknown> | null): string | null {
+  if (!c) return null;
+  const source = c.source as { subject?: unknown; body?: unknown; author?: unknown } | undefined;
+  const list = c.conversation_parts as unknown;
+  const parts = (Array.isArray(list) ? list : Array.isArray((list as { conversation_parts?: unknown } | undefined)?.conversation_parts) ? (list as { conversation_parts: unknown[] }).conversation_parts : []) as Record<string, unknown>[];
+  if (!source && !parts.length) return null;
+  const subject = typeof source?.subject === "string" ? htmlText(source.subject).text : "";
+  const lines = [subject ? `Subject: ${subject}` : null, message(source?.author, source?.body, false), ...parts.map((p) => message(p.author, p.body, p.part_type === "note"))].filter((l): l is string => !!l);
+  return lines.length ? lines.join("\n\n") : null;
+}
+
+/** A fetched Intercom conversation as who said what, the customers' words as they wrote them. Another shape reads as its fields. */
+export function intercomText(result: string): string {
+  const j = json(result) as Record<string, unknown> | null;
+  if (!j) return cleanText(result);
+  // `fetch` may answer {id, title, text, url, metadata} with the conversation inside `text`.
+  const inner = typeof j.text === "string" ? (json(j.text) as Record<string, unknown> | null) : null;
+  for (const c of [inner, j, (j.conversation as Record<string, unknown> | undefined) ?? null]) {
+    const t = conversationText(c);
+    if (t) return t;
+  }
+  if (typeof j.text === "string" && j.text.trim()) return /<\/?[a-z][^>]*>/i.test(j.text) ? htmlText(j.text).text : cleanText(j.text);
+  return captureText(result);
+}
+
+/** Intercom's search words: inside quotes, so they can't add to the query. */
+const intercomQuery = (words: string) => `object_type:conversations q:"${words.replace(/["\\]/g, " ").replace(/\s+/g, " ").trim()}" limit:20`;
+
 export const RECIPES: Record<string, Recipe> = {
   notion: {
     search: (query) => ({ tool: "notion-search", args: { query } }),
     hits: notionHits,
     fetch: (hit) => ({ tool: "notion-fetch", args: { id: hit.id } }),
+  },
+  intercom: {
+    search: (query) => ({ tool: "search", args: { query: intercomQuery(query) } }),
+    hits: intercomHits,
+    fetch: (hit) => ({ tool: "fetch", args: { id: hit.id } }),
+    text: intercomText,
   },
 };
 

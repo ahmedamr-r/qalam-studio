@@ -29,6 +29,8 @@ export interface ConnectorState {
   tokenHelp: { label: string; href: string; placeholder: string } | null;
   /** Qalam can sign in to the service itself, in the browser. */
   canSignIn: boolean;
+  /** The regions whose server it can sign in to, when there are several (the first by default). */
+  regions: { id: string; label: string }[] | null;
   via: "claude-code" | "token" | "oauth" | null;
   word: string;
   tone: "ok" | "warn" | "off";
@@ -80,7 +82,7 @@ export const connectorsDb = {
   saveToken: (id: string, token: string) => send(`/api/connectors/${id}/token`, "PUT", { token }).then((r) => json<View & { who: string }>(r)),
   forget: (id: string) => send(`/api/connectors/${id}`, "DELETE").then((r) => json<View>(r)),
   /** Sign in in the system's browser; `onPage` hears the page's address (a link, in case it didn't open). Ends once it's done there. */
-  signIn: async (id: string, onPage: (url: string) => void) => streamed<View>(await send(`/api/connectors/${id}/signin`, "POST"), (m) => m.type === "open" && m.url && onPage(m.url)),
+  signIn: async (id: string, onPage: (url: string) => void, region?: string) => streamed<View>(await send(`/api/connectors/${id}/signin`, "POST", region ? { region } : {}), (m) => m.type === "open" && m.url && onPage(m.url)),
   stopSignIn: (id: string) => send(`/api/connectors/${id}/signin`, "DELETE"),
   search: async (id: string, query: string) => json<{ hits: Hit[] }>(await send(await orgPath(`/connectors/${id}/search`), "POST", { query })),
   /** Takes each picked item in; `onActivity` hears how it's going. */

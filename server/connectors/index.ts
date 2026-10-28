@@ -32,9 +32,13 @@ export async function connectorsView(): Promise<{ checkedAt: number | null; conn
       const listed = known ? matchClaudeCode(def, known.list) : null;
       const how = chosen[def.id];
       const token = def.token ? await secrets().get(tokenName(def.id)).catch(() => null) : null;
-      const base = { id: def.id, label: def.label, group: def.group, feeds: def.feeds, imports: def.imports, status: def.status ?? null, numbers: !!def.numbers, claudeCode: listed ? { server: listed.name, status: listed.status } : null, token: token ? { last4: token.slice(-4) } : null, canToken: !!def.token, tokenHelp: def.token ?? null, canSignIn: !!def.mcp };
+      const regions = def.mcp?.regions?.map(({ id, label }) => ({ id, label })) ?? null;
+      const base = { id: def.id, label: def.label, group: def.group, feeds: def.feeds, imports: def.imports, status: def.status ?? null, numbers: !!def.numbers, claudeCode: listed ? { server: listed.name, status: listed.status } : null, token: token ? { last4: token.slice(-4) } : null, canToken: !!def.token, tokenHelp: def.token ?? null, canSignIn: !!def.mcp, regions };
       const kept = how?.via === "oauth" ? await signedIn(def.id) : !!token;
-      return { ...base, ...stateOf(def, how?.via === "claude-code" ? (listed?.name === how.server ? listed.status : "unknown") : null, how?.via ?? null, kept, listed?.status ?? null) };
+      const state = stateOf(def, how?.via === "claude-code" ? (listed?.name === how.server ? listed.status : "unknown") : null, how?.via ?? null, kept, listed?.status ?? null);
+      // Which region's server it signed in to, where there are several.
+      const region = how?.via === "oauth" && state.tone === "ok" ? def.mcp?.regions?.find((r) => r.url === how.url)?.label : undefined;
+      return { ...base, ...state, ...(region ? { word: `${state.word} · ${region}` } : {}) };
     }),
   );
   return { checkedAt: known?.at ?? null, connectors };
@@ -112,6 +116,8 @@ export async function searchConnector(id: string, query: string): Promise<Hit[]>
 export async function importItems(store: OrgStore, id: string, hits: Hit[], emit: (label: string) => void): Promise<ImportResult> {
   const h = await how(id);
   const label = connectorDef(id)?.label ?? id;
+  const recipe = RECIPES[id];
+  const read = recipe.text ?? itemText;
   emit(`Reading ${hits.length === 1 ? `“${hits[0].title}”` : `${hits.length} items`} from ${label}`);
   const texts: (string | null)[] =
     h.via === "token"
@@ -120,10 +126,10 @@ export async function importItems(store: OrgStore, id: string, hits: Hit[], emit
         ? await withSignedIn(id, h.url, async (call) => {
             const out: (string | null)[] = [];
             // An item the tool can't give is noted; a sign-in the service stopped taking ends it.
-            for (const x of hits) out.push(await call(RECIPES[id].fetch(x)).then((t) => (t === null ? null : itemText(t)), (e: unknown) => (e instanceof SignInAgain ? Promise.reject(e) : null)));
+            for (const x of hits) out.push(await call(recipe.fetch(x)).then((t) => (t === null ? null : read(t)), (e: unknown) => (e instanceof SignInAgain ? Promise.reject(e) : null)));
             return out;
           })
-        : (await runTools(h.server, hits.map((x) => RECIPES[id].fetch(x)))).map((t) => (t === null ? null : itemText(t)));
+        : (await runTools(h.server, hits.map((x) => recipe.fetch(x)))).map((t) => (t === null ? null : read(t)));
   const out: ImportResult = { added: [], skipped: [], failed: [] };
   const have = await store.listSources();
   for (const [i, hit] of hits.entries()) {
