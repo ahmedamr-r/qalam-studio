@@ -28,7 +28,8 @@ const { workStatuses } = await import("./work");
  * the page a person approves on, tokens (PKCE checked), revocation, and an MCP server with their
  * tools that takes only the access tokens it gave.
  */
-const ALL_TOOLS = ["notion-search", "notion-fetch", "notion-get-self", "search", "fetch", "slack_search_public_and_private", "slack_read_thread", "get_issue"];
+const CONFLUENCE_TOOLS = ["getAccessibleAtlassianResources", "searchConfluenceUsingCql", "getConfluencePage"];
+const ALL_TOOLS = ["notion-search", "notion-fetch", "notion-get-self", "search", "fetch", "slack_search_public_and_private", "slack_read_thread", "get_issue", "getJiraIssue", ...CONFLUENCE_TOOLS];
 /** An answer the server gives as an error (an issue it doesn't know). */
 const MISSING = Symbol("missing");
 const SLACK_RESULTS = ["## Result 1 of 1", "Channel: #feedback (C01)", "From: Dana Lee", "Permalink: https://acme.slack.com/archives/C01/p1790771415332219", "Text: We export to sheets every Friday."].join("\n");
@@ -46,6 +47,11 @@ const ANSWERS: Record<string, (args: Record<string, unknown> | undefined) => unk
   slack_read_thread: (a) => ({ messages: a?.channel_id === "C01" && a.message_ts === "1790771415.332219" ? "Dana Lee: We export to sheets every Friday.\nOmar: Which sheet?" : "" }),
   // As Linear's answers for the fields Qalam asks: its id is the identifier.
   get_issue: (a) => (a?.id === "ENG-12" ? { title: "Fee breakdown", status: "In Progress", statusType: "started", id: "ENG-12" } : MISSING),
+  // Atlassian's: every call names its site.
+  getAccessibleAtlassianResources: () => [{ id: "c1d2", url: "https://basket.atlassian.net", name: "basket", scopes: ["read:confluence-content.all", "read:jira-work"] }],
+  searchConfluenceUsingCql: (a) => (a?.cloudId === "c1d2" ? { results: [{ content: { id: "98305", type: "page", title: "Interview: Dana", _links: { webui: "/spaces/CX/pages/98305" } }, excerpt: "We @@@hl@@@export@@@endhl@@@ to sheets" }], _links: { base: "https://basket.atlassian.net/wiki" } } : MISSING),
+  getConfluencePage: (a) => (a?.cloudId === "c1d2" && a.pageId === "98305" ? { id: "98305", title: "Interview: Dana", body: "Dana: We export to sheets every Friday." } : MISSING),
+  getJiraIssue: (a) => (a?.cloudId === "https://basket.atlassian.net" && a.issueIdOrKey === "APP-9" ? { id: "10001", key: "APP-9", fields: { summary: "Show fees early", status: { name: "In Progress", statusCategory: { key: "indeterminate" } } } } : MISSING),
 };
 function standIn() {
   const s = {
@@ -188,6 +194,7 @@ afterEach(async () => {
   cancelSignIn("notion");
   cancelSignIn("slack");
   cancelSignIn("linear");
+  cancelSignIn("jira");
   await rm(dir, { recursive: true, force: true });
 });
 
@@ -318,6 +325,48 @@ describe("Qalam's own sign-in to a connector's MCP server", () => {
     expect((await landed)?.text).toContain("Intercom isn't connected");
     expect(await secrets().get("connector:intercom:oauth")).toBeNull();
     expect((await readSettings()).connectors?.intercom).toBeUndefined();
+  });
+
+  it("signs in once for the connectors sharing an account (Atlassian: Jira and Confluence), and disconnecting one disconnects both", async () => {
+    await signIn("jira", { serverUrl: mcpUrl, open: browser });
+    expect((await landed)?.text).toContain("Signed in to Atlassian");
+    expect((await readSettings()).connectors).toMatchObject({ jira: { via: "oauth", url: mcpUrl }, confluence: { via: "oauth", url: mcpUrl } });
+    expect(await secrets().get("connector:atlassian:oauth")).not.toBeNull();
+    expect(await secrets().get("connector:jira:oauth")).toBeNull();
+    const cards = (await connectorsView()).connectors.filter((c) => c.id === "jira" || c.id === "confluence");
+    expect(cards.map((c) => [c.id, c.word, c.account])).toEqual([
+      ["confluence", "Connected", "Atlassian"],
+      ["jira", "Connected", "Atlassian"],
+    ]);
+    const t = JSON.parse((await secrets().get("connector:atlassian:oauth"))!);
+    await forgetConnector("confluence");
+    expect(s.revoked).toEqual(expect.arrayContaining([t.refresh_token, t.access_token]));
+    expect((await readSettings()).connectors?.jira).toBeUndefined();
+    expect(await secrets().get("connector:atlassian:oauth")).toBeNull();
+  });
+
+  it("Confluence: asks which site, searches its pages, and brings a page in", async () => {
+    await signIn("confluence", { serverUrl: mcpUrl, open: browser });
+    const hits = await searchConnector("confluence", "sheets");
+    expect(hits).toEqual([{ id: "98305", title: "Interview: Dana", url: "https://basket.atlassian.net/wiki/spaces/CX/pages/98305", snippet: "We export to sheets", site: "c1d2" }]);
+    const store = { listSources: async () => [] } as unknown as OrgStore;
+    expect(await importItems(store, "confluence", hits, () => {})).toEqual({ added: ["Interview: Dana"], skipped: [], failed: [] });
+    expect(captured).toEqual([{ kind: "connector", title: "Interview: Dana", origin: "https://basket.atlassian.net/wiki/spaces/CX/pages/98305", text: "Dana: We export to sheets every Friday." }]);
+  });
+
+  it("Jira: says where a linked issue stands, asked on its link's site", async () => {
+    await signIn("jira", { serverUrl: mcpUrl, open: browser });
+    const got = await workStatuses({ dir } as unknown as OrgStore, [{ connector: "jira", ref: "APP-9", url: "https://basket.atlassian.net/browse/APP-9" }], { now: 5 });
+    expect(got["jira:APP-9"]).toEqual({ state: "doing", label: "In Progress", title: "Show fees early", at: 5 });
+  });
+
+  it("connects only the connectors whose tools the server offers (a site with Jira and no Confluence)", async () => {
+    s.tools = ALL_TOOLS.filter((t) => !CONFLUENCE_TOOLS.includes(t));
+    await signIn("confluence", { serverUrl: mcpUrl, open: browser });
+    expect((await readSettings()).connectors).toMatchObject({ jira: { via: "oauth" } });
+    expect((await readSettings()).connectors?.confluence).toBeUndefined();
+    s.tools = ALL_TOOLS.filter((t) => t !== "getJiraIssue" && !CONFLUENCE_TOOLS.includes(t));
+    await expect(signIn("jira", { serverUrl: mcpUrl, open: browser })).rejects.toThrow("Atlassian's server doesn't offer getJiraIssue.");
   });
 
   describe("Linear, for where linked issues stand", () => {

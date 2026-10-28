@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { CATALOG, connectorDef } from "./catalog";
 import { matchClaudeCode, parseMcpList, toolPrefix } from "./claude-code";
+import { atlassianSite, CONFLUENCE_RECIPE, confluenceCql, confluenceHits, confluenceText } from "./confluence";
 import { intercomHits, intercomText, itemText, notionApiHits, notionBlocksText, notionHits, RECIPES } from "./recipes";
 import { SLACK_CALLBACK, SLACK_RECIPE, SLACK_SCOPES, slackAppLink, slackHits, slackManifest, slackMessage, slackText } from "./slack";
 
@@ -169,5 +170,32 @@ describe("reading Slack, through the workspace's own app", () => {
     const thread = "Dana Lee (2026-10-27 14:03): We export to sheets every Friday.\nOmar (14:05): Which sheet?";
     expect(slackText(JSON.stringify({ messages: thread, next_cursor: "abc", has_more: false }))).toBe(thread);
     expect(slackText(thread)).toBe(thread);
+  });
+});
+
+describe("reading Confluence, through Atlassian's server", () => {
+  it("asks which site first, then searches its pages with the words kept inside quotes", () => {
+    const sites = [{ id: "jira-only", url: "https://basket-ops.atlassian.net", name: "ops", scopes: ["read:jira-work"] }, { id: "c1d2", url: "https://basket.atlassian.net", name: "basket", scopes: ["read:confluence-content.all", "read:jira-work"] }];
+    expect(atlassianSite(JSON.stringify(sites))).toBe("c1d2");
+    expect(atlassianSite(JSON.stringify([{ id: "only", scopes: [] }]))).toBe("only");
+    expect(atlassianSite("[]")).toBeNull();
+    expect(CONFLUENCE_RECIPE.site!.call).toEqual({ tool: "getAccessibleAtlassianResources", args: {} });
+    expect(CONFLUENCE_RECIPE.search('sheets" OR space = "HR', "c1d2")).toEqual({ tool: "searchConfluenceUsingCql", args: { cloudId: "c1d2", cql: `type = page AND text ~ "sheets OR space = HR" ORDER BY lastmodified DESC`, limit: 20 } });
+    expect(confluenceCql("  weekly   exports ")).toBe(`type = page AND text ~ "weekly exports" ORDER BY lastmodified DESC`);
+  });
+
+  it("lists the pages a search found, with their site, and reads a page's words", () => {
+    const answer = {
+      results: [
+        { content: { id: "98305", type: "page", title: "Interview: Dana", _links: { webui: "/spaces/CX/pages/98305/Interview+Dana" } }, excerpt: "We @@@hl@@@export@@@endhl@@@ to sheets every Friday.", lastModified: "2026-10-20" },
+        { content: { id: "77", type: "attachment", title: "notes.pdf" } },
+      ],
+      _links: { base: "https://basket.atlassian.net/wiki" },
+    };
+    const hits = confluenceHits(JSON.stringify(answer), "c1d2");
+    expect(hits).toEqual([{ id: "98305", title: "Interview: Dana", url: "https://basket.atlassian.net/wiki/spaces/CX/pages/98305/Interview+Dana", snippet: "We export to sheets every Friday.", site: "c1d2" }]);
+    expect(CONFLUENCE_RECIPE.fetch(hits[0])).toEqual({ tool: "getConfluencePage", args: { cloudId: "c1d2", pageId: "98305", contentFormat: "markdown" } });
+    expect(confluenceText(JSON.stringify({ id: "98305", title: "Interview: Dana", body: "## Dana\n\nWe export to sheets every Friday." }))).toBe("## Dana\n\nWe export to sheets every Friday.");
+    expect(confluenceText(JSON.stringify({ id: "98305", body: { storage: { value: "<p>We export to <b>sheets</b>.</p>" } } }))).toBe("We export to sheets.");
   });
 });

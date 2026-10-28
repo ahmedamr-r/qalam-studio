@@ -1,6 +1,6 @@
-import { CATALOG, connectorDef, type ConnectorDef } from "@/connectors/catalog";
+import { CATALOG, connectorDef, signInGroup, type ConnectorDef } from "@/connectors/catalog";
 import { matchClaudeCode, type ListedStatus } from "@/connectors/claude-code";
-import { itemText, RECIPES, type Hit } from "@/connectors/recipes";
+import { itemText, RECIPES, type Hit, type Recipe, type ToolCall } from "@/connectors/recipes";
 import type { ConnectorState, ImportResult } from "@/org/connectors";
 import { captureSource } from "../capture";
 import type { OrgStore } from "../org/store";
@@ -35,7 +35,7 @@ export async function connectorsView(): Promise<{ checkedAt: number | null; conn
       const regions = def.mcp?.regions?.map(({ id, label }) => ({ id, label })) ?? null;
       const own = def.mcp?.ownApp;
       const ownApp = own ? { kept: await appKept(def.id), create: own.create, where: own.where, callback: own.callback } : null;
-      const base = { id: def.id, label: def.label, group: def.group, feeds: def.feeds, imports: def.imports, status: def.status ?? null, numbers: !!def.numbers, claudeCode: listed ? { server: listed.name, status: listed.status } : null, token: token ? { last4: token.slice(-4) } : null, canToken: !!def.token, tokenHelp: def.token ?? null, canSignIn: !!def.mcp, regions, ownApp };
+      const base = { id: def.id, label: def.label, group: def.group, feeds: def.feeds, imports: def.imports, status: def.status ?? null, numbers: !!def.numbers, claudeCode: listed ? { server: listed.name, status: listed.status } : null, token: token ? { last4: token.slice(-4) } : null, canToken: !!def.token, tokenHelp: def.token ?? null, canSignIn: !!def.mcp, account: def.mcp?.account?.label ?? null, regions, ownApp };
       const kept = how?.via === "oauth" ? await signedIn(def.id) : !!token;
       const state = stateOf(def, how?.via === "claude-code" ? (listed?.name === how.server ? listed.status : "unknown") : null, how?.via ?? null, kept, listed?.status ?? null);
       // Which region's server it signed in to, where there are several.
@@ -81,6 +81,8 @@ export async function forgetConnector(id: string) {
   if (connectorDef(id)?.mcp) await forgetSignIn(id).catch(() => {});
   const all = { ...((await readSettings()).connectors ?? {}) };
   delete all[id];
+  // A sign-in shared with other connectors is gone for them too.
+  for (const x of signInGroup(id)) if (all[x]?.via === "oauth") delete all[x];
   await writeSettings({ connectors: all });
 }
 
@@ -100,18 +102,32 @@ async function how(id: string) {
   return { via: "claude-code" as const, server: via.server };
 }
 
+/** The site a recipe's calls are about (Atlassian's cloudId), asked first when it needs one. */
+async function siteOf(id: string, recipe: Recipe, ask: (call: ToolCall) => Promise<string | null>): Promise<string | undefined> {
+  if (!recipe.site) return undefined;
+  const site = recipe.site.read((await ask(recipe.site.call)) ?? "");
+  if (!site) throw new Error(`${connectorDef(id)?.label ?? id} has no site Qalam can reach.`);
+  return site;
+}
+
 export async function searchConnector(id: string, query: string): Promise<Hit[]> {
   const h = await how(id);
   if (h.via === "token") return notionSearch(h.token, query);
   const recipe = RECIPES[id];
   if (h.via === "mcp") {
-    const answer = await withSignedIn(id, h.url, (call) => call(recipe.search(query)));
+    const { site, answer } = await withSignedIn(id, h.url, async (call) => {
+      const site = await siteOf(id, recipe, call);
+      return { site, answer: await call(recipe.search(query, site)) };
+    });
     if (answer === null) throw new Error(`${connectorDef(id)?.label ?? id} didn't search it.`);
-    return recipe.hits(answer);
+    return recipe.hits(answer, site);
   }
-  const [answer] = await runTools(h.server, [recipe.search(query)]);
+  // Through Claude Code: a run per call, the site's first when the recipe needs one.
+  const ask = async (call: ToolCall) => (await runTools(h.server, [call]))[0];
+  const site = await siteOf(id, recipe, ask);
+  const answer = await ask(recipe.search(query, site));
   if (answer === null) throw new Error("Claude Code didn't search it. Is it signed in there?");
-  return recipe.hits(answer);
+  return recipe.hits(answer, site);
 }
 
 /** Read the picked items and take each in. `emit` hears how it's going. */
