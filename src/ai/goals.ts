@@ -28,7 +28,7 @@ Rest each link on the problem's own lines: cite their ids (l…). Write how it m
 
 Leave out a problem that wouldn't move any of these goals: a weak link costs the team more than a missing one. In "none", say in one sentence what kind of problem would move these goals that no page holds yet, or "" when there's nothing to say.
 
-In what you write, call them problems and goals.`;
+In what you write, call them problems and goals, and name a goal or a problem by its words, never by its id: the ids are for the fields.`;
 
 export function bearingsSchema(m: Pick<BearingSent, "problems" | "targets" | "lines">) {
   return obj({

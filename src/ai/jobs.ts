@@ -30,7 +30,7 @@ Use a connected tool when one could answer; plan for a tool that isn't connected
 
 Write each title as a short instruction of at most 12 words (Search Intercom for delivery fee complaints). Write why in one sentence: what the team would learn and how that bears on the goal. Quote only words from what you were sent, in “”. Use a number only when it is in what you were sent. Never invent customers, people, numbers or quotes.
 
-In what you write, call them goals and problems.`;
+In what you write, call them goals and problems, and name what you mean by its words, never by its id: the ids are for the fields.`;
 
 export function jobsSchema(m: Pick<JobSent, "gaps" | "tools" | "segments" | "people">) {
   return obj({

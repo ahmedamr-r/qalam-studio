@@ -4,7 +4,7 @@ import type { PackedPiece } from "@/org/pack";
 import { metricLine } from "./goals-md";
 import type { Relation } from "./math";
 import type { Benchmark, Outside } from "./outside";
-import { metricFrom } from "./said";
+import { metricFrom, withoutIds } from "./said";
 import { chainOf, childrenOf } from "./tree";
 import { GOAL_LEVERS, LEVER_LABEL, type Goal, type GoalLever, type GoalTree } from "./types";
 
@@ -132,9 +132,11 @@ export function sanitizeBreakdown(raw: unknown, m: BreakdownSent, o: { now: numb
       continue;
     }
     const cited = strs(p.cites).flatMap((k) => m.pieces.get(k) ?? []);
-    const title = checkWords(p.title, cited, m.chain, BREAKDOWN_LIMITS.title);
+    // The call's ids out of its words: what others report, by who reports it.
+    const name = (ref: string) => m.benchmarks.get(ref)?.who;
+    const title = checkWords(withoutIds(p.title, name, "ok"), cited, m.chain, BREAKDOWN_LIMITS.title);
     // Its reason rests on their words and the goals' numbers: what others report shows beside it, never in it.
-    const why = checkWords(p.why, cited, m.chain, BREAKDOWN_LIMITS.why);
+    const why = checkWords(withoutIds(p.why, name, "ok"), cited, m.chain, BREAKDOWN_LIMITS.why);
     if (!title || !why) {
       drop("its words or numbers aren't in what it cites", x);
       continue;

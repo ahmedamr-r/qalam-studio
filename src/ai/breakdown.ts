@@ -25,7 +25,7 @@ For each: a title of at most 12 words, a change in what customers do ("More firs
 
 Then relation: "product" when the goal's number is the product of the parts' numbers, "sum" when it's their sum, "none" otherwise. In "none", when there's nothing worth proposing, say in one sentence what would help, else "".
 
-In what you write, call them goals and problems.`;
+In what you write, call them goals and problems, and never write an id: the ids are for the fields.`;
 
 export function breakdownSchema(m: Pick<BreakdownSent, "pieces" | "benchmarks">) {
   const n = (description: string) => ({ anyOf: [{ type: "number", description }, { type: "null" }] });

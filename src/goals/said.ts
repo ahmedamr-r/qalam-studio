@@ -28,6 +28,22 @@ export function wordsHold(words: string, said: string): boolean {
   return own.length > 0 && own.every((w) => forms(w).some((f) => theirs.has(f)));
 }
 
+/**
+ * A call's ids out of what it wrote, as the brain dump does (`readable`): people never see them. A
+ * list of ids in brackets goes; an id the call named becomes what it stands for, an id it didn't
+ * goes too. Lower-case ids only ("Q2" stays).
+ */
+export function withoutIds(text: unknown, name: (ref: string) => string | undefined, kinds = "gtlxspob"): string {
+  if (typeof text !== "string") return "";
+  const id = `[${kinds}]\\d{1,3}`;
+  return text
+    .replace(new RegExp(`\\s*[([]\\s*${id}(?:\\s*[,/;]\\s*${id})*\\s*[)\\]]`, "g"), "")
+    .replace(new RegExp(`\\b${id}\\b`, "g"), (ref) => name(ref) ?? "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+([.,;:!?'’])/g, "$1")
+    .trim();
+}
+
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 const clip = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);

@@ -1,5 +1,6 @@
 import { checkWords, cleanLine, SECTION_HEADING, type Topic } from "@/hub/topics";
 import type { Gap } from "./gaps";
+import { withoutIds } from "./said";
 import { metricLine } from "./goals-md";
 import type { GoalProblem } from "./problems";
 import { chainOf } from "./tree";
@@ -202,7 +203,9 @@ const same = (a: string, b: string) => one(a).toLowerCase() === one(b).toLowerCa
 export function sanitizeJobs(raw: unknown, m: JobSent, o: { goal: string; now: number; id: () => string }, dropped?: (why: string, item: unknown) => void): Job[] {
   const out: Job[] = [];
   const drop = (why: string, x: unknown) => void dropped?.(why, x);
-  const words = (v: unknown, max: number, also: string[] = []) => checkWords(v, also.map((text) => ({ text })), m.hay, max);
+  // The call's ids as what they stand for (a gap, a segment, a person), then checked.
+  const name = (ref: string) => m.gaps.get(ref)?.title ?? m.segments.get(ref)?.title ?? m.people.get(ref)?.name;
+  const words = (v: unknown, max: number, also: string[] = []) => checkWords(withoutIds(v, name), also.map((text) => ({ text })), m.hay, max);
   for (const x of Array.isArray(rec(raw).jobs) ? (rec(raw).jobs as unknown[]) : []) {
     if (out.length >= JOB_LIMITS.jobs) {
       drop("over the limit", x);

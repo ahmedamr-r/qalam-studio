@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { missingQuestions } from "@/ui/setup/GoalsForm";
 import { missingOf, readOutline, sanitizeShaped, withoutGoal } from "./outline";
-import { metricFrom, wordsHold } from "./said";
+import { metricFrom, withoutIds, wordsHold } from "./said";
 
 describe("goals written down as an outline", () => {
   it("reads each line under the nearest less indented line above it, bullets or not", () => {
@@ -67,6 +67,15 @@ describe("what Qalam AI reads from each line", () => {
       ["o2", null],
       ["o3", null],
     ]);
+  });
+});
+
+describe("a call's ids, never in what people read", () => {
+  it("drops a list of ids, names an id the call gave, and leaves what isn't one", () => {
+    const names = (ref: string) => ({ g3: "Tutors reply within an hour", t1: "Slow replies" })[ref];
+    expect(withoutIds("Waiting “almost a week” is exactly the slow first reply g3's 3-hour median counts (l2, l4).", names)).toBe("Waiting “almost a week” is exactly the slow first reply Tutors reply within an hour's 3-hour median counts.");
+    expect(withoutIds("t1 moves it, as l7 says.", names)).toBe("Slow replies moves it, as says.");
+    expect(withoutIds("Revenue by Q2 for b2b customers", names)).toBe("Revenue by Q2 for b2b customers");
   });
 });
 

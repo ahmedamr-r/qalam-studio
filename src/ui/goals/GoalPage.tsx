@@ -143,9 +143,12 @@ export default function GoalPage({ id }: { id: string }) {
     load();
   };
 
+  // A problem goes to the most specific goal it bears on: the goal under this one it came through, when it did.
   const workOn = (p: GoalProblem) => {
-    if (board) return window.location.assign(`${projectHref({ id: board.board, type: "discovery" })}?problem=${encodeURIComponent(p.topic)}&under=${encodeURIComponent(board.card)}`);
-    void startBoardForGoal(g, p.topic);
+    const target = (p.via && goals.goals.find((x) => x.id === p.via)) || g;
+    const on = page.boards.find((b) => b.goal === target.id);
+    if (on) return window.location.assign(`${projectHref({ id: on.board, type: "discovery" })}?problem=${encodeURIComponent(p.topic)}&under=${encodeURIComponent(on.card)}`);
+    void startBoardForGoal(target, p.topic);
   };
 
   const rename = async () => {

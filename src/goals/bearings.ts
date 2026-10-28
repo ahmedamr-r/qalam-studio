@@ -1,6 +1,7 @@
 import { topicLineRef } from "@/hub/pieces";
 import { checkWords, SECTION_HEADING, type Topic } from "@/hub/topics";
 import { metricLine } from "./goals-md";
+import { withoutIds } from "./said";
 import { chainOf, childrenOf, goalById, rootsOf } from "./tree";
 import type { Goal, GoalTree } from "./types";
 
@@ -173,7 +174,9 @@ export function sanitizeBearings(raw: unknown, m: BearingSent, o: { now: number;
     }
     // Its words and numbers are in the lines it cites, the problem's name, or the goal's own number.
     const chain = [...m.goals.values()].filter((x) => x.id === g.id || x.id === g.parent).map((x) => `${x.title}${x.metric ? ` ${x.metric.name} ${metricLine(x.metric)} ${x.metric.baseline ?? ""} ${x.metric.current ?? ""} ${x.metric.target ?? ""}` : ""}`);
-    const how = checkWords(b.how, cited, [t.title, ...chain].join("\n"), BEARING_LIMITS.how);
+    // The call's ids as what they stand for: a goal or a problem by its name, a line's id gone.
+    const named = withoutIds(b.how, (ref) => m.goals.get(ref)?.title ?? m.problems.get(ref)?.title);
+    const how = checkWords(named, cited, [t.title, ...chain, ...[...m.goals.values()].map((x) => x.title)].join("\n"), BEARING_LIMITS.how);
     if (!how) {
       drop("words or numbers not in what it cites", x);
       continue;
