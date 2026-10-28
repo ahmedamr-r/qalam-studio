@@ -11,9 +11,11 @@ import { QUOTE_KIND_LABEL, SOURCE_KIND_LABEL, fromSource, pageAt, unread, type S
 import { ROLE_LABEL } from "@/discovery/dump";
 import { awaitingRoles, clock, finishInterviewQuotes } from "@/discovery/transcript";
 import { feedback } from "@/commands/feedback";
+import { connectorOfOrigin } from "@/connectors/logos";
 import { Button, IconBtn, Segmented, Select, Spinner, Tag } from "../controls";
 import { r } from "../recipes";
 import { QalamAIGlyph } from "../brand/ai-glyph";
+import { ConnectorLogo } from "../brand/ConnectorLogo";
 import { Progress } from "../ai/common";
 import { confirmDialog } from "../surfaces/dialog";
 import { getController } from "../CanvasView";
@@ -120,6 +122,8 @@ function metaOf(s: SourceRecord): string {
 
 function SourceRow({ source, quoting }: { source: SourceRecord; quoting: boolean }) {
   const Icon = KIND_ICON[source.kind];
+  // A connector's material shows the tool it came from; one it can't tell, the plug.
+  const via = source.kind === "connector" ? connectorOfOrigin(source.origin) : null;
   return (
     <div
       role="listitem"
@@ -131,7 +135,7 @@ function SourceRow({ source, quoting }: { source: SourceRecord; quoting: boolean
       title="Open it · drag it onto the board for a note of it"
       className={clsx(r.layerRow, "h-auto min-h-[40px] cursor-default py-[6px] pl-[8px]")}
     >
-      <Icon {...ICON} className={r.layerIcon} />
+      <span className="grid size-[20px] shrink-0 place-items-center">{via ? <ConnectorLogo id={via} /> : <Icon {...ICON} className={r.layerIcon} />}</span>
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="truncate text-body text-fg" dir="auto">
           {source.title}

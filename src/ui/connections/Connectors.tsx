@@ -5,13 +5,14 @@ import { GROUPS } from "@/connectors/catalog";
 import type { Hit } from "@/connectors/recipes";
 import { connectorsDb, type ConnectorState, type ImportResult } from "@/org/connectors";
 import { placeHref } from "@/projects/model";
+import { ConnectorLogo } from "../brand/ConnectorLogo";
 import { Button, Checkbox, IconBtn, Segmented, Spinner } from "../controls";
 import { r } from "../recipes";
 import { ago } from "../time";
 import { StatusDot } from "../viz";
 
 /*
- * Connectors in Connections: the four groups as cards, each with a dot and a word (Connected,
+ * Connectors in Connections: the four groups as cards, each with its logo, a dot and a word (Connected,
  * In Claude Code, Coming next…) and one action. One Claude Code already has is used with one click
  * (Claude Code keeps its sign-in); otherwise Qalam signs in to the service itself in the browser, or
  * keeps a token, either in the Keychain. A connected one brings material in: search it, pick, and
@@ -127,7 +128,8 @@ function Card({ c, onView, onImport }: { c: ConnectorState; onView: (v: View) =>
   const canSignIn = c.canSignIn && (!c.via || expired) && (!c.ownApp || c.ownApp.kept);
   return (
     <li className={clsx("flex flex-col gap-[8px] rounded-lg bg-panel px-[12px] py-[10px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]", soon && "opacity-60")}>
-      <div className="flex items-center gap-[8px]">
+      <div className="flex items-center gap-[10px]">
+        <ConnectorLogo id={c.id} size={28} decorative />
         <span className="min-w-0 flex-1 truncate text-body font-medium text-fg">{c.label}</span>
         <span className="inline-flex shrink-0 items-center gap-[6px] text-caption text-fg-muted">
           <StatusDot tone={c.tone} hollow={c.tone === "off"} />

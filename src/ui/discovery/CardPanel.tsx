@@ -18,8 +18,9 @@ import { evidenceRows, evidenceSummary, isAIIdea, isAssumed, type EvidenceSummar
 import { strengthFill, strengthOf, type Strength } from "@/hub/needs";
 import { feedback } from "@/commands/feedback";
 import type { AssumptionCategory, OstCard, OstEvidence, OstMetric, OstStage } from "@/discovery/types";
-import { parseWorkUrl, WORK_LABEL, workKey } from "@/connectors/work";
+import { parseWorkUrl, workKey } from "@/connectors/work";
 import { MetricSource } from "../numbers/MetricSource";
+import { ConnectorLogo } from "../brand/ConnectorLogo";
 import { refreshWork } from "./work";
 import { Button, Field, Hint, IconBtn, Row, Section, Segmented, Select, Tag, Tip } from "../controls";
 import { r } from "../recipes";
@@ -279,7 +280,7 @@ function WorkSection({ id, card }: { id: string; card: OstCard }) {
         const st = statuses[workKey(w)];
         return (
           <div key={workKey(w)} className="flex h-[28px] items-center gap-[8px] rounded-md px-[6px] text-caption hover:bg-hover">
-            <span className="shrink-0 text-fg-subtle">{WORK_LABEL[w.connector] ?? w.connector}</span>
+            <ConnectorLogo id={w.connector} />
             <span className="min-w-0 flex-1 truncate text-fg" title={st?.title}>
               {w.ref}
             </span>
