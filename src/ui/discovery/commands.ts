@@ -37,7 +37,7 @@ const needOneCard = () => (oneCard() ? true : "Select one card");
 const ofKind = (k: OstKind) => () => (oneCard() && cardOf(s().doc, oneCard())?.kind === k ? true : `Select ${KIND_NOUN[k]}`);
 
 const PRIORITY = 1;
-const PLURAL: Record<OstKind, string> = { outcome: "outcomes", opportunity: "opportunities", solution: "solutions", test: "tests" };
+const PLURAL: Record<OstKind, string> = { outcome: "goals", opportunity: "problems", solution: "solutions", test: "tests" };
 
 /** Scroll a card into view if a new or chosen one is off screen (zoom stays). */
 export function keepOnScreen(id: string) {
@@ -302,7 +302,7 @@ export function registerDiscoveryCommands() {
     },
     {
       id: "discovery.target",
-      label: "Make it the target opportunity",
+      label: "Make it the target problem",
       category: "discovery",
       keywords: ["focus", "target", "priority"],
       enabled: ofKind("opportunity"),
@@ -327,16 +327,16 @@ export function registerDiscoveryCommands() {
     },
     {
       id: "discovery.select-assumed",
-      label: "Select the assumed opportunities",
+      label: "Select the assumed problems",
       category: "discovery",
       keywords: ["evidence", "assumed", "unproven"],
-      enabled: () => (allCards(s().doc).some((c) => isAssumed(c.card)) ? true : "No assumed opportunities"),
+      enabled: () => (allCards(s().doc).some((c) => isAssumed(c.card)) ? true : "No assumed problems"),
       run: () => {
         const ids = allCards(s().doc)
           .filter((c) => isAssumed(c.card) && s().doc.nodes[c.id].visible)
           .map((c) => c.id);
         s().select(ids);
-        feedback(`${ids.length} assumed ${ids.length === 1 ? "opportunity" : "opportunities"}: attach evidence to make them solid`, { id: "discovery.assumed" });
+        feedback(`${ids.length} assumed ${ids.length === 1 ? "problem" : "problems"}: attach evidence to make them solid`, { id: "discovery.assumed" });
       },
     },
     {
@@ -398,7 +398,7 @@ export function registerDiscoveryCommands() {
       enabled: () => (reviewing() ? true : "Nothing to review"),
       run: discardAll,
     },
-    { ...addKind("outcome"), label: "Add a sub-outcome", keywords: ["add", "new", "outcome", "sub-outcome", "goal", "sub-goal"] },
+    { ...addKind("outcome"), label: "Add a sub-goal", keywords: ["add", "new", "outcome", "sub-outcome", "goal", "sub-goal"] },
     addKind("opportunity"),
     addKind("solution"),
     addKind("test"),
@@ -412,7 +412,7 @@ export function registerDiscoveryCommands() {
     },
     {
       id: "discovery.new-tree",
-      label: "New outcome tree",
+      label: "New goal tree",
       category: "discovery",
       keywords: ["add", "new", "outcome", "goal", "tree", "root"],
       run: () => {

@@ -19,7 +19,7 @@ export default function ServingBanner() {
         Designing for <b className="font-medium text-fg">{serving.cardTitle || "a solution"}</b> · {serving.projectName}
       </span>
       <a href={`${projectHref({ id: serving.projectId, type: "discovery" })}?card=${serving.cardId}`} onClick={saveThenGo} className="shrink-0 font-medium text-fg underline decoration-fg/40 underline-offset-2 hover:decoration-fg">
-        Open in Discovery
+        Open the board
       </a>
       <IconBtn size="sm" label="Stop linking new screens to it" onClick={() => void updateProject({ serving: undefined }, { touch: false })}>
         <X size={12} absoluteStrokeWidth strokeWidth={1.25} />

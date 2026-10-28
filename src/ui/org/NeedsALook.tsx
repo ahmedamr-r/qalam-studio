@@ -37,7 +37,17 @@ const SHOWN = 5;
 
 const cardHref = (board: string, card: string) => `${projectHref({ id: board, type: "discovery" })}?card=${encodeURIComponent(card)}`;
 
-export function NeedsALook({ now, scope, projects, topics }: { now: NoticesNow | null; scope: (n: Notice) => boolean; projects: Project[]; topics: TopicInfo[] | null }) {
+/** A heading Needs a look groups under: a goal (the notices bearing on it), or the rest (`id` null). */
+export interface NoticeGroup {
+  id: string | null;
+  title: string;
+  href?: string;
+}
+
+/** How many of a group's notices show before "Show all". */
+const PER_GROUP = 3;
+
+export function NeedsALook({ now, scope, projects, topics, groups }: { now: NoticesNow | null; scope: (n: Notice) => boolean; projects: Project[]; topics: TopicInfo[] | null; groups?: NoticeGroup[] }) {
   const [all, setAll] = useState(false);
   const [open, setOpen] = useState<Set<string>>(() => new Set());
   const toggle = (key: string) =>
@@ -56,6 +66,10 @@ export function NeedsALook({ now, scope, projects, topics }: { now: NoticesNow |
   const list = (now?.notices ?? []).filter(scope);
   const fresh = list.filter((n) => since.current !== null && since.current !== undefined && n.at > since.current).length;
   const shown = all ? list : list.slice(0, SHOWN);
+  // By goal: each notice under the first of the goals it bears on, the rest after them.
+  const grouped = groups ? [...groups.filter((g) => g.id), { id: null, title: groups.length ? "Elsewhere" : "", href: undefined }].map((g) => ({ ...g, items: [] as Notice[] })) : null;
+  if (grouped) for (const n of list) (grouped.find((g) => g.id && n.goals?.includes(g.id)) ?? grouped[grouped.length - 1]).items.push(n);
+  const more = grouped ? grouped.some((g) => g.items.length > PER_GROUP) : list.length > SHOWN;
   const boardName = (id?: string) => projects.find((p) => p.id === id)?.name;
   const topicTitle = (id?: string) => topics?.find((t) => t.id === id)?.title;
 
@@ -88,9 +102,45 @@ export function NeedsALook({ now, scope, projects, topics }: { now: NoticesNow |
           <StatusDot tone="ok" />
           Nothing needs a look{now.reviewedAt ? <span className="text-caption text-fg-subtle">· reviewed {ago(now.reviewedAt)}</span> : null}
         </p>
+      ) : grouped ? (
+        <div className="flex flex-col gap-[12px]">
+          {grouped
+            .filter((g) => g.items.length)
+            .map((g) => (
+              <div key={g.id ?? "rest"} className="flex flex-col gap-[6px]">
+                {g.title && (
+                  <h3 className="text-caption font-medium text-fg-muted">
+                    {g.href ? (
+                      <a href={g.href} className="hover:text-fg hover:underline">
+                        {g.title}
+                      </a>
+                    ) : (
+                      g.title
+                    )}
+                    <span className="ml-[6px] font-normal text-fg-subtle">{g.items.length}</span>
+                  </h3>
+                )}
+                <ul className="flex flex-col divide-y divide-line-subtle rounded-lg bg-panel shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">{(all ? g.items : g.items.slice(0, PER_GROUP)).map(row)}</ul>
+              </div>
+            ))}
+        </div>
       ) : (
-        <ul className="flex flex-col divide-y divide-line-subtle rounded-lg bg-panel shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
-          {shown.map((n) => {
+        <ul className="flex flex-col divide-y divide-line-subtle rounded-lg bg-panel shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">{shown.map(row)}</ul>
+      )}
+      {(more || (now?.dismissed ?? 0) > 0) && (
+        <p className="flex gap-[10px] text-caption text-fg-subtle">
+          {more && (
+            <button type="button" className={clsx(r.link, "text-caption")} onClick={() => setAll(!all)}>
+              {all ? "Show fewer" : `Show all ${list.length}`}
+            </button>
+          )}
+          {(now?.dismissed ?? 0) > 0 && <span>{now!.dismissed} dismissed</span>}
+        </p>
+      )}
+    </section>
+  );
+
+  function row(n: Notice) {
             const w = where(n);
             const isNew = since.current != null && n.at > since.current;
             const Icon = n.kind === "review" ? null : KIND_ICON[n.kind];
@@ -130,21 +180,7 @@ export function NeedsALook({ now, scope, projects, topics }: { now: NoticesNow |
                 <Actions n={n} />
               </li>
             );
-          })}
-        </ul>
-      )}
-      {(list.length > SHOWN || (now?.dismissed ?? 0) > 0) && (
-        <p className="flex gap-[10px] text-caption text-fg-subtle">
-          {list.length > SHOWN && (
-            <button type="button" className={clsx(r.link, "text-caption")} onClick={() => setAll(!all)}>
-              {all ? "Show fewer" : `Show all ${list.length}`}
-            </button>
-          )}
-          {(now?.dismissed ?? 0) > 0 && <span>{now!.dismissed} dismissed</span>}
-        </p>
-      )}
-    </section>
-  );
+  }
 }
 
 function Actions({ n }: { n: Notice }): ReactNode {

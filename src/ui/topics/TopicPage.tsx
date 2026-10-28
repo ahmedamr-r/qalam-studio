@@ -81,17 +81,17 @@ export default function TopicPage({ id }: { id: string }) {
     return (
       <div className="fixed inset-0 grid place-items-center bg-app text-fg">
         <div className="flex w-[320px] flex-col items-center gap-[12px] text-center">
-          <p className="text-title font-medium">This topic page isn&apos;t here</p>
+          <p className="text-title font-medium">This page isn&apos;t here</p>
           <p className="text-body text-fg-muted">It was deleted, or its file moved out of the organization&apos;s folder.</p>
-          <a className={clsx(r.button, r.buttonSecondary)} href={placeHref("topics")}>
-            Back to the topics
+          <a className={clsx(r.button, r.buttonSecondary)} href={placeHref("problems")}>
+            Back to the problems
           </a>
         </div>
       </div>
     );
   if (!view)
     return (
-      <PageFrame place="topics" crumbs={[{ label: "Topics", href: placeHref("topics") }]}>
+      <PageFrame place="problems" crumbs={[{ label: "Problems", href: placeHref("problems") }]}>
         <div />
       </PageFrame>
     );
@@ -152,12 +152,12 @@ export default function TopicPage({ id }: { id: string }) {
     const ok = await confirmDialog({ title: `Delete “${t.title}”?`, body: "The page is removed from the organization's folder. The sources and boards its lines rest on stay as they are.", confirmLabel: "Delete page", danger: true });
     if (!ok) return;
     await topicsDb.remove(t.id);
-    window.location.assign(placeHref("topics"));
+    window.location.assign(placeHref(t.kind === "need" ? "problems" : "evidence"));
   };
 
   const productNames = t.products.map((p) => products.find((x) => x.id === p)?.name).filter(Boolean) as string[];
   return (
-    <PageFrame place="topics" crumbs={[{ label: "Topics", href: placeHref("topics") }, { label: t.title }]}>
+    <PageFrame place={t.kind === "need" ? "problems" : "evidence"} crumbs={[t.kind === "need" ? { label: "Problems", href: placeHref("problems") } : { label: "Evidence", href: placeHref("evidence") }, { label: t.title }]}>
         <div className={clsx(r.pageMain, "max-w-[760px]")}>
           <div className="flex flex-col gap-[8px]">
             <div className="flex items-start justify-between gap-[12px]">

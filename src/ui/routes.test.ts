@@ -31,14 +31,21 @@ describe("routeOf", () => {
   });
 
   it("reads the organization's places, and round-trips placeHref", () => {
-    for (const place of ["boards", "topics", "sources", "decisions", "connections"] as const) {
+    for (const place of ["goals", "problems", "evidence", "decisions", "connections"] as const) {
       expect(routeOf(placeHref(place, "R02vmeVH"))).toEqual({ kind: "place", org: "R02vmeVH", place });
       expect(routeOf(`${placeHref(place, "R02vmeVH")}/`)).toEqual({ kind: "place", org: "R02vmeVH", place });
     }
     expect(placeHref("home", "R02vmeVH")).toBe("/o/R02vmeVH");
-    expect(routeOf("/boards")).toEqual({ kind: "missing" });
-    expect(routeOf("/o/R02vmeVH/boards/x")).toEqual({ kind: "missing" });
+    expect(routeOf("/goals")).toEqual({ kind: "missing" });
+    expect(routeOf("/o/R02vmeVH/goals/x")).toEqual({ kind: "missing" });
     expect(routeOf("/o/R02vmeVH/home")).toEqual({ kind: "missing" });
+  });
+
+  it("sends the places from before the job order where they went", () => {
+    expect(routeOf("/o/R02vmeVH/boards")).toEqual({ kind: "place", org: "R02vmeVH", place: "goals", moved: true });
+    expect(routeOf("/o/R02vmeVH/topics")).toEqual({ kind: "place", org: "R02vmeVH", place: "problems", moved: true });
+    expect(routeOf("/o/R02vmeVH/sources")).toEqual({ kind: "place", org: "R02vmeVH", place: "evidence", moved: true });
+    expect(routeOf("/o/R02vmeVH/g/g-reorders")).toEqual({ kind: "goal", org: "R02vmeVH", id: "g-reorders" });
   });
 
   it("reads the welcome, only outside an organization", () => {

@@ -22,7 +22,7 @@ export const CORE_QUESTIONS: Question[] = [
     kind: "text",
     id: "audience",
     title: "Who is it for?",
-    why: "Opportunities are written from these people's side.",
+    why: "Problems are written from these people's side.",
     placeholder: "Busy parents who order groceries every week on their phone",
     maxLength: 300,
   },

@@ -14,7 +14,7 @@ import type { OstCard, OstKind, OstStage } from "./types";
  * here: the layout pass (pass.ts) places every card after each edit.
  */
 
-const PLURAL: Record<OstKind, string> = { outcome: "outcomes", opportunity: "opportunities", solution: "solutions", test: "tests" };
+const PLURAL: Record<OstKind, string> = { outcome: "goals", opportunity: "problems", solution: "solutions", test: "tests" };
 
 export function newCard(kind: OstKind, data: Partial<OstCard> = {}): OstCard {
   return { v: 1, kind, title: "", stage: DEFAULT_STAGE[kind], createdBy: "user", evidence: [], ...data };

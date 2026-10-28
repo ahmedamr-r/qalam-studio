@@ -4,13 +4,18 @@ import type { AssumptionCategory, OstCard, OstKind, OstStage } from "./types";
 
 export const KINDS: readonly OstKind[] = ["outcome", "opportunity", "solution", "test"];
 
-export const KIND_LABEL: Record<OstKind, string> = { outcome: "Outcome", opportunity: "Opportunity", solution: "Solution", test: "Test" };
+/**
+ * How people see each kind. The tree is an Opportunity Solution Tree, and the code says so; the
+ * team reads goals and problems: an outcome is a goal on the canvas (goals.md), an opportunity a
+ * customer's problem (a need page).
+ */
+export const KIND_LABEL: Record<OstKind, string> = { outcome: "Goal", opportunity: "Problem", solution: "Solution", test: "Test" };
 
 /** An outcome under another outcome, as the board names it. */
-export const SUB_OUTCOME_LABEL = "Sub-outcome";
+export const SUB_OUTCOME_LABEL = "Sub-goal";
 
-/** How a kind is named in prose ("Add an opportunity"). */
-export const KIND_NOUN: Record<OstKind, string> = { outcome: "an outcome", opportunity: "an opportunity", solution: "a solution", test: "a test" };
+/** How a kind is named in prose ("Add a problem"). */
+export const KIND_NOUN: Record<OstKind, string> = { outcome: "a goal", opportunity: "a problem", solution: "a solution", test: "a test" };
 
 /**
  * What a card of each kind can hold. An outcome splits into sub-outcomes (a business goal into the

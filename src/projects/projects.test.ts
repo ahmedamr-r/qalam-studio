@@ -103,7 +103,7 @@ describe("project records", () => {
     expect(statusOf({ ...board, discovery: { v: 1, stage: "drafting" } })).toBe("Drafting");
     expect(statusOf({ ...board, discovery: { v: 1, stage: "ready" } })).toBe("Empty board");
     const counts = { opportunities: 6, solutions: 1, tests: 0, assumed: 2 };
-    expect(statusOf({ ...board, discovery: { v: 1, stage: "ready", counts } })).toBe("6 opportunities · 1 solution");
+    expect(statusOf({ ...board, discovery: { v: 1, stage: "ready", counts } })).toBe("6 problems · 1 solution");
     expect(projectHref(board)).toBe(`/d/${board.id}`);
   });
 

@@ -1,6 +1,6 @@
 import type { MouseEvent } from "react";
 import clsx from "clsx";
-import { Cable, Files, House, Milestone, Moon, Network, NotebookText, PanelLeft, PanelLeftClose, Plus, Sun, type LucideIcon } from "lucide-react";
+import { Cable, Files, House, MessageSquareWarning, Milestone, Moon, PanelLeft, PanelLeftClose, Plus, Sun, Target, type LucideIcon } from "lucide-react";
 import { newProduct, saveProduct, useOrgContext } from "@/org/context";
 import { placeHref } from "@/projects/model";
 import { runCommand } from "@/commands/registry";
@@ -16,13 +16,13 @@ import { useHealthDot } from "./useHealth";
 import { StatusDot } from "../viz";
 
 /*
- * The organization's places, drawn two ways. On a page, the sidebar: Home, Boards, Topics, Sources
- * and Decisions, the products (a filter that rides in ?product=), and Connections at the foot; ⌘\
- * folds it to a labelled rail. On a board, a few icon links above its own panels in Studio's rail.
- * Moving between places is a full page load, like every link in the app.
+ * The organization's places, drawn two ways. On a page, the sidebar: Home, Goals, Problems,
+ * Evidence and Decisions, the products (a filter that rides in ?product=), and Connections at the
+ * foot; ⌘\ folds it to a labelled rail. On a board, a few icon links above its own panels in
+ * Studio's rail. Moving between places is a full page load, like every link in the app.
  */
 
-const ICONS: Record<Place, LucideIcon> = { home: House, boards: Network, topics: NotebookText, sources: Files, decisions: Milestone, connections: Cable };
+const ICONS: Record<Place, LucideIcon> = { home: House, goals: Target, problems: MessageSquareWarning, evidence: Files, decisions: Milestone, connections: Cable };
 const ICON = { size: 16, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 
 const PRIMARY = PLACES.filter((p) => p.id !== "connections");
@@ -43,7 +43,7 @@ export function OrgSidebar({ place, scope = "all", onScope }: { place: Place | n
             <Tip key={p.id} label={p.label} side="right">
               <a href={href(p.id)} aria-label={p.label} aria-current={place === p.id ? "page" : undefined} className={clsx(r.railItem, p.id === "connections" && "mt-auto")}>
                 <Icon size={18} absoluteStrokeWidth strokeWidth={1.25} />
-                <span className={clsx(r.railLabel, "max-w-[56px]")}>{p.short ?? p.label}</span>
+                <span className={clsx(r.railLabel, "max-w-[56px]")}>{p.label}</span>
                 {p.id === "connections" && <ConnectionsDot corner />}
               </a>
             </Tip>

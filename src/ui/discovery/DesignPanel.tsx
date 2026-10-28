@@ -8,10 +8,9 @@ import { runCommand } from "@/commands/registry";
 import { cardOf, updateCardIn } from "@/discovery/ops";
 import { allCards, childCards, outcomeRoots } from "@/discovery/tree";
 import { isAssumed } from "@/discovery/evidence";
-import { Button, CommandKbd, Field, Section, Segmented, Select } from "../controls";
+import { Button, Field, Section, Segmented, Select } from "../controls";
 import { useOrgContext } from "@/org/context";
 import { updateProject, useProject } from "@/projects/session";
-import { r } from "../recipes";
 import PropertiesPanel from "../PropertiesPanel";
 import { getController } from "../CanvasView";
 import CardPanel from "./CardPanel";
@@ -37,15 +36,6 @@ export default function DesignPanel() {
   return <PropertiesPanel />;
 }
 
-const KEYS: [string, string][] = [
-  ["discovery.add-child", "A card under it"],
-  ["discovery.add-sibling", "A card next to it"],
-  ["discovery.edit-title", "Type its title"],
-  ["discovery.collapse", "Fold its branch"],
-  ["tool.card", "Card tool"],
-  ["tool.sticky", "Sticky note"],
-];
-
 /** Every outcome on the board, sub-outcomes indented under theirs. */
 function outcomeList(doc: Doc): { id: string; depth: number }[] {
   const out: { id: string; depth: number }[] = [];
@@ -69,12 +59,12 @@ function TreePanel() {
 
   return (
     <div aria-label="Tree" data-region="design" className="flex flex-col pb-[24px]">
-      <Section title={outcomes.length > 1 ? "Outcomes" : "Outcome"}>
+      <Section title={outcomes.length > 1 ? "Goals" : "Goal"}>
         {outcomes.length ? (
           outcomes.map(({ id, depth }) => <OutcomeButton key={id} id={id} depth={depth} />)
         ) : (
           <>
-            <p className="text-caption text-fg-muted">A tree starts from an outcome: a change in what your customers do that the team can move.</p>
+            <p className="text-caption text-fg-muted">A tree starts from a goal: a change in what your customers do that the team can move.</p>
             <Button size="sm" className="self-start" onClick={() => useDiscovery.setState({ sheet: "start" })}>
               Start the tree…
             </Button>
@@ -86,7 +76,7 @@ function TreePanel() {
           <ul className="flex flex-col gap-[4px] text-caption text-fg-muted">
             {(
               [
-                ["opportunity", "Opportunities"],
+                ["opportunity", "Problems"],
                 ["solution", "Solutions"],
                 ["test", "Tests"],
               ] as const
@@ -125,20 +115,10 @@ function TreePanel() {
       )}
       <Section title="Product">
         <BoardProduct />
-        <p className="text-caption text-fg-muted">The outcome and first opportunities come from a short interview about your product.</p>
+        <p className="text-caption text-fg-muted">The goal and first problems come from a short interview about your product.</p>
         <Button size="sm" variant="secondary" className="self-start" onClick={() => runCommand("discovery.redo-interview", "toolbar")}>
           {roots.length ? "Redo the interview…" : "Answer the questions…"}
         </Button>
-      </Section>
-      <Section title="Keys">
-        <ul className={r.rows}>
-          {KEYS.map(([id, label]) => (
-            <li key={id} className="flex items-center justify-between gap-[8px] text-caption text-fg-muted">
-              {label}
-              <CommandKbd command={id} size="sm" />
-            </li>
-          ))}
-        </ul>
       </Section>
     </div>
   );
@@ -161,7 +141,7 @@ function OutcomeButton({ id, depth }: { id: string; depth: number }) {
     >
       <span className={clsx("flex items-center gap-[6px] text-body text-fg", !depth && "font-medium")}>
         <KindMark kind="outcome" className={clsx("shrink-0", depth ? "text-fg-subtle" : "text-fg")} />
-        {outcome.title || (depth ? "Untitled sub-outcome" : "Untitled outcome")}
+        {outcome.title || (depth ? "Untitled sub-goal" : "Untitled goal")}
       </span>
       {m?.name && (
         <span className="text-caption text-fg-muted tnum">

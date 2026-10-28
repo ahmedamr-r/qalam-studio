@@ -122,11 +122,11 @@ function label(p: Proposal, all: Proposal[]): string {
     case "card": {
       const k = p.card.kind;
       if (k === "outcome") {
-        if (!p.parentId) return "New outcome tree";
+        if (!p.parentId) return "New goal tree";
         const parent = cardOf(studio().doc, p.parentId)?.kind ?? all.find((x): x is Extract<Proposal, { kind: "card" }> => x.kind === "card" && x.cardId === p.parentId)?.card.kind;
         return parent === "outcome" ? "New sub-outcome" : "New outcome";
       }
-      if (k === "opportunity" && !p.backing.quotes.length && !p.backing.words.length) return "New opportunity · Assumed";
+      if (k === "opportunity" && !p.backing.quotes.length && !p.backing.words.length) return "New problem · Assumed";
       return `New ${k}`;
     }
     case "attach":

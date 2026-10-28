@@ -76,6 +76,8 @@ export default function TopBar() {
 // ── Main menu ────────────────────────────────────────────────────────────────
 
 function MainMenu() {
+  const board = useProjectType() === "discovery";
+  const name = useProject((s) => s.project?.name);
   return (
     <Menu
       label="Main menu"
@@ -84,7 +86,7 @@ function MainMenu() {
       className="w-[240px]"
       trigger={
         <button type="button" aria-label="Main menu" className={clsx(r.mainMenuTrigger, "aria-expanded:bg-active")}>
-          <Wordmark />
+          {board && name ? <span className="max-w-[220px] truncate text-body font-medium text-fg">{name}</span> : <Wordmark />}
           <ChevronDown size={12} absoluteStrokeWidth strokeWidth={1.25} className="q-chevron" />
         </button>
       }
@@ -100,18 +102,22 @@ function MainMenu() {
       <SubMenu label="View" checks>
         <ViewItems />
       </SubMenu>
-      <SubMenu label="Object">
-        <ObjectItems />
-      </SubMenu>
-      <SubMenu label="Text" checks>
-        <TextItems />
-      </SubMenu>
-      <SubMenu label="Arrange">
-        <ArrangeItems />
-      </SubMenu>
-      <SubMenu label="Vector">
-        <VectorItems />
-      </SubMenu>
+      {!board && (
+        <>
+          <SubMenu label="Object">
+            <ObjectItems />
+          </SubMenu>
+          <SubMenu label="Text" checks>
+            <TextItems />
+          </SubMenu>
+          <SubMenu label="Arrange">
+            <ArrangeItems />
+          </SubMenu>
+          <SubMenu label="Vector">
+            <VectorItems />
+          </SubMenu>
+        </>
+      )}
       <MenuSeparator />
       <SubMenu label="Theme" checks>
         <CommandItem id="view.theme-dark" />
@@ -133,8 +139,8 @@ function FileItems() {
   const board = useProjectType() === "discovery";
   return (
     <>
-      <MenuItem onSelect={() => void goHome()}>Back to projects</MenuItem>
-      <MenuItem onSelect={() => void askRename()}>Rename project…</MenuItem>
+      <MenuItem onSelect={() => void goHome()}>{board ? "Back home" : "Back to projects"}</MenuItem>
+      <MenuItem onSelect={() => void askRename()}>{board ? "Rename the board…" : "Rename project…"}</MenuItem>
       {useProject.getState().project?.interview?.stage === "saved" && <MenuItem onSelect={() => void refineInterview()}>Refine with the interview…</MenuItem>}
       <MenuSeparator />
       {!board && <MenuItem onSelect={() => void loadDemo()}>Load demo screens</MenuItem>}
@@ -163,7 +169,7 @@ async function refineInterview() {
 
 async function askRename() {
   const name = await promptDialog({
-    title: "Rename project",
+    title: useProject.getState().project?.type === "discovery" ? "Rename the board" : "Rename project",
     defaultValue: useProject.getState().project?.name ?? "",
     confirmLabel: "Rename",
     validate: (v) => (v.trim() ? null : "Name can't be empty"),
@@ -386,7 +392,7 @@ function Crumbs() {
       <span aria-hidden className={clsx(r.crumbSep, "-mx-[2px]")}>
         /
       </span>
-      {project && (
+      {project && !board && (
         <>
           <Tip label="Rename project" side="bottom">
             <button type="button" onClick={() => void askRename()} className="q-item inline-flex h-[28px] max-w-[200px] items-center rounded-md px-[6px] hover:bg-hover hover:text-fg-muted">

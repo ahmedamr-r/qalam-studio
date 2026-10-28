@@ -5,33 +5,31 @@ import { useGoals } from "@/goals/client";
 import type { OrgRef } from "@/org/client";
 import { useOrgContext } from "@/org/context";
 import { browserProjectsToMove, moveBrowserProjects } from "@/org/import-browser";
-import { placeHref, setupHref, type Project } from "@/projects/model";
+import { goalHref, placeHref, setupHref, type Project } from "@/projects/model";
 import { importLegacy } from "@/projects/library";
 import { Button } from "../controls";
 import { r } from "../recipes";
-import { ContextCard, editContext } from "../org/ContextEditor";
-import { GoalsList } from "../org/Goals";
 import { NeedsALook } from "../org/NeedsALook";
 import { AskBar } from "../org/AskBar";
 import { useOrgData } from "../org/useOrgData";
 import { useNotices } from "../notices/useNotices";
-import type { NoticesNow } from "@/org/notices";
 import { useTopics } from "../topics/list";
 import { PageFrame } from "../frame/PageFrame";
 import { useCurrentOrg } from "../frame/store";
 import { useHealth } from "../frame/useHealth";
 import { StatusDot } from "../viz";
-import { ProjectCard } from "../places/ProjectCard";
+import { ProblemsList } from "../goals/ProblemsList";
+import { useBearings } from "../goals/useBearings";
 import { inScope, withScope } from "./scope";
 import { useScope } from "./useScope";
 import { useNeeds } from "./useNeeds";
-import { NextUp } from "./NextUp";
+import { homeGoals, YourGoals } from "./YourGoals";
 
 /**
- * An organization's home, for the product in view: asking what it knows, what needs a look (since
- * the last visit), what it and its products are, every board's goals and the boards opened last.
- * The boards, topic pages, sources and decisions each have a place of their own in the sidebar.
- * Everything is saved in the organization's folder on disk.
+ * An organization's home, for the product in view: asking what it knows, then the goals this
+ * person works on, each with the problems behind it; what needs a look, under the goal it bears
+ * on; and what customers keep raising that no goal covers. Goals, problems, evidence and decisions
+ * each have a place of their own in the sidebar. Everything is saved in the organization's folder.
  */
 
 export default function Home() {
@@ -45,12 +43,11 @@ export default function Home() {
   const { products, about, loaded } = useOrgContext();
   const goalCount = goalTree.goals.length;
 
+  const links = useBearings() ?? [];
   const product = scope !== "all" && scope !== "org" ? products.find((p) => p.id === scope) : undefined;
-  const boards = (projects ?? []).filter((p) => p.type === "discovery" && inScope(p.product, scope));
-  const boardNames = new Map((projects ?? []).map((p) => [p.id, p.name]));
-  const productNames = new Map(products.map((p) => [p.id, p.name]));
-  const hasGoals = goalTree.goals.some((g) => inScope(g.product, scope));
-  const orgName = org?.name ?? "Organization";
+  const yours = homeGoals(goalTree, (g) => inScope(g.product, scope) || g.id === goalTree.north);
+  // Problems customers raise (from two sources up) that no goal is linked to.
+  const uncovered = needs?.indexed ? needs.needs.filter((n) => inScope(n.products[0] ?? null, scope) && n.sources >= 2 && !links.some((l) => l.need === n.topic)) : [];
 
   return (
     <PageFrame place="home" scope={scope} onScope={setScope}>
@@ -79,44 +76,30 @@ export default function Home() {
 
         <AskBar product={product?.id ?? null} topics={topics} />
 
-        <NextUp now={needs} scope={scope} projects={projects ?? []} />
+        <YourGoals tree={goalTree} shown={yours.goals} mine={yours.mine} needs={needs} links={links} />
 
-        <NeedsALook now={withoutRanked(notices)} scope={(n) => scope === "all" || (scope === "org" ? !n.products.length : n.products.includes(scope))} projects={projects ?? []} topics={topics} />
+        <NeedsALook
+          now={notices}
+          scope={(n) => scope === "all" || (scope === "org" ? !n.products.length : n.products.includes(scope))}
+          projects={projects ?? []}
+          topics={topics}
+          groups={yours.goals.map((g) => ({ id: g.id, title: g.title, href: goalHref(g.id) }))}
+        />
 
-        {product ? (
-          <ContextCard title={product.name} context={product} onEdit={() => editContext({ kind: "product", product })} empty={`Tell Qalam AI what ${product.name} is: who it's for and what you're trying to move. Every board for it starts from this.`} />
-        ) : (
-          <ContextCard title={`About ${orgName}`} context={about} onEdit={() => editContext({ kind: "org", name: orgName, about })} empty={`Tell Qalam AI what ${orgName} does and who it serves. Every board starts from this.`} />
-        )}
-
-        <section aria-labelledby="goals" className="flex flex-col gap-[8px]">
-          <h2 id="goals" className="text-title font-medium">
-            Goals
-          </h2>
-          {hasGoals ? (
-            <GoalsList tree={goalTree} boards={boardNames} products={productNames} keep={(g) => inScope(g.product, scope)} />
-          ) : (
-            <p className="text-body text-fg-muted">No goals yet. The North Star goes on top, each goal under the goal it feeds; a board works on one.</p>
-          )}
-        </section>
-
-        {!!boards.length && (
-          <section aria-labelledby="recent-boards" className="flex flex-col gap-[12px]">
-            <div className="flex items-center justify-between gap-[12px]">
-              <h2 id="recent-boards" className="text-title font-medium">
-                Boards
-              </h2>
-              <a href={placeHref("boards") + withScope("", scope)} className={clsx(r.buttonSm, r.buttonGhost)}>
-                All {boards.length}
+        {!!uncovered.length && (
+          <section aria-labelledby="uncovered" className="flex flex-col gap-[8px]">
+            <div className="flex items-end justify-between gap-[12px]">
+              <div className="flex flex-col gap-[2px]">
+                <h2 id="uncovered" className="text-title font-medium">
+                  Problems no goal covers
+                </h2>
+                <p className="text-caption text-fg-subtle">What customers keep raising that no goal is linked to yet: link one from its page, or ask whether a goal is missing.</p>
+              </div>
+              <a href={placeHref("problems") + withScope("", scope)} className={clsx(r.buttonSm, r.buttonGhost)}>
+                All problems
               </a>
             </div>
-            <ul className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-[16px]">
-              {boards.slice(0, 4).map((p) => (
-                <li key={p.id}>
-                  <ProjectCard p={p} products={products} onChanged={refresh} />
-                </li>
-              ))}
-            </ul>
+            <ProblemsList needs={uncovered} links={[]} goals={[]} projects={projects ?? []} limit={4} />
           </section>
         )}
 
@@ -200,5 +183,3 @@ function MoveFromBrowser({ org, onMoved }: { org: OrgRef | null; onMoved: () => 
   );
 }
 
-/** Needs on no board are What to work on next's ○ rows: Needs a look leaves them out. */
-const withoutRanked = (n: NoticesNow | null): NoticesNow | null => n && { ...n, notices: n.notices.filter((x) => x.kind !== "pattern") };

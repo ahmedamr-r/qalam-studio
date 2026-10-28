@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import clsx from "clsx";
-import { Cable, Files, House, Milestone, Moon, Network, NotebookText, PanelLeft, Search, type LucideIcon } from "lucide-react";
+import { Cable, Files, House, MessageSquareWarning, Milestone, Moon, Network, NotebookText, PanelLeft, Search, Target, type LucideIcon } from "lucide-react";
+import { useGoals } from "@/goals/client";
 import { runCommand } from "@/commands/registry";
 import { usePagePalette } from "@/commands/pages";
 import { listProjects } from "@/projects/library";
-import { placeHref, projectHref, topicHref, type Project } from "@/projects/model";
+import { goalHref, placeHref, projectHref, topicHref, type Project } from "@/projects/model";
+import { TOPIC_KIND_LABEL } from "@/hub/topics";
 import { QalamAIGlyph } from "../brand";
 import { r } from "../recipes";
 import { highlightRuns, scoreItem } from "../surfaces/fuzzy";
@@ -29,7 +31,7 @@ interface Row {
   run: () => void;
 }
 
-const ICONS: Record<Place, LucideIcon> = { home: House, boards: Network, topics: NotebookText, sources: Files, decisions: Milestone, connections: Cable };
+const ICONS: Record<Place, LucideIcon> = { home: House, goals: Target, problems: MessageSquareWarning, evidence: Files, decisions: Milestone, connections: Cable };
 const ICON = { size: 16, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 const MAX = 8;
 
@@ -45,6 +47,7 @@ function Palette() {
   const [at, setAt] = useState(0);
   const [boards, setBoards] = useState<Project[]>([]);
   const topics = useTopics();
+  const goals = useGoals((s) => s.goals);
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => {
     input.current?.focus();
@@ -63,8 +66,9 @@ function Palette() {
       const Icon = ICONS[p.id];
       add("Go to", `place:${p.id}`, p.label, <Icon {...ICON} />, () => window.location.assign(placeHref(p.id)));
     }
+    if (q) for (const g of goals) add("Goals", `goal:${g.id}`, g.title, <Target {...ICON} />, () => window.location.assign(goalHref(g.id)), "Goal");
     for (const b of boards.slice(0, q ? boards.length : 4)) add("Boards", `board:${b.id}`, b.name, <Network {...ICON} />, () => window.location.assign(projectHref(b)), "Board");
-    if (q) for (const t of topics ?? []) add("Topic pages", `topic:${t.id}`, t.title, <NotebookText {...ICON} />, () => window.location.assign(topicHref(t.id)), "Topic page");
+    if (q) for (const t of topics ?? []) add("Problems and pages", `topic:${t.id}`, t.title, <NotebookText {...ICON} />, () => window.location.assign(topicHref(t.id)), TOPIC_KIND_LABEL[t.kind]);
     add("Actions", "theme", "Toggle dark and light", <Moon {...ICON} />, () => runCommand("view.theme-toggle", "palette"), undefined, ["theme", "appearance"]);
     add("Actions", "sidebar", "Fold the sidebar", <PanelLeft {...ICON} />, () => runCommand("frame.sidebar", "palette"), undefined, ["rail", "collapse"]);
     // Grouped as listed; within a group, the best match first, and a few per group.
@@ -78,7 +82,7 @@ function Palette() {
     if (q.length >= 3)
       ranked.unshift({ key: "ask", group: "Qalam AI", label: `Ask: ${q}`, hits: [], icon: <QalamAIGlyph size={16} />, score: 0, run: () => askNext(q) });
     return ranked;
-  }, [query, boards, topics]);
+  }, [query, boards, topics, goals]);
 
   useEffect(() => setAt(0), [query]);
   const run = (row: Row | undefined) => {

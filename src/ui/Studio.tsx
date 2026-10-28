@@ -246,7 +246,7 @@ function RightPanel() {
   const designOnly = board || onComponents;
   const chosen = useRightTab((s) => s.tab);
   const tab: RightTab = designOnly ? "design" : chosen;
-  const tabs = designOnly ? RIGHT_TABS.slice(0, 1) : RIGHT_TABS;
+  const tabs = board ? [{ value: "design" as RightTab, label: "Board" }] : designOnly ? RIGHT_TABS.slice(0, 1) : RIGHT_TABS;
   return (
     <Tabs.Root value={tab} onValueChange={(v) => setRightTab(v as RightTab)} asChild>
       <aside className="flex min-h-0 min-w-0 flex-1 flex-col border-l border-line-subtle bg-panel" aria-label={tabs.find((t) => t.value === tab)!.label}>
@@ -314,7 +314,7 @@ function StatusBar() {
   return (
     <footer className={clsx(r.statusBar, "col-span-3 min-w-0")}>
       {/* The full wording is in the main menu's Help ▸ About. */}
-      <span className="min-w-0 truncate">Qalam Studio · early preview</span>
+      {!board && <span className="min-w-0 truncate">Qalam Studio · early preview</span>}
       <span className="grow" />
       <span className="tnum">
         {frames} {board ? (frames === 1 ? "card" : "cards") : onComponents ? (frames === 1 ? "component" : "components") : frames === 1 ? "frame" : "frames"}
@@ -327,10 +327,14 @@ function StatusBar() {
       <span aria-hidden className="text-fg-faint">
         ·
       </span>
-      <span>Skia CanvasKit · WebGL</span>
-      <span aria-hidden className="text-fg-faint">
-        ·
-      </span>
+      {!board && (
+        <>
+          <span>Skia CanvasKit · WebGL</span>
+          <span aria-hidden className="text-fg-faint">
+            ·
+          </span>
+        </>
+      )}
       <button
         type="button"
         onClick={() => runCommand("essential.shortcuts", "toolbar")}
@@ -399,10 +403,10 @@ function BootScreen({ state, boot, error }: { state: BootState; boot: Boot; erro
 export function ProjectMissing() {
   return (
     <div className="flex w-[300px] flex-col items-center gap-[12px] text-center">
-      <p className="text-title font-medium text-fg">Project not found</p>
-      <p className="text-body text-fg-muted">It isn't in this organization's folder. It was deleted, or it's still saved in a browser: the projects home can bring those in.</p>
+      <p className="text-title font-medium text-fg">Not found</p>
+      <p className="text-body text-fg-muted">It isn't in this organization's folder. It was deleted, or it's still saved in a browser: the home can bring those in.</p>
       <a href={orgHref()} className={clsx(r.button, r.buttonSecondary)}>
-        Back to projects
+        Back home
       </a>
     </div>
   );

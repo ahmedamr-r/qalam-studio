@@ -71,7 +71,7 @@ describe("pieces of the organization's files", () => {
     expect(b.pieces.map((p) => p.ref)).toEqual([cardRef("b1", "o1"), cardRef("b1", "n1"), "hub:evidence:b1:e2", "hub:evidence:b1:e3", cardRef("b1", "s1"), "hub:assumption:b1:a1", cardRef("b1", "t1")]);
     const byRef = new Map(b.pieces.map((p) => [p.ref, p]));
     expect(byRef.get(cardRef("b1", "o1"))?.text).toBe("More weekly reorders. Reorders per customer · 1.3 now → 1.5");
-    expect(byRef.get(cardRef("b1", "n1"))?.line).toBe("Opportunity, target, under “More weekly reorders” · on the board “Reorders” · Grocery");
+    expect(byRef.get(cardRef("b1", "n1"))?.line).toBe("Problem, target, under “More weekly reorders” · on the board “Reorders” · Grocery");
     expect(byRef.get(cardRef("b1", "t1"))?.text).toBe("Fake-door button. Method: A button that leads to a waitlist. Pass if: 1 in 10 tap it");
     expect(boardPieces(board, { roots: ["x"], nodes: { x: node("x", null, card("outcome", "Mine again", "active", { description: "Repeat use matters." })) } } as unknown as Doc, names).pieces[0].text).toBe("Mine again. Repeat use matters");
     expect(byRef.get("hub:evidence:b1:e3")?.line).toContain("A note, against “Rebuilding the basket takes long”");

@@ -15,7 +15,7 @@ import { strengthFill, strengthOf } from "@/hub/needs";
 import { orgFetch, orgJson, orgPath } from "@/org/client";
 import { useOrgContext } from "@/org/context";
 import { onOrgChange } from "@/org/live";
-import { goalHref, orgHref, projectHref, topicHref } from "@/projects/model";
+import { goalHref, orgHref, placeHref, projectHref, topicHref } from "@/projects/model";
 import { Button, Tip } from "../controls";
 import DecisionRow from "../decisions/DecisionRow";
 import { PageFrame } from "../frame/PageFrame";
@@ -89,7 +89,7 @@ export default function GoalPage({ id }: { id: string }) {
 
   if (missing)
     return (
-      <PageFrame place="home" crumbs={[{ label: "Goals" }]}>
+      <PageFrame place="goals" crumbs={[{ label: "Goals", href: placeHref("goals") }]}>
         <div className={clsx(r.pageMain, "max-w-[880px] items-start")}>
           <p className="text-title font-medium">This goal isn&apos;t here</p>
           <a href={orgHref()} className={clsx(r.button, r.buttonSecondary)}>
@@ -98,7 +98,7 @@ export default function GoalPage({ id }: { id: string }) {
         </div>
       </PageFrame>
     );
-  if (!page) return <PageFrame place="home" crumbs={[{ label: "Goals" }]}>{null}</PageFrame>;
+  if (!page) return <PageFrame place="goals" crumbs={[{ label: "Goals", href: placeHref("goals") }]}>{null}</PageFrame>;
 
   const g = page.goal;
   const north = page.north === g.id;
@@ -149,7 +149,7 @@ export default function GoalPage({ id }: { id: string }) {
   };
 
   return (
-    <PageFrame place="home" crumbs={[...[...page.chain].reverse().map((c) => ({ label: c.title, href: goalHref(c.id) })), { label: g.title }]}>
+    <PageFrame place="goals" crumbs={[{ label: "Goals", href: placeHref("goals") }, ...[...page.chain].reverse().map((c) => ({ label: c.title, href: goalHref(c.id) })), { label: g.title }]}>
       <div className={clsx(r.pageMain, "max-w-[880px]")}>
         <header className="flex flex-col gap-[8px]">
           <div className="flex items-start justify-between gap-[12px]">
@@ -319,7 +319,7 @@ function ProblemRow({ p, via, onWork, onUnlink, boardName }: { p: GoalProblem; v
   const strength = strengthOf(p);
   const onThis = p.onBoard ? p.boards.find((b) => boardName(b.board)) : undefined;
   return (
-    <li className="group/problem grid grid-cols-[16px_minmax(0,1fr)_96px_minmax(0,160px)_28px] items-start gap-x-[12px] px-[12px] py-[8px] hover:bg-hover max-[760px]:grid-cols-[16px_minmax(0,1fr)_minmax(0,120px)_28px] max-[760px]:[&>.wide]:hidden">
+    <li className="group/problem grid grid-cols-[16px_minmax(0,1fr)_96px_minmax(0,240px)_28px] items-start gap-x-[12px] px-[12px] py-[8px] hover:bg-hover max-[760px]:grid-cols-[16px_minmax(0,1fr)_minmax(0,120px)_28px] max-[760px]:[&>.wide]:hidden">
       <Tip label={p.bears === "direct" ? "Bears directly on the number" : "Bears on it around the edges"}>
         <span className="pt-[3px]">
           <StatusDot tone={p.bears === "direct" ? "ok" : "off"} hollow={p.bears !== "direct"} />
@@ -347,7 +347,7 @@ function ProblemRow({ p, via, onWork, onUnlink, boardName }: { p: GoalProblem; v
         </Tip>
       </span>
       <span className="flex min-w-0 flex-col items-end gap-[4px] pt-[1px]">
-        <span className="truncate text-caption text-fg-muted tnum">
+        <span className="max-w-full truncate text-caption text-fg-muted tnum">
           {p.quotes ? `${plural(p.quotes, "quote")} · ${plural(p.sources, "source")}` : "No customer words yet"}
           {p.against > 0 && <span className="text-warning"> · {p.against} against</span>}
         </span>

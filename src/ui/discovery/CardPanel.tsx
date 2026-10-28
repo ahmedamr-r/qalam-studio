@@ -106,7 +106,7 @@ function OneCard({ id, card }: { id: string; card: OstCard }) {
               }}
             />
           </Field>
-          {assumed && <Hint>Qalam AI drafted this need and nothing backs it yet. Add a quote, a source or a note to make it solid.</Hint>}
+          {assumed && <Hint>Qalam AI drafted this problem and nothing backs it yet. Add a quote, a source or a note to make it solid.</Hint>}
           {isAIIdea(card) && (
             <Hint tone="info">
               An idea of Qalam AI&apos;s, not yours. Compare it with other ways to address the need before you build it.

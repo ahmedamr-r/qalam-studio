@@ -1,31 +1,35 @@
 import type { Route } from "../routes";
 
 /*
- * The organization's places: what the sidebar lists, and what a board's rail shows above its own
- * panels. Each is a page at /o/<org>/<place>; Home is the organization's own address. A topic page
- * belongs to Topics and a project to Boards. Kept free of React so routes and tests can read it.
+ * The organization's places, in the order of the job: what to move (Goals), what customers need
+ * that would move it (Problems), what the organization has heard and measured (Evidence), what was
+ * decided. Each is a page at /o/<org>/<place>; Home is the organization's own address. A goal's
+ * page and a board belong to Goals, a problem's page to Problems, other topic pages and sources to
+ * Evidence. Kept free of React so routes and tests can read it.
  */
 
-export type Place = "home" | "boards" | "topics" | "sources" | "decisions" | "connections";
+export type Place = "home" | "goals" | "problems" | "evidence" | "decisions" | "connections";
 
 /** The places with a page of their own under /o/<org>/ (Home is /o/<org> itself). */
 export type PagePlace = Exclude<Place, "home">;
 
-/** `short` names it under its icon in the folded rail, where the full name doesn't fit. */
-export const PLACES: readonly { id: Place; label: string; short?: string }[] = [
+export const PLACES: readonly { id: Place; label: string }[] = [
   { id: "home", label: "Home" },
-  { id: "boards", label: "Boards" },
-  { id: "topics", label: "Topics" },
-  { id: "sources", label: "Sources" },
+  { id: "goals", label: "Goals" },
+  { id: "problems", label: "Problems" },
+  { id: "evidence", label: "Evidence" },
   { id: "decisions", label: "Decisions" },
-  { id: "connections", label: "Connections", short: "Connect" },
+  { id: "connections", label: "Connections" },
 ];
 
-/** Above a board's panels only these: the organization's Sources would read as the board's own Sources panel. */
-export const RAIL_PLACES: readonly Place[] = ["home", "boards", "topics", "connections"];
+/** Above a board's panels only these: the organization's Evidence would read as the board's own Sources panel. */
+export const RAIL_PLACES: readonly Place[] = ["home", "goals", "problems", "connections"];
 
 const PAGES = new Set<string>(PLACES.map((p) => p.id).filter((p) => p !== "home"));
 export const isPagePlace = (s: string): s is PagePlace => PAGES.has(s);
+
+/** Places from before the job order, and where they went: an old link still lands somewhere. */
+export const MOVED_PLACES: Readonly<Record<string, PagePlace>> = { boards: "goals", topics: "problems", sources: "evidence" };
 
 export const placeLabel = (p: Place) => PLACES.find((x) => x.id === p)?.label ?? p;
 
@@ -33,9 +37,8 @@ export const placeLabel = (p: Place) => PLACES.find((x) => x.id === p)?.label ??
 export function placeOf(route: Route): Place | null {
   if (route.kind === "org") return "home";
   if (route.kind === "place") return route.place;
-  if (route.kind === "topic") return "topics";
-  if (route.kind === "goal") return "home";
-  if (route.kind === "project") return "boards";
+  if (route.kind === "topic") return "problems";
+  if (route.kind === "goal" || route.kind === "project") return "goals";
   return null;
 }
 
@@ -43,8 +46,9 @@ export function placeOf(route: Route): Place | null {
 export function legacyTab(search: string): { place: PagePlace; search: string } | null {
   const q = new URLSearchParams(search);
   const tab = q.get("tab");
-  if (!tab || !isPagePlace(tab) || tab === "connections") return null;
+  const place = tab ? (MOVED_PLACES[tab] ?? (isPagePlace(tab) ? tab : null)) : null;
+  if (!place || place === "connections") return null;
   q.delete("tab");
   const rest = q.toString();
-  return { place: tab, search: rest ? `?${rest}` : "" };
+  return { place, search: rest ? `?${rest}` : "" };
 }

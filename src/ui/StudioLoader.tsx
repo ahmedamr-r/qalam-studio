@@ -19,9 +19,9 @@ const SetupPage = lazy(() => import("./setup/SetupPage"));
 const WelcomePage = lazy(() => import("./welcome/WelcomePage"));
 const CapturePage = lazy(() => import("./capture/CapturePage"));
 const PLACE_PAGES = {
-  boards: lazy(() => import("./places/BoardsPage")),
-  topics: lazy(() => import("./places/TopicsPage")),
-  sources: lazy(() => import("./places/SourcesPage")),
+  goals: lazy(() => import("./places/GoalsPage")),
+  problems: lazy(() => import("./places/ProblemsPage")),
+  evidence: lazy(() => import("./places/EvidencePage")),
   decisions: lazy(() => import("./places/DecisionsPage")),
   connections: lazy(() => import("./connections/ConnectionsPage")),
 } satisfies Record<PagePlace, unknown>;

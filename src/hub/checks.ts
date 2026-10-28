@@ -53,7 +53,7 @@ export const NOTICE_LABEL: Record<NoticeKind, string> = {
   revisit: "Revisit",
   "stale-test": "Test",
   untested: "Untested",
-  metric: "Outcome",
+  metric: "Goal",
   orphan: "Page",
   review: "Qalam AI review",
   placed: "To review",

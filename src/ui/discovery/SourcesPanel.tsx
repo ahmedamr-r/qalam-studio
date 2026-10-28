@@ -498,7 +498,7 @@ function SourceView({ source, focus }: { source: SourceRecord; focus?: string })
       {quoting && <p className="q-shimmer-text text-caption text-fg-muted">Qalam AI is picking out what customers said…</p>}
       {tab === "quotes" ? (
         <div className="flex flex-col gap-[8px]">
-          {quotes.length > 0 && <p className="text-micro text-fg-subtle">{dump ? "Your own words, by what they are to the tree. Drag one onto a card to rest it on them." : "Drag a quote onto an opportunity or a solution to back it."}</p>}
+          {quotes.length > 0 && <p className="text-micro text-fg-subtle">{dump ? "Your own words, by what they are to the tree. Drag one onto a card to rest it on them." : "Drag a quote onto a problem or a solution to back it."}</p>}
           {!quotes.length && !quoting && !awaitingRoles(source) && (
             <p className="text-caption text-fg-muted">
               {dump ? "No pieces yet. Select words in the text to keep them yourself." : <>No quotes yet. {source.read.length ? "Qalam AI found no customer's words in what it read." : ""} Select words in the text to quote them yourself.</>}

@@ -67,7 +67,7 @@ export function titleProps(card: Pick<OstCard, "kind" | "title">): TextProps {
 }
 
 export const placeholderTitle = (kind: OstCard["kind"]) =>
-  kind === "outcome" ? "Name the outcome" : kind === "opportunity" ? "Describe the need or pain" : kind === "solution" ? "Name the solution" : "Name the test";
+  kind === "outcome" ? "Name the goal" : kind === "opportunity" ? "Describe the problem, in the customer's words" : kind === "solution" ? "Name the solution" : "Name the test";
 
 export interface Chip {
   text: string;

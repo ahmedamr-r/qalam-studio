@@ -345,7 +345,7 @@ function BringIn({ c, onClose }: { c: ConnectorState; onClose: () => void }) {
               </p>
             ))}
             <span className="flex gap-[8px]">
-              <a href={placeHref("sources")} className={clsx(r.buttonSm, r.buttonSecondary)}>
+              <a href={placeHref("evidence")} className={clsx(r.buttonSm, r.buttonSecondary)}>
                 See the sources
               </a>
               <Button size="sm" variant="ghost" onClick={onClose}>

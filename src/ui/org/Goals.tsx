@@ -44,5 +44,15 @@ export function GoalsList({ tree, boards, products, keep }: { tree: GoalTree; bo
       </li>
     );
   };
-  return <ul className="flex flex-col">{rootsOf(tree).map((g) => row(g, 0))}</ul>;
+  const roots = rootsOf(tree);
+  const north = roots.find((g) => g.id === tree.north);
+  const others = roots.filter((g) => g !== north && shown(g));
+  return (
+    <ul className="flex flex-col">
+      {north && row(north, 0)}
+      {/* As goals.md says it: the goals that feed no goal yet, after the North Star's tree. */}
+      {north && others.length > 0 && <li className="px-[8px] pt-[10px] pb-[2px] text-micro font-medium text-fg-subtle">Not under a goal yet</li>}
+      {others.map((g) => row(g, 0))}
+    </ul>
+  );
 }

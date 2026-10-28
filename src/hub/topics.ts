@@ -19,7 +19,8 @@ export const SECTIONS = ["know", "believe", "against", "open"] as const;
 export type TopicSection = (typeof SECTIONS)[number];
 
 export const SECTION_HEADING: Record<TopicSection, string> = { know: "We know", believe: "We believe", against: "Against", open: "Open questions" };
-export const TOPIC_KIND_LABEL: Record<TopicKind, string> = { need: "Need", segment: "Segment", product: "Product" };
+/** How people see each kind: a need page is a customer's problem (the board's problem cards rest on it). */
+export const TOPIC_KIND_LABEL: Record<TopicKind, string> = { need: "Problem", segment: "Segment", product: "Product" };
 
 export type Author = "qalam" | "person";
 

@@ -2,8 +2,11 @@
 
 - **UI:** a React single-page app built with Vite. `index.html` loads `src/main.tsx`, and `src/ui/App.tsx` picks the page from the address (`src/ui/routes.ts`). Moving between pages is a full page load, so there is no client router.
   - Every page outside the canvas sits in `PageFrame` (`src/ui/frame/`). It provides the top bar, a sidebar (the organization's places and products; ⌘\ folds it to a rail), toasts, dialogs, and a page ⌘K (`PagePalette`, keys in `src/commands/pages.ts`).
-  - Each place has its own address, `/o/<org>/boards|topics|sources|decisions|connections`. Build it with `placeHref`; the home's old `?tab=` redirects.
-  - A board's rail shows Home, Boards, Topics and Connections above its own panels (`RailPlaces`). They save the board before leaving (`leaveTo`).
+  - Each place has its own address, `/o/<org>/goals|problems|evidence|decisions|connections` (`src/ui/frame/places.ts`). Build it with `placeHref`. The old `/boards`, `/topics` and `/sources` redirect (`MOVED_PLACES`), and so does the home's old `?tab=`.
+    - Goals is the tree with each board under its goal, then the boards with no goal. Problems is every need page, filtered by goal (`ProblemsList`). Evidence is the sources and the segment and product pages.
+    - The home leads with your goals and their top problems (`YourGoals`), then Needs a look grouped by goal, then problems no goal covers.
+  - People see one word per thing: Goal (an outcome; Sub-goal), Problem (an opportunity, or a topic page about a need), Solution, Test, Board (a Discovery project). Type names in code stay as they were (`KIND_LABEL` in `src/discovery/kinds.ts`, `TOPIC_KIND_LABEL`). A board's chrome drops the design tool's menus, Keys list and status line.
+  - A board's rail shows Home, Goals, Problems and Connections above its own panels (`RailPlaces`). They save the board before leaving (`leaveTo`).
 - **Server:** `server/` is a small Hono app (`server/app.ts`). Each route in `server/routes/*.ts` takes a standard `Request` and returns a `Response`; AI routes stream NDJSON. Model calls happen only there.
   - `pnpm dev` runs Vite on 127.0.0.1:3101 with the server mounted at `/api/*` (`server/vite.ts`). An edit to a route or to `src/ai` takes effect on the next request.
   - `pnpm build && pnpm start` serves `dist/` and the server from one Node process (`server/serve.ts`).

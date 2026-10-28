@@ -16,7 +16,7 @@ import { ago } from "../time";
  * rename, which product it's for, delete). A start tile begins a new one.
  */
 
-const TYPE_LABEL: Record<ProjectType, string> = { system: "Design system", screens: "Screens", discovery: "Discovery" };
+const TYPE_LABEL: Record<ProjectType, string> = { system: "Design system", screens: "Screens", discovery: "Board" };
 const TYPE_ICON: Record<ProjectType, typeof Frame> = { system: Palette, screens: Frame, discovery: Network };
 
 const ICON = { size: 16, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
@@ -45,7 +45,7 @@ export function ProjectCard({ p, products, onChanged }: { p: Project; products: 
   const href = projectHref(p);
   const TypeIcon = TYPE_ICON[p.type];
   const rename = async () => {
-    const name = await promptDialog({ title: "Rename project", defaultValue: p.name, confirmLabel: "Rename", validate: (v) => (v.trim() ? null : "Name can't be empty") });
+    const name = await promptDialog({ title: p.type === "discovery" ? "Rename the board" : "Rename project", defaultValue: p.name, confirmLabel: "Rename", validate: (v) => (v.trim() ? null : "Name can't be empty") });
     if (name) await renameProjectById(p.id, name);
     onChanged();
   };
@@ -53,7 +53,7 @@ export function ProjectCard({ p, products, onChanged }: { p: Project; products: 
     const ok = await confirmDialog({
       title: `Delete “${p.name}”?`,
       body: p.type === "discovery" ? "The board and its chats are removed from the organization's folder. Its sources stay in the organization. This can't be undone." : "Its canvas and chats are removed from the organization's folder. This can't be undone.",
-      confirmLabel: "Delete project",
+      confirmLabel: p.type === "discovery" ? "Delete board" : "Delete project",
       danger: true,
     });
     if (!ok) return;
@@ -97,7 +97,7 @@ export function ProjectCard({ p, products, onChanged }: { p: Project; products: 
           </p>
         </div>
         <Menu
-          label="Project actions"
+          label={p.type === "discovery" ? "Board actions" : "Project actions"}
           align="end"
           className="w-[180px]"
           trigger={

@@ -73,17 +73,17 @@ function Start() {
   const hasTree = useStudio((s) => hasOutcome(s.doc));
   return (
     <>
-      <Header title={hasTree ? "Start over" : "Map your product's opportunities"} />
+      <Header title={hasTree ? "Start over" : "Map the problems behind your goal"} />
       <div className="flex flex-col gap-[16px] p-[16px]">
         <p className="text-body leading-[20px] text-fg-muted">
-          The outcome, what customers need, what to try. What nobody has shown yet is marked <b className="font-medium text-fg">Assumed</b>.
+          The goal, the problems customers have, what to try. What nobody has shown yet is marked <b className="font-medium text-fg">Assumed</b>.
         </p>
         <div className="flex flex-col gap-[8px]">
           <Option icon={<MessagesSquare {...ICON} />} title="Answer six questions" body="Two minutes. Qalam AI drafts the tree." onClick={() => useDiscovery.setState({ sheet: "interview" })} primary />
           <Option icon={<NotebookPen {...ICON} />} title="Start from a brain dump" body="Paste your thinking. Qalam AI asks, then places it." onClick={() => openBrainDump()} />
-          <Option icon={<FileUp {...ICON} />} title="Import research" body="Interviews, tickets, a page: what customers said, as opportunities." onClick={() => useDiscovery.setState({ sheet: "import" })} />
+          <Option icon={<FileUp {...ICON} />} title="Import research" body="Interviews, tickets, a page: what customers said, as problems." onClick={() => useDiscovery.setState({ sheet: "import" })} />
           <Option icon={<Play {...ICON} />} title="Try a sample" body="A tree drafted for Basket, a made-up grocery app." onClick={() => void sample()} />
-          {!hasTree && <Option icon={<Network {...ICON} />} title="Start with a blank tree" body="Name the outcome and build it yourself." onClick={blank} />}
+          {!hasTree && <Option icon={<Network {...ICON} />} title="Start with a blank tree" body="Name the goal and build it yourself." onClick={blank} />}
         </div>
       </div>
     </>
@@ -168,12 +168,12 @@ function ImportStep() {
       <Header title="Import research" onBack={() => useDiscovery.setState({ sheet: "start" })} />
       <div className="flex flex-col gap-[16px] p-[16px]">
         <p className="text-body leading-[20px] text-fg-muted">
-          Qalam AI reads what you bring, picks out what customers said and proposes opportunities from it. Code checks every quote against its source, word for word; nothing lands on the tree until you accept it.
+          Qalam AI reads what you bring, picks out what customers said and proposes problems from it. Code checks every quote against its source, word for word; nothing lands on the tree until you accept it.
         </p>
         {!hasTree && (
-          <Field label="The outcome you want to move">
+          <Field label="The goal you want to move">
             <label className={r.field}>
-              <input className={r.fieldInput} aria-label="Outcome" placeholder="More customers reorder every week" value={outcome} onChange={(e) => setOutcome(e.target.value)} />
+              <input className={r.fieldInput} aria-label="Goal" placeholder="More customers reorder every week" value={outcome} onChange={(e) => setOutcome(e.target.value)} />
             </label>
           </Field>
         )}
@@ -194,7 +194,7 @@ function ImportStep() {
           <Button disabled={!ready} onClick={go}>
             Read {items.length > 1 ? `these ${items.length}` : "it"}
           </Button>
-          {!ready && <span className="text-caption text-fg-subtle">{!items.length ? "Add a file, a page or some text." : "Name the outcome first."}</span>}
+          {!ready && <span className="text-caption text-fg-subtle">{!items.length ? "Add a file, a page or some text." : "Name the goal first."}</span>}
         </div>
       </div>
     </>

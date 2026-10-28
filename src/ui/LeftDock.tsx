@@ -54,7 +54,7 @@ const BOARD_ITEMS: Item[] = [
   { tab: "layers", label: "Outline", title: "Outline", icon: ListTree, command: "panels.layers" },
   { tab: "sources", label: "Sources", title: "Sources", icon: Files, command: "panels.sources" },
   { tab: "ai", label: "AI", title: "Qalam AI", icon: null, command: "ai.chat" },
-  { tab: "knowledge", label: "Library", title: "Product context", icon: BookOpen, command: "panels.knowledge" },
+  { tab: "knowledge", label: "Context", title: "Product context", icon: BookOpen, command: "panels.knowledge" },
 ];
 
 const useItems = () => (useProjectType() === "discovery" ? BOARD_ITEMS : ITEMS);
@@ -230,7 +230,7 @@ function NavRail() {
         style={{ top: "calc(var(--h, 0px) / 2)" } as CSSProperties}
         onAnimationEnd={(e) => delete e.currentTarget.dataset.landed}
       />
-      <RailPlaces current="boards" leave={(href) => void leaveTo(href)} />
+      <RailPlaces current="goals" leave={(href) => void leaveTo(href)} />
       {items.map((i) => {
         const ai = i.tab === "ai";
         const active = ai ? chatOpen : marked === i.tab;

@@ -30,6 +30,8 @@ export function App() {
         // The home's old tabs are places of their own now.
         const tab = route.kind === "org" ? legacyTab(window.location.search) : null;
         if (tab) return window.location.replace(placeHref(tab.place, o.id) + tab.search);
+        // Places from before the job order (boards, topics, sources) moved.
+        if (route.kind === "place" && route.moved) return window.location.replace(placeHref(route.place, o.id) + window.location.search);
         if (route.kind === "project" && !route.org) {
           const home = await findProject(route.id, route.type, o.id);
           if (home) return window.location.replace(`${home}${window.location.search}${window.location.hash}`);
@@ -101,7 +103,7 @@ function Missing({ title, body }: { title: string; body: string }) {
         <p className="text-title font-medium text-fg">{title}</p>
         <p className="text-body text-fg-muted">{body}</p>
         <a href="/" className={clsx(r.button, r.buttonSecondary)}>
-          Back to projects
+          Back home
         </a>
       </div>
     </div>

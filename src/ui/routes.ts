@@ -1,5 +1,5 @@
 import { isProjectId, type ProjectType } from "@/projects/model";
-import { isPagePlace, type PagePlace } from "./frame/places";
+import { isPagePlace, MOVED_PLACES, type PagePlace } from "./frame/places";
 
 /**
  * The app's pages, read from the address. Moving between them is a full page load (links and
@@ -21,8 +21,8 @@ export type Route =
   | { kind: "goal"; org: string; id: string }
   /** Setting the organization up from a brain dump about it. */
   | { kind: "setup"; org: string }
-  /** One of the organization's places (src/ui/frame/places.ts): its boards, topic pages, sources, decisions or connections. */
-  | { kind: "place"; org: string; place: PagePlace }
+  /** One of the organization's places (src/ui/frame/places.ts): its goals, problems, evidence, decisions or connections. `moved`: an old place's address, to redirect. */
+  | { kind: "place"; org: string; place: PagePlace; moved?: boolean }
   /** The welcome: the first run (no organization yet), a new organization, or checking the setup again. */
   | { kind: "welcome" }
   /** Quick capture, into the organization opened last (the menu bar's capture window). */
@@ -57,6 +57,7 @@ export function routeOf(pathname: string): Route {
   if (!org && parts.length === 1 && parts[0] === "capture") return { kind: "capture" };
   if (org && parts.length === 1 && parts[0] === "setup") return { kind: "setup", org };
   if (org && parts.length === 1 && isPagePlace(parts[0])) return { kind: "place", org, place: parts[0] };
+  if (org && parts.length === 1 && MOVED_PLACES[parts[0]]) return { kind: "place", org, place: MOVED_PLACES[parts[0]], moved: true };
   if (org && parts.length === 2 && parts[0] === "t" && /^[A-Za-z0-9_~-]{1,64}$/.test(parts[1])) return { kind: "topic", org, id: parts[1] };
   if (org && parts.length === 2 && parts[0] === "g" && /^[A-Za-z0-9_~-]{1,64}$/.test(parts[1])) return { kind: "goal", org, id: parts[1] };
   const type = parts.length === 2 ? TYPES[parts[0]] : undefined;

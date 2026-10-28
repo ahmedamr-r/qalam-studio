@@ -464,7 +464,7 @@ export class OstPainter {
     const rp = right ? this.label(right, p.ink, 12, 600, inner / 2) : null;
     const rw = rp ? this.width(rp) : 0;
     const named = !!m?.name?.trim();
-    const lp = this.label(named ? m!.name.trim() : "Add the metric it moves", named ? p.muted : p.subtle, 12, 500, inner - rw - 8);
+    const lp = this.label(named ? m!.name.trim() : "Add the number it moves", named ? p.muted : p.subtle, 12, 500, inner - rw - 8);
     canvas.drawParagraph(lp, x, y + (CARD.metricText - lp.getHeight()) / 2);
     if (rp) canvas.drawParagraph(rp, x + inner - rw, y + (CARD.metricText - rp.getHeight()) / 2);
     const by = y + CARD.metricText + CARD.metricGap;
