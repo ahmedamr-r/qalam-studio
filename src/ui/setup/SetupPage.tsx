@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import clsx from "clsx";
-import { Check, RotateCcw, Square } from "lucide-react";
+import { ArrowRight, Check, RotateCcw, Square, Star, Target } from "lucide-react";
 import { CHALLENGE_LABEL, DUMP_MAX_CHARS, MAX_DUMP_ROUNDS } from "@/discovery/dump";
 import type { SourceRecord } from "@/discovery/sources";
 import { currentOrg, type OrgRef } from "@/org/client";
 import { useOrgContext } from "@/org/context";
 import type { Product } from "@/org/context-md";
-import { boardGoals, pendingLines, type SetupField, type SetupLine, type SetupSession } from "@/org/setup";
+import { metricLine } from "@/goals/goals-md";
+import { boardGoals, goalLines, pendingLines, type SetupField, type SetupLine, type SetupSession } from "@/org/setup";
 import { orgHref, placeHref } from "@/projects/model";
 import { feedback } from "@/commands/feedback";
 import { QalamAIGlyph } from "../brand/ai-glyph";
@@ -19,14 +20,19 @@ import { r } from "../recipes";
 import { PageFrame } from "../frame/PageFrame";
 import { useCurrentOrg } from "../frame/store";
 import { StepHeader } from "../welcome/StepHeader";
+import { setupStep, type SetupStep } from "../welcome/steps";
+import { Connect, Yours } from "./FirstSteps";
+import { GoalsForm } from "./GoalsForm";
 import { acceptLines, answerSetupRound, discardLines, openSetup, placeSetup, retrySetup, saveSetupRound, skipSetupRest, startBoard, startSetup, stopSetup, useSetup } from "./setup";
 
 /**
- * Setting the organization up from a brain dump about it: they write what the company does, its
- * products, who they're for and the goals they're moving (or point at its website); Qalam AI says
- * what it took from it, pushes back, asks up to three rounds of questions, then proposes the
- * organization's About and its products line by line, each with the words it rests on. Nothing is
- * written until they accept a line. Then each goal they accepted can start a board.
+ * Setting the organization up, goals first, through one of two doors. "I know our goals": they
+ * write them down (./GoalsForm.tsx). "Help me find them": a brain dump about the company (or its
+ * website); Qalam AI says what it took from it, pushes back, asks up to three rounds of questions,
+ * then proposes the goals (one tree, with their numbers), the About and the products line by line,
+ * each with the words it rests on. Nothing is written until they accept a line. On the first run
+ * (`?first=1`) it goes on to which goals are theirs and what to connect (`?step=`, ./FirstSteps.tsx);
+ * otherwise each goal they accepted can start a board.
  */
 
 const ICON = { absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
@@ -60,16 +66,24 @@ export default function SetupPage() {
   }, [org]);
 
   const name = org?.name ?? "your organization";
-  // The welcome's last two steps (?first=1): no sidebar yet, the steps on top, and a way out.
+  // The welcome's last three steps (?first=1): no sidebar yet, the steps on top, and a way out.
   const [first] = useState(() => new URLSearchParams(window.location.search).get("first") === "1");
-  const phase = source?.setup?.phase;
+  const [step] = useState(() => setupStep(window.location.search));
+  const [door, setDoor] = useState<"know" | "find" | null>(null);
+  // Goals in: the first run goes on to which are theirs; otherwise they're on the Goals page.
+  const next = (to: SetupStep) => {
+    const u = new URL(window.location.href);
+    u.searchParams.set("step", to);
+    window.location.assign(u.toString());
+  };
+  const goalsIn = () => (first ? next("yours") : window.location.assign(placeHref("goals")));
   return (
     <PageFrame
       place={null}
       focus={first}
       crumbs={[{ label: "Set up" }]}
       right={
-        first && phase !== "done" ? (
+        first && step !== "connect" ? (
           <a href={orgHref()} className={clsx(r.buttonSm, r.buttonGhost)}>
             Set up later
           </a>
@@ -77,17 +91,58 @@ export default function SetupPage() {
       }
     >
       <div className={clsx(r.pageMain, "max-w-[680px] gap-[20px]")}>
-        {first && phase !== "done" && <StepHeader at={phase === "review" ? "found" : "about"} />}
-        {!opened ? null : source?.setup ? <Session source={source} s={source.setup} org={name} /> : <Compose org={name} />}
+        {first && <StepHeader at={step} />}
+        {!opened ? null : step === "yours" ? (
+          <Yours onNext={() => next("connect")} />
+        ) : step === "connect" ? (
+          <Connect />
+        ) : source?.setup ? (
+          <Session source={source} s={source.setup} org={name} first={first} onGoalsIn={goalsIn} />
+        ) : door === "know" ? (
+          <GoalsForm org={name} onBack={() => setDoor(null)} onDone={goalsIn} />
+        ) : door === "find" ? (
+          <Compose org={name} onBack={() => setDoor(null)} />
+        ) : (
+          <Doors org={name} onPick={setDoor} />
+        )}
       </div>
     </PageFrame>
   );
 }
 
 // ---------------------------------------------------------------------------
+// Two doors
+
+/** Goals first: written down by someone who knows them, or found in what the team has. */
+function Doors({ org, onPick }: { org: string; onPick: (door: "know" | "find") => void }) {
+  const door = (id: "know" | "find", title: string, body: string) => (
+    <button type="button" onClick={() => onPick(id)} className="q-item flex flex-col items-start gap-[6px] rounded-lg bg-panel p-[14px] text-left shadow-[inset_0_0_0_1px_var(--color-line-subtle)] hover:bg-hover">
+      <span className="flex items-center gap-[6px] text-title font-medium text-fg">
+        {title} <ArrowRight size={14} {...ICON} className="text-fg-subtle" />
+      </span>
+      <span className="text-body text-fg-muted">{body}</span>
+    </button>
+  );
+  return (
+    <section aria-labelledby="doors-title" className="flex flex-col gap-[14px]">
+      <div className="flex flex-col gap-[6px]">
+        <h1 id="doors-title" className="text-heading font-semibold text-fg">
+          Start with {org}&apos;s goals
+        </h1>
+        <p className="text-body text-fg-muted">Everything in Qalam hangs off them: the problems worth solving are the ones that move a goal.</p>
+      </div>
+      <div className="grid gap-[12px] sm:grid-cols-2">
+        {door("know", "I know our goals", "Write them down, the North Star first and the goals that feed it under it. Qalam AI asks only for what's missing: today's number, the target, by when.")}
+        {door("find", "Help me find them", "Paste a strategy doc, OKRs or notes, or give your website. Qalam AI reads it, pushes back and asks, then proposes your goals and what the company is.")}
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Writing it
 
-function Compose({ org }: { org: string }) {
+function Compose({ org, onBack }: { org: string; onBack: () => void }) {
   const [text, setText] = useState("");
   const [url, setUrl] = useState("");
   const [reading, setReading] = useState<number | null>(null);
@@ -110,7 +165,7 @@ function Compose({ org }: { org: string }) {
           Tell Qalam AI about {org}
         </h1>
         <p className="text-body text-fg-muted">
-          Write it as it comes. Nothing is written until you accept it.{" "}
+          A strategy doc, OKRs, notes, or just what you know, as it comes. Nothing is written until you accept it.{" "}
           <Tip label="What the company does, its products, who they're for, the goals you're moving, the numbers you watch. Qalam AI reads it, pushes back and asks before it proposes anything, line by line.">
             <span className="cursor-help underline decoration-dotted underline-offset-2">What to write</span>
           </Tip>
@@ -142,9 +197,9 @@ function Compose({ org }: { org: string }) {
           {text.length.toLocaleString()} / {DUMP_MAX_CHARS.toLocaleString()}
         </span>
         <span className="flex-1" />
-        <a href={orgHref()} className={qr.textBtn}>
-          Skip for now
-        </a>
+        <button type="button" className={qr.textBtn} onClick={onBack}>
+          Back
+        </button>
         <Button disabled={!ready || !!reading} onClick={() => void read()} title={ready ? undefined : "Write a little more first, or give a web address"}>
           <QalamAIGlyph size={12} /> Read it
         </Button>
@@ -156,7 +211,7 @@ function Compose({ org }: { org: string }) {
 // ---------------------------------------------------------------------------
 // The conversation
 
-function Session({ source, s, org }: { source: SourceRecord; s: SetupSession; org: string }) {
+function Session({ source, s, org, first, onGoalsIn }: { source: SourceRecord; s: SetupSession; org: string; first: boolean; onGoalsIn: () => void }) {
   const busy = useSetup((u) => u.busy);
   const last = s.buckets.length - 1;
   const asking = s.phase === "asking" && !busy;
@@ -221,7 +276,7 @@ function Session({ source, s, org }: { source: SourceRecord; s: SetupSession; or
           <QalamAIGlyph size={12} /> Propose the organization
         </Button>
       )}
-      {(s.phase === "review" || s.phase === "done") && s.proposal && <Review source={source} s={s} org={org} />}
+      {(s.phase === "review" || s.phase === "done") && s.proposal && <Review source={source} s={s} org={org} first={first} onGoalsIn={onGoalsIn} />}
       {s.phase === "done" && !s.proposal?.lines.length && <p className="text-body text-fg-muted">Qalam AI found nothing it could set up from it. Fill in the organization by hand from its home.</p>}
     </section>
   );
@@ -286,7 +341,8 @@ interface Group {
 
 /** The lines by where they go: the organization first, then each product (new ones as Qalam AI named them). */
 function groupsOf(s: SetupSession, org: string, products: Product[]): Group[] {
-  const lines = s.proposal?.lines ?? [];
+  // Goals show first, as one tree (GoalLines).
+  const lines = (s.proposal?.lines ?? []).filter((l) => l.field !== "goals");
   const ordered = (to: string) => lines.filter((l) => l.to === to).sort((a, b) => ORDER.indexOf(a.field) - ORDER.indexOf(b.field));
   const groups: Group[] = [{ key: "org", title: `About ${org}`, fresh: false, labels: ORG_FIELD, lines: ordered("org") }];
   for (const to of [...new Set(lines.map((l) => l.to))].filter((t) => t !== "org")) {
@@ -298,7 +354,15 @@ function groupsOf(s: SetupSession, org: string, products: Product[]): Group[] {
   return groups.filter((g) => g.lines.length);
 }
 
-function Review({ source, s, org }: { source: SourceRecord; s: SetupSession; org: string }) {
+/** Where a line goes, by name: the organization, or a product (a new one as Qalam AI named it). */
+function placeName(to: string, s: SetupSession, products: Product[]): string {
+  if (to === "org") return "The whole organization";
+  const made = to.startsWith("new:") ? s.made?.[to.slice(4)] : to;
+  const proposed = s.proposal?.products.find((x) => `new:${x.ref}` === to);
+  return products.find((x) => x.id === made)?.name ?? (proposed ? `${proposed.name} · a new product` : "A product");
+}
+
+function Review({ source, s, org, first, onGoalsIn }: { source: SourceRecord; s: SetupSession; org: string; first: boolean; onGoalsIn: () => void }) {
   const { products } = useOrgContext();
   const [working, setWorking] = useState(false);
   const pending = pendingLines(s);
@@ -330,6 +394,30 @@ function Review({ source, s, org }: { source: SourceRecord; s: SetupSession; org
           </>
         )}
       </div>
+      {goalLines(s.proposal!).length > 0 && (
+        <section aria-label="Goals" className="flex flex-col gap-[8px] rounded-lg bg-panel p-[14px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
+          <h2 className="text-title font-medium text-fg">Goals</h2>
+          <ul className="flex flex-col gap-[6px]">
+            {goalLines(s.proposal!).map(({ line, depth }, i) => (
+              <LineRow
+                key={line.id}
+                line={line}
+                depth={depth}
+                label={
+                  <span className="flex items-center gap-[6px]">
+                    {i === 0 && !depth ? <Star size={12} {...ICON} /> : <Target size={12} {...ICON} />}
+                    {[i === 0 && !depth && line.to === "org" ? "North Star" : null, placeName(line.to, s, products), line.metric ? [line.metric.name !== line.text ? line.metric.name : null, metricLine(line.metric)].filter(Boolean).join(": ") : "No number yet"].filter(Boolean).join(" · ")}
+                  </span>
+                }
+                source={source}
+                state={s.decided?.[line.id]}
+                working={working}
+                act={act}
+              />
+            ))}
+          </ul>
+        </section>
+      )}
       {groups.map((g) => (
         <section key={g.key} aria-label={g.title} className="flex flex-col gap-[8px] rounded-lg bg-panel p-[14px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
           <div className="flex items-center gap-[8px]">
@@ -345,15 +433,15 @@ function Review({ source, s, org }: { source: SourceRecord; s: SetupSession; org
           </ul>
         </section>
       ))}
-      {s.phase === "done" && <Done s={s} org={org} accepted={decided.filter((d) => d === "accepted").length} />}
+      {s.phase === "done" && (first ? <GoalsIn org={org} accepted={decided.filter((d) => d === "accepted").length} onNext={onGoalsIn} /> : <Done s={s} org={org} accepted={decided.filter((d) => d === "accepted").length} />)}
     </section>
   );
 }
 
-function LineRow({ line, label, source, state, working, act }: { line: SetupLine; label: string; source: SourceRecord; state?: "accepted" | "discarded"; working: boolean; act: (fn: () => Promise<void>) => Promise<void> }) {
+function LineRow({ line, label, depth = 0, source, state, working, act }: { line: SetupLine; label: React.ReactNode; depth?: number; source: SourceRecord; state?: "accepted" | "discarded"; working: boolean; act: (fn: () => Promise<void>) => Promise<void> }) {
   const words = line.pieces.flatMap((id) => source.quotes.find((q) => q.id === id) ?? []);
   return (
-    <li className={clsx(qr.inset, "flex flex-col gap-[6px] px-[12px] py-[10px]", state === "discarded" && "opacity-55")}>
+    <li className={clsx(qr.inset, "flex flex-col gap-[6px] px-[12px] py-[10px]", state === "discarded" && "opacity-55")} style={depth ? { marginLeft: Math.min(depth, 4) * 20 } : undefined}>
       <div className="flex items-start gap-[10px]">
         <div className="flex min-w-0 flex-1 flex-col gap-[2px]">
           <span className="text-micro font-medium text-fg-subtle">{label}</span>
@@ -397,6 +485,24 @@ function LineRow({ line, label, source, state, working, act }: { line: SetupLine
         </div>
       )}
     </li>
+  );
+}
+
+/** Every line settled on the first run: on to which goals are theirs. */
+function GoalsIn({ org, accepted, onNext }: { org: string; accepted: number; onNext: () => void }) {
+  return (
+    <section aria-label="Goals in" className="flex flex-col gap-[12px]">
+      <h2 className="flex items-center gap-[8px] text-heading font-semibold text-fg">
+        <span className="grid size-[22px] place-items-center rounded-full bg-success-subtle text-success">
+          <Check size={13} strokeWidth={2.5} />
+        </span>
+        {accepted ? "Your goals are in" : "Nothing was written"}
+      </h2>
+      <p className="text-body text-fg-muted">{accepted ? `${accepted === 1 ? "1 line" : `${accepted} lines`} written to ${org}'s goals, About and products. What you wrote goes on the problem pages too.` : `You can add goals on the Goals page any time.`}</p>
+      <Button className="self-start" onClick={onNext}>
+        Next: which are yours
+      </Button>
+    </section>
   );
 }
 

@@ -1,6 +1,8 @@
 import { newId } from "@/doc/factory";
 import { fragmentRefs, roundAnswers, type DumpChallenge } from "@/discovery/dump";
 import type { SourceQuote } from "@/discovery/sources";
+import type { OstMetric } from "@/discovery/types";
+import { metricFrom } from "@/goals/said";
 import { checkWords } from "@/hub/topics";
 import type { PlanBucket } from "@/ui/ai/plan";
 import { emptyContext, type ContextFields, type Product } from "./context-md";
@@ -9,10 +11,11 @@ import { emptyContext, type ContextFields, type Product } from "./context-md";
  * An organization set up from a brain dump (pure): someone pastes what they know about the company
  * (or points at its website), and Qalam AI reads it the way a board reads a brain dump (what it
  * took from it, its pieces in their own words, its pushback, rounds of questions), then proposes
- * what the organization is: its About, its products, who each is for, their goals and segments.
- * Code keeps a line only where it rests on pieces and answers that were sent, with every quote and
- * number in it found there, and a new product only under a name they used. Accepting a line writes
- * it to about.md or the product's file (src/org/context-md.ts); nothing is written before.
+ * what the organization is: its About, its products, who each is for, their goals (one tree, each
+ * under the goal it feeds, with its number) and segments. Code keeps a line only where it rests on
+ * pieces and answers that were sent, with every quote and number in it found there, and a new
+ * product only under a name they used. Accepting a line writes it to about.md, the product's file
+ * (src/org/context-md.ts) or goals.md; nothing is written before.
  */
 
 export type SetupField = "audience" | "context" | "goals" | "segments";
@@ -30,6 +33,10 @@ export interface SetupLine {
   /** The answers it rests on. */
   answers: { question: string; answer: string }[];
   why: string;
+  /** A goal: the goal line it feeds (its id). */
+  parent?: string;
+  /** A goal: its number, only as what it cites has it. */
+  metric?: OstMetric;
 }
 
 /** A product Qalam AI would add, named as they name it (the team can rename it before it's made). */
@@ -158,13 +165,16 @@ export function sanitizeSetup(raw: unknown, sent: SetupSent): SetupProposal {
   // What each place says, now and with what's kept so far.
   const says = new Map<string, PlaceSays>([["org", sent.about], ...sent.products.map((p) => [p.product.id, p.product] as const)]);
 
+  // A goal's id in the answer (G…), and the id of the goal it feeds, by the line kept for it.
+  const goalRefs = new Map<string, { ref: string; parent: string }>();
   const take = (to: string, field: SetupField, x: unknown) => {
     const v = rec(x);
     const pieces = ids(v.fragmentIds).flatMap((ref) => pieceOf.get(ref) ?? []);
     const answers = ids(v.answerIds).flatMap((ref) => answerOf.get(ref) ?? []);
     if (!pieces.length && !answers.length) return;
     const isText = field === "audience" || field === "context";
-    const text = checkWords(v.text, [...pieces, ...answers.map((a) => ({ text: a.answer }))], "", isText ? L.text : L.line);
+    const cited = [...pieces, ...answers.map((a) => ({ text: a.answer }))];
+    const text = checkWords(v.text, cited, "", isText ? L.text : L.line);
     if (!text) return;
     const c = says.get(to) ?? { ...emptyContext(), goals: [] };
     if (isText) {
@@ -174,7 +184,12 @@ export function sanitizeSetup(raw: unknown, sent: SetupSent): SetupProposal {
       if (c[field].some((x) => key(x) === key(text)) || lines.filter((l) => l.to === to && l.field === field).length >= L[field]) return;
       says.set(to, { ...c, [field]: [...c[field], text] });
     }
-    lines.push({ id: newId(), to, field, text, pieces: pieces.map((q) => q.id), answers: answers.map(({ question, answer }) => ({ question, answer })), why: clip(v.why, L.why) });
+    const read = field === "goals" ? metricFrom(v.metric, cited.map((c) => c.text).join("\n")) : null;
+    // Numbers they gave, with no measure named in their words: the goal's own words name it.
+    const metric = read && !read.name ? { ...read, name: text } : read;
+    const line: SetupLine = { id: newId(), to, field, text, pieces: pieces.map((q) => q.id), answers: answers.map(({ question, answer }) => ({ question, answer })), why: clip(v.why, L.why), ...(metric ? { metric } : {}) };
+    if (field === "goals" && typeof v.id === "string" && v.id.trim()) goalRefs.set(line.id, { ref: v.id.trim(), parent: typeof v.parent === "string" ? v.parent.trim() : "" });
+    lines.push(line);
   };
   const fieldsOf = (to: string, x: Record<string, unknown>) => {
     for (const f of ["audience", "context"] as const) if (x[f]) take(to, f, x[f]);
@@ -197,7 +212,27 @@ export function sanitizeSetup(raw: unknown, sent: SetupSent): SetupProposal {
   }
   // A new product is made by accepting one of its lines: one with none kept isn't proposed.
   products = products.filter((p) => lines.some((l) => l.to === `new:${p.ref}`));
-  return { summary: clip(r.summary, L.summary), products, lines };
+  return { summary: clip(r.summary, L.summary), products, lines: withParents(lines, goalRefs) };
+}
+
+/** Each goal line under the goal line it feeds, where that one was kept too and it makes no loop. */
+function withParents(lines: SetupLine[], refs: ReadonlyMap<string, { ref: string; parent: string }>): SetupLine[] {
+  const byRef = new Map<string, string>();
+  for (const [id, r] of refs) if (!byRef.has(r.ref)) byRef.set(r.ref, id);
+  const parentOf = new Map<string, string>();
+  for (const [id, r] of refs) {
+    const p = byRef.get(r.parent);
+    if (!p || p === id) continue;
+    // Its parent's chain must not come back to it.
+    let at: string | undefined = p;
+    const seen = new Set([id]);
+    while (at && !seen.has(at)) {
+      seen.add(at);
+      at = parentOf.get(at);
+    }
+    if (!at) parentOf.set(id, p);
+  }
+  return lines.map((l) => (parentOf.has(l.id) ? { ...l, parent: parentOf.get(l.id) } : l));
 }
 
 // ---------------------------------------------------------------------------
@@ -283,6 +318,23 @@ export function applyLines(now: OrgNow, proposal: SetupProposal, lines: SetupLin
     if (p) changed.set(p.id, withLine(p, field));
   }
   return { about, products: [...changed.values()], made: next, goals };
+}
+
+/** The goals in a proposal, each under the goal it feeds, as a tree: depth first, in the answer's order. */
+export function goalLines(p: Pick<SetupProposal, "lines">): { line: SetupLine; depth: number }[] {
+  const goals = p.lines.filter((l) => l.field === "goals");
+  const known = new Set(goals.map((l) => l.id));
+  const out: { line: SetupLine; depth: number }[] = [];
+  const walk = (parent: string | undefined, depth: number) => {
+    for (const l of goals) {
+      const under = l.parent && known.has(l.parent) ? l.parent : undefined;
+      if (under !== parent || out.some((x) => x.line.id === l.id)) continue;
+      out.push({ line: l, depth });
+      walk(l.id, depth + 1);
+    }
+  };
+  walk(undefined, 0);
+  return out;
 }
 
 /** Accepted goals a board can start from, and the product each is for (null: the whole organization). */

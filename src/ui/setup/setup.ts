@@ -11,10 +11,12 @@ import { emptyDoc } from "@/doc/schema";
 import { currentOrg, orgFetch } from "@/org/client";
 import { changeGoal, createGoal, goalWords, goalsNow } from "@/goals/client";
 import { textGoalId } from "@/goals/migrate";
+import { sanitizeShaped, type OutlineGoal, type ShapedGoal } from "@/goals/outline";
 import { goalById } from "@/goals/tree";
 import { sameTopic } from "@/hub/topics";
 import { saveAbout, saveProduct, useOrgContext } from "@/org/context";
-import { applyLines, boardGoals, decide, sanitizeSetup, setupSent, type OrgNow, type PlaceSays, type SetupSession } from "@/org/setup";
+import { emptyContext } from "@/org/context-md";
+import { applyLines, boardGoals, decide, sanitizeSetup, setupSent, type OrgNow, type PlaceSays, type SetupLine, type SetupSession } from "@/org/setup";
 import { projectHref } from "@/projects/model";
 import { createProject } from "@/projects/session";
 import { initialFlow, type FlowState } from "../ai/questionFlow";
@@ -24,9 +26,10 @@ import { ingestPaste, ingestUrl } from "../discovery/ingest";
  * Setting the organization up from a brain dump about it, in this window: what they wrote (or the
  * company's website) is kept as a brain dump of the organization's, Qalam AI reads it, asks up to
  * three rounds of questions, then proposes the About and the products, line by line (each checked
- * by src/org/setup.ts). Accepting a line writes it to about.md or the product's file. How it's going
- * lives on the source, so a reload picks it up; what they said goes on the topic pages once every
- * line is settled, and each goal they accepted can start a board.
+ * by src/org/setup.ts). Accepting a line writes it to about.md, the product's file or goals.md. How
+ * it's going lives on the source, so a reload picks it up; what they said goes on the topic pages
+ * once every line is settled, and each goal they accepted can start a board. Or they write their
+ * goals down themselves, and Qalam AI only reads each line's number (src/goals/outline.ts).
  */
 
 export interface SetupUI {
@@ -257,20 +260,61 @@ function settled() {
 /** The goal a setup line made: named by its words, so making it twice makes one. */
 const lineGoalId = (text: string, product: string | null) => textGoalId(product ? `${product}:${text}` : text);
 
+/** The product a line is for (null: the whole organization; undefined: a new one not made yet). */
+const lineProduct = (l: SetupLine, made: Record<string, string> | undefined): string | null | undefined => (l.to === "org" ? null : l.to.startsWith("new:") ? made?.[l.to.slice(4)] : l.to);
+
+/** The goal a goal line's parent line made, once it's there. */
+function parentGoal(l: SetupLine, lines: SetupLine[], made: Record<string, string> | undefined): string | null {
+  const parent = lines.find((x) => x.id === l.parent);
+  const product = parent && lineProduct(parent, made);
+  if (!parent || product === undefined) return null;
+  const id = lineGoalId(parent.text, product);
+  return goalById(goalsNow(), id) ? id : null;
+}
+
+/** How far down the proposal's tree a goal line sits (its parents are made first). */
+function depthOf(l: SetupLine, lines: SetupLine[]): number {
+  let n = 0;
+  for (let at = l.parent; at && n < 20; at = lines.find((x) => x.id === at)?.parent) n++;
+  return n;
+}
+
 /**
  * Accept lines: each is written to about.md or its product's file (a new product is made with its
- * first), and each goal goes in goals.md: the organization's first one, its North Star.
+ * first), and each goal goes in goals.md with its number, under the goal it feeds once that one is
+ * there: the organization's first goal under none, its North Star.
  */
 export async function acceptLines(lineIds: string[]) {
   const session = source()?.setup;
   if (!session?.proposal) return;
-  const lines = session.proposal.lines.filter((l) => lineIds.includes(l.id) && !session.decided?.[l.id]);
+  const all = session.proposal.lines;
+  const lines = all.filter((l) => lineIds.includes(l.id) && !session.decided?.[l.id]);
   if (!lines.length) return;
   const w = applyLines(orgNow(), session.proposal, lines, session.made, () => nanoid(10));
   if (w.about) await saveAbout(w.about);
   for (const p of w.products) await saveProduct(p);
-  for (const g of w.goals)
-    await createGoal({ id: lineGoalId(g.line.text, g.product), title: g.line.text, product: g.product, cites: g.line.pieces.map((q) => `hub:quote:${q}`), by: "qalam", ...(g.product ? {} : { north: "if-none" as const }) });
+  for (const g of [...w.goals].sort((a, b) => depthOf(a.line, all) - depthOf(b.line, all))) {
+    const parent = parentGoal(g.line, all, w.made);
+    await createGoal({
+      id: lineGoalId(g.line.text, g.product),
+      title: g.line.text,
+      product: g.product,
+      ...(parent ? { parent } : {}),
+      ...(g.line.metric ? { metric: g.line.metric } : {}),
+      cites: g.line.pieces.map((q) => `hub:quote:${q}`),
+      by: "qalam",
+      ...(g.product || g.line.parent ? {} : { north: "if-none" as const }),
+    });
+  }
+  // A goal accepted before the goal it feeds goes under it now (unless someone has moved it since).
+  const accepted = new Set([...Object.entries(session.decided ?? {}).flatMap(([id, d]) => (d === "accepted" ? [id] : [])), ...lines.map((l) => l.id)]);
+  for (const l of all) {
+    const product = lineProduct(l, w.made);
+    if (l.field !== "goals" || !l.parent || !accepted.has(l.id) || !accepted.has(l.parent) || product === undefined) continue;
+    const id = lineGoalId(l.text, product);
+    const parent = parentGoal(l, all, w.made);
+    if (parent && goalById(goalsNow(), id)?.parent === null) await changeGoal(id, { parent }).catch(() => {});
+  }
   await setSession((d) => decide(d, lines.map((l) => l.id), "accepted", w.made));
   settled();
 }
@@ -300,6 +344,42 @@ export async function startBoard(lineId: string) {
   await sourcesDb.link(s.id, p.id, true);
   await setSession((d) => ({ ...d, boards: { ...d.boards, [lineId]: p.id } }));
   window.location.assign(projectHref(p));
+}
+
+// ---------------------------------------------------------------------------
+// Goals they write down themselves
+
+/** Qalam AI reads each line of their goals (and what they answered about its number); code keeps what holds. */
+export async function shapeGoals(goals: OutlineGoal[], answers: ReadonlyMap<string, string>): Promise<ShapedGoal[]> {
+  const org = await currentOrg();
+  const products = useOrgContext.getState().products.slice(0, 30).map((p, i) => ({ ref: `p${i + 1}`, id: p.id, name: p.name }));
+  const { raw } = await call(answers.size ? "Qalam AI is reading your answers" : "Qalam AI is reading your goals", {
+    stage: "shape",
+    name: org.name.slice(0, 80),
+    products: products.map((p) => ({ id: p.ref, name: p.name.slice(0, 80) })),
+    goals: goals.map((g) => ({ id: g.ref, text: g.text, parent: g.parent })),
+    answers: [...answers].map(([id, answer]) => ({ id, answer: answer.slice(0, 600) })),
+  });
+  return sanitizeShaped(raw, { goals, products, answers });
+}
+
+/** Add the goals they wrote, in their words: products they named are made first, each goal goes under the one it feeds, the first top one the North Star. */
+export async function addShapedGoals(goals: ShapedGoal[]): Promise<string[]> {
+  const made = new Map<string, string>();
+  for (const g of goals) {
+    if (!g.product || !("name" in g.product) || made.has(g.product.name.toLowerCase())) continue;
+    const p = { id: nanoid(10), name: g.product.name, ...emptyContext() };
+    await saveProduct(p);
+    made.set(g.product.name.toLowerCase(), p.id);
+  }
+  const ids = new Map<string, string>();
+  for (const g of goals) {
+    const product = !g.product ? null : "id" in g.product ? g.product.id : (made.get(g.product.name.toLowerCase()) ?? null);
+    const parent = g.parent ? ids.get(g.parent) : undefined;
+    const goal = await createGoal({ title: g.title, product, ...(parent ? { parent } : {}), ...(g.metric ? { metric: g.metric } : {}), by: "person", ...(parent ? {} : { north: "if-none" as const }) });
+    ids.set(g.ref, goal.id);
+  }
+  return [...ids.values()];
 }
 
 // ---------------------------------------------------------------------------

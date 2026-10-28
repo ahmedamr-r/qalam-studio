@@ -4,7 +4,7 @@ import type { PlanQuestion } from "@/ai/plan";
 import { initialFlow } from "@/ui/ai/questionFlow";
 import { toQuestion } from "@/ui/ai/plan";
 import { emptyContext } from "./context-md";
-import { applyLines, boardGoals, decide, nameHolds, pendingLines, sanitizeSetup, setupSent, type OrgNow, type ProductSays, type SetupSession } from "./setup";
+import { applyLines, boardGoals, decide, goalLines, nameHolds, pendingLines, sanitizeSetup, setupSent, type OrgNow, type ProductSays, type SetupSession } from "./setup";
 
 const nothing = (): OrgNow => ({ about: { ...emptyContext(), goals: [] }, products: [] });
 
@@ -164,6 +164,60 @@ describe("what Qalam AI proposes", () => {
     const { sent } = setup();
     expect(sanitizeSetup(null, sent)).toEqual({ summary: "", products: [], lines: [] });
     expect(sanitizeSetup({ about: "x", products: [{ id: 3, name: null }, "y"] }, sent).lines).toEqual([]);
+  });
+
+  it("puts each goal under the goal it feeds, with its number only as what it cites has it", () => {
+    const { sent } = setup();
+    const goal = (id: string, parent: string, text: string, fragmentIds: string[], metric: unknown = null, answerIds: string[] = []) => ({ id, parent, metric, ...line(text, fragmentIds, answerIds) });
+    const p = sanitizeSetup(
+      {
+        summary: "",
+        about: { audience: null, context: null, goals: [goal("G1", "", "2M dirhams a month in orders", ["f4"], { name: "Orders a month", unit: "dirhams", direction: "increase", baseline: 1_400_000, current: null, target: 2_000_000, timeframe: "this year" }, ["a2"])], segments: [] },
+        products: [
+          {
+            id: "n1",
+            name: "Basket for Business",
+            why: "",
+            audience: null,
+            context: null,
+            goals: [
+              // Feeds a goal that isn't there: it feeds none.
+              goal("G3", "G9", "Offices stay past their first month", ["f6"]),
+            ],
+            segments: [],
+          },
+          {
+            id: "n2",
+            name: "Basket app",
+            why: "",
+            audience: null,
+            context: null,
+            // Under the company's goal; its number from what it cites, a number it doesn't cite left out.
+            goals: [goal("G2", "G1", "People come back every week", ["f5"], { name: "Reorders per customer", unit: "", direction: "increase", baseline: null, current: 1.3, target: 1.6, timeframe: "by March" })],
+            segments: [],
+          },
+        ],
+      },
+      sent,
+    );
+    const [twoM, offices, weekly] = p.lines;
+    expect(twoM).toMatchObject({ text: "2M dirhams a month in orders", metric: { name: "Orders a month", unit: "dirhams", baseline: 1_400_000, current: null, target: 2_000_000 } });
+    // "this year" is the dump's words; the answer said "1.4M".
+    expect(twoM.metric?.timeframe).toBe("this year");
+    expect(twoM.parent).toBeUndefined();
+    expect(offices.parent).toBeUndefined();
+    expect(weekly).toMatchObject({ parent: twoM.id, metric: { name: "Reorders per customer", current: 1.3, target: null } });
+    // "March" isn't in what it cites.
+    expect(weekly.metric?.timeframe).toBeUndefined();
+    expect(goalLines(p).map(({ line, depth }) => [line.text, depth])).toEqual([
+      ["2M dirhams a month in orders", 0],
+      ["People come back every week", 1],
+      ["Offices stay past their first month", 0],
+    ]);
+    // Two goals that say they feed each other: neither loops.
+    const loop = sanitizeSetup({ summary: "", about: { audience: null, context: null, goals: [goal("G1", "G2", "2M dirhams a month in orders", ["f4"]), goal("G2", "G1", "People come back every week", ["f5"])], segments: [] }, products: [] }, sent);
+    expect(loop.lines.filter((l) => l.parent)).toHaveLength(1);
+    expect(goalLines(loop)).toHaveLength(2);
   });
 });
 

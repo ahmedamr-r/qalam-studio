@@ -29,7 +29,8 @@ const num = (n: number) => n.toLocaleString("en", { maximumFractionDigits: 2 });
 
 /** A number in a line: "1.2 → 1.5 orders by June", "now 41%". */
 export function metricLine(m: OstMetric): string {
-  const unit = m.unit?.trim() ? ` ${m.unit.trim()}` : "";
+  // "41%", but "1.5 orders".
+  const unit = m.unit?.trim() ? (m.unit.trim() === "%" ? "%" : ` ${m.unit.trim()}`) : "";
   const when = m.timeframe?.trim() ?? "";
   // "June" reads "by June"; a timeframe that says how already ("by March", "this quarter") as it is.
   const by = when ? ` ${/^(by|in|within|before|until|this|next|end|q[1-4]\b)/i.test(when) ? when : `by ${when}`}` : "";
