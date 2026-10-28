@@ -23,6 +23,8 @@ export type OrgChange = { tab?: string } & (
   | { kind: "topic"; id: string; removed?: boolean }
   | { kind: "notice" }
   | { kind: "relation" }
+  | { kind: "inbox" }
+  | { kind: "placement"; board: string }
 );
 
 const listeners = new Set<(c: OrgChange) => void>();

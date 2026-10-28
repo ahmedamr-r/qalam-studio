@@ -44,17 +44,21 @@ export interface PackRequest {
   exclude?: string[];
 }
 
+/** A pack as a call's context (null when it found nothing). */
+export function contextOf(p: { block: string; items: PackedPiece[] }): OrgContext | null {
+  if (!p.items?.length) return null;
+  return {
+    context: { block: p.block, ids: p.items.map((i) => i.k), quotes: p.items.filter((i) => i.type === "quote").map((i) => i.k) },
+    pieces: p.items,
+    manifest: mergeManifest(p.items.map((i) => entry(i.k, i.ref, i.text))),
+  };
+}
+
 /** Null when there's nothing to add, or no index here (Node without full-text search): the call goes without. */
 export async function orgContext(r: PackRequest): Promise<OrgContext | null> {
   try {
     const res = await orgFetch("/pack", { method: "POST", json: { ...r, query: r.query.slice(0, 4000) } });
-    const p = (await res.json()) as { block: string; items: PackedPiece[] };
-    if (!p.items?.length) return null;
-    return {
-      context: { block: p.block, ids: p.items.map((i) => i.k), quotes: p.items.filter((i) => i.type === "quote").map((i) => i.k) },
-      pieces: p.items,
-      manifest: mergeManifest(p.items.map((i) => entry(i.k, i.ref, i.text))),
-    };
+    return contextOf((await res.json()) as { block: string; items: PackedPiece[] });
   } catch {
     return null;
   }

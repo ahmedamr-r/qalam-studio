@@ -2,7 +2,8 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createOrg, currentOrg, listOrgs, openFolder, rememberOrg } from "./home";
+import { createOrg, currentOrg, listOrgs, onStoreOpen, openFolder, openLastOrg, rememberOrg, storeFor } from "./home";
+import { OrgStore } from "./store";
 
 let base: string;
 let home: string;
@@ -54,6 +55,28 @@ describe("organizations", () => {
     // Opening it again changes nothing.
     await openFolder(repo, home);
     expect(await readFile(path.join(repo, ".gitignore"), "utf8")).toBe("node_modules\ndist\n.qalam/\nchats/\n");
+  });
+
+  it("opens one store per organization, however many ask at once", async () => {
+    const was = process.env.QALAM_HOME;
+    process.env.QALAM_HOME = home;
+    try {
+      // Organizations on disk that this Qalam hasn't opened yet.
+      for (const [id, name] of [["personal", "Personal"], ["basket", "Basket"]]) (await OrgStore.create(path.join(home, name), { id, name, createdAt: 1 })).dispose();
+      await rememberOrg("basket", home);
+      const seen: OrgStore[] = [];
+      onStoreOpen((s) => seen.push(s));
+      // Qalam starting (it opens the organization opened last) and a window's first requests, together.
+      const [last, a, b] = await Promise.all([openLastOrg(), storeFor("basket"), storeFor("basket")]);
+      expect(a?.dir).toBe(path.join(home, "Basket"));
+      expect(b).toBe(a);
+      expect(last).toBe(a);
+      expect(seen).toEqual([a]);
+      expect(await storeFor("no-such-org")).toBeNull();
+      a!.dispose();
+    } finally {
+      process.env.QALAM_HOME = was;
+    }
   });
 
   it("refuses folders that can't be an organization", async () => {

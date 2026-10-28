@@ -1,5 +1,9 @@
 import { Hono } from "hono";
+import { onStoreOpen } from "./org/home";
+
+export { openLastOrg } from "./org/home";
 import { orgRoutes } from "./org/routes";
+import { startInbox } from "./inbox";
 import * as audit from "./routes/audit";
 import * as component from "./routes/component";
 import * as critique from "./routes/critique";
@@ -54,6 +58,8 @@ const ROUTES: Record<string, { GET?: Handler; POST?: Handler }> = {
  * It knows nothing about how it is reached: whoever mounts it checks the request first.
  */
 export function createApi(): Hono {
+  // Each organization's inbox folder is read while its store is open, window or not.
+  onStoreOpen(startInbox);
   const api = new Hono();
   for (const [name, route] of Object.entries(ROUTES)) {
     if (route.GET) api.get(`/api/${name}`, (c) => route.GET!(c.req.raw));

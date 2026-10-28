@@ -213,3 +213,10 @@ export function showsUp(index: OrgIndex, title: string, refs: string[]): ShowsUp
     })
     .sort((a, b) => b.shared - a.shared || a.title.localeCompare(b.title));
 }
+
+/** A pack's pieces as a call carries them, with what using one needs (a quote's source). */
+export const packedPieces = (p: Packed & { rows: PieceRow[] }) =>
+  p.items.map((it, i) => {
+    const r = p.rows[i];
+    return { ...it, type: r.type, sub: r.sub, text: r.text, title: r.title, product: r.product, source: r.source, speaker: r.speaker, board: r.board, card: r.card, stage: r.stage };
+  });

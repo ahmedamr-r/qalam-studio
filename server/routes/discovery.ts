@@ -6,12 +6,8 @@ import {
   DUMP_PLACE_SYSTEM,
   DUMP_READ_SYSTEM,
   DiscoveryBody,
-  EXTRACT_KNOWLEDGE,
-  EXTRACT_SYSTEM,
   FOLLOWUPS_SCHEMA,
   FOLLOWUPS_SYSTEM,
-  SYNTHESIZE_KNOWLEDGE,
-  SYNTHESIZE_SYSTEM,
   draftContent,
   draftSchema,
   dumpFollowupContent,
@@ -20,15 +16,12 @@ import {
   dumpPlaceSchema,
   dumpReadContent,
   dumpReadSchema,
-  extractContent,
-  extractSchema,
+  extractCall,
   followupsContent,
   importTask,
   placeIds,
   quotableIds,
-  synthesizeContent,
-  synthesizeIds,
-  synthesizeSchema,
+  synthesizeCall,
   withKnowledge,
   withPieceReliance,
 } from "@/ai/discovery";
@@ -62,11 +55,9 @@ export async function POST(req: Request) {
     case "draft":
       return streamStructured({ ...call, system: withKnowledge(DRAFT_SYSTEM, b.context, DRAFT_KNOWLEDGE), schema: withPieceReliance(draftSchema(quotableIds(b), b.context?.quotes), b.context), effort: "high", maxTokens: 24000, deltas: true, content: [{ type: "text", text: draftContent(b) }] });
     case "extract":
-      return streamStructured({ ...call, system: withKnowledge(EXTRACT_SYSTEM, b.context, EXTRACT_KNOWLEDGE), schema: withPieceReliance(extractSchema(b.chunks.map((c) => c.id)), b.context), effort: "medium", maxTokens: 24000, content: [{ type: "text", text: extractContent(b) }] });
-    case "synthesize": {
-      const ids = synthesizeIds(b);
-      return streamStructured({ ...call, system: withKnowledge(SYNTHESIZE_SYSTEM, b.context, SYNTHESIZE_KNOWLEDGE), schema: withPieceReliance(synthesizeSchema(ids.cards, ids.parents, ids.quotes), b.context), effort: "high", maxTokens: 24000, content: [{ type: "text", text: synthesizeContent(b) }] });
-    }
+      return streamStructured({ ...call, ...extractCall(b) });
+    case "synthesize":
+      return streamStructured({ ...call, ...synthesizeCall(b) });
     case "dump-read":
       return streamStructured({ ...call, system: DUMP_READ_SYSTEM, schema: dumpReadSchema(b.tree.map((c) => c.id)), effort: "high", maxTokens: 16000, content: [{ type: "text", text: dumpReadContent(b) }] });
     case "dump-followup":

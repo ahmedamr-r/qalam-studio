@@ -13,7 +13,7 @@ import { checkRequest, factsOf, tokenLanding, type GuardConfig } from "./guard";
 const root = process.cwd();
 loadEnvFiles(root);
 // The routes read their settings when they load (src/ai/server.ts), so they load after the env files.
-const { createApi } = await import("./app");
+const { createApi, openLastOrg } = await import("./app");
 
 const cfg: GuardConfig = { port: Number(process.env.PORT || 3101), token: process.env.QALAM_TOKEN || undefined };
 const dist = "dist";
@@ -25,6 +25,8 @@ app.use("/api/*", async (c, next) => {
   await next();
 });
 app.route("/", createApi());
+// Its inbox is read from the start, with a tab open or not (server/inbox.ts).
+void openLastOrg();
 app.use("/*", async (c, next) => {
   const landing = c.req.method === "GET" ? tokenLanding(new URL(c.req.url), cfg) : null;
   if (!landing) return next();

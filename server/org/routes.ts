@@ -3,19 +3,22 @@ import { Readable } from "node:stream";
 import { Hono } from "hono";
 import { sanitizeDecision, type Decision } from "@/decisions/model";
 import type { Doc } from "@/doc/schema";
-import type { SourceRecord } from "@/discovery/sources";
 import type { Project } from "@/projects/model";
 import type { ContextFields, Product } from "@/org/context-md";
 import { IndexUnavailable } from "../index/db";
 import { topicsOf, type OrgIndex, type PieceRow } from "../index/indexer";
 import { indexFor } from "../index/registry";
-import { packFor, search, showsUp, type Hit } from "../index/search";
+import { packedPieces, packFor, search, showsUp, type Hit } from "../index/search";
 import { orgGraph } from "@/hub/graph";
 import { filingShape, topicShape, type Topic } from "@/hub/topics";
 import { chooseFolder, createOrg, currentOrg, listOrgs, openFolder, qalamHome, rememberOrg, storeFor } from "./home";
 import { noticesNow } from "./notices";
 import { reviewOrg } from "./review";
 import { askOrg } from "../ask";
+import { captureSource } from "../capture";
+import type { Ingested } from "@/discovery/ingest/core";
+import type { Proposal } from "@/discovery/proposals";
+import { MAX_SOURCE_TEXT, SOURCE_KIND_LABEL, type SourceRecord } from "@/discovery/sources";
 import { aiConfigured, rateLimited } from "@/ai/server";
 import { ConflictError, NotFoundError, type OrgEvent, type OrgStore } from "./store";
 
@@ -167,11 +170,7 @@ export function orgRoutes(): Hono<Env> {
         exclude: strings(b.exclude, 2000),
       });
       // Each piece as the call sends it, with what the board needs to use it (a quote's source).
-      const items = p.items.map((it, i) => {
-        const r = p.rows[i];
-        return { ...it, type: r.type, sub: r.sub, text: r.text, title: r.title, product: r.product, source: r.source, speaker: r.speaker, board: r.board, card: r.card, stage: r.stage };
-      });
-      return c.json({ block: p.block, items, tokens: p.tokens, left: p.left, used: p.used });
+      return c.json({ block: p.block, items: packedPieces(p), tokens: p.tokens, left: p.left, used: p.used });
     });
   });
   r.get("/api/org/:org/pieces", (c) =>
@@ -262,29 +261,41 @@ export function orgRoutes(): Hono<Env> {
     if (question.length < 3) return bad("Ask a question");
     const product = typeof b?.product === "string" && ID.test(b.product) ? b.product : null;
     const store = c.get("store");
-    const enc = new TextEncoder();
-    const stop = new AbortController();
-    c.req.raw.signal.addEventListener("abort", () => stop.abort());
-    let open = true;
-    const body = new ReadableStream<Uint8Array>({
-      async start(ctrl) {
-        const send = (o: unknown) => {
-          if (open) ctrl.enqueue(enc.encode(`${JSON.stringify(o)}\n`));
-        };
-        try {
-          send({ type: "result", data: await askOrg(store, { question, product }, { emit: (label) => send({ type: "activity", label }), signal: stop.signal }) });
-        } catch (e) {
-          if (!stop.signal.aborted) send({ type: "error", error: "ask", message: e instanceof Error ? e.message : String(e) });
-        }
-        if (open) ctrl.close();
-        open = false;
-      },
-      cancel() {
-        open = false;
-        stop.abort();
-      },
-    });
-    return new Response(body, { headers: { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store" } });
+    return streamed(c.req.raw.signal, (emit, signal) => askOrg(store, { question, product }, { emit, signal }));
+  });
+  /**
+   * Capture: material added to the organization (read in the window: a paste, a file, a page). The
+   * core keeps it as a source and does what a board would: picks out what customers said, files it
+   * into the topic pages, proposes where it fits on the boards. Streamed (NDJSON) as it goes.
+   */
+  r.post("/api/org/:org/capture", async (c) => {
+    if (!aiConfigured()) return c.json({ error: "no_key", message: "Qalam AI isn't set up here." }, 501);
+    if (rateLimited(c.req.raw)) return c.json({ error: "rate_limited", message: "Too many requests, try again in a few minutes." }, 429);
+    const b = (await c.req.json().catch(() => null)) as { ingested?: unknown; product?: unknown } | null;
+    const ing = ingestedShape(b?.ingested);
+    if (!ing) return bad("Not something to add");
+    const product = typeof b?.product === "string" && ID.test(b.product) ? b.product : null;
+    const store = c.get("store");
+    return streamed(c.req.raw.signal, (emit, signal) => captureSource(store, ing, { product, emit, signal }));
+  });
+  /** What Qalam AI proposed for a board from what was added to the organization, by source. */
+  r.get("/api/org/:org/placements", async (c) => {
+    const board = c.req.query("board") ?? "";
+    if (!ID.test(board)) return bad("Say which board");
+    const store = c.get("store");
+    const out = [];
+    for (const [sourceId, proposals] of Object.entries(await store.placementsFor(board))) {
+      const s = await store.getSource(sourceId);
+      if (s && proposals.length) out.push({ sourceId, title: s.title, at: s.addedAt, proposals });
+    }
+    return c.json(out);
+  });
+  /** What's left waiting on a board from one source, after the board reviewed some (none: all done). */
+  r.post("/api/org/:org/placements", async (c) => {
+    const b = (await c.req.json().catch(() => null)) as { board?: unknown; sourceId?: unknown; proposals?: unknown } | null;
+    if (typeof b?.board !== "string" || !ID.test(b.board) || typeof b.sourceId !== "string" || !ID.test(b.sourceId) || !Array.isArray(b.proposals) || b.proposals.length > 200) return bad("Say which board, which source, and what's left");
+    await c.get("store").setPlacements(b.board, b.sourceId, b.proposals as Proposal[], { tab: tabOf(c.req.raw.headers) });
+    return c.json({ ok: true });
   });
   // Cards on two boards linked as the same need.
   /** All links, or one card's: the cards it's linked to, with their titles and boards. */
@@ -535,6 +546,52 @@ async function topicContext(store: OrgStore, t: Topic) {
   } catch {
     return { cited: {}, sources: {}, shows: [] };
   }
+}
+
+/** A long piece of work as NDJSON: what it's doing as it goes ("activity"), then its result, or why it failed. */
+function streamed(request: AbortSignal, run: (emit: (label: string) => void, signal: AbortSignal) => Promise<unknown>): Response {
+  const enc = new TextEncoder();
+  const stop = new AbortController();
+  request.addEventListener("abort", () => stop.abort());
+  let open = true;
+  const body = new ReadableStream<Uint8Array>({
+    async start(ctrl) {
+      const send = (o: unknown) => {
+        if (open) ctrl.enqueue(enc.encode(`${JSON.stringify(o)}\n`));
+      };
+      try {
+        send({ type: "result", data: await run((label) => send({ type: "activity", label }), stop.signal) });
+      } catch (e) {
+        if (!stop.signal.aborted) send({ type: "error", error: "failed", message: e instanceof Error ? e.message : String(e) });
+      }
+      if (open) ctrl.close();
+      open = false;
+    },
+    cancel() {
+      open = false;
+      stop.abort();
+    },
+  });
+  return new Response(body, { headers: { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store" } });
+}
+
+const KINDS = new Set(Object.keys(SOURCE_KIND_LABEL));
+
+/** Material a window read (src/discovery/ingest/core.ts Ingested), or null. */
+function ingestedShape(raw: unknown): Ingested | null {
+  const i = raw as Record<string, unknown> | null;
+  if (!i || !KINDS.has(i.kind as string) || i.kind === "dump" || typeof i.title !== "string" || !i.title.trim() || typeof i.text !== "string" || !i.text.trim() || i.text.length > MAX_SOURCE_TEXT) return null;
+  const pages = Array.isArray(i.pages) && i.pages.every((n) => typeof n === "number") ? (i.pages as number[]) : undefined;
+  const talk = Array.isArray(i.segments) && i.transcript && typeof i.transcript === "object" ? { segments: i.segments as Ingested["segments"], transcript: i.transcript as Ingested["transcript"] } : {};
+  return {
+    kind: i.kind as Ingested["kind"],
+    title: i.title.replace(/\s+/g, " ").trim().slice(0, 160),
+    ...(typeof i.origin === "string" ? { origin: i.origin.slice(0, 2000) } : {}),
+    text: i.text,
+    ...(pages ? { pages } : {}),
+    ...(i.truncated === true ? { truncated: true } : {}),
+    ...talk,
+  };
 }
 
 const isCardRef = (v: unknown): v is string => typeof v === "string" && /^hub:card:[A-Za-z0-9_-]{1,64}:[A-Za-z0-9_-]{1,64}$/.test(v);

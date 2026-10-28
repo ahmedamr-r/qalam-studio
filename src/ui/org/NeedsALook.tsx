@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import clsx from "clsx";
-import { CircleAlert, FileX, FlaskConical, Gauge, History, Link2, TriangleAlert, Users, X } from "lucide-react";
+import { CircleAlert, FileX, FlaskConical, Gauge, History, Inbox, Link2, TriangleAlert, Users, X } from "lucide-react";
 import { NOTICE_LABEL, type Notice, type NoticeKind } from "@/hub/checks";
 import { cardRef } from "@/hub/pieces";
 import type { TopicInfo } from "@/hub/topics";
@@ -29,6 +29,7 @@ const KIND_ICON: Record<Exclude<NoticeKind, "review">, typeof X> = {
   untested: TriangleAlert,
   metric: Gauge,
   orphan: FileX,
+  placed: Inbox,
 };
 const SHOWN = 5;
 
@@ -50,6 +51,8 @@ export function NeedsALook({ now, scope, projects, topics }: { now: NoticesNow |
   const topicTitle = (id?: string) => topics?.find((t) => t.id === id)?.title;
 
   const where = (n: Notice): { href: string; label: string } | null => {
+    // Proposals waiting on a board: the board opens with them under review.
+    if (n.kind === "placed" && n.board) return { href: `${projectHref({ id: n.board, type: "discovery" })}?review=placed`, label: boardName(n.board) ?? "The board" };
     if (n.topic && (n.kind === "disputed" || n.kind === "pattern" || n.kind === "orphan")) return { href: topicHref(n.topic), label: topicTitle(n.topic) ?? "The topic page" };
     if (n.board && n.card) return { href: cardHref(n.board, n.card), label: boardName(n.board) ?? "The board" };
     if (n.topic) return { href: topicHref(n.topic), label: topicTitle(n.topic) ?? "The topic page" };

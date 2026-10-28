@@ -10,6 +10,7 @@ import { dropProblem } from "@/discovery/ops";
 import { applyProposal, proposalDoc, proposalKey, touchedRoots, withDependents, withNeeds, type EvidenceOf, type Proposal } from "@/discovery/proposals";
 import type { DumpCounts } from "@/discovery/dump";
 import { recordAccepted, recordDiscarded } from "../decisions/recorder";
+import { orgFetch } from "@/org/client";
 import { adoptSources, sourceOf, updateSource, useSources } from "./sources";
 
 /*
@@ -23,7 +24,11 @@ import { adoptSources, sourceOf, updateSource, useSources } from "./sources";
 
 export const REVIEW_TURN = "discovery:review";
 
-export type ReviewOrigin = { kind: "sources" } | { kind: "dump"; sourceId: string };
+export type ReviewOrigin =
+  | { kind: "sources" }
+  | { kind: "dump"; sourceId: string }
+  /** What Qalam AI found for this board in material added to the organization (kept on its sources). */
+  | { kind: "placed"; sourceIds: string[] };
 
 export interface ReviewUI {
   origin: ReviewOrigin | null;
@@ -138,9 +143,22 @@ function show() {
   };
 }
 
-/** A brain dump keeps what's still waiting, so a reload brings the review back (the origin is passed: the review may have just closed). */
+/** The source a proposal's words are from. */
+const sourceOfProposal = (p: Proposal) => (p.kind === "attach" || p.kind === "against" ? p.quote.sourceId : p.kind === "card" ? p.backing.quotes[0]?.sourceId : undefined);
+
+/**
+ * What's still waiting is kept where it came from, so a reload brings the review back (the origin
+ * is passed: the review may have just closed): on the brain dump, or in what waits on this board
+ * from material added to the organization.
+ */
 async function keep(origin: ReviewOrigin | null, done?: Partial<DumpCounts>) {
   const { proposals } = useReview.getState();
+  if (origin?.kind === "placed") {
+    const board = useSources.getState().projectId;
+    if (!board) return;
+    for (const sourceId of origin.sourceIds) await orgFetch("/placements", { method: "POST", json: { board, sourceId, proposals: proposals.filter((p) => sourceOfProposal(p) === sourceId) } }).catch(() => {});
+    return;
+  }
   if (origin?.kind !== "dump") return;
   await updateSource(origin.sourceId, (s) => {
     if (!s.dump) return s;
@@ -155,7 +173,7 @@ export function startReview(origin: ReviewOrigin, proposals: Proposal[]): boolea
   const cur = useReview.getState();
   const same = cur.origin && JSON.stringify(cur.origin) === JSON.stringify(origin);
   if (cur.proposals.length && !same) {
-    feedback(cur.origin?.kind === "dump" ? "Accept or discard Qalam AI's proposals from your brain dump first" : "Accept or discard Qalam AI's proposals from your sources first", { id: "discovery.review" });
+    feedback(cur.origin?.kind === "dump" ? "Accept or discard Qalam AI's proposals from your brain dump first" : cur.origin?.kind === "placed" ? "Accept or discard what Qalam AI found for this board first" : "Accept or discard Qalam AI's proposals from your sources first", { id: "discovery.review" });
     return false;
   }
   useReview.setState({ origin, proposals });

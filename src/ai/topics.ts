@@ -130,6 +130,17 @@ export const TOPICS_KNOWLEDGE = `The request also carries what the organization 
 
 const one = (s: string) => s.replace(/\s+/g, " ").trim();
 
+/** The filing call (minus its model): the route streams it to a window, the core reads it to its end. */
+export function topicsCall(b: TopicsRequest) {
+  return {
+    system: b.context?.ids.length ? `${TOPICS_SYSTEM}\n\n${TOPICS_KNOWLEDGE}` : TOPICS_SYSTEM,
+    schema: filingSchema(filingIds(b)),
+    effort: "medium" as const,
+    maxTokens: 20000,
+    content: [{ type: "text" as const, text: topicsContent(b) }],
+  };
+}
+
 /** The request as the model reads it. */
 export function topicsContent(b: TopicsRequest): string {
   const titled = new Map(b.topics.map((t) => [t.id, t.title]));

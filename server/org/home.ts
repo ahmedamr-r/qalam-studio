@@ -82,8 +82,7 @@ export async function createOrg(name: string, home = qalamHome()): Promise<OrgLi
   let dir = path.join(home, base);
   for (let n = 2; await exists(dir); n++) dir = path.join(home, `${base} ${n}`);
   const store = await OrgStore.create(dir, { id: newOrgId(), name: name.trim().slice(0, 80) || base, createdAt: Date.now() });
-  stores().set(store.info.id, Promise.resolve(store));
-  store.watch();
+  stores().set(store.info.id, Promise.resolve(opened(store)));
   return { id: store.info.id, name: store.info.name, dir };
 }
 
@@ -138,8 +137,7 @@ export async function openFolder(raw: string, home = qalamHome()): Promise<OrgLi
   let org = await orgAt(dir);
   if (!org) {
     const store = await OrgStore.create(dir, { id: newOrgId(), name: path.basename(dir), createdAt: Date.now() });
-    stores().set(store.info.id, Promise.resolve(store));
-    store.watch();
+    stores().set(store.info.id, Promise.resolve(opened(store)));
     org = { id: store.info.id, name: store.info.name, dir };
   }
   if (path.dirname(dir) !== home) {
@@ -174,19 +172,51 @@ function stores(): Map<string, Promise<OrgStore>> {
   return g.__qalamOrgStores.map;
 }
 
+const openers = new Set<(store: OrgStore) => void>();
+
+/** Run `fn` for each organization's store as it opens (and for those open already). */
+export function onStoreOpen(fn: (store: OrgStore) => void) {
+  openers.add(fn);
+  for (const s of stores().values()) void s.then(fn, () => {});
+}
+
+/** A store is open and watched: tell whoever wants to know. */
+function opened(store: OrgStore): OrgStore {
+  store.watch();
+  for (const fn of openers) fn(store);
+  return store;
+}
+
 /** The store for an org id, opened (and watched) on first use. Null: no such org. */
 export async function storeFor(id: string): Promise<OrgStore | null> {
   const map = stores();
   let s = map.get(id);
   if (!s) {
-    const org = (await listOrgs()).find((o) => o.id === id);
-    if (!org) return null;
-    s = OrgStore.open(org.dir).then((store) => {
-      store.watch();
-      return store;
+    // Kept before anything is awaited: a window's first requests arrive together, and each must
+    // find this one, not open (and watch) its own copy of the organization.
+    const opening = listOrgs().then(async (orgs) => {
+      const org = orgs.find((o) => o.id === id);
+      if (!org) throw new NoSuchOrg();
+      return opened(await OrgStore.open(org.dir));
     });
-    map.set(id, s);
-    s.catch(() => map.delete(id));
+    map.set(id, opening);
+    opening.catch(() => map.delete(id));
+    s = opening;
   }
-  return s;
+  return s.catch((e) => {
+    if (e instanceof NoSuchOrg) return null;
+    throw e;
+  });
+}
+
+class NoSuchOrg extends Error {}
+
+/** Open the organization opened last when Qalam starts, so its inbox is read from then on, before (or without) a window asking for it. */
+export function openLastOrg(): Promise<OrgStore | null> {
+  return currentOrg()
+    .then((o) => storeFor(o.id))
+    .catch((e) => {
+      console.warn(`[qalam] couldn't open the organization opened last: ${e instanceof Error ? e.message : String(e)}`);
+      return null;
+    });
 }

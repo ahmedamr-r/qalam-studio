@@ -10,7 +10,7 @@ import { cardOf } from "@/discovery/ops";
 import { allCards, childCards, outcomeLines } from "@/discovery/tree";
 import { SOURCE_KIND_LABEL, hasQuote, packCalls, quotePiece, unread, type SourceKind, type SourceQuote, type SourceRecord } from "@/discovery/sources";
 import { orgContext } from "@/org/pack";
-import { sanitizeExtract, sanitizeSynthesis, type CallChunk, type SynthCard, type SynthContext, type SynthQuote } from "@/discovery/synthesis";
+import { sanitizeExtract, sanitizeSynthesis, synthCardsOf, type CallChunk, type SynthContext, type SynthQuote } from "@/discovery/synthesis";
 import { awaitingRoles, finishExtracted, finishInterviewQuotes, speakerNote, type SpeakerRole } from "@/discovery/transcript";
 import { currentProject } from "@/projects/session";
 import { offline } from "./ai";
@@ -103,14 +103,19 @@ export async function addSources(inputs: AddInput[], opts: { map?: boolean } = {
 // ---------------------------------------------------------------------------
 // Connected tools
 
-async function fromTools(input: Extract<AddInput, { kind: "connector" }>, job: string, signal: AbortSignal): Promise<Ingested[]> {
+function fromTools(input: Extract<AddInput, { kind: "connector" }>, job: string, signal: AbortSignal): Promise<Ingested[]> {
+  return readFromTools(input, signal, (label) => setJob(job, { phase: "reading", title: label, kind: "connector" }));
+}
+
+/** Items brought in from connected tools, word for word (`onLabel` hears what's being opened). */
+export async function readFromTools(input: Extract<AddInput, { kind: "connector" }>, signal?: AbortSignal, onLabel?: (label: string) => void): Promise<Ingested[]> {
   if (await offline()) throw new IngestError("Qalam AI isn't set up here, so it can't reach your tools.");
   const { data } = await callAI<ResearchInfo>(PATH, { stage: "import", request: input.request, connectors: input.connectors }, undefined, signal, (e) => {
-    if (e.type === "activity") setJob(job, { phase: "reading", title: e.label, kind: "connector" });
+    if (e.type === "activity") onLabel?.(e.label);
   });
   const caps = data.captures ?? [];
   if (!caps.length) throw new IngestError(data.error || `${input.label} didn't return anything to read. Name the pages, tickets or documents to bring in.`);
-  const { captureText, captureTitle } = await import("./ingest/text");
+  const { captureText, captureTitle } = await import("@/discovery/ingest/text");
   return caps
     .map((c) => {
       const text = captureText(c.text);
@@ -228,17 +233,6 @@ export async function confirmSpeakers(id: string, roles: Record<string, SpeakerR
 // ---------------------------------------------------------------------------
 // Synthesize: where the quotes fit the tree
 
-/** How deep an opportunity is (1 = right under the outcome); 0 for other cards. */
-function depthOf(doc: Doc, id: string): number {
-  let d = 0;
-  let n = doc.nodes[id];
-  while (isOstCard(n) && n.meta.ost.kind === "opportunity") {
-    d++;
-    n = n.parentId ? doc.nodes[n.parentId] : undefined!;
-  }
-  return d;
-}
-
 const MAX_QUOTES = 150;
 const MAX_CARDS = 400;
 
@@ -250,19 +244,8 @@ export function synthesizeInput(doc: Doc, given: SourceRecord[], elsewhere: { s:
   // The builder's own thinking (a brain dump) is never mapped as customers' words.
   const sources = given.filter((s) => s.kind !== "dump");
   const cards = allCards(doc).slice(0, MAX_CARDS);
-  const refOf = new Map(cards.map((c, i) => [c.id, `c${i + 1}`]));
-  const synthCards: SynthCard[] = cards.map(({ id, card }) => {
-    const parent = doc.nodes[id].parentId;
-    return {
-      ref: refOf.get(id)!,
-      id,
-      kind: card.kind,
-      title: card.title,
-      parentRef: parent ? (refOf.get(parent) ?? null) : null,
-      depth: depthOf(doc, id),
-      childTitles: childCards(doc, id).map((c) => cardOf(doc, c)?.title ?? ""),
-    };
-  });
+  const synthCards = synthCardsOf(doc, 1, MAX_CARDS);
+  const refOf = new Map(synthCards.map((c) => [c.id, c.ref]));
   // Quotes no card has yet first, then the rest, up to what one call takes.
   const on = new Set(cards.flatMap(({ card }) => card.evidence.flatMap((e) => [...(e.kind === "quote" && e.sourceId && e.span ? [`${e.sourceId}:${e.span[0]}:${e.span[1]}`] : []), ...(e.piece ? [e.piece] : [])])));
   const all = sources.flatMap((s) => s.quotes.map((q) => ({ s, q })));

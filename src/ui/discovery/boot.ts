@@ -22,6 +22,7 @@ import { loadSources, openSource, reloadSources, sourceOf, useSources } from "./
 import { evidenceToLink, linkEvidenceIn } from "@/hub/migrate";
 import { onOrgChange } from "@/org/live";
 import { ensureDumpHandlers, resumeDumps } from "./dump";
+import { loadPlacements, reviewPlacements } from "./placements";
 import { startRecorder } from "../decisions/recorder";
 
 /**
@@ -57,9 +58,11 @@ export function startDiscoveryStudio(p: Project): (doc: Doc) => void {
   // What gets decided on the board goes to the organization's decision log.
   startRecorder();
   ensureDumpHandlers();
-  void loadSources(p.id).then(resumeDumps).then(linkEvidence).then(openSourceFromUrl);
+  void loadSources(p.id).then(resumeDumps).then(linkEvidence).then(openSourceFromUrl).then(() => loadPlacements(p.id)).then(reviewPlacedFromUrl);
   onOrgChange((c) => {
     if (c.kind === "source" && c.boards.includes(p.id)) void reloadSources(p.id);
+    // Material added to the organization may have something for this board (it's on no board yet).
+    if (c.kind === "placement" && c.board === p.id) void loadPlacements(p.id);
   });
   const refresh = () => document.visibilityState === "visible" && void refreshDesigns(p.id);
   document.addEventListener("visibilitychange", refresh);
@@ -73,6 +76,15 @@ export function startDiscoveryStudio(p: Project): (doc: Doc) => void {
     void updateProject((pr) => ({ discovery: { ...(pr.discovery ?? cur ?? { v: 1, stage: "ready" }), counts } }), { touch: false });
   };
   return afterSave;
+}
+
+/** Opened from "Needs a look" (?review=placed): what Qalam AI found for the board opens as a review. */
+async function reviewPlacedFromUrl() {
+  const u = new URL(window.location.href);
+  if (u.searchParams.get("review") !== "placed") return;
+  u.searchParams.delete("review");
+  history.replaceState(null, "", u);
+  await reviewPlacements();
 }
 
 /** Every tree laid out again, outside undo history (new metrics, not an edit). */

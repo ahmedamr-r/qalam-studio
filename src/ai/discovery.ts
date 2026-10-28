@@ -28,7 +28,15 @@ const Answer = z.object({ id: text(40), question: text(400), answer: text(2000) 
 /** A part of the builder's material, as one extract call reads it (an interview's says who is who). */
 const ChunkIn = z.object({ id: text(12), source: text(300), kind: text(40), text: text(26_000), speakers: text(400).optional() });
 /** A card of the tree, for synthesize (a flat list; `parent` points up). */
-const CardIn = z.object({ id: text(12), parent: text(12).nullable(), kind: z.enum(["outcome", "opportunity", "solution", "test"]), title: text(400), quotes: z.number().int().min(0).max(9999) });
+const CardIn = z.object({
+  id: text(12),
+  parent: text(12).nullable(),
+  kind: z.enum(["outcome", "opportunity", "solution", "test"]),
+  title: text(400),
+  quotes: z.number().int().min(0).max(9999),
+  /** The board a tree's root is on, when a call maps to several boards' trees. */
+  board: text(200).optional(),
+});
 const QuoteIn = z.object({ id: text(12), text: text(1200), source: text(300), speaker: text(80).nullable(), kind: text(20) });
 const NeedIn = z.object({ title: text(200), quoteIds: z.array(text(12)).max(30) });
 
@@ -335,11 +343,16 @@ export function synthesizeContent(b: Extract<DiscoveryRequest, { stage: "synthes
     lines.push(`${"  ".repeat(depth)}- ${c.id} · ${c.kind} · ${c.title.replace(/\s+/g, " ").trim() || "(untitled)"}${c.quotes ? ` (${c.quotes} ${c.quotes === 1 ? "quote" : "quotes"})` : ""}`);
     for (const k of kids.get(c.id) ?? []) walk(k, depth + 1);
   };
-  for (const c of b.tree) if (!c.parent || !known.has(c.parent)) walk(c, 0);
+  for (const c of b.tree)
+    if (!c.parent || !known.has(c.parent)) {
+      // Several boards' trees: each under its board's name.
+      if (c.board) lines.push(`${lines.length ? "\n" : ""}On the board “${c.board.replace(/\s+/g, " ").trim()}”:`);
+      walk(c, 0);
+    }
   return [
     `The product: ${b.product.trim() || "(not described yet)"}`,
     "",
-    "The tree (id · kind · title, each card under its parent):",
+    b.tree.some((c) => c.board) ? "The boards' trees (id · kind · title, each card under its parent). Map each quote to the board where it fits, or to none:" : "The tree (id · kind · title, each card under its parent):",
     ...lines,
     "",
     "What customers said (id · kind · source · speaker: words):",
@@ -360,6 +373,27 @@ export function synthesizeIds(b: Extract<DiscoveryRequest, { stage: "synthesize"
     cards: b.tree.filter((c) => c.kind === "opportunity" || c.kind === "solution").map((c) => c.id),
     parents: b.tree.filter((c) => c.kind === "outcome" || c.kind === "opportunity").map((c) => c.id),
     quotes: b.quotes.map((q) => q.id),
+  };
+}
+
+/** The extract call (minus its model): the route streams it to a board, the core reads it to its end. */
+export const extractCall = (b: Extract<DiscoveryRequest, { stage: "extract" }>) => ({
+  system: withKnowledge(EXTRACT_SYSTEM, b.context, EXTRACT_KNOWLEDGE),
+  schema: withPieceReliance(extractSchema(b.chunks.map((c) => c.id)), b.context),
+  effort: "medium" as const,
+  maxTokens: 24000,
+  content: [{ type: "text" as const, text: extractContent(b) }],
+});
+
+/** The synthesize call (minus its model): mapping quotes to a board's tree, or to several boards'. */
+export function synthesizeCall(b: Extract<DiscoveryRequest, { stage: "synthesize" }>) {
+  const ids = synthesizeIds(b);
+  return {
+    system: withKnowledge(SYNTHESIZE_SYSTEM, b.context, SYNTHESIZE_KNOWLEDGE),
+    schema: withPieceReliance(synthesizeSchema(ids.cards, ids.parents, ids.quotes), b.context),
+    effort: "high" as const,
+    maxTokens: 24000,
+    content: [{ type: "text" as const, text: synthesizeContent(b) }],
   };
 }
 

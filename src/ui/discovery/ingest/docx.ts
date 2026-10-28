@@ -1,4 +1,4 @@
-import { cleanText } from "./text";
+import { cleanText } from "@/discovery/ingest/text";
 
 /** A Word document's text (mammoth's browser build, loaded only when a .docx comes in). */
 export async function readDocx(data: ArrayBuffer): Promise<{ text: string }> {

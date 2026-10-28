@@ -16,7 +16,7 @@ import { isEvidence, sameTopic, type Topic } from "./topics";
  * of what it's about and how strong it is: dismissed, it stays dismissed until it grows.
  */
 
-export type NoticeKind = "disputed" | "pattern" | "same-need" | "revisit" | "stale-test" | "untested" | "metric" | "orphan" | "review";
+export type NoticeKind = "disputed" | "pattern" | "same-need" | "revisit" | "stale-test" | "untested" | "metric" | "orphan" | "review" | "placed";
 
 export interface Notice {
   /** Stable: the same finding keeps its key, so a dismissed one never comes back. */
@@ -49,6 +49,7 @@ export const NOTICE_LABEL: Record<NoticeKind, string> = {
   metric: "Outcome",
   orphan: "Page",
   review: "Qalam AI review",
+  placed: "To review",
 };
 
 /** How long before a running test, or an outcome's number, needs a look. */
@@ -85,6 +86,8 @@ export interface CheckInput {
   pieces: Map<string, { type: string; sub: string | null; source: string | null; stage: string | null; at: number }>;
   /** Cards linked as the same need ("<ref>|<ref>", sorted). */
   linked: Set<string>;
+  /** Proposals waiting on a board from material added to the organization (a capture, the inbox). */
+  placed?: { board: string; sourceId: string; title: string; count: number; at: number }[];
 }
 
 type Node = { parentId?: string | null; meta?: { ost?: OstCard } };
@@ -263,6 +266,21 @@ export function runChecks(x: CheckInput): Notice[] {
     });
   }
 
+  // What Qalam AI found for a board in material added to the organization, waiting for review there.
+  for (const p of x.placed ?? []) {
+    const b = x.boards.find((y) => y.id === p.board);
+    if (!b) continue;
+    out.push({
+      key: `placed:${p.sourceId}:${p.board}:${p.count}`,
+      kind: "placed",
+      title: `Qalam AI found where ${q(p.title)} fits on ${b.name}`,
+      why: `${plural(p.count, "proposal")} wait${p.count === 1 ? "s" : ""} on the board for you to accept or discard.`,
+      at: p.at,
+      board: b.id,
+      products: productsOf(b),
+    });
+  }
+
   for (const c of cards) {
     const ref = cardRef(c.board.id, c.id);
     // A test that's been running a long while with no result.
@@ -323,7 +341,7 @@ export function runChecks(x: CheckInput): Notice[] {
 /** Notices about a card (as the card, or as the other card of a pair). */
 export const aboutCard = (n: Pick<Notice, "board" | "card" | "other">, board: string, card: string) => (n.board === board && n.card === card) || (n.other?.board === board && n.other.card === card);
 
-const KINDS: readonly NoticeKind[] = ["disputed", "pattern", "same-need", "revisit", "stale-test", "untested", "metric", "orphan", "review"];
+const KINDS: readonly NoticeKind[] = ["disputed", "pattern", "same-need", "revisit", "stale-test", "untested", "metric", "orphan", "review", "placed"];
 const isStr = (v: unknown, max: number): v is string => typeof v === "string" && v.length <= max;
 const ID = /^[A-Za-z0-9_~-]{1,64}$/;
 

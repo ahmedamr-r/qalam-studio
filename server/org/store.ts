@@ -7,6 +7,7 @@ import { appendEntries, decisionsFromMarkdown, replaceEntry } from "@/decisions/
 import { monthOf, type Decision } from "@/decisions/model";
 import type { Doc } from "@/doc/schema";
 import type { OstCard } from "@/discovery/types";
+import type { Proposal } from "@/discovery/proposals";
 import type { SourceRecord } from "@/discovery/sources";
 import { topicFromMarkdown, topicToMarkdown } from "@/hub/topic-md";
 import { pairKey, type Notice } from "@/hub/checks";
@@ -44,6 +45,10 @@ export type OrgEvent = { tab?: string } & (
   | { kind: "topic"; id: string; removed?: boolean }
   | { kind: "notice" }
   | { kind: "relation" }
+  /** Something changed in the inbox folder (server/inbox.ts reads what's new). */
+  | { kind: "inbox" }
+  /** What waits on a board from material added to the organization changed. */
+  | { kind: "placement"; board: string }
 );
 
 
@@ -427,6 +432,7 @@ export class OrgStore {
       const e = this.projects.get(id);
       if (e) await rm(e.file, { force: true });
       this.projects.delete(id);
+      await rm(this.placementsFile(id), { force: true });
       await rm(this.abs(`chats/${id}`), { recursive: true, force: true });
       for (const [cid, file] of this.chats) if (path.dirname(file) === this.abs(`chats/${id}`)) this.chats.delete(cid);
       await rm(this.abs(`.qalam/local/layout/${id}.json`), { force: true });
@@ -472,7 +478,8 @@ export class OrgStore {
   putSource(s: SourceRecord, opts: { tab?: string } = {}): Promise<void> {
     return locked(`source:${s.id}`, async () => {
       const prev = this.sources.get(s.id);
-      const boards = [...new Set(s.boards ?? prev?.boards ?? (s.projectId ? [s.projectId] : []))];
+      // The boards a source is on change only by linking it (linkSource): a window saving its copy keeps them as they are.
+      const boards = prev ? prev.boards : [...new Set(s.boards ?? (s.projectId ? [s.projectId] : []))];
       const product = s.product !== undefined ? s.product : (prev?.product ?? (s.projectId ? (this.projects.get(s.projectId)?.record.product ?? null) : null));
       let md = prev?.md;
       if (!md) {
@@ -509,9 +516,9 @@ export class OrgStore {
     });
   }
 
-  /** Delete a source from the organization (every board loses it). */
-  removeSource(id: string, opts: { tab?: string } = {}): Promise<void> {
-    return locked(`source:${id}`, async () => {
+  /** Delete a source from the organization (every board loses it, and what was proposed from it). */
+  async removeSource(id: string, opts: { tab?: string } = {}): Promise<void> {
+    await locked(`source:${id}`, async () => {
       const s = this.sources.get(id);
       if (!s) return;
       await rm(s.md, { force: true });
@@ -519,6 +526,41 @@ export class OrgStore {
       this.sources.delete(id);
       this.emit({ kind: "source", id, boards: s.boards, removed: true, tab: opts.tab });
     });
+    for (const { board, sourceId } of await this.listPlacements()) if (sourceId === id) await this.setPlacements(board, id, null, opts);
+  }
+
+  // -------------------------------------------------------------------------
+  // Proposals waiting on a board from material added to the organization (server/capture.ts):
+  // hub/placements/<board>.json, by source, until the board reviews them.
+
+  private placementsFile = (board: string) => this.abs(`hub/placements/${board}.json`);
+
+  /** What waits on a board, by source. */
+  async placementsFor(board: string): Promise<Record<string, Proposal[]>> {
+    return (await readJson<{ sources?: Record<string, Proposal[]> }>(this.placementsFile(board)))?.sources ?? {};
+  }
+
+  /** What waits on every board. */
+  async listPlacements(): Promise<{ board: string; sourceId: string; proposals: Proposal[] }[]> {
+    const out: { board: string; sourceId: string; proposals: Proposal[] }[] = [];
+    for (const file of await this.files("hub/placements", ".json")) {
+      const board = path.basename(file, ".json");
+      for (const [sourceId, proposals] of Object.entries(await this.placementsFor(board))) if (proposals.length) out.push({ board, sourceId, proposals });
+    }
+    return out;
+  }
+
+  /** Set what waits on a board from one source (null, or none: nothing waits any more). */
+  async setPlacements(board: string, sourceId: string, proposals: Proposal[] | null, opts: { tab?: string } = {}): Promise<void> {
+    const file = this.placementsFile(board);
+    await locked(file, async () => {
+      const sources = await this.placementsFor(board);
+      if (proposals?.length) sources[sourceId] = proposals;
+      else delete sources[sourceId];
+      if (Object.keys(sources).length) await this.write(file, stableStringify({ qalam: "placements/1", board, sources }));
+      else await rm(file, { force: true });
+    });
+    this.emit({ kind: "placement", board, tab: opts.tab });
   }
 
   /** Some of a source's quotes are now on the topic pages (or were read for them and left off). */
@@ -1094,6 +1136,10 @@ export class OrgStore {
           this.emit({ kind: "topic", id: gone[0], removed: true });
         }
       }
+    } else if (parts[0] === "inbox" && parts.length === 2) {
+      this.emit({ kind: "inbox" });
+    } else if (parts[0] === "hub" && parts[1] === "placements" && parts.length === 3 && rel.endsWith(".json")) {
+      this.emit({ kind: "placement", board: path.basename(rel, ".json") });
     } else if (rel === "hub/notices.jsonl") {
       this.emit({ kind: "notice" });
     } else if (rel === "hub/relations.jsonl") {

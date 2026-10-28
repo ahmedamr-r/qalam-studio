@@ -1,4 +1,4 @@
-import { cleanText } from "./text";
+import { cleanText } from "@/discovery/ingest/text";
 
 /*
  * A web page as text, in the browser (DOMParser: nothing in it runs or loads). The page's main

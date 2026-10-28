@@ -1,6 +1,6 @@
 import { useRef, useState, type FormEvent } from "react";
 import clsx from "clsx";
-import { ArrowUp, Quote, X } from "lucide-react";
+import { ArrowUp, Plus, Quote, X } from "lucide-react";
 import { nanoid } from "nanoid";
 import { aiStatus } from "@/ai/client";
 import type { AskAnswer, AskClaim, AskUnknown } from "@/hub/ask";
@@ -11,6 +11,7 @@ import { topicHref } from "@/projects/model";
 import { QalamAIGlyph } from "../brand/ai-glyph";
 import { Button, IconBtn, Tag } from "../controls";
 import { r } from "../recipes";
+import { AddToOrg } from "./AddToOrg";
 
 /**
  * Ask the organization, from its home: a question in plain words, and Qalam AI's answer from what
@@ -27,6 +28,7 @@ type State = { kind: "idle" } | { kind: "asking"; question: string; steps: strin
 export function AskBar({ product, topics }: { product: string | null; topics: TopicInfo[] | null }) {
   const [question, setQuestion] = useState("");
   const [state, setState] = useState<State>({ kind: "idle" });
+  const [adding, setAdding] = useState(false);
   const ctrl = useRef<AbortController | null>(null);
 
   const ask = async (e?: FormEvent) => {
@@ -73,7 +75,11 @@ export function AskBar({ product, topics }: { product: string | null; topics: To
             <ArrowUp {...ICON} />
           </IconBtn>
         )}
+        <IconBtn label={adding ? "Close" : "Add to the organization: interviews, tickets, notes, pages"} active={adding} onClick={() => setAdding(!adding)}>
+          <Plus {...ICON} />
+        </IconBtn>
       </form>
+      {adding && <AddToOrg product={product} />}
       {state.kind === "asking" && (
         <div role="status" className="flex flex-col gap-[2px] px-[2px] text-caption text-fg-muted">
           <span>Qalam AI is looking through the organization for “{state.question}”…</span>

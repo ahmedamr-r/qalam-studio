@@ -146,6 +146,14 @@ describe("what needs a look", () => {
     expect(runChecks(input({ boards: [b], decisions: [update] })).map((n) => n.kind)).toEqual(["untested", "stale-test"]);
   });
 
+  it("says what Qalam AI found for a board in material added to the organization", () => {
+    const b = board("b1", "Delivery experience", { id: "o1", kind: "outcome", title: "On time", stage: "active" });
+    const placed = [{ board: "b1", sourceId: "s9", title: "Rania interview", count: 3, at: ago(1) }, { board: "gone", sourceId: "s9", title: "Rania interview", count: 1, at: ago(1) }];
+    expect(runChecks(input({ boards: [b], placed }))).toEqual([
+      { key: "placed:s9:b1:3", kind: "placed", title: "Qalam AI found where “Rania interview” fits on Delivery experience", why: "3 proposals wait on the board for you to accept or discard.", at: ago(1), board: "b1", products: ["grocery"] },
+    ]);
+  });
+
   it("finds a page whose pieces are all gone", () => {
     const t = topic({ lines: [{ id: "l1", section: "know", text: "x", by: "qalam", cites: ["hub:quote:gone"], from: ["Old interview"], at: ago(3) }] });
     expect(runChecks(input({ topics: [t] })).map((n) => n.key)).toEqual(["orphan:tp1:1"]);

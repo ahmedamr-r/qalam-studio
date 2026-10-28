@@ -372,3 +372,21 @@ describe("needs a look", () => {
     expect(JSON.parse(await readFile(path.join(dir, ".qalam", "local", "state.json"), "utf8")).visit).toBeGreaterThanOrEqual(first);
   });
 });
+
+describe("what waits on a board", () => {
+  it("keeps each board's proposals in its own file, and a source's boards only change by linking", async () => {
+    await store.putSource({ ...source("s9abcdefgh", ""), boards: [] });
+    const p = { id: "p1", kind: "attach" as const, cardId: "n1", quote: { sourceId: "s9abcdefgh", quoteId: "q1" }, why: "fits" };
+    await store.setPlacements("b1abcdefgh", "s9abcdefgh", [p]);
+    expect(await store.placementsFor("b1abcdefgh")).toEqual({ s9abcdefgh: [p] });
+    expect(await readdir(path.join(dir, "hub", "placements"))).toEqual(["b1abcdefgh.json"]);
+    // Accepting links the source; a window then saving its older copy (no boards) doesn't undo that.
+    await store.linkSource("s9abcdefgh", "b1abcdefgh", true);
+    const stale = (await store.getSource("s9abcdefgh"))!;
+    await store.putSource({ ...stale, boards: [] });
+    expect((await store.getSource("s9abcdefgh"))!.boards).toEqual(["b1abcdefgh"]);
+    await store.setPlacements("b1abcdefgh", "s9abcdefgh", []);
+    expect(await store.listPlacements()).toEqual([]);
+    expect(await readdir(path.join(dir, "hub", "placements"))).toEqual([]);
+  });
+});

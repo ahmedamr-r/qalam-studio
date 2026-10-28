@@ -28,7 +28,7 @@ function noticedCards(list: Notice[]): ReadonlySet<string> {
   const set = new Set<string>();
   for (const n of list) {
     if (n.board === board && n.card) set.add(n.card);
-    if (n.other?.board === board) set.add(n.other.card);
+    if (n.other && n.other.board === board) set.add(n.other.card);
   }
   noticedMemo = { from: list, board, set };
   return set;

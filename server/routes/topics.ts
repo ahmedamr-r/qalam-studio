@@ -1,4 +1,4 @@
-import { TOPICS_KNOWLEDGE, TOPICS_SYSTEM, TopicsBody, filingIds, filingSchema, topicsContent } from "@/ai/topics";
+import { TopicsBody, topicsCall } from "@/ai/topics";
 import { aiConfigured, jsonError, rateLimited, streamStructured } from "@/ai/server";
 import { DISCOVERY_MODEL } from "./discovery";
 
@@ -13,13 +13,5 @@ export async function POST(req: Request) {
   if (rateLimited(req)) return jsonError(429, "rate_limited", "Too many requests, try again in a few minutes.");
   const parsed = TopicsBody.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return jsonError(400, "bad_input", parsed.error.issues[0]?.message ?? "Invalid input");
-  const b = parsed.data;
-  return streamStructured({
-    model: DISCOVERY_MODEL,
-    system: b.context?.ids.length ? `${TOPICS_SYSTEM}\n\n${TOPICS_KNOWLEDGE}` : TOPICS_SYSTEM,
-    schema: filingSchema(filingIds(b)),
-    effort: "medium",
-    maxTokens: 20000,
-    content: [{ type: "text", text: topicsContent(b) }],
-  });
+  return streamStructured({ model: DISCOVERY_MODEL, ...topicsCall(parsed.data) });
 }

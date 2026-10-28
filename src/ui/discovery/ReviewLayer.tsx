@@ -15,6 +15,7 @@ import { REVIEW_TURN, acceptAll, acceptProposals, discardAll, discardProposals, 
 import { stopSources } from "./import";
 import { sourceOf, useSources } from "./sources";
 import { stopDump, useDump } from "./dump";
+import { reviewPlacements, usePlacements } from "./placements";
 
 const SMALL = { size: 12, absoluteStrokeWidth: true, strokeWidth: 1.5 } as const;
 /** A card narrower than this on screen gets no bar of its own (the pill covers it until you zoom in). */
@@ -37,6 +38,20 @@ export default function ReviewLayer({ vp }: { vp: { w: number; h: number } }) {
   const placing = useDump((s) => (s.busy && sourceOf(s.busy.sourceId)?.dump?.phase === "placing" ? s.busy.sourceId : null));
   const ghosts = useGhosts((s) => s.list);
   const cam = useStudio((s) => s.camera);
+  const waiting = usePlacements((s) => s.list);
+  if (!proposals.length && !(mapping || quoting || placing) && waiting.length)
+    // What Qalam AI found for this board in material added to the organization, waiting.
+    return (
+      <Pill>
+        <QalamAIGlyph size={14} />
+        <span className="min-w-0 truncate" title={waiting.map((w) => w.title).join(", ")}>
+          {plural(waiting.reduce((n, w) => n + w.proposals.length, 0), "change")} for this board from {waiting.length === 1 ? `“${waiting[0].title}”` : `${waiting.length} new sources`}
+        </span>
+        <Button size="sm" onClick={() => void reviewPlacements()}>
+          Review
+        </Button>
+      </Pill>
+    );
   if (!proposals.length)
     return mapping || quoting || placing ? (
       <Pill>
@@ -63,7 +78,7 @@ export default function ReviewLayer({ vp }: { vp: { w: number; h: number } }) {
       bars.push({ id, box, list: proposals.filter((p) => p.cardId === id) });
     }
   }
-  const from = origin?.kind === "dump" ? "your brain dump" : "your sources";
+  const from = origin?.kind === "dump" ? "your brain dump" : origin?.kind === "placed" ? "what was added to the organization" : "your sources";
   return (
     <>
       <Pill>

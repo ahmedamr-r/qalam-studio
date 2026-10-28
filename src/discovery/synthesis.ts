@@ -5,6 +5,10 @@ import { newCard } from "./ops";
 import { canHold } from "./kinds";
 import type { Proposal, QuoteRef } from "./proposals";
 import type { OstKind } from "./types";
+import type { Doc } from "@/doc/schema";
+import { isOstCard } from "@/doc/board";
+import { cardOf } from "./ops";
+import { allCards, childCards } from "./tree";
 
 /*
  * What Qalam AI makes of a board's sources, made safe (pure). The model proposes; code decides:
@@ -140,6 +144,27 @@ export interface SynthContext {
   outcomeRef: string | null;
   /** The card already has these words. */
   has: (cardId: string, q: SynthQuote) => boolean;
+}
+
+/** How deep an opportunity is (1 = right under the outcome); 0 for other cards. */
+function depthOf(doc: Doc, id: string): number {
+  let d = 0;
+  let n = doc.nodes[id];
+  while (isOstCard(n) && n.meta.ost.kind === "opportunity") {
+    d++;
+    n = n.parentId ? doc.nodes[n.parentId] : undefined!;
+  }
+  return d;
+}
+
+/** A board's cards as a synthesize call names them (c1, c2…, from `first`), at most `max`. */
+export function synthCardsOf(doc: Doc, first = 1, max = 400): SynthCard[] {
+  const cards = allCards(doc).slice(0, max);
+  const refOf = new Map(cards.map((c, i) => [c.id, `c${first + i}`]));
+  return cards.map(({ id, card }) => {
+    const parent = doc.nodes[id].parentId;
+    return { ref: refOf.get(id)!, id, kind: card.kind, title: card.title, parentRef: parent ? (refOf.get(parent) ?? null) : null, depth: depthOf(doc, id), childTitles: childCards(doc, id).map((c) => cardOf(doc, c)?.title ?? "") };
+  });
 }
 
 /** A pairing not to propose: the card has the words, or the builder discarded them for it before. */
