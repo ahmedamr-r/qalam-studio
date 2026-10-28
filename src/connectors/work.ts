@@ -64,24 +64,18 @@ const field = (o: unknown, k: string): unknown => (o && typeof o === "object" &&
 const word = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
 
 /**
- * An issue from Linear's MCP server (`get_issue`) as a status. The answer's shape isn't published,
- * so its state is looked for where Linear's API keeps it ({state: {name, type}}) and where a
- * flattened answer would (status, with statusType or stateType). A state named without its type
- * reads by the names Linear starts a team with; one the team named itself shows by its name. An
- * answer about another issue than the one asked for is no answer.
+ * An issue from Linear's MCP server as a status. Asked for these fields, `get_issue` answers
+ * {id: "ENG-123", title, status: "In Progress", statusType: "started"} (its `id` is the identifier).
+ * A status without its type reads by the names Linear starts a team with; one the team named itself
+ * shows by its name. An answer about another issue than the one asked for is no answer.
  */
 export function linearIssueStatus(result: string, ref: string, at: number): WorkStatus | null {
   const j = firstJson(result);
-  const issue = field(j, "issue") ?? j;
-  const id = word(field(issue, "identifier"));
-  if (!field(issue, "title") && !field(issue, "state") && !field(issue, "status")) return null;
-  if (id && id.toUpperCase() !== ref.toUpperCase()) return null;
-  const state = field(issue, "state");
-  const status = field(issue, "status");
-  const name = word(field(state, "name")) ?? word(field(status, "name")) ?? word(status) ?? word(state) ?? word(field(issue, "stateName"));
-  const type = word(field(state, "type")) ?? word(field(status, "type")) ?? word(field(issue, "statusType")) ?? word(field(issue, "stateType"));
+  if (word(field(j, "id"))?.toUpperCase() !== ref.toUpperCase()) return null;
+  const name = word(field(j, "status"));
+  const type = word(field(j, "statusType"));
   if (!name && !type) return null;
-  const title = word(field(issue, "title"));
+  const title = word(field(j, "title"));
   return { state: linearState(type ?? LINEAR_DEFAULTS[name!.toLowerCase()]), label: name ?? type!, ...(title ? { title } : {}), at };
 }
 
@@ -95,8 +89,8 @@ export interface WorkRecipe {
 }
 
 export const WORK_RECIPES: Record<string, WorkRecipe> = {
-  // By its identifier ("ENG-123"), which Linear takes wherever it takes an issue's id.
-  linear: { status: (ref) => ({ tool: "get_issue", args: { id: ref } }), read: linearIssueStatus },
+  // By its identifier ("ENG-123"), and only what's read: never its description or attachments.
+  linear: { status: (ref) => ({ tool: "get_issue", args: { id: ref, fields: ["title", "status", "statusType"] } }), read: linearIssueStatus },
 };
 
 /** GitHub's issue (or pull request, from the issues API): open, merged, or closed without merging. */

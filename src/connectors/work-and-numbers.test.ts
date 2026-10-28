@@ -24,21 +24,21 @@ describe("work linked to a solution", () => {
   });
 
   it("reads where a Linear issue stands from its MCP server's answer, only when it's about the issue asked for", () => {
-    expect(WORK_RECIPES.linear.status("ENG-12")).toEqual({ tool: "get_issue", args: { id: "ENG-12" } });
+    expect(WORK_RECIPES.linear.status("ENG-12")).toEqual({ tool: "get_issue", args: { id: "ENG-12", fields: ["title", "status", "statusType"] } });
     const read = (answer: unknown, ref = "ENG-12") => linearIssueStatus(typeof answer === "string" ? answer : JSON.stringify(answer), ref, 1);
-    // Typed as Linear's API keeps it, flattened, or wrapped.
-    expect(read({ identifier: "ENG-12", title: "Fee breakdown", state: { name: "Shipped", type: "completed" } })).toEqual({ state: "done", label: "Shipped", title: "Fee breakdown", at: 1 });
-    expect(read({ identifier: "eng-12", title: "Fee breakdown", status: "QA", statusType: "started" })).toMatchObject({ state: "doing", label: "QA" });
-    expect(read({ issue: { identifier: "ENG-12", status: { name: "Backlog", type: "backlog" } } })).toMatchObject({ state: "todo", label: "Backlog" });
-    // Named only: by the names Linear starts a team with; a team's own name shows as it is.
-    expect(read({ identifier: "ENG-12", title: "x", status: "In Review" })).toMatchObject({ state: "doing", label: "In Review" });
-    expect(read({ identifier: "ENG-12", title: "x", status: "Duplicate" })).toMatchObject({ state: "canceled" });
-    expect(read({ identifier: "ENG-12", title: "x", status: "Waiting on legal" })).toMatchObject({ state: "unknown", label: "Waiting on legal" });
-    // Another issue's answer, no state, or no JSON at all: no answer.
-    expect(read({ identifier: "ENG-13", title: "x", status: "Done" })).toBeNull();
-    expect(read({ identifier: "ENG-12", title: "x" })).toBeNull();
+    // As get_issue answers for those fields: its id is the identifier.
+    expect(read({ title: "Fee breakdown", status: "Shipped", statusType: "completed", id: "ENG-12" })).toEqual({ state: "done", label: "Shipped", title: "Fee breakdown", at: 1 });
+    expect(read({ title: "Fee breakdown", status: "QA", statusType: "started", id: "eng-12" })).toMatchObject({ state: "doing", label: "QA" });
+    // A status without its type: by the names Linear starts a team with; a team's own name shows as it is.
+    expect(read({ id: "ENG-12", status: "In Review" })).toMatchObject({ state: "doing", label: "In Review" });
+    expect(read({ id: "ENG-12", status: "Duplicate" })).toMatchObject({ state: "canceled" });
+    expect(read({ id: "ENG-12", status: "Waiting on legal" })).toMatchObject({ state: "unknown", label: "Waiting on legal" });
+    // Another issue's answer, one without the identifier or a status, Linear's error, or no JSON: no answer.
+    expect(read({ id: "ENG-13", status: "Done", statusType: "completed" })).toBeNull();
+    expect(read({ uuid: "f229557c", status: "Done", statusType: "completed" })).toBeNull();
+    expect(read({ id: "ENG-12", title: "x" })).toBeNull();
+    expect(read({ error: "invalid_request", message: "Could not find referenced Issue.", status: 400 })).toBeNull();
     expect(read("Entity not found: Issue")).toBeNull();
-    expect(read([{ status: "Done" }])).toBeNull();
   });
 
   it("shows the furthest-along linked item on the card", () => {

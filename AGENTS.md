@@ -57,7 +57,7 @@
   - Importing works for Notion, Intercom and Slack today. Drive and the rest show where they stand ("In Claude Code", "Coming next").
   - **Work:** a solution card links issues, PRs and designs by address (`OstCard.work`, `parseWorkUrl` in `src/connectors/work.ts`).
     - Linear and public GitHub say where each stands. Answers are kept per computer in `<org>/.qalam/local/work.json` (`workStatuses`, `POST /api/org/:org/work/status`).
-    - Linear signed in: its MCP server's `get_issue` by identifier, all of a request's issues in one session (`WORK_RECIPES` in `src/connectors/work.ts`). `linearIssueStatus` reads the state where Linear's API keeps it or as a flat `status`, and drops an answer about another issue. Its exact answer is unpublished and not yet checked against a real workspace.
+    - Linear signed in: its MCP server's `get_issue` by identifier, asking only for `title`, `status` and `statusType` (never the description), all of a request's issues in one session (`WORK_RECIPES` in `src/connectors/work.ts`). The answer's `id` is the identifier; `linearIssueStatus` drops an answer about another issue. A missing issue is an error answer, shown as "Can't see it". Checked against a real workspace.
     - Linear with a pasted key: its GraphQL API.
     - The card shows the furthest one along after its kind (`work` in the painter's input).
     - The stage stays the team's. The `work-drift` check says when the tool and the stage disagree.

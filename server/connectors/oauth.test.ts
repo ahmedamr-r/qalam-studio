@@ -44,7 +44,8 @@ const ANSWERS: Record<string, (args: Record<string, unknown> | undefined) => unk
   fetch: (a) => ({ id: a?.id, title: "Exports", text: JSON.stringify(conversation), url: "https://app.intercom.com/a/inbox/x/inbox/conversation/42" }),
   slack_search_public_and_private: () => ({ results: SLACK_RESULTS, next_cursor: "" }),
   slack_read_thread: (a) => ({ messages: a?.channel_id === "C01" && a.message_ts === "1790771415.332219" ? "Dana Lee: We export to sheets every Friday.\nOmar: Which sheet?" : "" }),
-  get_issue: (a) => (a?.id === "ENG-12" ? { id: "9f1c", identifier: "ENG-12", title: "Fee breakdown", status: "In Progress", url: "https://linear.app/basket/issue/ENG-12/fee-breakdown" } : MISSING),
+  // As Linear's answers for the fields Qalam asks: its id is the identifier.
+  get_issue: (a) => (a?.id === "ENG-12" ? { title: "Fee breakdown", status: "In Progress", statusType: "started", id: "ENG-12" } : MISSING),
 };
 function standIn() {
   const s = {
