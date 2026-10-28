@@ -3,9 +3,10 @@ import { readFileSync, statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { findClaude } from "../server/claude";
+import { findClaude, joinPaths, loginShellPath } from "../server/claude";
 import { requester, type FromCore } from "../server/rpc";
 import { assetPath, contentSecurityPolicy, inlineScriptHashes, mimeOf } from "./assets";
+import { watchForUpdates } from "./updates";
 
 /**
  * Qalam as a desktop app. The window shows the built UI at qalam://app; its /api/* requests go to
@@ -153,13 +154,17 @@ else {
   app.on("before-quit", () => (quitting = true));
   app.on("window-all-closed", () => app.quit());
   app.on("web-contents-created", (_e, contents) => guard(contents));
-  void app.whenReady().then(() => {
+  void app.whenReady().then(async () => {
     // Clipboard for copy and paste on the canvas; every other permission (camera, location…) is refused.
     session.defaultSession.setPermissionRequestHandler((_wc, permission, done) => done(permission === "clipboard-read" || permission === "clipboard-sanitized-write" || permission === "fullscreen"));
+    // The installed app, opened from the Dock or Finder, has only the system's PATH: take the one a
+    // terminal has, so Claude Code (and the node an npm-installed one runs on) is found.
+    if (app.isPackaged) process.env.PATH = joinPaths(await loginShellPath(), process.env.PATH);
     if (!DEV_URL) {
       protocol.handle("qalam", serve);
       startCore();
     }
     createWindow();
+    watchForUpdates();
   });
 }

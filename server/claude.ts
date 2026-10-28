@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -24,6 +24,24 @@ export function findClaude(env: NodeJS.ProcessEnv = process.env, exists: (p: str
   }
   return null;
 }
+
+/**
+ * The PATH a terminal would have. An app opened from the Dock or Finder gets only the system's, so
+ * an npm-installed Claude Code (a Node script) wouldn't find node, and `claude` itself may be where
+ * findClaude doesn't look (a version manager's folder). Asked of the user's login shell, within
+ * `ms`; null when it doesn't say.
+ */
+export function loginShellPath(shell = process.env.SHELL || "/bin/zsh", ms = 3000): Promise<string | null> {
+  const mark = "__QALAM_PATH__";
+  return new Promise((resolve) => {
+    execFile(shell, ["-ilc", `printf '${mark}%s${mark}' "$PATH"`], { timeout: ms, env: { ...process.env, DISABLE_AUTO_UPDATE: "true" } }, (_err, out) => {
+      resolve(new RegExp(`${mark}(.+?)${mark}`).exec(String(out ?? ""))?.[1] ?? null);
+    });
+  });
+}
+
+/** PATHs as one, each folder once, the first's first. */
+export const joinPaths = (...paths: (string | null | undefined)[]) => [...new Set(paths.flatMap((p) => (p ?? "").split(path.delimiter)).filter(Boolean))].join(path.delimiter);
 
 export interface ClaudeState {
   /** The `claude` command was found. */

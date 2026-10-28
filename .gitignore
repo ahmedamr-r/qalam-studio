@@ -10,3 +10,6 @@ out
 # Dev-only imports for ?devImport=<name> (screenshots of real apps; never commit)
 .qalam-dev
 
+
+# The desktop app being packaged, and the packages (scripts/stage-app.mjs, electron-builder.yml)
+/release/

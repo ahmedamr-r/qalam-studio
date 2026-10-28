@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- The app icon: the favicon's pencil and nuqta (public/icon.svg) on macOS's icon grid. Rendered to icon.png by scripts/render-icon.mjs. -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#23211e"/>
+      <stop offset="1" stop-color="#131211"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#000" flood-opacity=".32"/>
+    </filter>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#tile)" filter="url(#shadow)"/>
+  <rect x="101.5" y="101.5" width="821" height="821" rx="183.5" fill="none" stroke="#fff" stroke-opacity=".1" stroke-width="3"/>
+  <g transform="translate(512 512) scale(21) translate(-12 -12)">
+    <path fill="#f2f0ed" fill-rule="evenodd" d="M20.22 1.5 22.5 3.78 22.5 5.92 21.56 6.85 17.15 2.44 18.08 1.5Z M16.51 3.07 20.93 7.49 11.89 16.52 7.48 12.11Z M6.84 12.74 11.26 17.16 5.77 19.17 4.83 18.23Z M17.68 5.85 10.25 13.28 10.86 13.88 18.28 6.45Z"/>
+    <path fill="#f8af3d" d="M3.37 18.75 5.25 20.63 3.37 22.5 1.5 20.63Z"/>
+  </g>
+</svg>

@@ -1,5 +1,8 @@
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { findClaude, signedInFrom } from "./claude";
+import { findClaude, joinPaths, loginShellPath, signedInFrom } from "./claude";
 
 describe("findClaude", () => {
   it("prefers CLAUDE_CLI_PATH", () => {
@@ -27,5 +30,29 @@ describe("signedInFrom", () => {
   it("can't tell from anything else", () => {
     expect(signedInFrom("")).toBeNull();
     expect(signedInFrom('{"other": 1}')).toBeNull();
+  });
+});
+
+describe("the PATH a terminal would have", () => {
+  it("asks the login shell, past whatever its startup files print", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "qalam-shell-"));
+    try {
+      const chatty = path.join(dir, "chatty");
+      await writeFile(chatty, '#!/bin/sh\necho "Welcome back"\nPATH=/opt/tools/bin:$PATH\nexec /bin/sh -c "$2"\n');
+      await chmod(chatty, 0o755);
+      expect(await loginShellPath(chatty)).toMatch(/^\/opt\/tools\/bin:/);
+      // A shell that never answers is given up on.
+      const stuck = path.join(dir, "stuck");
+      await writeFile(stuck, "#!/bin/sh\nsleep 5\n");
+      await chmod(stuck, 0o755);
+      expect(await loginShellPath(stuck, 200)).toBeNull();
+      expect(await loginShellPath(path.join(dir, "missing"))).toBeNull();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("joins PATHs, each folder once, the first's first", () => {
+    expect(joinPaths("/opt/homebrew/bin:/usr/bin", "/usr/bin:/bin", null, "")).toBe("/opt/homebrew/bin:/usr/bin:/bin");
   });
 });

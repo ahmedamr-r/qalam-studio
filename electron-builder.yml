@@ -1,0 +1,42 @@
+# The desktop app for macOS: a .dmg to install from, and a .zip the app updates itself from
+# (docs/releasing.md). scripts/stage-app.mjs puts what the installed app needs in release/app,
+# and electron-builder runs with that folder as its project, so paths here are relative to it.
+# `pnpm dist:mac` does both. Signed and notarized when the Apple credentials are set.
+appId: io.github.ahmedamr-r.qalam-studio
+productName: Qalam Studio
+copyright: Copyright © 2026 Ahmed Amr
+directories:
+  output: ../dist
+  # The icon (icon.png) and other build resources, in the repository's build/.
+  buildResources: ../../build
+files:
+  - "**/*"
+  - "!**/*.map"
+  - "!package-lock.json"
+  # llama.cpp's source, for building it where no prebuilt binary fits: never done in the app.
+  - "!node_modules/node-llama-cpp/llama/gitRelease.bundle"
+# Native code is loaded from real files, outside the archive.
+asarUnpack:
+  - node_modules/node-llama-cpp/**
+  - node_modules/@node-llama-cpp/**
+# node-llama-cpp ships prebuilt binaries: nothing to compile.
+npmRebuild: false
+mac:
+  target:
+    - target: dmg
+      arch: arm64
+    - target: zip
+      arch: arm64
+  category: public.app-category.productivity
+  hardenedRuntime: true
+  darkModeSupport: true
+  # The zip's name (the .dmg names its own below).
+  artifactName: Qalam-Studio-${version}-${arch}-mac.${ext}
+dmg:
+  artifactName: Qalam-Studio-${version}-${arch}.${ext}
+# Releases go up as drafts, published by hand once checked.
+publish:
+  provider: github
+  owner: ahmedamr-r
+  repo: qalam-studio
+  releaseType: draft

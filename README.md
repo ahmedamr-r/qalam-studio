@@ -55,6 +55,10 @@ pnpm desktop
 
 The desktop app runs Qalam AI on your own Claude Code, so you don't need `.env.local` for it.
 
+### The Mac app
+
+A signed Mac app for Apple silicon will be on [GitHub Releases](https://github.com/ahmedamr-r/qalam-studio/releases) and in Homebrew (`brew install --cask ahmedamr-r/tap/qalam-studio`) once the first release is out. It updates itself: it looks for a newer version when it starts and every six hours, and installs it when you quit (or now, from **Qalam Studio ▸ Check for Updates…**). Opened from the Dock or Finder, it reads your login shell's PATH, so it finds Claude Code wherever your terminal does. Until then, run it from source as above. To build the app yourself, run `pnpm dist:mac`; [docs/releasing.md](docs/releasing.md) explains signing and releases.
+
 Qalam opens your organization's home: what the organization and its products are, every board's goals, the boards and the sources. Make a product with **+ Product** to keep boards and sources for different products apart; a board can be for one product or the whole organization. Start a board with **New board**. Screens and design systems are under **Design**. The organization menu at the top makes new organizations (each is a folder in `~/Qalam`) and opens any folder as one. A new organization starts from a brain dump about the company, or you can skip that and fill it in by hand. In a Screens project, **File ▸ Load demo screens** puts example screens on the canvas so you can try the tools right away.
 
 ### Use an Anthropic API key instead
@@ -196,6 +200,7 @@ src/decisions/      decision memory: decisions found by comparing a board before
 src/hub/            the organization's knowledge as pieces and links, search fusion, packing pieces into a token budget, and topic pages (model, file format, checks)
 server/index/       the search index (SQLite: FTS5 words, vectors, links), kept current with the organization's folder
 server/models/      the models process: the local embedding model (node-llama-cpp), apart from the core
+electron/           the desktop app's main process: the window, qalam://app, updates (electron-builder.yml packages it)
 eval/retrieval/     a sample organization and labelled questions that measure search (pnpm eval:retrieval)
 src/proto/          routes, recipes, expressions, the headless runner that checks prototypes
 src/codegen/        prototype compiler: screens → one React + Motion TSX file (no model call)
@@ -217,6 +222,7 @@ pnpm build       # build the UI into dist/
 pnpm start       # serve dist/ and the server from one process (after a build)
 pnpm desktop     # build and open the desktop app (Electron)
 pnpm desktop:dev # the desktop window on the dev server, with hot reload
+pnpm dist:mac    # package the Mac app into release/dist (.dmg and .zip; signed when a Developer ID is set up)
 ```
 
 Rules and checks must work across products, not just one app: name things by role, trigger on measurable conditions, and test on several kinds of product (see `src/proto/fixtures/`).
@@ -225,7 +231,7 @@ Rules and checks must work across products, not just one app: name things by rol
 
 ## Roadmap
 
-- One-command install: publish to npm so `npx qalam-studio` opens the desktop app, then a signed macOS app on GitHub Releases.
+- The first signed macOS release (the pipeline is ready: [docs/releasing.md](docs/releasing.md)), and the npm package so `npx qalam-studio` opens the desktop app.
 - Interview recordings on Discovery boards: drop in audio or video and get an Arabic or English transcript to quote from. Today, transcripts come in as VTT or SRT.
 - More ways to bring in an existing design system, beyond screenshots, briefs and pasted tokens.
 - More of Figma's editing features. The shortcuts panel lists what's missing.

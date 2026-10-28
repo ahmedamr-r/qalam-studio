@@ -1,0 +1,46 @@
+# Keeps the Homebrew cask (brew install --cask ahmedamr-r/tap/qalam-studio) on the newest release:
+# when a release is published, it writes the cask for its .dmg (packaging/homebrew/qalam-studio.rb)
+# into the tap repository, ahmedamr-r/homebrew-tap. It needs HOMEBREW_TAP_TOKEN, a token that may
+# push there (docs/releasing.md); without it, it says so and stops.
+name: Homebrew
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  cask:
+    if: ${{ !github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Write the cask into the tap
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          if [ -z "$TAP_TOKEN" ]; then
+            echo "::notice::No HOMEBREW_TAP_TOKEN: the cask wasn't updated (docs/releasing.md)."
+            exit 0
+          fi
+          version="${TAG#v}"
+          dmg="Qalam-Studio-${version}-arm64.dmg"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "$dmg" --dir "$RUNNER_TEMP"
+          sha=$(sha256sum "$RUNNER_TEMP/$dmg" | cut -d' ' -f1)
+          git clone --depth 1 "https://x-access-token:${TAP_TOKEN}@github.com/ahmedamr-r/homebrew-tap.git" "$RUNNER_TEMP/tap"
+          mkdir -p "$RUNNER_TEMP/tap/Casks"
+          sed -e "s/@VERSION@/${version}/" -e "s/@SHA256@/${sha}/" -e '1,2d' packaging/homebrew/qalam-studio.rb > "$RUNNER_TEMP/tap/Casks/qalam-studio.rb"
+          cd "$RUNNER_TEMP/tap"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/qalam-studio.rb
+          if git diff --cached --quiet; then
+            echo "The cask already names ${version}."
+            exit 0
+          fi
+          git commit -m "qalam-studio ${version}"
+          git push
