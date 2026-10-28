@@ -14,6 +14,8 @@ export interface Settings {
   engine?: "cli" | "api";
   /** When the first-run welcome was finished on this computer. */
   welcomedAt?: number;
+  /** How each connector is reached: through Claude Code's server of that name, or a token in the Keychain. */
+  connectors?: Record<string, { via: "claude-code"; server: string } | { via: "token" }>;
 }
 
 const file = () => path.join(localDir(), "settings.json");
