@@ -203,8 +203,9 @@ const spec = {
   stepDot: "grid size-[18px] shrink-0 place-items-center rounded-full text-micro tnum",
   chatViewport: "flex min-h-0 flex-1 flex-col gap-[14px] overflow-y-auto px-[18px] pt-[18px]",
   chatYou: "max-w-[min(480px,85%)] self-end whitespace-pre-wrap rounded-[12px_12px_4px_12px] bg-active px-[12px] py-[8px] text-body leading-[20px] text-fg",
-  chatFooter: "sticky bottom-0 mt-auto flex flex-col gap-[8px] bg-panel pb-[14px] pt-[6px]",
+  chatFooter: "mt-auto flex flex-col gap-[8px] bg-panel pb-[14px] pt-[6px]",           // + "sticky bottom-0" for a composer
   replyChip: "q-item inline-flex h-[28px] items-center gap-[6px] rounded-md bg-raised px-[10px] text-body font-medium text-fg shadow-button hover:bg-elevated light:hover:bg-muted disabled:opacity-50",
+  replyChipPrimary: "q-item inline-flex h-[28px] items-center gap-[6px] rounded-md bg-inverse px-[10px] text-body font-medium text-fg-inverse shadow-button-invert hover:bg-inverse/90 disabled:opacity-50",
 
   // ── Canvas DOM overlays ───────────────────────────────────────────────
   agentTag: "absolute left-[13px] top-[15px] inline-flex h-[20px] items-center whitespace-nowrap rounded-[4px_10px_10px_10px] px-[7px] text-micro font-semibold text-[#141412] shadow-[0_1px_2px_rgb(0_0_0/.25)] [background:var(--ai-gradient-soft)]",

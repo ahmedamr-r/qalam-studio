@@ -31,7 +31,8 @@ function Text({ text }: { text: string }) {
   );
 }
 
-export function ChatThread({ messages, running, onCancel, parts, footer, empty }: { messages: ChatMessage[]; running: boolean; onCancel?: () => void; parts: Record<string, PartComponent>; footer: ReactNode; empty?: ReactNode }) {
+/** `pinned`: the footer stays at the bottom while the thread scrolls (a composer); a tall card in its place flows after the messages. */
+export function ChatThread({ messages, running, onCancel, parts, footer, pinned = true, empty }: { messages: ChatMessage[]; running: boolean; onCancel?: () => void; parts: Record<string, PartComponent>; footer: ReactNode; pinned?: boolean; empty?: ReactNode }) {
   const runtime = useExternalStoreRuntime({
     messages,
     isRunning: running,
@@ -69,7 +70,7 @@ export function ChatThread({ messages, running, onCancel, parts, footer, empty }
               )
             }
           </ThreadPrimitive.Messages>
-          <ThreadPrimitive.ViewportFooter className={r.chatFooter}>
+          <ThreadPrimitive.ViewportFooter className={clsx(r.chatFooter, pinned && "sticky bottom-0")}>
             <ThreadPrimitive.ScrollToBottom className={clsx(r.iconButton, "absolute -top-[36px] left-1/2 -translate-x-1/2 bg-raised shadow-floating disabled:hidden")} aria-label="Scroll to the newest">
               <ArrowDown size={14} strokeWidth={1.5} />
             </ThreadPrimitive.ScrollToBottom>

@@ -208,7 +208,7 @@ export function setupPlaceSchema(o: { fragments: string[]; answers: string[]; pr
   });
   const refs = [...o.products, ...Array.from({ length: SETUP_LIMITS.products }, (_, i) => `n${i + 1}`)];
   return obj({
-    summary: str("Two plain sentences to them: what you'd set up"),
+    summary: str("One short plain sentence to them, at most 25 words: what you'd set up. The lines carry the rest"),
     about: obj(fields("the organization", "What the company does: a few plain sentences"), "The organization's About. null for a field that already says something"),
     products: arr(
       obj({
