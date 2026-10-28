@@ -14,7 +14,7 @@ import { projectsDb } from "@/projects/db";
 import { browserProjectsToMove, moveBrowserProjects } from "@/org/import-browser";
 import { onOrgChange } from "@/org/live";
 import { getSystem } from "@/design-system/registry";
-import { projectHref, statusOf, topicHref, type Project, type ProjectType } from "@/projects/model";
+import { projectHref, setupHref, statusOf, topicHref, type Project, type ProjectType } from "@/projects/model";
 import { createProject } from "@/projects/session";
 import { deleteProject, hasLegacyChanges, importLegacy, listProjects, renameProjectById } from "@/projects/library";
 import { QalamMark, Wordmark } from "../brand";
@@ -201,6 +201,8 @@ export default function Home() {
               Product
             </button>
           </nav>
+
+          <SetupNotice org={org} sources={sources} empty={loaded && !products.length && !about.audience.trim() && !about.context.trim() && !about.goals.length && !about.segments.length} />
 
           <AskBar product={product?.id ?? null} topics={topics} />
 
@@ -500,6 +502,24 @@ function ProjectCard({ p, products, onChanged }: { p: Project; products: Product
  * Projects saved in this browser before Qalam saved to disk: offered once, at the address they
  * were made at, and moved into the organization (the browser keeps its copy).
  */
+/** An organization with nothing about it yet can start from a brain dump about the company; one half set up picks up where it was. */
+function SetupNotice({ org, sources, empty }: { org: OrgRef | null; sources: SourceRecord[]; empty: boolean }) {
+  const pending = sources.filter((s) => s.setup && s.setup.phase !== "done").sort((a, b) => b.addedAt - a.addedAt)[0];
+  if (!org || (!pending && !empty)) return null;
+  return (
+    <div role="status" className="flex flex-wrap items-center justify-between gap-[12px] rounded-lg bg-raised px-[12px] py-[10px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
+      <p className="text-body text-fg-muted">
+        {pending
+          ? `You were setting ${org.name} up from a brain dump: Qalam AI is waiting on you.`
+          : `Tell Qalam AI about ${org.name}: write what the company does, its products and its goals, and it sets up the About and the products for you to accept.`}
+      </p>
+      <a href={pending ? `${setupHref()}?source=${pending.id}` : setupHref()} className={clsx(r.buttonSm, r.buttonSecondary)}>
+        {pending ? "Pick up where you left off" : "Start from a brain dump"}
+      </a>
+    </div>
+  );
+}
+
 function MoveFromBrowser({ org, onMoved }: { org: OrgRef | null; onMoved: () => void }) {
   const [waiting, setWaiting] = useState<Project[]>([]);
   const [step, setStep] = useState<string | null>(null);

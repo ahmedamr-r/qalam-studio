@@ -2,6 +2,7 @@ import { newId } from "@/doc/factory";
 import type { OstCard, OstEvidence } from "./types";
 import { clock, type TranscriptMeta, type TranscriptSegment } from "./transcript";
 import type { DumpRole, DumpSession } from "./dump";
+import type { SetupSession } from "@/org/setup";
 
 /*
  * A Discovery board's sources (pure): documents, web pages, pasted text, interviews and items from
@@ -96,6 +97,8 @@ export interface SourceRecord {
   filed?: string[];
   /** A brain dump: what Qalam AI made of it, the questions asked and answered, its proposals. */
   dump?: DumpSession;
+  /** A brain dump about the organization, setting it up: its About and products, line by line (src/org/setup.ts). */
+  setup?: SetupSession;
 }
 
 /** The most text a source keeps (characters). */

@@ -15,7 +15,7 @@ import { chooseFolder, createOrg, currentOrg, listOrgs, openFolder, qalamHome, r
 import { noticesNow } from "./notices";
 import { reviewOrg } from "./review";
 import { askOrg } from "../ask";
-import { captureSource } from "../capture";
+import { captureSource, fileSources } from "../capture";
 import type { Ingested } from "@/discovery/ingest/core";
 import type { Proposal } from "@/discovery/proposals";
 import { MAX_SOURCE_TEXT, SOURCE_KIND_LABEL, type SourceRecord } from "@/discovery/sources";
@@ -277,6 +277,17 @@ export function orgRoutes(): Hono<Env> {
     const product = typeof b?.product === "string" && ID.test(b.product) ? b.product : null;
     const store = c.get("store");
     return streamed(c.req.raw.signal, (emit, signal) => captureSource(store, ing, { product, emit, signal }));
+  });
+  /** File sources into the topic pages, here in the core: it answers at once, and the filing carries on whatever the window does next. */
+  r.post("/api/org/:org/file", async (c) => {
+    if (!aiConfigured()) return c.json({ error: "no_key", message: "Qalam AI isn't set up here." }, 501);
+    if (rateLimited(c.req.raw)) return c.json({ error: "rate_limited", message: "Too many requests, try again in a few minutes." }, 429);
+    const b = (await c.req.json().catch(() => null)) as { sources?: unknown; product?: unknown } | null;
+    const ids = (Array.isArray(b?.sources) ? b.sources : []).filter((x): x is string => typeof x === "string" && ID.test(x)).slice(0, 20);
+    if (!ids.length) return bad("Say which sources");
+    const product = typeof b?.product === "string" && ID.test(b.product) ? b.product : null;
+    void fileSources(c.get("store"), ids, product).catch((e) => console.warn(`[qalam] filing into the topic pages didn't finish: ${e instanceof Error ? e.message : String(e)}`));
+    return c.json({ started: true }, 202);
   });
   /** What Qalam AI proposed for a board from what was added to the organization, by source. */
   r.get("/api/org/:org/placements", async (c) => {

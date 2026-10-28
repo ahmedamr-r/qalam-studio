@@ -8,6 +8,7 @@ import { CATALOG } from "@/design-system/components";
 import { RECONCILE_SCHEMA } from "./ds-reconcile";
 import { FOLLOWUPS_SCHEMA, draftSchema, extractSchema, synthesizeSchema } from "./discovery";
 import { componentSchema } from "./component-import";
+import { setupFollowupSchema, setupPlaceSchema, setupReadSchema } from "./setup";
 
 /** Keywords structured outputs don't support (the converter/builders clamp instead). */
 const UNSUPPORTED = ["minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf", "minLength", "maxLength", "minItems", "maxItems", "pattern"];
@@ -62,6 +63,10 @@ describe("structured output schemas", () => {
     ["add component · build", componentSchema("build")],
     ["add component · check", componentSchema("check")],
     ["discovery synthesize · bare outcome", synthesizeSchema([], ["c1"], ["q1"])],
+    ["organization setup · read", setupReadSchema()],
+    ["organization setup · follow-up", setupFollowupSchema(["f1", "f2"])],
+    ["organization setup · place", setupPlaceSchema({ fragments: ["f1"], answers: ["a1"], products: ["p1"] })],
+    ["organization setup · place, nothing yet", setupPlaceSchema({ fragments: [], answers: [], products: [] })],
   ])("%s schema is non-recursive and closed", (_, schema) => {
     expect(checkSchema(schema)).toEqual([]);
   });

@@ -6,7 +6,7 @@ import { orgHref, projectLetter, type ProjectType } from "@/projects/model";
 import { Splash } from "./brand/splash";
 import { r } from "./recipes";
 import { routeOf, type Route } from "./routes";
-import StudioLoader, { HomeLoader, SystemProjectLoader, TopicLoader } from "./StudioLoader";
+import StudioLoader, { HomeLoader, SetupLoader, SystemProjectLoader, TopicLoader } from "./StudioLoader";
 
 type State = { kind: "loading" } | { kind: "ready"; org: OrgRef } | { kind: "error"; message: string; missingOrg?: boolean } | { kind: "missing" };
 
@@ -17,7 +17,7 @@ export function App() {
 
   const boot = () => {
     setState({ kind: "loading" });
-    const org = route.kind === "org" || route.kind === "project" || route.kind === "topic" ? route.org : null;
+    const org = route.kind === "org" || route.kind === "project" || route.kind === "topic" || route.kind === "setup" ? route.org : null;
     bootOrg(org).then(
       async (o) => {
         // The bare address opens the organization opened last; an address from before
@@ -45,6 +45,7 @@ export function App() {
   if (state.kind === "missing" || route.kind === "missing") return <Missing title="Page not found" body="There's nothing at this address." />;
   if (route.kind === "org") return <HomeLoader />;
   if (route.kind === "topic") return <TopicLoader id={route.id} />;
+  if (route.kind === "setup") return <SetupLoader />;
   if (route.kind !== "project") return null;
   if (route.type === "system") return <SystemProjectLoader projectId={route.id} />;
   return <StudioLoader projectId={route.id} mode={route.type} />;

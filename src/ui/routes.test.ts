@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { orgHref, projectHref, topicHref } from "@/projects/model";
+import { orgHref, projectHref, setupHref, topicHref } from "@/projects/model";
 import { routeOf } from "./routes";
 
 describe("routeOf", () => {
@@ -21,6 +21,13 @@ describe("routeOf", () => {
     expect(routeOf("/o/R02vmeVH/t/h1abc~2")).toEqual({ kind: "topic", org: "R02vmeVH", id: "h1abc~2" });
     expect(routeOf("/t/Xk2_9aLm0q")).toEqual({ kind: "missing" });
     expect(routeOf("/o/R02vmeVH/t/a%2Fb")).toEqual({ kind: "missing" });
+  });
+
+  it("reads an organization's setup page, only inside it", () => {
+    expect(routeOf(setupHref("R02vmeVH"))).toEqual({ kind: "setup", org: "R02vmeVH" });
+    expect(routeOf("/o/R02vmeVH/setup/")).toEqual({ kind: "setup", org: "R02vmeVH" });
+    expect(routeOf("/setup")).toEqual({ kind: "missing" });
+    expect(routeOf("/o/R02vmeVH/setup/x")).toEqual({ kind: "missing" });
   });
 
   it("reads addresses from before organizations", () => {

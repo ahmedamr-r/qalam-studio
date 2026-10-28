@@ -118,7 +118,8 @@ async function fileOne(deps: FilingDeps, items: Item[], product: string | null, 
   const pages = await deps.listTopics();
   const sent: FilingSent = { topics: new Map(), lines: new Map(), cites: new Map() };
 
-  // The topics there are, then the product's and its segments' pages not made yet.
+  // The topics there are, then the product's and its segments' pages not made yet (every product's,
+  // for material that's the whole organization's: it may be about any of them).
   const topics: TopicsRequest["topics"] = [];
   const callId = new Map<string, string>();
   const add = (t: SentTopic, lines: number) => {
@@ -128,7 +129,7 @@ async function fileOne(deps: FilingDeps, items: Item[], product: string | null, 
     if (t.id) callId.set(t.id, id);
   };
   for (const p of pages.slice(0, 260)) add({ id: p.id, kind: p.kind, title: p.title, products: p.products, lines: p.lines.map((l) => l.text) }, p.lines.length);
-  const forProducts = product ? products.filter((p) => p.id === product) : [];
+  const forProducts = product ? products.filter((p) => p.id === product) : products;
   for (const p of forProducts)
     if (!pages.some((t) => t.kind === "product" && t.products.includes(p.id))) add({ id: null, kind: "product", title: p.name, products: [p.id], lines: [] }, 0);
   const segments = [...forProducts.flatMap((p) => p.segments.map((s) => ({ s, products: [p.id] }))), ...about.segments.map((s) => ({ s, products: [] as string[] }))];

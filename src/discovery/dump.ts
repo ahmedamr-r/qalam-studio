@@ -237,15 +237,43 @@ export interface DumpRead {
 
 const quoteKind = (role: DumpRole): QuoteKind => (role === "idea" || role === "test" ? "idea" : "need");
 
+/** A piece's first few words, to name it in a sentence (the sentence brings its own full stop). */
+const opening = (s: string, n = 8) => {
+  const w = s.trim().split(/\s+/);
+  const words = w.slice(0, n).join(" ").replace(/[.,;:!?،؛؟…]+$/u, "");
+  return w.length > n ? `${words}…` : words;
+};
+
+/**
+ * Qalam AI's words to the builder with the ids its call used read as what they name: a piece
+ * ("f11") as its words, a card ("c3") as its title. One in brackets beside what it names goes.
+ */
+export function readable(v: unknown, words: (ref: string) => string | undefined): string {
+  if (typeof v !== "string") return "";
+  return v
+    .replace(/\s*[([]\s*[fc]\d{1,3}(?:\s*[,/;]\s*[fc]\d{1,3})*\s*[)\]]/g, "")
+    .replace(/\b[fc]\d{1,3}\b/g, (ref) => {
+      const w = words(ref);
+      return w ? `“${opening(w)}”` : ref;
+    })
+    .replace(/\s+([.,;:!?])/g, "$1");
+}
+
+/** What a call named, by the ids it used: the pieces' words and the cards' titles. */
+const namesOf = (pieces: Iterable<[string, string]>, cards: PlaceCard[]) => {
+  const m = new Map([...pieces, ...cards.map((c): [string, string] => [c.ref, c.title])]);
+  return (ref: string) => m.get(ref);
+};
+
 /** Pushback, kept only where it's about a piece that was kept (and a card on the board, when it names one). */
-function sanitizeChallenges(raw: unknown, pieceOf: (ref: string) => string | undefined, cards: PlaceCard[]): DumpChallenge[] {
+function sanitizeChallenges(raw: unknown, pieceOf: (ref: string) => string | undefined, cards: PlaceCard[], names: (ref: string) => string | undefined): DumpChallenge[] {
   const byRef = new Map(cards.map((c) => [c.ref, c.id]));
   const seen = new Set<string>();
   const out: DumpChallenge[] = [];
   for (const c of items(raw)) {
     if (out.length >= READ_LIMITS.challenges) break;
     const quoteId = pieceOf(String(c.fragmentId));
-    const text = clip(c.text, READ_LIMITS.challenge);
+    const text = clip(readable(c.text, names), READ_LIMITS.challenge);
     if (!isChallenge(c.kind) || !quoteId || !text || seen.has(`${c.kind}:${quoteId}`)) continue;
     seen.add(`${c.kind}:${quoteId}`);
     const cardId = typeof c.cardId === "string" ? byRef.get(c.cardId) : undefined;
@@ -259,6 +287,7 @@ export function sanitizeRead(raw: unknown, text: string, cards: PlaceCard[], now
   const r = rec(raw);
   const find = quoteFinder(text);
   const kept = new Map<string, string>();
+  const said = new Map<string, string>();
   const fragments: SourceQuote[] = [];
   for (const f of items(r.fragments)) {
     if (fragments.length >= READ_LIMITS.fragments || typeof f.quote !== "string") continue;
@@ -269,14 +298,18 @@ export function sanitizeRead(raw: unknown, text: string, cards: PlaceCard[], now
     const role: DumpRole = isRole(f.role) ? f.role : "context";
     const q: SourceQuote = { id: newId(), text: m.words, span: m.span, ...(m.parts.length > 1 ? { parts: m.parts } : {}), kind: quoteKind(role), role, addedBy: "ai", at: now };
     const ref = clip(f.id, 24);
-    if (ref && !kept.has(ref)) kept.set(ref, q.id);
+    if (ref && !kept.has(ref)) {
+      kept.set(ref, q.id);
+      said.set(ref, q.text);
+    }
     fragments.push(q);
   }
   fragments.sort((a, b) => a.span[0] - b.span[0]);
+  const names = namesOf(said, cards);
   return {
-    understanding: clip(r.understanding, READ_LIMITS.understanding),
+    understanding: clip(readable(r.understanding, names), READ_LIMITS.understanding),
     fragments,
-    challenges: sanitizeChallenges(r.challenges, (ref) => kept.get(ref), cards),
+    challenges: sanitizeChallenges(r.challenges, (ref) => kept.get(ref), cards, names),
     questions: sanitizeQuestions(r.questions),
   };
 }
@@ -292,14 +325,17 @@ export function fragmentRefs(quotes: SourceQuote[]): { ref: string; q: SourceQuo
   return [...quotes].sort((a, b) => a.span[0] - b.span[0]).map((q, i) => ({ ref: `f${i + 1}`, q }));
 }
 
+/** What rounds of questions keep on a session: a board's brain dump, or an organization's setup (src/org/setup.ts). */
+export type Rounds = Pick<DumpSession, "understanding" | "challenges" | "buckets" | "skipped" | "failed"> & { phase: string };
+
 /**
  * The builder is done with the current round: answered it (Qalam AI reads the answers next) or
  * left the rest to Qalam AI (it places what it has).
  */
-export function closeDumpRound(s: DumpSession, form: FlowState, how: "analyzing" | "skipped"): DumpSession {
+export function closeDumpRound<S extends Rounds>(s: S, form: FlowState, how: "analyzing" | "skipped"): S {
   const last = s.buckets.length - 1;
   const buckets = s.buckets.map((b, i) => (i === last ? { ...b, form } : b));
-  return { ...s, buckets, failed: undefined, ...(how === "skipped" ? { phase: "ready", skipped: true } : { phase: "analyzing" }) };
+  return { ...s, buckets, failed: undefined, ...(how === "skipped" ? { phase: "ready", skipped: true } : { phase: "analyzing" }) } as S;
 }
 
 export interface DumpFollowup {
@@ -322,11 +358,12 @@ export function sanitizeDumpFollowup(raw: unknown, pieces: { ref: string; q: Sou
     if (quoteId && isRole(x.role)) roles.set(quoteId, x.role);
   }
   const questions = sanitizeQuestions(r.questions);
+  const names = namesOf(pieces.map((p): [string, string] => [p.ref, p.q.text]), cards);
   return {
-    analysis: clip(r.analysis, 1200),
-    understanding: clip(r.understanding, READ_LIMITS.understanding),
+    analysis: clip(readable(r.analysis, names), 1200),
+    understanding: clip(readable(r.understanding, names), READ_LIMITS.understanding),
     roles: [...roles].map(([quoteId, role]) => ({ quoteId, role })),
-    challenges: sanitizeChallenges(r.challenges, (ref) => byRef.get(ref), cards),
+    challenges: sanitizeChallenges(r.challenges, (ref) => byRef.get(ref), cards, names),
     // Ready means no more questions; questions without a round to put them in mean ready too.
     ready: r.ready === true || !questions.length,
     questions,
@@ -334,7 +371,7 @@ export function sanitizeDumpFollowup(raw: unknown, pieces: { ref: string; q: Sou
 }
 
 /** What a round of answers changed: its reading kept with it, the reading revised, and the next round or ready. */
-export function applyDumpFollowup(s: DumpSession, f: DumpFollowup): DumpSession {
+export function applyDumpFollowup<S extends Rounds>(s: S, f: DumpFollowup): S {
   const more = !f.ready && f.questions.length > 0 && s.buckets.length < MAX_DUMP_ROUNDS;
   const last = s.buckets.length - 1;
   const read = s.buckets.map((b, i) => (i === last ? { ...b, analysis: f.analysis || undefined } : b));
@@ -345,7 +382,7 @@ export function applyDumpFollowup(s: DumpSession, f: DumpFollowup): DumpSession 
     failed: undefined,
     phase: more ? "asking" : "ready",
     buckets: more ? [...read, { questions: f.questions, form: initialFlow(f.questions.map(toQuestion)) }] : read,
-  };
+  } as S;
 }
 
 /** The pieces with the roles the answers gave them. */
@@ -372,7 +409,7 @@ export interface DumpAnswer {
 }
 
 /** Each round's answers (the round being asked included, once answered). */
-export function roundAnswers(s: DumpSession): DumpAnswer[][] {
+export function roundAnswers(s: Pick<Rounds, "buckets">): DumpAnswer[][] {
   return s.buckets.map((b) => {
     const qs = b.questions.map(toQuestion);
     // A round counts once it was sent; one left half-way (Skip) counts for what was answered.

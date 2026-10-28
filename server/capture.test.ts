@@ -6,10 +6,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Doc } from "@/doc/schema";
 import type { OstCard } from "@/discovery/types";
 import type { Project } from "@/projects/model";
+import type { SourceRecord } from "@/discovery/sources";
 import { OrgStore } from "./org/store";
 
 // Qalam AI's answers, faked by what each call asks; what code keeps of them is real.
-const calls = vi.hoisted(() => ({ list: [] as string[] }));
+const calls = vi.hoisted(() => ({ list: [] as string[], texts: [] as string[] }));
 vi.mock("@/ai/server", () => ({
   BACKEND: "api",
   aiConfigured: () => true,
@@ -21,6 +22,7 @@ vi.mock("@/ai/server", () => ({
     }
     if (opts.system.includes("keep an organization's topic pages")) {
       calls.list.push("topics");
+      calls.texts.push(text);
       return { data: { dispute: [], revise: [], retire: [], newTopics: [{ id: "n1", kind: "need", title: "Delivery windows are too wide", why: "new" }], add: [{ topic: "n1", section: "know", text: "Parents can't plan their day around a “four-hour window”.", cites: ["q1"] }] } };
     }
     calls.list.push("place");
@@ -30,7 +32,7 @@ vi.mock("@/ai/server", () => ({
   },
 }));
 process.env.QALAM_NO_MODELS = "1";
-const { captureSource } = await import("./capture");
+const { captureSource, fileSources } = await import("./capture");
 const { startInbox } = await import("./inbox");
 
 const fts5 = (() => {
@@ -53,6 +55,7 @@ function tree(outcome: string, need: string): Doc {
 
 beforeEach(async () => {
   calls.list = [];
+  calls.texts = [];
   root = await mkdtemp(path.join(tmpdir(), "qalam-capture-"));
   store = await OrgStore.create(path.join(root, "Basket"), { id: "basket", name: "Basket", createdAt: at });
   await store.putProduct({ id: "grocery", name: "Grocery", audience: "Parents", goals: [], context: "", segments: [] });
@@ -71,6 +74,26 @@ afterEach(async () => {
 });
 
 describe.skipIf(!fts5)("capture, in the core", () => {
+  it("files a brain dump about the organization once, on any product's pages, however often it's asked", async () => {
+    await store.putProduct({ id: "grocery", name: "Grocery", audience: "Parents", goals: [], context: "", segments: ["Weekly planners"] });
+    const words = "Parents in Dubai can't plan their day around a four-hour window.";
+    const text = `${words} We think weekly planners care most.`;
+    const s: SourceRecord = { v: 1, id: "dump1", projectId: "", boards: [], product: null, kind: "dump", title: "About Basket", text, addedAt: at, read: [], quotes: [{ id: "d1", text: words, span: [0, words.length], kind: "need", role: "need", addedBy: "ai", at }], needs: [] };
+    await store.putSource(s);
+    const [a, b] = await Promise.all([fileSources(store, ["dump1"]), fileSources(store, ["dump1"])]);
+    expect(calls.list).toEqual(["topics"]);
+    expect([a, b].filter(Boolean)).toHaveLength(1);
+    // The whole organization's material may be about any product: its page and segments are there to file on.
+    expect(calls.texts[0]).toContain("Grocery");
+    expect(calls.texts[0]).toContain("Weekly planners");
+    expect((await store.getSource("dump1"))!.filed).toEqual(["d1"]);
+    // The team's words: what they believe, not what they know.
+    const page = (await store.listTopics()).find((t) => t.title === "Delivery windows are too wide")!;
+    expect(page.lines.map((l) => l.section)).toEqual(["believe"]);
+    await fileSources(store, ["dump1"]);
+    expect(calls.list).toEqual(["topics"]);
+  });
+
   it("keeps the material, picks out what customers said, files it and proposes it for the board it fits", async () => {
     const steps: string[] = [];
     const r = await captureSource(store, { kind: "paste", title: "Sara interview", text: "Sara: I can't plan bath time around a four-hour window. Then I order anyway." }, { emit: (s) => steps.push(s) });

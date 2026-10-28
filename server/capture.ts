@@ -73,6 +73,26 @@ export async function coreDeps(store: OrgStore): Promise<FilingDeps> {
   };
 }
 
+// Sources being filed by the core now (by folder and id): asked twice, a source is filed once.
+const filing = new Set<string>();
+
+/**
+ * File sources into the topic pages here in the core, so what a window started finishes even when
+ * it moves on (an organization set up from a brain dump, then a board started). Material that isn't
+ * one product's goes as the whole organization's.
+ */
+export async function fileSources(store: OrgStore, ids: string[], product: string | null = null): Promise<FilingTotals | null> {
+  const keys = ids.map((id) => `${store.dir}:${id}`).filter((k) => !filing.has(k));
+  if (!keys.length) return null;
+  for (const k of keys) filing.add(k);
+  try {
+    const sources = (await Promise.all(keys.map((k) => store.getSource(k.slice(store.dir.length + 1))))).filter((s): s is SourceRecord => !!s);
+    return sources.length ? await fileMaterial(await coreDeps(store), sources, { product }) : null;
+  } finally {
+    for (const k of keys) filing.delete(k);
+  }
+}
+
 /** What customers said in the source's unread parts, picked out and checked as on a board. */
 async function readIn(store: OrgStore, deps: FilingDeps, s: SourceRecord, o: CaptureOpts): Promise<SourceRecord> {
   const calls = packCalls(unread(s));

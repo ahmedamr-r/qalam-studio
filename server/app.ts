@@ -21,6 +21,7 @@ import * as plan from "./routes/plan";
 import * as prototype from "./routes/prototype";
 import * as repair from "./routes/repair";
 import * as restyle from "./routes/restyle";
+import * as setup from "./routes/setup";
 import * as status from "./routes/status";
 import * as topics from "./routes/topics";
 import * as translate from "./routes/translate";
@@ -47,6 +48,7 @@ const ROUTES: Record<string, { GET?: Handler; POST?: Handler }> = {
   prototype,
   repair,
   restyle,
+  setup,
   status,
   topics,
   translate,

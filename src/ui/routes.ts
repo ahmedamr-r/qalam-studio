@@ -16,6 +16,8 @@ export type Route =
   | { kind: "project"; org: string | null; type: ProjectType; id: string }
   /** A topic page (always under its organization). */
   | { kind: "topic"; org: string; id: string }
+  /** Setting the organization up from a brain dump about it. */
+  | { kind: "setup"; org: string }
   | { kind: "missing" };
 
 /** The path segment for each project type (the same letters `projectHref` writes). */
@@ -42,6 +44,7 @@ export function routeOf(pathname: string): Route {
     if (!parts.length) return { kind: "org", org };
   }
   if (!parts.length) return { kind: "root" };
+  if (org && parts.length === 1 && parts[0] === "setup") return { kind: "setup", org };
   if (org && parts.length === 2 && parts[0] === "t" && /^[A-Za-z0-9_~-]{1,64}$/.test(parts[1])) return { kind: "topic", org, id: parts[1] };
   const type = parts.length === 2 ? TYPES[parts[0]] : undefined;
   if (type && isProjectId(parts[1])) return { kind: "project", org, type, id: parts[1] };

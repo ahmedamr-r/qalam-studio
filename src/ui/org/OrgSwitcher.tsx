@@ -3,7 +3,7 @@ import clsx from "clsx";
 import { ChevronDown } from "lucide-react";
 import { feedback } from "@/commands/feedback";
 import { createOrg, listOrgs, openOrgFolder, OrgRequestError, renameOrg, type OrgRef } from "@/org/client";
-import { orgHref } from "@/projects/model";
+import { orgHref, setupHref } from "@/projects/model";
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from "../menu";
 import { r } from "../recipes";
 import { promptDialog } from "../surfaces/dialog";
@@ -19,8 +19,9 @@ export function OrgSwitcher({ org, onRenamed }: { org: OrgRef; onRenamed: (o: Or
   const go = (o: OrgRef) => window.location.assign(orgHref(o.id));
 
   const create = async () => {
-    const name = await promptDialog({ title: "New organization", body: "A company, a client or a side project: its products, boards and sources live together in one folder.", label: "Name", placeholder: "Basket", confirmLabel: "Create", validate: (v) => (v.trim() ? null : "Name it") });
-    if (name) go(await createOrg(name));
+    const name = await promptDialog({ title: "New organization", body: "A company, a client or a side project: its products, boards and sources live together in one folder. Next, tell Qalam AI about it.", label: "Name", placeholder: "Basket", confirmLabel: "Create", validate: (v) => (v.trim() ? null : "Name it") });
+    // A new organization starts from a brain dump about it (or skips straight to its home).
+    if (name) window.location.assign(setupHref((await createOrg(name)).id));
   };
 
   const open = async () => {

@@ -109,6 +109,25 @@ describe("reading a brain dump", () => {
     expect(r.questions.map((q) => q.id)).toEqual(["which-goal", "subscription-need", "tickets-source", "singles"]);
   });
 
+  it("reads the call's ids in what it says to the builder as what they name", () => {
+    const { cards } = read();
+    const text = "Parents hate substitutions, they get the wrong milk brand and nobody asked them. We could do a substitution preferences thing.";
+    const c = cards.find((x) => x.title === "I forget to reorder until I've run out")!;
+    const raw = {
+      understanding: "The need in f1 (f1) leads.",
+      fragments: [
+        { id: "f1", quote: "Parents hate substitutions, they get the wrong milk brand and nobody asked them.", role: "need" },
+        { id: "f2", quote: "We could do a substitution preferences thing.", role: "idea" },
+      ],
+      challenges: [{ kind: "solution-as-need", fragmentId: "f2", cardId: c.ref, text: `f2 is a feature; the need is f1 (f1, f2), close to ${c.ref}. Ask about f9.` }],
+    };
+    const r = sanitizeRead(raw, text, cards, 1);
+    expect(r.understanding).toBe("The need in “Parents hate substitutions, they get the wrong milk…” leads.");
+    expect(r.challenges[0].text).toBe("“We could do a substitution preferences thing” is a feature; the need is “Parents hate substitutions, they get the wrong milk…”, close to “I forget to reorder until I've run out”. Ask about f9.");
+    const f = sanitizeDumpFollowup({ analysis: "That settles f2.", understanding: "", challenges: [] }, fragmentRefs(r.fragments), cards);
+    expect(f.analysis).toBe("That settles “We could do a substitution preferences thing”.");
+  });
+
   it("finds Arabic pieces whatever the hamza or the short vowels", () => {
     const text = "أنا شايف إن الأهالي بيكرهوا البدائل لما محدش يسألهم.";
     const r = sanitizeRead({ fragments: [{ id: "f1", quote: "انا شايف ان الاهالي بيكرهوا البدائل", role: "need" }] }, text, [], 1);
