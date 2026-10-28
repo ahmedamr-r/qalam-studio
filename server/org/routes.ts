@@ -29,6 +29,8 @@ import { goalById } from "@/goals/tree";
 import type { Hit as ConnectorHit } from "@/connectors/recipes";
 import { findProblems, goalPage, linkByHand } from "./goals";
 import { changeJob, noteForJob, openJobs, planJobs, searchForJob, takeInForJob } from "./jobs";
+import { breakDown, decidePart, lookOutside } from "./outside";
+import { GOAL_LEVERS, type GoalLever } from "@/goals/types";
 import { ConflictError, GoalCycleError, GoalInUseError, NotFoundError, type OrgEvent, type OrgStore } from "./store";
 
 /**
@@ -184,6 +186,34 @@ export function orgRoutes(): Hono<Env> {
     if (!b || typeof b.need !== "string" || !ID.test(b.need) || typeof b.goal !== "string" || !ID.test(b.goal) || typeof b.on !== "boolean") return bad("Name a problem, a goal, and whether they're linked");
     await linkByHand(c.get("store"), { need: b.need, goal: b.goal, on: b.on, how: typeof b.how === "string" ? b.how : undefined, bears: b.bears === "some" ? "some" : "direct" }, { tab: tabOf(c.req.raw.headers) });
     return c.json({ ok: true });
+  });
+  // What others aim for, and breaking a goal down (server/org/outside.ts).
+  r.post("/api/org/:org/goals/:id/outside", async (c) => {
+    if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't look this up." }, 503);
+    if (rateLimited(c.req.raw)) return c.json({ error: "rate_limited", message: "Too many requests, try again in a few minutes." }, 429);
+    const store = c.get("store");
+    const id = c.req.param("id");
+    if (!goalById(await store.getGoals(), id)) return c.json({ error: "not_found", message: "No such goal" }, 404);
+    return streamed(c.req.raw.signal, (emit, signal) => lookOutside(store, id, emit, signal));
+  });
+  r.post("/api/org/:org/goals/:id/breakdown", async (c) => {
+    if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't break the goal down." }, 503);
+    if (rateLimited(c.req.raw)) return c.json({ error: "rate_limited", message: "Too many requests, try again in a few minutes." }, 429);
+    const { levers } = ((await c.req.json().catch(() => ({}))) ?? {}) as { levers?: unknown };
+    const picked = (Array.isArray(levers) ? levers : []).filter((l): l is GoalLever => GOAL_LEVERS.includes(l as GoalLever));
+    const store = c.get("store");
+    const id = c.req.param("id");
+    if (!goalById(await store.getGoals(), id)) return c.json({ error: "not_found", message: "No such goal" }, 404);
+    return streamed(c.req.raw.signal, (emit) => breakDown(store, id, { levers: [...new Set(picked)] }, emit));
+  });
+  r.post("/api/org/:org/goals/:id/breakdown/:part", async (c) => {
+    const { accept } = ((await c.req.json().catch(() => ({}))) ?? {}) as { accept?: unknown };
+    if (typeof accept !== "boolean" || !ID.test(c.req.param("part"))) return bad("Accept it or discard it");
+    try {
+      return c.json(await decidePart(c.get("store"), c.req.param("id"), c.req.param("part"), accept, { tab: tabOf(c.req.raw.headers) }));
+    } catch (e) {
+      return failure(e);
+    }
   });
   // Jobs for a goal (server/org/jobs.ts): planned by Qalam AI from what isn't known yet, run here or handed over.
   r.get("/api/org/:org/jobs", async (c) => c.json(await openJobs(c.get("store"))));

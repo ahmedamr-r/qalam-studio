@@ -195,6 +195,9 @@ export function streamStructured(opts: CallOpts): Response {
 /** The research step's model: the default model unless overridden. */
 const RESEARCH_MODEL = process.env.RESEARCH_MODEL || MODEL;
 
+/** The research step on its own, for the core (what others aim for): its notes and sources, or why there are none. */
+export const research = (req: ResearchRequest, emit: (label: string) => void, signal: AbortSignal) => runResearch(req, { backend: backend(), client: getClient(), model: RESEARCH_MODEL }, emit, signal);
+
 /** Run the research step (streaming what it looks up), then the structured call with its notes. */
 function streamWithResearch(opts: CallOpts, research: ResearchRequest): Response {
   const encoder = new TextEncoder();

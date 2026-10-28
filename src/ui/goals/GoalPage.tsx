@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
-import { MoreHorizontal, Target, X } from "lucide-react";
+import { MoreHorizontal, X } from "lucide-react";
 import { callAI } from "@/ai/client";
 import { feedback } from "@/commands/feedback";
 import type { Decision } from "@/decisions/model";
 import { metricProgress } from "@/discovery/metric";
 import type { OstMetric } from "@/discovery/types";
 import { changeGoal, goalsNow, removeGoal, setMine, setNorth, useGoals } from "@/goals/client";
+import type { GoalWork } from "@/goals/breakdown";
 import type { Gap } from "@/goals/gaps";
 import { metricLine } from "@/goals/goals-md";
 import type { Job } from "@/goals/jobs";
@@ -27,6 +28,7 @@ import { r } from "../recipes";
 import { confirmDialog, promptDialog } from "../surfaces/dialog";
 import { startBoardForGoal } from "../topics/start-board";
 import { Meter, StatusDot } from "../viz";
+import { GoalsUnder, OtherAims } from "./Breakdown";
 import { Unknowns } from "./Unknowns";
 
 /**
@@ -35,7 +37,8 @@ import { Unknowns } from "./Unknowns";
  * first, each with one line on how it would move it. "Find problems" has Qalam AI read the
  * organization's problem pages against the goal (code keeps only links it can stand behind);
  * "Work on it" puts a problem on the goal's board. Then what isn't known yet and the jobs that would
- * find it out (./Unknowns.tsx), and what was decided about it.
+ * find it out (./Unknowns.tsx), what others aim for and the goals it breaks into (./Breakdown.tsx),
+ * and what was decided about it.
  */
 
 interface PageData {
@@ -47,6 +50,7 @@ interface PageData {
   problems: GoalProblem[];
   gaps: Gap[];
   jobs: Job[];
+  work: GoalWork;
   unlinked: { id: string; title: string; sources: number; quotes: number }[];
   decisions: Decision[];
   indexed: boolean;
@@ -85,7 +89,7 @@ export default function GoalPage({ id }: { id: string }) {
   useEffect(() => {
     load();
     return onOrgChange((c) => {
-      if (c.kind === "goal" || c.kind === "bearing" || c.kind === "job" || c.kind === "topic" || c.kind === "decision" || c.kind === "project") load();
+      if (c.kind === "goal" || c.kind === "bearing" || c.kind === "job" || (c.kind === "goalwork" && c.goal === id) || c.kind === "topic" || c.kind === "decision" || c.kind === "project") load();
     });
   }, [load]);
   // This window's own changes to goals come back through the goals store.
@@ -228,24 +232,7 @@ export default function GoalPage({ id }: { id: string }) {
           )}
         </section>
 
-        {!!page.children.length && (
-          <section aria-labelledby="under" className="flex flex-col gap-[8px]">
-            <h2 id="under" className="text-title font-medium">
-              Goals under it
-            </h2>
-            <ul className="flex flex-col rounded-lg bg-panel py-[4px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
-              {page.children.map((c) => (
-                <li key={c.id}>
-                  <a href={goalHref(c.id)} className="grid h-[36px] grid-cols-[16px_minmax(0,1fr)_minmax(0,200px)] items-center gap-x-[10px] px-[12px] hover:bg-hover">
-                    <Target {...ICON} className="text-fg-subtle" />
-                    <span className="truncate text-body text-fg">{c.title}</span>
-                    <span className="truncate text-right text-caption text-fg-muted tnum">{c.metric ? metricLine(c.metric) : "No number yet"}</span>
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
+        <GoalsUnder goal={g} children={page.children} breakdown={page.work.breakdown} onChanged={load} />
 
         <section aria-labelledby="problems" className="flex flex-col gap-[10px]">
           <div className="flex flex-wrap items-end justify-between gap-[12px]">
@@ -303,6 +290,8 @@ export default function GoalPage({ id }: { id: string }) {
         </section>
 
         <Unknowns goal={g} gaps={page.gaps} jobs={page.jobs} onChanged={load} />
+
+        <OtherAims goal={g} outside={page.work.outside} onChanged={load} />
 
         {!!page.decisions.length && (
           <section aria-labelledby="history" className="flex flex-col gap-[8px]">

@@ -50,6 +50,8 @@ export async function goalPage(store: OrgStore, id: string) {
     /** What isn't known yet about it (code's, no tokens), and the jobs planned to find out. */
     gaps: gapsOf(goal, problems, new Map(k.topics.map((t) => [t.id, t]))),
     jobs: jobsOf(foldJobs(await store.listJobLog()), id),
+    /** What others report for it, and the goals proposed under it (hub/goals/<goal>.json). */
+    work: await store.getGoalWork(id),
     /** Need pages in its scope with no link to it yet, the best-backed first: what "Link a problem" picks from. */
     unlinked: problemsInScope(k.topics, goal)
       .filter((t) => !links.some((l) => l.need === t.id && scope.includes(l.goal)))

@@ -10,7 +10,7 @@ import { z } from "zod";
 /** Connector ids a request asks for. */
 export const ConnectorsField = z.array(z.string().max(64)).max(8).optional();
 
-export type ResearchPurpose = "generate" | "standard" | "tune" | "critique" | "libraries" | "import";
+export type ResearchPurpose = "generate" | "standard" | "tune" | "critique" | "libraries" | "import" | "goals";
 
 export interface ConnectorInfo {
   id: string;

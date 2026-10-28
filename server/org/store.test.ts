@@ -278,6 +278,18 @@ describe("goals", () => {
     expect(events).toEqual([{ kind: "job" }]);
     expect(await store.listJobLog()).toHaveLength(3);
   });
+
+  it("keeps a goal's work in its own file, and takes the file away once there's nothing in it", async () => {
+    const outside = { at: 1, claims: [], notes: "Nothing held.", pages: [{ title: "A report", url: "https://example.com" }] };
+    await store.changeGoalWork("g1", (w) => ({ ...w, outside }));
+    expect(await store.getGoalWork("g1")).toEqual({ outside });
+    expect(JSON.parse(await readFile(path.join(dir, "hub", "goals", "g1.json"), "utf8"))).toMatchObject({ qalam: "goal-work/1", goal: "g1", outside });
+    expect(events.filter((e) => e.kind === "goalwork")).toEqual([{ kind: "goalwork", goal: "g1" }]);
+    await store.changeGoalWork("g1", () => ({}));
+    expect(await store.getGoalWork("g1")).toEqual({});
+    await expect(readFile(path.join(dir, "hub", "goals", "g1.json"), "utf8")).rejects.toThrow();
+    await expect(store.getGoalWork("../g1")).rejects.toThrow("No such goal");
+  });
 });
 
 describe("the organization's name", () => {

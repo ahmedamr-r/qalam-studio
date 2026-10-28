@@ -16,6 +16,7 @@ import type { NewGoal } from "@/goals/shape";
 import { addGoal, goalById, ordered, patchGoal as patchInTree, removeGoal as removeFromTree, setNorth as setNorthIn, underOf } from "@/goals/tree";
 import { emptyGoals, type Goal, type GoalPatch, type GoalsAt, type GoalTree } from "@/goals/types";
 import type { BearingLog } from "@/goals/bearings";
+import type { GoalWork } from "@/goals/breakdown";
 import type { JobLog } from "@/goals/jobs";
 import { sameTopic } from "@/hub/topics";
 import type { SourceRecord } from "@/discovery/sources";
@@ -60,6 +61,8 @@ export type OrgEvent = { tab?: string } & (
   | { kind: "bearing" }
   /** The jobs planned for goals, or what came of them, changed (hub/jobs.jsonl). */
   | { kind: "job" }
+  /** What others report for a goal, or the goals proposed under it, changed (hub/goals/<goal>.json). */
+  | { kind: "goalwork"; goal: string }
   | { kind: "notice" }
   | { kind: "relation" }
   /** Something changed in the inbox folder (server/inbox.ts reads what's new). */
@@ -718,6 +721,31 @@ export class OrgStore {
     if (!entries.length) return;
     await this.appendLog("hub/jobs.jsonl", entries);
     this.emit({ kind: "job", tab: opts.tab });
+  }
+
+  // A goal's work in progress (hub/goals/<goal>.json): what others report for it, and the goals
+  // Qalam AI proposed under it until each is accepted or discarded.
+
+  private goalWorkFile(goal: string) {
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(goal)) throw new NotFoundError("No such goal");
+    return this.abs(`hub/goals/${goal}.json`);
+  }
+
+  async getGoalWork(goal: string): Promise<GoalWork> {
+    const j = await readJson<GoalWork & { qalam?: string }>(this.goalWorkFile(goal));
+    return j?.qalam === "goal-work/1" ? { ...(j.outside ? { outside: j.outside } : {}), ...(j.breakdown ? { breakdown: j.breakdown } : {}) } : {};
+  }
+
+  async changeGoalWork(goal: string, fn: (w: GoalWork) => GoalWork, opts: { tab?: string } = {}): Promise<GoalWork> {
+    const file = this.goalWorkFile(goal);
+    let next: GoalWork = {};
+    await locked(file, async () => {
+      next = fn(await this.getGoalWork(goal));
+      if (next.outside || next.breakdown) await this.write(file, stableStringify({ qalam: "goal-work/1", goal, ...next }));
+      else await rm(file, { force: true });
+    });
+    this.emit({ kind: "goalwork", goal, tab: opts.tab });
+    return next;
   }
 
   // -------------------------------------------------------------------------
@@ -1380,6 +1408,8 @@ export class OrgStore {
       this.emit({ kind: "bearing" });
     } else if (rel === "hub/jobs.jsonl") {
       this.emit({ kind: "job" });
+    } else if (parts[0] === "hub" && parts[1] === "goals" && parts.length === 3 && rel.endsWith(".json")) {
+      this.emit({ kind: "goalwork", goal: path.basename(rel, ".json") });
     } else if (rel === "about.md") {
       this.emit({ kind: "about" });
     } else if (rel === GOALS) {
