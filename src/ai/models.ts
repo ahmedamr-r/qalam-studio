@@ -1,9 +1,10 @@
 /*
  * Which model each Qalam AI call runs on, by its job. Calls that lift facts out of material, which
  * code then checks word for word, read; calls that propose, ask, push back or judge decide; the
- * connector tool-runner only fetches. Routed per call, never mid-conversation. "best" (the default
- * until the tier eval says otherwise, eval/tiers/run.ts) runs reads on the decide model too.
- * Pure and browser-safe: the shared call descriptors and the Claude card import it.
+ * connector tool-runner only fetches. Routed per call, never mid-conversation. "balanced" sends
+ * every read to the read model; "best" (the default) only the reads measured to hold there, the
+ * others on the decide model. Pure and browser-safe: the shared call descriptors and the Claude
+ * card import it.
  */
 
 export type Tier = "decide" | "read" | "fetch";
@@ -46,6 +47,19 @@ export const isCallKind = (k: unknown): k is CallKind => typeof k === "string" &
 /** A call with no kind (the design side) decides. */
 export const tierOf = (kind: CallKind | undefined): Tier => (kind ? TIER_OF[kind] : "decide");
 
+/**
+ * Reads that hold on the read model, so "best" runs them there too. pnpm eval:tiers (Basket, three
+ * runs on Claude Code, 2026-10-29): Sonnet kept 125% of Opus's checked items on shape and 96% on
+ * claims, at a quarter and a half of the cost; on extract 85% and on filing 83%, so those decide.
+ */
+export const READS_THAT_HOLD: ReadonlySet<CallKind> = new Set(["setup-shape", "claims"]);
+
+/** The tier a call runs on with this mix: its own, except that "best" reads on decide unless the read holds. */
+export function tierFor(kind: CallKind | undefined, mix: ModelMix): Tier {
+  const tier = tierOf(kind);
+  return tier === "read" && mix === "best" && !READS_THAT_HOLD.has(kind!) ? "decide" : tier;
+}
+
 // Claude Code takes its own aliases for the cheaper tiers (2.1.284 warns on claude-haiku-5-5).
 const DEFAULTS: Record<"api" | "cli", Record<Tier, string>> = {
   api: { decide: "claude-opus-5-5", read: "claude-sonnet-5-5", fetch: "claude-haiku-5-5" },
@@ -55,16 +69,15 @@ const DEFAULTS: Record<"api" | "cli", Record<Tier, string>> = {
 type Env = Record<string, string | undefined>;
 
 /**
- * The model for a tier: the environment first (QALAM_MODEL_DECIDE/_READ/_FETCH; the older
- * DISCOVERY_MODEL, GENERATE_MODEL and CLAUDE_MODEL still set decide, CONNECTOR_MODEL fetch), then
- * the mix ("best" reads on the decide model; fetch stays where it is), then the engine's defaults.
+ * The model for a tier (the mix picks the tier, tierFor): the environment first
+ * (QALAM_MODEL_DECIDE/_READ/_FETCH; the older DISCOVERY_MODEL, GENERATE_MODEL and CLAUDE_MODEL
+ * still set decide, CONNECTOR_MODEL fetch), then the engine's defaults.
  */
-export function modelFor(tier: Tier, o: { backend: "api" | "cli"; mix: ModelMix; env: Env }): string {
+export function modelFor(tier: Tier, o: { backend: "api" | "cli"; env: Env }): string {
   const e = o.env;
-  const decide = e.QALAM_MODEL_DECIDE || e.DISCOVERY_MODEL || e.GENERATE_MODEL || e.CLAUDE_MODEL || DEFAULTS[o.backend].decide;
-  if (tier === "decide") return decide;
+  if (tier === "decide") return e.QALAM_MODEL_DECIDE || e.DISCOVERY_MODEL || e.GENERATE_MODEL || e.CLAUDE_MODEL || DEFAULTS[o.backend].decide;
   if (tier === "fetch") return e.QALAM_MODEL_FETCH || e.CONNECTOR_MODEL || DEFAULTS[o.backend].fetch;
-  return e.QALAM_MODEL_READ || (o.mix === "best" ? decide : DEFAULTS[o.backend].read);
+  return e.QALAM_MODEL_READ || DEFAULTS[o.backend].read;
 }
 
 /** Models the API's server-side fallback on refusals is offered for (the "default" form; never Haiku). */

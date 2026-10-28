@@ -54,7 +54,7 @@ export async function chooseEngine(kind: EngineKind) {
   await announce();
 }
 
-/** Run reads on Sonnet and decisions on Opus ("balanced"), or everything on Opus ("best"), from the next call. */
+/** Run every read on Sonnet and decisions on Opus ("balanced"), or Opus with Sonnet only for the reads that hold there ("best"), from the next call. */
 export async function chooseModels(mix: ModelMix) {
   await ensureEngine();
   await writeSettings({ models: mix });

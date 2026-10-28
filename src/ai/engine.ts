@@ -7,7 +7,7 @@
  * Server-only: the key is here.
  */
 
-import { DEFAULT_MIX, modelFor, tierOf, type CallKind, type ModelMix, type Tier } from "./models";
+import { DEFAULT_MIX, modelFor, tierFor, type CallKind, type ModelMix, type Tier } from "./models";
 
 export type EngineKind = "cli" | "api";
 
@@ -17,7 +17,7 @@ interface EngineState {
   key: string | null;
   /** The `claude` to run. */
   bin: string;
-  /** "balanced": Sonnet reads, Opus decides; "best": Opus for everything. */
+  /** "balanced": Sonnet reads, Opus decides; "best": Opus, and Sonnet for the reads that hold there. */
   mix: ModelMix;
   /** Read models Claude Code couldn't use here (some plans lack an alias): reads go to decide instead. */
   readFailed: string[];
@@ -39,16 +39,19 @@ export const apiKey = (): string | null => state().key;
 export const bin = (): string => state().bin;
 export const modelMix = (): ModelMix => state().mix;
 
-/** The model a tier runs on now, on this engine, with this mix. */
+/** The model a tier runs on now, on this engine. */
 export function tierModel(tier: Tier): string {
   const s = state();
-  const o = { backend: s.kind, mix: s.mix, env: process.env };
+  const o = { backend: s.kind, env: process.env };
   const model = modelFor(tier, o);
   return tier === "read" && s.kind === "cli" && s.readFailed.includes(model) ? modelFor("decide", o) : model;
 }
 
+/** The tier a kind of call runs on now, with this mix. */
+export const tierNow = (kind: CallKind | undefined): Tier => tierFor(kind, state().mix);
+
 /** The model a kind of call runs on now. */
-export const modelOf = (kind: CallKind | undefined): string => tierModel(tierOf(kind));
+export const modelOf = (kind: CallKind | undefined): string => tierModel(tierNow(kind));
 
 /** Claude Code couldn't run a read call on `model`: read calls run on the decide model from now on. */
 export function readModelFailed(model: string) {

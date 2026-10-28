@@ -12,7 +12,7 @@ import { localDir } from "./paths";
 export interface Settings {
   /** The engine chosen in Connections; unset: the environment decides (src/ai/engine.ts). */
   engine?: "cli" | "api";
-  /** "balanced": Sonnet reads, Opus decides; "best": Opus for everything. Unset: "best" (src/ai/models.ts). */
+  /** "balanced": Sonnet reads, Opus decides; "best": Opus, and Sonnet for the reads that hold there. Unset: "best" (src/ai/models.ts). */
   models?: "balanced" | "best";
   /** When the first-run welcome was finished on this computer. */
   welcomedAt?: number;

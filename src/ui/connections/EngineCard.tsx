@@ -15,8 +15,9 @@ import { refreshHealth } from "../frame/useHealth";
  * The engine behind Qalam AI, on one card: which one is live and whether it's ready (a dot and a
  * word), whose account pays, a Test that makes a short real call, the switch between Claude Code on
  * this Mac and a Claude API key (tested before it's kept in the Keychain), which models its calls
- * run on (Balanced: Sonnet reads, Opus decides; Best: Opus for everything), and what Qalam AI used
- * this week, by model and by job. "Claude Code" names the engine; Qalam's own AI is Qalam AI.
+ * run on (Balanced: Sonnet reads, Opus decides; Best: Opus, and Sonnet where it measured as good),
+ * and what Qalam AI used this week, by model and by job. "Claude Code" names the engine; Qalam's
+ * own AI is Qalam AI.
  */
 
 export const PLAN: Record<string, string> = { max: "Max", pro: "Pro", team: "Team", enterprise: "Enterprise" };
@@ -49,10 +50,11 @@ const JOB: Record<CallKind | "other", string> = {
   other: "Other calls",
 };
 
-/** "Sonnet reads, Opus decides", or "Opus for everything": what the tiers run on now. */
+/** "Sonnet reads, Opus decides", or "Opus, and Sonnet where it measured as good": what the mix runs on now. */
 function mixLine(view: EngineView) {
   const [read, decide] = [modelFamily(view.tiers.read), modelFamily(view.tiers.decide)];
-  return read === decide ? `${decide} for everything` : `${read} reads, ${decide} decides`;
+  if (read === decide) return `${decide} for everything`;
+  return view.models === "balanced" ? `${read} reads, ${decide} decides` : `${decide}, and ${read} where it measured as good`;
 }
 
 export function EngineCard() {
@@ -157,7 +159,7 @@ export function EngineCard() {
           className="w-[240px]"
           options={[
             { value: "balanced", label: "Balanced", title: "Sonnet reads sources and files them, Opus proposes and decides. Fewer tokens." },
-            { value: "best", label: "Best", title: "Opus for everything Qalam AI does" },
+            { value: "best", label: "Best", title: "Opus, and Sonnet only for the reads it measured as good at (goals' numbers, outside numbers)" },
           ]}
         />
         <span className="text-caption text-fg-subtle">{mixLine(view)}</span>

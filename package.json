@@ -33,7 +33,8 @@
     "prepack": "pnpm build && pnpm build:desktop",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "eval:retrieval": "tsx eval/retrieval/run.ts"
+    "eval:retrieval": "tsx eval/retrieval/run.ts",
+    "eval:tiers": "tsx eval/tiers/run.ts"
   },
   "dependencies": {
     "electron": "^45.0.0"

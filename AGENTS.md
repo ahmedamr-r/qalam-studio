@@ -109,7 +109,7 @@
 - **Server-only code:** `src/ai/{server,cli,research,connectors}.ts` read secrets or spawn processes. Browser code must never import them; the build fails if it does (`serverOnly()` in `server/vite.ts`).
 - **Settings:**
   - The server reads `.env.local`, then `.env` (`server/env.ts`); a variable already in the environment wins.
-  - This computer's own choices are in `~/Qalam/.qalam/settings.json` (`server/settings.ts`). That's the engine and when the welcome was done.
+  - This computer's own choices are in `~/Qalam/.qalam/settings.json` (`server/settings.ts`). That's the engine, the mix of models and when the welcome was done.
   - Secrets go in the macOS Keychain under "Qalam Studio" (`server/secrets.ts`, through `/usr/bin/security`). A value goes in on stdin, never as an argument. `QALAM_SECRETS=memory` in tests.
     - `security -i` reads lines of at most 4096 characters, so a value over 1500 bytes is kept in parts (`inParts`): the item of its name points to them, and new parts are written before the pointer.
     - `QALAM_KEYCHAIN_TEST=1 pnpm vitest run server/secrets.test.ts` runs the round trip on the real Keychain.
@@ -117,7 +117,12 @@
   - Qalam AI's engine is read at every call (`backend()`, `apiKey()` and `bin()` in `src/ai/engine.ts`), so switching it in Connections needs no restart.
   - `server/engine.ts` loads it from the settings and the Keychain before the first answer (`ensureEngine`), switches it, keeps a key only after a live test passes, and announces an `engine` event to every open organization.
   - `claude auth status` says whose account pays (`accountFrom`). Claude Code's own credentials are never read.
-  - Each call's usage goes to `~/Qalam/.qalam/usage/<YYYY-MM>.jsonl` (`reportUsage` in `src/ai/usage.ts`, `server/usage.ts`). Cost appears only where the engine reported one.
+  - **Models by job:** each call names its `kind`, and the kind picks the model at call time (`src/ai/models.ts`, `modelOf` in `src/ai/engine.ts`). Reads (extract, filing, setup `shape`, claims, the code reader, research) go to Sonnet 5.5, decisions (everything that proposes, asks or judges, and calls with no kind, the design side) to Opus 5.5, fetches (the connector tool-runner, numbers) to Haiku.
+    - The mix is Connections' choice, kept in the settings. "best", the default, runs reads on Opus except setup `shape` and claims (`READS_THAT_HOLD`), which held on Sonnet in `pnpm eval:tiers`. "balanced" runs every read on Sonnet.
+    - `QALAM_MODEL_DECIDE`/`_READ`/`_FETCH` override a tier; `DISCOVERY_MODEL`, `GENERATE_MODEL` and `CLAUDE_MODEL` still set decide, `CONNECTOR_MODEL` fetch.
+    - On Claude Code a read call that can't use its model (`model_not_found`) runs once more on decide, and later reads go there too.
+    - Move a call between tiers only with `pnpm eval:tiers` before and after (`eval/tiers/`). It spends tokens, so without `--yes` it only prints its plan and estimate.
+  - Each call's usage goes to `~/Qalam/.qalam/usage/<YYYY-MM>.jsonl` (`reportUsage` in `src/ai/usage.ts`, `server/usage.ts`), with its kind. The Claude card shows the week by model and by job. Cost appears only where the engine reported one.
   - This Mac's health (`diagnose` in `src/health/doctor.ts`, `GET /api/health`) covers the engine, search on this Node, the meaning model and the inbox. It shows one quiet row when all is well; the sidebar's Connections dot and the home's one-line notice read it.
 - **AI surfaces:** a new chat or AI-made surface uses `src/ui/chat/` (assistant-ui's unstyled primitives in Qalam's look): panels on the backdrop, steps on the left, the thread worked out from saved state (an external store), named parts the surface draws, and Qalam AI saying one or two sentences with the rest behind a Tip or a fold.
 - **Model output:** the model proposes and code verifies. Quotes are found word for word, numbers only where the source has them, ids only from what was sent. Keep it that way in new features.

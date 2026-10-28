@@ -37,7 +37,7 @@ export interface EngineView {
   kind: EngineKind;
   /** The decide tier's model. */
   model: string;
-  /** "balanced": Sonnet reads, Opus decides; "best": Opus for everything. */
+  /** "balanced": Sonnet reads, Opus decides; "best": Opus, and Sonnet for the reads that hold there. */
   models: ModelMix;
   /** What each tier runs on now, on this engine. */
   tiers: Record<Tier, string>;
