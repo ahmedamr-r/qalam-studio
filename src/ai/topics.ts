@@ -130,9 +130,10 @@ export const TOPICS_KNOWLEDGE = `The request also carries what the organization 
 
 const one = (s: string) => s.replace(/\s+/g, " ").trim();
 
-/** The filing call (minus its model): the route streams it to a window, the core reads it to its end. */
+/** The filing call: the route streams it to a window, the core reads it to its end. */
 export function topicsCall(b: TopicsRequest) {
   return {
+    kind: "topics" as const,
     system: b.context?.ids.length ? `${TOPICS_SYSTEM}\n\n${TOPICS_KNOWLEDGE}` : TOPICS_SYSTEM,
     schema: filingSchema(filingIds(b)),
     effort: "medium" as const,

@@ -3,15 +3,17 @@ import { atomicWrite, locked, readJson, stableStringify } from "./org/fsx";
 import { localDir } from "./paths";
 
 /*
- * This computer's settings (~/Qalam/.qalam/settings.json): which engine Qalam AI runs on, and
- * when the welcome was finished. Secrets never go here (server/secrets.ts keeps them in the
- * Keychain). Every write goes under one lock and reads the file first, so two writers don't lose
- * each other's change.
+ * This computer's settings (~/Qalam/.qalam/settings.json): which engine Qalam AI runs on and on
+ * which models, and when the welcome was finished. Secrets never go here (server/secrets.ts keeps
+ * them in the Keychain). Every write goes under one lock and reads the file first, so two writers
+ * don't lose each other's change.
  */
 
 export interface Settings {
   /** The engine chosen in Connections; unset: the environment decides (src/ai/engine.ts). */
   engine?: "cli" | "api";
+  /** "balanced": Sonnet reads, Opus decides; "best": Opus for everything. Unset: "best" (src/ai/models.ts). */
+  models?: "balanced" | "best";
   /** When the first-run welcome was finished on this computer. */
   welcomedAt?: number;
   /** How each connector is reached: through Claude Code's server of that name, a token in the Keychain, or Qalam's own sign-in to the service's MCP server at `url` (its tokens in the Keychain). */

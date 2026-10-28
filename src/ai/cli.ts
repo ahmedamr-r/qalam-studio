@@ -139,6 +139,7 @@ export function streamViaCli(opts: CallOpts, model: string): Response {
         if (result.stop_reason === "max_tokens") return finish({ type: "error", error: "max_tokens", message: "The response was cut off. Try a simpler brief." });
         if (result.subtype === "error_max_structured_output_retries") return finish({ type: "error", error: "parse", message: "Model output did not match the schema." });
         if (result.is_error || result.subtype !== "success") {
+          if (apiError === "model_not_found") return finish({ type: "error", error: "model_unavailable", message: `Claude Code can't use ${model} here.` });
           if (apiError === "authentication_failed")
             return finish({ type: "error", error: "auth", message: "Claude Code isn't signed in. Run `claude auth login` in a terminal, then try again." });
           return finish({ type: "error", error: apiError?.includes("rate") ? "rate_limited" : "cli", message: result.result || result.errors?.join("; ") || result.subtype });
@@ -152,7 +153,7 @@ export function streamViaCli(opts: CallOpts, model: string): Response {
             return finish({ type: "error", error: "parse", message: "Model output was not valid JSON." });
           }
         }
-        reportUsage(fromCliResult(result, modelName));
+        reportUsage(fromCliResult(result, modelName, opts.kind));
         finish({ type: "result", data, usage: result.usage, model: modelName });
       });
     },
@@ -162,4 +163,48 @@ export function streamViaCli(opts: CallOpts, model: string): Response {
     },
   });
   return new Response(body, { headers: { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store" } });
+}
+
+/**
+ * A call's NDJSON, unless it ends because Claude Code can't use its model: then `next`'s, once.
+ * Lines before that (progress) pass through as they come.
+ */
+export function orOnModelError(first: Response, next: () => Response): Response {
+  const enc = new TextEncoder();
+  const dec = new TextDecoder();
+  let reader = first.body!.getReader();
+  let buf = "";
+  let retried = false;
+  const body = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) {
+          if (buf.trim()) controller.enqueue(enc.encode(buf));
+          controller.close();
+          return;
+        }
+        buf += dec.decode(value, { stream: true });
+        let out = "";
+        let nl: number;
+        while ((nl = buf.indexOf("\n")) >= 0) {
+          const line = buf.slice(0, nl + 1);
+          buf = buf.slice(nl + 1);
+          if (!retried && line.includes('"model_unavailable"') && (JSON.parse(line) as { error?: string }).error === "model_unavailable") {
+            retried = true;
+            buf = "";
+            void reader.cancel().catch(() => {});
+            reader = next().body!.getReader();
+            break;
+          }
+          out += line;
+        }
+        if (out) return controller.enqueue(enc.encode(out));
+      }
+    },
+    cancel() {
+      void reader.cancel().catch(() => {});
+    },
+  });
+  return new Response(body, { headers: first.headers });
 }

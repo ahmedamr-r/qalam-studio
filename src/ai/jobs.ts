@@ -53,6 +53,7 @@ export function jobsSchema(m: Pick<JobSent, "gaps" | "tools" | "segments" | "peo
 /** The call, as the core's structured() runs it. */
 export function jobsCall(m: JobSent) {
   return {
+    kind: "jobs" as const,
     system: JOBS_SYSTEM,
     schema: jobsSchema(m),
     effort: "medium" as const,

@@ -296,8 +296,8 @@ export function setupContent(b: SetupRequest): string {
 /** Each stage's call, described once (the route streams it). */
 export function setupCall(b: SetupRequest) {
   const content = [{ type: "text" as const, text: setupContent(b) }];
-  if (b.stage === "shape") return { system: SETUP_SHAPE_SYSTEM, schema: setupShapeSchema({ goals: b.goals.map((g) => g.id), products: b.products.map((p) => p.id) }), effort: "medium" as const, maxTokens: 6000, content };
-  if (b.stage === "read") return { system: SETUP_READ_SYSTEM, schema: setupReadSchema(), effort: "high" as const, maxTokens: 16000, content };
-  if (b.stage === "followup") return { system: SETUP_FOLLOWUP_SYSTEM, schema: setupFollowupSchema(b.fragments.map((f) => f.id)), effort: "medium" as const, maxTokens: 8000, content };
-  return { system: SETUP_PLACE_SYSTEM, schema: setupPlaceSchema({ fragments: b.fragments.map((f) => f.id), answers: b.answers.map((a) => a.id), products: b.products.map((p) => p.id) }), effort: "high" as const, maxTokens: 16000, content };
+  if (b.stage === "shape") return { kind: "setup-shape" as const, system: SETUP_SHAPE_SYSTEM, schema: setupShapeSchema({ goals: b.goals.map((g) => g.id), products: b.products.map((p) => p.id) }), effort: "medium" as const, maxTokens: 6000, content };
+  if (b.stage === "read") return { kind: "setup-read" as const, system: SETUP_READ_SYSTEM, schema: setupReadSchema(), effort: "high" as const, maxTokens: 16000, content };
+  if (b.stage === "followup") return { kind: "setup-followup" as const, system: SETUP_FOLLOWUP_SYSTEM, schema: setupFollowupSchema(b.fragments.map((f) => f.id)), effort: "medium" as const, maxTokens: 8000, content };
+  return { kind: "setup-place" as const, system: SETUP_PLACE_SYSTEM, schema: setupPlaceSchema({ fragments: b.fragments.map((f) => f.id), answers: b.answers.map((a) => a.id), products: b.products.map((p) => p.id) }), effort: "high" as const, maxTokens: 16000, content };
 }

@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { chooseEngine, engineView, forgetKey, liveTest, saveKey } from "../engine";
+import { chooseEngine, chooseModels, engineView, forgetKey, liveTest, saveKey } from "../engine";
 import { fixHealth, healthNow } from "../health";
 import { recentUsage } from "../usage";
 import { connectorDef } from "@/connectors/catalog";
@@ -15,7 +15,7 @@ import { chooseFolder } from "../org/home";
 
 /**
  * Connections' API: the engine Qalam AI runs on (which one, who pays, a test, a key kept in the
- * Keychain), what it used this week, and This Mac's health. Keys only ever come in; the last four
+ * Keychain, the models its calls run on), what it used this week, and This Mac's health. Keys only ever come in; the last four
  * characters are all that goes out.
  */
 export function connectionsRoutes(): Hono {
@@ -25,6 +25,12 @@ export function connectionsRoutes(): Hono {
     const { kind } = (await c.req.json().catch(() => ({}))) as { kind?: unknown };
     if (kind !== "cli" && kind !== "api") return c.json({ error: "bad_request", message: "Pick cli or api." }, 400);
     await chooseEngine(kind);
+    return c.json(await engineView());
+  });
+  r.put("/api/engine/models", async (c) => {
+    const { models } = (await c.req.json().catch(() => ({}))) as { models?: unknown };
+    if (models !== "balanced" && models !== "best") return c.json({ error: "bad_request", message: "Pick balanced or best." }, 400);
+    await chooseModels(models);
     return c.json(await engineView());
   });
   r.post("/api/engine/test", async (c) => {

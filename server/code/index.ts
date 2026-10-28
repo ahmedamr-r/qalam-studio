@@ -6,7 +6,7 @@ import { createInterface } from "node:readline";
 import { nanoid } from "nanoid";
 import { readerCall, readerContent, READER_SYSTEM, readerSchema } from "@/ai/code";
 import { childEnv } from "@/ai/cli";
-import { backend, bin } from "@/ai/engine";
+import { backend, bin, modelOf, readModelFailed, tierModel } from "@/ai/engine";
 import { structured } from "@/ai/server";
 import { fromCliResult, reportUsage } from "@/ai/usage";
 import { MAP_LIMITS, verifyAnswer, verifyFlows, type CodeRepo, type ProductMap } from "@/code/map";
@@ -15,7 +15,6 @@ import { metricLine } from "@/goals/goals-md";
 import { foldJobs } from "@/goals/jobs";
 import { goalById } from "@/goals/tree";
 import type { Goal } from "@/goals/types";
-import { DISCOVERY_MODEL } from "../routes/discovery";
 import { NotFoundError, type OrgStore } from "../org/store";
 import { copyWithGh, copyWithToken, ghLogin, readCodeFiles, REPO, repoKey } from "./copy";
 import { githubAppReady, githubSignedIn, githubToken } from "./github";
@@ -43,8 +42,27 @@ export async function codeView(store: OrgStore) {
   return { gh: await ghNow(), app: githubAppReady(), signedIn: await githubSignedIn(), repos: store.codeRepos, maps: await store.listMaps() };
 }
 
+/** Claude Code answered that it can't use the model it was given. */
+class ModelUnavailable extends Error {}
+
+/**
+ * Claude Code reads the copy on the read tier's model; where it can't use that model here, once
+ * more on the decide model (and so do later read calls).
+ */
+async function viaAgent(root: string, content: string, goals: string[], emit: (label: string) => void, signal: AbortSignal): Promise<{ raw: unknown; model?: string }> {
+  const model = modelOf("reader");
+  const decide = tierModel("decide");
+  try {
+    return await readWithAgent(root, content, goals, model, emit, signal);
+  } catch (e) {
+    if (!(e instanceof ModelUnavailable) || model === decide) throw e;
+    readModelFailed(model);
+    return readWithAgent(root, content, goals, decide, emit, signal);
+  }
+}
+
 /** Claude Code reads the copy, read-only: no shell, no web, no edits, from an empty folder of its own. */
-function viaAgent(root: string, content: string, goals: string[], emit: (label: string) => void, signal: AbortSignal): Promise<{ raw: unknown; model?: string }> {
+function readWithAgent(root: string, content: string, goals: string[], asked: string, emit: (label: string) => void, signal: AbortSignal): Promise<{ raw: unknown; model?: string }> {
   return (async () => {
     const cwd = await mkdtemp(path.join(tmpdir(), "qalam-read-"));
     try {
@@ -56,7 +74,7 @@ function viaAgent(root: string, content: string, goals: string[], emit: (label: 
           "--verbose",
           "--json-schema", JSON.stringify(readerSchema(goals)),
           "--system-prompt", READER_SYSTEM,
-          "--model", DISCOVERY_MODEL,
+          "--model", asked,
           "--effort", "medium",
           "--tools", "Read,Grep,Glob",
           "--allowedTools", "Read", "Grep", "Glob",
@@ -80,6 +98,7 @@ function viaAgent(root: string, content: string, goals: string[], emit: (label: 
         let stderr = "";
         proc.stderr.on("data", (d) => (stderr = (stderr + d).slice(-2000)));
         let model: string | undefined;
+        let apiError: string | undefined;
         let result: { subtype: string; is_error?: boolean; result?: string; structured_output?: unknown; errors?: string[] } | undefined;
         const rel = (f: unknown) => (typeof f === "string" ? path.relative(root, path.resolve(root, f)) || "the code" : "a file");
         createInterface({ input: proc.stdout }).on("line", (line) => {
@@ -90,21 +109,23 @@ function viaAgent(root: string, content: string, goals: string[], emit: (label: 
             return;
           }
           if (ev.type === "system" && ev.subtype === "init") model = ev.model ?? model;
-          else if (ev.type === "assistant")
+          else if (ev.type === "assistant") {
+            if (ev.error) apiError = ev.error;
             for (const b of ev.message?.content ?? []) {
               if (b.type !== "tool_use") continue;
               if (b.name === "Read") emit(`Reading ${clip(rel(b.input?.file_path), 70)}`);
               else if (b.name === "Grep") emit(`Looking for “${clip(String(b.input?.pattern ?? ""), 50)}” in the code`);
               else if (b.name === "Glob") emit(`Listing ${clip(String(b.input?.pattern ?? "files"), 60)}`);
             }
-          else if (ev.type === "result") result = ev;
+          } else if (ev.type === "result") result = ev;
         });
         proc.on("close", (code) => {
           both.removeEventListener("abort", kill);
-          reportUsage(fromCliResult(result as Parameters<typeof fromCliResult>[0], model ?? "claude"));
+          reportUsage(fromCliResult(result as Parameters<typeof fromCliResult>[0], model ?? asked, "reader"));
           if (signal.aborted) return reject(new DOMException("Stopped.", "AbortError"));
           if (limit.aborted) return reject(new Error("Reading the code took too long."));
           if (!result) return reject(new Error(stderr.trim() || `Claude Code exited with code ${code}.`));
+          if (apiError === "model_not_found") return reject(new ModelUnavailable(`Claude Code can't use ${asked} here.`));
           if (result.is_error || result.subtype !== "success") return reject(new Error(result.result || result.errors?.join("; ") || result.subtype));
           let raw = result.structured_output;
           if (raw == null) {
@@ -136,7 +157,7 @@ async function viaExcerpts(files: CodeFile[], scan: CodeScan, content: string, g
     size += text.length;
     excerpts.push({ file: p, text });
   }
-  const { data, model } = await structured<unknown>({ model: DISCOVERY_MODEL, ...readerCall({ content, excerpts, goals }) });
+  const { data, model } = await structured<unknown>(readerCall({ content, excerpts, goals }));
   return { raw: data, model };
 }
 

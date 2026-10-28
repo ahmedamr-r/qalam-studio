@@ -27,9 +27,6 @@ import {
 } from "@/ai/discovery";
 import { aiConfigured, jsonError, rateLimited, streamResearch, streamStructured } from "@/ai/server";
 
-/** Drafting a product's tree runs on the generation model (Opus 5.5 by default). */
-export const DISCOVERY_MODEL = process.env.DISCOVERY_MODEL || process.env.GENERATE_MODEL || "claude-opus-5-5";
-
 /**
  * Discovery boards: read the product interview (and ask up to three follow-ups), then draft the
  * opportunity tree. The draft streams, so its cards appear as they're written; the client checks
@@ -48,22 +45,22 @@ export async function POST(req: Request) {
   const parsed = DiscoveryBody.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return jsonError(400, "bad_input", parsed.error.issues[0]?.message ?? "Invalid input");
   const b = parsed.data;
-  const call = { model: DISCOVERY_MODEL };
+  // Each stage's kind picks its model (src/ai/models.ts): extracting reads, the rest decide.
   switch (b.stage) {
     case "followups":
-      return streamStructured({ ...call, system: FOLLOWUPS_SYSTEM, schema: FOLLOWUPS_SCHEMA, effort: "medium", maxTokens: 8000, content: [{ type: "text", text: followupsContent(b) }] });
+      return streamStructured({ kind: "followups", system: FOLLOWUPS_SYSTEM, schema: FOLLOWUPS_SCHEMA, effort: "medium", maxTokens: 8000, content: [{ type: "text", text: followupsContent(b) }] });
     case "draft":
-      return streamStructured({ ...call, system: withKnowledge(DRAFT_SYSTEM, b.context, DRAFT_KNOWLEDGE), schema: withPieceReliance(draftSchema(quotableIds(b), b.context?.quotes), b.context), effort: "high", maxTokens: 24000, deltas: true, content: [{ type: "text", text: draftContent(b) }] });
+      return streamStructured({ kind: "draft", system: withKnowledge(DRAFT_SYSTEM, b.context, DRAFT_KNOWLEDGE), schema: withPieceReliance(draftSchema(quotableIds(b), b.context?.quotes), b.context), effort: "high", maxTokens: 24000, deltas: true, content: [{ type: "text", text: draftContent(b) }] });
     case "extract":
-      return streamStructured({ ...call, ...extractCall(b) });
+      return streamStructured(extractCall(b));
     case "synthesize":
-      return streamStructured({ ...call, ...synthesizeCall(b) });
+      return streamStructured(synthesizeCall(b));
     case "dump-read":
-      return streamStructured({ ...call, system: DUMP_READ_SYSTEM, schema: dumpReadSchema(b.tree.map((c) => c.id)), effort: "high", maxTokens: 16000, content: [{ type: "text", text: dumpReadContent(b) }] });
+      return streamStructured({ kind: "dump-read", system: DUMP_READ_SYSTEM, schema: dumpReadSchema(b.tree.map((c) => c.id)), effort: "high", maxTokens: 16000, content: [{ type: "text", text: dumpReadContent(b) }] });
     case "dump-followup":
-      return streamStructured({ ...call, system: DUMP_FOLLOWUP_SYSTEM, schema: dumpFollowupSchema(b.tree.map((c) => c.id), b.fragments.map((f) => f.id)), effort: "medium", maxTokens: 8000, content: [{ type: "text", text: dumpFollowupContent(b) }] });
+      return streamStructured({ kind: "dump-followup", system: DUMP_FOLLOWUP_SYSTEM, schema: dumpFollowupSchema(b.tree.map((c) => c.id), b.fragments.map((f) => f.id)), effort: "medium", maxTokens: 8000, content: [{ type: "text", text: dumpFollowupContent(b) }] });
     case "dump-place":
-      return streamStructured({ ...call, system: withKnowledge(DUMP_PLACE_SYSTEM, b.context, b.context?.quotes.length ? DUMP_PLACE_KNOWLEDGE : ""), schema: withPieceReliance(dumpPlaceSchema(placeIds(b)), b.context), effort: "high", maxTokens: 24000, deltas: true, content: [{ type: "text", text: dumpPlaceContent(b) }] });
+      return streamStructured({ kind: "dump-place", system: withKnowledge(DUMP_PLACE_SYSTEM, b.context, b.context?.quotes.length ? DUMP_PLACE_KNOWLEDGE : ""), schema: withPieceReliance(dumpPlaceSchema(placeIds(b)), b.context), effort: "high", maxTokens: 24000, deltas: true, content: [{ type: "text", text: dumpPlaceContent(b) }] });
     case "import": {
       // Connected tools only: a web page comes in through its address (/api/fetch-url).
       const connectors = b.connectors.filter((id) => id !== "web");

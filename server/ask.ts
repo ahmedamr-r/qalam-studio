@@ -4,7 +4,7 @@ import path from "node:path";
 import { createInterface } from "node:readline";
 import { ASK_PACKED_SYSTEM, ASK_SYSTEM, askSchema } from "@/ai/ask";
 import { childEnv } from "@/ai/cli";
-import { bin } from "@/ai/engine";
+import { bin, modelOf } from "@/ai/engine";
 import { backend, structured } from "@/ai/server";
 import { fromCliResult, reportUsage } from "@/ai/usage";
 import { sourcesIn, verifyAnswer, type AskAnswer, type Found } from "@/hub/ask";
@@ -28,7 +28,6 @@ import { GOALS, type OrgStore } from "./org/store";
  * (src/hub/ask.ts): every quote found word for word in the piece or file it names.
  */
 
-const ASK_MODEL = process.env.DISCOVERY_MODEL || process.env.GENERATE_MODEL || "claude-opus-5-5";
 const TIME_LIMIT_MS = 240_000;
 const MAX_FILE = 2_000_000;
 
@@ -237,6 +236,7 @@ function viaAgent(store: OrgStore, ix: OrgIndex | null, q: AskRequest, g: Guide,
     try {
       const first = ix ? (await search(ix, { query: q.question, product: q.product, limit: 12 })).hits : [];
       const content = [g.text, ...(first.length ? ["", "What the organization's search finds for the question first:", ...first.map(pieceText)] : []), "", `The question: ${q.question}`].join("\n");
+      const asked = modelOf("ask");
       return await new Promise<{ raw: unknown; model?: string }>((resolve, reject) => {
         const args = [
           "-p",
@@ -245,7 +245,7 @@ function viaAgent(store: OrgStore, ix: OrgIndex | null, q: AskRequest, g: Guide,
           "--verbose",
           "--json-schema", JSON.stringify(askSchema({ topics: g.topicFiles })),
           "--system-prompt", ASK_SYSTEM,
-          "--model", ASK_MODEL,
+          "--model", asked,
           "--effort", "medium",
           // Read-only, inside the organization's folder: no shell, no web, no edits.
           "--tools", "Read,Grep,Glob",
@@ -291,7 +291,7 @@ function viaAgent(store: OrgStore, ix: OrgIndex | null, q: AskRequest, g: Guide,
         });
         proc.on("close", (code) => {
           both.removeEventListener("abort", kill);
-          reportUsage(fromCliResult(result as Parameters<typeof fromCliResult>[0], model ?? "claude"));
+          reportUsage(fromCliResult(result as Parameters<typeof fromCliResult>[0], model ?? asked, "ask"));
           if (signal.aborted) return reject(new DOMException("Stopped.", "AbortError"));
           if (limit.aborted) return reject(new Error("Qalam AI took too long to answer. Try a narrower question."));
           if (!result) return reject(new Error(stderr.trim() || `Claude Code exited with code ${code}.`));
@@ -320,7 +320,7 @@ function viaAgent(store: OrgStore, ix: OrgIndex | null, q: AskRequest, g: Guide,
 async function viaPacked(ix: OrgIndex, q: AskRequest, g: Guide): Promise<{ raw: unknown; model?: string }> {
   const p = await packFor(ix, { query: q.question, product: q.product, budget: 12_000, wholeTop: 40 });
   const { data, model } = await structured<Record<string, unknown>>({
-    model: ASK_MODEL,
+    kind: "ask",
     system: ASK_PACKED_SYSTEM,
     schema: askSchema({ sources: p.items.map((i) => i.k), topics: g.topicFiles }),
     effort: "high",

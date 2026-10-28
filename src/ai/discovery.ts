@@ -376,8 +376,9 @@ export function synthesizeIds(b: Extract<DiscoveryRequest, { stage: "synthesize"
   };
 }
 
-/** The extract call (minus its model): the route streams it to a board, the core reads it to its end. */
+/** The extract call: the route streams it to a board, the core reads it to its end. Its kind picks the model. */
 export const extractCall = (b: Extract<DiscoveryRequest, { stage: "extract" }>) => ({
+  kind: "extract" as const,
   system: withKnowledge(EXTRACT_SYSTEM, b.context, EXTRACT_KNOWLEDGE),
   schema: withPieceReliance(extractSchema(b.chunks.map((c) => c.id)), b.context),
   effort: "medium" as const,
@@ -385,10 +386,11 @@ export const extractCall = (b: Extract<DiscoveryRequest, { stage: "extract" }>) 
   content: [{ type: "text" as const, text: extractContent(b) }],
 });
 
-/** The synthesize call (minus its model): mapping quotes to a board's tree, or to several boards'. */
+/** The synthesize call: mapping quotes to a board's tree, or to several boards'. */
 export function synthesizeCall(b: Extract<DiscoveryRequest, { stage: "synthesize" }>) {
   const ids = synthesizeIds(b);
   return {
+    kind: "synthesize" as const,
     system: withKnowledge(SYNTHESIZE_SYSTEM, b.context, SYNTHESIZE_KNOWLEDGE),
     schema: withPieceReliance(synthesizeSchema(ids.cards, ids.parents, ids.quotes), b.context),
     effort: "high" as const,
