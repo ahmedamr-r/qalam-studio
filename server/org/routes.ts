@@ -54,7 +54,8 @@ export function orgRoutes(): Hono<Env> {
   r.get("/api/orgs", async (c) => {
     const current = await currentOrg();
     const orgs = await listOrgs();
-    return c.json({ home: qalamHome(), current: current.id, orgs: orgs.map(({ id, name, dir }) => ({ id, name, dir })) });
+    // None yet (the first run): the window welcomes them instead.
+    return c.json({ home: qalamHome(), current: current?.id ?? null, orgs: orgs.map(({ id, name, dir }) => ({ id, name, dir })) });
   });
   r.post("/api/orgs", async (c) => {
     const { name } = (await c.req.json().catch(() => ({}))) as { name?: string };

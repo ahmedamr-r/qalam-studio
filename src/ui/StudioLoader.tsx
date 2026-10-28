@@ -15,6 +15,7 @@ const Home = lazy(() => import("./home/Home"));
 const SystemProject = lazy(() => import("./SystemProject"));
 const TopicPage = lazy(() => import("./topics/TopicPage"));
 const SetupPage = lazy(() => import("./setup/SetupPage"));
+const WelcomePage = lazy(() => import("./welcome/WelcomePage"));
 const PLACE_PAGES = {
   boards: lazy(() => import("./places/BoardsPage")),
   topics: lazy(() => import("./places/TopicsPage")),
@@ -75,6 +76,15 @@ export function PlaceLoader({ place }: { place: PagePlace }) {
   return (
     <Loading>
       <Page />
+    </Loading>
+  );
+}
+
+/** The welcome: the first run, a new organization, or checking the setup again. */
+export function WelcomeLoader() {
+  return (
+    <Loading>
+      <WelcomePage />
     </Loading>
   );
 }

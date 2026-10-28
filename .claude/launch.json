@@ -19,6 +19,15 @@
         "source ~/.nvm/nvm.sh && nvm use >/dev/null && QALAM_HOME=.qalam-dev/home npx vite --port 3102"
       ],
       "port": 3102
+    },
+    {
+      "name": "studio-fresh",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-lc",
+        "source ~/.nvm/nvm.sh && nvm use >/dev/null && QALAM_HOME=.qalam-dev/fresh npx vite --port 3103"
+      ],
+      "port": 3103
     }
   ]
 }

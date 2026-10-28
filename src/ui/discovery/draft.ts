@@ -185,6 +185,8 @@ export async function draftTree(input: { answers: InterviewAnswer[]; followUps?:
   try {
     const { raw, sample, model } = await runDraft(input.answers, followUps, { sample: input.sample, signal: ctrl.signal, onDelta, onProgress: (tokens) => patchTurn(chatId, turnId, { tokens }), ...(org ? { context: org.context } : {}) });
     clearTimeout(timer);
+    // Asked for theirs, given the sample (Qalam AI isn't set up here): never pass one off as the other.
+    if (sample && !input.sample) feedback("Qalam AI isn't set up here, so this is the sample tree. Connections sets it up.", { kind: "error", id: "discovery.sample" });
     const draft = sanitizeDraft(raw, all, Date.now(), hub);
     if (!draft.outcome) throw new AIError("parse", "Qalam AI didn't return an outcome. Try again.");
     const rootId = place(draft, at, replace, all);

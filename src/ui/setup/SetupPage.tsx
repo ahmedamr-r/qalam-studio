@@ -7,7 +7,8 @@ import { currentOrg, type OrgRef } from "@/org/client";
 import { useOrgContext } from "@/org/context";
 import type { Product } from "@/org/context-md";
 import { boardGoals, pendingLines, type SetupField, type SetupLine, type SetupSession } from "@/org/setup";
-import { orgHref } from "@/projects/model";
+import { orgHref, placeHref } from "@/projects/model";
+import { feedback } from "@/commands/feedback";
 import { QalamAIGlyph } from "../brand/ai-glyph";
 import { Button, Tag } from "../controls";
 import { toQuestion } from "../ai/plan";
@@ -16,6 +17,8 @@ import { ErrorNote, Progress } from "../ai/common";
 import type { FlowState } from "../ai/questionFlow";
 import { r } from "../recipes";
 import { PageFrame } from "../frame/PageFrame";
+import { useCurrentOrg } from "../frame/store";
+import { StepHeader } from "../welcome/StepHeader";
 import { acceptLines, answerSetupRound, discardLines, openSetup, placeSetup, retrySetup, saveSetupRound, skipSetupRest, startBoard, startSetup, stopSetup, useSetup } from "./setup";
 
 /**
@@ -57,9 +60,24 @@ export default function SetupPage() {
   }, [org]);
 
   const name = org?.name ?? "your organization";
+  // The welcome's last two steps (?first=1): no sidebar yet, the steps on top, and a way out.
+  const [first] = useState(() => new URLSearchParams(window.location.search).get("first") === "1");
+  const phase = source?.setup?.phase;
   return (
-    <PageFrame place={null} crumbs={[{ label: "Set up" }]}>
+    <PageFrame
+      place={null}
+      focus={first}
+      crumbs={[{ label: "Set up" }]}
+      right={
+        first && phase !== "done" ? (
+          <a href={orgHref()} className={clsx(r.buttonSm, r.buttonGhost)}>
+            Set up later
+          </a>
+        ) : undefined
+      }
+    >
       <div className={clsx(r.pageMain, "max-w-[680px] gap-[20px]")}>
+        {first && phase !== "done" && <StepHeader at={phase === "review" ? "found" : "about"} />}
         {!opened ? null : source?.setup ? <Session source={source} s={source.setup} org={name} /> : <Compose org={name} />}
       </div>
     </PageFrame>
@@ -379,42 +397,68 @@ function LineRow({ line, label, source, state, working, act }: { line: SetupLine
   );
 }
 
-/** Every line settled: what's set up, and a board for each goal they accepted. */
+/**
+ * Every line settled: All set, with what's next (OpenClaw ends its setup the same way): a board for
+ * each goal they accepted, the inbox folder to drop material in, and Connections.
+ */
 function Done({ s, org, accepted }: { s: SetupSession; org: string; accepted: number }) {
   const goals = boardGoals(s);
   const { products } = useOrgContext();
+  const ref = useCurrentOrg();
   const [starting, setStarting] = useState<string | null>(null);
+  const inbox = ref ? `${ref.dir}/inbox` : null;
   return (
-    <section aria-label="Set up" className="flex flex-col gap-[12px]">
-      <p className="text-body text-fg-muted">
-        {accepted ? `${org} is set up: ${accepted === 1 ? "1 line" : `${accepted} lines`} written to its About and products. What you wrote goes on the topic pages too.` : `Nothing was written to ${org}.`}
-      </p>
-      {goals.length > 0 && (
-        <div className="flex flex-col gap-[6px]">
-          <span className="text-micro font-medium text-fg-subtle">Start a board for a goal</span>
-          {goals.map(({ line, product }) => (
-            <div key={line.id} className={clsx(qr.inset, "flex items-center gap-[10px] px-[12px] py-[8px]")}>
-              <span className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate text-body text-fg" dir="auto">
-                  {line.text}
-                </span>
-                <span className="text-micro text-fg-subtle">{product ? (products.find((p) => p.id === product)?.name ?? "A product") : "The whole organization"}</span>
+    <section aria-label="All set" className="flex flex-col gap-[16px]">
+      <div className="flex flex-col gap-[4px]">
+        <h2 className="flex items-center gap-[8px] text-heading font-semibold text-fg">
+          <span className="grid size-[22px] place-items-center rounded-full bg-success-subtle text-success">
+            <Check size={13} strokeWidth={2.5} />
+          </span>
+          All set
+        </h2>
+        <p className="text-body text-fg-muted">{accepted ? `${accepted === 1 ? "1 line" : `${accepted} lines`} written to ${org}'s About and products.` : `Nothing was written to ${org}.`}</p>
+      </div>
+      <div className="flex flex-col gap-[6px]">
+        <span className="text-micro font-medium text-fg-subtle">Next</span>
+        {goals.map(({ line, product }) => (
+          <div key={line.id} className={clsx(qr.inset, "flex items-center gap-[10px] px-[12px] py-[8px]")}>
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className="truncate text-body text-fg" dir="auto">
+                {line.text}
               </span>
-              <Button
-                size="sm"
-                variant="secondary"
-                disabled={!!starting}
-                onClick={() => {
-                  setStarting(line.id);
-                  void startBoard(line.id).catch(() => setStarting(null));
-                }}
-              >
-                {s.boards?.[line.id] ? "Open its board" : starting === line.id ? "Starting…" : "Start a board"}
-              </Button>
-            </div>
-          ))}
-        </div>
-      )}
+              <span className="text-micro text-fg-subtle">{product ? (products.find((p) => p.id === product)?.name ?? "A product") : "The whole organization"}</span>
+            </span>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={!!starting}
+              onClick={() => {
+                setStarting(line.id);
+                void startBoard(line.id).catch(() => setStarting(null));
+              }}
+            >
+              {s.boards?.[line.id] ? "Open its board" : starting === line.id ? "Starting…" : "Start a board"}
+            </Button>
+          </div>
+        ))}
+        {inbox && (
+          <div className={clsx(qr.inset, "flex items-center gap-[10px] px-[12px] py-[8px]")}>
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className="text-body text-fg">Drop interviews and notes in the inbox</span>
+              <span className="truncate font-mono text-micro text-fg-subtle">{inbox}</span>
+            </span>
+            <Button size="sm" variant="secondary" onClick={() => void navigator.clipboard.writeText(inbox).then(() => feedback("Copied the inbox's path", { kind: "success", id: "setup.inbox" }), () => {})}>
+              Copy the path
+            </Button>
+          </div>
+        )}
+        <a href={placeHref("connections")} className={clsx(qr.inset, "flex items-center gap-[10px] px-[12px] py-[8px] hover:bg-hover")}>
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="text-body text-fg">Connections</span>
+            <span className="text-micro text-fg-subtle">Qalam AI, what it used, and This Mac</span>
+          </span>
+        </a>
+      </div>
       <a href={orgHref()} className={clsx(r.button, r.buttonPrimary, "self-start")}>
         Go to {org}
       </a>

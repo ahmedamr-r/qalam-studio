@@ -17,7 +17,7 @@ import { refreshHealth } from "../frame/useHealth";
  * this week. "Claude Code" names the engine; Qalam's own AI is Qalam AI.
  */
 
-const PLAN: Record<string, string> = { max: "Max", pro: "Pro", team: "Team", enterprise: "Enterprise" };
+export const PLAN: Record<string, string> = { max: "Max", pro: "Pro", team: "Team", enterprise: "Enterprise" };
 const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
 
 export function EngineCard() {
@@ -112,7 +112,7 @@ export function EngineCard() {
 }
 
 /** A key typed in once: tested, then kept in the Keychain (never shown again, only its last four). */
-function KeyField({ view, onSaved, onError }: { view: EngineView; onSaved: (v: EngineView) => void; onError: (m: string | null) => void }) {
+export function KeyField({ view, onSaved, onError }: { view: EngineView; onSaved: (v: EngineView) => void; onError: (m: string | null) => void }) {
   const [key, setKey] = useState("");
   const [busy, setBusy] = useState(false);
   if (view.key && !key)
@@ -177,7 +177,7 @@ function Usage({ u, kind }: { u: UsageSummary; kind: EngineKind }) {
   );
 }
 
-function CopyCommand({ command }: { command: string }) {
+export function CopyCommand({ command }: { command: string }) {
   return (
     <Tip label="Run it in a terminal, then Test">
       <button

@@ -17,14 +17,16 @@ afterEach(async () => {
 });
 
 describe("organizations", () => {
-  it("makes Personal the first time, then opens the one opened last", async () => {
-    const first = await currentOrg(home);
+  it("has none the first time (the welcome names it), and opens the one opened last", async () => {
+    expect(await currentOrg(home)).toBeNull();
+    expect((await readdir(home).catch(() => [])).filter((n) => !n.startsWith("."))).toEqual([]);
+    const first = (await currentOrg(home, { create: true }))!;
     expect(first.name).toBe("Personal");
     expect((await readdir(home)).filter((n) => !n.startsWith("."))).toEqual(["Personal"]);
     const basket = await createOrg("Basket", home);
-    expect((await currentOrg(home)).id).toBe(first.id);
+    expect((await currentOrg(home))!.id).toBe(first.id);
     await rememberOrg(basket.id, home);
-    expect((await currentOrg(home)).id).toBe(basket.id);
+    expect((await currentOrg(home))!.id).toBe(basket.id);
     expect((await listOrgs(home)).map((o) => o.name)).toEqual(["Basket", "Personal"]);
   });
 

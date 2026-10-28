@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { orgHref, placeHref, projectHref, setupHref, topicHref } from "@/projects/model";
+import { orgHref, placeHref, projectHref, setupHref, topicHref, welcomeHref } from "@/projects/model";
 import { routeOf } from "./routes";
 
 describe("routeOf", () => {
@@ -39,6 +39,12 @@ describe("routeOf", () => {
     expect(routeOf("/boards")).toEqual({ kind: "missing" });
     expect(routeOf("/o/R02vmeVH/boards/x")).toEqual({ kind: "missing" });
     expect(routeOf("/o/R02vmeVH/home")).toEqual({ kind: "missing" });
+  });
+
+  it("reads the welcome, only outside an organization", () => {
+    expect(routeOf(welcomeHref())).toEqual({ kind: "welcome" });
+    expect(routeOf(welcomeHref("verify").split("?")[0])).toEqual({ kind: "welcome" });
+    expect(routeOf("/o/R02vmeVH/welcome")).toEqual({ kind: "missing" });
   });
 
   it("reads addresses from before organizations", () => {

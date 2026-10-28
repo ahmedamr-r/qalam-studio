@@ -10,8 +10,8 @@ import { OrgStore, type OrgEvent, type OrgInfo } from "./store";
 /**
  * Where organizations live: one folder each under ~/Qalam (QALAM_HOME moves it, for tests), plus
  * any folder opened as one from elsewhere (a repository, a shared drive). ~/Qalam/.qalam.json
- * remembers those folders and the organization opened last. The first time Qalam runs it makes
- * "Personal", so there's always somewhere to save.
+ * remembers those folders and the organization opened last. The first time Qalam runs there's none:
+ * the welcome asks them to name it.
  */
 
 export { qalamHome } from "../paths";
@@ -87,12 +87,16 @@ export async function createOrg(name: string, home = qalamHome()): Promise<OrgLi
   return { id: store.info.id, name: store.info.name, dir };
 }
 
-/** The organization a new window opens: the last one opened, else the first there is, else a new "Personal". */
-export async function currentOrg(home = qalamHome()): Promise<OrgListing> {
+/**
+ * The organization a new window opens: the last one opened, else the first there is. With none
+ * yet, null: the window welcomes them and they name their first (src/ui/welcome). `create` makes a
+ * "Personal" instead, as Qalam did before it had a welcome.
+ */
+export async function currentOrg(home = qalamHome(), o: { create?: boolean } = {}): Promise<OrgListing | null> {
   const orgs = await listOrgs(home);
   const last = (await readRegistry(home)).last;
-  const found = orgs.find((o) => o.id === last) ?? orgs[0];
-  if (found) return found;
+  const found = orgs.find((x) => x.id === last) ?? orgs[0];
+  if (found || !o.create) return found ?? null;
   const made = await createOrg(DEFAULT_ORG, home);
   await rememberOrg(made.id, home);
   return made;
@@ -220,7 +224,7 @@ export async function announceAll(e: OrgEvent) {
 /** Open the organization opened last when Qalam starts, so its inbox is read from then on, before (or without) a window asking for it. */
 export function openLastOrg(): Promise<OrgStore | null> {
   return currentOrg()
-    .then((o) => storeFor(o.id))
+    .then((o) => (o ? storeFor(o.id) : null))
     .catch((e) => {
       console.warn(`[qalam] couldn't open the organization opened last: ${e instanceof Error ? e.message : String(e)}`);
       return null;

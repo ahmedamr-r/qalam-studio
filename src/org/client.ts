@@ -23,6 +23,20 @@ export class OrgMissing extends Error {
   }
 }
 
+/** There's no organization on this computer yet: the first run (the window welcomes them). */
+export class NoOrgYet extends Error {
+  constructor() {
+    super("There's no organization on this computer yet");
+  }
+}
+
+/** The core didn't answer (`status`: 503 while it starts, 502 if it stopped). */
+export class CantReachFiles extends Error {
+  constructor(readonly status: number) {
+    super(`Qalam can't reach its files (${status})`);
+  }
+}
+
 /** Work in this organization (from the address); null: the one opened last. */
 export function chooseOrg(id: string | null) {
   if (chosen === id && org) return;
@@ -30,13 +44,14 @@ export function chooseOrg(id: string | null) {
   org = null;
 }
 
-/** The org this window works in: the one in its address, or the one opened last (the server makes "Personal" the first time). */
+/** The org this window works in: the one in its address, or the one opened last (none the first time: NoOrgYet). */
 export function currentOrg(): Promise<OrgRef> {
   org ??= fetch("/api/orgs")
     .then(async (r) => {
-      if (!r.ok) throw new Error(`Qalam can't reach its files (${r.status})`);
-      const j = (await r.json()) as { current: string; orgs: OrgRef[] };
+      if (!r.ok) throw new CantReachFiles(r.status);
+      const j = (await r.json()) as { current: string | null; orgs: OrgRef[] };
       const want = chosen ?? j.current;
+      if (!want) throw new NoOrgYet();
       const o = j.orgs.find((x) => x.id === want);
       if (!o) throw new OrgMissing(want);
       return o;
@@ -49,9 +64,9 @@ export function currentOrg(): Promise<OrgRef> {
 }
 
 /** Every organization on this computer, and the one a new window opens. */
-export async function listOrgs(): Promise<{ current: string; orgs: OrgRef[] }> {
+export async function listOrgs(): Promise<{ current: string | null; orgs: OrgRef[] }> {
   const r = await fetch("/api/orgs");
-  if (!r.ok) throw new Error(`Qalam can't reach its files (${r.status})`);
+  if (!r.ok) throw new CantReachFiles(r.status);
   return r.json();
 }
 

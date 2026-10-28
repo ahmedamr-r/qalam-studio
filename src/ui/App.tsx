@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import clsx from "clsx";
 import { bootOrg } from "@/org/boot";
-import { listOrgs, OrgMissing, type OrgRef } from "@/org/client";
-import { orgHref, placeHref, projectLetter, type ProjectType } from "@/projects/model";
+import { CantReachFiles, listOrgs, NoOrgYet, OrgMissing, type OrgRef } from "@/org/client";
+import { orgHref, placeHref, projectLetter, welcomeHref, type ProjectType } from "@/projects/model";
 import { Splash } from "./brand/splash";
 import { r } from "./recipes";
 import { routeOf, type Route } from "./routes";
 import { legacyTab } from "./frame/places";
-import StudioLoader, { HomeLoader, PlaceLoader, SetupLoader, SystemProjectLoader, TopicLoader } from "./StudioLoader";
+import StudioLoader, { HomeLoader, PlaceLoader, SetupLoader, SystemProjectLoader, TopicLoader, WelcomeLoader } from "./StudioLoader";
+import { bootRetryDelay } from "./welcome/steps";
 
 type State = { kind: "loading" } | { kind: "ready"; org: OrgRef } | { kind: "error"; message: string; missingOrg?: boolean } | { kind: "missing" };
 
@@ -16,7 +17,9 @@ export function App() {
   const [route] = useState<Route>(() => routeOf(window.location.pathname));
   const [state, setState] = useState<State>({ kind: "loading" });
 
-  const boot = () => {
+  const boot = (attempt = 0) => {
+    // The welcome needs no organization (there may be none yet).
+    if (route.kind === "welcome") return;
     setState({ kind: "loading" });
     const org = route.kind === "org" || route.kind === "project" || route.kind === "topic" || route.kind === "setup" || route.kind === "place" ? route.org : null;
     bootOrg(org).then(
@@ -34,11 +37,19 @@ export function App() {
         }
         setState({ kind: "ready", org: o });
       },
-      (e: unknown) => setState({ kind: "error", message: e instanceof Error ? e.message : String(e), missingOrg: e instanceof OrgMissing }),
+      (e: unknown) => {
+        // The first run: nothing to open yet, so the welcome.
+        if (e instanceof NoOrgYet) return window.location.replace(welcomeHref());
+        // The desktop app's core may still be starting (503) or restarting (502): wait for it a while.
+        const wait = e instanceof CantReachFiles && (e.status === 503 || e.status === 502) ? bootRetryDelay(attempt) : null;
+        if (wait !== null) return void setTimeout(() => boot(attempt + 1), wait);
+        setState({ kind: "error", message: e instanceof Error ? e.message : String(e), missingOrg: e instanceof OrgMissing });
+      },
     );
   };
-  useEffect(boot, []);
+  useEffect(() => boot(), []);
 
+  if (route.kind === "welcome") return <WelcomeLoader />;
   if (state.kind === "loading")
     return (
       <div className="fixed inset-0 grid place-items-center bg-app text-fg">
@@ -73,7 +84,7 @@ function CantReach({ message, onRetry }: { message: string; onRetry: () => void 
       <div className="flex w-[340px] flex-col items-center gap-[12px] text-center">
         <p className="text-title font-medium text-fg">Qalam can't reach your files</p>
         <p className="text-body text-fg-muted">{message}</p>
-        <button type="button" className={clsx(r.button, r.buttonSecondary)} onClick={onRetry}>
+        <button type="button" className={clsx(r.button, r.buttonSecondary)} onClick={() => onRetry()}>
           Try again
         </button>
       </div>
