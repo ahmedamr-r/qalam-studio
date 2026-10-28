@@ -9,6 +9,7 @@ import { boardGoals, pendingLines } from "@/org/setup";
 import { goalHref, orgHref, placeHref } from "@/projects/model";
 import { feedback } from "@/commands/feedback";
 import { QalamAIGlyph } from "../brand/ai-glyph";
+import { ConnectorLogo } from "../brand/ConnectorLogo";
 import { Button, Checkbox, Spinner, Tag } from "../controls";
 import { toQuestion } from "../ai/plan";
 import { qr } from "../ai/Questionnaire";
@@ -374,6 +375,7 @@ function ConnectPart() {
           const tone = c.id === "github" ? (gh ? "ok" : "off") : (t?.tone ?? "off");
           return (
             <li key={c.id} className={clsx(qr.inset, "flex items-center gap-[10px] px-[12px] py-[8px]")}>
+              <ConnectorLogo id={c.id} size={28} decorative />
               <span className="flex min-w-0 flex-1 flex-col">
                 <span className="text-body text-fg">{t?.label ?? (c.id === "github" ? "GitHub" : c.id)}</span>
                 <span className="text-caption text-fg-muted">{c.why}</span>

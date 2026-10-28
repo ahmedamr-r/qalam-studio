@@ -3,6 +3,7 @@ import clsx from "clsx";
 import { Check, ChevronRight, Star, Target, X } from "lucide-react";
 import { useGoals } from "@/goals/client";
 import { useOrgContext } from "@/org/context";
+import { ConnectorLogo } from "../brand/ConnectorLogo";
 import { Button, IconBtn, Tag } from "../controls";
 import { qr } from "../ai/Questionnaire";
 import { Panel, useWide, WIDE } from "../chat/Panels";
@@ -175,7 +176,7 @@ export function SoFar() {
               <h3 className="text-micro font-medium text-fg-subtle">Connected</h3>
               {connected.map((t) => (
                 <span key={t.id} className="flex items-center gap-[8px] text-body text-fg">
-                  <StatusDot tone="ok" /> {t.label}
+                  <ConnectorLogo id={t.id} decorative /> {t.label}
                 </span>
               ))}
             </section>
