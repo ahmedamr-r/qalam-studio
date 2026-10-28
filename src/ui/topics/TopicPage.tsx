@@ -12,11 +12,13 @@ import { useOrgContext } from "@/org/context";
 import { onOrgChange } from "@/org/live";
 import { topicsDb, type CitedPiece, type TopicView } from "@/org/topics";
 import { placeHref, projectHref } from "@/projects/model";
-import { Button, Tag, Tip } from "../controls";
+import { Button, Tip } from "../controls";
 import { Menu, MenuItem, MenuSeparator, SubMenu } from "../menu";
 import { r } from "../recipes";
 import { confirmDialog, promptDialog } from "../surfaces/dialog";
 import { PageFrame } from "../frame/PageFrame";
+import { QalamAIGlyph } from "../brand";
+import { NeedStrip } from "./NeedStrip";
 import { ago } from "../time";
 
 /**
@@ -180,6 +182,8 @@ export default function TopicPage({ id }: { id: string }) {
             {t.intro && <p className="whitespace-pre-wrap text-body text-fg-muted">{t.intro}</p>}
           </div>
 
+          {t.kind === "need" && view.summary && <NeedStrip s={view.summary} shows={view.shows} />}
+
           {SECTIONS.map((s) => {
             const lines = t.lines.filter((l) => l.section === s);
             return (
@@ -271,29 +275,72 @@ export default function TopicPage({ id }: { id: string }) {
 
 function LineRow({ l, view, onEdit, onMove, onRemove, onResolve }: { l: TopicLine; view: TopicView; onEdit: (text: string) => void; onMove: (to: TopicSection) => void; onRemove: () => void; onResolve: (dispute: string) => void }) {
   const [editing, setEditing] = useState(false);
+  const [open, setOpen] = useState(false);
   const backing = backingOf(l.cites, view);
+  // What it rests on: the pieces it cites, or where it came from when it cites none.
+  const n = l.cites.length || l.from.length;
   return (
-    <li className="flex items-start gap-[8px] px-[12px] py-[10px]">
-      <div className="flex min-w-0 flex-1 flex-col gap-[6px]">
+    <li className="flex flex-col gap-[6px] px-[12px] py-[8px]">
+      <div className="flex items-start gap-[8px]">
         {editing ? (
-          <LineInput
-            initial={l.text}
-            onSave={(text) => {
-              setEditing(false);
-              onEdit(text);
-            }}
-            onCancel={() => setEditing(false)}
-          />
-        ) : (
-          <p className="text-body text-fg">{l.text}</p>
-        )}
-        {(l.by === "qalam" || l.cites.length > 0 || l.from.length > 0) && (
-          <div className="flex flex-wrap items-center gap-[6px]">
-            {l.by === "qalam" && <Tag tone="ai">Qalam AI</Tag>}
-            <Cites refs={l.cites} from={l.from} view={view} />
-            {backing && <span className="text-micro text-fg-subtle">{backing}</span>}
+          <div className="min-w-0 flex-1">
+            <LineInput
+              initial={l.text}
+              onSave={(text) => {
+                setEditing(false);
+                onEdit(text);
+              }}
+              onCancel={() => setEditing(false)}
+            />
           </div>
+        ) : (
+          <p className="min-w-0 flex-1 py-[2px] text-body text-fg">{l.text}</p>
         )}
+        {l.by === "qalam" && (
+          <Tip label="Qalam AI's line: kept only because what it cites says so">
+            <span className="mt-[6px] shrink-0">
+              <QalamAIGlyph size={12} />
+            </span>
+          </Tip>
+        )}
+        {n > 0 && (
+          <Tip label={open ? "Hide what it rests on" : (backing ?? "What it rests on")}>
+            <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} className={clsx(r.chip, "mt-[2px] shrink-0 hover:text-fg aria-expanded:bg-hover aria-expanded:text-fg")}>
+              <Quote size={10} absoluteStrokeWidth strokeWidth={1.25} />
+              <span className="tnum">{n}</span>
+            </button>
+          </Tip>
+        )}
+        <Menu
+          label="Line actions"
+          align="end"
+          className="w-[180px]"
+          trigger={
+            <button type="button" aria-label="Line actions" className={clsx(r.iconButtonSm, "shrink-0")}>
+              <MoreHorizontal {...ICON} />
+            </button>
+          }
+        >
+          <MenuItem onSelect={() => setEditing(true)}>Edit…</MenuItem>
+          <SubMenu label="Move to" checks>
+            {SECTIONS.map((s) => (
+              <MenuItem key={s} checked={l.section === s} onSelect={() => l.section !== s && onMove(s)}>
+                {SECTION_HEADING[s]}
+              </MenuItem>
+            ))}
+          </SubMenu>
+          <MenuSeparator />
+          <MenuItem danger onSelect={onRemove}>
+            Remove
+          </MenuItem>
+        </Menu>
+      </div>
+      {open && (
+        <div className="flex flex-wrap items-center gap-[6px]">
+          <Cites refs={l.cites} from={l.from} view={view} />
+          {backing && <span className="text-micro text-fg-subtle">{backing}</span>}
+        </div>
+      )}
         {l.disputes?.map((d) => (
           <div key={d.id} className="flex items-start gap-[8px] rounded-md bg-warning-subtle px-[8px] py-[6px]">
             <div className="flex min-w-0 flex-1 flex-col gap-[4px]">
@@ -310,30 +357,6 @@ function LineRow({ l, view, onEdit, onMove, onRemove, onResolve }: { l: TopicLin
           </div>
         ))}
         {l.more?.trim() && <p className="whitespace-pre-wrap text-caption text-fg-muted">{l.more.trim()}</p>}
-      </div>
-      <Menu
-        label="Line actions"
-        align="end"
-        className="w-[180px]"
-        trigger={
-          <button type="button" aria-label="Line actions" className={clsx(r.iconButtonSm, "shrink-0")}>
-            <MoreHorizontal {...ICON} />
-          </button>
-        }
-      >
-        <MenuItem onSelect={() => setEditing(true)}>Edit…</MenuItem>
-        <SubMenu label="Move to" checks>
-          {SECTIONS.map((s) => (
-            <MenuItem key={s} checked={l.section === s} onSelect={() => l.section !== s && onMove(s)}>
-              {SECTION_HEADING[s]}
-            </MenuItem>
-          ))}
-        </SubMenu>
-        <MenuSeparator />
-        <MenuItem danger onSelect={onRemove}>
-          Remove
-        </MenuItem>
-      </Menu>
     </li>
   );
 }

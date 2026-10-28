@@ -1,6 +1,5 @@
-import { pairKey, runChecks, type CheckBoard, type CheckInput, type Notice, type ShownOn } from "@/hub/checks";
-import { indexFor } from "../index/registry";
-import { showsUp } from "../index/search";
+import { pairKey, runChecks, type CheckBoard, type CheckInput, type Notice } from "@/hub/checks";
+import { knowledgeInputs } from "./needs";
 import type { OrgStore } from "./store";
 
 /**
@@ -27,31 +26,14 @@ export async function noticesNow(store: OrgStore, now = Date.now()): Promise<Not
     const doc = (await store.getDoc(p.id).catch(() => null))?.doc ?? null;
     boards.push({ id: p.id, name: p.name, product: p.product ?? null, createdAt: p.createdAt, doc });
   }
-  const topics = await store.listTopics();
   const relations = await store.listRelations();
   const sources = await store.listSources();
   const placed = (await store.listPlacements()).flatMap((p) => {
     const s = sources.find((x) => x.id === p.sourceId);
     return s ? [{ board: p.board, sourceId: s.id, title: s.title, count: p.proposals.length, at: s.addedAt }] : [];
   });
-  const input: CheckInput = { now, boards, decisions: store.listDecisions(), topics, indexed: false, shows: new Map(), pieces: new Map(), linked: new Set(relations.map((r) => pairKey(r.a, r.b))), placed };
-  try {
-    const ix = indexFor(store);
-    // Caught up with the folder first: a page's pieces not indexed yet would look gone.
-    await ix.settled();
-    const cited = [...new Set(topics.flatMap((t) => t.lines.flatMap((l) => [...l.cites, ...(l.disputes ?? []).flatMap((d) => d.cites)])))];
-    for (const [ref, row] of ix.piecesByRef(cited)) input.pieces.set(ref, { type: row.type, sub: row.sub, source: row.source, stage: row.stage, at: row.at });
-    for (const t of topics) {
-      const refs = [...new Set(t.lines.flatMap((l) => l.cites))];
-      input.shows.set(
-        t.id,
-        showsUp(ix, t.title, refs).map((s): ShownOn => ({ ref: s.ref, board: s.board, card: s.card, kind: s.kind, shared: s.shared })),
-      );
-    }
-    input.indexed = true;
-  } catch {
-    // No index here (Node without full-text search): the checks that need it wait.
-  }
+  const k = await knowledgeInputs(store);
+  const input: CheckInput = { now, boards, decisions: store.listDecisions(), topics: k.topics, indexed: k.indexed, shows: k.shows, pieces: k.pieces, linked: new Set(relations.map((r) => pairKey(r.a, r.b))), placed };
   const state = await store.noticeState();
   const all = [...runChecks(input), ...state.found];
   return {

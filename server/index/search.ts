@@ -198,13 +198,15 @@ export interface ShowsUp {
   shared: number;
 }
 
+/** Every card's title, for showsUp (read once when it's asked of many pages). */
+export const cardTitles = (index: OrgIndex) => index.db.prepare("select ref, title from pieces where type = 'card' and title is not null").all() as { ref: string; title: string }[];
+
 /** The cards that rest on (or are spoken against by) pieces a page cites, and cards named like it; most shared first. */
-export function showsUp(index: OrgIndex, title: string, refs: string[]): ShowsUp[] {
+export function showsUp(index: OrgIndex, title: string, refs: string[], titles: { ref: string; title: string }[] = cardTitles(index)): ShowsUp[] {
   const count = new Map<string, number>();
   for (const ref of refs)
     for (const l of index.links(ref)) if (!l.out && (l.kind === "backs" || l.kind === "against") && l.ref.startsWith("hub:card:")) count.set(l.ref, (count.get(l.ref) ?? 0) + 1);
-  for (const row of index.db.prepare("select ref, title from pieces where type = 'card' and title is not null").all() as { ref: string; title: string }[])
-    if (!count.has(row.ref) && sameTopic(row.title, title)) count.set(row.ref, 0);
+  for (const row of titles) if (!count.has(row.ref) && sameTopic(row.title, title)) count.set(row.ref, 0);
   const rows = index.piecesByRef([...count.keys()]);
   return [...count]
     .flatMap(([ref, shared]) => {

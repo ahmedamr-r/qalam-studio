@@ -13,13 +13,10 @@
     },
     {
       "name": "studio-test",
-      "runtimeExecutable": "env",
+      "runtimeExecutable": "bash",
       "runtimeArgs": [
-        "QALAM_HOME=.qalam-dev/home",
-        "npx",
-        "vite",
-        "--port",
-        "3102"
+        "-lc",
+        "source ~/.nvm/nvm.sh && nvm use >/dev/null && QALAM_HOME=.qalam-dev/home npx vite --port 3102"
       ],
       "port": 3102
     }

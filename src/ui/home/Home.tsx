@@ -15,12 +15,15 @@ import { NeedsALook } from "../org/NeedsALook";
 import { AskBar } from "../org/AskBar";
 import { useOrgData } from "../org/useOrgData";
 import { useNotices } from "../notices/useNotices";
+import type { NoticesNow } from "@/org/notices";
 import { useTopics } from "../topics/list";
 import { PageFrame } from "../frame/PageFrame";
 import { useCurrentOrg } from "../frame/store";
 import { ProjectCard } from "../places/ProjectCard";
 import { inScope, withScope } from "./scope";
 import { useScope } from "./useScope";
+import { useNeeds } from "./useNeeds";
+import { NextUp } from "./NextUp";
 
 /**
  * An organization's home, for the product in view: asking what it knows, what needs a look (since
@@ -34,6 +37,7 @@ export default function Home() {
   const org = useCurrentOrg();
   const [scope, setScope] = useScope();
   const notices = useNotices();
+  const needs = useNeeds();
   const topics = useTopics();
   const { products, about, loaded } = useOrgContext();
 
@@ -69,7 +73,9 @@ export default function Home() {
 
         <AskBar product={product?.id ?? null} topics={topics} />
 
-        <NeedsALook now={notices} scope={(n) => scope === "all" || (scope === "org" ? !n.products.length : n.products.includes(scope))} projects={projects ?? []} topics={topics} />
+        <NextUp now={needs} scope={scope} projects={projects ?? []} />
+
+        <NeedsALook now={withoutRanked(notices)} scope={(n) => scope === "all" || (scope === "org" ? !n.products.length : n.products.includes(scope))} projects={projects ?? []} topics={topics} />
 
         {product ? (
           <ContextCard title={product.name} context={product} onEdit={() => editContext({ kind: "product", product })} empty={`Tell Qalam AI what ${product.name} is: who it's for and what you're trying to move. Every board for it starts from this.`} />
@@ -207,3 +213,6 @@ function MoveFromBrowser({ org, onMoved }: { org: OrgRef | null; onMoved: () => 
     </div>
   );
 }
+
+/** Needs on no board are What to work on next's ○ rows: Needs a look leaves them out. */
+const withoutRanked = (n: NoticesNow | null): NoticesNow | null => n && { ...n, notices: n.notices.filter((x) => x.kind !== "pattern") };

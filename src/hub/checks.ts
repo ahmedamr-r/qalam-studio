@@ -4,7 +4,8 @@ import { backing } from "@/discovery/evidence";
 import type { OstCard } from "@/discovery/types";
 import { factHash } from "@/knowledge/refs";
 import { cardRef } from "./pieces";
-import { isEvidence, sameTopic, type Topic } from "./topics";
+import { needEvidence, type PieceFacts, type ShownOn } from "./needs";
+import { sameTopic, type Topic } from "./topics";
 
 /**
  * What needs a look (pure): checks code runs over the organization's boards, decisions and topic
@@ -65,13 +66,7 @@ export interface CheckBoard {
   doc: Doc | null;
 }
 
-export interface ShownOn {
-  ref: string;
-  board: string;
-  card: string;
-  kind: string;
-  shared: number;
-}
+export type { ShownOn } from "./needs";
 
 export interface CheckInput {
   now: number;
@@ -83,7 +78,7 @@ export interface CheckInput {
   /** The cards on boards that rest on each page's pieces, by page. */
   shows: Map<string, ShownOn[]>;
   /** What the index has of the pieces pages cite (a piece not in it is gone). */
-  pieces: Map<string, { type: string; sub: string | null; source: string | null; stage: string | null; at: number }>;
+  pieces: Map<string, PieceFacts>;
   /** Cards linked as the same need ("<ref>|<ref>", sorted). */
   linked: Set<string>;
   /** Proposals waiting on a board from material added to the organization (a capture, the inbox). */
@@ -152,18 +147,7 @@ export function runChecks(x: CheckInput): Notice[] {
       const shown = x.shows.get(t.id) ?? [];
       // A need customers keep raising, on no board: its known lines rest on two sources or more.
       if (t.kind === "need" && !shown.length) {
-        const known = t.lines.filter((l) => l.section === "know");
-        const quotes = new Set<string>();
-        const sources = new Set<string>();
-        let newest = 0;
-        for (const l of known)
-          for (const ref of l.cites) {
-            const p = x.pieces.get(ref);
-            if (!p || !isEvidence(p)) continue;
-            quotes.add(ref);
-            sources.add(p.source ?? ref);
-            newest = Math.max(newest, l.at, p.at);
-          }
+        const { quotes, sources, newest } = needEvidence(t, x.pieces);
         if (sources.size >= 2)
           out.push({
             key: `pattern:${t.id}:${tier(sources.size)}`,

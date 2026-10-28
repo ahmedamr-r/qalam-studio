@@ -1,3 +1,4 @@
+import type { RankedNeed } from "@/hub/needs";
 import type { Applied, Filing, Topic, TopicInfo } from "@/hub/topics";
 import { orgFetch, orgGet, orgJson, orgWrite } from "./client";
 
@@ -43,6 +44,8 @@ export interface TopicView {
   /** The sources of quotes it cites, with the boards that use them. */
   sources: Record<string, { title: string; boards: string[] }>;
   shows: ShowsUpOn[];
+  /** A need page's strip: how strong it is, who raises it, how it's grown, the boards that have it (none without the index). */
+  summary?: RankedNeed | null;
 }
 
 export interface Filed {

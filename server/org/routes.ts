@@ -13,6 +13,8 @@ import { orgGraph } from "@/hub/graph";
 import { filingShape, topicShape, type Topic } from "@/hub/topics";
 import { chooseFolder, createOrg, currentOrg, listOrgs, openFolder, qalamHome, rememberOrg, storeFor } from "./home";
 import { noticesNow } from "./notices";
+import { needsNow } from "./needs";
+import { needSummary } from "@/hub/needs";
 import { reviewOrg } from "./review";
 import { askOrg } from "../ask";
 import { captureSource, fileSources } from "../capture";
@@ -229,6 +231,8 @@ export function orgRoutes(): Hono<Env> {
 
   // Needs a look: what code's checks and Qalam AI's reviews found, less what was dismissed; a
   // board asks for what's about its cards.
+  /** Every need page, the best-backed first: what to work on next (src/hub/needs.ts). */
+  r.get("/api/org/:org/needs", async (c) => c.json(await needsNow(c.get("store"))));
   r.get("/api/org/:org/notices", async (c) => {
     const n = await noticesNow(c.get("store"));
     const board = c.req.query("board");
@@ -553,9 +557,12 @@ async function topicContext(store: OrgStore, t: Topic) {
       if (s) sources[id] = { title: s.title, boards: (s.boards ?? []).filter((b) => store.getProject(b)) };
     }
     const shows = showsUp(ix, t.title, refs).map((s) => ({ ...s, boardName: store.getProject(s.board)?.record.name ?? null }));
-    return { cited, sources, shows };
+    // A need's strip: how strong it is, who raises it, how it's grown, which boards have it.
+    const facts = new Map([...rows].map(([ref, row]) => [ref, { type: row.type, sub: row.sub, source: row.source, stage: row.stage, at: row.at }]));
+    const summary = t.kind === "need" ? needSummary(t, { now: Date.now(), topics: await store.listTopics(), pieces: facts, shows: new Map([[t.id, shows]]) }) : null;
+    return { cited, sources, shows, summary };
   } catch {
-    return { cited: {}, sources: {}, shows: [] };
+    return { cited: {}, sources: {}, shows: [], summary: null };
   }
 }
 
