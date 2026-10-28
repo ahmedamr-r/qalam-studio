@@ -26,7 +26,7 @@ export interface ChatMessage {
 }
 
 /** Which buttons a `choices` part shows. */
-export type ChoiceSet = "door" | "skip" | "propose" | "proposal" | "know-review" | "goals-in" | "verify";
+export type ChoiceSet = "door" | "skip" | "know-skip" | "propose" | "proposal" | "know-review" | "goals-in" | "verify";
 
 export type EngineState = "looking" | "testing" | "ready" | "problem" | "skipped" | "unknown";
 
@@ -125,7 +125,7 @@ export function threadOf(i: ThreadInput): ChatMessage[] {
     out.push(ai("know:ask", text("Write them down: the North Star first, then each goal indented under the one it feeds. Add the numbers you have.")));
     if (k.sent) out.push(you("know:outline", part("outline")));
     if (k.questions && (k.phase === "asking" || k.answered)) {
-      out.push(ai("know:missing", text(k.questions === 1 ? "One number is missing a part. Answer what you know." : `${k.questions} numbers are missing a part. Answer what you know.`)));
+      out.push(ai("know:missing", text(k.questions === 1 ? "One number is missing a part. Answer what you know." : `${k.questions} numbers are missing a part. Answer what you know.`), ...(k.phase === "asking" && !i.busy ? [part("choices", { set: "know-skip" })] : [])));
       if (k.answered) out.push(you("know:answers", ...(k.answered === "answered" ? [part("answers", { scope: "know" })] : [text("Skip the questions")])));
     }
     if (k.phase === "review" && !i.busy) out.push(ai("know:review", text(k.goals === 1 ? "Here's your goal, on the right. Add it when it reads right." : `Here are your ${k.goals} goals, on the right. Leave out any that don't belong, then add them.`), part("choices", { set: "know-review", n: k.goals })));

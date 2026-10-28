@@ -37,6 +37,8 @@ export interface FirstRun {
   tools: ConnectorState[] | null;
   /** Who this Mac's GitHub CLI is (or Qalam's own sign-in); null: neither. */
   gh: string | null | undefined;
+  /** The So far drawer, when the window is too narrow for the panel. */
+  soFarOpen: boolean;
 }
 
 export const useFirstRun = create<FirstRun>(() => ({
@@ -52,6 +54,7 @@ export const useFirstRun = create<FirstRun>(() => ({
   picked: null,
   tools: null,
   gh: undefined,
+  soFarOpen: false,
 }));
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -144,6 +147,8 @@ function push(patch: Record<string, string>) {
   for (const [k, v] of Object.entries(patch)) u.searchParams.set(k, v);
   history.pushState(null, "", u);
 }
+
+export const openSoFar = (soFarOpen: boolean) => useFirstRun.setState({ soFarOpen });
 
 export function pickDoor(door: Door) {
   push({ door });
