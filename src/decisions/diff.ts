@@ -20,6 +20,11 @@ export interface DiffContext {
   /** Who made the change: you, or Qalam AI's proposals you accepted. */
   by?: Decision["by"];
   newId: () => string;
+  /**
+   * Outcome cards that work on a goal (goals.md). Their number and stage are the goal's: a change
+   * to either is recorded where the goal is changed (src/goals/decisions.ts), not here.
+   */
+  linked?: ReadonlySet<string>;
 }
 
 interface CardAt {
@@ -43,7 +48,7 @@ function cardsOf(doc: Doc): Map<string, CardAt> {
   return out;
 }
 
-const q = (t: string) => `“${t.trim() || "Untitled"}”`;
+export const q = (t: string) => `“${t.trim() || "Untitled"}”`;
 
 function from(e: OstEvidence): string | undefined {
   if (e.kind === "quote") return e.sourceTitle ?? "a source";
@@ -82,7 +87,7 @@ export function knewThen(cards: Map<string, CardAt>, id: string): KnewThen | und
 const hasBacking = (c: OstCard) => backing(c).length > 0;
 
 /** The line for a stage change, by kind. */
-function stageLine(kind: OstKind, title: string, from: string, to: string): string {
+export function stageLine(kind: OstKind, title: string, from: string, to: string): string {
   const t = q(title);
   switch (`${kind}:${to}`) {
     case "opportunity:parked":
@@ -127,7 +132,7 @@ function bigStage(card: OstCard, to: string): boolean {
   return (card.kind === "opportunity" && to === "parked" && hasBacking(card)) || (card.kind === "solution" && to === "dropped");
 }
 
-const num = (v: number | null | undefined, unit?: string) => (v === null || v === undefined ? "none" : `${v}${unit ? ` ${unit}` : ""}`);
+export const num = (v: number | null | undefined, unit?: string) => (v === null || v === undefined ? "none" : `${v}${unit ? ` ${unit}` : ""}`);
 
 export function decisionsFromDiff(prev: Doc, next: Doc, ctx: DiffContext): Decision[] {
   if (prev === next || prev.nodes === next.nodes) return [];
@@ -220,7 +225,7 @@ export function decisionsFromDiff(prev: Doc, next: Doc, ctx: DiffContext): Decis
     if (gainedTarget.includes(id) || consumed.has(id)) continue;
     const b = before.get(id)!;
     const a = after.get(id)!;
-    if (b.card.stage !== a.card.stage) {
+    if (b.card.stage !== a.card.stage && !(a.card.kind === "outcome" && ctx.linked?.has(id))) {
       const knew = knewThen(after, id);
       out.push(
         make({
@@ -257,7 +262,7 @@ export function decisionsFromDiff(prev: Doc, next: Doc, ctx: DiffContext): Decis
   for (const id of kept) {
     const b = before.get(id)!.card.metric;
     const a = after.get(id)!.card.metric;
-    if (!b || !a) continue;
+    if (!b || !a || ctx.linked?.has(id)) continue;
     const t = after.get(id)!.card.title;
     if (b.target !== a.target)
       out.push(make({ kind: "metric", card: id, cardTitle: t, cardKind: "outcome", what: `Changed the target of ${q(t)} from ${num(b.target, a.unit)} to ${num(a.target, a.unit)}`, detail: { field: "target", from: b.target, to: a.target, metric: metricOf(a) }, big: true }));
@@ -268,7 +273,7 @@ export function decisionsFromDiff(prev: Doc, next: Doc, ctx: DiffContext): Decis
   return out;
 }
 
-const metricOf = (m: OstMetric) => ({ name: m.name, ...(m.unit ? { unit: m.unit } : {}), baseline: m.baseline, current: m.current, target: m.target });
+export const metricOf = (m: OstMetric) => ({ name: m.name, ...(m.unit ? { unit: m.unit } : {}), baseline: m.baseline, current: m.current, target: m.target });
 
 /**
  * Whether `later` takes `earlier` back (an undo, or doing the reverse): the same card back where it

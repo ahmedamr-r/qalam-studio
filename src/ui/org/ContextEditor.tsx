@@ -9,9 +9,10 @@ import { r } from "../recipes";
 import { confirmDialog } from "../surfaces/dialog";
 
 /**
- * What a product, or the organization, is: who it's for, what the team is trying to move, the
- * rest worth knowing. Shown on the home and given to Qalam AI with every board that's for it.
- * Saved as Markdown (products/<slug>.md, about.md), so it can be edited there too.
+ * What a product, or the organization, is: who it's for, its segments, the rest worth knowing.
+ * Shown on the home and given to Qalam AI with every board that's for it. Saved as Markdown
+ * (products/<slug>.md, about.md), so it can be edited there too. What it's trying to move is in
+ * the goal tree (goals.md).
  */
 
 type Target = { kind: "product"; product: Product } | { kind: "org"; name: string; about: ContextFields };
@@ -28,15 +29,6 @@ const lines = (v: string) =>
 function Fields({ c }: { c: ContextFields }) {
   const rows: [string, ReactNode][] = [];
   if (c.audience.trim()) rows.push(["Who it's for", c.audience]);
-  if (c.goals.length)
-    rows.push([
-      "Goals",
-      <ul key="g" className="flex flex-col gap-[2px]">
-        {c.goals.map((g, i) => (
-          <li key={i}>{g}</li>
-        ))}
-      </ul>,
-    ]);
   if (c.context.trim()) rows.push(["Context", c.context]);
   if (c.segments.length) rows.push(["Segments", c.segments.join(" · ")]);
   return (
@@ -51,7 +43,7 @@ function Fields({ c }: { c: ContextFields }) {
   );
 }
 
-const isEmpty = (c: ContextFields) => !c.audience.trim() && !c.goals.length && !c.context.trim() && !c.segments.length;
+const isEmpty = (c: ContextFields) => !c.audience.trim() && !c.context.trim() && !c.segments.length;
 
 /**
  * The card on the home: what this product (or the organization) is, in one line (who it's for,
@@ -97,7 +89,6 @@ function Editor({ target, onClose }: { target: Target; onClose: () => void }) {
   const start = target.kind === "product" ? target.product : target.about;
   const [name, setName] = useState(target.kind === "product" ? target.product.name : target.name);
   const [audience, setAudience] = useState(start.audience);
-  const [goals, setGoals] = useState(start.goals.join("\n"));
   const [context, setContext] = useState(start.context);
   const [segments, setSegments] = useState(start.segments.join("\n"));
   const [busy, setBusy] = useState(false);
@@ -112,7 +103,7 @@ function Editor({ target, onClose }: { target: Target; onClose: () => void }) {
   }, []);
 
   const save = async () => {
-    const fields: ContextFields = { ...(target.kind === "product" ? target.product : target.about), audience: audience.trim(), goals: lines(goals), context: context.trim(), segments: lines(segments) };
+    const fields: ContextFields = { ...(target.kind === "product" ? target.product : target.about), audience: audience.trim(), context: context.trim(), segments: lines(segments) };
     setBusy(true);
     try {
       if (target.kind === "product") {
@@ -177,7 +168,6 @@ function Editor({ target, onClose }: { target: Target; onClose: () => void }) {
               </span>,
             )}
           {field("Who it's for", "The customers it serves, in a sentence or two.", area(audience, setAudience, 2, target.kind === "org" ? first : undefined))}
-          {field("Goals", "What the team is trying to move. One per line.", area(goals, setGoals, 3))}
           {field("Context", "The market, the business, constraints: anything a new teammate should know.", area(context, setContext, 4))}
           {field("Segments", "Kinds of customers worth telling apart. One per line.", area(segments, setSegments, 2))}
         </div>

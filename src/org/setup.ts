@@ -90,21 +90,31 @@ export interface SentAnswer {
   answer: string;
 }
 
+/** What a place (the organization, a product) says now, with its goals (from goals.md). */
+export type PlaceSays = ContextFields & { goals: string[] };
+export type ProductSays = Product & { goals: string[] };
+
+/** The organization and its products as setup reads them: what each says, and its goals' words. */
+export interface OrgNow {
+  about: PlaceSays;
+  products: ProductSays[];
+}
+
 export interface SetupSent {
   /** The dump's pieces, as the call named them (f1…). */
   pieces: { ref: string; q: SourceQuote }[];
   /** Their answers, as the call named them (a1…). */
   answers: SentAnswer[];
   /** The organization's products when the call was made, as it named them (p1…). */
-  products: { ref: string; product: Product }[];
+  products: { ref: string; product: ProductSays }[];
   /** What the organization says about itself already. */
-  about: ContextFields;
+  about: PlaceSays;
   /** The organization's name, the dump and every answer: a new product is named only in these words. */
   said: string;
 }
 
 /** What a setup's calls name, from the dump's source, the answers so far and the organization as it is. */
-export function setupSent(name: string, source: { text: string; quotes: SourceQuote[] }, session: Pick<SetupSession, "buckets">, now: { about: ContextFields; products: Product[] }): SetupSent {
+export function setupSent(name: string, source: { text: string; quotes: SourceQuote[] }, session: Pick<SetupSession, "buckets">, now: OrgNow): SetupSent {
   const answers = roundAnswers(session)
     .flat()
     .map((a, i) => ({ ref: `a${i + 1}`, question: a.question, answer: a.answer }));
@@ -146,7 +156,7 @@ export function sanitizeSetup(raw: unknown, sent: SetupSent): SetupProposal {
   const lines: SetupLine[] = [];
   let products: SetupProduct[] = [];
   // What each place says, now and with what's kept so far.
-  const says = new Map<string, ContextFields>([["org", sent.about], ...sent.products.map((p) => [p.product.id, p.product] as const)]);
+  const says = new Map<string, PlaceSays>([["org", sent.about], ...sent.products.map((p) => [p.product.id, p.product] as const)]);
 
   const take = (to: string, field: SetupField, x: unknown) => {
     const v = rec(x);
@@ -156,7 +166,7 @@ export function sanitizeSetup(raw: unknown, sent: SetupSent): SetupProposal {
     const isText = field === "audience" || field === "context";
     const text = checkWords(v.text, [...pieces, ...answers.map((a) => ({ text: a.answer }))], "", isText ? L.text : L.line);
     if (!text) return;
-    const c = says.get(to) ?? emptyContext();
+    const c = says.get(to) ?? { ...emptyContext(), goals: [] };
     if (isText) {
       if (c[field].trim()) return;
       says.set(to, { ...c, [field]: text });
@@ -205,8 +215,8 @@ export function decide(s: SetupSession, lineIds: string[], how: "accepted" | "di
 }
 
 /** A line on what a place says: a goal or segment added once, a text field filled (or added to, when someone filled it meanwhile). */
-function withLine<T extends ContextFields>(c: T, l: SetupLine): T {
-  if (l.field === "goals" || l.field === "segments") return c[l.field].some((x) => key(x) === key(l.text)) ? c : { ...c, [l.field]: [...c[l.field], l.text] };
+function withLine<T extends ContextFields>(c: T, l: SetupLine & { field: Exclude<SetupField, "goals"> }): T {
+  if (l.field === "segments") return c.segments.some((x) => key(x) === key(l.text)) ? c : { ...c, segments: [...c.segments, l.text] };
   const was = c[l.field].trim();
   if (key(was).includes(key(l.text))) return c;
   return { ...c, [l.field]: was ? `${was}\n\n${l.text}` : l.text };
@@ -219,22 +229,34 @@ export interface SetupWrites {
   products: Product[];
   /** The products made so far, by their ref. */
   made: Record<string, string>;
+  /** Goals to add to goals.md, each for the organization (null) or a product (made with its first line). */
+  goals: { line: SetupLine; product: string | null }[];
 }
+
+const contextOnly = <T extends ContextFields>(c: T & { goals?: string[] }): T => {
+  const { goals: _g, ...rest } = c;
+  return rest as T;
+};
 
 /**
  * What accepting these lines writes, on the organization as it is now: about.md, products changed,
- * new ones made under the name the proposal has (renamed or not). A product made before and since
- * deleted is made again.
+ * new ones made under the name the proposal has (renamed or not), and goals for goals.md. A product
+ * made before and since deleted is made again. A goal the place has already isn't added twice.
  */
-export function applyLines(now: { about: ContextFields; products: Product[] }, proposal: SetupProposal, lines: SetupLine[], made: Record<string, string> = {}, makeId: () => string = newId): SetupWrites {
+export function applyLines(now: OrgNow, proposal: SetupProposal, lines: SetupLine[], made: Record<string, string> = {}, makeId: () => string = newId): SetupWrites {
   let about: ContextFields | null = null;
   const changed = new Map<string, Product>();
+  const goals: SetupWrites["goals"] = [];
   const next = { ...made };
   const productAt = (to: string): Product | null => {
-    if (!to.startsWith("new:")) return changed.get(to) ?? now.products.find((p) => p.id === to) ?? null;
+    if (!to.startsWith("new:")) {
+      const there = now.products.find((p) => p.id === to);
+      return changed.get(to) ?? (there ? contextOnly(there) : null);
+    }
     const ref = to.slice(4);
     const id = next[ref];
-    const had = id ? (changed.get(id) ?? now.products.find((p) => p.id === id)) : undefined;
+    const there = id ? now.products.find((p) => p.id === id) : undefined;
+    const had = id ? (changed.get(id) ?? (there && contextOnly(there))) : undefined;
     if (had) return had;
     const np = proposal.products.find((p) => p.ref === ref);
     if (!np) return null;
@@ -243,14 +265,24 @@ export function applyLines(now: { about: ContextFields; products: Product[] }, p
     return p;
   };
   for (const l of lines) {
+    if (l.field === "goals") {
+      const p = l.to === "org" ? null : productAt(l.to);
+      if (l.to !== "org" && !p) continue;
+      // A new product is made with its first line, a goal too.
+      if (p && !changed.has(p.id) && !now.products.some((x) => x.id === p.id)) changed.set(p.id, p);
+      const has = (l.to === "org" ? now.about.goals : (now.products.find((x) => x.id === p?.id)?.goals ?? [])).some((g) => key(g) === key(l.text));
+      if (!has && !goals.some((g) => g.product === (p?.id ?? null) && key(g.line.text) === key(l.text))) goals.push({ line: l, product: p?.id ?? null });
+      continue;
+    }
+    const field = l as SetupLine & { field: Exclude<SetupField, "goals"> };
     if (l.to === "org") {
-      about = withLine(about ?? now.about, l);
+      about = withLine(about ?? contextOnly(now.about), field);
       continue;
     }
     const p = productAt(l.to);
-    if (p) changed.set(p.id, withLine(p, l));
+    if (p) changed.set(p.id, withLine(p, field));
   }
-  return { about, products: [...changed.values()], made: next };
+  return { about, products: [...changed.values()], made: next, goals };
 }
 
 /** Accepted goals a board can start from, and the product each is for (null: the whole organization). */

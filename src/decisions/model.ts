@@ -50,6 +50,8 @@ export interface Decision {
   product?: string | null;
   /** The card it's about (none for a batch of Qalam AI's proposals). */
   card: string | null;
+  /** The goal it's about (goals.md): then `board` is "goals" and `card` the goal's id. */
+  goal?: string;
   cardTitle: string;
   cardKind?: OstKind;
   /** The line people read: "Made “X” the target", "Dropped the solution “Y”". */
@@ -106,6 +108,7 @@ export function sanitizeDecision(raw: unknown): Decision | null {
     big: d.big === true,
   };
   if (d.product === null || (typeof d.product === "string" && ID.test(d.product))) out.product = d.product;
+  if (typeof d.goal === "string" && ID.test(d.goal)) out.goal = d.goal;
   if (["outcome", "opportunity", "solution", "test"].includes(d.cardKind as string)) out.cardKind = d.cardKind;
   if (isObject(d.detail) && JSON.stringify(d.detail).length <= 12_000) out.detail = d.detail;
   const why = line(d.why, 500);

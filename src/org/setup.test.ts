@@ -3,8 +3,10 @@ import { closeDumpRound, firstRound, sanitizeRead } from "@/discovery/dump";
 import type { PlanQuestion } from "@/ai/plan";
 import { initialFlow } from "@/ui/ai/questionFlow";
 import { toQuestion } from "@/ui/ai/plan";
-import { emptyContext, type Product } from "./context-md";
-import { applyLines, boardGoals, decide, nameHolds, pendingLines, sanitizeSetup, setupSent, type SetupSession } from "./setup";
+import { emptyContext } from "./context-md";
+import { applyLines, boardGoals, decide, nameHolds, pendingLines, sanitizeSetup, setupSent, type OrgNow, type ProductSays, type SetupSession } from "./setup";
+
+const nothing = (): OrgNow => ({ about: { ...emptyContext(), goals: [] }, products: [] });
 
 const DUMP = `Basket is a grocery delivery app in Dubai and Abu Dhabi, 40 dark stores, orders in under an hour. Mostly parents with young kids who do a big weekly shop.
 
@@ -30,7 +32,7 @@ const READ = {
 };
 
 /** The dump read, a round answered (an option picked, an open question typed), and the organization as it is. */
-function setup(now = { about: emptyContext(), products: [] as Product[] }) {
+function setup(now: OrgNow = nothing()) {
   const r = sanitizeRead(READ, DUMP, []);
   const buckets = firstRound(r.questions);
   const answers = { "office-goal": { kind: "single" as const, value: "orders" }, "where-number": { kind: "text" as const, text: "Around 1.4M a month now." } };
@@ -44,8 +46,8 @@ const line = (text: string, fragmentIds: string[], answerIds: string[] = []) => 
 
 describe("what Qalam AI proposes", () => {
   it("names the pieces f1…, the answers a1… and the products p1…", () => {
-    const grocery: Product = { id: "pg", name: "Basket", ...emptyContext() };
-    const { sent } = setup({ about: emptyContext(), products: [grocery] });
+    const grocery: ProductSays = { id: "pg", name: "Basket", ...emptyContext(), goals: [] };
+    const { sent } = setup({ ...nothing(), products: [grocery] });
     expect(sent.pieces.map((p) => p.ref)).toEqual(["f1", "f2", "f3", "f4", "f5", "f6"]);
     expect(sent.answers).toEqual([
       { ref: "a1", question: "What should Basket for Business move?", answer: "3M dirhams from offices (Revenue.)" },
@@ -98,8 +100,8 @@ describe("what Qalam AI proposes", () => {
   });
 
   it("fills a text field only where it's empty and never repeats a goal or a segment", () => {
-    const grocery: Product = { id: "pg", name: "Basket", ...emptyContext(), audience: "Parents.", goals: ["More customers reorder every week"] };
-    const { sent } = setup({ about: { ...emptyContext(), context: "Groceries, fast." }, products: [grocery] });
+    const grocery: ProductSays = { id: "pg", name: "Basket", ...emptyContext(), audience: "Parents.", goals: ["More customers reorder every week"] };
+    const { sent } = setup({ about: { ...emptyContext(), context: "Groceries, fast.", goals: [] }, products: [grocery] });
     const p = sanitizeSetup(
       {
         about: { audience: null, context: line("Grocery delivery in Dubai.", ["f1"]), goals: [], segments: [] },
@@ -124,8 +126,8 @@ describe("what Qalam AI proposes", () => {
   });
 
   it("adds a product only under a name they used, with a line to stand on; one there already takes its lines by id or by name", () => {
-    const grocery: Product = { id: "pg", name: "Basket", ...emptyContext() };
-    const { sent } = setup({ about: emptyContext(), products: [grocery] });
+    const grocery: ProductSays = { id: "pg", name: "Basket", ...emptyContext(), goals: [] };
+    const { sent } = setup({ ...nothing(), products: [grocery] });
     const fields = (goal: string, cite: string) => ({ audience: null, context: null, goals: [line(goal, [cite])], segments: [] });
     const p = sanitizeSetup(
       {
@@ -179,23 +181,29 @@ describe("accepting lines", () => {
     return { proposal, s: { ...s, phase: "review" as const, proposal, decided: {} } };
   };
 
-  it("writes each line where it goes, making a new product once, under its proposed name", () => {
+  it("writes each line where it goes, making a new product once, under its proposed name, and each goal for goals.md", () => {
     const { proposal } = placed();
     let n = 0;
-    const w = applyLines({ about: emptyContext(), products: [] }, proposal, proposal.lines, {}, () => `id${++n}`);
-    expect(w.about).toEqual({ ...emptyContext(), audience: "Families in Dubai and Abu Dhabi.", goals: ["2M dirhams a month in orders"] });
-    expect(w.products).toEqual([{ id: "id1", name: "Basket for Business", ...emptyContext(), audience: "Offices that restock their pantry.", goals: ["Offices stay past their first month"] }]);
+    const w = applyLines(nothing(), proposal, proposal.lines, {}, () => `id${++n}`);
+    expect(w.about).toEqual({ ...emptyContext(), audience: "Families in Dubai and Abu Dhabi." });
+    expect(w.products).toEqual([{ id: "id1", name: "Basket for Business", ...emptyContext(), audience: "Offices that restock their pantry." }]);
+    expect(w.goals.map((g) => [g.line.text, g.product])).toEqual([
+      ["2M dirhams a month in orders", null],
+      ["Offices stay past their first month", "id1"],
+    ]);
     expect(w.made).toEqual({ n1: "id1" });
     // Accepting more later goes to the product made, as it is now.
-    const later = applyLines({ about: emptyContext(), products: [{ ...w.products[0], goals: [] }] }, proposal, [proposal.lines[3]], w.made, () => "never");
-    expect(later.products.map((p) => [p.id, p.goals])).toEqual([["id1", ["Offices stay past their first month"]]]);
+    const later = applyLines({ ...nothing(), products: [{ ...w.products[0], goals: [] }] }, proposal, [proposal.lines[3]], w.made, () => "never");
+    expect(later.goals.map((g) => [g.line.text, g.product])).toEqual([["Offices stay past their first month", "id1"]]);
+    expect(later.products).toEqual([]);
   });
 
   it("makes a product again when it was deleted since, adds to a field filled meanwhile, and never adds a line twice", () => {
     const { proposal } = placed();
     const filled = { ...emptyContext(), audience: "Busy parents.", goals: ["2M dirhams a month in orders"] };
     const w = applyLines({ about: filled, products: [] }, proposal, proposal.lines, { n1: "gone" }, () => "fresh");
-    expect(w.about).toEqual({ ...filled, audience: "Busy parents.\n\nFamilies in Dubai and Abu Dhabi." });
+    expect(w.about).toEqual({ ...emptyContext(), audience: "Busy parents.\n\nFamilies in Dubai and Abu Dhabi." });
+    expect(w.goals.map((g) => g.line.text)).toEqual(["Offices stay past their first month"]);
     expect(w.products.map((p) => p.id)).toEqual(["fresh"]);
     expect(w.made).toEqual({ n1: "fresh" });
   });

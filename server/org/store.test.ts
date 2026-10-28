@@ -153,11 +153,11 @@ describe("sources shared by boards", () => {
 });
 
 describe("products and the organization", () => {
-  const grocery = { id: "pGrocery1", name: "Grocery app", audience: "Weekly shoppers.", goals: ["2M AED a month"], context: "", segments: [] };
+  const grocery = { id: "pGrocery1", name: "Grocery app", audience: "Weekly shoppers.", context: "", segments: [] };
 
   it("keeps products as Markdown files, and about.md", async () => {
     await store.putProduct(grocery);
-    await store.putAbout({ audience: "Shoppers and riders.", goals: [], context: "Grocery delivery.", segments: [] });
+    await store.putAbout({ audience: "Shoppers and riders.", context: "Grocery delivery.", segments: [] });
     expect(await readdir(path.join(dir, "products"))).toEqual(["grocery-app.md"]);
     expect(await readFile(path.join(dir, "about.md"), "utf8")).toContain("## What we do\n\nGrocery delivery.");
     const again = await OrgStore.open(dir);
@@ -175,22 +175,97 @@ describe("products and the organization", () => {
     expect((await store.getSource("s1abcdefgh"))?.product).toBeNull();
   });
 
-  it("lists every board's outcomes, sub-outcomes with their parent", async () => {
+  it("moves the goals written before goals.md into it, once, linking each outcome card to its goal", async () => {
     await store.putProject({ ...board, product: grocery.id });
     const nested = {
       roots: ["o1"],
       nodes: {
-        o1: { id: "o1", type: "frame", name: "Reach 2M AED a month", parentId: null, meta: { ost: { kind: "outcome", title: "Reach 2M AED a month", evidence: [], metric: { name: "Orders", unit: "AED", current: 1.4, target: 2 } } } },
-        o2: { id: "o2", type: "frame", name: "More weekly reorders", parentId: "o1", meta: { ost: { kind: "outcome", title: "More weekly reorders", evidence: [] } } },
-        n1: { id: "n1", type: "frame", name: "Can't find past orders", parentId: "o2", meta: { ost: { kind: "opportunity", title: "Can't find past orders", evidence: [] } } },
+        o1: { id: "o1", type: "frame", name: "More weekly reorders", parentId: null, meta: { ost: { kind: "outcome", title: "More weekly reorders", stage: "active", evidence: [], metric: { name: "Orders", unit: "orders", direction: "increase", baseline: 1.2, current: 1.3, target: 1.5 } } } },
+        o2: { id: "o2", type: "frame", name: "Planners rebuild in one tap", parentId: "o1", meta: { ost: { kind: "outcome", title: "Planners rebuild in one tap", stage: "active", evidence: [] } } },
+        n1: { id: "n1", type: "frame", name: "Can't find past orders", parentId: "o2", meta: { ost: { kind: "opportunity", title: "Can't find past orders", stage: "exploring", evidence: [] } } },
       },
     } as unknown as Doc;
     await store.putDoc(board.id, nested);
-    expect(await store.listGoals()).toEqual([
-      { board: board.id, boardName: "Reorders Q2", product: grocery.id, id: "o1", title: "Reach 2M AED a month", metric: { name: "Orders", unit: "AED", current: 1.4, target: 2 }, parent: null },
-      { board: board.id, boardName: "Reorders Q2", product: grocery.id, id: "o2", title: "More weekly reorders", parent: "o1" },
-    ]);
+    await store.putProduct(grocery);
+    await writeFile(path.join(dir, "about.md"), "## Who we serve\n\nShoppers.\n\n## Goals\n\n- 2M AED a month in orders by Q2\n");
+    await writeFile(path.join(dir, "products", "grocery-app.md"), '---\nid: "pGrocery1"\nname: "Grocery app"\n---\n\n## Goals\n\n- More weekly reorders\n- More second orders\n');
+    const boardBefore = await readFile(path.join(dir, "boards", "reorders-q2.json"), "utf8");
+    const again = await OrgStore.open(dir);
+    const g = await again.getGoals();
+    expect(g.goals.find((x) => x.id === g.north)?.title).toBe("2M AED a month in orders by Q2");
+    const reorders = g.goals.find((x) => x.title === "More weekly reorders")!;
+    expect(reorders).toMatchObject({ product: grocery.id, on: { board: board.id, card: "o1" }, metric: { target: 1.5 } });
+    expect(g.goals.find((x) => x.on?.card === "o2")).toMatchObject({ parent: reorders.id, product: grocery.id });
+    expect(g.goals.map((x) => x.title)).toContain("More second orders");
+    // The goals left the About and the product's file; the board's file is as it was.
+    expect(await readFile(path.join(dir, "about.md"), "utf8")).toBe("## Who we serve\n\nShoppers.\n");
+    expect(await readFile(path.join(dir, "products", "grocery-app.md"), "utf8")).not.toContain("Goals");
+    expect(await readFile(path.join(dir, "boards", "reorders-q2.json"), "utf8")).toBe(boardBefore);
+    // Opening again moves nothing again.
+    const file = await readFile(path.join(dir, "goals.md"), "utf8");
+    await OrgStore.open(dir);
+    expect(await readFile(path.join(dir, "goals.md"), "utf8")).toBe(file);
   });
+
+  it("takes goals sent with the About (a window from before goals.md) into the tree", async () => {
+    await store.putAbout({ audience: "", context: "", segments: [], goals: ["2M AED a month"] } as never);
+    const g = await store.getGoals();
+    expect(g.goals.map((x) => x.title)).toEqual(["2M AED a month"]);
+    expect(g.north).toBe(g.goals[0].id);
+    expect(await readFile(path.join(dir, "about.md"), "utf8")).not.toContain("Goals");
+  });
+});
+
+describe("goals", () => {
+  const metric = { name: "Reorders", unit: "orders", direction: "increase" as const, baseline: 1.2, current: 1.3, target: 1.5 };
+
+  it("changes goals under one lock, records what was decided, and marks it undone when it's taken back", async () => {
+    const { goal: ns } = await store.createGoal({ title: "2M AED a month", north: "if-none" });
+    const { goal: r } = await store.createGoal({ title: "More weekly reorders", parent: ns.id, metric });
+    expect((await store.getGoals()).north).toBe(ns.id);
+    expect(events.filter((e) => e.kind === "goal")).toHaveLength(2);
+    const { decisions } = await store.patchGoal(r.id, { metric: { ...metric, target: 1.6 } });
+    expect(decisions).toEqual([expect.objectContaining({ kind: "metric", board: "goals", card: r.id, goal: r.id, what: "Changed the target of “More weekly reorders” from 1.5 orders to 1.6 orders", big: true })]);
+    // Taken back: the decision is marked undone, not recorded twice.
+    expect((await store.patchGoal(r.id, { metric })).decisions).toEqual([]);
+    expect(store.listDecisions({ goal: r.id })).toEqual([expect.objectContaining({ undone: true })]);
+    // Words and a new goal aren't decisions.
+    expect((await store.patchGoal(r.id, { title: "More reorders" })).decisions).toEqual([]);
+    await expect(store.patchGoal(ns.id, { parent: r.id })).rejects.toThrow("under itself");
+  });
+
+  it("makes one goal for a card two windows ask for, and keeps a goal a board's card is on", async () => {
+    await store.putProject(board);
+    await store.putDoc(board.id, doc("More weekly reorders"));
+    const a = await store.createGoal({ id: "g-b1abcdefgh-c1", title: "More weekly reorders", on: { board: board.id, card: "c1" } });
+    const b = await store.createGoal({ id: "g-other", title: "More weekly reorders", on: { board: board.id, card: "c1" } });
+    expect(b.goal.id).toBe(a.goal.id);
+    expect((await store.getGoals()).goals).toHaveLength(1);
+    await expect(store.removeGoal(a.goal.id)).rejects.toThrow("A board works on this goal");
+    await store.patchGoal(a.goal.id, { on: null });
+    await store.removeGoal(a.goal.id);
+    expect((await store.getGoals()).goals).toEqual([]);
+  });
+
+  it("hears goals.md edited by hand without recording decisions", async () => {
+    const { goal } = await store.createGoal({ title: "Reorders", metric });
+    const before = store.listDecisions().length;
+    const file = path.join(dir, "goals.md");
+    await writeFile(file, (await readFile(file, "utf8")).replace("Reorders ·", "Weekly reorders ·").replace('"target":1.5', '"target":1.7'));
+    events = [];
+    await store.reload("goals.md");
+    expect(events).toEqual([{ kind: "goal" }]);
+    expect((await store.getGoals()).goals.find((g) => g.id === goal.id)).toMatchObject({ title: "Weekly reorders", metric: { target: 1.7 } });
+    expect(store.listDecisions()).toHaveLength(before);
+  });
+
+  it("keeps which goals are this computer's person's", async () => {
+    await store.setMine(["g1", "g2", "g1"]);
+    expect((await OrgStore.open(dir)).mine).toEqual(["g1", "g2"]);
+  });
+});
+
+describe("the organization's name", () => {
 
   it("renames the organization", async () => {
     await store.rename("  Basket  ");

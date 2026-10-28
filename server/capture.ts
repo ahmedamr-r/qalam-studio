@@ -12,6 +12,7 @@ import type { Doc } from "@/doc/schema";
 import { isOstCard } from "@/doc/board";
 import { cardOf } from "@/discovery/ops";
 import { fileMaterial, type FilingDeps, type FilingTotals } from "@/hub/filing";
+import { goalsText } from "@/goals/text";
 import { contextText } from "@/org/context-md";
 import { contextOf, type OrgContext, type PackRequest } from "@/org/pack";
 import { indexFor } from "./index/registry";
@@ -49,6 +50,8 @@ function indexOf(store: OrgStore) {
 export async function coreDeps(store: OrgStore): Promise<FilingDeps> {
   const products = await store.listProducts();
   const about = await store.getAbout();
+  const goals = await store.getGoals();
+  const names = new Map(products.map((p) => [p.id, p.name]));
   const ix = indexOf(store);
   const pack = async (r: PackRequest): Promise<OrgContext | null> => {
     if (!ix) return null;
@@ -61,7 +64,7 @@ export async function coreDeps(store: OrgStore): Promise<FilingDeps> {
     about,
     productLine: (id) => {
       const p = products.find((x) => x.id === id);
-      return [p ? contextText(p, `The product (${p.name}):`) : "", contextText(about, "The organization:")].filter(Boolean).join("\n\n");
+      return [p ? contextText(p, `The product (${p.name}):`) : "", contextText(about, "The organization:"), goalsText(goals, { product: id ?? null, productName: (x) => names.get(x) })].filter(Boolean).join("\n\n");
     },
     listTopics: () => store.listTopics(),
     pack,

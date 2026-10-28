@@ -9,6 +9,7 @@ import { backend, structured } from "@/ai/server";
 import { fromCliResult, reportUsage } from "@/ai/usage";
 import { sourcesIn, verifyAnswer, type AskAnswer, type Found } from "@/hub/ask";
 import { sectionCounts } from "@/hub/topics";
+import { goalsText } from "@/goals/text";
 import { contextText, readFrontMatter } from "@/org/context-md";
 import { orgHref, projectHref, topicHref } from "@/projects/model";
 import type { OrgIndex, PieceRow } from "./index/indexer";
@@ -16,7 +17,7 @@ import { indexFor } from "./index/registry";
 import { packFor, search } from "./index/search";
 import { serveMcp, type McpTool } from "./mcp";
 import { inside } from "./org/fsx";
-import type { OrgStore } from "./org/store";
+import { GOALS, type OrgStore } from "./org/store";
 
 /**
  * Ask the organization: a product team's question, answered from what the organization knows.
@@ -144,6 +145,8 @@ async function guide(store: OrgStore, q: AskRequest): Promise<Guide> {
   const name = (id: string | null | undefined) => (id ? (products.find((p) => p.id === id)?.name ?? id) : "the whole organization");
   const topics = await store.listTopics();
   const out: string[] = ["The organization:", contextText(await store.getAbout(), `${store.info.name}:`) || `${store.info.name} (not described yet)`, ...products.map((p) => contextText(p, `${p.name} (a product):`)).filter(Boolean)];
+  const aims = goalsText(await store.getGoals(), { productName: (id) => products.find((p) => p.id === id)?.name, label: `Goals (in ${GOALS})` });
+  if (aims) out.push("", aims);
   if (q.product) out.push("", `The team is looking at ${name(q.product)}.`);
   if (topics.length) {
     out.push("", "Topic pages (file · kind · title · what's on it):");

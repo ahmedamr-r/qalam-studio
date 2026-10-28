@@ -19,6 +19,7 @@ export type OrgChange = { tab?: string } & (
   | { kind: "naming" }
   | { kind: "product"; id: string; removed?: boolean }
   | { kind: "about" }
+  | { kind: "goal" }
   | { kind: "org" }
   | { kind: "decision"; ids: string[]; boards: string[] }
   | { kind: "topic"; id: string; removed?: boolean }

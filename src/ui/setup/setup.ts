@@ -9,9 +9,12 @@ import { quoteEvidence, type SourceRecord } from "@/discovery/sources";
 import { newId } from "@/doc/factory";
 import { emptyDoc } from "@/doc/schema";
 import { currentOrg, orgFetch } from "@/org/client";
+import { changeGoal, createGoal, goalWords, goalsNow } from "@/goals/client";
+import { textGoalId } from "@/goals/migrate";
+import { goalById } from "@/goals/tree";
+import { sameTopic } from "@/hub/topics";
 import { saveAbout, saveProduct, useOrgContext } from "@/org/context";
-import type { ContextFields, Product } from "@/org/context-md";
-import { applyLines, boardGoals, decide, sanitizeSetup, setupSent, type SetupSession } from "@/org/setup";
+import { applyLines, boardGoals, decide, sanitizeSetup, setupSent, type OrgNow, type PlaceSays, type SetupSession } from "@/org/setup";
 import { projectHref } from "@/projects/model";
 import { createProject } from "@/projects/session";
 import { initialFlow, type FlowState } from "../ai/questionFlow";
@@ -64,9 +67,15 @@ export async function openSetup(id: string | null) {
   if (found && (p === "reading" || p === "analyzing" || p === "placing") && !run) await setSession((d) => ({ ...d, phase: "failed", failed: { at: p, error: "Interrupted: the page was closed or reloaded." } }));
 }
 
+/** The organization as setup reads it: what it and each product say, with their goals' words (goals.md). */
+function orgNow(): OrgNow {
+  const { about, products } = useOrgContext.getState();
+  return { about: { ...about, goals: goalWords(null) }, products: products.map((p) => ({ ...p, goals: goalWords(p.id) })) };
+}
+
 /** The organization as the calls name it: its name, its About, its products (p1…, in the order `setupSent` names them). */
-function orgFields(name: string, now: { about: ContextFields; products: Product[] }) {
-  const fields = (c: ContextFields) => ({ audience: c.audience.slice(0, 2000), goals: c.goals.slice(0, 30).map((g) => g.slice(0, 300)), context: c.context.slice(0, 4000), segments: c.segments.slice(0, 30).map((g) => g.slice(0, 200)) });
+function orgFields(name: string, now: OrgNow) {
+  const fields = (c: PlaceSays) => ({ audience: c.audience.slice(0, 2000), goals: c.goals.slice(0, 30).map((g) => g.slice(0, 300)), context: c.context.slice(0, 4000), segments: c.segments.slice(0, 30).map((g) => g.slice(0, 200)) });
   return { name: name.slice(0, 80), about: fields(now.about), products: now.products.slice(0, 30).map((p, i) => ({ id: `p${i + 1}`, name: p.name.slice(0, 80), ...fields(p) })) };
 }
 
@@ -154,7 +163,7 @@ export async function readSetup() {
   await setSession((d) => ({ ...d, phase: "reading", failed: undefined }));
   try {
     const org = await currentOrg();
-    const { raw, model } = await call("Qalam AI is reading what you wrote", { stage: "read", ...orgFields(org.name, useOrgContext.getState()), dump: s.text });
+    const { raw, model } = await call("Qalam AI is reading what you wrote", { stage: "read", ...orgFields(org.name, orgNow()), dump: s.text });
     const r = sanitizeRead(raw, s.text, []);
     if (!r.fragments.length) throw new AIError("parse", "Qalam AI found nothing in it to set up from. Try again, or write a little more.");
     await update((x) => ({
@@ -202,7 +211,7 @@ export async function readSetupAnswers() {
   const rounds = roundAnswers(session).map((answers, i) => ({ answers: answers.map((a) => ({ question: a.question.slice(0, 200), answer: a.answer })), ...(session.buckets[i]?.analysis ? { analysis: session.buckets[i].analysis!.slice(0, 1500) } : {}) }));
   try {
     const org = await currentOrg();
-    const { raw } = await call("Qalam AI is reading your answers", { stage: "followup", ...orgFields(org.name, useOrgContext.getState()), dump: s.text, ...fields, rounds, last: session.buckets.length >= MAX_DUMP_ROUNDS });
+    const { raw } = await call("Qalam AI is reading your answers", { stage: "followup", ...orgFields(org.name, orgNow()), dump: s.text, ...fields, rounds, last: session.buckets.length >= MAX_DUMP_ROUNDS });
     const f = sanitizeDumpFollowup(raw, pieces, []);
     await setSession((d) => applyDumpFollowup(d, f), (x) => withRoles(x.quotes, f.roles));
   } catch (e) {
@@ -222,7 +231,7 @@ export async function placeSetup() {
   await setSession((d) => ({ ...d, phase: "placing", failed: undefined }));
   try {
     const org = await currentOrg();
-    const now = useOrgContext.getState();
+    const now = orgNow();
     const sent = setupSent(org.name, s, session, now);
     const { fields } = readFields(s);
     const { raw, model } = await call("Qalam AI is setting up your organization", {
@@ -245,15 +254,23 @@ function settled() {
   if (s?.setup?.phase === "done") void orgFetch("/file", { method: "POST", json: { sources: [s.id] } }).catch(() => {});
 }
 
-/** Accept lines: each is written to about.md or its product's file (a new product is made with its first). */
+/** The goal a setup line made: named by its words, so making it twice makes one. */
+const lineGoalId = (text: string, product: string | null) => textGoalId(product ? `${product}:${text}` : text);
+
+/**
+ * Accept lines: each is written to about.md or its product's file (a new product is made with its
+ * first), and each goal goes in goals.md: the organization's first one, its North Star.
+ */
 export async function acceptLines(lineIds: string[]) {
   const session = source()?.setup;
   if (!session?.proposal) return;
   const lines = session.proposal.lines.filter((l) => lineIds.includes(l.id) && !session.decided?.[l.id]);
   if (!lines.length) return;
-  const w = applyLines(useOrgContext.getState(), session.proposal, lines, session.made, () => nanoid(10));
+  const w = applyLines(orgNow(), session.proposal, lines, session.made, () => nanoid(10));
   if (w.about) await saveAbout(w.about);
   for (const p of w.products) await saveProduct(p);
+  for (const g of w.goals)
+    await createGoal({ id: lineGoalId(g.line.text, g.product), title: g.line.text, product: g.product, cites: g.line.pieces.map((q) => `hub:quote:${q}`), by: "qalam", ...(g.product ? {} : { north: "if-none" as const }) });
   await setSession((d) => decide(d, lines.map((l) => l.id), "accepted", w.made));
   settled();
 }
@@ -272,9 +289,14 @@ export async function startBoard(lineId: string) {
   const made = session.boards?.[lineId];
   if (made) return window.location.assign(projectHref({ id: made, type: "discovery" }));
   const quotes = goal.line.pieces.flatMap((id) => s.quotes.find((q) => q.id === id) ?? []);
+  // The goal the line made, as it is now (its words and number may have changed since).
+  const g = goalById(goalsNow(), lineGoalId(goal.line.text, goal.product)) ?? goalsNow().goals.find((x) => x.product === goal.product && !x.on && sameTopic(x.title, goal.line.text));
   const doc = emptyDoc();
-  addCardIn(doc, makeCardNode(newCard("outcome", { title: goal.line.text, evidence: quotes.map((q) => quoteEvidence(s, q, "user")) })), null);
-  const p = await createProject("discovery", goal.line.text.slice(0, 80), goal.product ? { product: goal.product } : {}, doc);
+  const node = makeCardNode(newCard("outcome", { title: g?.title ?? goal.line.text, ...(g?.metric ? { metric: g.metric } : {}), evidence: quotes.map((q) => quoteEvidence(s, q, "user")) }));
+  addCardIn(doc, node, null);
+  const p = await createProject("discovery", (g?.title ?? goal.line.text).slice(0, 80), goal.product ? { product: goal.product } : {}, doc);
+  // The board's outcome card is the goal on the canvas.
+  if (g) await changeGoal(g.id, { on: { board: p.id, card: node.id } }).catch(() => {});
   await sourcesDb.link(s.id, p.id, true);
   await setSession((d) => ({ ...d, boards: { ...d.boards, [lineId]: p.id } }));
   window.location.assign(projectHref(p));

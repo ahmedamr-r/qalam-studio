@@ -3,17 +3,25 @@ import { watch, type FSWatcher } from "node:fs";
 import { readdir, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { nanoid } from "nanoid";
+import { reverses, sameDecision } from "@/decisions/diff";
 import { appendEntries, decisionsFromMarkdown, replaceEntry } from "@/decisions/format";
 import { monthOf, type Decision } from "@/decisions/model";
 import type { Doc } from "@/doc/schema";
-import type { OstCard } from "@/discovery/types";
 import type { Proposal } from "@/discovery/proposals";
+import { goalDecisions } from "@/goals/decisions";
+import { goalsFromMarkdown, goalsToMarkdown } from "@/goals/goals-md";
+import { migrateGoals, textGoalId, type BoardOutcomes } from "@/goals/migrate";
+import { outcomesOf } from "@/goals/mirror";
+import type { NewGoal } from "@/goals/shape";
+import { addGoal, goalById, ordered, patchGoal as patchInTree, removeGoal as removeFromTree, setNorth as setNorthIn, underOf } from "@/goals/tree";
+import { emptyGoals, type Goal, type GoalPatch, type GoalsAt, type GoalTree } from "@/goals/types";
+import { sameTopic } from "@/hub/topics";
 import type { SourceRecord } from "@/discovery/sources";
 import { topicFromMarkdown, topicToMarkdown } from "@/hub/topic-md";
 import { pairKey, type Notice } from "@/hub/checks";
 import { applyFiling, type Applied, type Filing, type Topic, type TopicInfo } from "@/hub/topics";
 import { factHash } from "@/knowledge/refs";
-import { aboutFromMarkdown, aboutToMarkdown, emptyContext, productFromMarkdown, productToMarkdown, type ContextFields, type Product } from "@/org/context-md";
+import { aboutFromMarkdown, aboutToMarkdown, emptyContext, legacyGoals, productFromMarkdown, productToMarkdown, type ContextFields, type Product } from "@/org/context-md";
 import type { Project, ProjectType } from "@/projects/model";
 import { assetExt, assetType, decodeProject, decodeSource, docVersion, encodeProject, encodeSource, isLocalField, recordVersion, splitLocal, type LocalFields } from "./codecs";
 import { assetHash, atomicWrite, contentHash, inside, locked, readJson, slugify, stableStringify, uniqueName } from "./fsx";
@@ -40,6 +48,8 @@ export type OrgEvent = { tab?: string } & (
   | { kind: "naming" }
   | { kind: "product"; id: string; removed?: boolean }
   | { kind: "about" }
+  /** The goal tree changed (goals.md). */
+  | { kind: "goal" }
   | { kind: "org" }
   | { kind: "decision"; ids: string[]; boards: string[] }
   | { kind: "topic"; id: string; removed?: boolean }
@@ -54,18 +64,10 @@ export type OrgEvent = { tab?: string } & (
 );
 
 
-/** An outcome on one of the organization's boards: the home's goals, by product. */
-export interface Goal {
-  board: string;
-  boardName: string;
-  product: string | null;
-  /** The card's id on its board. */
-  id: string;
-  title: string;
-  metric?: OstCard["metric"];
-  /** The outcome it sits under on its board (a sub-outcome), if any. */
-  parent: string | null;
-}
+/** The goal tree's file, at the organization's root. */
+export const GOALS = "goals.md";
+/** How long taking a change to a goal back counts as undoing it (as on a board). */
+const GOAL_UNDO_WINDOW = 10 * 60_000;
 
 export class ConflictError extends Error {
   constructor(
@@ -77,6 +79,16 @@ export class ConflictError extends Error {
 }
 
 export class NotFoundError extends Error {}
+
+/** A goal a board works on can't be taken off: its outcome card is the goal on that board. */
+export class GoalInUseError extends Error {
+  constructor(readonly boards: string[]) {
+    super("A board works on this goal");
+  }
+}
+
+/** A goal can't sit under itself or anything under it. */
+export class GoalCycleError extends Error {}
 
 const PROJECT_DIRS: Record<ProjectType, string> = { discovery: "boards", screens: "screens", system: "design-systems/projects" };
 const TYPE_WORD: Record<ProjectType, string> = { discovery: "board", screens: "screens", system: "system" };
@@ -103,6 +115,8 @@ interface LocalState {
   projects: Record<string, LocalFields>;
   /** When this computer last opened the organization's home ("since your last visit"). */
   visit?: number;
+  /** The goals that are this computer's person's ("Which goals are yours?"). */
+  mine?: string[];
 }
 
 /** A line of hub/notices.jsonl: a notice dismissed or brought back, a review's finding, a review ran. */
@@ -138,8 +152,8 @@ export class OrgStore {
   /** Topic pages (hub/topics/*.md), by id. */
   private topics = new Map<string, string>();
   private unionChecked = false;
-  /** Each board's outcomes, as of its document's version. */
-  private goals = new Map<string, { docV: string; goals: Omit<Goal, "boardName" | "product">[] }>();
+  /** This process's goal decisions in the last minutes: what taking a change back marks undone. */
+  private goalRecent: Decision[] = [];
   private local: LocalState = { projects: {} };
   /** Files Qalam itself wrote, by content hash: the watcher skips them. */
   private written = new Map<string, string>();
@@ -171,6 +185,7 @@ export class OrgStore {
     if (!info || info.qalam !== "org/1" || !info.id) throw new NotFoundError(`No organization at ${dir}`);
     const store = new OrgStore(dir, info);
     await store.scan();
+    await store.migrateGoals();
     return store;
   }
 
@@ -681,10 +696,13 @@ export class OrgStore {
     }
   }
 
-  async putAbout(c: ContextFields, opts: { tab?: string } = {}): Promise<void> {
+  /** Save the About. Goals sent with it (a window from before goals.md) go into the goal tree. */
+  async putAbout(c: ContextFields & { goals?: string[] }, opts: { tab?: string } = {}): Promise<void> {
+    const { goals, ...fields } = c;
     const file = this.abs("about.md");
-    await locked(file, () => this.write(file, aboutToMarkdown(c)));
+    await locked(file, () => this.write(file, aboutToMarkdown(fields)));
     this.emit({ kind: "about", tab: opts.tab });
+    if (goals?.length) await this.takeInGoals(goals, null, opts);
   }
 
   async listProducts(): Promise<Product[]> {
@@ -700,8 +718,10 @@ export class OrgStore {
     return out.sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  putProduct(p: Product, opts: { tab?: string } = {}): Promise<void> {
-    return locked(`product:${p.id}`, async () => {
+  /** Save a product. Goals sent with it (a window from before goals.md) go into the goal tree. */
+  async putProduct(product: Product & { goals?: string[] }, opts: { tab?: string } = {}): Promise<void> {
+    const { goals, ...p } = product;
+    await locked(`product:${p.id}`, async () => {
       let file = this.products.get(p.id);
       if (!file) {
         const dir = this.abs("products");
@@ -712,6 +732,7 @@ export class OrgStore {
       this.products.set(p.id, file);
       this.emit({ kind: "product", id: p.id, tab: opts.tab });
     });
+    if (goals?.length) await this.takeInGoals(goals, p.id, opts);
   }
 
   /** Delete a product: its boards and sources become the whole organization's. */
@@ -730,31 +751,200 @@ export class OrgStore {
     this.emit({ kind: "product", id, removed: true, tab: opts.tab });
   }
 
-  /** Every board's outcomes (and sub-outcomes), for the organization's goals. */
-  async listGoals(): Promise<Goal[]> {
-    const out: Goal[] = [];
+  // -------------------------------------------------------------------------
+  // Goals: one tree with the North Star on top (goals.md). A board's outcome card is its goal on
+  // the canvas; the file is where the goal lives (src/goals).
+
+  /** The goals and their version (the file's hash). No file yet: no goals. */
+  async getGoals(): Promise<GoalsAt> {
+    const text = await readFile(this.abs(GOALS), "utf8").catch(() => "");
+    return { ...(text ? goalsFromMarkdown(text) : emptyGoals()), version: contentHash(text), file: GOALS };
+  }
+
+  private async writeGoals(t: GoalTree): Promise<string> {
+    const names = new Map((await this.listProducts()).map((p) => [p.id, p.name]));
+    const text = goalsToMarkdown(t, { product: (id) => names.get(id) });
+    await this.write(this.abs(GOALS), text);
+    return contentHash(text);
+  }
+
+  /**
+   * Change the goals, on the file as it is now, under one lock. What it decided goes in the log
+   * (src/goals/decisions.ts): taking a change back within minutes marks that decision undone
+   * instead, as on a board. A change from the folder (an editor, Git) records nothing: its
+   * decisions were recorded where they were made.
+   */
+  private changeGoals(change: (t: GoalTree) => GoalTree, opts: { ifMatch?: string; by?: Decision["by"]; tab?: string; record?: boolean } = {}): Promise<{ goals: GoalsAt; decisions: Decision[] }> {
+    return locked(this.abs(GOALS), async () => {
+      const cur = await this.getGoals();
+      if (opts.ifMatch && opts.ifMatch !== cur.version) throw new ConflictError(cur.version, cur);
+      const { version: _v, file: _f, ...was } = cur;
+      const next = ordered(change(was));
+      if (stableStringify(next) === stableStringify(ordered(was))) return { goals: cur, decisions: [] };
+      const version = await this.writeGoals(next);
+      const found = opts.record === false ? [] : goalDecisions(was, next, { now: Date.now(), by: opts.by, newId: () => nanoid(10) });
+      const decisions = await this.recordGoalDecisions(found, opts);
+      this.emit({ kind: "goal", tab: opts.tab });
+      return { goals: { ...next, version, file: GOALS }, decisions };
+    });
+  }
+
+  private async recordGoalDecisions(found: Decision[], opts: { tab?: string }): Promise<Decision[]> {
+    const now = Date.now();
+    this.goalRecent = this.goalRecent.filter((d) => now - d.at < GOAL_UNDO_WINDOW);
+    const latest = (test: (r: Decision) => boolean) => [...this.goalRecent].reverse().find(test);
+    const fresh: Decision[] = [];
+    for (const d of found) {
+      const back = latest((r) => !r.undone && reverses(d, r));
+      const again = back ? undefined : latest((r) => !!r.undone && sameDecision(d, r));
+      const mark = back ?? again;
+      if (mark) {
+        mark.undone = !!back;
+        await this.updateDecision(mark.id, { undone: !!back }, opts).catch(() => {});
+      } else fresh.push(d);
+    }
+    if (fresh.length) {
+      this.goalRecent.push(...fresh);
+      await this.appendDecisions(fresh, opts);
+    }
+    return fresh;
+  }
+
+  /** Add a goal. One given an id that's there already is that goal: two windows making one card's goal make one. */
+  async createGoal(input: NewGoal, opts: { by?: Decision["by"]; tab?: string } = {}): Promise<{ goal: Goal; goals: GoalsAt }> {
+    let id = input.id ?? `g${nanoid(9)}`;
+    const r = await this.changeGoals((t) => {
+      if (goalById(t, id)) return t;
+      // A card's goal made again from another window, under its own id: the one there.
+      const twin = input.on && t.goals.find((g) => g.on?.board === input.on!.board && g.on.card === input.on!.card);
+      if (twin) {
+        id = twin.id;
+        return t;
+      }
+      const g: Goal = {
+        id,
+        title: input.title,
+        parent: input.parent && goalById(t, input.parent) ? input.parent : null,
+        product: input.product ?? null,
+        ...(input.metric ? { metric: input.metric } : {}),
+        status: input.status ?? "active",
+        ...(input.lever ? { lever: input.lever } : {}),
+        ...(input.feeds ? { feeds: input.feeds } : {}),
+        ...(input.on ? { on: input.on } : {}),
+        cites: input.cites ?? [],
+        by: input.by ?? "person",
+        at: Date.now(),
+      };
+      const next = addGoal(t, g);
+      return input.north === true || (input.north === "if-none" && !t.north && !g.parent) ? setNorthIn(next, g.id) : next;
+    }, opts);
+    return { goal: goalById(r.goals, id)!, goals: r.goals };
+  }
+
+  /** Change a goal. One under itself is refused (GoalCycleError). */
+  async patchGoal(id: string, patch: GoalPatch, opts: { ifMatch?: string; by?: Decision["by"]; tab?: string } = {}): Promise<{ goal: Goal; goals: GoalsAt; decisions: Decision[] }> {
+    const r = await this.changeGoals((t) => {
+      if (!goalById(t, id)) throw new NotFoundError(`No goal ${id}`);
+      if (patch.parent && (patch.parent === id || underOf(t, id).some((g) => g.id === patch.parent))) throw new GoalCycleError("A goal can't sit under itself or a goal under it");
+      if (patch.parent && !goalById(t, patch.parent)) throw new NotFoundError(`No goal ${patch.parent}`);
+      return patchInTree(t, id, patch);
+    }, opts);
+    return { goal: goalById(r.goals, id)!, goals: r.goals, decisions: r.decisions };
+  }
+
+  /** Take a goal off the tree (the goals under it move up). A goal a board's card is on stays (GoalInUseError). */
+  async removeGoal(id: string, opts: { by?: Decision["by"]; tab?: string } = {}): Promise<{ goals: GoalsAt; decisions: Decision[] }> {
+    const g = goalById(await this.getGoals(), id);
+    if (!g) throw new NotFoundError(`No goal ${id}`);
+    if (g.on) {
+      const e = this.projects.get(g.on.board);
+      const doc = e ? await this.readDoc(e).catch(() => null) : null;
+      if (doc && (doc.nodes as Record<string, unknown>)[g.on.card]) throw new GoalInUseError([g.on.board]);
+    }
+    return this.changeGoals((t) => removeFromTree(t, id), opts);
+  }
+
+  /** Make a top-level goal the North Star (none: no North Star). */
+  async setNorth(id: string | null, opts: { by?: Decision["by"]; tab?: string } = {}): Promise<{ goals: GoalsAt; decisions: Decision[] }> {
+    return this.changeGoals((t) => {
+      if (id && !goalById(t, id)) throw new NotFoundError(`No goal ${id}`);
+      return setNorthIn(id ? patchInTree(t, id, { parent: null }) : t, id);
+    }, opts);
+  }
+
+  /** Goals written in a context's words (from before goals.md), added where they aren't yet. */
+  private async takeInGoals(lines: string[], product: string | null, opts: { tab?: string }) {
+    await this.changeGoals((t) => {
+      let next = t;
+      for (const line of lines) {
+        const title = line.replace(/\s+/g, " ").trim().slice(0, 200);
+        if (!title || next.goals.some((g) => (g.product ?? null) === product && sameTopic(g.title, title))) continue;
+        next = addGoal(next, { id: textGoalId(product ? `${product}:${title}` : title), title, parent: null, product, status: "active", cites: [], by: "person", at: Date.now() });
+        if (!product && !next.north) next = setNorthIn(next, next.goals.at(-1)!.id);
+      }
+      return next;
+    }, opts);
+  }
+
+  /** The goals that are this computer's person's. */
+  get mine(): string[] {
+    return this.local.mine ?? [];
+  }
+
+  async setMine(ids: string[]): Promise<void> {
+    this.local.mine = [...new Set(ids)].slice(0, 200);
+    await locked(this.abs(".qalam/local/state.json"), () => atomicWrite(this.abs(".qalam/local/state.json"), stableStringify(this.local)));
+  }
+
+  /**
+   * Goals written before goals.md (the About's, each product's, the outcome cards on the boards)
+   * moved into it, once: when the folder has no goals.md and something says what it aims at. Board
+   * files aren't touched: a goal knows its card (`on`), so links hold before any board opens.
+   */
+  async migrateGoals(): Promise<void> {
+    if (await readFile(this.abs(GOALS)).then(() => true, () => false)) return;
+    const about = legacyGoals(await this.getAbout());
+    const products: { file: string; product: Product; goals: string[] }[] = [];
+    for (const file of this.products.values()) {
+      const p = productFromMarkdown(await readFile(file, "utf8").catch(() => ""));
+      if (!p) continue;
+      const { goals, rest } = legacyGoals(p);
+      products.push({ file, product: rest, goals });
+    }
+    const boards: BoardOutcomes[] = [];
     for (const e of this.projects.values()) {
       if (e.record.type !== "discovery") continue;
-      let cached = this.goals.get(e.record.id);
-      if (!cached || cached.docV !== e.docV) {
-        cached = { docV: e.docV, goals: goalsOf(e.record, await this.readDoc(e).catch(() => null)) };
-        this.goals.set(e.record.id, cached);
-      }
-      out.push(...cached.goals.map((g) => ({ ...g, boardName: e.record.name, product: e.record.product ?? null })));
+      const doc = await this.readDoc(e).catch(() => null);
+      const outcomes = doc
+        ? outcomesOf(doc).map((o) => ({
+            card: o.card,
+            title: o.ost.title,
+            ...(o.ost.metric ? { metric: o.ost.metric } : {}),
+            stage: (["active", "achieved", "paused"].includes(o.ost.stage) ? o.ost.stage : "active") as Goal["status"],
+            parent: o.parent,
+            pieces: o.ost.evidence.flatMap((x) => (x.piece && x.stance !== "against" ? [x.piece] : [])),
+          }))
+        : [];
+      boards.push({ board: e.record.id, product: e.record.product ?? null, createdAt: e.record.createdAt, outcomes });
     }
-    return out;
+    if (!about.goals.length && !products.some((p) => p.goals.length) && !boards.some((b) => b.outcomes.some((o) => o.title.trim()))) return;
+    await locked(this.abs(GOALS), async () => {
+      await this.writeGoals(migrateGoals({ about: about.goals, products: products.map((p) => ({ id: p.product.id, goals: p.goals })), boards, at: this.org.createdAt }));
+    });
+    if (about.goals.length) await this.write(this.abs("about.md"), aboutToMarkdown(about.rest));
+    for (const p of products) if (p.goals.length) await this.write(p.file, productToMarkdown(p.product));
   }
 
   // -------------------------------------------------------------------------
   // Decisions: a log a month (decisions/<YYYY-MM>.md), added to as boards change.
 
-  /** Decisions, newest first: all of them, a board's, or a card's. */
-  listDecisions(q: { board?: string; card?: string; limit?: number } = {}): Decision[] {
+  /** Decisions, newest first: all of them, a board's, a card's, or a goal's. */
+  listDecisions(q: { board?: string; card?: string; goal?: string; limit?: number } = {}): Decision[] {
     const seen = new Set<string>();
     const out: Decision[] = [];
     for (const list of this.decisions.values())
       for (const d of list) {
-        if (seen.has(d.id) || (q.board && d.board !== q.board) || (q.card && d.card !== q.card && !cardsOf(d).includes(q.card))) continue;
+        if (seen.has(d.id) || (q.board && d.board !== q.board) || (q.card && d.card !== q.card && !cardsOf(d).includes(q.card)) || (q.goal && d.goal !== q.goal)) continue;
         seen.add(d.id);
         out.push(d);
       }
@@ -1153,6 +1343,8 @@ export class OrgStore {
       this.emit({ kind: "relation" });
     } else if (rel === "about.md") {
       this.emit({ kind: "about" });
+    } else if (rel === GOALS) {
+      this.emit({ kind: "goal" });
     } else if (rel === "org.json" && bytes) {
       const info = await readJson<OrgInfo>(file);
       if (info?.qalam === "org/1" && info.id === this.org.id && stableStringify(info) !== stableStringify(this.org)) {
@@ -1169,22 +1361,3 @@ export class OrgStore {
 
 /** The cards a batch decision touched (accepting or discarding Qalam AI's proposals). */
 const cardsOf = (d: Decision): unknown[] => (Array.isArray(d.detail?.cards) ? (d.detail.cards as unknown[]) : []);
-
-/** A board's outcomes, each with the outcome it sits under (sub-outcomes). */
-function goalsOf(record: Project, doc: Doc | null): Omit<Goal, "boardName" | "product">[] {
-  if (!doc) return [];
-  type Card = { parentId?: string | null; meta?: { ost?: OstCard } };
-  const nodes = doc.nodes as unknown as Record<string, Card>;
-  const outcome = (id: string | null | undefined) => (id && nodes[id]?.meta?.ost?.kind === "outcome" ? id : null);
-  const parentOutcome = (id: string): string | null => {
-    for (let p = nodes[id]?.parentId; p; p = nodes[p]?.parentId) if (outcome(p)) return p;
-    return null;
-  };
-  const out: Omit<Goal, "boardName" | "product">[] = [];
-  for (const [id, n] of Object.entries(nodes)) {
-    const c = n.meta?.ost;
-    if (c?.kind !== "outcome") continue;
-    out.push({ board: record.id, id, title: c.title, ...(c.metric ? { metric: c.metric } : {}), parent: parentOutcome(id) });
-  }
-  return out;
-}

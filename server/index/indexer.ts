@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
-import { boardPieces, contextPieces, decisionPieces, meaningText, sourcePieces, topicPieces, type Built, type HubPiece, type Names } from "@/hub/pieces";
+import { boardPieces, contextPieces, decisionPieces, goalPieces, meaningText, sourcePieces, topicPieces, type Built, type HubPiece, type Names } from "@/hub/pieces";
 import { fold } from "@/hub/words";
 import type { Models } from "../models/client";
 import { contentHash, stableStringify } from "../org/fsx";
@@ -148,6 +148,7 @@ export class OrgIndex {
     else if (e.kind === "topic") this.queue.add(`topic:${e.id}`);
     else if (e.kind === "relation") this.queue.add("relations");
     else if (e.kind === "about" || e.kind === "org") this.queue.add("context:org");
+    else if (e.kind === "goal") this.queue.add("goals");
     // A product's name is in the lines of everything for it: look at everything again.
     else if (e.kind === "product") this.queue.add("*");
     else return;
@@ -172,7 +173,7 @@ export class OrgIndex {
   }
 
   private async keys(): Promise<Set<string>> {
-    const keys = new Set<string>(["decisions", "context:org", "relations"]);
+    const keys = new Set<string>(["decisions", "context:org", "relations", "goals"]);
     for (const p of this.store.listProjects()) if (p.type === "discovery") keys.add(`board:${p.id}`);
     for (const s of await this.store.listSources()) keys.add(`source:${s.id}`);
     for (const p of await this.store.listProducts()) keys.add(`context:${p.id}`);
@@ -204,6 +205,10 @@ export class OrgIndex {
       case "topic": {
         const t = await store.getTopic(id);
         return t ? topicPieces(t, names) : null;
+      }
+      case "goals": {
+        const t = await store.getGoals();
+        return t.goals.length ? goalPieces(t, names, store.info.name) : null;
       }
       case "context": {
         if (id === "org") return contextPieces({ product: null, name: store.info.name, at: store.info.createdAt }, await store.getAbout());

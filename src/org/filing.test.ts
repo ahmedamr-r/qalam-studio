@@ -61,7 +61,7 @@ describe("filing sources into the pages", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("sends what the pages haven't seen, keeps what code stands behind, and notes it all as seen", async () => {
-    useOrgContext.setState({ about: { audience: "", goals: [], context: "", segments: [] }, products: [{ id: "grocery", name: "Grocery", audience: "Parents", goals: [], context: "", segments: ["Parents of young children"] }], loaded: true });
+    useOrgContext.setState({ about: { audience: "", context: "", segments: [] }, products: [{ id: "grocery", name: "Grocery", audience: "Parents", context: "", segments: ["Parents of young children"] }], loaded: true });
     const pages: TopicInfo[] = [];
     let sent: TopicsRequest | null = null;
     let filed: { filing: Filing; from: string; filed: Record<string, string[]> } | null = null;

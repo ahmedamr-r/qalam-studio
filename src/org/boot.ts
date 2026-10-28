@@ -1,4 +1,5 @@
 import { hydrateSystems, reloadSystems } from "@/design-system/registry";
+import { loadGoals } from "@/goals/client";
 import { setLinkOrg } from "@/projects/model";
 import { hydrateNaming } from "@/ui/ai/aiStore";
 import { chooseOrg, currentOrg, forgetOrg, rememberOrg, type OrgRef } from "./client";
@@ -18,12 +19,13 @@ export function bootOrg(orgId: string | null = null): Promise<OrgRef> {
     const org = await currentOrg();
     setLinkOrg(org.id);
     void rememberOrg(org.id);
-    await Promise.all([hydrateSystems(org.id), hydrateNaming(), loadOrgContext()]);
+    await Promise.all([hydrateSystems(org.id), hydrateNaming(), loadOrgContext(), loadGoals().catch(() => {})]);
     startLive();
     onOrgChange((c) => {
       if (c.kind === "system") void reloadSystems();
       if (c.kind === "naming") void hydrateNaming();
       if (c.kind === "product" || c.kind === "about") void loadOrgContext();
+      if (c.kind === "goal") void loadGoals().catch(() => {});
       if (c.kind === "org") forgetOrg();
     });
     return org;

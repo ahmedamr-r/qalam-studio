@@ -7,7 +7,7 @@ import type { Project } from "@/projects/model";
 import { dot, mmr, rrf, scoped } from "./fuse";
 import { orgGraph } from "./graph";
 import { pack, tokensOf } from "./pack";
-import { boardPieces, cardRef, contextPieces, decisionPieces, meaningText, searchText, sourcePieces } from "./pieces";
+import { boardPieces, cardRef, contextPieces, decisionPieces, goalPieces, meaningText, searchText, sourcePieces } from "./pieces";
 import { ftsQuery, queryWords } from "./words";
 
 const names = { product: (id: string) => ({ grocery: "Grocery" })[id] };
@@ -95,18 +95,35 @@ describe("pieces of the organization's files", () => {
   });
 
   it("makes each line of what a product is a piece, named by its words; its segments are one piece", () => {
-    const b = contextPieces({ product: "grocery", name: "Grocery", at }, { audience: "Parents with young kids", goals: ["Weekly reorders", "Second orders"], context: "", segments: ["Busy parents", "New customers"] });
+    const b = contextPieces({ product: "grocery", name: "Grocery", at }, { audience: "Parents with young kids", context: "", segments: ["Busy parents", "New customers"] });
     expect(b.pieces.map((p) => [p.sub, p.line, p.text])).toEqual([
       ["audience", "Who Grocery is for", "Parents with young kids"],
-      ["goal", "A goal of Grocery", "Weekly reorders"],
-      ["goal", "A goal of Grocery", "Second orders"],
       ["segments", "The kinds of customer Grocery tells apart", "Busy parents; New customers"],
     ]);
-    expect(contextPieces({ product: "grocery", name: "Grocery", at }, { audience: "Parents with young kids", goals: [], context: "", segments: [] }).pieces[0].ref).toBe(b.pieces[0].ref);
-    expect(searchText(b.pieces[1], ["More weekly reorders"])).toBe("A goal of Grocery · about “More weekly reorders”\nWeekly reorders");
+    expect(contextPieces({ product: "grocery", name: "Grocery", at }, { audience: "Parents with young kids", context: "", segments: [] }).pieces[0].ref).toBe(b.pieces[0].ref);
     // Meaning search reads what a piece is, the cards it's about and its words (not where it's from).
     expect(meaningText({ type: "quote", sub: "pain", line: "Pain Sara said in “Sara interview”", text: "It takes forever" }, ["Reordering is slow"])).toBe("A customer pain. About “Reordering is slow”. It takes forever");
-    expect(meaningText(b.pieces[1])).toBe("A goal of Grocery: Weekly reorders");
+  });
+
+  it("makes each goal a piece, under the goal it feeds and linked to the card working on it", () => {
+    const tree = {
+      north: "ns",
+      goals: [
+        { id: "ns", title: "2M AED a month", parent: null, product: null, status: "active" as const, cites: [], by: "person" as const, at },
+        { id: "r", title: "Weekly reorders", parent: "ns", product: "grocery", status: "active" as const, metric: { name: "Reorders", unit: "orders", direction: "increase" as const, baseline: 1.2, current: 1.3, target: 1.5 }, on: { board: "b1", card: "o1" }, cites: ["hub:quote:q1"], by: "person" as const, at },
+      ],
+    };
+    const b = goalPieces(tree, names, "Basket");
+    expect(b.pieces.map((p) => [p.ref, p.sub, p.line, p.text])).toEqual([
+      ["hub:goal:ns", "goal", "The North Star of Basket (the organization)", "2M AED a month"],
+      ["hub:goal:r", "goal", "A goal of Grocery · under “2M AED a month”", "Weekly reorders (Reorders: 1.3 → 1.5 orders)"],
+    ]);
+    expect(b.edges).toEqual([
+      { from: "hub:goal:r", to: "hub:goal:ns", kind: "under" },
+      { from: cardRef("b1", "o1"), to: "hub:goal:r", kind: "for" },
+      { from: "hub:goal:r", to: "hub:quote:q1", kind: "backs" },
+    ]);
+    expect(searchText(b.pieces[1], ["More weekly reorders"])).toBe("A goal of Grocery · under “2M AED a month” · about “More weekly reorders”\nWeekly reorders (Reorders: 1.3 → 1.5 orders)");
   });
 });
 
@@ -184,7 +201,7 @@ describe("the organization's graph", () => {
   it("shows a product's pieces with the whole organization's, and only links between pieces it shows", () => {
     const b = boardPieces(board, doc, names);
     const s = sourcePieces({ ...source, product: "pharmacy" }, names);
-    const all = [...b.pieces, ...s.pieces, ...contextPieces({ product: null, name: "Basket", at }, { audience: "Families", goals: [], context: "", segments: [] }).pieces];
+    const all = [...b.pieces, ...s.pieces, ...contextPieces({ product: null, name: "Basket", at }, { audience: "Families", context: "", segments: [] }).pieces];
     const g = orgGraph(all, [...b.edges, ...s.edges], { product: "grocery" });
     expect(g.nodes.some((n) => n.ref === "hub:quote:q1")).toBe(false);
     expect(g.nodes.find((n) => n.ref === cardRef("b1", "n1"))?.label).toBe("Rebuilding the basket takes long");

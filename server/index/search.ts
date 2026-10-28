@@ -40,7 +40,7 @@ const PAGES_FROM = 30;
 const NEAR_COPY = 0.85;
 
 /** How strongly a link ties two pieces, by kind. */
-const LINK_WEIGHT: Record<string, number> = { backs: 1, against: 1, of: 0.9, cites: 0.9, same: 0.8, about: 0.8, shows: 0.8, under: 0.6, in: 0.2 };
+const LINK_WEIGHT: Record<string, number> = { backs: 1, against: 1, for: 1, of: 0.9, cites: 0.9, same: 0.8, about: 0.8, shows: 0.8, under: 0.6, in: 0.2 };
 const isEntity = (ref: string) => ref.startsWith("hub:source:") || ref.startsWith("hub:board:") || /^hub:topic:[^:]+$/.test(ref);
 
 /** Pieces near a card by its links, nearest first; `direct` are one link away. */

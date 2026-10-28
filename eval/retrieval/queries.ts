@@ -1,4 +1,5 @@
-import { cardRef, decisionRef } from "@/hub/pieces";
+import { textGoalId } from "@/goals/migrate";
+import { cardRef, decisionRef, goalRef } from "@/hub/pieces";
 import { factHash } from "@/knowledge/refs";
 import { quoteRef } from "./basket";
 
@@ -24,6 +25,8 @@ const card = (board: string, id: string) => cardRef(board, id);
 const need = (source: string, id: string) => `hub:need:${source}:${id}`;
 const assumption = (board: string, id: string) => `hub:assumption:${board}:${id}`;
 const context = (product: string, sub: string, text: string) => `hub:context:${product}:${sub}:${factHash(text)}`;
+/** A goal in goals.md, as the sample's words made it (the organization's when no product). */
+const goal = (text: string, product?: string) => goalRef(textGoalId(product ? `${product}:${text}` : text));
 const grade = (g: 1 | 2, refs: string[]) => Object.fromEntries(refs.map((r) => [r, g])) as Record<string, 1 | 2>;
 
 export const QUERIES: EvalQuery[] = [
@@ -58,10 +61,10 @@ export const QUERIES: EvalQuery[] = [
   { id: "invoice-decision", kind: "decision", q: "What did we decide about invoices?", product: "business", relevant: { [decisionRef("d5")]: 2, [card("pantry", "n7")]: 1 } },
 
   // Goals, numbers, who it's for
-  { id: "reorder-goal", kind: "goal", q: "What is the goal for weekly reorders?", product: "grocery", relevant: { ...grade(2, [card("reorders", "o1"), context("grocery", "goal", "More customers reorder every week")]), ...grade(1, [...quote("dump-2"), decisionRef("d4")]) } },
+  { id: "reorder-goal", kind: "goal", q: "What is the goal for weekly reorders?", product: "grocery", relevant: { ...grade(2, [card("reorders", "o1"), goal("More customers reorder every week", "grocery")]), ...grade(1, [...quote("dump-2"), decisionRef("d4")]) } },
   { id: "who-for", kind: "goal", q: "Who is the grocery app for?", relevant: { [context("grocery", "audience", "Parents with young kids in Dubai who do a big weekly shop")]: 2, [context("grocery", "segments", "Weekly planners; Top-up shoppers; New customers")]: 1 } },
-  { id: "investor-target", kind: "goal", q: "What's the investors' target?", relevant: { ...grade(2, [...quote("dump-1"), context("org", "goal", "2M dirhams a month in orders by end of Q2")]), [decisionRef("d4")]: 1 } },
-  { id: "second-order-rate", kind: "goal", q: "How many first-time customers order again?", relevant: { ...grade(2, quote("dump-3")), [context("grocery", "goal", "More first-time customers order a second time")]: 1 } },
+  { id: "investor-target", kind: "goal", q: "What's the investors' target?", relevant: { ...grade(2, [...quote("dump-1"), goal("2M dirhams a month in orders by end of Q2")]), [decisionRef("d4")]: 1 } },
+  { id: "second-order-rate", kind: "goal", q: "How many first-time customers order again?", relevant: { ...grade(2, quote("dump-3")), [goal("More first-time customers order a second time", "grocery")]: 1 } },
 
   // Assumptions and tests
   { id: "rules-assumption", kind: "assumption", q: "What are we assuming about substitution rules?", relevant: { [assumption("reorders", "a2")]: 2, [card("reorders", "s4")]: 1 } },

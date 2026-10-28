@@ -2,13 +2,12 @@
  * What an organization and its products are, as Markdown files people can read and edit:
  * about.md for the organization, products/<slug>.md for each product. A file is a few headed
  * sections; a section Qalam doesn't know is kept as it is, so nothing written by hand is lost.
+ * Their goals live in goals.md, one tree for the organization (src/goals).
  */
 
 export interface ContextFields {
   /** Who it's for: the customers it serves. */
   audience: string;
-  /** What the team is trying to move (one per line in the file). */
-  goals: string[];
   /** Anything else worth knowing: the market, the business, constraints. */
   context: string;
   /** Kinds of customers worth telling apart. */
@@ -22,14 +21,33 @@ export interface Product extends ContextFields {
   name: string;
 }
 
-export const emptyContext = (): ContextFields => ({ audience: "", goals: [], context: "", segments: [] });
+export const emptyContext = (): ContextFields => ({ audience: "", context: "", segments: [] });
 
-type Field = "audience" | "goals" | "context" | "segments";
-const LISTS: Field[] = ["goals", "segments"];
+type Field = "audience" | "context" | "segments";
+const LISTS: Field[] = ["segments"];
 
 /** Section headings: a product's, and the organization's own (about.md). */
-export const PRODUCT_HEADINGS: Record<Field, string> = { audience: "Who it's for", goals: "Goals", context: "Context", segments: "Segments" };
-export const ABOUT_HEADINGS: Record<Field, string> = { audience: "Who we serve", goals: "Goals", context: "What we do", segments: "Segments" };
+export const PRODUCT_HEADINGS: Record<Field, string> = { audience: "Who it's for", context: "Context", segments: "Segments" };
+export const ABOUT_HEADINGS: Record<Field, string> = { audience: "Who we serve", context: "What we do", segments: "Segments" };
+
+/** The section goals had before goals.md. */
+const GOALS_SECTION = /(?:^|\n\n)## +goals[ \t]*\n([\s\S]*?)(?=\n\n## |$)/i;
+
+/**
+ * The goals a context file still holds from before goals.md (its "## Goals" section, kept as a
+ * note since), and the context without them.
+ */
+export function legacyGoals<T extends ContextFields>(c: T): { goals: string[]; rest: T } {
+  const m = c.notes ? GOALS_SECTION.exec(c.notes) : null;
+  if (!m || !c.notes) return { goals: [], rest: c };
+  const goals = m[1]
+    .split("\n")
+    .map((l) => l.replace(/^\s*(?:[-*+]|\d+[.)])\s+/, "").trim())
+    .filter(Boolean);
+  const notes = (c.notes.slice(0, m.index) + c.notes.slice(m.index + m[0].length)).replace(/^\n+/, "").trim();
+  const { notes: _n, ...fields } = c;
+  return { goals, rest: { ...fields, ...(notes ? { notes } : {}) } as T };
+}
 
 /** Front matter values are JSON, which YAML reads too. */
 export function frontMatter(fields: Record<string, unknown>): string {
@@ -64,7 +82,7 @@ export function contextToMarkdown(c: ContextFields, headings: Record<Field, stri
   const cut = notes.startsWith("## ") ? 0 : notes.search(/\n\n## /) < 0 ? notes.length : notes.search(/\n\n## /);
   const parts: string[] = [];
   if (notes.slice(0, cut).trim()) parts.push(notes.slice(0, cut).trim());
-  for (const f of ["audience", "goals", "context", "segments"] as Field[]) {
+  for (const f of ["audience", "context", "segments"] as Field[]) {
     const v = c[f];
     const body = Array.isArray(v) ? v.filter((x) => x.trim()).map((x) => `- ${x.trim()}`).join("\n") : v.trim();
     if (body) parts.push(`## ${headings[f]}\n\n${body}`);
@@ -92,7 +110,7 @@ export function contextFromMarkdown(md: string, headings: Record<Field, string>)
       continue;
     }
     if (LISTS.includes(field))
-      out[field as "goals" | "segments"] = text
+      out[field as "segments"] = text
         .split("\n")
         .map((l) => l.replace(/^\s*(?:[-*+]|\d+[.)])\s+/, "").trim())
         .filter(Boolean);
@@ -122,7 +140,6 @@ export function contextText(c: ContextFields | null | undefined, label: string):
   if (!c) return "";
   const lines = [
     c.audience.trim() && `Who it's for: ${c.audience.trim()}`,
-    c.goals.length && `Goals: ${c.goals.join("; ")}`,
     c.context.trim() && `Context: ${c.context.trim()}`,
     c.segments.length && `Segments: ${c.segments.join("; ")}`,
   ].filter(Boolean);

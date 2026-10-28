@@ -25,6 +25,7 @@ import { onOrgChange } from "@/org/live";
 import { ensureDumpHandlers, resumeDumps } from "./dump";
 import { loadPlacements, reviewPlacements } from "./placements";
 import { startRecorder } from "../decisions/recorder";
+import { startGoalSync } from "./goals";
 
 /**
  * A Discovery project opening: the board's layout pass, gestures and commands are installed (a
@@ -58,6 +59,8 @@ export function startDiscoveryStudio(p: Project): (doc: Doc) => void {
   void refreshDesigns(p.id);
   // Where its solutions' linked issues and pull requests stand (the cards' chips).
   startWork();
+  // Its outcome cards are goals (goals.md): each shows its goal, and an edit to it goes there.
+  startGoalSync();
   // What gets decided on the board goes to the organization's decision log.
   startRecorder();
   ensureDumpHandlers();

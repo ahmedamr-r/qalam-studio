@@ -1,5 +1,7 @@
 import { nanoid } from "nanoid";
 import { create } from "zustand";
+import { goalsNow } from "@/goals/client";
+import { goalsText } from "@/goals/text";
 import { contextText, emptyContext, type ContextFields, type Product } from "./context-md";
 import { orgFetch, orgJson } from "./client";
 
@@ -42,9 +44,15 @@ export async function saveAbout(about: ContextFields) {
   await orgFetch("/about", { method: "PUT", json: about });
 }
 
-/** What Qalam AI is told about a board's product (and the organization around it), or about the organization alone. */
-export function contextFor(productId: string | null | undefined): string {
-  const { about } = useOrgContext.getState();
+/**
+ * What Qalam AI is told about a board's product (and the organization around it), or about the
+ * organization alone, with the goals: a board's own goals (`goals`) and every goal above them, or
+ * the product's.
+ */
+export function contextFor(productId: string | null | undefined, goals?: string[]): string {
+  const { about, products } = useOrgContext.getState();
   const p = productOf(productId);
-  return [p ? contextText(p, `The product (${p.name}):`) : "", contextText(about, "The organization:")].filter(Boolean).join("\n\n");
+  const names = new Map(products.map((x) => [x.id, x.name]));
+  const aims = goalsText(goalsNow(), { product: productId ?? null, goals, productName: (id) => names.get(id) });
+  return [p ? contextText(p, `The product (${p.name}):`) : "", contextText(about, "The organization:"), aims].filter(Boolean).join("\n\n");
 }

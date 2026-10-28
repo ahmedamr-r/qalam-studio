@@ -4,6 +4,8 @@ import { metricText } from "@/discovery/dump";
 import { KIND_LABEL, stageLabel } from "@/discovery/kinds";
 import { QUOTE_KIND_LABEL, quotePiece, type SourceRecord } from "@/discovery/sources";
 import type { OstCard, OstEvidence } from "@/discovery/types";
+import { metricLine } from "@/goals/goals-md";
+import type { GoalTree } from "@/goals/types";
 import { factHash } from "@/knowledge/refs";
 import type { ContextFields } from "@/org/context-md";
 import type { Project } from "@/projects/model";
@@ -39,7 +41,9 @@ export type EdgeKind =
   /** A topic page's line rests on a piece. */
   | "cites"
   /** Two cards on different boards are the same need (linked by the team). */
-  | "same";
+  | "same"
+  /** An outcome card is a goal on a board (goals.md). */
+  | "for";
 
 export interface HubEdge {
   from: string;
@@ -94,6 +98,7 @@ export const sourceRef = (id: string) => `hub:source:${id}`;
 export const boardRef = (id: string) => `hub:board:${id}`;
 export const decisionRef = (id: string) => `hub:decision:${id}`;
 export const topicRef = (id: string) => `hub:topic:${id}`;
+export const goalRef = (id: string) => `hub:goal:${id}`;
 export const topicLineRef = (topic: string, line: string) => `hub:topic:${topic}:${line}`;
 
 const date = (at: number) => (at > 0 ? new Date(at).toLocaleDateString("en", { month: "short", day: "numeric", year: "numeric" }) : "");
@@ -247,7 +252,6 @@ export function contextPieces(owner: { product: string | null; name: string; at:
   const who = owner.product ? owner.name : `${owner.name} (the organization)`;
   const items: [string, string, string][] = [
     ["audience", `Who ${who} is for`, c.audience],
-    ...c.goals.map((g): [string, string, string] => ["goal", `A goal of ${who}`, g]),
     ["context", `About ${who}`, c.context],
     // One piece for all of them: a name like "New customers" alone is near everything in meaning.
     ["segments", `The kinds of customer ${who} tells apart`, c.segments.join("; ")],
@@ -259,6 +263,34 @@ export function contextPieces(owner: { product: string | null; name: string; at:
     pieces.push({ ref: `hub:context:${owner.product ?? "org"}:${sub}:${factHash(text)}`, type: "context", sub, text: text.trim(), line, title: owner.name, product: owner.product, at: owner.at });
   }
   return { pieces, edges: [], entities: [] };
+}
+
+// ---------------------------------------------------------------------------
+// The goals (goals.md): each a piece, under the goal it feeds, linked to the card working on it
+
+export function goalPieces(t: GoalTree, n: Names, orgName: string): Built {
+  const pieces: HubPiece[] = [];
+  const edges: HubEdge[] = [];
+  const byId = new Map(t.goals.map((g) => [g.id, g]));
+  for (const g of t.goals) {
+    const ref = goalRef(g.id);
+    const parent = g.parent ? byId.get(g.parent) : undefined;
+    const who = g.product ? (n.product(g.product) ?? "a product") : `${orgName} (the organization)`;
+    pieces.push({
+      ref,
+      type: "context",
+      sub: "goal",
+      text: g.metric ? `${g.title} (${g.metric.name ? `${g.metric.name}: ` : ""}${metricLine(g.metric)})` : g.title,
+      line: join(g.id === t.north ? `The North Star of ${who}` : `A goal of ${who}`, parent ? `under ${q(parent.title)}` : null, g.status !== "active" ? g.status : null),
+      title: g.title,
+      product: g.product,
+      at: g.at,
+    });
+    if (parent) edges.push({ from: ref, to: goalRef(parent.id), kind: "under" });
+    if (g.on) edges.push({ from: cardRef(g.on.board, g.on.card), to: ref, kind: "for" });
+    for (const c of g.cites) edges.push({ from: ref, to: c, kind: "backs" });
+  }
+  return { pieces, edges, entities: [] };
 }
 
 // ---------------------------------------------------------------------------

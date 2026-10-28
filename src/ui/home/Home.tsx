@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import clsx from "clsx";
 import type { SourceRecord } from "@/discovery/sources";
+import { useGoals } from "@/goals/client";
 import type { OrgRef } from "@/org/client";
 import { useOrgContext } from "@/org/context";
 import { browserProjectsToMove, moveBrowserProjects } from "@/org/import-browser";
@@ -34,17 +35,21 @@ import { NextUp } from "./NextUp";
  */
 
 export default function Home() {
-  const { projects, legacy, goals, sources, refresh } = useOrgData();
+  const { projects, legacy, sources, refresh } = useOrgData();
+  const goalTree = useGoals();
   const org = useCurrentOrg();
   const [scope, setScope] = useScope();
   const notices = useNotices();
   const needs = useNeeds();
   const topics = useTopics();
   const { products, about, loaded } = useOrgContext();
+  const goalCount = goalTree.goals.length;
 
   const product = scope !== "all" && scope !== "org" ? products.find((p) => p.id === scope) : undefined;
   const boards = (projects ?? []).filter((p) => p.type === "discovery" && inScope(p.product, scope));
-  const scopedGoals = goals.filter((g) => inScope(g.product, scope));
+  const boardNames = new Map((projects ?? []).map((p) => [p.id, p.name]));
+  const productNames = new Map(products.map((p) => [p.id, p.name]));
+  const hasGoals = goalTree.goals.some((g) => inScope(g.product, scope));
   const orgName = org?.name ?? "Organization";
 
   return (
@@ -70,7 +75,7 @@ export default function Home() {
           </div>
         )}
 
-        <SetupNotice org={org} sources={sources} empty={loaded && !products.length && !about.audience.trim() && !about.context.trim() && !about.goals.length && !about.segments.length} />
+        <SetupNotice org={org} sources={sources} empty={loaded && !products.length && !about.audience.trim() && !about.context.trim() && !goalCount && !about.segments.length} />
 
         <AskBar product={product?.id ?? null} topics={topics} />
 
@@ -88,7 +93,11 @@ export default function Home() {
           <h2 id="goals" className="text-title font-medium">
             Goals
           </h2>
-          {scopedGoals.length ? <GoalsList goals={scopedGoals} /> : <p className="text-body text-fg-muted">No outcomes yet. Every outcome on a board shows here, with the board it's on.</p>}
+          {hasGoals ? (
+            <GoalsList tree={goalTree} boards={boardNames} products={productNames} keep={(g) => inScope(g.product, scope)} />
+          ) : (
+            <p className="text-body text-fg-muted">No goals yet. The North Star goes on top, each goal under the goal it feeds; a board works on one.</p>
+          )}
         </section>
 
         {!!boards.length && (

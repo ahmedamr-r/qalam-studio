@@ -19,6 +19,7 @@ import { IngestError, ingestFile, ingestPaste, ingestUrl, type Ingested } from "
 import { addSourceRecord, setJob, sourceOf, updateSource, useSources } from "./sources";
 import { boardCardRefs, hubQuotes, packProduct, recordCall } from "./knowledge";
 import { startReview } from "./review";
+import { boardGoalIds } from "./goals";
 import { fileAfterReading } from "../topics/filing";
 
 /*
@@ -127,14 +128,16 @@ export async function readFromTools(input: Extract<AddInput, { kind: "connector"
 // ---------------------------------------------------------------------------
 // Extract: what customers said
 
-/** The product and its outcomes, for Qalam AI to read the material with. */
+/** The product and its goals, for Qalam AI to read the material with. */
 export function productLine(doc: Doc): string {
-  const outcomes = outcomeLines(doc);
-  // What the board's product (or the organization) is, from its own file, then the board's own notes.
-  return [contextFor(currentProject()?.product), doc.brief?.summary ?? "", outcomes.length ? `The outcomes the team wants to move (sub-outcomes under theirs):\n${outcomes.join("\n")}` : ""]
+  const goals = boardGoalIds();
+  // Outcomes the goal tree doesn't hold yet (before goals.md had them).
+  const outcomes = goals.length ? [] : outcomeLines(doc);
+  // What the board's product (or the organization) is, from its own file, its goals and the goals above them, then the board's own notes.
+  return [contextFor(currentProject()?.product, goals), doc.brief?.summary ?? "", outcomes.length ? `The outcomes the team wants to move (sub-outcomes under theirs):\n${outcomes.join("\n")}` : ""]
     .filter(Boolean)
     .join("\n")
-    .slice(0, 2000);
+    .slice(0, 3000);
 }
 
 async function pool<T>(items: T[], n: number, fn: (t: T) => Promise<void>) {

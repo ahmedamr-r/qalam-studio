@@ -23,7 +23,8 @@ import type { Ingested } from "@/discovery/ingest/core";
 import type { Proposal } from "@/discovery/proposals";
 import { MAX_SOURCE_TEXT, SOURCE_KIND_LABEL, type SourceRecord } from "@/discovery/sources";
 import { aiConfigured, rateLimited } from "@/ai/server";
-import { ConflictError, NotFoundError, type OrgEvent, type OrgStore } from "./store";
+import { goalPatchShape, newGoalShape } from "@/goals/shape";
+import { ConflictError, GoalCycleError, GoalInUseError, NotFoundError, type OrgEvent, type OrgStore } from "./store";
 
 /**
  * The org's files over HTTP (and over the desktop app's message port, which carries the same
@@ -43,6 +44,8 @@ const etag = (v: string) => `"${v}"`;
 function failure(e: unknown): Response {
   if (e instanceof ConflictError) return Response.json({ error: "conflict", message: e.message, version: e.version, current: e.current }, { status: 409, headers: { etag: etag(e.version) } });
   if (e instanceof NotFoundError) return Response.json({ error: "not_found", message: e.message }, { status: 404 });
+  if (e instanceof GoalInUseError) return Response.json({ error: "in_use", message: e.message, boards: e.boards }, { status: 409 });
+  if (e instanceof GoalCycleError) return Response.json({ error: "bad_request", message: e.message }, { status: 400 });
   return Response.json({ error: "failed", message: e instanceof Error ? e.message : String(e) }, { status: 500 });
 }
 
@@ -124,13 +127,61 @@ export function orgRoutes(): Hono<Env> {
     await c.get("store").removeProduct(c.req.param("id"), { tab: tabOf(c.req.raw.headers) });
     return c.json({ ok: true });
   });
-  r.get("/api/org/:org/goals", async (c) => c.json(await c.get("store").listGoals()));
+  // The goals: one tree, the North Star on top (goals.md), and which are this computer's person's.
+  r.get("/api/org/:org/goals", async (c) => {
+    const store = c.get("store");
+    const g = await store.getGoals();
+    return c.json({ ...g, mine: store.mine }, 200, { etag: etag(g.version) });
+  });
+  r.post("/api/org/:org/goals", async (c) => {
+    const g = newGoalShape(await c.req.json().catch(() => null));
+    if (!g) return bad("Not a goal");
+    try {
+      const { by: _b, ...input } = g;
+      const r = await c.get("store").createGoal({ ...input, by: g.by ?? "person" }, { tab: tabOf(c.req.raw.headers) });
+      return c.json(r);
+    } catch (e) {
+      return failure(e);
+    }
+  });
+  r.patch("/api/org/:org/goals/:id", async (c) => {
+    const body = (await c.req.json().catch(() => null)) as { patch?: unknown; by?: unknown } | null;
+    const patch = goalPatchShape(body?.patch);
+    if (!patch || !ID.test(c.req.param("id"))) return bad("Not a change to a goal");
+    try {
+      return c.json(await c.get("store").patchGoal(c.req.param("id"), patch, { ifMatch: ifMatch(c.req.raw.headers), by: body?.by === "qalam" ? "qalam" : "you", tab: tabOf(c.req.raw.headers) }));
+    } catch (e) {
+      return failure(e);
+    }
+  });
+  r.delete("/api/org/:org/goals/:id", async (c) => {
+    try {
+      return c.json(await c.get("store").removeGoal(c.req.param("id"), { tab: tabOf(c.req.raw.headers) }));
+    } catch (e) {
+      return failure(e);
+    }
+  });
+  r.put("/api/org/:org/goals-north", async (c) => {
+    const { id } = ((await c.req.json().catch(() => ({}))) ?? {}) as { id?: unknown };
+    if (id !== null && (typeof id !== "string" || !ID.test(id))) return bad("Name a goal");
+    try {
+      return c.json(await c.get("store").setNorth(id, { tab: tabOf(c.req.raw.headers) }));
+    } catch (e) {
+      return failure(e);
+    }
+  });
+  r.put("/api/org/:org/goals-mine", async (c) => {
+    const { ids } = ((await c.req.json().catch(() => ({}))) ?? {}) as { ids?: unknown };
+    if (!Array.isArray(ids) || !ids.every((x) => typeof x === "string" && ID.test(x))) return bad("Name goals");
+    await c.get("store").setMine(ids as string[]);
+    return c.json({ mine: c.get("store").mine });
+  });
 
-  // Decisions: the log, newest first (a board's or a card's), added to as boards change.
+  // Decisions: the log, newest first (a board's, a card's or a goal's), added to as boards change.
   r.get("/api/org/:org/decisions", (c) => {
-    const { board, card, limit } = c.req.query();
+    const { board, card, goal, limit } = c.req.query();
     const n = Number(limit);
-    return c.json(c.get("store").listDecisions({ board: board || undefined, card: card || undefined, limit: n > 0 ? Math.min(n, 1000) : undefined }));
+    return c.json(c.get("store").listDecisions({ board: board || undefined, card: card || undefined, goal: goal || undefined, limit: n > 0 ? Math.min(n, 1000) : undefined }));
   });
   r.post("/api/org/:org/decisions", async (c) => {
     const body = (await c.req.json().catch(() => null)) as { decisions?: unknown[] } | null;
@@ -640,7 +691,9 @@ function publicPiece(p: PieceRow | Hit) {
   return { ...rest, topics: topicsOf(p) };
 }
 
-const isContext = (c: unknown): c is ContextFields => {
-  const x = c as ContextFields;
-  return !!x && typeof x.audience === "string" && typeof x.context === "string" && Array.isArray(x.goals) && x.goals.every((g) => typeof g === "string") && Array.isArray(x.segments) && x.segments.every((g) => typeof g === "string");
+/** A context as a window sends it. Goals sent with it (a window from before goals.md) go into the goal tree. */
+const isContext = (c: unknown): c is ContextFields & { goals?: string[] } => {
+  const x = c as ContextFields & { goals?: unknown };
+  const goals = x?.goals === undefined || (Array.isArray(x.goals) && x.goals.every((g) => typeof g === "string"));
+  return !!x && typeof x.audience === "string" && typeof x.context === "string" && goals && Array.isArray(x.segments) && x.segments.every((g) => typeof g === "string");
 };

@@ -9,6 +9,7 @@ import { cardsBack, decisionsFromDiff, reverses, sameDecision, stampsOf } from "
 import type { Decision, DecisionKind } from "@/decisions/model";
 import { orgFetch } from "@/org/client";
 import { currentProject, onDocFromElsewhere } from "@/projects/session";
+import { editsByQalam, linkedCards } from "../discovery/goals";
 import { decisionsChanged } from "./list";
 
 /**
@@ -90,7 +91,7 @@ function record(opts: RecordOpts = {}): Decision[] {
   if (prev === next) return [];
   base = next;
   const now = Date.now();
-  const found = decisionsFromDiff(prev, next, { board: p.id, boardName: p.name, product: p.product ?? null, now, by: opts.by, newId: () => nanoid(10) });
+  const found = decisionsFromDiff(prev, next, { board: p.id, boardName: p.name, product: p.product ?? null, now, by: opts.by, newId: () => nanoid(10), linked: linkedCards() });
   recent = recent.filter((d) => now - d.at < UNDO_WINDOW);
 
   const fresh: Decision[] = [];
@@ -206,6 +207,8 @@ export function recordAccepted(chosen: Proposal[], from: string, apply: () => st
   record();
   const doc = studio().doc;
   const lines = chosen.map((p) => ({ kind: p.kind, card: p.cardId, line: proposalLine(p, doc), why: p.why.slice(0, 200) }));
+  // What it changes on a goal's card (its number, say) reaches the goal as Qalam AI's.
+  editsByQalam();
   const said = apply();
   const reasons = new Map<string, string>();
   for (const p of chosen) {
