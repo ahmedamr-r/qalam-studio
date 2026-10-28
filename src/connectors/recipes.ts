@@ -1,4 +1,5 @@
 import { captureText, cleanText, htmlText } from "@/discovery/ingest/text";
+import { SLACK_RECIPE } from "./slack";
 
 /*
  * How Qalam reads a connector (pure): the tool and the arguments for a search and for one item,
@@ -121,6 +122,7 @@ export const RECIPES: Record<string, Recipe> = {
     fetch: (hit) => ({ tool: "fetch", args: { id: hit.id } }),
     text: intercomText,
   },
+  slack: SLACK_RECIPE,
 };
 
 /** The words of a fetched item: a {text} answer's text, else the answer as it came. */

@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { createServer, type ServerResponse } from "node:http";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { auth, UnauthorizedError, type OAuthClientProvider, type OAuthDiscoveryState } from "@modelcontextprotocol/sdk/client/auth.js";
 import type { OAuthClientInformationMixed, OAuthClientMetadata, OAuthTokens } from "@modelcontextprotocol/sdk/shared/auth.js";
@@ -13,11 +13,12 @@ import { withMcp, type McpCall } from "./mcp";
 
 /*
  * Qalam's own sign-in to a connector's MCP server, for one not signed in to in Claude Code: OAuth
- * 2.1 with PKCE, Qalam registering itself with the service. The service's page opens in the
- * system's browser and sends its answer to a listener on 127.0.0.1 that's open only for this
- * sign-in: one answer carrying this sign-in's state, or five minutes, then it closes. The answer
- * is checked (state, issuer), the code exchanged, and one call made with the new token; only then
- * are the registration and the tokens kept, in the Keychain (`connector:<id>:client`,
+ * 2.1 with PKCE, Qalam registering itself with the service, or, where a service lets no app do
+ * that (Slack), with the ID and secret of an app the workspace made (`ownApp`). The service's page
+ * opens in the system's browser and sends its answer to a listener on this Mac that's open only
+ * for this sign-in: one answer carrying this sign-in's state, or five minutes, then it closes. The
+ * answer is checked (state, issuer), the code exchanged, and one call made with the new token;
+ * only then are the registration and the tokens kept, in the Keychain (`connector:<id>:client`,
  * `connector:<id>:oauth`). Calls use them straight (no model, no Claude Code), refreshing when the
  * server asks; when the service refuses the refresh, it's "Sign in again".
  */
@@ -60,6 +61,18 @@ async function keep(id: string, k: Kept) {
   else await secrets().remove(tokensItem(id));
 }
 
+/** Keep the ID and secret of the workspace's own app (a PKCE app has no secret); a sign-in with another app starts over. */
+export async function keepApp(id: string, clientId: string, clientSecret?: string): Promise<void> {
+  if (!connectorDef(id)?.mcp?.ownApp) throw new Error("This one doesn't take an app of your own.");
+  if (!/^[\w.-]{6,100}$/.test(clientId)) throw new Error("That doesn't look like a client ID.");
+  if (clientSecret && !/^[\w.-]{8,200}$/.test(clientSecret)) throw new Error("That doesn't look like a client secret.");
+  if (!secrets().available) throw new NoSecretStore();
+  await keep(id, { client: { client_id: clientId, ...(clientSecret ? { client_secret: clientSecret } : {}) } });
+}
+
+/** Whether the workspace's own app is kept here. */
+export const appKept = async (id: string) => !!(await secrets().get(clientItem(id)).catch(() => null));
+
 /** Whether a sign-in's tokens are kept here (its card says Connected). */
 export const signedIn = async (id: string) => !!(await secrets().get(tokensItem(id)).catch(() => null));
 
@@ -69,7 +82,7 @@ const redirectsOf = (c: OAuthClientInformationMixed | undefined): string[] => (c
  * The SDK's view of what's kept. `register` lets it register Qalam again (a sign-in only: a call
  * never does it behind the user's back); `onRedirect` is where it sends the user to sign in.
  */
-function provider(k: Kept, o: { redirectUrl: string; state?: string; register: boolean; onRedirect: (url: URL) => void | Promise<void>; onChange?: () => Promise<void> }): OAuthClientProvider {
+function provider(k: Kept, o: { redirectUrl: string; state?: string; register: boolean; ownClient?: boolean; onRedirect: (url: URL) => void | Promise<void>; onChange?: () => Promise<void> }): OAuthClientProvider {
   let verifier = "";
   const metadata: OAuthClientMetadata = { client_name: "Qalam Studio", redirect_uris: [o.redirectUrl], grant_types: ["authorization_code", "refresh_token"], response_types: ["code"], token_endpoint_auth_method: "none" };
   return {
@@ -89,7 +102,8 @@ function provider(k: Kept, o: { redirectUrl: string; state?: string; register: b
     saveDiscoveryState: (d) => void (k.discovery = d),
     discoveryState: () => k.discovery,
     invalidateCredentials: async (scope) => {
-      if (scope === "all" || scope === "client") k.client = undefined;
+      // The workspace's own app stays: only the person can change it.
+      if ((scope === "all" || scope === "client") && !o.ownClient) k.client = undefined;
       if (scope === "all" || scope === "tokens") k.tokens = undefined;
       if (scope === "all" || scope === "discovery") k.discovery = undefined;
       if (scope === "verifier") verifier = "";
@@ -110,6 +124,8 @@ export interface SignInOptions {
   onUrl?: (url: string) => void;
   fetchFn?: FetchLike;
   timeoutMs?: number;
+  /** Where an own app's sign-in comes back (the catalog's unless a test points elsewhere). */
+  callback?: string;
 }
 
 // One sign-in per connector at a time, whichever copy of this module asks (the dev server reloads routes).
@@ -131,17 +147,23 @@ export async function signIn(id: string, o: SignInOptions = {}): Promise<void> {
   if (!secrets().available) throw new NoSecretStore();
   cancelSignIn(id);
   const before = await load(id);
-  const back = await listen(Number(redirectsOf(before.client)[0]?.match(/^http:\/\/127\.0\.0\.1:(\d+)\//)?.[1]) || 0, o.timeoutMs ?? SIGN_IN_MS);
+  const own = def.mcp?.ownApp;
+  if (own && !before.client) throw new Error(`Set up ${def.label}'s app first.`);
+  // An own app comes back only to the address it lists; Qalam's registration to its port when that's free, else anywhere (it registers again).
+  const callback = own ? new URL(o.callback ?? own.callback) : null;
+  const at = callback ? { port: Number(callback.port), host: callback.hostname, fixed: true } : { port: Number(redirectsOf(before.client)[0]?.match(/^http:\/\/127\.0\.0\.1:(\d+)\//)?.[1]) || 0, host: "127.0.0.1", fixed: false };
+  const back = await listen(at, o.timeoutMs ?? SIGN_IN_MS).catch((e: NodeJS.ErrnoException) => Promise.reject(e.code === "EADDRINUSE" ? new Error(`${def.label} can only come back to ${callback?.host}, and something on this Mac is using that port. Close it and try again.`) : e));
   const stop = () => back.stop(new Error("The sign-in was stopped."));
   pending().set(id, stop);
   try {
     // A registration made for another address (another port) can't come back here: register again.
-    const k: Kept = { client: redirectsOf(before.client).includes(back.url) ? before.client : undefined, discovery: before.discovery };
+    const k: Kept = { client: own || redirectsOf(before.client).includes(back.url) ? before.client : undefined, discovery: before.discovery };
     const state = randomBytes(32).toString("base64url");
     let page: URL | undefined;
-    const p = provider(k, { redirectUrl: back.url, state, register: true, onRedirect: (url) => void (page = url) });
+    const p = provider(k, { redirectUrl: back.url, state, register: !own, ownClient: !!own, onRedirect: (url) => void (page = url) });
     const scope = def.mcp?.scope;
-    if ((await auth(p, { serverUrl, scope, fetchFn: o.fetchFn }).catch((e: unknown) => Promise.reject(new Error(`${def.label} didn't let Qalam start a sign-in: ${message(e)}`)))) !== "REDIRECT" || !page) throw new Error(`${def.label} didn't offer a sign-in page.`);
+    const fetchFn = sayNo(o.fetchFn ?? fetch);
+    if ((await auth(p, { serverUrl, scope, fetchFn }).catch((e: unknown) => Promise.reject(new Error(`${def.label} didn't let Qalam start a sign-in: ${message(e)}`)))) !== "REDIRECT" || !page) throw new Error(`${def.label} didn't offer a sign-in page.`);
     const where = webAddress(page);
     const answered = back.answer(state);
     answered.catch(() => {});
@@ -154,9 +176,12 @@ export async function signIn(id: string, o: SignInOptions = {}): Promise<void> {
       const meta = k.discovery?.authorizationServerMetadata as { issuer?: string; authorization_response_iss_parameter_supported?: boolean } | undefined;
       if ((a.iss !== undefined || meta?.authorization_response_iss_parameter_supported === true) && a.iss !== meta?.issuer) throw new Error(`That answer didn't come from ${def.label}.`);
       if (!a.code) throw new Error(`${def.label} sent no code back.`);
-      await auth(p, { serverUrl, scope, authorizationCode: a.code, fetchFn: o.fetchFn }).catch((e: unknown) => Promise.reject(new Error(`${def.label} didn't finish the sign-in: ${message(e)}`)));
+      await auth(p, { serverUrl, scope, authorizationCode: a.code, fetchFn }).catch((e: unknown) => Promise.reject(new Error(`${def.label} didn't finish the sign-in: ${message(e)}`)));
       // One call with the new token before it's kept: it works, and the tools Qalam reads with are there.
-      const tools = await withMcp(serverUrl, provider(k, { redirectUrl: back.url, register: false, onRedirect: () => Promise.reject(new SignInAgain(def.label)) }), (_call, list) => list(), o.fetchFn);
+      const tools = await withMcp(serverUrl, provider(k, { redirectUrl: back.url, register: false, ownClient: !!own, onRedirect: () => Promise.reject(new SignInAgain(def.label)) }), (_call, list) => list(), fetchFn).catch((e: unknown) =>
+        // An own app that isn't allowed MCP yet is refused here (Slack: "not enabled").
+        Promise.reject(own && /not enabled/i.test(message(e)) ? new Error(`Turn on ${own.mcpSwitch} in the app's settings, then sign in again.`) : e),
+      );
       const recipe = RECIPES[id];
       const missing = recipe ? [recipe.search("").tool, recipe.fetch({ id: "", title: "" }).tool].filter((t) => !tools.includes(t)) : [];
       if (missing.length) throw new Error(`${def.label}'s server doesn't offer ${missing.join(" or ")}.`);
@@ -176,6 +201,28 @@ export async function signIn(id: string, o: SignInOptions = {}): Promise<void> {
 }
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/** Slack's words for a refused token, and the OAuth error each is (so the SDK drops a refused refresh token). */
+const REFUSED: Record<string, { error: string; words: string }> = {
+  invalid_code: { error: "invalid_grant", words: "the sign-in's code had expired, so try again" },
+  invalid_refresh_token: { error: "invalid_grant", words: "it stopped taking Qalam's sign-in" },
+  bad_client_secret: { error: "bad_client_secret", words: "it didn't take the app's client secret" },
+  invalid_client_id: { error: "invalid_client_id", words: "it doesn't know that client ID" },
+  bad_redirect_uri: { error: "bad_redirect_uri", words: "the app doesn't list Qalam's address" },
+  invalid_scope: { error: "invalid_scope", words: "the app lacks a scope Qalam asks for" },
+};
+
+/** A token endpoint that says no with a 200 and {ok: false, error} (Slack's) reads as the OAuth error it is. */
+function sayNo(f: FetchLike): FetchLike {
+  return async (url, init) => {
+    const res = await f(url, init);
+    if (!(init?.body instanceof URLSearchParams) || !init.body.has("grant_type") || !res.ok) return res;
+    const body = (await res.clone().json().catch(() => null)) as { ok?: unknown; error?: unknown } | null;
+    if (body?.ok !== false || typeof body.error !== "string") return res;
+    const known = REFUSED[body.error];
+    return Response.json({ error: known?.error ?? body.error, error_description: known?.words ?? body.error }, { status: 400 });
+  };
+}
 
 /** A page to open in a browser: a web address only (`open` would start whatever a file or app address names). */
 function webAddress(u: URL): string {
@@ -199,41 +246,46 @@ interface Answer {
 }
 
 /**
- * The listener the service's page comes back to, on 127.0.0.1 only: on `port` when it's free (the
- * address Qalam registered with), else any. It takes one answer with the expected state, and
- * turns everything else away; it closes on that answer, on `stop` or after `ms`.
+ * The listener the service's page comes back to, on this Mac's own addresses only (`localhost` is
+ * both 127.0.0.1 and ::1 to a browser): on `port` when it's free (the address Qalam registered
+ * with), else any, unless the port is `fixed`. It takes one answer with the expected state on this
+ * address, and turns everything else away; it closes on that answer, on `stop` or after `ms`.
  */
-async function listen(port: number, ms: number) {
+async function listen(at: { port: number; host: string; fixed: boolean }, ms: number) {
   let expected = "";
   let settle: { resolve: (a: Answer) => void; reject: (e: Error) => void } | null = null;
   let taken = false;
   let held: ServerResponse | null = null;
   let ended: Error | null = null;
-  const server = createServer((req, res) => {
+  const handle = (req: IncomingMessage, res: ServerResponse) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
-    if (taken || req.method !== "GET" || url.pathname !== "/callback" || req.headers.host !== `127.0.0.1:${bound}`) return send(res, 404, "Not here", "Qalam isn't waiting for anything at this address.");
+    if (taken || req.method !== "GET" || url.pathname !== "/callback" || req.headers.host !== `${at.host}:${bound}`) return send(res, 404, "Not here", "Qalam isn't waiting for anything at this address.");
     const state = url.searchParams.get("state") ?? "";
     if (!expected || state.length !== expected.length || !timingSafeEqual(Buffer.from(state), Buffer.from(expected))) return send(res, 400, "Not this sign-in", "This answer doesn't belong to the sign-in Qalam started.");
     const q = (k: string) => url.searchParams.get(k) ?? undefined;
     if (!q("code") && !q("error")) return send(res, 400, "Nothing came back", "The answer carried no code.");
     taken = true;
     held = res;
-    server.close();
+    for (const s of servers) s.close();
     settle?.resolve({ code: q("code"), iss: q("iss"), error: q("error"), errorDescription: q("error_description"), reply: (ok, title, line) => reply(ok ? 200 : 400, title, line) });
-  });
+  };
+  const servers = [createServer(handle), ...(at.host === "localhost" ? [createServer(handle)] : [])];
+  const [server] = servers;
   const reply = (status: number, title: string, line: string) => {
     if (held && !held.headersSent) send(held, status, title, line);
     held = null;
   };
   const bound = await new Promise<number>((resolve, reject) => {
-    const at = (p: number) => server.listen(p, "127.0.0.1", () => resolve((server.address() as AddressInfo).port));
+    const on = (p: number) => server.listen(p, "127.0.0.1", () => resolve((server.address() as AddressInfo).port));
     server.once("error", (e: NodeJS.ErrnoException) => {
-      if (e.code !== "EADDRINUSE" || !port) return reject(e);
+      if (e.code !== "EADDRINUSE" || !at.port || at.fixed) return reject(e);
       server.once("error", reject);
-      at(0);
+      on(0);
     });
-    at(port);
+    on(at.port);
   });
+  // The same port on ::1, where a Mac without IPv6 has none.
+  if (servers[1]) await new Promise<void>((resolve) => servers[1].once("error", () => resolve()).listen(bound, "::1", () => resolve()));
   const timer = setTimeout(() => stop(new Error("The sign-in wasn't finished in time. Try again.")), ms);
   const stop = (why?: Error) => {
     clearTimeout(timer);
@@ -241,11 +293,13 @@ async function listen(port: number, ms: number) {
     ended ??= why ?? new Error("The sign-in is over.");
     taken = true;
     reply(400, "Sign-in stopped", "Start it again from Qalam Studio.");
-    server.close();
-    server.closeAllConnections();
+    for (const s of servers) {
+      s.close();
+      s.closeAllConnections();
+    }
   };
   return {
-    url: `http://127.0.0.1:${bound}/callback`,
+    url: `http://${at.host}:${bound}/callback`,
     answer: (state: string) =>
       new Promise<Answer>((resolve, reject) => {
         if (ended) return reject(ended);
@@ -286,9 +340,9 @@ export function withSignedIn<T>(id: string, serverUrl: string, fn: (call: McpCal
       await keep(id, { ...k, tokens: undefined });
       throw new SignInAgain(label);
     };
-    const p = provider(k, { redirectUrl: redirectsOf(k.client)[0] ?? "http://127.0.0.1/callback", register: false, onRedirect, onChange: () => keep(id, k) });
+    const p = provider(k, { redirectUrl: redirectsOf(k.client)[0] ?? "http://127.0.0.1/callback", register: false, ownClient: !!connectorDef(id)?.mcp?.ownApp, onRedirect, onChange: () => keep(id, k) });
     try {
-      return await withMcp(serverUrl, p, (call) => fn(call), fetchFn);
+      return await withMcp(serverUrl, p, (call) => fn(call), sayNo(fetchFn ?? fetch));
     } catch (e) {
       throw e instanceof UnauthorizedError ? new SignInAgain(label) : e;
     }

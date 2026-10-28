@@ -1,3 +1,5 @@
+import { SLACK_CALLBACK, SLACK_SCOPES, slackAppLink } from "./slack";
+
 /*
  * The tools an organization's material comes from, in the four groups Connections shows (browser-
  * safe). Each says what it brings (material to read, work to link, numbers for outcomes), how Claude
@@ -30,7 +32,7 @@ export interface ConnectorDef {
    * (server/connectors/oauth.ts): the scope Qalam asks for (else all the server lists), and the
    * servers of the regions a workspace may live in (the first is `url`'s).
    */
-  mcp?: { url: string; scope?: string; regions?: readonly { id: string; label: string; url: string }[] };
+  mcp?: { url: string; scope?: string; regions?: readonly { id: string; label: string; url: string }[]; ownApp?: OwnApp };
   imports: boolean;
   /** Its items' status shows on solution cards linked to them: with a token, or with none (public). */
   status?: "token" | "public";
@@ -38,11 +40,32 @@ export interface ConnectorDef {
   numbers?: boolean;
 }
 
+/**
+ * A service that lets no app register itself: the workspace makes an app of its own from Qalam's
+ * manifest (`create` opens it filled in), and Qalam keeps its client ID and secret. The app lists
+ * `callback`, so the sign-in always comes back to that address; `where` says where its
+ * credentials are, `mcpSwitch` the setting that lets it use MCP.
+ */
+export interface OwnApp {
+  callback: string;
+  create: string;
+  where: string;
+  mcpSwitch: string;
+}
+
 export const CATALOG: readonly ConnectorDef[] = [
   { id: "notion", label: "Notion", group: "docs", feeds: "material", claudeCode: /\bnotion\b/i, token: { label: "Internal integration secret", href: "https://www.notion.so/profile/integrations", placeholder: "ntn_…" }, mcp: { url: "https://mcp.notion.com/mcp" }, imports: true },
   { id: "drive", label: "Google Drive", group: "docs", feeds: "material", claudeCode: /google[ _]drive/i, imports: false },
   { id: "confluence", label: "Confluence", group: "docs", feeds: "material", claudeCode: /confluence|atlassian/i, imports: false },
-  { id: "slack", label: "Slack", group: "voice", feeds: "material", claudeCode: /\bslack\b/i, imports: false },
+  {
+    id: "slack",
+    label: "Slack",
+    group: "voice",
+    feeds: "material",
+    claudeCode: /\bslack\b/i,
+    mcp: { url: "https://mcp.slack.com/mcp", scope: SLACK_SCOPES.join(" "), ownApp: { callback: SLACK_CALLBACK, create: slackAppLink(), where: "Basic Information → App Credentials", mcpSwitch: "Agents & AI Apps → Model Context Protocol" } },
+    imports: true,
+  },
   // Read access only: "operator" is Fin Operator's, which Qalam doesn't use.
   {
     id: "intercom",

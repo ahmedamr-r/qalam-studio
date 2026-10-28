@@ -34,8 +34,12 @@
   - **Claude Code's own connectors** (claude.ai's included), used through it. `claude mcp list` (`parseMcpList`) is run only on demand and kept 5 min.
     - The tool-runner (`runTools` in `server/connectors/claude-code.ts`) makes the calls code planned in a short `claude -p` whose only allowed tools are those, and keeps each answer as the server gave it.
     - It loads the user's settings, so it starts their MCP servers first and is slow (about a minute).
-  - **Qalam's own sign-in** to the service's MCP server (`ConnectorDef.mcp`: Notion's `https://mcp.notion.com/mcp`, Intercom's US and EU servers), in `server/connectors/oauth.ts`:
-    - It takes only a server that lets Qalam register itself. Slack's doesn't: it takes only a client secret, from a Slack app of the workspace's own (internal or Marketplace).
+  - **Qalam's own sign-in** to the service's MCP server (`ConnectorDef.mcp`: Notion's `https://mcp.notion.com/mcp`, Intercom's US and EU servers, Slack's), in `server/connectors/oauth.ts`:
+    - Notion and Intercom let Qalam register itself. Slack lets no app do that and takes only apps made for a workspace (`mcp.ownApp`, `src/connectors/slack.ts`):
+      - The card's "Set up…" opens Slack's "Create an app" with Qalam's manifest filled in (`slackAppLink`: read-only user scopes, a bot user that `v2_user` sign-in wants, `is_mcp_enabled`, and `http://localhost:38712/callback`).
+      - The app's client ID and secret go in the Keychain (`keepApp`, `PUT /api/connectors/:id/app`); an app with PKCE needs no secret. Its sign-in comes back only to that fixed address, listening on 127.0.0.1 and ::1.
+      - The app is never dropped behind the person's back (`ownClient`), even when Slack refuses a refresh.
+      - Slack's token endpoint says no with a 200 and `{ok: false, error}`, which `sayNo` turns into the OAuth error it is, in words. "Not enabled" on the first call means the app's MCP switch is off.
     - `mcp.scope` narrows what Qalam asks for (Intercom: `mcp`, not Fin Operator's `operator`). `mcp.regions` lists a service's servers by region; the card picks one, and the route takes only a catalog URL.
     - OAuth 2.1 with PKCE, Qalam registering itself, through the MCP SDK's `auth()`. The page opens in the system's browser (`/usr/bin/open`, web addresses only), and `POST /api/connectors/:id/signin` streams its address for a link.
     - The page comes back to a listener on 127.0.0.1, the one network port Qalam opens. It is open only for that sign-in: it takes one answer with the sign-in's state on this Host, or closes after 5 minutes or on Stop (`DELETE …/signin`).
@@ -46,9 +50,10 @@
     - Both servers keep the platform's `Response` global (`overrideGlobalObjects: false`): the SDK checks `instanceof Response`, and Hono's own class broke that.
   - **A token Qalam keeps in the Keychain:** for Notion, its own API (`server/connectors/notion-api.ts`).
   - Recipes say what to call and how to read the answer (`src/connectors/recipes.ts`). Picked items go to `captureSource` as `kind: "connector"` with their URL as `origin`; the same origin with the same words is skipped (`importItems`).
+    - Slack's: `slack_search_public_and_private` with the person's own query (Slack's modifiers work), whose Markdown answer is read by its message links (`slackHits`: `/archives/<channel>/p<ts>`, a reply's `thread_ts` names its thread), then `slack_read_thread`.
     - Intercom's: `search` with `object_type:conversations q:"…"` (the words stay inside the quotes), `fetch` by `conversation_…` id. `intercomText` turns a conversation into who said what ("Customer (name): …", "Team", "Note"), HTML taken off with `htmlText` (`src/discovery/ingest/text.ts`); a shape it doesn't know reads as its fields (`captureText`).
   - How each is reached is in the settings' `connectors`.
-  - Importing works for Notion and Intercom today. Drive, Slack and the rest show where they stand ("In Claude Code", "Coming next").
+  - Importing works for Notion, Intercom and Slack today. Drive and the rest show where they stand ("In Claude Code", "Coming next").
   - **Work:** a solution card links issues, PRs and designs by address (`OstCard.work`, `parseWorkUrl` in `src/connectors/work.ts`).
     - Linear (with its key in the Keychain) and public GitHub say where each stands. Answers are kept per computer in `<org>/.qalam/local/work.json` (`workStatuses`, `POST /api/org/:org/work/status`).
     - The card shows the furthest one along after its kind (`work` in the painter's input).

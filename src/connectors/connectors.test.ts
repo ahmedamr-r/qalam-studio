@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { CATALOG, connectorDef } from "./catalog";
 import { matchClaudeCode, parseMcpList, toolPrefix } from "./claude-code";
 import { intercomHits, intercomText, itemText, notionApiHits, notionBlocksText, notionHits, RECIPES } from "./recipes";
+import { SLACK_CALLBACK, SLACK_RECIPE, SLACK_SCOPES, slackAppLink, slackHits, slackManifest, slackMessage, slackText } from "./slack";
 
 const LIST = `Checking MCP server health…
 
@@ -117,5 +118,56 @@ describe("reading Intercom", () => {
     expect(intercomText(JSON.stringify({ id: "conversation_1", text: "Dana: a < b, and it takes an hour" }))).toBe("Dana: a < b, and it takes an hour");
     expect(intercomText(JSON.stringify({ summary: { said: "It takes an hour" } }))).toBe("said: It takes an hour");
     expect(intercomText("plain words")).toBe("plain words");
+  });
+});
+
+describe("reading Slack, through the workspace's own app", () => {
+  it("makes the app from a manifest: Qalam's address, reading only, MCP on", () => {
+    const m = slackManifest();
+    expect(m.oauth_config.redirect_urls).toEqual([SLACK_CALLBACK]);
+    expect(m.oauth_config.scopes.user.every((s) => /^(search:read|channels:history|groups:history|mpim:history|im:history|users:read)/.test(s))).toBe(true);
+    expect(m.settings.is_mcp_enabled).toBe(true);
+    expect(m.features.bot_user.display_name).toBe("Qalam Studio");
+    const link = new URL(slackAppLink());
+    expect(link.origin + link.pathname).toBe("https://api.slack.com/apps");
+    expect(JSON.parse(link.searchParams.get("manifest_json")!)).toEqual(m);
+    expect(connectorDef("slack")?.mcp).toMatchObject({ url: "https://mcp.slack.com/mcp", scope: SLACK_SCOPES.join(" "), ownApp: { callback: SLACK_CALLBACK } });
+  });
+
+  it("finds a message's thread from its link: a reply names its thread", () => {
+    expect(slackMessage("https://acme.slack.com/archives/C0123ABCD/p1790771415332219")).toEqual({ channel: "C0123ABCD", ts: "1790771415.332219" });
+    expect(slackMessage("https://acme.slack.com/archives/C0123ABCD/p1790771500000100?thread_ts=1790771415.332219&cid=C0123ABCD")).toEqual({ channel: "C0123ABCD", ts: "1790771415.332219" });
+    expect(slackMessage("https://example.com/p1")).toBeNull();
+  });
+
+  it("lists the messages a search found, titled by their words, with where, who and when", () => {
+    const md = [
+      "# Search results for “export”",
+      "## Result 1 of 3",
+      "Channel: #customer-feedback (C0123ABCD)",
+      "From: Dana Lee",
+      "Time: 2026-10-27 14:03",
+      "Permalink: https://acme.slack.com/archives/C0123ABCD/p1790771415332219",
+      "Text: We **export** to sheets every Friday.",
+      "## Result 2 of 3",
+      "Channel: #customer-feedback (C0123ABCD)",
+      "From: Omar",
+      "Permalink: https://acme.slack.com/archives/C0123ABCD/p1790771500000100?thread_ts=1790771415.332219&cid=C0123ABCD",
+      "Text: Same thread, so the same hit",
+      "## Result 3 of 3",
+      "- [Every store, every week](https://acme.slack.com/archives/G0999/p1790000000000001) in #wholesale",
+    ].join("\n");
+    expect(slackHits(JSON.stringify({ results: md, next_cursor: "abc" }))).toEqual([
+      { id: "C0123ABCD/1790771415.332219", title: "We export to sheets every Friday.", url: "https://acme.slack.com/archives/C0123ABCD/p1790771415332219", snippet: "#customer-feedback (C0123ABCD) · Dana Lee · 2026-10-27 14:03" },
+      { id: "G0999/1790000000.000001", title: "Every store, every week in #wholesale", url: "https://acme.slack.com/archives/G0999/p1790000000000001" },
+    ]);
+    expect(SLACK_RECIPE.fetch({ id: "C0123ABCD/1790771415.332219", title: "x" })).toEqual({ tool: "slack_read_thread", args: { channel_id: "C0123ABCD", message_ts: "1790771415.332219" } });
+    expect(SLACK_RECIPE.search("in:#feedback export")).toEqual({ tool: "slack_search_public_and_private", args: { query: "in:#feedback export", limit: 20 } });
+  });
+
+  it("reads a thread as Slack wrote it out, without the answer's other fields", () => {
+    const thread = "Dana Lee (2026-10-27 14:03): We export to sheets every Friday.\nOmar (14:05): Which sheet?";
+    expect(slackText(JSON.stringify({ messages: thread, next_cursor: "abc", has_more: false }))).toBe(thread);
+    expect(slackText(thread)).toBe(thread);
   });
 });

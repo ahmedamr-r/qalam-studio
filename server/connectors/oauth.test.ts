@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
-import { request } from "node:http";
+import { createServer, request } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -12,13 +12,14 @@ import { Hono } from "hono";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Ingested } from "@/discovery/ingest/core";
 import type { OrgStore } from "../org/store";
+import { connectorDef } from "@/connectors/catalog";
 import { resetSecrets, secrets } from "../secrets";
 import { readSettings } from "../settings";
 
 const captured: Ingested[] = [];
 vi.mock("../capture", () => ({ captureSource: async (_s: unknown, ing: Ingested) => void captured.push(ing) }));
 
-const { cancelSignIn, signIn } = await import("./oauth");
+const { cancelSignIn, keepApp, signIn } = await import("./oauth");
 const { connectorsView, forgetConnector, importItems, searchConnector } = await import("./index");
 
 /*
@@ -26,7 +27,8 @@ const { connectorsView, forgetConnector, importItems, searchConnector } = await 
  * the page a person approves on, tokens (PKCE checked), revocation, and an MCP server with their
  * tools that takes only the access tokens it gave.
  */
-const ALL_TOOLS = ["notion-search", "notion-fetch", "notion-get-self", "search", "fetch"];
+const ALL_TOOLS = ["notion-search", "notion-fetch", "notion-get-self", "search", "fetch", "slack_search_public_and_private", "slack_read_thread"];
+const SLACK_RESULTS = ["## Result 1 of 1", "Channel: #feedback (C01)", "From: Dana Lee", "Permalink: https://acme.slack.com/archives/C01/p1790771415332219", "Text: We export to sheets every Friday."].join("\n");
 const conversation = {
   id: "42",
   source: { body: "<p>We export to sheets every Friday.</p>", author: { type: "user", name: "Dana Lee" } },
@@ -37,6 +39,8 @@ const ANSWERS: Record<string, (args: Record<string, unknown> | undefined) => unk
   "notion-fetch": () => ({ text: "Dana: we export to spreadsheets every Friday." }),
   search: (a) => ({ total_in_page: 1, results: [{ id: "conversation_42", title: "Exports", text: `<p>${String(a?.query)}</p>`, url: "https://app.intercom.com/a/inbox/x/inbox/conversation/42" }], pages: {} }),
   fetch: (a) => ({ id: a?.id, title: "Exports", text: JSON.stringify(conversation), url: "https://app.intercom.com/a/inbox/x/inbox/conversation/42" }),
+  slack_search_public_and_private: () => ({ results: SLACK_RESULTS, next_cursor: "" }),
+  slack_read_thread: (a) => ({ messages: a?.channel_id === "C01" && a.message_ts === "1790771415.332219" ? "Dana Lee: We export to sheets every Friday.\nOmar: Which sheet?" : "" }),
 };
 function standIn() {
   const s = {
@@ -57,11 +61,20 @@ function standIn() {
     /** The scope the last registration and approval page asked for. */
     asked: { register: "" as string | undefined, authorize: "" as string | undefined },
     iss: "" as string | null,
+    /** Slack's ways: no self-registration, apps made by the workspace (their secret, or none with PKCE), and a 200 with {ok: false} for no. */
+    slack: false,
+    apps: new Map<string, string | null>(),
+    /** The app isn't allowed MCP yet. */
+    mcpOff: false,
   };
   const app = new Hono();
   app.get("/.well-known/oauth-protected-resource/mcp", (c) => c.json({ resource: `${s.base}/mcp`, authorization_servers: [s.base], scopes_supported: ["default"] }));
   app.get("/.well-known/oauth-authorization-server", (c) =>
-    c.json({ issuer: s.base, authorization_endpoint: `${s.base}/authorize`, token_endpoint: `${s.base}/token`, registration_endpoint: `${s.base}/register`, revocation_endpoint: `${s.base}/revoke`, response_types_supported: ["code"], grant_types_supported: ["authorization_code", "refresh_token"], code_challenge_methods_supported: ["S256"], token_endpoint_auth_methods_supported: ["none"], authorization_response_iss_parameter_supported: true }),
+    c.json(
+      s.slack
+        ? { issuer: s.base, authorization_endpoint: `${s.base}/authorize`, token_endpoint: `${s.base}/token`, response_types_supported: ["code"], grant_types_supported: ["authorization_code", "refresh_token"], code_challenge_methods_supported: ["S256"], token_endpoint_auth_methods_supported: ["client_secret_post"] }
+        : { issuer: s.base, authorization_endpoint: `${s.base}/authorize`, token_endpoint: `${s.base}/token`, registration_endpoint: `${s.base}/register`, revocation_endpoint: `${s.base}/revoke`, response_types_supported: ["code"], grant_types_supported: ["authorization_code", "refresh_token"], code_challenge_methods_supported: ["S256"], token_endpoint_auth_methods_supported: ["none"], authorization_response_iss_parameter_supported: true },
+    ),
   );
   app.post("/register", async (c) => {
     const m = (await c.req.json()) as { redirect_uris: string[]; scope?: string };
@@ -77,7 +90,7 @@ function standIn() {
     if (!s.clients.get(q.client_id)?.includes(q.redirect_uri) || q.code_challenge_method !== "S256" || !q.state) return c.text("bad request", 400);
     const back = new URL(q.redirect_uri);
     back.searchParams.set("state", q.state);
-    if (s.iss !== null) back.searchParams.set("iss", s.iss || s.base);
+    if (s.iss !== null && !s.slack) back.searchParams.set("iss", s.iss || s.base);
     if (s.deny) back.searchParams.set("error", "access_denied");
     else {
       const code = `code-${++s.n}`;
@@ -88,19 +101,25 @@ function standIn() {
   });
   app.post("/token", async (c) => {
     const f = new URLSearchParams(await c.req.text());
+    // Slack says no with a 200.
+    const no = (error: string, slack: string) => (s.slack ? c.json({ ok: false, error: slack }) : c.json({ error }, 400));
+    if (s.slack) {
+      const id = f.get("client_id") ?? "";
+      if (!s.apps.has(id) || (s.apps.get(id) ?? undefined) !== (f.get("client_secret") ?? undefined)) return no("invalid_client", "bad_client_secret");
+    }
     if (f.get("grant_type") === "authorization_code") {
       const want = s.codes.get(f.get("code") ?? "");
       s.codes.delete(f.get("code") ?? "");
       const challenge = createHash("sha256").update(f.get("code_verifier") ?? "").digest("base64url");
-      if (!want || want.challenge !== challenge || want.redirect !== f.get("redirect_uri")) return c.json({ error: "invalid_grant" }, 400);
+      if (!want || want.challenge !== challenge || want.redirect !== f.get("redirect_uri")) return no("invalid_grant", "invalid_code");
     } else if (f.get("grant_type") === "refresh_token") {
       if (s.down) return c.text("down", 503);
-      if (s.refuseRefresh || !s.refresh.delete(f.get("refresh_token") ?? "")) return c.json({ error: "invalid_grant" }, 400);
+      if (s.refuseRefresh || !s.refresh.delete(f.get("refresh_token") ?? "")) return no("invalid_grant", "invalid_refresh_token");
     } else return c.json({ error: "unsupported_grant_type" }, 400);
     const n = ++s.n;
     s.access.add(`at-${n}`);
     s.refresh.add(`rt-${n}`);
-    return c.json({ access_token: `at-${n}`, token_type: "Bearer", expires_in: 3600, refresh_token: `rt-${n}`, scope: "default" });
+    return c.json({ ...(s.slack ? { ok: true, token_type: "user" } : { token_type: "Bearer" }), access_token: `at-${n}`, expires_in: 3600, refresh_token: `rt-${n}`, scope: "default" });
   });
   app.post("/revoke", async (c) => {
     s.revoked.push(new URLSearchParams(await c.req.text()).get("token") ?? "");
@@ -109,6 +128,7 @@ function standIn() {
   app.all("/mcp", async (c) => {
     if (!s.access.has(c.req.header("authorization")?.replace(/^Bearer /, "") ?? "")) return c.body(null, 401, { "www-authenticate": `Bearer resource_metadata="${s.base}/.well-known/oauth-protected-resource/mcp", scope="default"` });
     if (c.req.method !== "POST") return c.body(null, 405);
+    if (s.mcpOff) return c.json({ ok: false, error: "This app is not enabled for Slack MCP server access" }, 400);
     const server = new Server({ name: "notion-stand-in", version: "1" }, { capabilities: { tools: {} } });
     server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: s.tools.map((name) => ({ name, inputSchema: { type: "object" as const } })) }));
     server.setRequestHandler(CallToolRequestSchema, async (r) => ({ content: [{ type: "text", text: JSON.stringify(ANSWERS[r.params.name]?.(r.params.arguments) ?? {}) }] }));
@@ -152,12 +172,13 @@ beforeEach(async () => {
   process.env.QALAM_HOME = dir;
   process.env.QALAM_SECRETS = "memory";
   resetSecrets();
-  Object.assign(s, { refuseRefresh: false, down: false, deny: false, iss: "", tools: ALL_TOOLS });
+  Object.assign(s, { refuseRefresh: false, down: false, deny: false, iss: "", tools: ALL_TOOLS, slack: false, mcpOff: false });
   landed = null;
   captured.length = 0;
 });
 afterEach(async () => {
   cancelSignIn("notion");
+  cancelSignIn("slack");
   await rm(dir, { recursive: true, force: true });
 });
 
@@ -288,5 +309,85 @@ describe("Qalam's own sign-in to a connector's MCP server", () => {
     expect((await landed)?.text).toContain("Intercom isn't connected");
     expect(await secrets().get("connector:intercom:oauth")).toBeNull();
     expect((await readSettings()).connectors?.intercom).toBeUndefined();
+  });
+
+  describe("Slack, with the workspace's own app", () => {
+    /** An address the app lists: a free port on localhost. */
+    const freeCallback = async () => {
+      const probe = createServer();
+      await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", () => resolve()));
+      const port = (probe.address() as AddressInfo).port;
+      await new Promise<void>((resolve) => probe.close(() => resolve()));
+      return `http://localhost:${port}/callback`;
+    };
+    const slackCard = async () => (await connectorsView()).connectors.find((c) => c.id === "slack")!;
+    let callback: string;
+    beforeEach(async () => {
+      s.slack = true;
+      callback = await freeCallback();
+      s.apps.set("1234.5678", "secret-0000-1111");
+      s.apps.set("2468.1357", null);
+      for (const id of s.apps.keys()) s.clients.set(id, [callback]);
+    });
+
+    it("needs the app first, then signs in on the one address it lists, asking only to read", async () => {
+      await expect(signIn("slack", { serverUrl: mcpUrl, callback, open: browser })).rejects.toThrow("Set up Slack's app first.");
+      expect(await slackCard()).toMatchObject({ canSignIn: true, ownApp: { kept: false, callback: "http://localhost:38712/callback" } });
+      await keepApp("slack", "1234.5678", "secret-0000-1111");
+      expect((await slackCard()).ownApp?.kept).toBe(true);
+      let page = "";
+      await signIn("slack", { serverUrl: mcpUrl, callback, open: browser, onUrl: (u) => (page = u) });
+      expect(new URL(page).searchParams.get("redirect_uri")).toBe(callback);
+      expect(s.asked.authorize).toBe(connectorDef("slack")!.mcp!.scope);
+      expect(await landed).toMatchObject({ status: 200, text: expect.stringContaining("Signed in to Slack") });
+      expect(await slackCard()).toMatchObject({ via: "oauth", word: "Connected" });
+      const hits = await searchConnector("slack", "export");
+      expect(hits).toEqual([{ id: "C01/1790771415.332219", title: "We export to sheets every Friday.", url: "https://acme.slack.com/archives/C01/p1790771415332219", snippet: "#feedback (C01) · Dana Lee" }]);
+      const store = { listSources: async () => [] } as unknown as OrgStore;
+      expect(await importItems(store, "slack", hits, () => {})).toEqual({ added: ["We export to sheets every Friday."], skipped: [], failed: [] });
+      expect(captured[0]).toMatchObject({ kind: "connector", origin: "https://acme.slack.com/archives/C01/p1790771415332219", text: "Dana Lee: We export to sheets every Friday.\nOmar: Which sheet?" });
+    });
+
+    it("takes an app with PKCE and no secret", async () => {
+      await keepApp("slack", "2468.1357");
+      await signIn("slack", { serverUrl: mcpUrl, callback, open: browser });
+      expect((await slackCard()).word).toBe("Connected");
+    });
+
+    it("says in words when Slack refuses the app's secret, and keeps the app to fix", async () => {
+      await keepApp("slack", "1234.5678", "secret-wrong-2222");
+      await expect(signIn("slack", { serverUrl: mcpUrl, callback, open: browser })).rejects.toThrow("Slack didn't finish the sign-in: it didn't take the app's client secret");
+      expect(await secrets().get("connector:slack:oauth")).toBeNull();
+      expect((await slackCard()).ownApp?.kept).toBe(true);
+    });
+
+    it("says to turn MCP on when the app isn't allowed it yet", async () => {
+      s.mcpOff = true;
+      await keepApp("slack", "1234.5678", "secret-0000-1111");
+      await expect(signIn("slack", { serverUrl: mcpUrl, callback, open: browser })).rejects.toThrow("Turn on Agents & AI Apps → Model Context Protocol in the app's settings, then sign in again.");
+    });
+
+    it("drops a refused refresh's tokens but never the app", async () => {
+      await keepApp("slack", "1234.5678", "secret-0000-1111");
+      await signIn("slack", { serverUrl: mcpUrl, callback, open: browser });
+      s.access.clear();
+      s.refuseRefresh = true;
+      await expect(searchConnector("slack", "export")).rejects.toThrow("Sign in to Slack again in Connections.");
+      expect(await secrets().get("connector:slack:oauth")).toBeNull();
+      expect(await slackCard()).toMatchObject({ via: "oauth", word: "Sign in again", ownApp: { kept: true } });
+      expect(JSON.parse((await secrets().get("connector:slack:client"))!).client).toMatchObject({ client_id: "1234.5678", client_secret: "secret-0000-1111" });
+    });
+
+    it("can only come back to the address the app lists, so a busy port says so", async () => {
+      await keepApp("slack", "1234.5678", "secret-0000-1111");
+      const port = Number(new URL(callback).port);
+      const squatter = createServer();
+      await new Promise<void>((resolve) => squatter.listen(port, "127.0.0.1", () => resolve()));
+      try {
+        await expect(signIn("slack", { serverUrl: mcpUrl, callback, open: browser })).rejects.toThrow(`Slack can only come back to localhost:${port}, and something on this Mac is using that port.`);
+      } finally {
+        squatter.close();
+      }
+    });
   });
 });

@@ -31,6 +31,8 @@ export interface ConnectorState {
   canSignIn: boolean;
   /** The regions whose server it can sign in to, when there are several (the first by default). */
   regions: { id: string; label: string }[] | null;
+  /** A service that takes only an app of the workspace's own: whether it's kept here, the link that creates it, where its credentials are, the address it lists. */
+  ownApp: { kept: boolean; create: string; where: string; callback: string } | null;
   via: "claude-code" | "token" | "oauth" | null;
   word: string;
   tone: "ok" | "warn" | "off";
@@ -84,6 +86,8 @@ export const connectorsDb = {
   /** Sign in in the system's browser; `onPage` hears the page's address (a link, in case it didn't open). Ends once it's done there. */
   signIn: async (id: string, onPage: (url: string) => void, region?: string) => streamed<View>(await send(`/api/connectors/${id}/signin`, "POST", region ? { region } : {}), (m) => m.type === "open" && m.url && onPage(m.url)),
   stopSignIn: (id: string) => send(`/api/connectors/${id}/signin`, "DELETE"),
+  /** Keep the ID and secret of the workspace's own app, in the Keychain. */
+  keepApp: (id: string, clientId: string, clientSecret?: string) => send(`/api/connectors/${id}/app`, "PUT", { clientId, ...(clientSecret ? { clientSecret } : {}) }).then((r) => json<View>(r)),
   search: async (id: string, query: string) => json<{ hits: Hit[] }>(await send(await orgPath(`/connectors/${id}/search`), "POST", { query })),
   /** Takes each picked item in; `onActivity` hears how it's going. */
   bringIn: async (id: string, hits: Hit[], onActivity: (label: string) => void): Promise<ImportResult> => {

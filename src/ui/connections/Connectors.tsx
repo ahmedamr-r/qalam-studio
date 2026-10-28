@@ -86,6 +86,8 @@ function Card({ c, onView, onImport }: { c: ConnectorState; onView: (v: View) =>
   const [signing, setSigning] = useState<{ page: string | null } | null>(null);
   /** Where the workspace lives, for a service with a server per region. */
   const [region, setRegion] = useState(c.regions?.[0]?.id ?? "");
+  /** The sheet that sets up the workspace's own app. */
+  const [setup, setSetup] = useState(false);
   const act = async (fn: () => Promise<View>) => {
     setBusy(true);
     setNote(null);
@@ -121,6 +123,8 @@ function Card({ c, onView, onImport }: { c: ConnectorState; onView: (v: View) =>
   // The service stopped taking Qalam's sign-in.
   const expired = c.via === "oauth" && c.tone === "warn";
   const inClaudeCode = c.claudeCode?.status === "connected";
+  // A service that takes only the workspace's own app signs in once that app is kept.
+  const canSignIn = c.canSignIn && (!c.via || expired) && (!c.ownApp || c.ownApp.kept);
   return (
     <li className={clsx("flex flex-col gap-[8px] rounded-lg bg-panel px-[12px] py-[10px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]", soon && "opacity-60")}>
       <div className="flex items-center gap-[8px]">
@@ -156,12 +160,17 @@ function Card({ c, onView, onImport }: { c: ConnectorState; onView: (v: View) =>
               Use it
             </Button>
           )}
-          {c.canSignIn && (!c.via || expired) && (
+          {c.ownApp && !c.via && (
+            <Button size="sm" variant={c.ownApp.kept || inClaudeCode ? "ghost" : "secondary"} disabled={busy} onClick={() => setSetup(true)}>
+              {c.ownApp.kept ? "Change app" : "Set up…"}
+            </Button>
+          )}
+          {canSignIn && (
             <Button size="sm" variant={inClaudeCode && !c.via ? "ghost" : "secondary"} disabled={busy} onClick={() => void signIn()}>
               Sign in
             </Button>
           )}
-          {c.canSignIn && (!c.via || expired) && c.regions && <Segmented label="Where the workspace is" value={region} onChange={setRegion} className="w-[84px]" options={c.regions.map((x) => ({ value: x.id, label: x.label }))} />}
+          {canSignIn && c.regions && <Segmented label="Where the workspace is" value={region} onChange={setRegion} className="w-[84px]" options={c.regions.map((x) => ({ value: x.id, label: x.label }))} />}
           {!c.via && (c.imports || c.status === "token") && c.canToken && !tokenOpen && (
             <button type="button" className={clsx(r.buttonSm, r.buttonGhost)} onClick={() => setTokenOpen(true)}>
               Add a token
@@ -192,7 +201,88 @@ function Card({ c, onView, onImport }: { c: ConnectorState; onView: (v: View) =>
         </form>
       )}
       {note && <p className="text-micro text-danger">{note}</p>}
+      {setup && c.ownApp && (
+        <OwnApp
+          c={c}
+          onClose={() => setSetup(false)}
+          onKept={(v) => {
+            onView(v);
+            setSetup(false);
+            void signIn();
+          }}
+        />
+      )}
     </li>
+  );
+}
+
+/**
+ * Setting up a service that lets no app register itself (Slack): the workspace makes an app of its
+ * own from Qalam's manifest (the link fills it in), then Qalam keeps its credentials and signs in.
+ */
+function OwnApp({ c, onClose, onKept }: { c: ConnectorState; onClose: () => void; onKept: (v: View) => void }) {
+  const app = c.ownApp!;
+  const [clientId, setClientId] = useState("");
+  const [secret, setSecret] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const keep = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      onKept(await connectorsDb.keepApp(c.id, clientId.trim(), secret.trim() || undefined));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const step = (n: number) => <span className="grid size-[20px] shrink-0 place-items-center rounded-full bg-field text-micro font-medium text-fg-muted tnum">{n}</span>;
+  return (
+    <>
+      <div className={r.overlay} data-state="open" onPointerDown={busy ? undefined : onClose} />
+      <div role="dialog" aria-label={`Set up ${c.label}`} data-state="open" className={clsx(r.dialog, "flex flex-col")}>
+        <div className="flex items-center justify-between gap-[12px] border-b border-line-subtle px-[16px] py-[10px]">
+          <h2 className="text-title font-medium text-fg">{c.label} with your workspace's own app</h2>
+          <IconBtn size="sm" label="Close" onClick={onClose}>
+            <X size={14} absoluteStrokeWidth strokeWidth={1.25} />
+          </IconBtn>
+        </div>
+        <ol className="flex flex-col gap-[16px] p-[16px]">
+          <li className="flex gap-[10px]">
+            {step(1)}
+            <div className="flex min-w-0 flex-1 flex-col items-start gap-[6px]">
+              <span className="text-body text-fg">Create the app in {c.label}</span>
+              <span className="text-caption text-fg-subtle">Qalam's settings come filled in: it only reads, and comes back to {app.callback}.</span>
+              <a href={app.create} target="_blank" rel="noreferrer" className={clsx(r.buttonSm, r.buttonSecondary)}>
+                Create it in {c.label}
+              </a>
+            </div>
+          </li>
+          <li className="flex gap-[10px]">
+            {step(2)}
+            <form onSubmit={(e) => void keep(e)} className="flex min-w-0 flex-1 flex-col items-stretch gap-[6px]">
+              <span className="text-body text-fg">Paste its credentials</span>
+              <span className="text-caption text-fg-subtle">{app.where}</span>
+              <span className={r.field}>
+                <input autoComplete="off" spellCheck={false} aria-label="Client ID" placeholder="Client ID" value={clientId} onChange={(e) => setClientId(e.target.value)} className={r.fieldInput} />
+              </span>
+              <span className={r.field}>
+                <input type="password" autoComplete="off" spellCheck={false} aria-label="Client secret" placeholder="Client secret (none with PKCE)" value={secret} onChange={(e) => setSecret(e.target.value)} className={r.fieldInput} />
+              </span>
+              <span className="flex items-center gap-[8px]">
+                <Button type="submit" size="sm" disabled={busy || clientId.trim().length < 6}>
+                  {busy ? "Keeping…" : "Keep and sign in"}
+                </Button>
+                <span className="text-micro text-fg-subtle">In the Keychain</span>
+              </span>
+            </form>
+          </li>
+        </ol>
+        {error && <p className="px-[16px] pb-[12px] text-caption text-danger">{error}</p>}
+      </div>
+    </>
   );
 }
 

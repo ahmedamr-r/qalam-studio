@@ -8,7 +8,7 @@ import { connectorsView, forgetConnector, importItems, listClaudeCode, saveToken
 import { storeFor } from "../org/home";
 import type { OstWork } from "@/discovery/types";
 import { readInsight, searchInsights } from "../connectors/numbers";
-import { cancelSignIn, signIn } from "../connectors/oauth";
+import { cancelSignIn, keepApp, signIn } from "../connectors/oauth";
 import { workStatuses } from "../connectors/work";
 
 /**
@@ -83,6 +83,17 @@ export function connectionsRoutes(): Hono {
     });
   });
   r.delete("/api/connectors/:id/signin", (c) => c.json({ stopped: cancelSignIn(c.req.param("id")) }));
+  // The ID and secret of an app the workspace made (a service that lets no app register itself), into the Keychain.
+  r.put("/api/connectors/:id/app", async (c) => {
+    const { clientId, clientSecret } = (await c.req.json().catch(() => ({}))) as { clientId?: unknown; clientSecret?: unknown };
+    if (typeof clientId !== "string" || (clientSecret !== undefined && typeof clientSecret !== "string")) return c.json({ error: "bad_request", message: "Paste the app's client ID." }, 400);
+    try {
+      await keepApp(c.req.param("id"), clientId.trim(), (clientSecret as string | undefined)?.trim() || undefined);
+      return c.json(await connectorsView());
+    } catch (e) {
+      return c.json({ error: "app_failed", message: e instanceof Error ? e.message : String(e) }, 400);
+    }
+  });
   r.delete("/api/connectors/:id", async (c) => {
     await forgetConnector(c.req.param("id"));
     return c.json(await connectorsView());

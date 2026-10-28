@@ -8,7 +8,7 @@ import { secrets } from "../secrets";
 import { readSettings, writeSettings } from "../settings";
 import { claudeCodeKnown, listClaudeCode, runTools } from "./claude-code";
 import { notionPageText, notionSearch, notionWhoAmI } from "./notion-api";
-import { forgetSignIn, signedIn, SignInAgain, withSignedIn } from "./oauth";
+import { appKept, forgetSignIn, signedIn, SignInAgain, withSignedIn } from "./oauth";
 import { linearWhoAmI } from "./work";
 
 /*
@@ -33,7 +33,9 @@ export async function connectorsView(): Promise<{ checkedAt: number | null; conn
       const how = chosen[def.id];
       const token = def.token ? await secrets().get(tokenName(def.id)).catch(() => null) : null;
       const regions = def.mcp?.regions?.map(({ id, label }) => ({ id, label })) ?? null;
-      const base = { id: def.id, label: def.label, group: def.group, feeds: def.feeds, imports: def.imports, status: def.status ?? null, numbers: !!def.numbers, claudeCode: listed ? { server: listed.name, status: listed.status } : null, token: token ? { last4: token.slice(-4) } : null, canToken: !!def.token, tokenHelp: def.token ?? null, canSignIn: !!def.mcp, regions };
+      const own = def.mcp?.ownApp;
+      const ownApp = own ? { kept: await appKept(def.id), create: own.create, where: own.where, callback: own.callback } : null;
+      const base = { id: def.id, label: def.label, group: def.group, feeds: def.feeds, imports: def.imports, status: def.status ?? null, numbers: !!def.numbers, claudeCode: listed ? { server: listed.name, status: listed.status } : null, token: token ? { last4: token.slice(-4) } : null, canToken: !!def.token, tokenHelp: def.token ?? null, canSignIn: !!def.mcp, regions, ownApp };
       const kept = how?.via === "oauth" ? await signedIn(def.id) : !!token;
       const state = stateOf(def, how?.via === "claude-code" ? (listed?.name === how.server ? listed.status : "unknown") : null, how?.via ?? null, kept, listed?.status ?? null);
       // Which region's server it signed in to, where there are several.
