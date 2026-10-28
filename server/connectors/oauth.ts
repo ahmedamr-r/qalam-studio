@@ -7,6 +7,7 @@ import type { OAuthClientInformationMixed, OAuthClientMetadata, OAuthTokens } fr
 import type { FetchLike } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { connectorDef } from "@/connectors/catalog";
 import { RECIPES } from "@/connectors/recipes";
+import { WORK_RECIPES } from "@/connectors/work";
 import { NoSecretStore, secrets } from "../secrets";
 import { readSettings, writeSettings } from "../settings";
 import { withMcp, type McpCall } from "./mcp";
@@ -183,7 +184,8 @@ export async function signIn(id: string, o: SignInOptions = {}): Promise<void> {
         Promise.reject(own && /not enabled/i.test(message(e)) ? new Error(`Turn on ${own.mcpSwitch} in the app's settings, then sign in again.`) : e),
       );
       const recipe = RECIPES[id];
-      const missing = recipe ? [recipe.search("").tool, recipe.fetch({ id: "", title: "" }).tool].filter((t) => !tools.includes(t)) : [];
+      const work = WORK_RECIPES[id];
+      const missing = (recipe ? [recipe.search("").tool, recipe.fetch({ id: "", title: "" }).tool] : work ? [work.status("").tool] : []).filter((t) => !tools.includes(t));
       if (missing.length) throw new Error(`${def.label}'s server doesn't offer ${missing.join(" or ")}.`);
       back.check();
       await keep(id, k);

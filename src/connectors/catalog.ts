@@ -34,7 +34,7 @@ export interface ConnectorDef {
    */
   mcp?: { url: string; scope?: string; regions?: readonly { id: string; label: string; url: string }[]; ownApp?: OwnApp };
   imports: boolean;
-  /** Its items' status shows on solution cards linked to them: with a token, or with none (public). */
+  /** Its items' status shows on solution cards linked to them: once connected (a token or Qalam's sign-in), or with nothing (public). */
   status?: "token" | "public";
   /** An outcome can read its number from it. */
   numbers?: boolean;
@@ -85,7 +85,8 @@ export const CATALOG: readonly ConnectorDef[] = [
   },
   { id: "zendesk", label: "Zendesk", group: "voice", feeds: "material", claudeCode: /zendesk/i, imports: false },
   { id: "calls", label: "Call recordings", group: "voice", feeds: "material", claudeCode: /granola|gong|fireflies|fathom/i, imports: false },
-  { id: "linear", label: "Linear", group: "build", feeds: "work", claudeCode: /\blinear\b/i, token: { label: "Personal API key", href: "https://linear.app/settings/account/security", placeholder: "lin_api_…" }, imports: false, status: "token" },
+  // Read access only: a token that asks for "read" can't reach Linear's write tools.
+  { id: "linear", label: "Linear", group: "build", feeds: "work", claudeCode: /\blinear\b/i, token: { label: "Personal API key", href: "https://linear.app/settings/account/security", placeholder: "lin_api_…" }, mcp: { url: "https://mcp.linear.app/mcp", scope: "read" }, imports: false, status: "token" },
   { id: "jira", label: "Jira", group: "build", feeds: "work", claudeCode: /\bjira\b|atlassian/i, imports: false },
   { id: "github", label: "GitHub", group: "build", feeds: "work", claudeCode: /github/i, imports: false, status: "public" },
   { id: "figma", label: "Figma", group: "build", feeds: "work", claudeCode: /\bfigma\b/i, imports: false },

@@ -12,6 +12,7 @@ const NOW = Date.UTC(2026, 9, 28, 12);
 
 beforeEach(async () => {
   dir = await mkdtemp(path.join(tmpdir(), "qalam-work-"));
+  process.env.QALAM_HOME = dir;
   process.env.QALAM_SECRETS = "memory";
   resetSecrets();
 });
@@ -35,11 +36,11 @@ const apis = (linearType = "started") =>
   });
 
 describe("where linked work stands", () => {
-  it("asks GitHub (public, no token) and Linear (its key from the Keychain), and says when a key is missing", async () => {
+  it("asks GitHub (public, no token) and Linear (its key from the Keychain), and says when Linear isn't connected", async () => {
     const f = apis();
     const first = await workStatuses(store(), [pr, issue, figma], { now: NOW, fetch: f as unknown as typeof fetch });
     expect(first["github:basket/app#42"]).toMatchObject({ state: "doing", label: "Open", title: "Show fees early" });
-    expect(first["linear:ENG-12"]).toMatchObject({ state: "unknown", label: "Add Linear's key in Connections" });
+    expect(first["linear:ENG-12"]).toMatchObject({ state: "unknown", label: "Connect Linear in Connections" });
     expect(first["figma:AbC"]).toMatchObject({ state: "unknown", label: "" });
 
     await secrets().set("connector:linear", "lin_api_test");

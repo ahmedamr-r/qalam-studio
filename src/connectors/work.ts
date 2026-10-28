@@ -1,4 +1,6 @@
 import type { OstWork } from "@/discovery/types";
+import { firstJson } from "./numbers";
+import type { ToolCall } from "./recipes";
 
 /*
  * Work linked to a solution (pure): an issue, a pull request or a design, from its address, and its
@@ -54,6 +56,48 @@ export function linearState(type: string | undefined): WorkState {
   if (type === "unstarted" || type === "backlog" || type === "triage") return "todo";
   return "unknown";
 }
+
+/** The states a Linear team starts with, by name, as their types (a team can rename them or add its own). */
+const LINEAR_DEFAULTS: Record<string, string> = { triage: "triage", backlog: "backlog", todo: "unstarted", "in progress": "started", "in review": "started", done: "completed", canceled: "canceled", cancelled: "canceled", duplicate: "canceled" };
+
+const field = (o: unknown, k: string): unknown => (o && typeof o === "object" && !Array.isArray(o) ? (o as Record<string, unknown>)[k] : undefined);
+const word = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+
+/**
+ * An issue from Linear's MCP server (`get_issue`) as a status. The answer's shape isn't published,
+ * so its state is looked for where Linear's API keeps it ({state: {name, type}}) and where a
+ * flattened answer would (status, with statusType or stateType). A state named without its type
+ * reads by the names Linear starts a team with; one the team named itself shows by its name. An
+ * answer about another issue than the one asked for is no answer.
+ */
+export function linearIssueStatus(result: string, ref: string, at: number): WorkStatus | null {
+  const j = firstJson(result);
+  const issue = field(j, "issue") ?? j;
+  const id = word(field(issue, "identifier"));
+  if (!field(issue, "title") && !field(issue, "state") && !field(issue, "status")) return null;
+  if (id && id.toUpperCase() !== ref.toUpperCase()) return null;
+  const state = field(issue, "state");
+  const status = field(issue, "status");
+  const name = word(field(state, "name")) ?? word(field(status, "name")) ?? word(status) ?? word(state) ?? word(field(issue, "stateName"));
+  const type = word(field(state, "type")) ?? word(field(status, "type")) ?? word(field(issue, "statusType")) ?? word(field(issue, "stateType"));
+  if (!name && !type) return null;
+  const title = word(field(issue, "title"));
+  return { state: linearState(type ?? LINEAR_DEFAULTS[name!.toLowerCase()]), label: name ?? type!, ...(title ? { title } : {}), at };
+}
+
+/**
+ * Where an item stands, asked of the service's MCP server with Qalam's own sign-in: the call for
+ * one item, and its answer as a status (null when it isn't one).
+ */
+export interface WorkRecipe {
+  status: (ref: string) => ToolCall;
+  read: (result: string, ref: string, at: number) => WorkStatus | null;
+}
+
+export const WORK_RECIPES: Record<string, WorkRecipe> = {
+  // By its identifier ("ENG-123"), which Linear takes wherever it takes an issue's id.
+  linear: { status: (ref) => ({ tool: "get_issue", args: { id: ref } }), read: linearIssueStatus },
+};
 
 /** GitHub's issue (or pull request, from the issues API): open, merged, or closed without merging. */
 export function githubStatus(j: { state?: string; title?: string; pull_request?: { merged_at?: string | null } | null; state_reason?: string | null }, at: number): WorkStatus {

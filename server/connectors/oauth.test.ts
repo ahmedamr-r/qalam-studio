@@ -21,13 +21,16 @@ vi.mock("../capture", () => ({ captureSource: async (_s: unknown, ing: Ingested)
 
 const { cancelSignIn, keepApp, signIn } = await import("./oauth");
 const { connectorsView, forgetConnector, importItems, searchConnector } = await import("./index");
+const { workStatuses } = await import("./work");
 
 /*
  * A stand-in for a service's hosted server (Notion's, Intercom's): OAuth discovery, registration,
  * the page a person approves on, tokens (PKCE checked), revocation, and an MCP server with their
  * tools that takes only the access tokens it gave.
  */
-const ALL_TOOLS = ["notion-search", "notion-fetch", "notion-get-self", "search", "fetch", "slack_search_public_and_private", "slack_read_thread"];
+const ALL_TOOLS = ["notion-search", "notion-fetch", "notion-get-self", "search", "fetch", "slack_search_public_and_private", "slack_read_thread", "get_issue"];
+/** An answer the server gives as an error (an issue it doesn't know). */
+const MISSING = Symbol("missing");
 const SLACK_RESULTS = ["## Result 1 of 1", "Channel: #feedback (C01)", "From: Dana Lee", "Permalink: https://acme.slack.com/archives/C01/p1790771415332219", "Text: We export to sheets every Friday."].join("\n");
 const conversation = {
   id: "42",
@@ -41,6 +44,7 @@ const ANSWERS: Record<string, (args: Record<string, unknown> | undefined) => unk
   fetch: (a) => ({ id: a?.id, title: "Exports", text: JSON.stringify(conversation), url: "https://app.intercom.com/a/inbox/x/inbox/conversation/42" }),
   slack_search_public_and_private: () => ({ results: SLACK_RESULTS, next_cursor: "" }),
   slack_read_thread: (a) => ({ messages: a?.channel_id === "C01" && a.message_ts === "1790771415.332219" ? "Dana Lee: We export to sheets every Friday.\nOmar: Which sheet?" : "" }),
+  get_issue: (a) => (a?.id === "ENG-12" ? { id: "9f1c", identifier: "ENG-12", title: "Fee breakdown", status: "In Progress", url: "https://linear.app/basket/issue/ENG-12/fee-breakdown" } : MISSING),
 };
 function standIn() {
   const s = {
@@ -131,7 +135,10 @@ function standIn() {
     if (s.mcpOff) return c.json({ ok: false, error: "This app is not enabled for Slack MCP server access" }, 400);
     const server = new Server({ name: "notion-stand-in", version: "1" }, { capabilities: { tools: {} } });
     server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: s.tools.map((name) => ({ name, inputSchema: { type: "object" as const } })) }));
-    server.setRequestHandler(CallToolRequestSchema, async (r) => ({ content: [{ type: "text", text: JSON.stringify(ANSWERS[r.params.name]?.(r.params.arguments) ?? {}) }] }));
+    server.setRequestHandler(CallToolRequestSchema, async (r) => {
+      const a = ANSWERS[r.params.name]?.(r.params.arguments) ?? {};
+      return a === MISSING ? { isError: true, content: [{ type: "text", text: "Entity not found: Issue" }] } : { content: [{ type: "text", text: JSON.stringify(a) }] };
+    });
     const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
     await server.connect(transport);
     return transport.handleRequest(c.req.raw);
@@ -179,6 +186,7 @@ beforeEach(async () => {
 afterEach(async () => {
   cancelSignIn("notion");
   cancelSignIn("slack");
+  cancelSignIn("linear");
   await rm(dir, { recursive: true, force: true });
 });
 
@@ -309,6 +317,37 @@ describe("Qalam's own sign-in to a connector's MCP server", () => {
     expect((await landed)?.text).toContain("Intercom isn't connected");
     expect(await secrets().get("connector:intercom:oauth")).toBeNull();
     expect((await readSettings()).connectors?.intercom).toBeUndefined();
+  });
+
+  describe("Linear, for where linked issues stand", () => {
+    const issue = (ref: string) => ({ connector: "linear", ref, url: `https://linear.app/basket/issue/${ref}` });
+    const store = () => ({ dir }) as unknown as OrgStore;
+
+    it("asks for read access only, then reads each issue through get_issue", async () => {
+      await signIn("linear", { serverUrl: mcpUrl, open: browser });
+      expect(s.asked).toEqual({ register: "read", authorize: "read" });
+      expect((await readSettings()).connectors?.linear).toEqual({ via: "oauth", url: mcpUrl });
+      expect((await connectorsView()).connectors.find((c) => c.id === "linear")).toMatchObject({ via: "oauth", word: "Connected", tone: "ok", canSignIn: true, canToken: true });
+      const got = await workStatuses(store(), [issue("ENG-12"), issue("ENG-404")], { now: 5 });
+      expect(got).toEqual({ "linear:ENG-12": { state: "doing", label: "In Progress", title: "Fee breakdown", at: 5 }, "linear:ENG-404": { state: "unknown", label: "Can't see it", at: 5 } });
+    });
+
+    it("keeps the last answer when Linear stops taking the sign-in, and says to sign in again where there's none", async () => {
+      await signIn("linear", { serverUrl: mcpUrl, open: browser });
+      await workStatuses(store(), [issue("ENG-12")], { now: 5 });
+      s.access.clear();
+      s.refuseRefresh = true;
+      const got = await workStatuses(store(), [issue("ENG-12"), issue("ENG-13")], { now: 6, force: true });
+      expect(got["linear:ENG-12"]).toMatchObject({ state: "doing", at: 5 });
+      expect(got["linear:ENG-13"]).toEqual({ state: "unknown", label: "Sign in to Linear again in Connections", at: 6 });
+    });
+
+    it("keeps nothing when Linear's server lacks get_issue", async () => {
+      s.tools = ALL_TOOLS.filter((t) => t !== "get_issue");
+      await expect(signIn("linear", { serverUrl: mcpUrl, open: browser })).rejects.toThrow("Linear's server doesn't offer get_issue.");
+      expect(await secrets().get("connector:linear:oauth")).toBeNull();
+      expect((await readSettings()).connectors?.linear).toBeUndefined();
+    });
   });
 
   describe("Slack, with the workspace's own app", () => {
