@@ -1,4 +1,5 @@
 import { feedback } from "@/commands/feedback";
+import { resetAIStatus } from "@/ai/client";
 import { projectsDb } from "@/projects/db";
 import type { Project } from "@/projects/model";
 import { adoptProject, currentProject, hasUnsavedDoc, showDocFromElsewhere, useSaveConflict } from "@/projects/session";
@@ -25,6 +26,7 @@ export type OrgChange = { tab?: string } & (
   | { kind: "relation" }
   | { kind: "inbox" }
   | { kind: "placement"; board: string }
+  | { kind: "engine" }
 );
 
 const listeners = new Set<(c: OrgChange) => void>();
@@ -61,6 +63,8 @@ export function startLive() {
           if (!line) continue;
           const msg = JSON.parse(line) as { type: string } & OrgChange;
           if (msg.type !== "event" || msg.tab === TAB) continue;
+          // Qalam AI's engine changed (Connections, in this window or another): ask again what it is.
+          if (msg.kind === "engine") resetAIStatus();
           for (const fn of listeners) fn(msg);
         }
       }

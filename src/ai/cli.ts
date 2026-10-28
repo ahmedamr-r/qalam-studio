@@ -5,13 +5,14 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { CallOpts } from "./server";
 import { deltaBatcher } from "./deltas";
+import { bin } from "./engine";
+import { fromCliResult, reportUsage } from "./usage";
 
 /**
  * Local-dev backend (AI_BACKEND=cli): runs the signed-in `claude` CLI headless, so calls
  * use your Claude subscription instead of an API key. Emits the same NDJSON as the API path.
  */
 
-export const BIN = process.env.CLAUDE_CLI_PATH || "claude";
 
 // Variables a parent Claude Code session sets (if this dev server runs inside one), plus any
 // API key, which would take precedence over the login. The token/config ones are the user's own.
@@ -37,13 +38,16 @@ export function workDir() {
   return dir;
 }
 
-interface CliResult {
+export interface CliResult {
   subtype: string;
   is_error?: boolean;
   result?: string;
   stop_reason?: string | null;
   structured_output?: unknown;
   usage?: unknown;
+  /** Claude Code's own estimate of what the call cost. */
+  total_cost_usd?: number;
+  duration_ms?: number;
   errors?: string[];
 }
 
@@ -79,7 +83,7 @@ export function streamViaCli(opts: CallOpts, model: string): Response {
         "--no-session-persistence",
       ];
       // The binary path is dynamic; keep Turbopack from tracing the whole project for it.
-      const proc = spawn(/*turbopackIgnore: true*/ BIN, args, { cwd: workDir(), env: childEnv(opts.maxTokens ?? 32000) });
+      const proc = spawn(/*turbopackIgnore: true*/ bin(), args, { cwd: workDir(), env: childEnv(opts.maxTokens ?? 32000) });
       child = proc;
       proc.on("error", (e) =>
         finish({ type: "error", error: "cli_missing", message: `Couldn't start the Claude CLI (${e.message}). Install Claude Code or set CLAUDE_CLI_PATH.` }),
@@ -148,6 +152,7 @@ export function streamViaCli(opts: CallOpts, model: string): Response {
             return finish({ type: "error", error: "parse", message: "Model output was not valid JSON." });
           }
         }
+        reportUsage(fromCliResult(result, modelName));
         finish({ type: "result", data, usage: result.usage, model: modelName });
       });
     },

@@ -10,7 +10,7 @@ import { OrgStore } from "./org/store";
 // One call with the organization's knowledge packed (the API-key path), its answer faked.
 const answer = vi.hoisted(() => ({ value: null as unknown, sent: "" }));
 vi.mock("@/ai/server", () => ({
-  BACKEND: "api",
+  backend: () => "api",
   structured: async (opts: { content: { text: string }[] }) => {
     answer.sent = opts.content[0].text;
     return { data: answer.value, model: "test-model" };

@@ -12,7 +12,7 @@ import { OrgStore } from "./org/store";
 // Qalam AI's answers, faked by what each call asks; what code keeps of them is real.
 const calls = vi.hoisted(() => ({ list: [] as string[], texts: [] as string[] }));
 vi.mock("@/ai/server", () => ({
-  BACKEND: "api",
+  backend: () => "api",
   aiConfigured: () => true,
   structured: async (opts: { system: string; content: { text: string }[] }) => {
     const text = opts.content[0].text;

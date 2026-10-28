@@ -1,4 +1,4 @@
-import { mkdir, readdir, rename, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { aiConfigured } from "@/ai/server";
 import { captureSource } from "./capture";
@@ -25,6 +25,31 @@ const STALE_CLAIM_MS = 15 * 60_000;
 // One inbox per store, whichever copy of this module asks (the dev server loads it afresh after an edit).
 const g = globalThis as { __qalamInboxes?: WeakMap<OrgStore, unknown> };
 const inboxes = (g.__qalamInboxes ??= new WeakMap());
+
+export interface InboxStatus {
+  /** Files waiting at the inbox's top level. */
+  waiting: number;
+  /** Files Qalam couldn't read (inbox/not-read), and why the newest wasn't. */
+  notRead: number;
+  lastReason?: string;
+  /** Files wait until Qalam AI is set up. */
+  paused: boolean;
+}
+
+/** What's in an organization's inbox now (for This Mac in Connections). */
+export async function inboxStatus(store: OrgStore): Promise<InboxStatus> {
+  const dir = path.join(store.dir, "inbox");
+  const files = async (d: string) => (await readdir(d, { withFileTypes: true }).catch(() => [])).filter((e) => e.isFile() && !e.name.startsWith("."));
+  const waiting = await files(dir);
+  const notRead = (await files(path.join(dir, "not-read"))).filter((e) => !e.name.endsWith(".why.txt"));
+  let lastReason: string | undefined;
+  const whys = (await files(path.join(dir, "not-read"))).filter((e) => e.name.endsWith(".why.txt"));
+  if (whys.length) {
+    const newest = (await Promise.all(whys.map(async (e) => ({ e, at: (await stat(path.join(dir, "not-read", e.name)).catch(() => null))?.mtimeMs ?? 0 })))).sort((a, b) => b.at - a.at)[0];
+    lastReason = (await readFile(path.join(dir, "not-read", newest.e.name), "utf8").catch(() => "")).trim().slice(0, 300) || undefined;
+  }
+  return { waiting: waiting.length, notRead: notRead.length, ...(lastReason ? { lastReason } : {}), paused: !aiConfigured() };
+}
 
 /** Watch an organization's inbox while its store is open. */
 export function startInbox(store: OrgStore) {
@@ -58,7 +83,8 @@ class Inbox {
   }
 
   start() {
-    const on = (e: { kind: string }) => e.kind === "inbox" && this.soon();
+    // Something dropped in, or Qalam AI just got set up (files waited until it was).
+    const on = (e: { kind: string }) => (e.kind === "inbox" || e.kind === "engine") && this.soon();
     this.store.events.on("event", on);
     this.store.events.once("dispose", () => {
       this.stopped = true;

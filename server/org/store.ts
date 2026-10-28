@@ -49,6 +49,8 @@ export type OrgEvent = { tab?: string } & (
   | { kind: "inbox" }
   /** What waits on a board from material added to the organization changed. */
   | { kind: "placement"; board: string }
+  /** The engine Qalam AI runs on changed (server/engine.ts): announced to every open organization. */
+  | { kind: "engine" }
 );
 
 
@@ -197,6 +199,11 @@ export class OrgStore {
 
   private emit(e: OrgEvent) {
     this.events.emit("event", e);
+  }
+
+  /** Tell this organization's windows (and its inbox) about a change that isn't its files'. */
+  announce(e: OrgEvent) {
+    this.emit(e);
   }
 
   // -------------------------------------------------------------------------

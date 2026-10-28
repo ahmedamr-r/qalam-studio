@@ -12,6 +12,8 @@ import { editContext } from "../org/ContextEditor";
 import { withScope, type Scope } from "../home/scope";
 import { PLACES, RAIL_PLACES, type Place } from "./places";
 import { useFrame } from "./store";
+import { useHealthDot } from "./useHealth";
+import { StatusDot } from "../viz";
 
 /*
  * The organization's places, drawn two ways. On a page, the sidebar: Home, Boards, Topics, Sources
@@ -42,6 +44,7 @@ export function OrgSidebar({ place, scope = "all", onScope }: { place: Place | n
               <a href={href(p.id)} aria-label={p.label} aria-current={place === p.id ? "page" : undefined} className={clsx(r.railItem, p.id === "connections" && "mt-auto")}>
                 <Icon size={18} absoluteStrokeWidth strokeWidth={1.25} />
                 <span className={clsx(r.railLabel, "max-w-[56px]")}>{p.short ?? p.label}</span>
+                {p.id === "connections" && <ConnectionsDot corner />}
               </a>
             </Tip>
           );
@@ -97,10 +100,18 @@ export function OrgSidebar({ place, scope = "all", onScope }: { place: Place | n
       <a href={href("connections")} aria-current={place === "connections" ? "page" : undefined} className={r.sidebarItem}>
         <Cable {...ICON} />
         {CONNECTIONS.label}
+        <ConnectionsDot />
       </a>
       <Foot />
     </nav>
   );
+}
+
+/** Connections speaks only when something needs fixing (This Mac's worst row). */
+function ConnectionsDot({ corner }: { corner?: boolean }) {
+  const dot = useHealthDot();
+  if (!dot || dot === "ok") return null;
+  return <StatusDot tone={dot === "bad" ? "bad" : dot === "warn" ? "warn" : "off"} className={corner ? "absolute top-[8px] right-[11px] shadow-[0_0_0_2px_var(--color-app)]" : "ml-auto"} />;
 }
 
 /** The theme and the fold, at the foot. */

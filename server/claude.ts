@@ -2,6 +2,8 @@ import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
+import { childEnv } from "@/ai/cli";
+import type { ClaudeAccount } from "@/org/engine";
 
 /**
  * Finding the user's own Claude Code. An app opened from the Dock or Finder doesn't get the
@@ -48,19 +50,35 @@ export interface ClaudeState {
   found: boolean;
   /** Signed in (null: couldn't tell). */
   signedIn: boolean | null;
+  /** Who pays for Qalam AI's calls, as Claude Code says (signed in only). */
+  account?: ClaudeAccount;
 }
 
-let cached: { at: number; state: ClaudeState } | null = null;
+/** The account in `claude auth status`'s JSON (only the fields that say who pays). */
+export function accountFrom(out: string): ClaudeAccount | undefined {
+  try {
+    const j = JSON.parse(out.slice(out.indexOf("{"))) as Record<string, unknown>;
+    const str = (k: string) => (typeof j[k] === "string" && j[k] ? (j[k] as string) : undefined);
+    const a: ClaudeAccount = { email: str("email"), org: str("orgName"), plan: str("subscriptionType"), method: str("authMethod"), apiKeySource: str("apiKeySource") };
+    for (const k of Object.keys(a) as (keyof ClaudeAccount)[]) if (a[k] === undefined) delete a[k];
+    return Object.keys(a).length ? a : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+let cached: { at: number; bin: string; state: ClaudeState } | null = null;
 const FRESH_MS = 30_000;
 
 /**
  * Whether Claude Code is installed and signed in (asks `claude auth status`). A signed-in answer
- * is kept for 30 s; anything else is asked again, so "Check again" sees a fresh sign-in at once.
+ * is kept for 30 s, for that `claude`; anything else is asked again, so "Check again" sees a fresh
+ * sign-in at once.
  */
 export async function claudeState(bin: string | null = findClaude()): Promise<ClaudeState> {
-  if (cached && Date.now() - cached.at < FRESH_MS) return cached.state;
+  if (cached && cached.bin === bin && Date.now() - cached.at < FRESH_MS) return cached.state;
   const state = bin ? await authStatus(bin) : { found: false, signedIn: false };
-  cached = state.signedIn ? { at: Date.now(), state } : null;
+  cached = state.signedIn && bin ? { at: Date.now(), bin, state } : null;
   return state;
 }
 
@@ -74,14 +92,18 @@ function authStatus(bin: string): Promise<ClaudeState> {
       clearTimeout(timer);
       resolve(s);
     };
-    const child = spawn(bin, ["auth", "status"], { stdio: ["ignore", "pipe", "ignore"] });
+    // With the environment Qalam AI's own calls get (src/ai/cli.ts), so it says who pays for those.
+    const child = spawn(bin, ["auth", "status"], { stdio: ["ignore", "pipe", "ignore"], env: childEnv(16000) });
     const timer = setTimeout(() => {
       child.kill();
       done({ found: true, signedIn: null });
     }, 8000);
     child.stdout.on("data", (d: Buffer) => (out += d.toString("utf8")));
     child.on("error", () => done({ found: false, signedIn: false }));
-    child.on("close", () => done({ found: true, signedIn: signedInFrom(out) }));
+    child.on("close", () => {
+      const signedIn = signedInFrom(out);
+      done({ found: true, signedIn, ...(signedIn ? { account: accountFrom(out) } : {}) });
+    });
   });
 }
 

@@ -2,7 +2,7 @@ import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { findClaude, joinPaths, loginShellPath, signedInFrom } from "./claude";
+import { accountFrom, findClaude, joinPaths, loginShellPath, signedInFrom } from "./claude";
 
 describe("findClaude", () => {
   it("prefers CLAUDE_CLI_PATH", () => {
@@ -30,6 +30,22 @@ describe("signedInFrom", () => {
   it("can't tell from anything else", () => {
     expect(signedInFrom("")).toBeNull();
     expect(signedInFrom('{"other": 1}')).toBeNull();
+  });
+});
+
+describe("accountFrom", () => {
+  it("reads who pays from Claude Code 2.1's status, and nothing secret", () => {
+    const out = JSON.stringify({ loggedIn: true, authMethod: "claude.ai", apiProvider: "firstParty", email: "ahmed@example.com", orgId: "o-1", orgName: "Ahmed's org", subscriptionType: "max", configDirectory: "/Users/me/.claude" });
+    expect(accountFrom(out)).toEqual({ email: "ahmed@example.com", org: "Ahmed's org", plan: "max", method: "claude.ai" });
+  });
+
+  it("says when a key in the environment would be used instead of the sign-in", () => {
+    expect(accountFrom('{"loggedIn": true, "authMethod": "claude.ai", "apiKeySource": "ANTHROPIC_API_KEY"}')).toEqual({ method: "claude.ai", apiKeySource: "ANTHROPIC_API_KEY" });
+  });
+
+  it("is nothing when the status says nothing", () => {
+    expect(accountFrom('{"loggedIn": false}')).toBeUndefined();
+    expect(accountFrom("not json")).toBeUndefined();
   });
 });
 

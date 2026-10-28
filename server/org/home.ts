@@ -3,8 +3,9 @@ import { randomBytes } from "node:crypto";
 import { access, constants, readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
+import { qalamHome } from "../paths";
 import { atomicWrite, readJson, stableStringify } from "./fsx";
-import { OrgStore, type OrgInfo } from "./store";
+import { OrgStore, type OrgEvent, type OrgInfo } from "./store";
 
 /**
  * Where organizations live: one folder each under ~/Qalam (QALAM_HOME moves it, for tests), plus
@@ -13,7 +14,7 @@ import { OrgStore, type OrgInfo } from "./store";
  * "Personal", so there's always somewhere to save.
  */
 
-export const qalamHome = () => path.resolve(process.env.QALAM_HOME || path.join(homedir(), "Qalam"));
+export { qalamHome } from "../paths";
 
 export const DEFAULT_ORG = "Personal";
 
@@ -210,6 +211,11 @@ export async function storeFor(id: string): Promise<OrgStore | null> {
 }
 
 class NoSuchOrg extends Error {}
+
+/** Tell every open organization (its windows, its inbox) about a change that's this computer's, not one folder's. */
+export async function announceAll(e: OrgEvent) {
+  for (const s of await Promise.allSettled([...stores().values()])) if (s.status === "fulfilled") s.value.announce(e);
+}
 
 /** Open the organization opened last when Qalam starts, so its inbox is read from then on, before (or without) a window asking for it. */
 export function openLastOrg(): Promise<OrgStore | null> {

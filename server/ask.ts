@@ -3,8 +3,10 @@ import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { createInterface } from "node:readline";
 import { ASK_PACKED_SYSTEM, ASK_SYSTEM, askSchema } from "@/ai/ask";
-import { BIN, childEnv } from "@/ai/cli";
-import { BACKEND, structured } from "@/ai/server";
+import { childEnv } from "@/ai/cli";
+import { bin } from "@/ai/engine";
+import { backend, structured } from "@/ai/server";
+import { fromCliResult, reportUsage } from "@/ai/usage";
 import { sourcesIn, verifyAnswer, type AskAnswer, type Found } from "@/hub/ask";
 import { sectionCounts } from "@/hub/topics";
 import { contextText, readFrontMatter } from "@/org/context-md";
@@ -254,7 +256,7 @@ function viaAgent(store: OrgStore, ix: OrgIndex | null, q: AskRequest, g: Guide,
           "--disable-slash-commands",
           "--no-session-persistence",
         ];
-        const proc = spawn(/*turbopackIgnore: true*/ BIN, args, { cwd: store.dir, env: childEnv(16000) });
+        const proc = spawn(/*turbopackIgnore: true*/ bin(), args, { cwd: store.dir, env: childEnv(16000) });
         const limit = AbortSignal.timeout(TIME_LIMIT_MS);
         const both = AbortSignal.any([signal, limit]);
         const kill = () => proc.kill();
@@ -286,6 +288,7 @@ function viaAgent(store: OrgStore, ix: OrgIndex | null, q: AskRequest, g: Guide,
         });
         proc.on("close", (code) => {
           both.removeEventListener("abort", kill);
+          reportUsage(fromCliResult(result as Parameters<typeof fromCliResult>[0], model ?? "claude"));
           if (signal.aborted) return reject(new DOMException("Stopped.", "AbortError"));
           if (limit.aborted) return reject(new Error("Qalam AI took too long to answer. Try a narrower question."));
           if (!result) return reject(new Error(stderr.trim() || `The Claude CLI exited with code ${code}.`));
@@ -334,7 +337,7 @@ export async function askOrg(store: OrgStore, q: AskRequest, o: { emit: (label: 
   if (ix) await ix.settled();
   o.emit("Reading the organization's guide");
   const g = await guide(store, q);
-  const agent = BACKEND === "cli";
+  const agent = backend() === "cli";
   if (!agent && !ix) throw new Error("Asking needs the organization's search index (Node 24 or the desktop app).");
   const { raw, model } = agent ? await viaAgent(store, ix, q, g, o.emit, o.signal) : await viaPacked(ix!, q, g);
   o.emit("Checking every quote");

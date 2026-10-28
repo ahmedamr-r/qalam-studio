@@ -48,6 +48,7 @@ function fakeModels(fail = false): Models & { calls: number } {
       return docs.map(() => 0.5);
     },
     state: () => ({ status: "ready" as const }),
+    retry: () => {},
   };
   return m;
 }

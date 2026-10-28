@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import clsx from "clsx";
-import type { AIStatus } from "@/ai/client";
 import type { SourceRecord } from "@/discovery/sources";
 import type { OrgRef } from "@/org/client";
 import { useOrgContext } from "@/org/context";
@@ -19,6 +18,8 @@ import type { NoticesNow } from "@/org/notices";
 import { useTopics } from "../topics/list";
 import { PageFrame } from "../frame/PageFrame";
 import { useCurrentOrg } from "../frame/store";
+import { useHealth } from "../frame/useHealth";
+import { StatusDot } from "../viz";
 import { ProjectCard } from "../places/ProjectCard";
 import { inScope, withScope } from "./scope";
 import { useScope } from "./useScope";
@@ -49,7 +50,7 @@ export default function Home() {
   return (
     <PageFrame place="home" scope={scope} onScope={setScope}>
       <div className={clsx(r.pageMain, "max-w-[1080px]")}>
-        <ClaudeNotice />
+        <EngineNotice />
         <MoveFromBrowser org={org} onMoved={refresh} />
 
         {legacy && (
@@ -116,42 +117,20 @@ export default function Home() {
   );
 }
 
-type ClaudeCheck = NonNullable<AIStatus["claude"]>;
-
-/** Qalam AI runs on the user's own Claude Code: say what to do first when it's missing or signed out. */
-function ClaudeNotice() {
-  const [claude, setClaude] = useState<ClaudeCheck | null>(null);
-  const [checking, setChecking] = useState(false);
-  const check = useCallback(() => {
-    setChecking(true);
-    void fetch("/api/status")
-      .then((r) => r.json() as Promise<AIStatus>)
-      .then((s) => setClaude(s.backend === "cli" ? (s.claude ?? null) : null))
-      .catch(() => setClaude(null))
-      .finally(() => setChecking(false));
-  }, []);
-  useEffect(check, [check]);
-  if (!claude || (claude.found && claude.signedIn !== false)) return null;
+/** Qalam AI can't run here: one line saying why, and where to fix it (Connections). */
+function EngineNotice() {
+  const { rows } = useHealth();
+  const engine = rows?.find((x) => x.id === "engine");
+  if (!engine) return null;
   return (
-    <div role="status" className="flex flex-wrap items-center justify-between gap-[12px] rounded-lg bg-raised px-[12px] py-[10px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
-      <p className="text-body text-fg-muted">
-        {claude.found ? (
-          <>
-            Qalam AI runs on your own Claude Code, which isn't signed in. Run <code className="font-mono text-fg">claude auth login</code> in a terminal, then check again.
-          </>
-        ) : (
-          <>
-            Qalam AI runs on your own Claude Code, which isn't installed.{" "}
-            <a className="text-fg underline" href="https://code.claude.com/docs/en/quickstart" target="_blank" rel="noreferrer">
-              Install it
-            </a>
-            , run <code className="font-mono text-fg">claude auth login</code>, then check again.
-          </>
-        )}
+    <div role="status" className="flex items-center justify-between gap-[12px] rounded-lg bg-raised px-[12px] py-[8px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
+      <p className="flex items-center gap-[8px] text-body text-fg">
+        <StatusDot tone="bad" />
+        Qalam AI <span className="text-fg-muted">· {engine.word}</span>
       </p>
-      <Button variant="secondary" size="sm" disabled={checking} onClick={check}>
-        {checking ? "Checking…" : "Check again"}
-      </Button>
+      <a href={placeHref("connections")} className={clsx(r.buttonSm, r.buttonSecondary)}>
+        Fix in Connections
+      </a>
     </div>
   );
 }

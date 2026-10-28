@@ -3,24 +3,27 @@ import { streamViaCli } from "./cli";
 import { runResearch, type ResearchRequest } from "./research";
 import { researchBlock } from "./research-shared";
 import { deltaBatcher } from "./deltas";
+import { apiKey, backend } from "./engine";
+import { fromApiUsage, reportUsage } from "./usage";
 
 /** Default is Claude Opus 5.5 for every step; override with CLAUDE_MODEL. */
 export const MODEL = process.env.CLAUDE_MODEL || "claude-opus-5-5";
 
 /**
- * "cli" routes calls through the signed-in `claude` CLI (your Claude subscription) for local
- * development. Never on Vercel: a public deployment must use its own API key.
+ * The engine, read at every call (src/ai/engine.ts): "cli" runs the user's own signed-in `claude`
+ * (their Claude subscription), "api" a Claude API key. Switching in Connections needs no restart.
  */
-export const BACKEND: "api" | "cli" = process.env.AI_BACKEND === "cli" && !process.env.VERCEL ? "cli" : "api";
+export { backend } from "./engine";
 
 export function aiConfigured(): boolean {
-  return BACKEND === "cli" || !!getClient();
+  return backend() === "cli" || !!getClient();
 }
 
+// Built once; it asks for the key before each request, so a new one is used from the next call.
 let client: Anthropic | null = null;
 export function getClient(): Anthropic | null {
-  if (!process.env.ANTHROPIC_API_KEY) return null;
-  client ??= new Anthropic();
+  if (!apiKey()) return null;
+  client ??= new Anthropic({ apiKey: async () => apiKey() ?? "" });
   return client;
 }
 
@@ -81,7 +84,7 @@ const ADAPTIVE_MODELS = /^claude-(opus-5|fable-5|sonnet-5|opus-4-[678])/;
 export function streamStructured(opts: CallOpts): Response {
   if (opts.research?.connectors.length) return streamWithResearch(opts, opts.research);
   const model = opts.model ?? MODEL;
-  if (BACKEND === "cli") return streamViaCli(opts, model);
+  if (backend() === "cli") return streamViaCli(opts, model);
   const anthropic = getClient()!;
   const system = (Array.isArray(opts.system) ? opts.system : [opts.system]).map((text) => ({ type: "text" as const, text, cache_control: { type: "ephemeral" as const } }));
   const encoder = new TextEncoder();
@@ -158,7 +161,9 @@ export function streamStructured(opts: CallOpts): Response {
         } else {
           const text = msg.content.map((b) => (b.type === "text" ? b.text : "")).join("");
           const json = text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
-          send({ type: "result", data: JSON.parse(json), usage: msg.usage, model: msg.model });
+          const data = JSON.parse(json);
+          reportUsage(fromApiUsage(msg.usage, msg.model));
+          send({ type: "result", data, usage: msg.usage, model: msg.model });
         }
       } catch (e) {
         if (closed) return;
@@ -201,7 +206,7 @@ function streamWithResearch(opts: CallOpts, research: ResearchRequest): Response
         if (!abort.signal.aborted) controller.enqueue(encoder.encode(JSON.stringify(o) + "\n"));
       };
       try {
-        const info = await runResearch(research, { backend: BACKEND, client: getClient(), model: RESEARCH_MODEL }, (label) => send({ type: "activity", label }), abort.signal);
+        const info = await runResearch(research, { backend: backend(), client: getClient(), model: RESEARCH_MODEL }, (label) => send({ type: "activity", label }), abort.signal);
         if (info) send({ type: "research", research: info });
         const content: Content = info?.notes ? [...opts.content, { type: "text", text: researchBlock(info.notes) }] : opts.content;
         inner = streamStructured({ ...opts, content, research: undefined }).body!.getReader();
@@ -234,7 +239,11 @@ function streamWithResearch(opts: CallOpts, research: ResearchRequest): Response
  * organization), where no window reads the stream. Throws the stream's error.
  */
 export async function structured<T>(opts: CallOpts): Promise<{ data: T; model?: string }> {
-  const res = streamStructured(opts);
+  return readStructured<T>(streamStructured(opts));
+}
+
+/** A structured call's NDJSON read to its result (or its error, thrown). */
+export async function readStructured<T>(res: Response): Promise<{ data: T; model?: string }> {
   const reader = res.body!.getReader();
   const dec = new TextDecoder();
   let buf = "";
@@ -264,7 +273,7 @@ export function streamResearch(research: ResearchRequest): Response {
         if (!abort.signal.aborted) controller.enqueue(encoder.encode(JSON.stringify(o) + "\n"));
       };
       try {
-        const info = await runResearch(research, { backend: BACKEND, client: getClient(), model: RESEARCH_MODEL }, (label) => send({ type: "activity", label }), abort.signal);
+        const info = await runResearch(research, { backend: backend(), client: getClient(), model: RESEARCH_MODEL }, (label) => send({ type: "activity", label }), abort.signal);
         const none = research.purpose === "import" ? "None of those tools is connected here." : "Web search isn't available here, so no libraries were looked up.";
         send({ type: "result", data: info ?? { notes: "", sources: [], steps: [], error: none }, model: info?.model });
       } catch (e) {

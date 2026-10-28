@@ -1,10 +1,12 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
-import { writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { BIN, childEnv, workDir } from "./cli";
+import { childEnv, workDir } from "./cli";
+import { bin } from "./engine";
+import { fromApiUsage, fromCliResult, reportUsage } from "./usage";
 import { resolveConnectors, type McpServerDef } from "./connectors";
 import { NO_RESEARCH, citedSources, hostOf, keepCaptures, mergeSources, parseNotes, resultText, stepLabel, type Capture, type ResearchInfo, type ResearchPurpose, type ResearchSource } from "./research-shared";
 
@@ -182,6 +184,7 @@ async function viaApi(req: ResearchRequest, deps: Deps, sel: Selection, step: (s
     });
     const msg = await stream.finalMessage();
     model = msg.model;
+    reportUsage(fromApiUsage(msg.usage, msg.model));
     for (const b of msg.content) {
       if (b.type !== "text") {
         // Keep only what comes after the last tool call: the notes, not "Let me search…".
@@ -205,13 +208,29 @@ async function viaApi(req: ResearchRequest, deps: Deps, sel: Selection, step: (s
 // ---------------------------------------------------------------------------
 // CLI backend: the signed-in `claude` CLI with its WebSearch/WebFetch tools and MCP servers.
 
-/** The MCP servers as a CLI config file (it can hold keys, so it's private to this user). */
-function mcpConfigFile(servers: McpServerDef[]): string {
+/**
+ * The MCP servers as a CLI config file. It can hold keys and tokens, so it's written in a folder of
+ * its own that only this user can open (mkdtemp), for one call, and removed when the call ends.
+ */
+function mcpConfigFile(servers: McpServerDef[]): { file: string; remove: () => void } {
+  sweepOldConfigs();
   const mcpServers = Object.fromEntries(servers.map((s) => [s.name, s.cli ?? { type: "http", url: s.url, ...(s.token ? { headers: { Authorization: `Bearer ${s.token}` } } : {}) }]));
-  const json = JSON.stringify({ mcpServers });
-  const file = join(workDir(), `mcp-${createHash("sha256").update(json).digest("hex").slice(0, 12)}.json`);
-  writeFileSync(file, json, { mode: 0o600 });
-  return file;
+  const dir = mkdtempSync(join(tmpdir(), "qalam-mcp-"));
+  const file = join(dir, "mcp.json");
+  writeFileSync(file, JSON.stringify({ mcpServers }), { mode: 0o600 });
+  return { file, remove: () => rmSync(dir, { recursive: true, force: true }) };
+}
+
+/** Config files older versions left in the shared work folder (they were never removed). */
+let swept = false;
+function sweepOldConfigs() {
+  if (swept) return;
+  swept = true;
+  try {
+    for (const f of readdirSync(workDir())) if (/^mcp-[0-9a-f]{12}\.json$/.test(f)) rmSync(join(workDir(), f), { force: true });
+  } catch {
+    // Nothing there to sweep.
+  }
 }
 
 /** "Links: [{title,url},…]" in a WebSearch result. */
@@ -229,6 +248,7 @@ function linksIn(content: unknown): ResearchSource[] {
 function viaCli(req: ResearchRequest, deps: Deps, sel: Selection, step: (s: string) => void, labelOf: (server: string) => string, signal: AbortSignal): Promise<Raw> {
   return new Promise((resolve, reject) => {
     const allowed = [...(sel.web ? ["WebSearch", "WebFetch"] : []), ...sel.servers.map((s) => `mcp__${s.name}`)];
+    const config = sel.servers.length ? mcpConfigFile(sel.servers) : null;
     const args = [
       "-p",
       "--input-format", "stream-json",
@@ -243,16 +263,19 @@ function viaCli(req: ResearchRequest, deps: Deps, sel: Selection, step: (s: stri
       "--permission-prompts", "none",
       "--setting-sources", "",
       "--strict-mcp-config",
-      ...(sel.servers.length ? ["--mcp-config", mcpConfigFile(sel.servers)] : []),
+      ...(config ? ["--mcp-config", config.file] : []),
       "--disable-slash-commands",
       "--no-session-persistence",
     ];
     // An import keeps what the tools return: let whole pages through (the CLI cuts long results by default).
     const env = { ...childEnv(16000), ...(req.purpose === "import" ? { MAX_MCP_OUTPUT_TOKENS: "40000" } : {}) };
-    const proc = spawn(/*turbopackIgnore: true*/ BIN, args, { cwd: workDir(), env });
+    const proc = spawn(/*turbopackIgnore: true*/ bin(), args, { cwd: workDir(), env });
     const kill = () => proc.kill();
     signal.addEventListener("abort", kill, { once: true });
-    proc.on("error", (e) => reject(new Error(`Couldn't start the Claude CLI (${e.message}).`)));
+    proc.on("error", (e) => {
+      config?.remove();
+      reject(new Error(`Couldn't start the Claude CLI (${e.message}).`));
+    });
     proc.stdin.on("error", () => {});
     proc.stdin.end(JSON.stringify({ type: "user", message: { role: "user", content: req.task } }) + "\n");
 
@@ -300,6 +323,8 @@ function viaCli(req: ResearchRequest, deps: Deps, sel: Selection, step: (s: stri
 
     proc.on("close", (code) => {
       signal.removeEventListener("abort", kill);
+      config?.remove();
+      reportUsage(fromCliResult(result as Parameters<typeof fromCliResult>[0], model));
       if (signal.aborted) return reject(new DOMException("Research was stopped.", "AbortError"));
       if (!result) return reject(new Error(stderr.trim() || `The Claude CLI exited with code ${code}.`));
       if (result.is_error || result.subtype !== "success") return reject(new Error(result.result || result.errors?.join("; ") || result.subtype));

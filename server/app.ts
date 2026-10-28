@@ -4,6 +4,10 @@ import { onStoreOpen } from "./org/home";
 export { openLastOrg } from "./org/home";
 import { orgRoutes } from "./org/routes";
 import { startInbox } from "./inbox";
+import { onUsage } from "@/ai/usage";
+import { ensureEngine } from "./engine";
+import { connectionsRoutes } from "./routes/connections";
+import { appendUsage } from "./usage";
 import * as audit from "./routes/audit";
 import * as component from "./routes/component";
 import * as critique from "./routes/critique";
@@ -62,11 +66,21 @@ const ROUTES: Record<string, { GET?: Handler; POST?: Handler }> = {
 export function createApi(): Hono {
   // Each organization's inbox folder is read while its store is open, window or not.
   onStoreOpen(startInbox);
+  // What each call used is kept on this computer (the Claude card's usage).
+  onUsage((e) => void appendUsage(e).catch(() => {}));
+  // The engine comes from this computer's settings and Keychain, read before the first answer.
+  void ensureEngine();
   const api = new Hono();
+  api.use("/api/*", async (_c, next) => {
+    await ensureEngine();
+    await next();
+  });
   for (const [name, route] of Object.entries(ROUTES)) {
     if (route.GET) api.get(`/api/${name}`, (c) => route.GET!(c.req.raw));
     if (route.POST) api.post(`/api/${name}`, (c) => route.POST!(c.req.raw));
   }
+  // What Qalam AI runs on, what it used, and This Mac's health: Connections.
+  api.route("/", connectionsRoutes());
   // The organization's files (projects, sources, chats, images…): server/org.
   api.route("/", orgRoutes());
   api.all("/api/*", (c) => c.json({ error: "not_found", message: `No ${c.req.method} ${new URL(c.req.url).pathname}` }, 404));

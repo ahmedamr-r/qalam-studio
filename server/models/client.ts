@@ -41,6 +41,8 @@ export interface Models {
   /** How well each document answers the query (0…1). */
   rank(query: string, docs: string[]): Promise<number[]>;
   state(): ModelsState;
+  /** Try again now, after failures had them resting (This Mac's fix). */
+  retry(): void;
 }
 
 /** Where models are kept: QALAM_MODELS, else this computer's cache folder for Qalam. */
@@ -82,6 +84,12 @@ class ProcessModels implements Models {
 
   state() {
     return this.current;
+  }
+
+  retry() {
+    this.failures = 0;
+    this.restUntil = 0;
+    if (this.current.status === "failed") this.current = { status: "idle" };
   }
 
   private spawn(): ChildProcess {

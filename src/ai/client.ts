@@ -28,6 +28,8 @@ export type AIDelta = { kind: "json" | "thinking" | "text"; text: string } | { k
 export type AIEvent = { type: "activity"; label: string } | { type: "research"; research: ResearchInfo };
 
 let statusPromise: Promise<AIStatus> | null = null;
+/** Ask the server again next time (the engine changed). */
+export const resetAIStatus = () => void (statusPromise = null);
 export function aiStatus() {
   statusPromise ??= fetch("/api/status")
     .then((r) => r.json())

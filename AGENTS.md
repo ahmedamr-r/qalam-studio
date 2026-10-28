@@ -31,6 +31,15 @@
 - **Ask the org:** `askOrg` (`server/ask.ts`, `POST /api/org/:org/ask`, NDJSON with activity lines). On Claude Code it runs `claude -p` in the organization's folder with `--tools Read,Grep,Glob --restricted --permission-mode dontAsk --permission-prompts none --strict-mcp-config`, plus the organization's own tools (search, get, decisions) from a small MCP server the core serves over a private socket for that call (`server/mcp.ts`; Claude Code starts a bridge script that joins its stdio to the socket, so no port opens). With an API key it's one call with the organization's knowledge packed. The prompt carries a guide to the folder (pages, boards, sources, decision files) and what search finds first (`src/ai/ask.ts`). `verifyAnswer` (`src/hub/ask.ts`) finds each claim's quotes word for word in the piece or file it names (inside the folder, never `.qalam/`), marks a claim it can't back, and drops a short answer whose quotes or numbers aren't in what backs the claims.
 - **Node 24:** development needs it (`.nvmrc`): its SQLite has FTS5, like Electron 45's. On Node 22 the index refuses (`IndexUnavailable`, a 503) and its tests skip.
 - **Server-only code:** `src/ai/{server,cli,research,connectors}.ts` read secrets or spawn processes. Browser code must never import them; the build fails if it does (`serverOnly()` in `server/vite.ts`).
-- **Settings:** the server reads `.env.local`, then `.env` (`server/env.ts`); a variable already in the environment wins.
+- **Settings:**
+  - The server reads `.env.local`, then `.env` (`server/env.ts`); a variable already in the environment wins.
+  - This computer's own choices are in `~/Qalam/.qalam/settings.json` (`server/settings.ts`). That's the engine and when the welcome was done.
+  - Secrets go in the macOS Keychain under "Qalam Studio" (`server/secrets.ts`, through `/usr/bin/security`). A value goes in on stdin, never as an argument. `QALAM_SECRETS=memory` in tests.
+- **Engine and Connections:**
+  - Qalam AI's engine is read at every call (`backend()`, `apiKey()` and `bin()` in `src/ai/engine.ts`), so switching it in Connections needs no restart.
+  - `server/engine.ts` loads it from the settings and the Keychain before the first answer (`ensureEngine`), switches it, keeps a key only after a live test passes, and announces an `engine` event to every open organization.
+  - `claude auth status` says whose account pays (`accountFrom`). Claude Code's own credentials are never read.
+  - Each call's usage goes to `~/Qalam/.qalam/usage/<YYYY-MM>.jsonl` (`reportUsage` in `src/ai/usage.ts`, `server/usage.ts`). Cost appears only where the engine reported one.
+  - This Mac's health (`diagnose` in `src/health/doctor.ts`, `GET /api/health`) covers the engine, search on this Node, the meaning model and the inbox. It shows one quiet row when all is well; the sidebar's Connections dot and the home's one-line notice read it.
 - **Model output:** the model proposes and code verifies. Quotes are found word for word, numbers only where the source has them, ids only from what was sent. Keep it that way in new features.
 - **Checks:** `pnpm typecheck` and `pnpm test`.

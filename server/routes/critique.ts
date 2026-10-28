@@ -1,6 +1,6 @@
 import { CRITIQUE_SCHEMA, CRITIQUE_SYSTEM } from "@/ai/critique";
 import { CritiqueBody, buildCritiqueContent, critiqueResearchTask } from "@/ai/critique-request";
-import { aiConfigured, BACKEND, jsonError, rateLimited, streamStructured } from "@/ai/server";
+import { aiConfigured, backend, jsonError, rateLimited, streamStructured } from "@/ai/server";
 
 export async function POST(req: Request) {
   if (!aiConfigured()) return jsonError(501, "no_key", "AI is not configured on this deployment.");
@@ -16,7 +16,7 @@ export async function POST(req: Request) {
     schema: CRITIQUE_SCHEMA,
     effort: first ? "medium" : "low",
     // cache_control on user blocks is only exercised on the API path; the CLI gets plain blocks.
-    content: buildCritiqueContent(body, { cache: BACKEND === "api" }),
+    content: buildCritiqueContent(body, { cache: backend() === "api" }),
     maxTokens: first ? 16000 : 8000,
   });
 }
