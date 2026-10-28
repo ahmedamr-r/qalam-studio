@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { firstJson, insightHits, insightNumbers, posthogRead, posthogSearch } from "./numbers";
-import { cardWork, githubStatus, linearIssueStatus, linearState, parseWorkUrl, WORK_RECIPES, workKey, type WorkStatus } from "./work";
+import { cardWork, githubStatus, jiraIssueStatus, linearIssueStatus, linearState, parseWorkUrl, WORK_RECIPES, workKey, type WorkStatus } from "./work";
 
 describe("work linked to a solution", () => {
   it("reads an issue, a pull request or a design from its address", () => {
@@ -24,7 +24,7 @@ describe("work linked to a solution", () => {
   });
 
   it("reads where a Linear issue stands from its MCP server's answer, only when it's about the issue asked for", () => {
-    expect(WORK_RECIPES.linear.status("ENG-12")).toEqual({ tool: "get_issue", args: { id: "ENG-12", fields: ["title", "status", "statusType"] } });
+    expect(WORK_RECIPES.linear.status({ ref: "ENG-12", url: "https://linear.app/basket/issue/ENG-12" })).toEqual({ tool: "get_issue", args: { id: "ENG-12", fields: ["title", "status", "statusType"] } });
     const read = (answer: unknown, ref = "ENG-12") => linearIssueStatus(typeof answer === "string" ? answer : JSON.stringify(answer), ref, 1);
     // As get_issue answers for those fields: its id is the identifier.
     expect(read({ title: "Fee breakdown", status: "Shipped", statusType: "completed", id: "ENG-12" })).toEqual({ state: "done", label: "Shipped", title: "Fee breakdown", at: 1 });
@@ -39,6 +39,20 @@ describe("work linked to a solution", () => {
     expect(read({ id: "ENG-12", title: "x" })).toBeNull();
     expect(read({ error: "invalid_request", message: "Could not find referenced Issue.", status: 400 })).toBeNull();
     expect(read("Entity not found: Issue")).toBeNull();
+  });
+
+  it("reads where a Jira issue stands on its link's site, by its status category, only when it's the issue asked for", () => {
+    expect(WORK_RECIPES.jira.status({ ref: "APP-9", url: "https://basket.atlassian.net/browse/APP-9" })).toEqual({ tool: "getJiraIssue", args: { cloudId: "https://basket.atlassian.net", issueIdOrKey: "APP-9", fields: ["summary", "status"] } });
+    const issue = (key: string, name: string, category: string) => ({ id: "10001", key, fields: { summary: "Show fees early", status: { name, statusCategory: { key: category, name: "x" } } } });
+    const read = (answer: unknown, ref = "APP-9") => jiraIssueStatus(JSON.stringify(answer), ref, 1);
+    expect(read(issue("APP-9", "In Review", "indeterminate"))).toEqual({ state: "doing", label: "In Review", title: "Show fees early", at: 1 });
+    // Bare or inside `data`, as the server may wrap it.
+    expect(read({ data: issue("APP-9", "Shipped", "done") })).toMatchObject({ state: "done", label: "Shipped" });
+    expect(read(issue("app-9", "To Do", "new"))).toMatchObject({ state: "todo" });
+    expect(read(issue("APP-9", "Won't Do", "done"))).toMatchObject({ state: "canceled", label: "Won't Do" });
+    // Another issue's answer, or one with no status: no answer.
+    expect(read(issue("APP-10", "Done", "done"))).toBeNull();
+    expect(read({ key: "APP-9", fields: { summary: "x" } })).toBeNull();
   });
 
   it("shows the furthest-along linked item on the card", () => {

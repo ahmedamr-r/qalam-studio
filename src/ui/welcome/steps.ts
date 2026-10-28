@@ -41,6 +41,7 @@ export function connectFor(hasNumbers: boolean): { id: string; why: string }[] {
     { id: "intercom", why: "What customers tell support: the problems behind your goals." },
     { id: "slack", why: "What customers and the team say in channels." },
     { id: "notion", why: "Strategy docs, research and notes to read." },
+    { id: "confluence", why: "The team's pages and specs, where they live in Confluence." },
     ...(hasNumbers ? [] : [numbers]),
     { id: "github", why: "What the app does today, and where its funnel leaks." },
   ];

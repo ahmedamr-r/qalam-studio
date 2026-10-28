@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import { auth, UnauthorizedError, type OAuthClientProvider, type OAuthDiscoveryState } from "@modelcontextprotocol/sdk/client/auth.js";
 import type { OAuthClientInformationMixed, OAuthClientMetadata, OAuthTokens } from "@modelcontextprotocol/sdk/shared/auth.js";
 import type { FetchLike } from "@modelcontextprotocol/sdk/shared/transport.js";
-import { connectorDef } from "@/connectors/catalog";
+import { connectorDef, signInGroup } from "@/connectors/catalog";
 import { RECIPES } from "@/connectors/recipes";
 import { WORK_RECIPES } from "@/connectors/work";
 import { NoSecretStore, secrets } from "../secrets";
@@ -20,13 +20,18 @@ import { withMcp, type McpCall } from "./mcp";
  * for this sign-in: one answer carrying this sign-in's state, or five minutes, then it closes. The
  * answer is checked (state, issuer), the code exchanged, and one call made with the new token;
  * only then are the registration and the tokens kept, in the Keychain (`connector:<id>:client`,
- * `connector:<id>:oauth`). Calls use them straight (no model, no Claude Code), refreshing when the
- * server asks; when the service refuses the refresh, it's "Sign in again".
+ * `connector:<id>:oauth`; connectors that share an account keep one pair under its id, and one
+ * sign-in connects them all). Calls use them straight (no model, no Claude Code), refreshing when
+ * the server asks; when the service refuses the refresh, it's "Sign in again".
  */
 
 const SIGN_IN_MS = 5 * 60_000;
-const clientItem = (id: string) => `connector:${id}:client`;
-const tokensItem = (id: string) => `connector:${id}:oauth`;
+/** The sign-in a connector uses: its own, or the account it shares (Atlassian's, for Jira and Confluence). */
+const accountOf = (id: string) => connectorDef(id)?.mcp?.account?.id ?? id;
+/** The name a sign-in goes by: its account's ("Atlassian"), else the connector's. */
+const labelOf = (id: string) => connectorDef(id)?.mcp?.account?.label ?? connectorDef(id)?.label ?? id;
+const clientItem = (id: string) => `connector:${accountOf(id)}:client`;
+const tokensItem = (id: string) => `connector:${accountOf(id)}:oauth`;
 
 /** What Qalam keeps of a sign-in: its registration with the service, where the service signs in, the tokens. */
 interface Kept {
@@ -135,7 +140,7 @@ const pending = () => (g.__qalamSignIns ??= new Map());
 
 /** Stop a sign-in under way (its listener closes); false when there's none. */
 export function cancelSignIn(id: string): boolean {
-  const stop = pending().get(id);
+  const stop = pending().get(accountOf(id));
   stop?.();
   return !!stop;
 }
@@ -146,16 +151,17 @@ export async function signIn(id: string, o: SignInOptions = {}): Promise<void> {
   const serverUrl = o.serverUrl ?? def?.mcp?.url;
   if (!def || !serverUrl) throw new Error("Qalam can't sign in to this one itself yet.");
   if (!secrets().available) throw new NoSecretStore();
+  const label = labelOf(id);
   cancelSignIn(id);
   const before = await load(id);
   const own = def.mcp?.ownApp;
-  if (own && !before.client) throw new Error(`Set up ${def.label}'s app first.`);
+  if (own && !before.client) throw new Error(`Set up ${label}'s app first.`);
   // An own app comes back only to the address it lists; Qalam's registration to its port when that's free, else anywhere (it registers again).
   const callback = own ? new URL(o.callback ?? own.callback) : null;
   const at = callback ? { port: Number(callback.port), host: callback.hostname, fixed: true } : { port: Number(redirectsOf(before.client)[0]?.match(/^http:\/\/127\.0\.0\.1:(\d+)\//)?.[1]) || 0, host: "127.0.0.1", fixed: false };
-  const back = await listen(at, o.timeoutMs ?? SIGN_IN_MS).catch((e: NodeJS.ErrnoException) => Promise.reject(e.code === "EADDRINUSE" ? new Error(`${def.label} can only come back to ${callback?.host}, and something on this Mac is using that port. Close it and try again.`) : e));
+  const back = await listen(at, o.timeoutMs ?? SIGN_IN_MS).catch((e: NodeJS.ErrnoException) => Promise.reject(e.code === "EADDRINUSE" ? new Error(`${label} can only come back to ${callback?.host}, and something on this Mac is using that port. Close it and try again.`) : e));
   const stop = () => back.stop(new Error("The sign-in was stopped."));
-  pending().set(id, stop);
+  pending().set(accountOf(id), stop);
   try {
     // A registration made for another address (another port) can't come back here: register again.
     const k: Kept = { client: own || redirectsOf(before.client).includes(back.url) ? before.client : undefined, discovery: before.discovery };
@@ -164,7 +170,7 @@ export async function signIn(id: string, o: SignInOptions = {}): Promise<void> {
     const p = provider(k, { redirectUrl: back.url, state, register: !own, ownClient: !!own, onRedirect: (url) => void (page = url) });
     const scope = def.mcp?.scope;
     const fetchFn = sayNo(o.fetchFn ?? fetch);
-    if ((await auth(p, { serverUrl, scope, fetchFn }).catch((e: unknown) => Promise.reject(new Error(`${def.label} didn't let Qalam start a sign-in: ${message(e)}`)))) !== "REDIRECT" || !page) throw new Error(`${def.label} didn't offer a sign-in page.`);
+    if ((await auth(p, { serverUrl, scope, fetchFn }).catch((e: unknown) => Promise.reject(new Error(`${label} didn't let Qalam start a sign-in: ${message(e)}`)))) !== "REDIRECT" || !page) throw new Error(`${label} didn't offer a sign-in page.`);
     const where = webAddress(page);
     const answered = back.answer(state);
     answered.catch(() => {});
@@ -172,37 +178,44 @@ export async function signIn(id: string, o: SignInOptions = {}): Promise<void> {
     await (o.open ?? openInBrowser)(where);
     const a = await answered;
     try {
-      if (a.error) throw new Error(a.error === "access_denied" ? `It wasn't allowed in ${def.label}.` : `${def.label} said: ${a.errorDescription ?? a.error}`);
+      if (a.error) throw new Error(a.error === "access_denied" ? `It wasn't allowed in ${label}.` : `${label} said: ${a.errorDescription ?? a.error}`);
       // The answer must come from the server this sign-in started with (RFC 9207), not another one's page.
       const meta = k.discovery?.authorizationServerMetadata as { issuer?: string; authorization_response_iss_parameter_supported?: boolean } | undefined;
-      if ((a.iss !== undefined || meta?.authorization_response_iss_parameter_supported === true) && a.iss !== meta?.issuer) throw new Error(`That answer didn't come from ${def.label}.`);
-      if (!a.code) throw new Error(`${def.label} sent no code back.`);
-      await auth(p, { serverUrl, scope, authorizationCode: a.code, fetchFn }).catch((e: unknown) => Promise.reject(new Error(`${def.label} didn't finish the sign-in: ${message(e)}`)));
+      if ((a.iss !== undefined || meta?.authorization_response_iss_parameter_supported === true) && a.iss !== meta?.issuer) throw new Error(`That answer didn't come from ${label}.`);
+      if (!a.code) throw new Error(`${label} sent no code back.`);
+      await auth(p, { serverUrl, scope, authorizationCode: a.code, fetchFn }).catch((e: unknown) => Promise.reject(new Error(`${label} didn't finish the sign-in: ${message(e)}`)));
       // One call with the new token before it's kept: it works, and the tools Qalam reads with are there.
-      const tools = await withMcp(serverUrl, provider(k, { redirectUrl: back.url, register: false, ownClient: !!own, onRedirect: () => Promise.reject(new SignInAgain(def.label)) }), (_call, list) => list(), fetchFn).catch((e: unknown) =>
+      const tools = await withMcp(serverUrl, provider(k, { redirectUrl: back.url, register: false, ownClient: !!own, onRedirect: () => Promise.reject(new SignInAgain(label)) }), (_call, list) => list(), fetchFn).catch((e: unknown) =>
         // An own app that isn't allowed MCP yet is refused here (Slack: "not enabled").
         Promise.reject(own && /not enabled/i.test(message(e)) ? new Error(`Turn on ${own.mcpSwitch} in the app's settings, then sign in again.`) : e),
       );
-      const recipe = RECIPES[id];
-      const work = WORK_RECIPES[id];
-      const missing = (recipe ? [recipe.search("").tool, recipe.fetch({ id: "", title: "" }).tool] : work ? [work.status("").tool] : []).filter((t) => !tools.includes(t));
-      if (missing.length) throw new Error(`${def.label}'s server doesn't offer ${missing.join(" or ")}.`);
+      // Each connector the sign-in serves is connected when its tools are there (a site may have Jira and no Confluence).
+      const served = signInGroup(id).filter((x) => toolsFor(x).every((t) => tools.includes(t)));
+      if (!served.length) throw new Error(`${label}'s server doesn't offer ${toolsFor(id).filter((t) => !tools.includes(t)).join(" or ")}.`);
       back.check();
       await keep(id, k);
       const all = (await readSettings()).connectors ?? {};
-      await writeSettings({ connectors: { ...all, [id]: { via: "oauth", url: serverUrl } } });
-      a.reply(true, `Signed in to ${def.label}`, "You can close this tab and go back to Qalam Studio.");
+      await writeSettings({ connectors: { ...all, ...Object.fromEntries(served.map((x) => [x, { via: "oauth" as const, url: serverUrl }])) } });
+      a.reply(true, `Signed in to ${label}`, "You can close this tab and go back to Qalam Studio.");
     } catch (e) {
-      a.reply(false, `${def.label} isn't connected`, message(e));
+      a.reply(false, `${label} isn't connected`, message(e));
       throw e;
     }
   } finally {
     back.stop();
-    if (pending().get(id) === stop) pending().delete(id);
+    if (pending().get(accountOf(id)) === stop) pending().delete(accountOf(id));
   }
 }
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/** The tools a connector's recipe calls: a material recipe's site, search and fetch; a work recipe's status call. */
+function toolsFor(id: string): string[] {
+  const recipe = RECIPES[id];
+  const work = WORK_RECIPES[id];
+  if (recipe) return [...(recipe.site ? [recipe.site.call.tool] : []), recipe.search("").tool, recipe.fetch({ id: "", title: "" }).tool];
+  return work ? [work.status({ ref: "", url: "" }).tool] : [];
+}
 
 /** Slack's words for a refused token, and the OAuth error each is (so the SDK drops a refused refresh token). */
 const REFUSED: Record<string, { error: string; words: string }> = {
@@ -332,7 +345,7 @@ function send(res: ServerResponse, status: number, title: string, line: string) 
 export function withSignedIn<T>(id: string, serverUrl: string, fn: (call: McpCall) => Promise<T>, fetchFn?: FetchLike): Promise<T> {
   const turns = (g.__qalamOAuthTurns ??= new Map());
   const run = async () => {
-    const label = connectorDef(id)?.label ?? id;
+    const label = labelOf(id);
     const k = await load(id);
     if (!k.tokens) throw new SignInAgain(label);
     // The SDK starts a new sign-in when it can't use or refresh the tokens. With a refresh token still
@@ -349,8 +362,9 @@ export function withSignedIn<T>(id: string, serverUrl: string, fn: (call: McpCal
       throw e instanceof UnauthorizedError ? new SignInAgain(label) : e;
     }
   };
-  const next = (turns.get(id) ?? Promise.resolve()).then(run, run);
-  turns.set(id, next.catch(() => {}));
+  // One session per sign-in: connectors sharing an account share its tokens.
+  const next = (turns.get(accountOf(id)) ?? Promise.resolve()).then(run, run);
+  turns.set(accountOf(id), next.catch(() => {}));
   return next;
 }
 

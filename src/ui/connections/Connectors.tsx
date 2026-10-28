@@ -137,7 +137,7 @@ function Card({ c, onView, onImport }: { c: ConnectorState; onView: (v: View) =>
       {signing ? (
         <div className="flex flex-wrap items-center gap-[8px] text-caption text-fg-muted">
           <span className="inline-flex items-center gap-[6px]">
-            <Spinner size={12} /> Waiting for {c.label}…
+            <Spinner size={12} /> Waiting for {c.account ?? c.label}…
           </span>
           {signing.page && (
             <a href={signing.page} target="_blank" rel="noreferrer" className="text-micro text-fg-subtle underline decoration-dotted underline-offset-2 hover:text-fg">
@@ -167,7 +167,7 @@ function Card({ c, onView, onImport }: { c: ConnectorState; onView: (v: View) =>
           )}
           {canSignIn && (
             <Button size="sm" variant={inClaudeCode && !c.via ? "ghost" : "secondary"} disabled={busy} onClick={() => void signIn()}>
-              Sign in
+              {c.account ? `Sign in with ${c.account}` : "Sign in"}
             </Button>
           )}
           {canSignIn && c.regions && <Segmented label="Where the workspace is" value={region} onChange={setRegion} className="w-[84px]" options={c.regions.map((x) => ({ value: x.id, label: x.label }))} />}

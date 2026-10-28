@@ -79,18 +79,56 @@ export function linearIssueStatus(result: string, ref: string, at: number): Work
   return { state: linearState(type ?? LINEAR_DEFAULTS[name!.toLowerCase()]), label: name ?? type!, ...(title ? { title } : {}), at };
 }
 
+/** A Jira link's site as Atlassian's tools take it (`cloudId` takes a site's address). */
+const jiraSite = (url: string) => {
+  try {
+    const host = new URL(url).hostname;
+    return /\.atlassian\.net$/.test(host) ? `https://${host}` : "";
+  } catch {
+    return "";
+  }
+};
+
+/** Jira's status categories as ours; a done status named for work not done ("Won't Do") reads as canceled. */
+function jiraState(category: string | undefined, name: string): WorkState {
+  if (category === "done") return /won'?t do|cancell?ed|declined|rejected/i.test(name) ? "canceled" : "done";
+  if (category === "indeterminate") return "doing";
+  if (category === "new") return "todo";
+  return "unknown";
+}
+
+/**
+ * An issue from Atlassian's `getJiraIssue`, in Jira's own shape ({key, fields: {summary, status:
+ * {name, statusCategory: {key}}}}), bare or inside `data`. An answer about another issue than the
+ * one asked for is no answer.
+ */
+export function jiraIssueStatus(result: string, ref: string, at: number): WorkStatus | null {
+  const j = firstJson(result);
+  const issue = field(j, "data") ?? j;
+  if (word(field(issue, "key"))?.toUpperCase() !== ref.toUpperCase()) return null;
+  const fields = field(issue, "fields");
+  const status = field(fields, "status");
+  const name = word(field(status, "name"));
+  if (!name) return null;
+  const title = word(field(fields, "summary"));
+  return { state: jiraState(word(field(field(status, "statusCategory"), "key")), name), label: name, ...(title ? { title } : {}), at };
+}
+
 /**
  * Where an item stands, asked of the service's MCP server with Qalam's own sign-in: the call for
  * one item, and its answer as a status (null when it isn't one).
  */
 export interface WorkRecipe {
-  status: (ref: string) => ToolCall;
+  /** From the link: its key, and its address (where the site is, for a tool that serves several). */
+  status: (w: Pick<OstWork, "ref" | "url">) => ToolCall;
   read: (result: string, ref: string, at: number) => WorkStatus | null;
 }
 
 export const WORK_RECIPES: Record<string, WorkRecipe> = {
   // By its identifier ("ENG-123"), and only what's read: never its description or attachments.
-  linear: { status: (ref) => ({ tool: "get_issue", args: { id: ref, fields: ["title", "status", "statusType"] } }), read: linearIssueStatus },
+  linear: { status: (w) => ({ tool: "get_issue", args: { id: w.ref, fields: ["title", "status", "statusType"] } }), read: linearIssueStatus },
+  // On the link's site, and only its summary and status. Written from Atlassian's docs; not yet checked against a real site.
+  jira: { status: (w) => ({ tool: "getJiraIssue", args: { cloudId: jiraSite(w.url), issueIdOrKey: w.ref, fields: ["summary", "status"] } }), read: jiraIssueStatus },
 };
 
 /** GitHub's issue (or pull request, from the issues API): open, merged, or closed without merging. */

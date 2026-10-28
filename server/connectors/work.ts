@@ -10,9 +10,10 @@ import { SignInAgain, withSignedIn } from "./oauth";
 /*
  * Where the work linked to solutions stands, asked of the tools that hold it: Linear (through its
  * MCP server once Qalam signed in to it, else with the personal API key Qalam keeps in the
- * Keychain) and GitHub (public repositories need none). The answers are kept per computer in the
- * organization's .qalam/local/work.json, for the cards, the card panel and the checks, and asked
- * again when they're ten minutes old. Jira and Figma links have no status yet: they show as links.
+ * Keychain), Jira (through Atlassian's MCP server once signed in) and GitHub (public repositories
+ * need none). The answers are kept per computer in the organization's .qalam/local/work.json, for
+ * the cards, the card panel and the checks, and asked again when they're ten minutes old. Figma
+ * links have no status yet: they show as links.
  */
 
 const FRESH_MS = 10 * 60_000;
@@ -54,18 +55,18 @@ async function githubItem(ref: string, at: number, f: typeof fetch = fetch): Pro
   return githubStatus((await res.json()) as Parameters<typeof githubStatus>[0], at);
 }
 
-/** Linear's issues through its MCP server, with Qalam's sign-in: one session for all of them. */
-async function linearSignedIn(url: string, refs: string[], at: number, f?: typeof fetch): Promise<Map<string, WorkStatus>> {
-  const recipe = WORK_RECIPES.linear;
+/** Linked items through a service's MCP server, with Qalam's sign-in: one session for all of them. */
+async function signedInStatuses(connector: string, url: string, links: OstWork[], at: number, f?: typeof fetch): Promise<Map<string, WorkStatus>> {
+  const recipe = WORK_RECIPES[connector];
   return withSignedIn(
-    "linear",
+    connector,
     url,
     async (call) => {
       const out = new Map<string, WorkStatus>();
-      for (const ref of refs) {
-        const answer = await call(recipe.status(ref));
-        // The server said no: it doesn't know the issue, or this person can't see it.
-        out.set(ref, answer === null ? { state: "unknown", label: "Can't see it", at } : (recipe.read(answer, ref, at) ?? { state: "unknown", label: "", at }));
+      for (const l of links) {
+        const answer = await call(recipe.status(l));
+        // The server said no: it doesn't know the item, or this person can't see it.
+        out.set(l.ref, answer === null ? { state: "unknown", label: "Can't see it", at } : (recipe.read(answer, l.ref, at) ?? { state: "unknown", label: "", at }));
       }
       return out;
     },
@@ -84,23 +85,33 @@ export async function workStatuses(store: OrgStore, links: OstWork[], o: { force
     if (kept && !o.force && now - kept.at < FRESH_MS) asked[workKey(l)] = kept;
     else due.push(l);
   }
-  const via = (await readSettings()).connectors?.linear;
-  const issues = due.filter((l) => l.connector === "linear").map((l) => l.ref);
-  const signedIn = via?.via === "oauth" && issues.length ? linearSignedIn(via.url, issues, now, o.fetch) : null;
-  signedIn?.catch(() => {});
-  const linearKey = via?.via === "oauth" ? null : await secrets().get("connector:linear").catch(() => null);
+  // Through a service's MCP server where Qalam signed in to it (Linear, Jira): one session each.
+  const settings = (await readSettings()).connectors ?? {};
+  const sessions = new Map<string, Promise<Map<string, WorkStatus>>>();
+  for (const connector of Object.keys(WORK_RECIPES)) {
+    const via = settings[connector];
+    const mine = due.filter((l) => l.connector === connector);
+    if (via?.via !== "oauth" || !mine.length) continue;
+    const session = signedInStatuses(connector, via.url, mine, now, o.fetch);
+    session.catch(() => {});
+    sessions.set(connector, session);
+  }
+  const linearKey = settings.linear?.via === "oauth" ? null : await secrets().get("connector:linear").catch(() => null);
   await Promise.all(
     due.map(async (l) => {
       const key = workKey(l);
       const kept = cache[key];
+      const session = sessions.get(l.connector);
       try {
-        if (l.connector === "linear") asked[key] = signedIn ? ((await signedIn).get(l.ref) ?? { state: "unknown", label: "", at: now }) : linearKey ? await linearIssue(linearKey, l.ref, now, o.fetch) : { state: "unknown", label: "Connect Linear in Connections", at: now };
+        if (session) asked[key] = (await session).get(l.ref) ?? { state: "unknown", label: "", at: now };
+        else if (l.connector === "linear") asked[key] = linearKey ? await linearIssue(linearKey, l.ref, now, o.fetch) : { state: "unknown", label: "Connect Linear in Connections", at: now };
+        else if (l.connector === "jira") asked[key] = { state: "unknown", label: "Connect Jira in Connections", at: now };
         else if (l.connector === "github") asked[key] = await githubItem(l.ref, now, o.fetch);
         else asked[key] = { state: "unknown", label: "", at: now };
       } catch (e) {
-        // Unreachable now: the last answer stands, if there is one. A sign-in Linear stopped taking says so.
+        // Unreachable now: the last answer stands, if there is one. A sign-in the service stopped taking says so.
         if (kept) asked[key] = kept;
-        else if (e instanceof SignInAgain) asked[key] = { state: "unknown", label: "Sign in to Linear again in Connections", at: now };
+        else if (e instanceof SignInAgain) asked[key] = { state: "unknown", label: e.message.replace(/\.$/, ""), at: now };
       }
     }),
   );

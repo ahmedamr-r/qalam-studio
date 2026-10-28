@@ -1,4 +1,5 @@
 import { captureText, cleanText, htmlText } from "@/discovery/ingest/text";
+import { CONFLUENCE_RECIPE } from "./confluence";
 import { SLACK_RECIPE } from "./slack";
 
 /*
@@ -23,11 +24,15 @@ export interface Hit {
   /** A line of what matched, as the tool gave it. */
   snippet?: string;
   at?: string;
+  /** The site it's on, for a tool that serves several (Atlassian's cloudId). */
+  site?: string;
 }
 
 export interface Recipe {
-  search: (query: string) => ToolCall;
-  hits: (result: string) => Hit[];
+  /** A first call, for a tool whose every call names a site: which one (null when there's none). */
+  site?: { call: ToolCall; read: (result: string) => string | null };
+  search: (query: string, site?: string) => ToolCall;
+  hits: (result: string, site?: string) => Hit[];
   fetch: (hit: Hit) => ToolCall;
   /** A fetched item's words (default `itemText`). */
   text?: (result: string) => string;
@@ -123,6 +128,7 @@ export const RECIPES: Record<string, Recipe> = {
     text: intercomText,
   },
   slack: SLACK_RECIPE,
+  confluence: CONFLUENCE_RECIPE,
 };
 
 /** The words of a fetched item: a {text} answer's text, else the answer as it came. */

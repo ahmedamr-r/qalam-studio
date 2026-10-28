@@ -29,10 +29,11 @@ export interface ConnectorDef {
   token?: { label: string; href: string; placeholder: string };
   /**
    * The service's own MCP server, which Qalam can sign in to itself in the browser
-   * (server/connectors/oauth.ts): the scope Qalam asks for (else all the server lists), and the
-   * servers of the regions a workspace may live in (the first is `url`'s).
+   * (server/connectors/oauth.ts): the scope Qalam asks for (else all the server lists), the
+   * servers of the regions a workspace may live in (the first is `url`'s), and the account a sign-in
+   * shares with other connectors (one Atlassian sign-in serves Jira and Confluence).
    */
-  mcp?: { url: string; scope?: string; regions?: readonly { id: string; label: string; url: string }[]; ownApp?: OwnApp };
+  mcp?: { url: string; scope?: string; regions?: readonly { id: string; label: string; url: string }[]; ownApp?: OwnApp; account?: { id: string; label: string } };
   imports: boolean;
   /** Its items' status shows on solution cards linked to them: once connected (a token or Qalam's sign-in), or with nothing (public). */
   status?: "token" | "public";
@@ -53,10 +54,20 @@ export interface OwnApp {
   mcpSwitch: string;
 }
 
+/**
+ * Atlassian's server signs in once for Jira and Confluence. Its v1 address: v2 would take read-only
+ * scopes, but its sign-in turns apps that come back to this Mac away after consent ("Incorrect
+ * request parameters", October 2026). v1 asks which apps instead, and Qalam calls only read tools.
+ */
+const ATLASSIAN = {
+  url: "https://mcp.atlassian.com/v1/mcp",
+  account: { id: "atlassian", label: "Atlassian" },
+};
+
 export const CATALOG: readonly ConnectorDef[] = [
   { id: "notion", label: "Notion", group: "docs", feeds: "material", claudeCode: /\bnotion\b/i, token: { label: "Internal integration secret", href: "https://www.notion.so/profile/integrations", placeholder: "ntn_…" }, mcp: { url: "https://mcp.notion.com/mcp" }, imports: true },
   { id: "drive", label: "Google Drive", group: "docs", feeds: "material", claudeCode: /google[ _]drive/i, imports: false },
-  { id: "confluence", label: "Confluence", group: "docs", feeds: "material", claudeCode: /confluence|atlassian/i, imports: false },
+  { id: "confluence", label: "Confluence", group: "docs", feeds: "material", claudeCode: /confluence|atlassian/i, mcp: ATLASSIAN, imports: true },
   {
     id: "slack",
     label: "Slack",
@@ -87,7 +98,7 @@ export const CATALOG: readonly ConnectorDef[] = [
   { id: "calls", label: "Call recordings", group: "voice", feeds: "material", claudeCode: /granola|gong|fireflies|fathom/i, imports: false },
   // Read access only: a token that asks for "read" can't reach Linear's write tools.
   { id: "linear", label: "Linear", group: "build", feeds: "work", claudeCode: /\blinear\b/i, token: { label: "Personal API key", href: "https://linear.app/settings/account/security", placeholder: "lin_api_…" }, mcp: { url: "https://mcp.linear.app/mcp", scope: "read" }, imports: false, status: "token" },
-  { id: "jira", label: "Jira", group: "build", feeds: "work", claudeCode: /\bjira\b|atlassian/i, imports: false },
+  { id: "jira", label: "Jira", group: "build", feeds: "work", claudeCode: /\bjira\b|atlassian/i, mcp: ATLASSIAN, imports: false, status: "token" },
   { id: "github", label: "GitHub", group: "build", feeds: "work", claudeCode: /github/i, imports: false, status: "public" },
   { id: "figma", label: "Figma", group: "build", feeds: "work", claudeCode: /\bfigma\b/i, imports: false },
   { id: "posthog", label: "PostHog", group: "numbers", feeds: "numbers", claudeCode: /posthog/i, imports: false, numbers: true },
@@ -96,3 +107,9 @@ export const CATALOG: readonly ConnectorDef[] = [
 ];
 
 export const connectorDef = (id: string) => CATALOG.find((c) => c.id === id);
+
+/** The connectors one sign-in serves: those sharing its account (Jira and Confluence), else just this one. */
+export function signInGroup(id: string): string[] {
+  const account = connectorDef(id)?.mcp?.account?.id;
+  return account ? CATALOG.filter((c) => c.mcp?.account?.id === account).map((c) => c.id) : [id];
+}

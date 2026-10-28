@@ -28,6 +28,7 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
 /** What each tool does, for the call. */
 const WHAT: Record<string, string> = {
   notion: "searches the team's docs and notes",
+  confluence: "searches the team's pages and specs in Confluence",
   slack: "searches the team's messages, customer channels among them",
   intercom: "searches conversations with customers",
   posthog: "reads a number from a saved insight",

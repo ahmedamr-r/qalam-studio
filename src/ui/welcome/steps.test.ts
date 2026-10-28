@@ -23,8 +23,8 @@ describe("the welcome", () => {
   });
 
   it("suggests reading the goals' numbers first once a goal has one", () => {
-    expect(connectFor(true).map((c) => c.id)).toEqual(["posthog", "intercom", "slack", "notion", "github"]);
-    expect(connectFor(false).map((c) => c.id)).toEqual(["intercom", "slack", "notion", "posthog", "github"]);
+    expect(connectFor(true).map((c) => c.id)).toEqual(["posthog", "intercom", "slack", "notion", "confluence", "github"]);
+    expect(connectFor(false).map((c) => c.id)).toEqual(["intercom", "slack", "notion", "confluence", "posthog", "github"]);
   });
 
   it("waits about 15 s in all for the core to start, then gives up", () => {
