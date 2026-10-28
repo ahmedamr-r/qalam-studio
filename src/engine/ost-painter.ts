@@ -31,6 +31,8 @@ export interface OstRenderInput {
   drop: { target: string | null; line: [Pt, Pt] | null; ok: boolean } | null;
   /** The fold toggle under the pointer. */
   hoverToggle: string | null;
+  /** Cards something needs a look at (marked beside their stage). */
+  noticed?: ReadonlySet<string>;
 }
 
 export interface OstFrame {
@@ -354,6 +356,11 @@ export class OstPainter {
     this.fill.setColor(this.col(st.bg));
     canvas.drawRRect(this.rrect(sx, CARD.pad - 1, sw, 18, 5), this.fill);
     canvas.drawParagraph(sp, sx + 6, CARD.pad - 1 + (18 - sp.getHeight()) / 2);
+    // Something needs a look at it (the card panel says what): a dot beside the stage.
+    if (!ghost && !f.exporting && f.ost?.noticed?.has(n.id)) {
+      this.fill.setColor(this.col(p.warning));
+      canvas.drawCircle(sx - 8, CARD.pad - 1 + 9, 3.5, this.fill);
+    }
     // A sub-outcome's mark is muted, so the goal above it reads first.
     this.kindMark(canvas, card.kind, CARD.pad + 6, CARD.pad + CARD.kindRow / 2, card.kind === "outcome" && !isSubOutcome(doc, n.id) ? p.ink : p.muted);
     const kp = this.label(kindLabel(doc, n.id).toUpperCase(), p.muted, 10.5, 600, Math.max(10, sx - CARD.pad - 24), 0.6);

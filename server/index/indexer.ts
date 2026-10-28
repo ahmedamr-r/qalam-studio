@@ -146,6 +146,7 @@ export class OrgIndex {
     else if (e.kind === "source") this.queue.add(`source:${e.id}`);
     else if (e.kind === "decision") this.queue.add("decisions");
     else if (e.kind === "topic") this.queue.add(`topic:${e.id}`);
+    else if (e.kind === "relation") this.queue.add("relations");
     else if (e.kind === "about" || e.kind === "org") this.queue.add("context:org");
     // A product's name is in the lines of everything for it: look at everything again.
     else if (e.kind === "product") this.queue.add("*");
@@ -171,7 +172,7 @@ export class OrgIndex {
   }
 
   private async keys(): Promise<Set<string>> {
-    const keys = new Set<string>(["decisions", "context:org"]);
+    const keys = new Set<string>(["decisions", "context:org", "relations"]);
     for (const p of this.store.listProjects()) if (p.type === "discovery") keys.add(`board:${p.id}`);
     for (const s of await this.store.listSources()) keys.add(`source:${s.id}`);
     for (const p of await this.store.listProducts()) keys.add(`context:${p.id}`);
@@ -195,6 +196,11 @@ export class OrgIndex {
       }
       case "decisions":
         return decisionPieces(store.listDecisions(), (board) => store.getProject(board)?.record.product, names);
+      case "relations": {
+        // Cards the team linked as the same need: a link both ways, no pieces of its own.
+        const links = await store.listRelations();
+        return links.length ? { pieces: [], edges: links.map((r) => ({ from: r.a, to: r.b, kind: "same" as const, at: r.at })), entities: [] } : null;
+      }
       case "topic": {
         const t = await store.getTopic(id);
         return t ? topicPieces(t, names) : null;

@@ -210,7 +210,7 @@ describe("the decision log", () => {
     const oct = await readFile(path.join(dir, "decisions", "2026-10.md"), "utf8");
     expect(oct.match(/^## /gm)).toHaveLength(2);
     expect(oct).toContain("## 2026-10-27 · Dropped the solution “Saved baskets” · Reorders Q2");
-    expect(await readFile(path.join(dir, ".gitattributes"), "utf8")).toBe("decisions/*.md merge=union\n");
+    expect(await readFile(path.join(dir, ".gitattributes"), "utf8")).toBe("decisions/*.md merge=union\nhub/*.jsonl merge=union\n");
     expect(store.listDecisions().map((d) => d.id)).toEqual(["d3", "d2", "d1"]);
     expect(store.listDecisions({ board: board.id, card: "c1" }).map((d) => d.id)).toEqual(["d1"]);
     expect(events.filter((e) => e.kind === "decision")).toEqual([
@@ -339,5 +339,36 @@ describe("topic pages", () => {
     const hand = (await store.listTopics()).find((t) => t.title === "Parents of young children");
     expect(hand?.lines).toMatchObject([{ section: "believe", by: "person", text: "They order on Sunday nights." }]);
     expect(events.at(-1)).toEqual({ kind: "topic", id: hand!.id });
+  });
+});
+
+describe("needs a look", () => {
+  it("keeps what was dismissed and what a review found, a line per change, merged by Git", async () => {
+    const finding = { key: "review:x1", kind: "review" as const, title: "Evening slots", why: "Tickets say lateness.", at: 5, products: [] };
+    await store.addFindings([finding]);
+    await store.dismissNotice("stale-test:a", true);
+    await store.dismissNotice("metric:b", true);
+    await store.dismissNotice("metric:b", false);
+    const s = await store.noticeState();
+    expect([...s.dismissed.keys()]).toEqual(["stale-test:a"]);
+    expect(s.found).toEqual([finding]);
+    expect(s.reviewedAt).toBeGreaterThan(0);
+    expect((await readFile(path.join(dir, "hub", "notices.jsonl"), "utf8")).trim().split("\n")).toHaveLength(5);
+    expect(await readFile(path.join(dir, ".gitattributes"), "utf8")).toContain("hub/*.jsonl merge=union");
+    expect(events.filter((e) => e.kind === "notice")).toHaveLength(4);
+  });
+
+  it("links two cards as the same need, and unlinks them", async () => {
+    await store.linkCards("hub:card:b1:n1", "hub:card:b2:n8", true);
+    expect(await store.listRelations()).toMatchObject([{ kind: "same-need", a: "hub:card:b1:n1", b: "hub:card:b2:n8", by: "you" }]);
+    await store.linkCards("hub:card:b2:n8", "hub:card:b1:n1", false);
+    expect(await store.listRelations()).toEqual([]);
+  });
+
+  it("remembers this computer's last visit, outside the shared folder", async () => {
+    expect(await store.visit()).toBeNull();
+    const first = store.lastVisit!;
+    expect(await store.visit()).toBe(first);
+    expect(JSON.parse(await readFile(path.join(dir, ".qalam", "local", "state.json"), "utf8")).visit).toBeGreaterThanOrEqual(first);
   });
 });

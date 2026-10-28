@@ -229,6 +229,32 @@ function streamWithResearch(opts: CallOpts, research: ResearchRequest): Response
  *   {"type":"activity","label":"…"} per lookup, then {"type":"result","data":ResearchInfo}.
  * A lookup that finds nothing still ends in a result, with `error` or empty notes.
  */
+/**
+ * A structured-output call read here to its end: the core's own calls (a review of the
+ * organization), where no window reads the stream. Throws the stream's error.
+ */
+export async function structured<T>(opts: CallOpts): Promise<{ data: T; model?: string }> {
+  const res = streamStructured(opts);
+  const reader = res.body!.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let nl: number;
+    while ((nl = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (!line) continue;
+      const msg = JSON.parse(line) as { type: string; data?: unknown; model?: string; error?: string; message?: string };
+      if (msg.type === "result") return { data: msg.data as T, model: msg.model };
+      if (msg.type === "error") throw new Error(msg.message ?? msg.error ?? "Qalam AI couldn't answer.");
+    }
+  }
+  throw new Error("The response ended early.");
+}
+
 export function streamResearch(research: ResearchRequest): Response {
   const encoder = new TextEncoder();
   const abort = new AbortController();

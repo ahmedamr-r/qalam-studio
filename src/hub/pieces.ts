@@ -37,7 +37,9 @@ export type EdgeKind =
   /** An assumption is one a solution rests on. */
   | "of"
   /** A topic page's line rests on a piece. */
-  | "cites";
+  | "cites"
+  /** Two cards on different boards are the same need (linked by the team). */
+  | "same";
 
 export interface HubEdge {
   from: string;

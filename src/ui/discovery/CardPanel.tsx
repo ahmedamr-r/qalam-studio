@@ -1,4 +1,8 @@
-import { projectHref } from "@/projects/model";
+import { projectHref, topicHref } from "@/projects/model";
+import { aboutCard } from "@/hub/checks";
+import { cardRef } from "@/hub/pieces";
+import { onOrgChange } from "@/org/live";
+import { noticesDb, onNoticesWritten, type LinkedCard } from "@/org/notices";
 import { useEffect, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import clsx from "clsx";
@@ -101,6 +105,7 @@ function OneCard({ id, card }: { id: string; card: OstCard }) {
           )}
         </div>
       </section>
+      <NoticedSection id={id} />
       <Section title="Notes">
         <CommitArea ariaLabel="Description" value={card.description ?? ""} placeholder="What it means, why it matters" rows={3} onCommit={(v) => edit(id, (c) => (v.trim() ? (c.description = v.trim()) : delete c.description))} />
       </Section>
@@ -111,6 +116,84 @@ function OneCard({ id, card }: { id: string; card: OstCard }) {
       {card.kind === "test" && <TestSection id={id} card={card} />}
       <HistorySection id={id} />
     </>
+  );
+}
+
+const cardHref = (board: string, card: string) => `${projectHref({ id: board, type: "discovery" })}?card=${encodeURIComponent(card)}`;
+const linkCls = "font-medium text-fg underline decoration-fg/30 underline-offset-2";
+
+/**
+ * What needs a look about this card (the organization's checks, Qalam AI's last review), and the
+ * cards on other boards it's linked to as the same need.
+ */
+function NoticedSection({ id }: { id: string }) {
+  const board = useProject((s) => s.project?.id);
+  const notices = useDiscovery(useShallow((s) => (board ? s.notices.filter((n) => aboutCard(n, board, id)) : [])));
+  const [links, setLinks] = useState<LinkedCard[]>([]);
+  useEffect(() => {
+    if (!board) return;
+    let alive = true;
+    const load = () =>
+      void noticesDb.linkedTo(cardRef(board, id)).then(
+        (l) => alive && setLinks(l),
+        () => {},
+      );
+    load();
+    const offWritten = onNoticesWritten(load);
+    const off = onOrgChange((c) => c.kind === "relation" && load());
+    return () => {
+      alive = false;
+      offWritten();
+      off();
+    };
+  }, [board, id]);
+  if (!board || (!notices.length && !links.length)) return null;
+  return (
+    <Section title="Qalam noticed">
+      {notices.map((n) => {
+        // The other card: of a pair, the one that isn't this.
+        const other = n.other ? (n.board === board && n.card === id ? n.other : n.board && n.card ? { board: n.board, card: n.card } : null) : null;
+        return (
+          <div key={n.key} className="flex flex-col gap-[4px] rounded-lg bg-warning-subtle px-[10px] py-[8px]">
+            <p className="text-caption font-medium text-fg">{n.title}</p>
+            <p className="text-caption text-fg-muted">{n.why}</p>
+            <div className="flex flex-wrap items-center gap-x-[10px] gap-y-[4px] text-caption">
+              {other && (
+                <a href={cardHref(other.board, other.card)} onClick={saveThenGo} className={linkCls}>
+                  Open the other card
+                </a>
+              )}
+              {n.topic && (
+                <a href={topicHref(n.topic)} onClick={saveThenGo} className={linkCls}>
+                  Open the topic page
+                </a>
+              )}
+              {n.kind === "same-need" && other && (
+                <button type="button" className={linkCls} onClick={() => void noticesDb.link(cardRef(board, id), cardRef(other.board, other.card))}>
+                  Link them
+                </button>
+              )}
+              <button type="button" className="text-fg-muted hover:text-fg" onClick={() => void noticesDb.dismiss(n.key)}>
+                Dismiss
+              </button>
+            </div>
+          </div>
+        );
+      })}
+      {links.map((l) => (
+        <div key={l.ref} className="flex items-start justify-between gap-[8px] text-caption">
+          <span className="text-fg-muted">
+            The same need on {l.boardName}:{" "}
+            <a href={cardHref(l.board, l.card)} onClick={saveThenGo} className={linkCls}>
+              {l.title || "a card"}
+            </a>
+          </span>
+          <button type="button" className="shrink-0 text-fg-subtle hover:text-fg" onClick={() => void noticesDb.link(cardRef(board, id), l.ref, false)}>
+            Unlink
+          </button>
+        </div>
+      ))}
+    </Section>
   );
 }
 

@@ -13,6 +13,9 @@ import { packFor, search, showsUp, type Hit } from "../index/search";
 import { orgGraph } from "@/hub/graph";
 import { filingShape, topicShape, type Topic } from "@/hub/topics";
 import { chooseFolder, createOrg, currentOrg, listOrgs, openFolder, qalamHome, rememberOrg, storeFor } from "./home";
+import { noticesNow } from "./notices";
+import { reviewOrg } from "./review";
+import { aiConfigured, rateLimited } from "@/ai/server";
 import { ConflictError, NotFoundError, type OrgEvent, type OrgStore } from "./store";
 
 /**
@@ -222,6 +225,56 @@ export function orgRoutes(): Hono<Env> {
     }
     const res = await c.get("store").fileTopics(f, { from: b.from, filed, tab: tabOf(c.req.raw.headers) });
     return c.json({ created: res.created, counts: res.counts, pages: res.pages.map((p) => ({ id: p.id, title: p.title, kind: p.kind })) });
+  });
+
+  // Needs a look: what code's checks and Qalam AI's reviews found, less what was dismissed; a
+  // board asks for what's about its cards.
+  r.get("/api/org/:org/notices", async (c) => {
+    const n = await noticesNow(c.get("store"));
+    const board = c.req.query("board");
+    return c.json(board ? { ...n, notices: n.notices.filter((x) => x.board === board || x.other?.board === board) } : n);
+  });
+  r.post("/api/org/:org/notices/dismiss", async (c) => {
+    const { key, on } = (await c.req.json().catch(() => ({}))) as { key?: unknown; on?: unknown };
+    if (typeof key !== "string" || !key || key.length > 400) return bad("Say which notice");
+    await c.get("store").dismissNotice(key, on !== false, { tab: tabOf(c.req.raw.headers) });
+    return c.json({ ok: true });
+  });
+  /** This computer opened the home: what was its last visit before. */
+  r.post("/api/org/:org/notices/visit", async (c) => c.json({ previous: await c.get("store").visit() }));
+  /** Review now: Qalam AI reads the organization for what needs a look (its findings join the notices). */
+  r.post("/api/org/:org/review", async (c) => {
+    if (!aiConfigured()) return c.json({ error: "no_key", message: "Qalam AI isn't set up here." }, 501);
+    if (rateLimited(c.req.raw)) return c.json({ error: "rate_limited", message: "Too many requests, try again in a few minutes." }, 429);
+    try {
+      return c.json({ findings: await reviewOrg(c.get("store"), { tab: tabOf(c.req.raw.headers) }) });
+    } catch (e) {
+      return c.json({ error: "failed", message: e instanceof Error ? e.message : String(e) }, 502);
+    }
+  });
+  // Cards on two boards linked as the same need.
+  /** All links, or one card's: the cards it's linked to, with their titles and boards. */
+  r.get("/api/org/:org/relations", async (c) => {
+    const store = c.get("store");
+    const card = c.req.query("card");
+    const links = await store.listRelations();
+    if (!card) return c.json(links);
+    const out: { ref: string; board: string; boardName: string; card: string; title: string; at: number }[] = [];
+    for (const l of links) {
+      const other = l.a === card ? l.b : l.b === card ? l.a : null;
+      const m = other ? /^hub:card:([^:]+):([^:]+)$/.exec(other) : null;
+      const p = m ? store.getProject(m[1])?.record : null;
+      if (!m || !p) continue;
+      const node = (await store.getDoc(p.id))?.doc?.nodes[m[2]] as { meta?: { ost?: { title?: string } } } | undefined;
+      if (node?.meta?.ost) out.push({ ref: other!, board: p.id, boardName: p.name, card: m[2], title: node.meta.ost.title ?? "", at: l.at });
+    }
+    return c.json(out);
+  });
+  r.post("/api/org/:org/relations", async (c) => {
+    const { a, b, on } = (await c.req.json().catch(() => ({}))) as { a?: unknown; b?: unknown; on?: unknown };
+    if (!isCardRef(a) || !isCardRef(b) || a === b) return bad("Say which two cards");
+    await c.get("store").linkCards(a, b, on !== false, { tab: tabOf(c.req.raw.headers) });
+    return c.json({ ok: true });
   });
 
   // Projects: records, then each one's document.
@@ -449,6 +502,8 @@ async function topicContext(store: OrgStore, t: Topic) {
     return { cited: {}, sources: {}, shows: [] };
   }
 }
+
+const isCardRef = (v: unknown): v is string => typeof v === "string" && /^hub:card:[A-Za-z0-9_-]{1,64}:[A-Za-z0-9_-]{1,64}$/.test(v);
 
 /** "org": the whole organization; a product's id; nothing: no product in hand. */
 const productParam = (v: string | undefined) => (v === "org" ? null : v && ID.test(v) ? v : undefined);

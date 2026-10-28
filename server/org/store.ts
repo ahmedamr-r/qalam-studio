@@ -9,6 +9,7 @@ import type { Doc } from "@/doc/schema";
 import type { OstCard } from "@/discovery/types";
 import type { SourceRecord } from "@/discovery/sources";
 import { topicFromMarkdown, topicToMarkdown } from "@/hub/topic-md";
+import { pairKey, type Notice } from "@/hub/checks";
 import { applyFiling, type Applied, type Filing, type Topic, type TopicInfo } from "@/hub/topics";
 import { factHash } from "@/knowledge/refs";
 import { aboutFromMarkdown, aboutToMarkdown, emptyContext, productFromMarkdown, productToMarkdown, type ContextFields, type Product } from "@/org/context-md";
@@ -41,6 +42,8 @@ export type OrgEvent = { tab?: string } & (
   | { kind: "org" }
   | { kind: "decision"; ids: string[]; boards: string[] }
   | { kind: "topic"; id: string; removed?: boolean }
+  | { kind: "notice" }
+  | { kind: "relation" }
 );
 
 
@@ -91,6 +94,28 @@ interface SourceEntry {
 
 interface LocalState {
   projects: Record<string, LocalFields>;
+  /** When this computer last opened the organization's home ("since your last visit"). */
+  visit?: number;
+}
+
+/** A line of hub/notices.jsonl: a notice dismissed or brought back, a review's finding, a review ran. */
+interface NoticeLogEntry {
+  dismiss?: string;
+  restore?: string;
+  found?: Notice;
+  /** The review a finding came from; `reviewed`: that review ran (its id). */
+  review?: string;
+  reviewed?: string | boolean;
+  at?: number;
+}
+
+/** Two cards on different boards that are the same need (hub/relations.jsonl). */
+export interface Relation {
+  kind: "same-need";
+  a: string;
+  b: string;
+  at: number;
+  by: "you" | "qalam";
 }
 
 export class OrgStore {
@@ -718,16 +743,108 @@ export class OrgStore {
     });
   }
 
-  /** Two people adding to the same month's log keep both their entries when Git merges (.gitattributes). */
+  /** Two people adding to the same log (a month's decisions, the notices, the links) keep both their entries when Git merges (.gitattributes). */
   private async unionMerge() {
     if (this.unionChecked) return;
     this.unionChecked = true;
     const file = this.abs(".gitattributes");
     await locked(file, async () => {
       const had = await readFile(file, "utf8").catch(() => "");
-      if (had.split(/\r?\n/).some((l) => l.trim().startsWith("decisions/"))) return;
-      await this.write(file, `${had}${had && !had.endsWith("\n") ? "\n" : ""}decisions/*.md merge=union\n`);
+      const lines = had.split(/\r?\n/).map((l) => l.trim());
+      const missing = ["decisions/*.md merge=union", "hub/*.jsonl merge=union"].filter((want) => !lines.some((l) => l.startsWith(want.split(" ")[0])));
+      if (!missing.length) return;
+      await this.write(file, `${had}${had && !had.endsWith("\n") ? "\n" : ""}${missing.join("\n")}\n`);
     });
+  }
+
+  // -------------------------------------------------------------------------
+  // Needs a look: what was dismissed and what Qalam AI's reviews found (hub/notices.jsonl), and
+  // cards linked as the same need (hub/relations.jsonl). A line per change, never rewritten, so
+  // two people's changes merge in Git.
+
+  private async readLog<T>(rel: string): Promise<T[]> {
+    const text = await readFile(this.abs(rel), "utf8").catch(() => "");
+    const out: T[] = [];
+    for (const line of text.split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        out.push(JSON.parse(line) as T);
+      } catch {
+        // A line broken by hand (or a merge): the rest still reads.
+      }
+    }
+    return out;
+  }
+
+  private async appendLog(rel: string, entries: unknown[]) {
+    if (!entries.length) return;
+    await this.unionMerge();
+    const file = this.abs(rel);
+    await locked(file, async () => {
+      const had = await readFile(file, "utf8").catch(() => "");
+      await this.write(file, `${had}${had && !had.endsWith("\n") ? "\n" : ""}${entries.map((e) => JSON.stringify(e)).join("\n")}\n`);
+    });
+  }
+
+  /** What was dismissed (by key, when), what Qalam AI's latest review found, and when it ran. */
+  async noticeState(): Promise<{ dismissed: Map<string, number>; found: Notice[]; reviewedAt: number | null }> {
+    const dismissed = new Map<string, number>();
+    const byReview = new Map<string, Map<string, Notice>>();
+    let latest: { id: string; at: number } | null = null;
+    for (const e of await this.readLog<NoticeLogEntry>("hub/notices.jsonl")) {
+      if (typeof e.dismiss === "string") dismissed.set(e.dismiss, e.at ?? 0);
+      else if (typeof e.restore === "string") dismissed.delete(e.restore);
+      else if (e.found && typeof e.found.key === "string") {
+        const r = typeof e.review === "string" ? e.review : "";
+        byReview.set(r, (byReview.get(r) ?? new Map()).set(e.found.key, e.found));
+      } else if (e.reviewed && (e.at ?? 0) >= (latest?.at ?? 0)) latest = { id: typeof e.reviewed === "string" ? e.reviewed : "", at: e.at ?? 0 };
+    }
+    // A review's findings stand until the next review replaces them.
+    const found = latest ? (byReview.get(latest.id) ?? new Map<string, Notice>()) : new Map<string, Notice>();
+    return { dismissed, found: [...found.values()], reviewedAt: latest?.at ?? null };
+  }
+
+  /** Dismiss a notice (it doesn't come back), or bring it back. */
+  async dismissNotice(key: string, on: boolean, opts: { tab?: string } = {}): Promise<void> {
+    await this.appendLog("hub/notices.jsonl", [on ? { dismiss: key, at: Date.now() } : { restore: key, at: Date.now() }]);
+    this.emit({ kind: "notice", tab: opts.tab });
+  }
+
+  /** What a review by Qalam AI found (checked by code first): it replaces the last review's findings. */
+  async addFindings(list: Notice[], opts: { tab?: string } = {}): Promise<void> {
+    const review = nanoid(8);
+    await this.appendLog("hub/notices.jsonl", [...list.map((n) => ({ found: n, review, at: n.at })), { reviewed: review, at: Date.now() }]);
+    this.emit({ kind: "notice", tab: opts.tab });
+  }
+
+  /** Cards linked as the same need, as they are now. */
+  async listRelations(): Promise<Relation[]> {
+    const now = new Map<string, Relation>();
+    for (const e of await this.readLog<Relation & { removed?: boolean }>("hub/relations.jsonl")) {
+      if (e.kind !== "same-need" || typeof e.a !== "string" || typeof e.b !== "string") continue;
+      if (e.removed) now.delete(pairKey(e.a, e.b));
+      else now.set(pairKey(e.a, e.b), { kind: e.kind, a: e.a, b: e.b, at: e.at ?? 0, by: e.by === "qalam" ? "qalam" : "you" });
+    }
+    return [...now.values()];
+  }
+
+  /** Link two cards on different boards as the same need, or unlink them. */
+  async linkCards(a: string, b: string, on: boolean, opts: { tab?: string } = {}): Promise<void> {
+    await this.appendLog("hub/relations.jsonl", [{ kind: "same-need", a, b, at: Date.now(), by: "you", ...(on ? {} : { removed: true }) }]);
+    this.emit({ kind: "relation", tab: opts.tab });
+  }
+
+  /** When this computer last opened the organization's home (before now); now is the last visit. */
+  async visit(): Promise<number | null> {
+    const prev = this.local.visit ?? null;
+    this.local.visit = Date.now();
+    await locked(this.abs(".qalam/local/state.json"), () => atomicWrite(this.abs(".qalam/local/state.json"), stableStringify(this.local)));
+    return prev;
+  }
+
+  /** When this computer last opened the organization's home. */
+  get lastVisit(): number | null {
+    return this.local.visit ?? null;
   }
 
   // -------------------------------------------------------------------------
@@ -960,6 +1077,10 @@ export class OrgStore {
           this.emit({ kind: "topic", id: gone[0], removed: true });
         }
       }
+    } else if (rel === "hub/notices.jsonl") {
+      this.emit({ kind: "notice" });
+    } else if (rel === "hub/relations.jsonl") {
+      this.emit({ kind: "relation" });
     } else if (rel === "about.md") {
       this.emit({ kind: "about" });
     } else if (rel === "org.json" && bytes) {

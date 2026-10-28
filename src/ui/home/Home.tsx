@@ -28,15 +28,18 @@ import { OrgSwitcher } from "../org/OrgSwitcher";
 import { SourcesList } from "../org/SourcesList";
 import { DecisionsList } from "../org/DecisionsList";
 import { TopicsList } from "../org/TopicsList";
+import { NeedsALook } from "../org/NeedsALook";
+import { useNotices } from "../notices/useNotices";
 import { useTopics } from "../topics/list";
 import { useDecisions } from "../decisions/list";
 import { ago } from "../time";
 
 /**
- * An organization's home: what it and its products are, every board's goals, the boards, the
- * topic pages (what the organization knows about each need, segment and product), the sources and
- * the decisions made on the boards, by product. Design work (screens, design systems) waits below,
- * on hold. Everything is saved in the organization's folder on disk.
+ * An organization's home: what needs a look (since the last visit), what it and its products are,
+ * every board's goals, the boards, the topic pages (what the organization knows about each need,
+ * segment and product), the sources and the decisions made on the boards, by product. Design work
+ * (screens, design systems) waits below, on hold. Everything is saved in the organization's folder
+ * on disk.
  */
 
 const TYPE_LABEL: Record<ProjectType, string> = { system: "Design system", screens: "Screens", discovery: "Discovery" };
@@ -54,6 +57,7 @@ export default function Home() {
   const [tab, setTabState] = useState<Tab>(readTab);
   const decisions = useDecisions({ limit: 300 });
   const topics = useTopics();
+  const notices = useNotices();
   const { products, about, loaded } = useOrgContext();
 
   const refresh = useCallback(() => {
@@ -196,6 +200,8 @@ export default function Home() {
               Product
             </button>
           </nav>
+
+          <NeedsALook now={notices} scope={(n) => scope === "all" || (scope === "org" ? !n.products.length : n.products.includes(scope))} projects={projects ?? []} topics={topics} />
 
           {product ? (
             <ContextCard title={product.name} context={product} onEdit={() => editContext({ kind: "product", product })} empty={`Tell Qalam AI what ${product.name} is: who it's for and what you're trying to move. Every board for it starts from this.`} />

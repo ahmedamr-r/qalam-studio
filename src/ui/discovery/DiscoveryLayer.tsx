@@ -6,13 +6,23 @@ import DesignThis from "./DesignThis";
 import ReviewLayer from "./ReviewLayer";
 import BrainDump from "./BrainDump";
 import WhyPrompt from "../decisions/WhyPrompt";
+import { noticesStale, useNotices } from "../notices/useNotices";
+import { useStudio } from "@/doc/store";
+import { useProject } from "@/projects/session";
+import { useDiscovery } from "./store";
 
 /**
  * The Discovery board's DOM over the canvas: the title being typed, the bar over the selected
  * card, the start sheet (interview, sample, import, blank), the Design this card, Qalam AI's
  * proposals under review, the brain dump card, and the why a big decision asks for. Only in Discovery.
+ * It also keeps what needs a look about the board's cards current (the canvas marks them).
  */
 export default function DiscoveryLayer() {
+  const board = useProject((s) => s.project?.id ?? null);
+  const notices = useNotices(board);
+  useEffect(() => useDiscovery.setState({ notices: notices?.notices ?? [] }), [notices]);
+  // The board's own changes (a test's result, a new stage) aren't announced back to it: check again once they're saved.
+  useEffect(() => useStudio.subscribe((s, prev) => void (s.doc !== prev.doc && noticesStale())), []);
   const ref = useRef<HTMLDivElement>(null);
   const [vp, setVp] = useState({ w: 0, h: 0 });
   useEffect(() => {

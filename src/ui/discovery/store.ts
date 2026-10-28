@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { Notice } from "@/hub/checks";
 
 /**
  * The Discovery board's UI state (not the document): which card's title is being typed, what
@@ -29,8 +30,10 @@ interface DiscoveryUI {
   drafting: { chatId: string; turnId: string } | null;
   /** A quote dragged from the Sources tab is over this card (ringed; ok: it can take it). */
   quoteDrop: { target: string; ok: boolean } | null;
+  /** What needs a look about this board's cards (the canvas marks them; the card panel says why). */
+  notices: Notice[];
 }
 
-export const useDiscovery = create<DiscoveryUI>(() => ({ editing: null, sheet: "closed", designFor: null, designs: {}, dragging: false, drafting: null, quoteDrop: null }));
+export const useDiscovery = create<DiscoveryUI>(() => ({ editing: null, sheet: "closed", designFor: null, designs: {}, dragging: false, drafting: null, quoteDrop: null, notices: [] }));
 
 export const discovery = () => useDiscovery.getState();

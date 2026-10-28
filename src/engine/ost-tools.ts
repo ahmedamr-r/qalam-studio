@@ -17,6 +17,22 @@ import { looksLikeDump } from "@/discovery/dump";
 import { hitPath, pickTarget } from "./hit-test";
 import type { CanvasDelegate } from "./canvas-delegate";
 import type { OstRenderInput } from "./ost-painter";
+import type { Notice } from "@/hub/checks";
+import { currentProject } from "@/projects/session";
+
+/** The board's cards that something needs a look at (kept while the notices are the same). */
+let noticedMemo: { from: Notice[]; board: string | undefined; set: Set<string> } | null = null;
+function noticedCards(list: Notice[]): ReadonlySet<string> {
+  const board = currentProject()?.id;
+  if (noticedMemo?.from === list && noticedMemo.board === board) return noticedMemo.set;
+  const set = new Set<string>();
+  for (const n of list) {
+    if (n.board === board && n.card) set.add(n.card);
+    if (n.other?.board === board) set.add(n.other.card);
+  }
+  noticedMemo = { from: list, board, set };
+  return set;
+}
 import type { PointerInfo } from "./vector-tools";
 
 /*
@@ -285,6 +301,7 @@ export function createOstTools(): CanvasDelegate {
         // A card being dragged, else a quote dragged in from the Sources tab.
         drop: drag?.active && drag.drop ? { target: drag.drop.target, line: drag.drop.line, ok: drag.drop.ok } : ui.quoteDrop ? { target: ui.quoteDrop.target, line: null, ok: ui.quoteDrop.ok } : null,
         hoverToggle,
+        noticed: noticedCards(ui.notices),
       };
     },
   };
