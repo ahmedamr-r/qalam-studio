@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, MessageChannelMain, protocol, session, shell, utilityProcess, type WebContents } from "electron";
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, MessageChannelMain, protocol, screen, session, shell, utilityProcess, type WebContents } from "electron";
 import { readFileSync, statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -7,6 +7,8 @@ import { findClaude, joinPaths, loginShellPath } from "../server/claude";
 import { requester, type FromCore } from "../server/rpc";
 import { assetPath, contentSecurityPolicy, inlineScriptHashes, mimeOf } from "./assets";
 import { watchForUpdates } from "./updates";
+import { readDesktopSettings } from "./desktop-settings";
+import { startTray } from "./tray";
 
 /**
  * Qalam as a desktop app. The window shows the built UI at qalam://app; its /api/* requests go to
@@ -116,7 +118,47 @@ ipcMain.handle("qalam:choose-folder", async (e, title: string) => {
   return r.canceled ? null : (r.filePaths[0] ?? null);
 });
 
+/** The app's own windows, apart from quick capture. */
+const mainWindows = () => BrowserWindow.getAllWindows().filter((w) => w !== captureWin);
+
+/** Open the app: its window to the front, or a new one (the menu bar keeps Qalam running without one). */
+function showMain() {
+  const win = mainWindows()[0];
+  if (!win) return createWindow();
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
+
+// ---------------------------------------------------------------------------
+// Quick capture: a small window over whatever app is in front (⌃⌥Space), into the inbox.
+
+const CAPTURE_KEYS = "Control+Alt+Space";
+let captureWin: BrowserWindow | null = null;
+let shortcut: string | null = null;
+
+function openCapture() {
+  if (!captureWin) {
+    captureWin = new BrowserWindow({ width: 520, height: 320, frame: false, resizable: false, alwaysOnTop: true, skipTaskbar: true, show: false, fullscreenable: false, backgroundColor: "#090908", webPreferences });
+    captureWin.on("blur", () => captureWin?.hide());
+    captureWin.on("closed", () => (captureWin = null));
+    void captureWin.loadURL(`${DEV_URL ?? ORIGIN}/capture`);
+  }
+  // On the screen the pointer is on, a third of the way down.
+  const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  captureWin.setPosition(Math.round(area.x + (area.width - 520) / 2), Math.round(area.y + area.height / 3 - 160));
+  captureWin.show();
+  captureWin.focus();
+}
+
+/** Ask the core, here in the main process (the tray's status). */
+async function api(p: string): Promise<Response | null> {
+  if (DEV_URL) return fetch(new URL(p, DEV_URL)).catch(() => null);
+  return coreFetch ? coreFetch(new Request(`${ORIGIN}${p}`)).catch(() => null) : null;
+}
+
 function createWindow() {
+  app.dock?.show();
   const win = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -144,15 +186,16 @@ function createWindow() {
 
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
-  app.on("second-instance", () => {
-    const win = BrowserWindow.getAllWindows()[0];
-    if (!win) return;
-    if (win.isMinimized()) win.restore();
-    win.show();
-    win.focus();
-  });
+  app.on("second-instance", showMain);
+  // The Dock icon clicked with no window open.
+  app.on("activate", () => mainWindows().length || createWindow());
   app.on("before-quit", () => (quitting = true));
-  app.on("window-all-closed", () => app.quit());
+  app.on("will-quit", () => globalShortcut.unregisterAll());
+  // With Qalam kept in the menu bar, closing the window leaves it running (the inbox, the connectors).
+  app.on("window-all-closed", () => {
+    if (readDesktopSettings().keepInMenuBar && !HIDDEN) app.dock?.hide();
+    else app.quit();
+  });
   app.on("web-contents-created", (_e, contents) => guard(contents));
   void app.whenReady().then(async () => {
     // Clipboard for copy and paste on the canvas; every other permission (camera, location…) is refused.
@@ -164,7 +207,10 @@ else {
       protocol.handle("qalam", serve);
       startCore();
     }
-    createWindow();
+    // Opened at login: the menu bar only, until they open the app.
+    if (!app.getLoginItemSettings().wasOpenedAtLogin) createWindow();
+    shortcut = globalShortcut.register(CAPTURE_KEYS, openCapture) ? CAPTURE_KEYS : null;
+    startTray({ open: showMain, capture: openCapture, api, shortcut: () => shortcut });
     watchForUpdates();
   });
 }

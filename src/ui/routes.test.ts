@@ -47,6 +47,11 @@ describe("routeOf", () => {
     expect(routeOf("/o/R02vmeVH/welcome")).toEqual({ kind: "missing" });
   });
 
+  it("reads quick capture, only outside an organization", () => {
+    expect(routeOf("/capture")).toEqual({ kind: "capture" });
+    expect(routeOf("/o/R02vmeVH/capture")).toEqual({ kind: "missing" });
+  });
+
   it("reads addresses from before organizations", () => {
     expect(routeOf("/d/abc123def0")).toEqual({ kind: "project", org: null, type: "discovery", id: "abc123def0" });
   });

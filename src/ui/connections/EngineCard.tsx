@@ -154,7 +154,7 @@ export function KeyField({ view, onSaved, onError }: { view: EngineView; onSaved
         <span className="sr-only">Claude API key</span>
         <input type="password" autoComplete="off" spellCheck={false} placeholder="Paste a Claude API key" value={key} onChange={(e) => setKey(e.target.value)} className={r.fieldInput} />
       </label>
-      <Button size="sm" disabled={busy || key.trim().length < 20}>
+      <Button type="submit" size="sm" disabled={busy || key.trim().length < 20}>
         {busy ? "Testing…" : "Test and keep"}
       </Button>
     </form>

@@ -176,7 +176,7 @@ function NameStep() {
         <span className={clsx(r.field, "h-[36px] flex-1")}>
           <input id="org-name" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Basket" className={clsx(r.fieldInput, "text-body")} />
         </span>
-        <Button disabled={!name.trim() || busy}>{busy ? "Making it…" : "Continue"}</Button>
+        <Button type="submit" disabled={!name.trim() || busy}>{busy ? "Making it…" : "Continue"}</Button>
       </div>
       {error && <p className="text-caption text-danger">{error}</p>}
     </form>

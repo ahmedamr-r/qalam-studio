@@ -16,6 +16,7 @@ const SystemProject = lazy(() => import("./SystemProject"));
 const TopicPage = lazy(() => import("./topics/TopicPage"));
 const SetupPage = lazy(() => import("./setup/SetupPage"));
 const WelcomePage = lazy(() => import("./welcome/WelcomePage"));
+const CapturePage = lazy(() => import("./capture/CapturePage"));
 const PLACE_PAGES = {
   boards: lazy(() => import("./places/BoardsPage")),
   topics: lazy(() => import("./places/TopicsPage")),
@@ -85,6 +86,15 @@ export function WelcomeLoader() {
   return (
     <Loading>
       <WelcomePage />
+    </Loading>
+  );
+}
+
+/** Quick capture, into the inbox (the menu bar's capture window). */
+export function CaptureLoader() {
+  return (
+    <Loading>
+      <CapturePage />
     </Loading>
   );
 }

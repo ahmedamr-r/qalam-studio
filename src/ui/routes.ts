@@ -23,6 +23,8 @@ export type Route =
   | { kind: "place"; org: string; place: PagePlace }
   /** The welcome: the first run (no organization yet), a new organization, or checking the setup again. */
   | { kind: "welcome" }
+  /** Quick capture, into the organization opened last (the menu bar's capture window). */
+  | { kind: "capture" }
   | { kind: "missing" };
 
 /** The path segment for each project type (the same letters `projectHref` writes). */
@@ -50,6 +52,7 @@ export function routeOf(pathname: string): Route {
   }
   if (!parts.length) return { kind: "root" };
   if (!org && parts.length === 1 && parts[0] === "welcome") return { kind: "welcome" };
+  if (!org && parts.length === 1 && parts[0] === "capture") return { kind: "capture" };
   if (org && parts.length === 1 && parts[0] === "setup") return { kind: "setup", org };
   if (org && parts.length === 1 && isPagePlace(parts[0])) return { kind: "place", org, place: parts[0] };
   if (org && parts.length === 2 && parts[0] === "t" && /^[A-Za-z0-9_~-]{1,64}$/.test(parts[1])) return { kind: "topic", org, id: parts[1] };

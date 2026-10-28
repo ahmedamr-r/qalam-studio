@@ -7,7 +7,7 @@ import { Splash } from "./brand/splash";
 import { r } from "./recipes";
 import { routeOf, type Route } from "./routes";
 import { legacyTab } from "./frame/places";
-import StudioLoader, { HomeLoader, PlaceLoader, SetupLoader, SystemProjectLoader, TopicLoader, WelcomeLoader } from "./StudioLoader";
+import StudioLoader, { CaptureLoader, HomeLoader, PlaceLoader, SetupLoader, SystemProjectLoader, TopicLoader, WelcomeLoader } from "./StudioLoader";
 import { bootRetryDelay } from "./welcome/steps";
 
 type State = { kind: "loading" } | { kind: "ready"; org: OrgRef } | { kind: "error"; message: string; missingOrg?: boolean } | { kind: "missing" };
@@ -62,6 +62,7 @@ export function App() {
   if (route.kind === "topic") return <TopicLoader id={route.id} />;
   if (route.kind === "setup") return <SetupLoader />;
   if (route.kind === "place") return <PlaceLoader place={route.place} />;
+  if (route.kind === "capture") return <CaptureLoader />;
   if (route.kind !== "project") return null;
   if (route.type === "system") return <SystemProjectLoader projectId={route.id} />;
   return <StudioLoader projectId={route.id} mode={route.type} />;

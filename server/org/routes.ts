@@ -15,6 +15,7 @@ import { chooseFolder, createOrg, currentOrg, listOrgs, openFolder, qalamHome, r
 import { noticesNow } from "./notices";
 import { needsNow } from "./needs";
 import { needSummary } from "@/hub/needs";
+import { quickCapture } from "../quick";
 import { reviewOrg } from "./review";
 import { askOrg } from "../ask";
 import { captureSource, fileSources } from "../capture";
@@ -282,6 +283,16 @@ export function orgRoutes(): Hono<Env> {
     const product = typeof b?.product === "string" && ID.test(b.product) ? b.product : null;
     const store = c.get("store");
     return streamed(c.req.raw.signal, (emit, signal) => captureSource(store, ing, { product, emit, signal }));
+  });
+  /** Quick capture (the menu bar, the capture page): into the inbox folder, which takes it from there. */
+  r.post("/api/org/:org/quick", async (c) => {
+    const b = (await c.req.json().catch(() => null)) as { kind?: unknown; text?: unknown; url?: unknown; speaker?: unknown } | null;
+    const kind = b?.kind === "quote" || b?.kind === "link" ? b.kind : "note";
+    const text = typeof b?.text === "string" ? b.text.slice(0, 20_000) : "";
+    const url = typeof b?.url === "string" && /^https?:\/\//i.test(b.url.trim()) ? b.url.trim().slice(0, 2048) : undefined;
+    if (!text.trim() && !url) return bad("Write something, or paste a link");
+    const speaker = typeof b?.speaker === "string" ? b.speaker.slice(0, 80) : undefined;
+    return c.json(await quickCapture(c.get("store"), { kind, text, ...(url ? { url } : {}), ...(speaker ? { speaker } : {}) }), 202);
   });
   /** File sources into the topic pages, here in the core: it answers at once, and the filing carries on whatever the window does next. */
   r.post("/api/org/:org/file", async (c) => {

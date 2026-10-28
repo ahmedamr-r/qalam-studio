@@ -141,7 +141,7 @@ function Card({ c, onView, onImport }: { c: ConnectorState; onView: (v: View) =>
             <input type="password" autoComplete="off" spellCheck={false} aria-label={c.tokenHelp.label} placeholder={c.tokenHelp.placeholder} value={token} onChange={(e) => setToken(e.target.value)} className={r.fieldInput} />
           </span>
           <span className="flex items-center gap-[6px]">
-            <Button size="sm" disabled={busy || token.trim().length < 10}>
+            <Button type="submit" size="sm" disabled={busy || token.trim().length < 10}>
               {busy ? "Checking…" : "Test and keep"}
             </Button>
             <a href={c.tokenHelp.href} target="_blank" rel="noreferrer" className="text-micro text-fg-subtle underline decoration-dotted underline-offset-2 hover:text-fg">
@@ -228,7 +228,7 @@ function BringIn({ c, onClose }: { c: ConnectorState; onClose: () => void }) {
               <span className={clsx(r.field, "flex-1")}>
                 <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search: interview, research, feedback…" aria-label="Search" className={r.fieldInput} />
               </span>
-              <Button size="sm" variant="secondary" disabled={!query.trim() || !!busy}>
+              <Button type="submit" size="sm" variant="secondary" disabled={!query.trim() || !!busy}>
                 {busy === "search" ? "Searching…" : "Search"}
               </Button>
             </form>
