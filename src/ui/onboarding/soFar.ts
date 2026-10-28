@@ -2,6 +2,7 @@ import type { ShapedGoal } from "@/goals/outline";
 import { metricLine } from "@/goals/goals-md";
 import { childrenOf, goalById } from "@/goals/tree";
 import type { GoalTree } from "@/goals/types";
+import type { OstMetric } from "@/discovery/types";
 import type { Product } from "@/org/context-md";
 import { goalLines, pendingLines, type SetupLine, type SetupSession } from "@/org/setup";
 import { groupsOf, placeName } from "../setup/review";
@@ -68,6 +69,13 @@ const rests = (l: SetupLine, quotes: SoFarInput["quotes"]): RestsOn => ({ quotes
 
 const stateOf = (s: SetupSession, id: string): RowState => s.decided?.[id] ?? "proposed";
 
+/** A goal's number in a line: its name when it isn't the goal's own words, then where it stands (never the same words twice). */
+export function numberLine(m: OstMetric | null | undefined, title: string): string {
+  if (!m) return "No number yet";
+  const line = metricLine(m);
+  return [...new Set([m.name !== title ? m.name : null, line].filter((x): x is string => !!x))].join(": ");
+}
+
 /** The goals there now, in tree order, each with how deep it sits. */
 export function treeRows(t: GoalTree): { id: string; title: string; depth: number; line: string; north: boolean }[] {
   const out: { id: string; title: string; depth: number; line: string; north: boolean }[] = [];
@@ -93,7 +101,7 @@ function knowRows(goals: ShapedGoal[], products: readonly Product[]): GoalRow[] 
   return goals.map((g) => {
     const north = g === top;
     const where = !g.product ? null : "id" in g.product ? (products.find((p) => p.id === (g.product as { id: string }).id)?.name ?? "A product") : `${g.product.name} · new`;
-    const number = g.metric ? [g.metric.name !== g.title ? g.metric.name : null, metricLine(g.metric)].filter(Boolean).join(": ") : "No number yet";
+    const number = numberLine(g.metric, g.title);
     return { key: `know:${g.ref}`, title: g.title, depth: depth(g), north, detail: [north ? "North Star" : null, where, number].filter(Boolean).join(" · "), state: "kept", ref: g.ref };
   });
 }
@@ -111,7 +119,7 @@ export function soFarOf(i: SoFarInput): SoFar {
   if (s?.proposal && (s.phase === "review" || s.phase === "done")) {
     const goals = goalLines(s.proposal).map(({ line, depth }, n): GoalRow => {
       const north = n === 0 && !depth && line.to === "org";
-      const number = line.metric ? [line.metric.name !== line.text ? line.metric.name : null, metricLine(line.metric)].filter(Boolean).join(": ") : "No number yet";
+      const number = numberLine(line.metric, line.text);
       return { key: line.id, title: line.text, depth, north, detail: [north ? "North Star" : null, line.to === "org" ? null : placeName(line.to, s, i.products), number].filter(Boolean).join(" · "), state: stateOf(s, line.id), lineId: line.id, rests: rests(line, i.quotes) };
     });
     const groups = groupsOf(s, i.org, i.products).map((g) => ({ key: g.key, title: g.title, fresh: g.fresh, lines: g.lines.map((l) => ({ id: l.id, label: g.labels[l.field], text: l.text, state: stateOf(s, l.id), rests: rests(l, i.quotes) })) }));

@@ -129,7 +129,6 @@ export function threadOf(i: ThreadInput): ChatMessage[] {
       if (k.answered) out.push(you("know:answers", ...(k.answered === "answered" ? [part("answers", { scope: "know" })] : [text("Skip the questions")])));
     }
     if (k.phase === "review" && !i.busy) out.push(ai("know:review", text(k.goals === 1 ? "Here's your goal, on the right. Add it when it reads right." : `Here are your ${k.goals} goals, on the right. Leave out any that don't belong, then add them.`), part("choices", { set: "know-review", n: k.goals })));
-    if (k.phase === "added") out.push(ai("know:added", text(k.added === 1 ? "Your goal is in." : `Your ${k.added} goals are in.`)));
     if (k.error && !i.busy) out.push(ai("know:error", part("error", { text: k.error })));
   }
 
@@ -166,10 +165,11 @@ export function threadOf(i: ThreadInput): ChatMessage[] {
   // The goals are in: on to which are theirs (the first run), or all set.
   if (goalsSettled(i)) {
     const written = door === "find" ? i.find.accepted : i.know.added;
+    const said = !written ? null : door === "know" ? (written === 1 ? "Your goal is in." : `Your ${written} goals are in.`) : `${written === 1 ? "1 line" : `${written} lines`} written to ${org}.`;
     if (i.first) {
       const moved = i.step !== "goals";
-      out.push(ai("goals:in", text(written ? `${written === 1 ? "1 line" : `${written} lines`} written to ${org}. Next: which goals are yours.` : "Nothing was written. You can add goals on the Goals page any time."), ...(moved ? [] : [part("choices", { set: "goals-in" })])));
-    } else out.push(ai("all-set", text(written ? "All set. Each goal can start a board." : `Nothing was written to ${org}.`), part("allSet")));
+      out.push(ai("goals:in", text(said ? `${said} Next: which goals are yours.` : "Nothing was written. You can add goals on the Goals page any time."), ...(moved ? [] : [part("choices", { set: "goals-in" })])));
+    } else out.push(ai("all-set", text(said ? `${said} All set.` : `Nothing was written to ${org}.`), part("allSet")));
   }
 
   if (i.first && i.step !== "goals") {
