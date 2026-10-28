@@ -199,7 +199,7 @@ const spec = {
   panelBox: "flex min-h-0 flex-col overflow-hidden rounded-xl bg-panel shadow-[inset_0_0_0_1px_var(--color-line-subtle)]",
   panelHead: "flex h-[44px] shrink-0 items-center gap-[8px] border-b border-line-subtle pl-[14px] pr-[8px]",
   panelBoxTitle: "truncate text-body font-semibold text-fg",
-  panelDrawer: "q-rise absolute bottom-[8px] right-[8px] top-[8px] z-20 flex w-[320px] shadow-floating",
+  panelDrawer: "q-rise absolute bottom-[8px] right-[8px] top-[8px] z-20 flex w-[min(400px,calc(100%-16px))] shadow-floating",
   stepDot: "grid size-[18px] shrink-0 place-items-center rounded-full text-micro tnum",
   chatViewport: "flex min-h-0 flex-1 flex-col gap-[14px] overflow-y-auto px-[18px] pt-[18px]",
   chatYou: "max-w-[min(480px,85%)] self-end whitespace-pre-wrap rounded-[12px_12px_4px_12px] bg-active px-[12px] py-[8px] text-body leading-[20px] text-fg",

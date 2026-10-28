@@ -35,10 +35,18 @@ export interface GoalRow {
   /** A goal there now (pick it as theirs). */
   goalId?: string;
   rests?: RestsOn;
+  /** The number that shows it moving, when there is one. */
+  metric: OstMetric | null;
+  /** The product it's for (null: the whole organization), and whether that product is new. */
+  where: string | null;
+  fresh: boolean;
 }
+
+export type LineField = "context" | "audience" | "segments" | "goals";
 
 export interface LineRow {
   id: string;
+  field: LineField;
   label: string;
   text: string;
   state: RowState;
@@ -100,17 +108,18 @@ function knowRows(goals: ShapedGoal[], products: readonly Product[]): GoalRow[] 
   const top = goals.find((g) => !g.parent);
   return goals.map((g) => {
     const north = g === top;
-    const where = !g.product ? null : "id" in g.product ? (products.find((p) => p.id === (g.product as { id: string }).id)?.name ?? "A product") : `${g.product.name} · new`;
+    const fresh = !!g.product && "name" in g.product;
+    const where = !g.product ? null : "id" in g.product ? (products.find((p) => p.id === (g.product as { id: string }).id)?.name ?? "A product") : g.product.name;
     const number = numberLine(g.metric, g.title);
-    return { key: `know:${g.ref}`, title: g.title, depth: depth(g), north, detail: [north ? "North Star" : null, where, number].filter(Boolean).join(" · "), state: "kept", ref: g.ref };
+    return { key: `know:${g.ref}`, title: g.title, depth: depth(g), north, detail: [north ? "North Star" : null, where && fresh ? `${where} · new` : where, number].filter(Boolean).join(" · "), state: "kept", ref: g.ref, metric: g.metric, where, fresh };
   });
 }
 
 /** The About and the products as they are now: what each does and who it's for. */
 function contextGroups(i: SoFarInput): SoFar["groups"] {
-  const line = (id: string, label: string, t: string): LineRow[] => (t.trim() ? [{ id, label, text: t.trim(), state: "kept", rests: { quotes: [], answers: [] } }] : []);
-  const about = { key: "org", title: `About ${i.org}`, fresh: false, lines: [...line("org:context", "What we do", i.about.context), ...line("org:audience", "Who we serve", i.about.audience)] };
-  const products = i.products.map((p) => ({ key: p.id, title: p.name, fresh: false, lines: [...line(`${p.id}:context`, "Context", p.context), ...line(`${p.id}:audience`, "Who it's for", p.audience)] }));
+  const line = (id: string, field: LineField, label: string, t: string): LineRow[] => (t.trim() ? [{ id, field, label, text: t.trim(), state: "kept", rests: { quotes: [], answers: [] } }] : []);
+  const about = { key: "org", title: `About ${i.org}`, fresh: false, lines: [...line("org:context", "context", "What we do", i.about.context), ...line("org:audience", "audience", "Who we serve", i.about.audience)] };
+  const products = i.products.map((p) => ({ key: p.id, title: p.name, fresh: false, lines: [...line(`${p.id}:context`, "context", "Context", p.context), ...line(`${p.id}:audience`, "audience", "Who it's for", p.audience)] }));
   return [about, ...products].filter((g) => g.lines.length || g.key !== "org");
 }
 
@@ -120,14 +129,31 @@ export function soFarOf(i: SoFarInput): SoFar {
     const goals = goalLines(s.proposal).map(({ line, depth }, n): GoalRow => {
       const north = n === 0 && !depth && line.to === "org";
       const number = numberLine(line.metric, line.text);
-      return { key: line.id, title: line.text, depth, north, detail: [north ? "North Star" : null, line.to === "org" ? null : placeName(line.to, s, i.products), number].filter(Boolean).join(" · "), state: stateOf(s, line.id), lineId: line.id, rests: rests(line, i.quotes) };
+      const place = line.to === "org" ? null : placeName(line.to, s, i.products);
+      const fresh = !!place?.endsWith(" · a new product");
+      return { key: line.id, title: line.text, depth, north, detail: [north ? "North Star" : null, place, number].filter(Boolean).join(" · "), state: stateOf(s, line.id), lineId: line.id, rests: rests(line, i.quotes), metric: line.metric ?? null, where: place?.replace(/ · a new product$/, "") ?? null, fresh };
     });
-    const groups = groupsOf(s, i.org, i.products).map((g) => ({ key: g.key, title: g.title, fresh: g.fresh, lines: g.lines.map((l) => ({ id: l.id, label: g.labels[l.field], text: l.text, state: stateOf(s, l.id), rests: rests(l, i.quotes) })) }));
+    const groups = groupsOf(s, i.org, i.products).map((g) => ({ key: g.key, title: g.title, fresh: g.fresh, lines: g.lines.map((l) => ({ id: l.id, field: l.field, label: g.labels[l.field], text: l.text, state: stateOf(s, l.id), rests: rests(l, i.quotes) })) }));
     return { from: "proposal", goals, groups, open: pendingLines(s).map((l) => l.id) };
   }
   const groups = contextGroups(i);
   if (i.know && (i.know.phase === "asking" || i.know.phase === "review") && i.know.goals.length) return { from: "know", goals: knowRows(i.know.goals, i.products), groups, open: [] };
   const rows = treeRows(i.tree);
   if (!rows.length && !groups.length) return { from: "none", goals: [], groups, open: [] };
-  return { from: "tree", goals: rows.map((g) => ({ key: g.id, title: g.title, depth: g.depth, north: g.north, detail: [g.north ? "North Star" : null, g.line || null].filter(Boolean).join(" · "), state: "kept", goalId: g.id })), groups, open: [] };
+  return {
+    from: "tree",
+    goals: rows.map((g) => {
+      const goal = goalById(i.tree, g.id);
+      const where = goal?.product ? (i.products.find((p) => p.id === goal.product)?.name ?? "A product") : null;
+      return { key: g.id, title: g.title, depth: g.depth, north: g.north, detail: [g.north ? "North Star" : null, g.line || null].filter(Boolean).join(" · "), state: "kept", goalId: g.id, metric: goal?.metric ?? null, where, fresh: false };
+    }),
+    groups,
+    open: [],
+  };
+}
+
+/** How the review stands: lines accepted, discarded, and still to settle. */
+export function tally(v: Pick<SoFar, "goals" | "groups">): { accepted: number; discarded: number; open: number } {
+  const states = [...v.goals.filter((g) => g.lineId).map((g) => g.state), ...v.groups.flatMap((g) => g.lines.map((l) => l.state))];
+  return { accepted: states.filter((x) => x === "accepted").length, discarded: states.filter((x) => x === "discarded").length, open: states.filter((x) => x === "proposed").length };
 }

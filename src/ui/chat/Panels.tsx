@@ -29,7 +29,7 @@ export const WIDE = 1180;
 
 export function PanelLayout({ left, center, right, rightOpen, onRightOpen }: { left?: ReactNode; center: ReactNode; right?: ReactNode; rightOpen: boolean; onRightOpen: (open: boolean) => void }) {
   const wide = useWide(WIDE);
-  const cols = [left ? "232px" : null, "minmax(0,1fr)", right && wide ? "320px" : null].filter(Boolean).join("_");
+  const cols = [left ? "232px" : null, "minmax(0,1fr)", right && wide ? "400px" : null].filter(Boolean).join("_");
   useEffect(() => {
     if (!rightOpen || wide) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onRightOpen(false);

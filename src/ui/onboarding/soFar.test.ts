@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ShapedGoal } from "@/goals/outline";
 import type { Goal } from "@/goals/types";
 import type { SetupLine, SetupSession } from "@/org/setup";
-import { soFarOf, type SoFarInput } from "./soFar";
+import { soFarOf, tally, type SoFarInput } from "./soFar";
 
 const line = (id: string, over: Partial<SetupLine> = {}): SetupLine => ({ id, to: "org", field: "goals", text: id, pieces: [], answers: [], why: "", ...over });
 const goal = (id: string, parent: string | null = null): Goal => ({ id, title: id, parent, product: null, status: "active" as Goal["status"], cites: [], by: "person", at: 0 });
@@ -43,6 +43,12 @@ describe("soFarOf", () => {
     expect(v.goals[1].rests?.answers).toEqual([{ question: "Churn now?", answer: "8%" }]);
     expect(v.groups.map((g) => [g.title, g.lines.map((l) => l.label)])).toEqual([["About Basket", ["What we do"]]]);
     expect(v.open).toEqual(["churn", "what"]);
+    expect(v.goals.map((g) => [g.metric, g.where, g.fresh])).toEqual([
+      [null, null, false],
+      [null, null, false],
+    ]);
+    expect(v.groups[0].lines[0].field).toBe("context");
+    expect(tally(v)).toEqual({ accepted: 1, discarded: 0, open: 2 });
   });
 
   it("shows the goals they wrote while they review them", () => {
@@ -57,6 +63,7 @@ describe("soFarOf", () => {
       ["More reorders", 1, false, "o2"],
     ]);
     expect(v.goals[1].detail).toContain("Basket Kids · new");
+    expect([v.goals[1].where, v.goals[1].fresh]).toEqual(["Basket Kids", true]);
   });
 
   it("otherwise shows the goals and the About as they are", () => {
