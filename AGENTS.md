@@ -1,6 +1,9 @@
 # Qalam Studio: notes for coding agents
 
 - **UI:** a React single-page app built with Vite. `index.html` loads `src/main.tsx`, and `src/ui/App.tsx` picks the page from the address (`src/ui/routes.ts`). Moving between pages is a full page load, so there is no client router.
+  - Every page outside the canvas sits in `PageFrame` (`src/ui/frame/`). It provides the top bar, a sidebar (the organization's places and products; ⌘\ folds it to a rail), toasts, dialogs, and a page ⌘K (`PagePalette`, keys in `src/commands/pages.ts`).
+  - Each place has its own address, `/o/<org>/boards|topics|sources|decisions|connections`. Build it with `placeHref`; the home's old `?tab=` redirects.
+  - A board's rail shows Home, Boards, Topics and Connections above its own panels (`RailPlaces`). They save the board before leaving (`leaveTo`).
 - **Server:** `server/` is a small Hono app (`server/app.ts`). Each route in `server/routes/*.ts` takes a standard `Request` and returns a `Response`; AI routes stream NDJSON. Model calls happen only there.
   - `pnpm dev` runs Vite on 127.0.0.1:3101 with the server mounted at `/api/*` (`server/vite.ts`). An edit to a route or to `src/ai` takes effect on the next request.
   - `pnpm build && pnpm start` serves `dist/` and the server from one Node process (`server/serve.ts`).

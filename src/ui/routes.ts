@@ -1,4 +1,5 @@
 import { isProjectId, type ProjectType } from "@/projects/model";
+import { isPagePlace, type PagePlace } from "./frame/places";
 
 /**
  * The app's pages, read from the address. Moving between them is a full page load (links and
@@ -18,6 +19,8 @@ export type Route =
   | { kind: "topic"; org: string; id: string }
   /** Setting the organization up from a brain dump about it. */
   | { kind: "setup"; org: string }
+  /** One of the organization's places (src/ui/frame/places.ts): its boards, topic pages, sources, decisions or connections. */
+  | { kind: "place"; org: string; place: PagePlace }
   | { kind: "missing" };
 
 /** The path segment for each project type (the same letters `projectHref` writes). */
@@ -45,6 +48,7 @@ export function routeOf(pathname: string): Route {
   }
   if (!parts.length) return { kind: "root" };
   if (org && parts.length === 1 && parts[0] === "setup") return { kind: "setup", org };
+  if (org && parts.length === 1 && isPagePlace(parts[0])) return { kind: "place", org, place: parts[0] };
   if (org && parts.length === 2 && parts[0] === "t" && /^[A-Za-z0-9_~-]{1,64}$/.test(parts[1])) return { kind: "topic", org, id: parts[1] };
   const type = parts.length === 2 ? TYPES[parts[0]] : undefined;
   if (type && isProjectId(parts[1])) return { kind: "project", org, type, id: parts[1] };

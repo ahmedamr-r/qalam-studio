@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import clsx from "clsx";
-import * as Tooltip from "@radix-ui/react-tooltip";
-import { ArrowLeft, MoreHorizontal, Plus, Quote } from "lucide-react";
+import { MoreHorizontal, Plus, Quote } from "lucide-react";
 import { nanoid } from "nanoid";
 import { feedback } from "@/commands/feedback";
 import { dayOf } from "@/decisions/model";
@@ -12,12 +11,12 @@ import { ConflictError, currentOrg, type OrgRef } from "@/org/client";
 import { useOrgContext } from "@/org/context";
 import { onOrgChange } from "@/org/live";
 import { topicsDb, type CitedPiece, type TopicView } from "@/org/topics";
-import { orgHref, projectHref } from "@/projects/model";
-import { QalamMark, Wordmark } from "../brand";
+import { placeHref, projectHref } from "@/projects/model";
 import { Button, Tag, Tip } from "../controls";
 import { Menu, MenuItem, MenuSeparator, SubMenu } from "../menu";
 import { r } from "../recipes";
-import { confirmDialog, DialogHost, promptDialog } from "../surfaces/dialog";
+import { confirmDialog, promptDialog } from "../surfaces/dialog";
+import { PageFrame } from "../frame/PageFrame";
 import { ago } from "../time";
 
 /**
@@ -81,13 +80,18 @@ export default function TopicPage({ id }: { id: string }) {
         <div className="flex w-[320px] flex-col items-center gap-[12px] text-center">
           <p className="text-title font-medium">This topic page isn&apos;t here</p>
           <p className="text-body text-fg-muted">It was deleted, or its file moved out of the organization&apos;s folder.</p>
-          <a className={clsx(r.button, r.buttonSecondary)} href={`${orgHref()}?tab=topics`}>
+          <a className={clsx(r.button, r.buttonSecondary)} href={placeHref("topics")}>
             Back to the topics
           </a>
         </div>
       </div>
     );
-  if (!view) return <div className="min-h-screen bg-app" />;
+  if (!view)
+    return (
+      <PageFrame place="topics" crumbs={[{ label: "Topics", href: placeHref("topics") }]}>
+        <div />
+      </PageFrame>
+    );
   const t = view.topic;
 
   /** Save the page as changed here; a change made elsewhere meanwhile wins, and the page shows it. */
@@ -145,35 +149,14 @@ export default function TopicPage({ id }: { id: string }) {
     const ok = await confirmDialog({ title: `Delete “${t.title}”?`, body: "The page is removed from the organization's folder. The sources and boards its lines rest on stay as they are.", confirmLabel: "Delete page", danger: true });
     if (!ok) return;
     await topicsDb.remove(t.id);
-    window.location.assign(`${orgHref()}?tab=topics`);
+    window.location.assign(placeHref("topics"));
   };
 
   const productNames = t.products.map((p) => products.find((x) => x.id === p)?.name).filter(Boolean) as string[];
   return (
-    <Tooltip.Provider delayDuration={300}>
-      <div className="min-h-screen bg-app text-fg">
-        <header className="flex h-[48px] items-center gap-[10px] border-b border-line-subtle px-[16px]">
-          <QalamMark size={20} />
-          <Wordmark />
-          <span aria-hidden className="text-fg-faint">
-            /
-          </span>
-          <a href={orgHref()} className="text-body font-medium text-fg hover:underline">
-            {org?.name ?? "Organization"}
-          </a>
-          <span aria-hidden className="text-fg-faint">
-            /
-          </span>
-          <a href={`${orgHref()}?tab=topics`} className="text-body text-fg-muted hover:text-fg">
-            Topics
-          </a>
-        </header>
-        <main className="mx-auto flex w-full max-w-[760px] flex-col gap-[28px] px-[16px] py-[28px]">
+    <PageFrame place="topics" crumbs={[{ label: "Topics", href: placeHref("topics") }, { label: t.title }]}>
+        <div className={clsx(r.pageMain, "max-w-[760px]")}>
           <div className="flex flex-col gap-[8px]">
-            <a href={`${orgHref()}?tab=topics`} className="inline-flex w-fit items-center gap-[4px] text-caption text-fg-muted hover:text-fg">
-              <ArrowLeft size={12} absoluteStrokeWidth strokeWidth={1.25} />
-              Topics
-            </a>
             <div className="flex items-start justify-between gap-[12px]">
               <h1 className="text-display font-semibold text-fg">{t.title}</h1>
               <Menu
@@ -281,10 +264,8 @@ export default function TopicPage({ id }: { id: string }) {
           <p className="text-caption text-fg-subtle">
             Qalam AI keeps a line only when the pieces it cites were sent to it and the words it quotes are in them. Edit a line and it&apos;s yours: Qalam AI won&apos;t rewrite it, only say what speaks against it.{org ? ` Saved in ${org.name}, at ${t.file}.` : ""}
           </p>
-        </main>
-      </div>
-      <DialogHost />
-    </Tooltip.Provider>
+        </div>
+    </PageFrame>
   );
 }
 

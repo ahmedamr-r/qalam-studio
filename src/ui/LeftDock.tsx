@@ -24,10 +24,13 @@ import { useProjectType } from "@/projects/mode";
 import OutlinePanel from "./discovery/OutlinePanel";
 import ContextPanel from "./discovery/ContextPanel";
 import SourcesPanel, { SourcesHeaderActions } from "./discovery/SourcesPanel";
+import { RailPlaces } from "./frame/OrgPlaces";
+import { leaveTo } from "@/projects/session";
 
 /**
- * Figma-style left navigation: a labelled rail that switches the panel beside it. Everything about
- * the file (layers, assets) sits at the top, then design systems (tokens), then AI and what it has
+ * Figma-style left navigation: a labelled rail that switches the panel beside it. The organization's
+ * places come first (Home, Boards, Topics, Connections: links that save before they leave), then
+ * everything about the file (layers, assets), then design systems (tokens), then AI and what it has
  * learned (Library, the Knowledge hub). Clicking the active item collapses the panel to give the
  * canvas room. The AI item opens the floating chat window over the canvas instead of a panel.
  * A 5px saffron nuqta marks the open panel and slides between items; the panel's width commits in
@@ -227,6 +230,7 @@ function NavRail() {
         style={{ top: "calc(var(--h, 0px) / 2)" } as CSSProperties}
         onAnimationEnd={(e) => delete e.currentTarget.dataset.landed}
       />
+      <RailPlaces current="boards" leave={(href) => void leaveTo(href)} />
       {items.map((i) => {
         const ai = i.tab === "ai";
         const active = ai ? chatOpen : marked === i.tab;

@@ -1,5 +1,6 @@
 import { lazy, Suspense, type ReactNode } from "react";
 import type { ProjectType } from "@/projects/model";
+import type { PagePlace } from "./frame/places";
 import { Splash } from "./brand/splash";
 
 const loading = (
@@ -14,6 +15,13 @@ const Home = lazy(() => import("./home/Home"));
 const SystemProject = lazy(() => import("./SystemProject"));
 const TopicPage = lazy(() => import("./topics/TopicPage"));
 const SetupPage = lazy(() => import("./setup/SetupPage"));
+const PLACE_PAGES = {
+  boards: lazy(() => import("./places/BoardsPage")),
+  topics: lazy(() => import("./places/TopicsPage")),
+  sources: lazy(() => import("./places/SourcesPage")),
+  decisions: lazy(() => import("./places/DecisionsPage")),
+  connections: lazy(() => import("./connections/ConnectionsPage")),
+} satisfies Record<PagePlace, unknown>;
 
 const Loading = ({ children }: { children: ReactNode }) => <Suspense fallback={loading}>{children}</Suspense>;
 
@@ -57,6 +65,16 @@ export function SetupLoader() {
   return (
     <Loading>
       <SetupPage />
+    </Loading>
+  );
+}
+
+/** One of the organization's places: its boards, topic pages, sources, decisions or connections. */
+export function PlaceLoader({ place }: { place: PagePlace }) {
+  const Page = PLACE_PAGES[place];
+  return (
+    <Loading>
+      <Page />
     </Loading>
   );
 }

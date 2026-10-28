@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { orgHref, projectHref, setupHref, topicHref } from "@/projects/model";
+import { orgHref, placeHref, projectHref, setupHref, topicHref } from "@/projects/model";
 import { routeOf } from "./routes";
 
 describe("routeOf", () => {
@@ -28,6 +28,17 @@ describe("routeOf", () => {
     expect(routeOf("/o/R02vmeVH/setup/")).toEqual({ kind: "setup", org: "R02vmeVH" });
     expect(routeOf("/setup")).toEqual({ kind: "missing" });
     expect(routeOf("/o/R02vmeVH/setup/x")).toEqual({ kind: "missing" });
+  });
+
+  it("reads the organization's places, and round-trips placeHref", () => {
+    for (const place of ["boards", "topics", "sources", "decisions", "connections"] as const) {
+      expect(routeOf(placeHref(place, "R02vmeVH"))).toEqual({ kind: "place", org: "R02vmeVH", place });
+      expect(routeOf(`${placeHref(place, "R02vmeVH")}/`)).toEqual({ kind: "place", org: "R02vmeVH", place });
+    }
+    expect(placeHref("home", "R02vmeVH")).toBe("/o/R02vmeVH");
+    expect(routeOf("/boards")).toEqual({ kind: "missing" });
+    expect(routeOf("/o/R02vmeVH/boards/x")).toEqual({ kind: "missing" });
+    expect(routeOf("/o/R02vmeVH/home")).toEqual({ kind: "missing" });
   });
 
   it("reads addresses from before organizations", () => {

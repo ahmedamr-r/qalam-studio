@@ -1,6 +1,7 @@
 import { nanoid } from "nanoid";
 import type { InterviewState } from "./interview";
 import type { DesignHandoff, DiscoveryState, Serving, ServesLink } from "@/discovery/types";
+import type { Place } from "@/ui/frame/places";
 
 /**
  * Projects: what the home lists. A Screens project is a canvas document; a Design system project
@@ -64,6 +65,9 @@ export const topicHref = (id: string, org: string | null = linkOrg) => `${org ? 
 
 /** Setting the organization up from a brain dump about it (src/ui/setup). */
 export const setupHref = (org: string | null = linkOrg) => `${org ? `/o/${org}` : ""}/setup`;
+
+/** One of the organization's places (src/ui/frame/places.ts); Home is the organization's own address. */
+export const placeHref = (place: Place, org: string | null = linkOrg) => (place === "home" ? orgHref(org) : `${org ? `/o/${org}` : ""}/${place}`);
 
 /** Where a project opens. */
 export const projectHref = (p: Pick<Project, "id" | "type">, org: string | null = linkOrg) => `${org ? `/o/${org}` : ""}/${projectLetter(p.type)}/${p.id}`;

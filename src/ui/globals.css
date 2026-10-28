@@ -274,6 +274,7 @@
   /* Layout (Tailwind v4: h-(--topbar-h), top-(--topbar-h), w-(--rail-w)) */
   --topbar-h: 48px;
   --rail-w: 60px;
+  --sidebar-w: 220px;
   --footer-h: 24px;
   --statusbar-h: var(--footer-h);
   --left-w: 248px;

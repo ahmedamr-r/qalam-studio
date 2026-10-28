@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import clsx from "clsx";
 import { ArrowUp, Plus, Quote, X } from "lucide-react";
 import { nanoid } from "nanoid";
@@ -12,6 +12,7 @@ import { QalamAIGlyph } from "../brand/ai-glyph";
 import { Button, IconBtn, Tag } from "../controls";
 import { r } from "../recipes";
 import { AddToOrg } from "./AddToOrg";
+import { ASK_EVENT, takeAskNext } from "./ask-next";
 
 /**
  * Ask the organization, from its home: a question in plain words, and Qalam AI's answer from what
@@ -31,9 +32,9 @@ export function AskBar({ product, topics }: { product: string | null; topics: To
   const [adding, setAdding] = useState(false);
   const ctrl = useRef<AbortController | null>(null);
 
-  const ask = async (e?: FormEvent) => {
+  const ask = async (e?: FormEvent, text?: string) => {
     e?.preventDefault();
-    const q = question.replace(/\s+/g, " ").trim();
+    const q = (text ?? question).replace(/\s+/g, " ").trim();
     if (q.length < 3 || state.kind === "asking") return;
     if (!(await aiStatus()).ai) return setState({ kind: "failed", question: q, error: "Qalam AI isn't set up here, so it can't answer. The topic pages and Sources tab have what's known." });
     const c = new AbortController();
@@ -54,8 +55,23 @@ export function AskBar({ product, topics }: { product: string | null; topics: To
     }
   };
 
+  // A question asked from ⌘K on another page (or this one) lands here and is asked.
+  const askRef = useRef(ask);
+  askRef.current = ask;
+  useEffect(() => {
+    const take = (q: string | null) => {
+      if (!q) return;
+      setQuestion(q);
+      void askRef.current(undefined, q);
+    };
+    take(takeAskNext());
+    const on = (e: Event) => take((e as CustomEvent<string>).detail);
+    window.addEventListener(ASK_EVENT, on);
+    return () => window.removeEventListener(ASK_EVENT, on);
+  }, []);
+
   return (
-    <section aria-label="Ask the organization" className="flex flex-col gap-[10px]">
+    <section aria-label="Ask the organization" data-ask-bar className="flex flex-col gap-[10px]">
       <form onSubmit={(e) => void ask(e)} className="flex items-center gap-[8px] rounded-lg bg-panel py-[6px] pr-[6px] pl-[12px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)] focus-within:shadow-[inset_0_0_0_1px_var(--color-line-strong)]">
         <QalamAIGlyph size={14} />
         <input

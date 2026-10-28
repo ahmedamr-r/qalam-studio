@@ -2,11 +2,12 @@ import { useEffect, useState } from "react";
 import clsx from "clsx";
 import { bootOrg } from "@/org/boot";
 import { listOrgs, OrgMissing, type OrgRef } from "@/org/client";
-import { orgHref, projectLetter, type ProjectType } from "@/projects/model";
+import { orgHref, placeHref, projectLetter, type ProjectType } from "@/projects/model";
 import { Splash } from "./brand/splash";
 import { r } from "./recipes";
 import { routeOf, type Route } from "./routes";
-import StudioLoader, { HomeLoader, SetupLoader, SystemProjectLoader, TopicLoader } from "./StudioLoader";
+import { legacyTab } from "./frame/places";
+import StudioLoader, { HomeLoader, PlaceLoader, SetupLoader, SystemProjectLoader, TopicLoader } from "./StudioLoader";
 
 type State = { kind: "loading" } | { kind: "ready"; org: OrgRef } | { kind: "error"; message: string; missingOrg?: boolean } | { kind: "missing" };
 
@@ -17,12 +18,15 @@ export function App() {
 
   const boot = () => {
     setState({ kind: "loading" });
-    const org = route.kind === "org" || route.kind === "project" || route.kind === "topic" || route.kind === "setup" ? route.org : null;
+    const org = route.kind === "org" || route.kind === "project" || route.kind === "topic" || route.kind === "setup" || route.kind === "place" ? route.org : null;
     bootOrg(org).then(
       async (o) => {
         // The bare address opens the organization opened last; an address from before
         // organizations moves to its organization's.
         if (route.kind === "root") return window.location.replace(orgHref(o.id) + window.location.search);
+        // The home's old tabs are places of their own now.
+        const tab = route.kind === "org" ? legacyTab(window.location.search) : null;
+        if (tab) return window.location.replace(placeHref(tab.place, o.id) + tab.search);
         if (route.kind === "project" && !route.org) {
           const home = await findProject(route.id, route.type, o.id);
           if (home) return window.location.replace(`${home}${window.location.search}${window.location.hash}`);
@@ -46,6 +50,7 @@ export function App() {
   if (route.kind === "org") return <HomeLoader />;
   if (route.kind === "topic") return <TopicLoader id={route.id} />;
   if (route.kind === "setup") return <SetupLoader />;
+  if (route.kind === "place") return <PlaceLoader place={route.place} />;
   if (route.kind !== "project") return null;
   if (route.type === "system") return <SystemProjectLoader projectId={route.id} />;
   return <StudioLoader projectId={route.id} mode={route.type} />;

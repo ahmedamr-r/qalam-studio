@@ -31,6 +31,16 @@ const spec = {
   railLabel: "max-w-[48px] truncate text-micro font-medium",            // Layers · Assets · Tokens · AI · Library
   railMarker: "q-rail-marker",                                            // style={{ "--y": `${centerY}px` }}; data-instant on first paint
   railBadge: "absolute right-[11px] top-[8px] size-[6px] rounded-full bg-[image:var(--ai-gradient)] shadow-[0_0_0_2px_var(--color-app)] q-breathe", // AI busy only
+  railPlace: "q-item q-press relative grid h-[32px] w-[40px] place-items-center rounded-md text-fg-subtle hover:bg-hover hover:text-fg-muted aria-[current=true]:bg-active aria-[current=true]:text-fg", // the organization's places above a board's panels
+  railDivider: "my-[4px] h-px w-[28px] shrink-0 bg-line-subtle",
+
+  // ── Sidebar (pages outside the canvas; ⌘\ folds it to the rail) ─────
+  sidebar: "flex w-(--sidebar-w) shrink-0 flex-col gap-[2px] overflow-y-auto border-r border-line-subtle bg-app px-[8px] pt-[8px] pb-[10px]",
+  sidebarItem: "q-item relative flex h-[32px] shrink-0 items-center gap-[10px] rounded-md px-[10px] text-body text-fg-muted hover:bg-hover hover:text-fg aria-[current=page]:bg-active aria-[current=page]:font-medium aria-[current=page]:text-fg [&>svg]:shrink-0 [&>svg]:text-fg-subtle aria-[current=page]:[&>svg]:text-fg",
+  sidebarGroup: "flex h-[28px] shrink-0 items-center justify-between pl-[10px] pr-[2px] pt-[12px] text-micro font-medium text-fg-subtle",
+  sidebarSub: "q-item flex h-[28px] shrink-0 items-center gap-[8px] rounded-md px-[10px] text-caption text-fg-muted hover:bg-hover hover:text-fg aria-[current=true]:bg-active aria-[current=true]:font-medium aria-[current=true]:text-fg",
+  /** The column a page's content sits in, under the frame's top bar. */
+  pageMain: "mx-auto flex w-full flex-col gap-[28px] px-[24px] py-[28px]",
 
   // ── Panels ────────────────────────────────────────────────────────────
   panel: "flex min-h-0 flex-col bg-panel",

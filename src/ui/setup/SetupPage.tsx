@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import clsx from "clsx";
-import * as Tooltip from "@radix-ui/react-tooltip";
-import { ArrowLeft, Check, RotateCcw, Square } from "lucide-react";
+import { Check, RotateCcw, Square } from "lucide-react";
 import { CHALLENGE_LABEL, DUMP_MAX_CHARS, MAX_DUMP_ROUNDS } from "@/discovery/dump";
 import type { SourceRecord } from "@/discovery/sources";
 import { currentOrg, type OrgRef } from "@/org/client";
@@ -9,7 +8,6 @@ import { useOrgContext } from "@/org/context";
 import type { Product } from "@/org/context-md";
 import { boardGoals, pendingLines, type SetupField, type SetupLine, type SetupSession } from "@/org/setup";
 import { orgHref } from "@/projects/model";
-import { QalamMark, Wordmark } from "../brand";
 import { QalamAIGlyph } from "../brand/ai-glyph";
 import { Button, Tag } from "../controls";
 import { toQuestion } from "../ai/plan";
@@ -17,6 +15,7 @@ import { AnswersSummary, Questionnaire, qr } from "../ai/Questionnaire";
 import { ErrorNote, Progress } from "../ai/common";
 import type { FlowState } from "../ai/questionFlow";
 import { r } from "../recipes";
+import { PageFrame } from "../frame/PageFrame";
 import { acceptLines, answerSetupRound, discardLines, openSetup, placeSetup, retrySetup, saveSetupRound, skipSetupRest, startBoard, startSetup, stopSetup, useSetup } from "./setup";
 
 /**
@@ -59,27 +58,11 @@ export default function SetupPage() {
 
   const name = org?.name ?? "your organization";
   return (
-    <Tooltip.Provider delayDuration={500}>
-      <div className="min-h-screen bg-app text-fg">
-        <header className="flex h-[48px] items-center gap-[10px] border-b border-line-subtle px-[16px]">
-          <QalamMark size={20} />
-          <Wordmark />
-          <span aria-hidden className="text-fg-faint">
-            /
-          </span>
-          <a href={orgHref()} className="text-body font-medium text-fg hover:underline">
-            {org?.name ?? "Organization"}
-          </a>
-        </header>
-        <main className="mx-auto flex w-full max-w-[680px] flex-col gap-[20px] px-[16px] py-[28px]">
-          <a href={orgHref()} className="inline-flex w-fit items-center gap-[4px] text-caption text-fg-muted hover:text-fg">
-            <ArrowLeft size={12} {...ICON} />
-            {org?.name ?? "Home"}
-          </a>
-          {!opened ? null : source?.setup ? <Session source={source} s={source.setup} org={name} /> : <Compose org={name} />}
-        </main>
+    <PageFrame place={null} crumbs={[{ label: "Set up" }]}>
+      <div className={clsx(r.pageMain, "max-w-[680px] gap-[20px]")}>
+        {!opened ? null : source?.setup ? <Session source={source} s={source.setup} org={name} /> : <Compose org={name} />}
       </div>
-    </Tooltip.Provider>
+    </PageFrame>
   );
 }
 

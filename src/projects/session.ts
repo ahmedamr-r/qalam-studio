@@ -223,7 +223,10 @@ export async function reopenInterview() {
   window.location.reload();
 }
 
-export async function goHome() {
+export const goHome = () => leaveTo(orgHref());
+
+/** Go to another page (the rail's places), once the open document is saved. */
+export async function leaveTo(href: string) {
   await flushDoc();
-  window.location.assign(orgHref());
+  window.location.assign(href);
 }
