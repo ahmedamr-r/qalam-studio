@@ -8,11 +8,13 @@ import { secrets } from "../secrets";
 import { readSettings, writeSettings } from "../settings";
 import { claudeCodeKnown, listClaudeCode, runTools } from "./claude-code";
 import { notionPageText, notionSearch, notionWhoAmI } from "./notion-api";
+import { forgetSignIn, signedIn, SignInAgain, withSignedIn } from "./oauth";
 import { linearWhoAmI } from "./work";
 
 /*
  * The organization's connectors on this computer: how each is reached (Claude Code's server of
- * that name, or a token Qalam keeps in the Keychain), what Connections shows of them, and bringing
+ * that name, a token Qalam keeps in the Keychain, or Qalam's own sign-in to the service's MCP server,
+ * server/connectors/oauth.ts), what Connections shows of them, and bringing
  * their material in. A search lists items; the ones picked are read (their words as the tool gave
  * them) and taken in like any other source (server/capture.ts): kept, read, filed into the topic
  * pages and placed on the boards. An item already taken in with the same words is skipped.
@@ -30,21 +32,24 @@ export async function connectorsView(): Promise<{ checkedAt: number | null; conn
       const listed = known ? matchClaudeCode(def, known.list) : null;
       const how = chosen[def.id];
       const token = def.token ? await secrets().get(tokenName(def.id)).catch(() => null) : null;
-      const base = { id: def.id, label: def.label, group: def.group, feeds: def.feeds, imports: def.imports, status: def.status ?? null, numbers: !!def.numbers, claudeCode: listed ? { server: listed.name, status: listed.status } : null, token: token ? { last4: token.slice(-4) } : null, canToken: !!def.token, tokenHelp: def.token ?? null };
-      return { ...base, ...stateOf(def, how?.via === "claude-code" ? (listed?.name === how.server ? listed.status : "unknown") : null, how?.via ?? null, !!token, listed?.status ?? null) };
+      const base = { id: def.id, label: def.label, group: def.group, feeds: def.feeds, imports: def.imports, status: def.status ?? null, numbers: !!def.numbers, claudeCode: listed ? { server: listed.name, status: listed.status } : null, token: token ? { last4: token.slice(-4) } : null, canToken: !!def.token, tokenHelp: def.token ?? null, canSignIn: !!def.mcp };
+      const kept = how?.via === "oauth" ? await signedIn(def.id) : !!token;
+      return { ...base, ...stateOf(def, how?.via === "claude-code" ? (listed?.name === how.server ? listed.status : "unknown") : null, how?.via ?? null, kept, listed?.status ?? null) };
     }),
   );
   return { checkedAt: known?.at ?? null, connectors };
 }
 
 /** One word and a dot for a connector's card. */
-function stateOf(def: ConnectorDef, chosenStatus: ListedStatus | null, via: "claude-code" | "token" | null, hasToken: boolean, listed: ListedStatus | null): Pick<ConnectorState, "via" | "word" | "tone"> {
-  if (via === "token" && hasToken) return { via, word: "Connected", tone: "ok" };
+function stateOf(def: ConnectorDef, chosenStatus: ListedStatus | null, via: "claude-code" | "token" | "oauth" | null, kept: boolean, listed: ListedStatus | null): Pick<ConnectorState, "via" | "word" | "tone"> {
+  if ((via === "token" || via === "oauth") && kept) return { via, word: "Connected", tone: "ok" };
+  // The service stopped taking Qalam's sign-in (its refresh was refused).
+  if (via === "oauth") return { via, word: "Sign in again", tone: "warn" };
   if (def.status === "public") return { via: null, word: "Public repositories", tone: "ok" };
   if (via === "claude-code") return chosenStatus === "connected" || chosenStatus === "unknown" ? { via, word: "Through Claude Code", tone: "ok" } : { via, word: "Sign in in Claude Code", tone: "warn" };
   if (listed === "connected") return { via: null, word: "In Claude Code", tone: "off" };
   if (listed === "needs-auth") return { via: null, word: "Sign in in Claude Code", tone: "off" };
-  return { via: null, word: def.imports || def.token || def.numbers ? "Not connected" : "Coming next", tone: "off" };
+  return { via: null, word: def.imports || def.token || def.numbers || def.mcp ? "Not connected" : "Coming next", tone: "off" };
 }
 
 /** Use Claude Code's server for it (the user signed it in there). */
@@ -67,6 +72,7 @@ export async function saveToken(id: string, raw: string, f?: typeof fetch): Prom
 
 export async function forgetConnector(id: string) {
   await secrets().remove(tokenName(id)).catch(() => {});
+  if (connectorDef(id)?.mcp) await forgetSignIn(id).catch(() => {});
   const all = { ...((await readSettings()).connectors ?? {}) };
   delete all[id];
   await writeSettings({ connectors: all });
@@ -84,6 +90,7 @@ async function how(id: string) {
     if (!token) throw new Error("Its token isn't in the Keychain any more: add it again.");
     return { via: "token" as const, token };
   }
+  if (via.via === "oauth") return { via: "mcp" as const, url: via.url };
   return { via: "claude-code" as const, server: via.server };
 }
 
@@ -91,6 +98,11 @@ export async function searchConnector(id: string, query: string): Promise<Hit[]>
   const h = await how(id);
   if (h.via === "token") return notionSearch(h.token, query);
   const recipe = RECIPES[id];
+  if (h.via === "mcp") {
+    const answer = await withSignedIn(id, h.url, (call) => call(recipe.search(query)));
+    if (answer === null) throw new Error(`${connectorDef(id)?.label ?? id} didn't search it.`);
+    return recipe.hits(answer);
+  }
   const [answer] = await runTools(h.server, [recipe.search(query)]);
   if (answer === null) throw new Error("Claude Code didn't search it. Is it signed in there?");
   return recipe.hits(answer);
@@ -101,7 +113,17 @@ export async function importItems(store: OrgStore, id: string, hits: Hit[], emit
   const h = await how(id);
   const label = connectorDef(id)?.label ?? id;
   emit(`Reading ${hits.length === 1 ? `“${hits[0].title}”` : `${hits.length} items`} from ${label}`);
-  const texts: (string | null)[] = h.via === "token" ? await Promise.all(hits.map((x) => notionPageText(h.token, x.id).catch(() => null))) : (await runTools(h.server, hits.map((x) => RECIPES[id].fetch(x)))).map((t) => (t === null ? null : itemText(t)));
+  const texts: (string | null)[] =
+    h.via === "token"
+      ? await Promise.all(hits.map((x) => notionPageText(h.token, x.id).catch(() => null)))
+      : h.via === "mcp"
+        ? await withSignedIn(id, h.url, async (call) => {
+            const out: (string | null)[] = [];
+            // An item the tool can't give is noted; a sign-in the service stopped taking ends it.
+            for (const x of hits) out.push(await call(RECIPES[id].fetch(x)).then((t) => (t === null ? null : itemText(t)), (e: unknown) => (e instanceof SignInAgain ? Promise.reject(e) : null)));
+            return out;
+          })
+        : (await runTools(h.server, hits.map((x) => RECIPES[id].fetch(x)))).map((t) => (t === null ? null : itemText(t)));
   const out: ImportResult = { added: [], skipped: [], failed: [] };
   const have = await store.listSources();
   for (const [i, hit] of hits.entries()) {

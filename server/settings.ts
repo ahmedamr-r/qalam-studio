@@ -14,8 +14,8 @@ export interface Settings {
   engine?: "cli" | "api";
   /** When the first-run welcome was finished on this computer. */
   welcomedAt?: number;
-  /** How each connector is reached: through Claude Code's server of that name, or a token in the Keychain. */
-  connectors?: Record<string, { via: "claude-code"; server: string } | { via: "token" }>;
+  /** How each connector is reached: through Claude Code's server of that name, a token in the Keychain, or Qalam's own sign-in to the service's MCP server at `url` (its tokens in the Keychain). */
+  connectors?: Record<string, { via: "claude-code"; server: string } | { via: "token" } | { via: "oauth"; url: string }>;
 }
 
 const file = () => path.join(localDir(), "settings.json");

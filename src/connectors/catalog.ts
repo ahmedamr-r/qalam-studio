@@ -2,9 +2,9 @@
  * The tools an organization's material comes from, in the four groups Connections shows (browser-
  * safe). Each says what it brings (material to read, work to link, numbers for outcomes), how Claude
  * Code may already know it (its claude.ai connectors, plugins and servers), and whether Qalam can keep
- * a token for it itself. What works today: `imports` (bringing material in), `status` (a linked
- * item's status on solution cards) and `numbers` (an outcome's number); the rest show where they
- * stand and come next.
+ * a token for it itself or sign in to its MCP server. What works today: `imports` (bringing material
+ * in), `status` (a linked item's status on solution cards) and `numbers` (an outcome's number); the
+ * rest show where they stand and come next.
  */
 
 export type ConnectorGroup = "docs" | "voice" | "build" | "numbers";
@@ -25,6 +25,8 @@ export interface ConnectorDef {
   claudeCode: RegExp;
   /** A token Qalam can keep for it in the Keychain, and where one is made. */
   token?: { label: string; href: string; placeholder: string };
+  /** The service's own MCP server, which Qalam can sign in to itself in the browser (server/connectors/oauth.ts). */
+  mcp?: { url: string };
   imports: boolean;
   /** Its items' status shows on solution cards linked to them: with a token, or with none (public). */
   status?: "token" | "public";
@@ -33,7 +35,7 @@ export interface ConnectorDef {
 }
 
 export const CATALOG: readonly ConnectorDef[] = [
-  { id: "notion", label: "Notion", group: "docs", feeds: "material", claudeCode: /\bnotion\b/i, token: { label: "Internal integration secret", href: "https://www.notion.so/profile/integrations", placeholder: "ntn_…" }, imports: true },
+  { id: "notion", label: "Notion", group: "docs", feeds: "material", claudeCode: /\bnotion\b/i, token: { label: "Internal integration secret", href: "https://www.notion.so/profile/integrations", placeholder: "ntn_…" }, mcp: { url: "https://mcp.notion.com/mcp" }, imports: true },
   { id: "drive", label: "Google Drive", group: "docs", feeds: "material", claudeCode: /google[ _]drive/i, imports: false },
   { id: "confluence", label: "Confluence", group: "docs", feeds: "material", claudeCode: /confluence|atlassian/i, imports: false },
   { id: "slack", label: "Slack", group: "voice", feeds: "material", claudeCode: /\bslack\b/i, imports: false },

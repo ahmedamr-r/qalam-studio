@@ -37,7 +37,8 @@ app.use("/*", serveStatic({ root: dist }));
 // Every other path is a page of the app (client-side routes such as /d/<id>).
 app.get("*", serveStatic({ path: path.join(dist, "index.html") }));
 
-serve({ fetch: app.fetch, hostname: "127.0.0.1", port: cfg.port }, (info) => {
+// The platform's own Request and Response stay global: the MCP SDK checks `instanceof Response` on what fetch returns.
+serve({ fetch: app.fetch, hostname: "127.0.0.1", port: cfg.port, overrideGlobalObjects: false }, (info) => {
   const link = `http://127.0.0.1:${info.port}/${cfg.token ? `?t=${cfg.token}` : ""}`;
   console.log(`Qalam is running at ${link}`);
 });

@@ -8,7 +8,7 @@
   - `pnpm dev` runs Vite on 127.0.0.1:3101 with the server mounted at `/api/*` (`server/vite.ts`). An edit to a route or to `src/ai` takes effect on the next request.
   - `pnpm build && pnpm start` serves `dist/` and the server from one Node process (`server/serve.ts`).
   - Requests are checked by `server/guard.ts` (Host must be this machine; writes must come from this origin; optional launch token).
-- **Desktop app:** `electron/main.ts` serves the built UI at `qalam://app` and forwards `/api/*` to the core, a background utility process (`server/core.ts`), over a message port (`server/rpc.ts`). No network port is opened. `vite.desktop.config.ts` bundles both into `out/`, so the installed app needs only Electron.
+- **Desktop app:** `electron/main.ts` serves the built UI at `qalam://app` and forwards `/api/*` to the core, a background utility process (`server/core.ts`), over a message port (`server/rpc.ts`). No network port is opened, except the one-time sign-in listener on 127.0.0.1 (see Connectors). `vite.desktop.config.ts` bundles both into `out/`, so the installed app needs only Electron.
   - `pnpm desktop` builds and opens it; `pnpm desktop:dev` opens the window on the Vite dev server.
   - `bin/qalam-studio.mjs` is the `npx qalam-studio` launcher.
   - **The menu bar (`electron/tray.ts`):** Qalam stays there when its window closes (`desktop.json`'s `keepInMenuBar`), so the inbox and connectors keep working.
@@ -30,10 +30,18 @@
   - A need's topic page opens on the same summary (`summary` in the topic view, `NeedStrip`), and "Start a board" makes it a board's first card (`startBoardForNeed`).
   - Small marks for amounts and states are in `src/ui/viz.tsx`.
 - **Capture:** material added to the organization rather than a board goes through `captureSource` (`server/capture.ts`) in the core: kept as a source with no board, read (the extract call), filed into the topic pages (`fileMaterial`, `src/hub/filing.ts`, which the window's `src/org/filing.ts` also runs with its own dependencies), then placed: one synthesize call over the boards' trees, its answer split by board before `sanitizeSynthesis`, each board's proposals kept in its own file (`hub/placements/<board>.json`, `setPlacements` in `server/org/store.ts`, so accepting on a board never races a capture writing the source). A board finds them through `GET /api/org/:org/placements` and reviews them as its own (`{ kind: "placed" }` in `src/ui/discovery/review.ts`); "Needs a look" says they wait. The calls are described once (`extractCall`, `synthesizeCall`, `topicsCall`) for the routes and the core's `structured()`. Reading files is shared (`src/discovery/ingest/core.ts`, readers passed in): the window reads with pdf.js in a worker and DOMParser, the core with pdf.js's legacy build in-process and mammoth (`server/ingest.ts`). The home's Add reads in the window and posts to `/capture`; the inbox folder (`server/inbox.ts`, started for each store as it opens; the organization opened last opens when the core starts, `openLastOrg`) reads in the core, claims each file by moving it into `inbox/.taking/` (two Qalams on one folder never take a file twice), then moves it to `inbox/added` or `inbox/not-read`. One store per organization per process (`storeFor`), however many requests ask at once.
-- **Connectors:** the catalog's four groups are in `src/connectors/catalog.ts`. Material comes in through two paths:
+- **Connectors:** the catalog's four groups are in `src/connectors/catalog.ts`. Material comes in through three paths:
   - **Claude Code's own connectors** (claude.ai's included), used through it. `claude mcp list` (`parseMcpList`) is run only on demand and kept 5 min.
     - The tool-runner (`runTools` in `server/connectors/claude-code.ts`) makes the calls code planned in a short `claude -p` whose only allowed tools are those, and keeps each answer as the server gave it.
     - It loads the user's settings, so it starts their MCP servers first and is slow (about a minute).
+  - **Qalam's own sign-in** to the service's MCP server (`ConnectorDef.mcp`; Notion's is `https://mcp.notion.com/mcp`), in `server/connectors/oauth.ts`:
+    - OAuth 2.1 with PKCE, Qalam registering itself, through the MCP SDK's `auth()`. The page opens in the system's browser (`/usr/bin/open`, web addresses only), and `POST /api/connectors/:id/signin` streams its address for a link.
+    - The page comes back to a listener on 127.0.0.1, the one network port Qalam opens. It is open only for that sign-in: it takes one answer with the sign-in's state on this Host, or closes after 5 minutes or on Stop (`DELETE …/signin`).
+    - The answer's `iss` must be the issuer. The code is exchanged, and one call (`listTools`, the recipe's tools present) is made before anything is kept.
+    - The registration goes in the Keychain as `connector:<id>:client`, the tokens as `connector:<id>:oauth`, and the settings say `{ via: "oauth", url }`.
+    - Calls go straight to the server (`withSignedIn`, `server/connectors/mcp.ts`), one session per connector at a time. A token is refreshed when the server asks.
+    - A refused refresh drops the tokens, and the card says "Sign in again". A service that's down keeps them. Disconnect revokes them at the service (RFC 7009) before forgetting them.
+    - Both servers keep the platform's `Response` global (`overrideGlobalObjects: false`): the SDK checks `instanceof Response`, and Hono's own class broke that.
   - **A token Qalam keeps in the Keychain:** for Notion, its own API (`server/connectors/notion-api.ts`).
   - Recipes say what to call and how to read the answer (`src/connectors/recipes.ts`). Picked items go to `captureSource` as `kind: "connector"` with their URL as `origin`; the same origin with the same words is skipped (`importItems`).
   - How each is reached is in the settings' `connectors`.
@@ -60,6 +68,8 @@
   - The server reads `.env.local`, then `.env` (`server/env.ts`); a variable already in the environment wins.
   - This computer's own choices are in `~/Qalam/.qalam/settings.json` (`server/settings.ts`). That's the engine and when the welcome was done.
   - Secrets go in the macOS Keychain under "Qalam Studio" (`server/secrets.ts`, through `/usr/bin/security`). A value goes in on stdin, never as an argument. `QALAM_SECRETS=memory` in tests.
+    - `security -i` reads lines of at most 4096 characters, so a value over 1500 bytes is kept in parts (`inParts`): the item of its name points to them, and new parts are written before the pointer.
+    - `QALAM_KEYCHAIN_TEST=1 pnpm vitest run server/secrets.test.ts` runs the round trip on the real Keychain.
 - **Engine and Connections:**
   - Qalam AI's engine is read at every call (`backend()`, `apiKey()` and `bin()` in `src/ai/engine.ts`), so switching it in Connections needs no restart.
   - `server/engine.ts` loads it from the settings and the Keychain before the first answer (`ensureEngine`), switches it, keeps a key only after a live test passes, and announces an `engine` event to every open organization.

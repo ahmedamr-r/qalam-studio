@@ -8,6 +8,7 @@ import { connectorsView, forgetConnector, importItems, listClaudeCode, saveToken
 import { storeFor } from "../org/home";
 import type { OstWork } from "@/discovery/types";
 import { readInsight, searchInsights } from "../connectors/numbers";
+import { cancelSignIn, signIn } from "../connectors/oauth";
 import { workStatuses } from "../connectors/work";
 
 /**
@@ -67,6 +68,16 @@ export function connectionsRoutes(): Hono {
       return c.json({ error: "token_failed", message: e instanceof Error ? e.message : String(e) }, 400);
     }
   });
+  // Qalam's own sign-in to the service, in the system's browser: the page's address, then the connectors once it's done.
+  r.post("/api/connectors/:id/signin", (c) => {
+    const id = c.req.param("id");
+    if (!connectorDef(id)?.mcp) return c.json({ error: "bad_request", message: "Qalam can't sign in to this one itself yet." }, 400);
+    return ndjson(async (_emit, send) => {
+      await signIn(id, { onUrl: (url) => send({ type: "open", url }) });
+      return connectorsView();
+    });
+  });
+  r.delete("/api/connectors/:id/signin", (c) => c.json({ stopped: cancelSignIn(c.req.param("id")) }));
   r.delete("/api/connectors/:id", async (c) => {
     await forgetConnector(c.req.param("id"));
     return c.json(await connectorsView());
@@ -119,8 +130,8 @@ export function connectionsRoutes(): Hono {
   return r;
 }
 
-/** Work streamed as NDJSON (activity lines, then the result or the error); it runs to its end whoever listens. */
-function ndjson(run: (emit: (label: string) => void) => Promise<unknown>): Response {
+/** Work streamed as NDJSON (activity lines and any others it sends, then the result or the error); it runs to its end whoever listens. */
+function ndjson(run: (emit: (label: string) => void, send: (line: Record<string, unknown>) => void) => Promise<unknown>): Response {
   const enc = new TextEncoder();
   let open = true;
   const body = new ReadableStream<Uint8Array>({
@@ -134,7 +145,7 @@ function ndjson(run: (emit: (label: string) => void) => Promise<unknown>): Respo
         }
       };
       try {
-        send({ type: "result", data: await run((label) => send({ type: "activity", label })) });
+        send({ type: "result", data: await run((label) => send({ type: "activity", label }), send) });
       } catch (e) {
         send({ type: "error", message: e instanceof Error ? e.message : String(e) });
       } finally {

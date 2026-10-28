@@ -23,12 +23,13 @@ export function qalamCore(): Plugin {
         const port = a && typeof a === "object" ? a.port : (server.config.server.port ?? 3101);
         return { port, subdomains: true, token: process.env.QALAM_TOKEN || undefined };
       };
+      // The platform's own Request and Response stay global: the MCP SDK checks `instanceof Response` on what fetch returns.
       const listener = getRequestListener(async (req) => {
         const verdict = checkRequest(factsOf(req), guard());
         if (!verdict.ok) return Response.json({ error: "forbidden", message: verdict.reason }, { status: verdict.status });
         const { createApi } = (await server.ssrLoadModule("/server/app.ts")) as typeof import("./app");
         return createApi().fetch(req);
-      });
+      }, { overrideGlobalObjects: false });
       server.middlewares.use((req: IncomingMessage, res: ServerResponse, next: () => void) => {
         if (req.url?.startsWith("/api/")) return void listener(req, res);
         const landing = req.method === "GET" && req.url?.includes("t=") ? tokenLanding(new URL(req.url, "http://localhost"), guard()) : null;

@@ -13,9 +13,9 @@ import { StatusDot } from "../viz";
 /*
  * Connectors in Connections: the four groups as cards, each with a dot and a word (Connected,
  * In Claude Code, Coming next…) and one action. One Claude Code already has is used with one click
- * (Claude Code keeps its sign-in); otherwise Qalam keeps a token in the Keychain. A connected one
- * brings material in: search it, pick, and each item is taken in like any source (read, filed,
- * placed on the boards).
+ * (Claude Code keeps its sign-in); otherwise Qalam signs in to the service itself in the browser, or
+ * keeps a token, either in the Keychain. A connected one brings material in: search it, pick, and
+ * each item is taken in like any source (read, filed, placed on the boards).
  */
 
 type View = Awaited<ReturnType<typeof connectorsDb.list>>;
@@ -82,6 +82,8 @@ function Card({ c, onView, onImport }: { c: ConnectorState; onView: (v: View) =>
   const [token, setToken] = useState("");
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  /** A sign-in under way in the browser, and its page once Qalam has it. */
+  const [signing, setSigning] = useState<{ page: string | null } | null>(null);
   const act = async (fn: () => Promise<View>) => {
     setBusy(true);
     setNote(null);
@@ -102,7 +104,21 @@ function Card({ c, onView, onImport }: { c: ConnectorState; onView: (v: View) =>
       return v;
     });
   };
-  const soon = !c.imports && !c.numbers && !c.status && !c.via && !c.claudeCode && !c.canToken;
+  const signIn = async () => {
+    setSigning({ page: null });
+    setNote(null);
+    try {
+      onView(await connectorsDb.signIn(c.id, (page) => setSigning({ page })));
+    } catch (e) {
+      setNote(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSigning(null);
+    }
+  };
+  const soon = !c.imports && !c.numbers && !c.status && !c.via && !c.claudeCode && !c.canToken && !c.canSignIn;
+  // The service stopped taking Qalam's sign-in.
+  const expired = c.via === "oauth" && c.tone === "warn";
+  const inClaudeCode = c.claudeCode?.status === "connected";
   return (
     <li className={clsx("flex flex-col gap-[8px] rounded-lg bg-panel px-[12px] py-[10px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]", soon && "opacity-60")}>
       <div className="flex items-center gap-[8px]">
@@ -112,30 +128,51 @@ function Card({ c, onView, onImport }: { c: ConnectorState; onView: (v: View) =>
           {c.word}
         </span>
       </div>
-      <div className="flex flex-wrap items-center gap-[6px]">
-        {c.via && c.imports && (
-          <Button size="sm" onClick={onImport}>
-            Bring in…
-          </Button>
-        )}
-        {!c.via && (c.imports || c.numbers) && c.claudeCode?.status === "connected" && (
-          <Button size="sm" variant="secondary" disabled={busy} onClick={() => void act(() => connectorsDb.viaClaudeCode(c.id, c.claudeCode!.server))}>
-            Use it
-          </Button>
-        )}
-        {!c.via && (c.imports || c.status === "token") && c.canToken && !tokenOpen && (
-          <button type="button" className={clsx(r.buttonSm, r.buttonGhost)} onClick={() => setTokenOpen(true)}>
-            Add a token
+      {signing ? (
+        <div className="flex flex-wrap items-center gap-[8px] text-caption text-fg-muted">
+          <span className="inline-flex items-center gap-[6px]">
+            <Spinner size={12} /> Waiting for {c.label}…
+          </span>
+          {signing.page && (
+            <a href={signing.page} target="_blank" rel="noreferrer" className="text-micro text-fg-subtle underline decoration-dotted underline-offset-2 hover:text-fg">
+              Open the page
+            </a>
+          )}
+          <button type="button" className={clsx(r.buttonSm, r.buttonGhost, "ml-auto")} onClick={() => void connectorsDb.stopSignIn(c.id)}>
+            Stop
           </button>
-        )}
-        {c.via && (
-          <button type="button" disabled={busy} className={clsx(r.buttonSm, r.buttonGhost, "ml-auto")} onClick={() => void act(() => connectorsDb.forget(c.id))}>
-            Disconnect
-          </button>
-        )}
-        {(c.via || c.status === "public") && !c.imports && <span className="text-micro text-fg-subtle">{c.numbers ? "Outcomes read their number from it" : "Shows where linked work stands"}</span>}
-        {!c.via && !c.imports && !c.numbers && !c.status && (c.claudeCode || c.canToken) && <span className="text-micro text-fg-subtle">Coming next</span>}
-      </div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-[6px]">
+          {c.via && c.imports && !expired && (
+            <Button size="sm" onClick={onImport}>
+              Bring in…
+            </Button>
+          )}
+          {!c.via && (c.imports || c.numbers) && inClaudeCode && (
+            <Button size="sm" variant="secondary" disabled={busy} onClick={() => void act(() => connectorsDb.viaClaudeCode(c.id, c.claudeCode!.server))}>
+              Use it
+            </Button>
+          )}
+          {c.canSignIn && (!c.via || expired) && (
+            <Button size="sm" variant={inClaudeCode && !c.via ? "ghost" : "secondary"} disabled={busy} onClick={() => void signIn()}>
+              Sign in
+            </Button>
+          )}
+          {!c.via && (c.imports || c.status === "token") && c.canToken && !tokenOpen && (
+            <button type="button" className={clsx(r.buttonSm, r.buttonGhost)} onClick={() => setTokenOpen(true)}>
+              Add a token
+            </button>
+          )}
+          {c.via && (
+            <button type="button" disabled={busy} className={clsx(r.buttonSm, r.buttonGhost, "ml-auto")} onClick={() => void act(() => connectorsDb.forget(c.id))}>
+              Disconnect
+            </button>
+          )}
+          {(c.via || c.status === "public") && !c.imports && <span className="text-micro text-fg-subtle">{c.numbers ? "Outcomes read their number from it" : "Shows where linked work stands"}</span>}
+          {!c.via && !c.imports && !c.numbers && !c.status && (c.claudeCode || c.canToken) && <span className="text-micro text-fg-subtle">Coming next</span>}
+        </div>
+      )}
       {tokenOpen && c.tokenHelp && (
         <form onSubmit={save} className="flex flex-col gap-[6px]">
           <span className={r.field}>
