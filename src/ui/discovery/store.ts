@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { Notice } from "@/hub/checks";
+import type { WorkStatus } from "@/connectors/work";
 
 /**
  * The Discovery board's UI state (not the document): which card's title is being typed, what
@@ -32,8 +33,10 @@ interface DiscoveryUI {
   quoteDrop: { target: string; ok: boolean } | null;
   /** What needs a look about this board's cards (the canvas marks them; the card panel says why). */
   notices: Notice[];
+  /** Where the work linked to solutions stands, by connector:ref (src/ui/discovery/work.ts). */
+  work: Record<string, WorkStatus>;
 }
 
-export const useDiscovery = create<DiscoveryUI>(() => ({ editing: null, sheet: "closed", designFor: null, designs: {}, dragging: false, drafting: null, quoteDrop: null, notices: [] }));
+export const useDiscovery = create<DiscoveryUI>(() => ({ editing: null, sheet: "closed", designFor: null, designs: {}, dragging: false, drafting: null, quoteDrop: null, notices: [], work: {} }));
 
 export const discovery = () => useDiscovery.getState();

@@ -8,6 +8,7 @@ import { secrets } from "../secrets";
 import { readSettings, writeSettings } from "../settings";
 import { claudeCodeKnown, listClaudeCode, runTools } from "./claude-code";
 import { notionPageText, notionSearch, notionWhoAmI } from "./notion-api";
+import { linearWhoAmI } from "./work";
 
 /*
  * The organization's connectors on this computer: how each is reached (Claude Code's server of
@@ -29,7 +30,7 @@ export async function connectorsView(): Promise<{ checkedAt: number | null; conn
       const listed = known ? matchClaudeCode(def, known.list) : null;
       const how = chosen[def.id];
       const token = def.token ? await secrets().get(tokenName(def.id)).catch(() => null) : null;
-      const base = { id: def.id, label: def.label, group: def.group, feeds: def.feeds, imports: def.imports, claudeCode: listed ? { server: listed.name, status: listed.status } : null, token: token ? { last4: token.slice(-4) } : null, canToken: !!def.token, tokenHelp: def.token ?? null };
+      const base = { id: def.id, label: def.label, group: def.group, feeds: def.feeds, imports: def.imports, status: def.status ?? null, numbers: !!def.numbers, claudeCode: listed ? { server: listed.name, status: listed.status } : null, token: token ? { last4: token.slice(-4) } : null, canToken: !!def.token, tokenHelp: def.token ?? null };
       return { ...base, ...stateOf(def, how?.via === "claude-code" ? (listed?.name === how.server ? listed.status : "unknown") : null, how?.via ?? null, !!token, listed?.status ?? null) };
     }),
   );
@@ -39,10 +40,11 @@ export async function connectorsView(): Promise<{ checkedAt: number | null; conn
 /** One word and a dot for a connector's card. */
 function stateOf(def: ConnectorDef, chosenStatus: ListedStatus | null, via: "claude-code" | "token" | null, hasToken: boolean, listed: ListedStatus | null): Pick<ConnectorState, "via" | "word" | "tone"> {
   if (via === "token" && hasToken) return { via, word: "Connected", tone: "ok" };
+  if (def.status === "public") return { via: null, word: "Public repositories", tone: "ok" };
   if (via === "claude-code") return chosenStatus === "connected" || chosenStatus === "unknown" ? { via, word: "Through Claude Code", tone: "ok" } : { via, word: "Sign in in Claude Code", tone: "warn" };
   if (listed === "connected") return { via: null, word: "In Claude Code", tone: "off" };
   if (listed === "needs-auth") return { via: null, word: "Sign in in Claude Code", tone: "off" };
-  return { via: null, word: def.imports || def.token ? "Not connected" : "Coming next", tone: "off" };
+  return { via: null, word: def.imports || def.token || def.numbers ? "Not connected" : "Coming next", tone: "off" };
 }
 
 /** Use Claude Code's server for it (the user signed it in there). */
@@ -54,8 +56,9 @@ export async function viaClaudeCode(id: string, server: string) {
 /** Check a token with the service, keep it in the Keychain, and use it. Throws why not. */
 export async function saveToken(id: string, raw: string, f?: typeof fetch): Promise<string> {
   const token = raw.trim();
-  if (id !== "notion") throw new Error("Qalam can't keep a token for this one yet.");
-  const who = await notionWhoAmI(token, f);
+  const check = TOKEN_CHECKS[id];
+  if (!check) throw new Error("Qalam can't keep a token for this one yet.");
+  const who = await check(token, f);
   await secrets().set(tokenName(id), token);
   const all = (await readSettings()).connectors ?? {};
   await writeSettings({ connectors: { ...all, [id]: { via: "token" } } });
@@ -68,6 +71,9 @@ export async function forgetConnector(id: string) {
   delete all[id];
   await writeSettings({ connectors: all });
 }
+
+/** Whose token it is, asked of the service (it throws when the service refuses it). */
+const TOKEN_CHECKS: Record<string, (token: string, f?: typeof fetch) => Promise<string>> = { notion: notionWhoAmI, linear: linearWhoAmI };
 
 async function how(id: string) {
   const def = connectorDef(id);

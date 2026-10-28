@@ -6,7 +6,7 @@ import { noticesDb, onNoticesWritten, type LinkedCard } from "@/org/notices";
 import { useEffect, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import clsx from "clsx";
-import { ExternalLink, Plus, Quote, X } from "lucide-react";
+import { ChartLine, ExternalLink, Plus, Quote, X } from "lucide-react";
 import { studio, useStudio } from "@/doc/store";
 import { newId } from "@/doc/factory";
 import { isOstCard } from "@/doc/board";
@@ -16,7 +16,14 @@ import { ASSUMPTION_CATEGORIES, ASSUMPTION_HINT, ASSUMPTION_LABEL, KIND_LABEL, S
 import { kindLabel } from "@/discovery/tree";
 import { evidenceLabel, isAIIdea, isAssumed } from "@/discovery/evidence";
 import { feedback } from "@/commands/feedback";
-import type { AssumptionCategory, OstCard, OstEvidence, OstStage } from "@/discovery/types";
+import type { AssumptionCategory, OstCard, OstEvidence, OstMetric, OstStage } from "@/discovery/types";
+import { parseWorkUrl, WORK_LABEL, workKey } from "@/connectors/work";
+import type { InsightNumbers } from "@/connectors/numbers";
+import type { Hit } from "@/connectors/recipes";
+import { numbersDb } from "@/org/connectors";
+import { placeHref } from "@/projects/model";
+import { ago } from "../time";
+import { refreshWork } from "./work";
 import { Button, Field, Hint, IconBtn, Row, Section, Segmented, Select, Tag } from "../controls";
 import { r } from "../recipes";
 import { CommitArea, CommitInput, CommitNumber } from "./fields";
@@ -113,6 +120,7 @@ function OneCard({ id, card }: { id: string; card: OstCard }) {
       {(card.kind === "opportunity" || card.kind === "solution" || (card.kind === "outcome" && card.evidence.length > 0)) && <EvidenceSection id={id} card={card} />}
       {card.kind === "solution" && <AssumptionsSection id={id} card={card} />}
       {card.kind === "solution" && <DesignsSection id={id} card={card} />}
+      {card.kind === "solution" && <WorkSection id={id} card={card} />}
       {card.kind === "test" && <TestSection id={id} card={card} />}
       <HistorySection id={id} />
     </>
@@ -243,6 +251,205 @@ function MetricSection({ id, card }: { id: string; card: OstCard }) {
       <Field label="By when">
         <CommitInput ariaLabel="Timeframe" value={m.timeframe ?? ""} placeholder="End of Q1" onCommit={(t) => set({ timeframe: t.trim() || undefined })} />
       </Field>
+      <MetricSource id={id} m={m} />
+    </Section>
+  );
+}
+
+/**
+ * Where the number comes from: a saved PostHog insight, read through Claude Code's PostHog server.
+ * Code reads the number from PostHog's own answer; reading it isn't a decision. Each read takes
+ * about a minute (Claude Code starts its servers first).
+ */
+function MetricSource({ id, m }: { id: string; m: OstMetric }) {
+  const [step, setStep] = useState<"idle" | "pick" | "series">("idle");
+  const [query, setQuery] = useState("");
+  const [hits, setHits] = useState<Hit[] | null>(null);
+  const [series, setSeries] = useState<{ hit: Hit; read: InsightNumbers } | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const run = async (label: string, fn: () => Promise<void>) => {
+    setBusy(label);
+    setError(null);
+    try {
+      await fn();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+  const apply = (hit: Pick<Hit, "id" | "title" | "url">, s: { label: string; value: number }, url?: string) => {
+    edit(id, (c) => void (c.metric = { ...m, current: s.value, source: { connector: "posthog", ref: hit.id, ...(url ?? hit.url ? { url: url ?? hit.url } : {}), label: hit.title, series: s.label }, readAt: Date.now() }));
+    setStep("idle");
+    setSeries(null);
+  };
+  /** Read it, and use the series asked for, the only one, or ask which. */
+  const read = (hit: Pick<Hit, "id" | "title" | "url">, want?: string) =>
+    run("Reading it through Claude Code…", async () => {
+      const r = await numbersDb.read(hit.id);
+      if (!r.series.length) throw new Error("This insight has no one number to read. Pick another, or type the number.");
+      const s = want ? r.series.find((x) => x.label === want) : r.series.length === 1 ? r.series[0] : undefined;
+      if (s) return apply({ ...hit, title: r.name ?? hit.title }, s, r.url);
+      setSeries({ hit: { ...hit, title: r.name ?? hit.title }, read: r });
+      setStep("series");
+    });
+  const src = m.source?.connector === "posthog" ? m.source : null;
+  return (
+    <div className="flex flex-col gap-[6px] pt-[4px]">
+      {src && step === "idle" ? (
+        <div className="flex items-center gap-[6px] text-caption text-fg-muted">
+          <ChartLine {...ICON} />
+          <span className="min-w-0 flex-1 truncate">
+            PostHog · {src.label ?? src.ref}
+            {src.series && src.series !== src.label ? ` · ${src.series}` : ""}
+            {m.readAt ? ` · read ${ago(m.readAt)}` : ""}
+          </span>
+          {src.url && (
+            <a href={src.url} target="_blank" rel="noreferrer" aria-label="Open it in PostHog" className={r.iconButtonSm}>
+              <ExternalLink {...ICON} />
+            </a>
+          )}
+          <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => void read({ id: src.ref, title: src.label ?? src.ref, url: src.url }, src.series)}>
+            Read again
+          </Button>
+          <IconBtn size="sm" label="Stop reading it from PostHog" onClick={() => edit(id, (c) => void (c.metric = { ...m, source: undefined, readAt: undefined }))}>
+            <X {...ICON} />
+          </IconBtn>
+        </div>
+      ) : step === "idle" ? (
+        <Button size="sm" variant="secondary" className="self-start" onClick={() => setStep("pick")}>
+          <ChartLine {...ICON} />
+          Read it from PostHog…
+        </Button>
+      ) : null}
+      {step === "pick" && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void run("Asking PostHog through Claude Code…", async () => setHits((await numbersDb.insights(query)).hits));
+          }}
+          className="flex flex-col gap-[6px]"
+        >
+          <span className="flex items-center gap-[6px]">
+            <span className={clsx(r.field, "flex-1")}>
+              <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="A saved insight's name" aria-label="Search PostHog's insights" className={r.fieldInput} />
+            </span>
+            <Button type="submit" size="sm" variant="secondary" disabled={!!busy}>
+              Find
+            </Button>
+            <IconBtn size="sm" label="Cancel" onClick={() => (setStep("idle"), setHits(null))}>
+              <X {...ICON} />
+            </IconBtn>
+          </span>
+          {hits?.map((h) => (
+            <button key={h.id} type="button" disabled={!!busy} onClick={() => void read(h)} className="q-item flex flex-col items-start rounded-md px-[6px] py-[4px] text-left hover:bg-hover">
+              <span className="truncate text-caption text-fg">{h.title}</span>
+              {h.snippet && <span className="truncate text-micro text-fg-subtle">{h.snippet}</span>}
+            </button>
+          ))}
+          {hits && !hits.length && <p className="text-micro text-fg-subtle">No saved insight by that name.</p>}
+        </form>
+      )}
+      {step === "series" && series && (
+        <div className="flex flex-col gap-[2px]">
+          <span className="text-micro text-fg-subtle">Which of its numbers is this outcome’s?</span>
+          {series.read.series.map((s) => (
+            <button key={s.label} type="button" onClick={() => apply(series.hit, s, series.read.url)} className="q-item flex items-center justify-between gap-[8px] rounded-md px-[6px] py-[4px] text-left text-caption hover:bg-hover">
+              <span className="truncate text-fg">{s.label}</span>
+              <span className="tnum text-fg-muted">{s.value}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {busy && <p className="q-shimmer-text text-micro text-fg-muted">{busy} about a minute</p>}
+      {error && (
+        <p className="text-micro text-danger">
+          {error}{" "}
+          {/Connections/.test(error) && (
+            <a href={placeHref("connections")} onClick={saveThenGo} className="underline">
+              Open Connections
+            </a>
+          )}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Where the solution is being built or designed: Linear and GitHub issues and pull requests (with
+ * where they stand, as the tool says), Jira issues, Figma designs. The stage stays the team's call.
+ */
+function WorkSection({ id, card }: { id: string; card: OstCard }) {
+  const statuses = useDiscovery((s) => s.work);
+  const [url, setUrl] = useState("");
+  const [note, setNote] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const work = card.work ?? [];
+  const add = () => {
+    const w = parseWorkUrl(url);
+    if (!w) return setNote("Paste a Linear or Jira issue, a GitHub issue or pull request, or a Figma design.");
+    if (work.some((x) => workKey(x) === workKey(w))) return setNote("It's linked already.");
+    edit(id, (c) => void (c.work = [...(c.work ?? []), w]));
+    setUrl("");
+    setNote(null);
+    void refreshWork([w]);
+  };
+  return (
+    <Section title={`Work${work.length ? ` · ${work.length}` : ""}`}>
+      {work.map((w) => {
+        const st = statuses[workKey(w)];
+        return (
+          <div key={workKey(w)} className="flex h-[28px] items-center gap-[8px] rounded-md px-[6px] text-caption hover:bg-hover">
+            <span className="shrink-0 text-fg-subtle">{WORK_LABEL[w.connector] ?? w.connector}</span>
+            <span className="min-w-0 flex-1 truncate text-fg" title={st?.title}>
+              {w.ref}
+            </span>
+            {st?.label && (
+              <span className={clsx("inline-flex shrink-0 items-center gap-[4px]", st.state === "done" ? "text-success" : st.state === "canceled" ? "text-warning" : "text-fg-muted")}>
+                <span aria-hidden className="size-[6px] rounded-full bg-current" />
+                {st.label}
+              </span>
+            )}
+            <a href={w.url} target="_blank" rel="noreferrer" aria-label={`Open ${w.ref}`} className={r.iconButtonSm}>
+              <ExternalLink {...ICON} />
+            </a>
+            <IconBtn size="sm" label={`Unlink ${w.ref}`} onClick={() => edit(id, (c) => void (c.work = (c.work ?? []).filter((x) => workKey(x) !== workKey(w))))}>
+              <X {...ICON} />
+            </IconBtn>
+          </div>
+        );
+      })}
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          add();
+        }}
+        className="flex items-center gap-[6px]"
+      >
+        <span className={clsx(r.field, "flex-1")}>
+          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Paste an issue, PR or design link" aria-label="Link work" className={r.fieldInput} />
+        </span>
+        <Button type="submit" size="sm" variant="secondary" disabled={!url.trim()}>
+          Link
+        </Button>
+      </form>
+      {note && <p className="text-micro text-fg-subtle">{note}</p>}
+      {work.some((w) => w.connector === "linear" || w.connector === "github") && (
+        <Button
+          size="sm"
+          variant="ghost"
+          className="self-start"
+          disabled={busy}
+          onClick={() => {
+            setBusy(true);
+            void refreshWork(work, true).finally(() => setBusy(false));
+          }}
+        >
+          {busy ? "Asking…" : "Ask again where they stand"}
+        </Button>
+      )}
     </Section>
   );
 }

@@ -38,6 +38,14 @@
   - Recipes say what to call and how to read the answer (`src/connectors/recipes.ts`). Picked items go to `captureSource` as `kind: "connector"` with their URL as `origin`; the same origin with the same words is skipped (`importItems`).
   - How each is reached is in the settings' `connectors`.
   - Importing works for Notion today. Drive, Slack and the rest show where they stand ("In Claude Code", "Coming next").
+  - **Work:** a solution card links issues, PRs and designs by address (`OstCard.work`, `parseWorkUrl` in `src/connectors/work.ts`).
+    - Linear (with its key in the Keychain) and public GitHub say where each stands. Answers are kept per computer in `<org>/.qalam/local/work.json` (`workStatuses`, `POST /api/org/:org/work/status`).
+    - The card shows the furthest one along after its kind (`work` in the painter's input).
+    - The stage stays the team's. The `work-drift` check says when the tool and the stage disagree.
+  - **Numbers:** an outcome's metric can read `current` from a saved PostHog insight through Claude Code's PostHog server (`src/connectors/numbers.ts`, `server/connectors/numbers.ts`).
+    - Code reads the number from PostHog's own answer (`insightNumbers`) and asks which series when there are several.
+    - The metric keeps `source` and `readAt`. A read is not a decision (`decisionsFromDiff` skips it), and it quiets the "nobody updates it" check.
+  - **Tool-runner arguments:** a planned call can say which of its arguments must match (`ToolCall.match`; PostHog's tool asks the model for its own name). The run ends as soon as every call is answered.
 - **First run:** with no organization yet, the server makes none (`currentOrg` returns null), and the window opens `/welcome` (`src/ui/welcome/`, `NoOrgYet`).
   - The welcome finds the Claude this Mac has: Claude Code signed in, with no key set, is chosen.
   - It makes a short real call, asks for the name, then hands over to the setup page in focus mode (`?first=1`: no sidebar, the four steps on top, "Set up later").

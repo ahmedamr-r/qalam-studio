@@ -1,4 +1,5 @@
 import { useStudio, registerDocPass, studio } from "@/doc/store";
+import { startWork } from "./work";
 import type { Doc } from "@/doc/schema";
 import { isOstCard } from "@/doc/board";
 import { clearMeasureCache } from "@/doc/measure";
@@ -55,6 +56,8 @@ export function startDiscoveryStudio(p: Project): (doc: Doc) => void {
   if (!hasTree && stage !== "ready") useDiscovery.setState({ sheet: stage === "interview" ? "interview" : "start" });
 
   void refreshDesigns(p.id);
+  // Where its solutions' linked issues and pull requests stand (the cards' chips).
+  startWork();
   // What gets decided on the board goes to the organization's decision log.
   startRecorder();
   ensureDumpHandlers();

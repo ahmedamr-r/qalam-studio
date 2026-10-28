@@ -32,7 +32,11 @@ export async function listClaudeCode(force = false): Promise<ListedServer[] | nu
 /** The last answer, without asking again (null: never asked since Qalam started). */
 export const claudeCodeKnown = () => (g.__qalamMcpList ? { at: g.__qalamMcpList.at, list: g.__qalamMcpList.list } : null);
 
-const MODEL = process.env.CONNECTOR_MODEL || "claude-haiku-5-5";
+// An alias Claude Code knows (a full id it doesn't know yet falls back to its default).
+const MODEL = process.env.CONNECTOR_MODEL || "haiku";
+/** A run that hasn't made its calls by now is stopped. */
+const LIMIT_MS = 150_000;
+const pick = (args: Record<string, unknown>, keys: string[] | undefined) => (keys ? Object.fromEntries(keys.map((k) => [k, args?.[k]])) : args);
 const canonical = (v: unknown): string => JSON.stringify(v, (_k, x) => (x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => a.localeCompare(b))) : x));
 
 /** Each call's answer, in order (null: it failed, or wasn't made as planned). */
@@ -57,14 +61,27 @@ export function runTools(server: string, calls: ToolCall[], signal?: AbortSignal
       "--no-session-persistence",
     ];
     const proc = spawn(/*turbopackIgnore: true*/ bin(), args, { cwd: workDir(), env: { ...childEnv(4000), MAX_MCP_OUTPUT_TOKENS: "40000" } });
-    const kill = () => proc.kill();
-    signal?.addEventListener("abort", kill, { once: true });
-    proc.on("error", (e) => reject(new Error(`Couldn't start Claude Code (${e.message}).`)));
-    proc.stdin.on("error", () => {});
-    proc.stdin.end(`${JSON.stringify({ type: "user", message: { role: "user", content: `Call:\n${asked}` } })}\n`);
     const results: (string | null)[] = calls.map(() => null);
     const made = new Map<string, number>();
     let result: Parameters<typeof fromCliResult>[0] | undefined;
+    // Settled once: with every answer in, on a stop, at the time limit, or when the run ends. It
+    // doesn't wait for the process's output to close (something it started may hold it open).
+    let settled = false;
+    const finish = (then: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(limit);
+      signal?.removeEventListener("abort", stop);
+      reportUsage(fromCliResult(result, MODEL));
+      proc.kill();
+      then();
+    };
+    const stop = () => finish(() => reject(new DOMException("Stopped.", "AbortError")));
+    signal?.addEventListener("abort", stop, { once: true });
+    const limit = setTimeout(() => finish(() => resolve(results)), LIMIT_MS);
+    proc.on("error", (e) => finish(() => reject(new Error(`Couldn't start Claude Code (${e.message}).`))));
+    proc.stdin.on("error", () => {});
+    proc.stdin.end(`${JSON.stringify({ type: "user", message: { role: "user", content: `Call:\n${asked}` } })}\n`);
     createInterface({ input: proc.stdout }).on("line", (line) => {
       let ev;
       try {
@@ -76,21 +93,18 @@ export function runTools(server: string, calls: ToolCall[], signal?: AbortSignal
         for (const b of ev.message?.content ?? []) {
           if (b.type !== "tool_use") continue;
           // Kept only when it's one of the planned calls, as planned (and not one already made).
-          const i = calls.findIndex((c, k) => prefix + c.tool === b.name && canonical(c.args) === canonical(b.input) && ![...made.values()].includes(k));
+          const i = calls.findIndex((c, k) => prefix + c.tool === b.name && canonical(pick(c.args, c.match)) === canonical(pick(b.input ?? {}, c.match)) && ![...made.values()].includes(k));
           if (i >= 0) made.set(b.id, i);
         }
-      else if (ev.type === "user")
+      else if (ev.type === "user") {
         for (const b of Array.isArray(ev.message?.content) ? ev.message.content : []) {
           if (b.type !== "tool_result" || b.is_error || !made.has(b.tool_use_id)) continue;
           results[made.get(b.tool_use_id)!] = resultText(b.content);
         }
-      else if (ev.type === "result") result = ev;
+        // Every planned call answered: nothing more is needed (and the model can't wander off).
+        if (results.every((x) => x !== null)) finish(() => resolve(results));
+      } else if (ev.type === "result") result = ev;
     });
-    proc.on("close", () => {
-      signal?.removeEventListener("abort", kill);
-      reportUsage(fromCliResult(result, MODEL));
-      if (signal?.aborted) return reject(new DOMException("Stopped.", "AbortError"));
-      resolve(results);
-    });
+    proc.on("close", () => finish(() => (signal?.aborted ? reject(new DOMException("Stopped.", "AbortError")) : resolve(results))));
   });
 }

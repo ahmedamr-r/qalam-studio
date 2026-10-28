@@ -6,6 +6,9 @@ import { connectorDef } from "@/connectors/catalog";
 import type { Hit } from "@/connectors/recipes";
 import { connectorsView, forgetConnector, importItems, listClaudeCode, saveToken, searchConnector, viaClaudeCode } from "../connectors";
 import { storeFor } from "../org/home";
+import type { OstWork } from "@/discovery/types";
+import { readInsight, searchInsights } from "../connectors/numbers";
+import { workStatuses } from "../connectors/work";
 
 /**
  * Connections' API: the engine Qalam AI runs on (which one, who pays, a test, a key kept in the
@@ -86,6 +89,32 @@ export function connectionsRoutes(): Hono {
     if (!picked.length) return c.json({ error: "bad_request", message: "Pick something to bring in." }, 400);
     // Taken in to the end even if the window goes: each item is kept, read, filed and placed.
     return ndjson((emit) => importItems(store, c.req.param("id"), picked, emit));
+  });
+  // An outcome's number from a saved PostHog insight (through Claude Code's PostHog server).
+  r.post("/api/connectors/posthog/insights", async (c) => {
+    const { query } = (await c.req.json().catch(() => ({}))) as { query?: unknown };
+    try {
+      return c.json({ hits: await searchInsights(typeof query === "string" ? query.trim().slice(0, 120) : "") });
+    } catch (e) {
+      return c.json({ error: "posthog", message: e instanceof Error ? e.message : String(e) }, 400);
+    }
+  });
+  r.post("/api/connectors/posthog/read", async (c) => {
+    const { ref } = (await c.req.json().catch(() => ({}))) as { ref?: unknown };
+    if (typeof ref !== "string" || !/^[A-Za-z0-9_-]{1,40}$/.test(ref)) return c.json({ error: "bad_request", message: "Which insight?" }, 400);
+    try {
+      return c.json(await readInsight(ref));
+    } catch (e) {
+      return c.json({ error: "posthog", message: e instanceof Error ? e.message : String(e) }, 400);
+    }
+  });
+  // Where the work linked to solutions stands (Linear, GitHub), kept per computer.
+  r.post("/api/org/:org/work/status", async (c) => {
+    const store = await storeFor(c.req.param("org"));
+    if (!store) return c.json({ error: "not_found", message: "No such organization." }, 404);
+    const { links, force } = (await c.req.json().catch(() => ({}))) as { links?: unknown; force?: unknown };
+    const list = (Array.isArray(links) ? links : []).filter((l): l is OstWork => !!l && typeof l.connector === "string" && typeof l.ref === "string" && typeof l.url === "string").slice(0, 60);
+    return c.json({ statuses: await workStatuses(store, list, { force: force === true }) });
   });
   return r;
 }

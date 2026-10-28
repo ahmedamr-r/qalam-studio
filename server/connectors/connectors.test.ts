@@ -58,6 +58,9 @@ describe("connectors on this computer", () => {
     expect(await card("notion")).toMatchObject({ claudeCode: { server: "claude.ai Notion", status: "connected" }, word: "In Claude Code" });
     expect(await card("posthog")).toMatchObject({ word: "Sign in in Claude Code" });
     expect(await card("mixpanel")).toMatchObject({ word: "Coming next", claudeCode: null });
+    expect(await card("github")).toMatchObject({ status: "public", word: "Public repositories" });
+    expect(await card("linear")).toMatchObject({ status: "token", canToken: true, word: "Not connected" });
+    expect(await card("posthog")).toMatchObject({ numbers: true });
   });
 
   it("takes in the picked pages with their words as Notion gave them, and skips what's already here", async () => {

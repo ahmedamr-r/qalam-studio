@@ -261,7 +261,8 @@ export function decisionsFromDiff(prev: Doc, next: Doc, ctx: DiffContext): Decis
     const t = after.get(id)!.card.title;
     if (b.target !== a.target)
       out.push(make({ kind: "metric", card: id, cardTitle: t, cardKind: "outcome", what: `Changed the target of ${q(t)} from ${num(b.target, a.unit)} to ${num(a.target, a.unit)}`, detail: { field: "target", from: b.target, to: a.target, metric: metricOf(a) }, big: true }));
-    if (b.current !== a.current)
+    // A number read from an analytics tool (readAt moved with it) is a reading, not a decision.
+    if (b.current !== a.current && a.readAt === b.readAt)
       out.push(make({ kind: "metric", card: id, cardTitle: t, cardKind: "outcome", what: `${q(t)} is at ${num(a.current, a.unit)} now (was ${num(b.current, a.unit)})`, detail: { field: "current", from: b.current, to: a.current, metric: metricOf(a) }, big: false }));
   }
   return out;

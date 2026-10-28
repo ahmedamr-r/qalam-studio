@@ -167,3 +167,24 @@ describe("what needs a look", () => {
     expect(noticeShape({ ...n, board: "../x" })?.board).toBeUndefined();
   });
 });
+
+describe("work and numbers", () => {
+  const work = { connector: "linear", ref: "ENG-12", url: "https://linear.app/b/issue/ENG-12" };
+  const at = (stage: OstCard["stage"]) => board("b1", "Checkout", { id: "o1", kind: "outcome", title: "Fewer abandoned baskets", stage: "active", children: [{ id: "s1", kind: "solution", title: "Fee breakdown", stage, work: [work] }] });
+
+  it("says when the tool a solution is built in disagrees with its stage", () => {
+    const done = { "linear:ENG-12": { state: "done" as const, label: "Done", at: ago(1) } };
+    const n = runChecks(input({ boards: [at("building")], work: done })).filter((x) => x.kind === "work-drift");
+    expect(n.map((x) => [x.key, x.title])).toEqual([["work-drift:hub:card:b1:s1:linear:ENG-12:done", "Linear says “ENG-12” is Done, and “Fee breakdown” is still building"]]);
+    expect(runChecks(input({ boards: [at("shipped")], work: done })).some((x) => x.kind === "work-drift")).toBe(false);
+    const canceled = { "linear:ENG-12": { state: "canceled" as const, label: "Canceled", at: ago(1) } };
+    expect(runChecks(input({ boards: [at("building")], work: canceled })).filter((x) => x.kind === "work-drift")).toHaveLength(1);
+    expect(runChecks(input({ boards: [at("idea")], work: canceled })).some((x) => x.kind === "work-drift")).toBe(false);
+  });
+
+  it("takes a number read from an analytics tool as an update", () => {
+    const outcome = (readAt?: number) => board("b1", "Reorders", { id: "o1", kind: "outcome", title: "More reorders", stage: "active", stageAt: ago(60), metric: { name: "Reorders", direction: "increase", baseline: 1, current: 1.2, target: 1.5, ...(readAt ? { source: { connector: "posthog", ref: "x" }, readAt } : {}) } });
+    expect(runChecks(input({ boards: [outcome()] })).some((x) => x.kind === "metric")).toBe(true);
+    expect(runChecks(input({ boards: [outcome(ago(2))] })).some((x) => x.kind === "metric")).toBe(false);
+  });
+});

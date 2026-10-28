@@ -34,6 +34,23 @@ function noticedCards(list: Notice[]): ReadonlySet<string> {
   return set;
 }
 import type { PointerInfo } from "./vector-tools";
+import { cardWork, type WorkStatus } from "@/connectors/work";
+import type { OstCard } from "@/discovery/types";
+
+/** Each solution's furthest-along linked work (kept while the document and the statuses are the same). */
+let workMemo: { doc: unknown; from: Record<string, WorkStatus>; map: Map<string, { label: string; tone: "ok" | "warn" | "off" }> } | null = null;
+function workChips(statuses: Record<string, WorkStatus>) {
+  const doc = studio().doc;
+  if (workMemo?.doc === doc && workMemo.from === statuses) return workMemo.map;
+  const map = new Map<string, { label: string; tone: "ok" | "warn" | "off" }>();
+  for (const [id, n] of Object.entries(doc.nodes)) {
+    const card = isOstCard(n) ? (n.meta as { ost?: OstCard }).ost : undefined;
+    const chip = card?.kind === "solution" ? cardWork(card.work, statuses) : null;
+    if (chip) map.set(id, chip);
+  }
+  workMemo = { doc, from: statuses, map };
+  return map;
+}
 
 /*
  * The Discovery board's own gestures (installed by the Discovery boot as the canvas delegate):
@@ -302,6 +319,7 @@ export function createOstTools(): CanvasDelegate {
         drop: drag?.active && drag.drop ? { target: drag.drop.target, line: drag.drop.line, ok: drag.drop.ok } : ui.quoteDrop ? { target: ui.quoteDrop.target, line: null, ok: ui.quoteDrop.ok } : null,
         hoverToggle,
         noticed: noticedCards(ui.notices),
+        work: workChips(ui.work),
       };
     },
   };

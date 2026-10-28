@@ -5,6 +5,7 @@ import type { OstCard } from "@/discovery/types";
 import { factHash } from "@/knowledge/refs";
 import { cardRef } from "./pieces";
 import { needEvidence, type PieceFacts, type ShownOn } from "./needs";
+import { WORK_LABEL, workKey, type WorkStatus } from "@/connectors/work";
 import { sameTopic, type Topic } from "./topics";
 
 /**
@@ -17,7 +18,7 @@ import { sameTopic, type Topic } from "./topics";
  * of what it's about and how strong it is: dismissed, it stays dismissed until it grows.
  */
 
-export type NoticeKind = "disputed" | "pattern" | "same-need" | "revisit" | "stale-test" | "untested" | "metric" | "orphan" | "review" | "placed";
+export type NoticeKind = "disputed" | "pattern" | "same-need" | "revisit" | "stale-test" | "untested" | "metric" | "orphan" | "review" | "placed" | "work-drift";
 
 export interface Notice {
   /** Stable: the same finding keeps its key, so a dismissed one never comes back. */
@@ -51,6 +52,7 @@ export const NOTICE_LABEL: Record<NoticeKind, string> = {
   orphan: "Page",
   review: "Qalam AI review",
   placed: "To review",
+  "work-drift": "Work",
 };
 
 /** How long before a running test, or an outcome's number, needs a look. */
@@ -83,6 +85,8 @@ export interface CheckInput {
   linked: Set<string>;
   /** Proposals waiting on a board from material added to the organization (a capture, the inbox). */
   placed?: { board: string; sourceId: string; title: string; count: number; at: number }[];
+  /** Where the work linked to solutions stands, as the tools last said (by connector:ref). */
+  work?: Record<string, WorkStatus>;
 }
 
 type Node = { parentId?: string | null; meta?: { ost?: OstCard } };
@@ -298,11 +302,31 @@ export function runChecks(x: CheckInput): Notice[] {
         });
       }
     }
-    // An outcome whose number nobody has updated in weeks.
+    // The tool a solution is built in says it's done (or dropped), and the card says otherwise: whose is right?
+    if (c.card.kind === "solution")
+      for (const w of c.card.work ?? []) {
+        const st = x.work?.[workKey(w)];
+        if (!st) continue;
+        const done = st.state === "done" && c.card.stage !== "shipped" && c.card.stage !== "dropped";
+        const gone = st.state === "canceled" && (c.card.stage === "building" || c.card.stage === "testing");
+        if (!done && !gone) continue;
+        const tool = WORK_LABEL[w.connector] ?? w.connector;
+        out.push({
+          key: `work-drift:${ref}:${workKey(w)}:${st.state}`,
+          kind: "work-drift",
+          title: `${tool} says ${q(clip(w.ref, 40))} is ${st.label || st.state}, and ${q(c.card.title)} is still ${c.card.stage}`,
+          why: done ? "Its work is done. Has it shipped, or is something left?" : "Its work was stopped. Is the solution still being built?",
+          at: st.at,
+          board: c.board.id,
+          card: c.id,
+          products: productsOf(c.board),
+        });
+      }
+    // An outcome whose number nobody has updated in weeks (read from an analytics tool counts as updated).
     const m = c.card.metric;
     if (c.card.kind === "outcome" && c.card.stage === "active" && m && m.current !== null && m.target !== null) {
       const updates = x.decisions.filter((d) => !d.undone && d.kind === "metric" && d.board === c.board.id && d.card === c.id && (d.detail as { field?: unknown } | undefined)?.field === "current");
-      const last = Math.max(c.card.stageAt ?? c.board.createdAt, ...updates.map((d) => d.at));
+      const last = Math.max(c.card.stageAt ?? c.board.createdAt, m.readAt ?? 0, ...updates.map((d) => d.at));
       if (x.now - last > STALE_METRIC_DAYS * DAY) {
         const weeks = Math.floor((x.now - last) / (7 * DAY));
         const flat = m.baseline !== null && m.current === m.baseline;
@@ -325,7 +349,7 @@ export function runChecks(x: CheckInput): Notice[] {
 /** Notices about a card (as the card, or as the other card of a pair). */
 export const aboutCard = (n: Pick<Notice, "board" | "card" | "other">, board: string, card: string) => (n.board === board && n.card === card) || (n.other?.board === board && n.other.card === card);
 
-const KINDS: readonly NoticeKind[] = ["disputed", "pattern", "same-need", "revisit", "stale-test", "untested", "metric", "orphan", "review", "placed"];
+const KINDS: readonly NoticeKind[] = ["disputed", "pattern", "same-need", "revisit", "stale-test", "untested", "metric", "orphan", "review", "placed", "work-drift"];
 const isStr = (v: unknown, max: number): v is string => typeof v === "string" && v.length <= max;
 const ID = /^[A-Za-z0-9_~-]{1,64}$/;
 

@@ -1,6 +1,9 @@
 import type { ConnectorGroup } from "@/connectors/catalog";
 import type { ListedStatus } from "@/connectors/claude-code";
 import type { Hit } from "@/connectors/recipes";
+import type { InsightNumbers } from "@/connectors/numbers";
+import type { WorkStatus } from "@/connectors/work";
+import type { OstWork } from "@/discovery/types";
 import { orgPath } from "./client";
 
 /*
@@ -15,6 +18,10 @@ export interface ConnectorState {
   group: ConnectorGroup;
   feeds: "material" | "work" | "numbers";
   imports: boolean;
+  /** A linked item's status shows on solution cards ("token": once one is kept; "public": always). */
+  status: "token" | "public" | null;
+  /** An outcome can read its number from it. */
+  numbers: boolean;
   /** Claude Code's server for it, as `claude mcp list` last said. */
   claudeCode: { server: string; status: ListedStatus } | null;
   token: { last4: string } | null;
@@ -71,4 +78,15 @@ export const connectorsDb = {
     }
     throw new Error("It stopped before saying how it went.");
   },
+};
+
+/** Where the work linked to solutions stands (Linear, GitHub), kept per computer for ten minutes. */
+export const workDb = {
+  status: async (links: OstWork[], force = false) => json<{ statuses: Record<string, WorkStatus> }>(await send(await orgPath("/work/status"), "POST", { links, force })),
+};
+
+/** An outcome's number from a saved PostHog insight (through Claude Code: about a minute each). */
+export const numbersDb = {
+  insights: (query: string) => send("/api/connectors/posthog/insights", "POST", { query }).then((r) => json<{ hits: Hit[] }>(r)),
+  read: (ref: string) => send("/api/connectors/posthog/read", "POST", { ref }).then((r) => json<InsightNumbers>(r)),
 };

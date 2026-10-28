@@ -2,7 +2,8 @@
  * The tools an organization's material comes from, in the four groups Connections shows (browser-
  * safe). Each says what it brings (material to read, work to link, numbers for outcomes), how Claude
  * Code may already know it (its claude.ai connectors, plugins and servers), and whether Qalam can keep
- * a token for it itself. `imports`: bringing its material in works today; the rest show where they
+ * a token for it itself. What works today: `imports` (bringing material in), `status` (a linked
+ * item's status on solution cards) and `numbers` (an outcome's number); the rest show where they
  * stand and come next.
  */
 
@@ -25,6 +26,10 @@ export interface ConnectorDef {
   /** A token Qalam can keep for it in the Keychain, and where one is made. */
   token?: { label: string; href: string; placeholder: string };
   imports: boolean;
+  /** Its items' status shows on solution cards linked to them: with a token, or with none (public). */
+  status?: "token" | "public";
+  /** An outcome can read its number from it. */
+  numbers?: boolean;
 }
 
 export const CATALOG: readonly ConnectorDef[] = [
@@ -35,11 +40,11 @@ export const CATALOG: readonly ConnectorDef[] = [
   { id: "intercom", label: "Intercom", group: "voice", feeds: "material", claudeCode: /intercom/i, imports: false },
   { id: "zendesk", label: "Zendesk", group: "voice", feeds: "material", claudeCode: /zendesk/i, imports: false },
   { id: "calls", label: "Call recordings", group: "voice", feeds: "material", claudeCode: /granola|gong|fireflies|fathom/i, imports: false },
-  { id: "linear", label: "Linear", group: "build", feeds: "work", claudeCode: /\blinear\b/i, imports: false },
+  { id: "linear", label: "Linear", group: "build", feeds: "work", claudeCode: /\blinear\b/i, token: { label: "Personal API key", href: "https://linear.app/settings/account/security", placeholder: "lin_api_…" }, imports: false, status: "token" },
   { id: "jira", label: "Jira", group: "build", feeds: "work", claudeCode: /\bjira\b|atlassian/i, imports: false },
-  { id: "github", label: "GitHub", group: "build", feeds: "work", claudeCode: /github/i, imports: false },
+  { id: "github", label: "GitHub", group: "build", feeds: "work", claudeCode: /github/i, imports: false, status: "public" },
   { id: "figma", label: "Figma", group: "build", feeds: "work", claudeCode: /\bfigma\b/i, imports: false },
-  { id: "posthog", label: "PostHog", group: "numbers", feeds: "numbers", claudeCode: /posthog/i, imports: false },
+  { id: "posthog", label: "PostHog", group: "numbers", feeds: "numbers", claudeCode: /posthog/i, imports: false, numbers: true },
   { id: "amplitude", label: "Amplitude", group: "numbers", feeds: "numbers", claudeCode: /amplitude/i, imports: false },
   { id: "mixpanel", label: "Mixpanel", group: "numbers", feeds: "numbers", claudeCode: /mixpanel/i, imports: false },
 ];

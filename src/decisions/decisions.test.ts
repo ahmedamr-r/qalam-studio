@@ -98,6 +98,20 @@ describe("decisions from a change to a board", () => {
     ]);
   });
 
+  it("records no decision when the number is read from an analytics tool, and still records a target change", () => {
+    const read = edit((d) => {
+      const m = ost(d, "o1").metric!;
+      m.current = 1.42;
+      m.source = { connector: "posthog", ref: "7mlKKF3J", label: "Weekly reorders" };
+      m.readAt = Date.UTC(2026, 9, 28);
+    });
+    expect(decisionsFromDiff(board(), read, ctx())).toEqual([]);
+    const both = produce(read, (d) => {
+      ost(d, "o1").metric!.target = 1.6;
+    });
+    expect(decisionsFromDiff(read, both, ctx()).map((d) => d.what)).toEqual(["Changed the target of “More weekly reorders” from 1.5 orders to 1.6 orders"]);
+  });
+
   it("finds nothing in adding or rewording cards", () => {
     const next = edit((d) => {
       ost(d, "n3").title = "Evening delivery slots are full";

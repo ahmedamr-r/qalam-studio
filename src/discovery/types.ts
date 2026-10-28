@@ -84,6 +84,19 @@ export interface OstMetric {
   target: number | null;
   /** By when, in the builder's words ("by March"). */
   timeframe?: string;
+  /** Where `current` is read from: a saved insight in an analytics tool (and which of its series). */
+  source?: { connector: string; ref: string; url?: string; label?: string; series?: string };
+  /** When `current` was last read from `source` (code reads the number; it isn't a decision). */
+  readAt?: number;
+}
+
+/** Where a solution is being built or designed: an issue, a pull request, a design (Build and design). */
+export interface OstWork {
+  /** "linear", "github", "jira", "figma". */
+  connector: string;
+  /** Its id there: "ENG-123", "owner/repo#12", "KEY-7", a Figma file (and frame). */
+  ref: string;
+  url: string;
 }
 
 export interface OstTest {
@@ -111,6 +124,8 @@ export interface OstCard {
   assumptions?: OstAssumption[];
   /** Solutions: Screens projects it was sent to with Design this. */
   designs?: { projectId: string; at: number }[];
+  /** Solutions: the issues, pull requests and designs it's being built in. */
+  work?: OstWork[];
   test?: OstTest;
   /** The outcome: the number it moves. */
   metric?: OstMetric;

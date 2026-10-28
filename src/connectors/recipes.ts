@@ -9,6 +9,8 @@ export interface ToolCall {
   /** The tool's name on its server (without Claude Code's prefix). */
   tool: string;
   args: Record<string, unknown>;
+  /** The arguments that must be as planned for its answer to be kept (default: all of them). A tool whose description asks the model to fill in its own metadata (its model's name, a reason) names the rest. */
+  match?: string[];
 }
 
 export interface Hit {

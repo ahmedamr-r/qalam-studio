@@ -102,7 +102,7 @@ function Card({ c, onView, onImport }: { c: ConnectorState; onView: (v: View) =>
       return v;
     });
   };
-  const soon = !c.imports && !c.via && !c.claudeCode && !c.canToken;
+  const soon = !c.imports && !c.numbers && !c.status && !c.via && !c.claudeCode && !c.canToken;
   return (
     <li className={clsx("flex flex-col gap-[8px] rounded-lg bg-panel px-[12px] py-[10px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]", soon && "opacity-60")}>
       <div className="flex items-center gap-[8px]">
@@ -118,12 +118,12 @@ function Card({ c, onView, onImport }: { c: ConnectorState; onView: (v: View) =>
             Bring in…
           </Button>
         )}
-        {!c.via && c.imports && c.claudeCode?.status === "connected" && (
+        {!c.via && (c.imports || c.numbers) && c.claudeCode?.status === "connected" && (
           <Button size="sm" variant="secondary" disabled={busy} onClick={() => void act(() => connectorsDb.viaClaudeCode(c.id, c.claudeCode!.server))}>
             Use it
           </Button>
         )}
-        {!c.via && c.imports && c.canToken && !tokenOpen && (
+        {!c.via && (c.imports || c.status === "token") && c.canToken && !tokenOpen && (
           <button type="button" className={clsx(r.buttonSm, r.buttonGhost)} onClick={() => setTokenOpen(true)}>
             Add a token
           </button>
@@ -133,7 +133,8 @@ function Card({ c, onView, onImport }: { c: ConnectorState; onView: (v: View) =>
             Disconnect
           </button>
         )}
-        {!c.via && !c.imports && (c.claudeCode || c.canToken) && <span className="text-micro text-fg-subtle">Bringing it in comes next</span>}
+        {(c.via || c.status === "public") && !c.imports && <span className="text-micro text-fg-subtle">{c.numbers ? "Outcomes read their number from it" : "Shows where linked work stands"}</span>}
+        {!c.via && !c.imports && !c.numbers && !c.status && (c.claudeCode || c.canToken) && <span className="text-micro text-fg-subtle">Coming next</span>}
       </div>
       {tokenOpen && c.tokenHelp && (
         <form onSubmit={save} className="flex flex-col gap-[6px]">

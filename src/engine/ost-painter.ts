@@ -34,6 +34,8 @@ export interface OstRenderInput {
   hoverToggle: string | null;
   /** Cards something needs a look at (marked beside their stage). */
   noticed?: ReadonlySet<string>;
+  /** Solutions' linked work, as its tool says it stands ("Merged", "In Progress"), after the kind. */
+  work?: ReadonlyMap<string, { label: string; tone: "ok" | "warn" | "off" }>;
 }
 
 export interface OstFrame {
@@ -366,6 +368,19 @@ export class OstPainter {
     this.kindMark(canvas, card.kind, CARD.pad + 6, CARD.pad + CARD.kindRow / 2, card.kind === "outcome" && !isSubOutcome(doc, n.id) ? p.ink : p.muted);
     const kp = this.label(kindLabel(doc, n.id).toUpperCase(), p.muted, 10.5, 600, Math.max(10, sx - CARD.pad - 24), 0.6);
     canvas.drawParagraph(kp, CARD.pad + 18, CARD.pad + (CARD.kindRow - kp.getHeight()) / 2);
+    // Where its linked work stands, as the tool says it: a dot and a word after the kind.
+    const work = !ghost && !f.exporting ? f.ost?.work?.get(n.id) : undefined;
+    if (work) {
+      const wx = CARD.pad + 18 + this.width(kp) + 8;
+      const room = sx - (f.ost?.noticed?.has(n.id) ? 18 : 8) - wx - 9;
+      if (room > 24) {
+        const ink = work.tone === "ok" ? p.success : work.tone === "warn" ? p.warning : p.muted;
+        this.fill.setColor(this.col(ink));
+        canvas.drawCircle(wx + 3, CARD.pad + CARD.kindRow / 2, 3, this.fill);
+        const wp = this.label(work.label, ink, 10.5, 500, room);
+        canvas.drawParagraph(wp, wx + 9, CARD.pad + (CARD.kindRow - wp.getHeight()) / 2);
+      }
+    }
 
     // Title (not while it's being typed over).
     if (f.ost?.editingId !== n.id) {

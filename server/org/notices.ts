@@ -1,5 +1,6 @@
 import { pairKey, runChecks, type CheckBoard, type CheckInput, type Notice } from "@/hub/checks";
 import { knowledgeInputs } from "./needs";
+import { workCache } from "../connectors/work";
 import type { OrgStore } from "./store";
 
 /**
@@ -33,7 +34,7 @@ export async function noticesNow(store: OrgStore, now = Date.now()): Promise<Not
     return s ? [{ board: p.board, sourceId: s.id, title: s.title, count: p.proposals.length, at: s.addedAt }] : [];
   });
   const k = await knowledgeInputs(store);
-  const input: CheckInput = { now, boards, decisions: store.listDecisions(), topics: k.topics, indexed: k.indexed, shows: k.shows, pieces: k.pieces, linked: new Set(relations.map((r) => pairKey(r.a, r.b))), placed };
+  const input: CheckInput = { now, boards, decisions: store.listDecisions(), topics: k.topics, indexed: k.indexed, shows: k.shows, pieces: k.pieces, linked: new Set(relations.map((r) => pairKey(r.a, r.b))), placed, work: await workCache(store) };
   const state = await store.noticeState();
   const all = [...runChecks(input), ...state.found];
   return {
