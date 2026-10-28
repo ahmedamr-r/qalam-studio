@@ -15,6 +15,7 @@ import { filingShape, topicShape, type Topic } from "@/hub/topics";
 import { chooseFolder, createOrg, currentOrg, listOrgs, openFolder, qalamHome, rememberOrg, storeFor } from "./home";
 import { noticesNow } from "./notices";
 import { reviewOrg } from "./review";
+import { askOrg } from "../ask";
 import { aiConfigured, rateLimited } from "@/ai/server";
 import { ConflictError, NotFoundError, type OrgEvent, type OrgStore } from "./store";
 
@@ -251,6 +252,39 @@ export function orgRoutes(): Hono<Env> {
     } catch (e) {
       return c.json({ error: "failed", message: e instanceof Error ? e.message : String(e) }, 502);
     }
+  });
+  /** Ask the organization: Qalam AI's answer, checked by code, streamed (NDJSON) with what it's doing meanwhile. */
+  r.post("/api/org/:org/ask", async (c) => {
+    if (!aiConfigured()) return c.json({ error: "no_key", message: "Qalam AI isn't set up here." }, 501);
+    if (rateLimited(c.req.raw)) return c.json({ error: "rate_limited", message: "Too many requests, try again in a few minutes." }, 429);
+    const b = (await c.req.json().catch(() => null)) as { question?: unknown; product?: unknown } | null;
+    const question = typeof b?.question === "string" ? b.question.replace(/\s+/g, " ").trim().slice(0, 1000) : "";
+    if (question.length < 3) return bad("Ask a question");
+    const product = typeof b?.product === "string" && ID.test(b.product) ? b.product : null;
+    const store = c.get("store");
+    const enc = new TextEncoder();
+    const stop = new AbortController();
+    c.req.raw.signal.addEventListener("abort", () => stop.abort());
+    let open = true;
+    const body = new ReadableStream<Uint8Array>({
+      async start(ctrl) {
+        const send = (o: unknown) => {
+          if (open) ctrl.enqueue(enc.encode(`${JSON.stringify(o)}\n`));
+        };
+        try {
+          send({ type: "result", data: await askOrg(store, { question, product }, { emit: (label) => send({ type: "activity", label }), signal: stop.signal }) });
+        } catch (e) {
+          if (!stop.signal.aborted) send({ type: "error", error: "ask", message: e instanceof Error ? e.message : String(e) });
+        }
+        if (open) ctrl.close();
+        open = false;
+      },
+      cancel() {
+        open = false;
+        stop.abort();
+      },
+    });
+    return new Response(body, { headers: { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store" } });
   });
   // Cards on two boards linked as the same need.
   /** All links, or one card's: the cards it's linked to, with their titles and boards. */

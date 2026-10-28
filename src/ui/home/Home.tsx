@@ -29,13 +29,14 @@ import { SourcesList } from "../org/SourcesList";
 import { DecisionsList } from "../org/DecisionsList";
 import { TopicsList } from "../org/TopicsList";
 import { NeedsALook } from "../org/NeedsALook";
+import { AskBar } from "../org/AskBar";
 import { useNotices } from "../notices/useNotices";
 import { useTopics } from "../topics/list";
 import { useDecisions } from "../decisions/list";
 import { ago } from "../time";
 
 /**
- * An organization's home: what needs a look (since the last visit), what it and its products are,
+ * An organization's home: asking what it knows, what needs a look (since the last visit), what it and its products are,
  * every board's goals, the boards, the topic pages (what the organization knows about each need,
  * segment and product), the sources and the decisions made on the boards, by product. Design work
  * (screens, design systems) waits below, on hold. Everything is saved in the organization's folder
@@ -200,6 +201,8 @@ export default function Home() {
               Product
             </button>
           </nav>
+
+          <AskBar product={product?.id ?? null} topics={topics} />
 
           <NeedsALook now={notices} scope={(n) => scope === "all" || (scope === "org" ? !n.products.length : n.products.includes(scope))} projects={projects ?? []} topics={topics} />
 

@@ -150,10 +150,10 @@ export function cleanLine(s: string): string {
  * quotation marks closed, every quote in it found word for word in a piece it cites (or in `also`,
  * words already checked), and every number in it there too.
  */
-export function checkWords(raw: unknown, cited: Pick<Citable, "text">[], also = ""): string | null {
+export function checkWords(raw: unknown, cited: Pick<Citable, "text">[], also = "", max: number = TOPIC_LIMITS.line): string | null {
   if (typeof raw !== "string") return null;
   const text = cleanLine(raw);
-  if (text.length < 3 || text.length > TOPIC_LIMITS.line) return null;
+  if (text.length < 3 || text.length > max) return null;
   const opens = (text.match(/“/g) ?? []).length;
   if (opens !== (text.match(/”/g) ?? []).length || (text.match(/"/g) ?? []).length % 2) return null;
   const hay = [...cited.map((c) => c.text), also].filter(Boolean);

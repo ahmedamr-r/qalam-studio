@@ -314,6 +314,23 @@ export class OrgStore {
     return [...this.projects.values()].map(this.withLocal);
   }
 
+  /** A project's file, relative to the organization's folder. */
+  projectFile(id: string): string | null {
+    const e = this.projects.get(id);
+    return e ? path.relative(this.dir, e.file) : null;
+  }
+
+  /** A source's text file, relative to the organization's folder. */
+  sourceFile(id: string): string | null {
+    const e = this.sources.get(id);
+    return e ? path.relative(this.dir, e.md) : null;
+  }
+
+  /** The decision log's month files, relative to the organization's folder. */
+  decisionFiles(): string[] {
+    return [...this.decisions.keys()].map((f) => path.relative(this.dir, f)).sort();
+  }
+
   getProject(id: string): { record: Project; version: string } | null {
     const e = this.projects.get(id);
     return e ? { record: this.withLocal(e), version: e.recordV } : null;
