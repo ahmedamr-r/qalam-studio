@@ -53,17 +53,35 @@ function Fields({ c }: { c: ContextFields }) {
 
 const isEmpty = (c: ContextFields) => !c.audience.trim() && !c.goals.length && !c.context.trim() && !c.segments.length;
 
-/** The card on the home: what this product (or the organization) is, and the way to edit it. */
+/**
+ * The card on the home: what this product (or the organization) is, in one line (who it's for,
+ * and its segments as chips); the rest opens on a click. Edit opens the editor.
+ */
 export function ContextCard({ title, context, onEdit, empty }: { title: string; context: ContextFields; onEdit: () => void; empty: string }) {
+  const [open, setOpen] = useState(false);
+  const none = isEmpty(context);
+  const line = context.audience.trim() || context.context.trim();
   return (
-    <section aria-label={title} className="flex flex-col gap-[12px] rounded-lg bg-panel p-[16px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
-      <div className="flex items-center justify-between gap-[12px]">
-        <h2 className="text-title font-medium text-fg">{title}</h2>
+    <section aria-label={title} className="flex flex-col gap-[10px] rounded-lg bg-panel px-[16px] py-[12px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
+      <div className="flex items-center gap-[12px]">
+        <button type="button" aria-expanded={open} disabled={none} onClick={() => setOpen((o) => !o)} className="flex min-w-0 flex-1 items-center gap-[10px] text-left">
+          <h2 className="shrink-0 text-title font-medium text-fg">{title}</h2>
+          <span className="min-w-0 truncate text-caption text-fg-muted">{none ? empty : open ? "" : line}</span>
+          {!open && !!context.segments.length && (
+            <span className="hidden shrink-0 items-center gap-[4px] md:flex">
+              {context.segments.slice(0, 3).map((g) => (
+                <span key={g} className={r.chip}>
+                  {g}
+                </span>
+              ))}
+            </span>
+          )}
+        </button>
         <Button variant="secondary" size="sm" onClick={onEdit}>
-          {isEmpty(context) ? "Describe it" : "Edit"}
+          {none ? "Describe it" : "Edit"}
         </Button>
       </div>
-      {isEmpty(context) ? <p className="text-body text-fg-muted">{empty}</p> : <Fields c={context} />}
+      {open && !none && <Fields c={context} />}
     </section>
   );
 }

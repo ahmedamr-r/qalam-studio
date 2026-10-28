@@ -261,7 +261,7 @@ function viaAgent(store: OrgStore, ix: OrgIndex | null, q: AskRequest, g: Guide,
         const both = AbortSignal.any([signal, limit]);
         const kill = () => proc.kill();
         both.addEventListener("abort", kill, { once: true });
-        proc.on("error", (e) => reject(new Error(`Couldn't start the Claude CLI (${e.message}). Install Claude Code or set CLAUDE_CLI_PATH.`)));
+        proc.on("error", (e) => reject(new Error(`Couldn't start Claude Code (${e.message}). Install Claude Code or set CLAUDE_CLI_PATH.`)));
         proc.stdin.on("error", () => {});
         proc.stdin.end(`${JSON.stringify({ type: "user", message: { role: "user", content: content } })}\n`);
         let stderr = "";
@@ -291,7 +291,7 @@ function viaAgent(store: OrgStore, ix: OrgIndex | null, q: AskRequest, g: Guide,
           reportUsage(fromCliResult(result as Parameters<typeof fromCliResult>[0], model ?? "claude"));
           if (signal.aborted) return reject(new DOMException("Stopped.", "AbortError"));
           if (limit.aborted) return reject(new Error("Qalam AI took too long to answer. Try a narrower question."));
-          if (!result) return reject(new Error(stderr.trim() || `The Claude CLI exited with code ${code}.`));
+          if (!result) return reject(new Error(stderr.trim() || `Claude Code exited with code ${code}.`));
           if (result.is_error || result.subtype !== "success") return reject(new Error(result.result || result.errors?.join("; ") || result.subtype));
           let raw = result.structured_output;
           if (raw == null) {

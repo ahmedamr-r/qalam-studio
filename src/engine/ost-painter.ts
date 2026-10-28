@@ -1,3 +1,4 @@
+import { metricProgress } from "@/discovery/metric";
 import type { Canvas, CanvasKit, MaskFilter, Paint, Paragraph } from "canvaskit-wasm";
 import type { Doc } from "@/doc/schema";
 import { type CardNode, isOstCard } from "@/doc/board";
@@ -454,8 +455,8 @@ export class OstPainter {
     const by = y + CARD.metricText + CARD.metricGap;
     this.fill.setColor(this.col(p.chip));
     canvas.drawRRect(this.rrect(x, by, inner, CARD.metricBar, 2), this.fill);
-    if (nums && m!.current !== null && m!.target !== m!.baseline) {
-      const k = Math.max(0, Math.min(1, (m!.current! - m!.baseline!) / (m!.target! - m!.baseline!)));
+    const k = metricProgress(m);
+    if (k !== null) {
       if (k > 0) {
         this.fill.setColor(this.col(k >= 1 ? p.success : p.ink));
         canvas.drawRRect(this.rrect(x, by, Math.max(4, inner * k), CARD.metricBar, 2), this.fill);

@@ -86,7 +86,7 @@ export function streamViaCli(opts: CallOpts, model: string): Response {
       const proc = spawn(/*turbopackIgnore: true*/ bin(), args, { cwd: workDir(), env: childEnv(opts.maxTokens ?? 32000) });
       child = proc;
       proc.on("error", (e) =>
-        finish({ type: "error", error: "cli_missing", message: `Couldn't start the Claude CLI (${e.message}). Install Claude Code or set CLAUDE_CLI_PATH.` }),
+        finish({ type: "error", error: "cli_missing", message: `Couldn't start Claude Code (${e.message}). Install Claude Code or set CLAUDE_CLI_PATH.` }),
       );
       proc.stdin.on("error", () => {});
       proc.stdin.end(JSON.stringify({ type: "user", message: { role: "user", content: opts.content } }) + "\n");
@@ -134,13 +134,13 @@ export function streamViaCli(opts: CallOpts, model: string): Response {
 
       proc.on("close", (code) => {
         deltas?.flush();
-        if (!result) return finish({ type: "error", error: "cli", message: stderr.trim() || `The Claude CLI exited with code ${code}.` });
+        if (!result) return finish({ type: "error", error: "cli", message: stderr.trim() || `Claude Code exited with code ${code}.` });
         if (result.stop_reason === "refusal") return finish({ type: "error", error: "refusal", message: "The model declined this request." });
         if (result.stop_reason === "max_tokens") return finish({ type: "error", error: "max_tokens", message: "The response was cut off. Try a simpler brief." });
         if (result.subtype === "error_max_structured_output_retries") return finish({ type: "error", error: "parse", message: "Model output did not match the schema." });
         if (result.is_error || result.subtype !== "success") {
           if (apiError === "authentication_failed")
-            return finish({ type: "error", error: "auth", message: "The Claude CLI isn't signed in. Run `claude auth login` in a terminal, then try again." });
+            return finish({ type: "error", error: "auth", message: "Claude Code isn't signed in. Run `claude auth login` in a terminal, then try again." });
           return finish({ type: "error", error: apiError?.includes("rate") ? "rate_limited" : "cli", message: result.result || result.errors?.join("; ") || result.subtype });
         }
         let data = result.structured_output;

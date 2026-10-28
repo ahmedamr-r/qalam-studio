@@ -91,7 +91,7 @@ function EngineStep({ mode, onDone }: { mode: WelcomeMode; onDone: () => void })
   const ok = !!test?.ok;
   const a = view?.claude.account;
   const what = !view ? "" : view.kind === "cli" ? ["Claude Code on this Mac", a?.plan ? `${PLAN[a.plan] ?? a.plan} plan` : null, a?.email ?? null].filter(Boolean).join(" · ") : view.key ? `API key ending ${view.key.last4}` : "Claude API key";
-  const word = busy ? (view ? "Making a short call…" : "Looking for Claude on this Mac…") : ok ? "Ready" : (test?.word ?? view?.word ?? "Not set up");
+  const word = busy ? (view ? "Making a short call…" : "Looking for Claude Code on this Mac…") : ok ? "Ready" : (test?.word ?? view?.word ?? "Not set up");
   const detail = busy || ok ? null : (test?.detail ?? view?.detail);
 
   return (

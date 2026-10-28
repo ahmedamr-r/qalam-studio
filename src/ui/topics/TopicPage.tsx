@@ -265,8 +265,14 @@ export default function TopicPage({ id }: { id: string }) {
             </section>
           )}
 
-          <p className="text-caption text-fg-subtle">
-            Qalam AI keeps a line only when the pieces it cites were sent to it and the words it quotes are in them. Edit a line and it&apos;s yours: Qalam AI won&apos;t rewrite it, only say what speaks against it.{org ? ` Saved in ${org.name}, at ${t.file}.` : ""}
+          <p className="flex items-center gap-[6px] text-caption text-fg-subtle">
+            <Tip label="Qalam AI keeps a line only when the pieces it cites were sent to it and the words it quotes are in them. Edit a line and it's yours: Qalam AI won't rewrite it, only say what speaks against it.">
+              <span className="inline-flex cursor-help items-center gap-[4px]">
+                <QalamAIGlyph size={12} />
+                Every line is checked
+              </span>
+            </Tip>
+            {org ? <span className="truncate">· {t.file}</span> : null}
           </p>
         </div>
     </PageFrame>

@@ -146,9 +146,7 @@ function SetupNotice({ org, sources, empty }: { org: OrgRef | null; sources: Sou
   return (
     <div role="status" className="flex flex-wrap items-center justify-between gap-[12px] rounded-lg bg-raised px-[12px] py-[10px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
       <p className="text-body text-fg-muted">
-        {pending
-          ? `You were setting ${org.name} up from a brain dump: Qalam AI is waiting on you.`
-          : `Tell Qalam AI about ${org.name}: write what the company does, its products and its goals, and it sets up the About and the products for you to accept.`}
+        {pending ? `Setting up ${org.name}: Qalam AI is waiting on you.` : `Tell Qalam AI about ${org.name}, and it sets up the About and the products.`}
       </p>
       <a href={pending ? `${setupHref()}?source=${pending.id}` : setupHref()} className={clsx(r.buttonSm, r.buttonSecondary)}>
         {pending ? "Pick up where you left off" : "Start from a brain dump"}

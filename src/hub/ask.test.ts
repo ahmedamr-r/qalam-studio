@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sourcesIn, verifyAnswer, type Found } from "./ask";
+import { sourcesIn, verifyAnswer, type Found, claimStrip } from "./ask";
 
 const tickets = "Omar's count of last week's tickets (412 in total):\n- Late or missed delivery: 131 tickets. Most are evening slots that slipped past 10pm.\nCustomers who wrote twice about lateness ordered 40% less the next month.";
 const found = new Map<string, Found>([
@@ -59,5 +59,20 @@ describe("an answer, as code keeps it", () => {
     // A Markdown file's bold markers aren't part of the words people read.
     const d = verifyAnswer({ answer: "", claims: [{ text: "The target rests on tickets.", support: [{ source: "decisions/2026-10.md", quote: "**Why:** 131 late-delivery tickets are mostly evening slots" }] }], unknowns: [] }, found, o);
     expect(d.claims[0].support[0].words).toBe("Why: 131 late-delivery tickets are mostly evening slots");
+  });
+});
+
+describe("an answer in numbers", () => {
+  it("counts the backed claims, their quotes and the sources those come from, apart from the rest", () => {
+    const sup = (label: string) => ({ source: `hub:quote:${label}`, words: "w", label });
+    const n = claimStrip({
+      claims: [
+        { text: "a", backed: true, support: [sup("Sara · Sara interview"), sup("Sara · Sara interview"), sup("Mona · Mona interview")] },
+        { text: "b", backed: true, support: [sup("Topic page: Late deliveries")] },
+        { text: "c", backed: false, support: [sup("Noor · Noor call")] },
+      ],
+      unknowns: [{ question: "q", why: "" }],
+    });
+    expect(n).toEqual({ backed: 2, unbacked: 1, quotes: 4, sources: 3, unknowns: 1 });
   });
 });

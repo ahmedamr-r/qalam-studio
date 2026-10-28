@@ -52,7 +52,7 @@ export function AddToOrg({ product }: { product: string | null }) {
 
   return (
     <div className="flex flex-col gap-[10px] rounded-lg bg-panel p-[12px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
-      <p className="text-caption text-fg-muted">Interviews, tickets, notes, pages: Qalam AI picks out what customers said, files it into the topic pages and proposes where it fits on your boards. Files dropped in the organization&apos;s inbox folder are taken in the same way.</p>
+      <p className="text-caption text-fg-muted">Interviews, tickets, notes, pages. Qalam AI files what customers said and proposes where it fits.</p>
       <AddSource compact onAdd={(inputs) => void take(inputs)} />
       {items.length > 0 && (
         <ul className="flex flex-col gap-[6px]">

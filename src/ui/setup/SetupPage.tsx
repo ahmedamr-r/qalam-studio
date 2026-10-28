@@ -10,7 +10,7 @@ import { boardGoals, pendingLines, type SetupField, type SetupLine, type SetupSe
 import { orgHref, placeHref } from "@/projects/model";
 import { feedback } from "@/commands/feedback";
 import { QalamAIGlyph } from "../brand/ai-glyph";
-import { Button, Tag } from "../controls";
+import { Button, Tag, Tip } from "../controls";
 import { toQuestion } from "../ai/plan";
 import { AnswersSummary, Questionnaire, qr } from "../ai/Questionnaire";
 import { ErrorNote, Progress } from "../ai/common";
@@ -110,7 +110,10 @@ function Compose({ org }: { org: string }) {
           Tell Qalam AI about {org}
         </h1>
         <p className="text-body text-fg-muted">
-          What the company does, its products, who they&apos;re for, the goals you&apos;re moving, the numbers you watch: as it comes. Qalam AI reads it, pushes back and asks before anything is written. You accept each line it proposes.
+          Write it as it comes. Nothing is written until you accept it.{" "}
+          <Tip label="What the company does, its products, who they're for, the goals you're moving, the numbers you watch. Qalam AI reads it, pushes back and asks before it proposes anything, line by line.">
+            <span className="cursor-help underline decoration-dotted underline-offset-2">What to write</span>
+          </Tip>
         </p>
       </div>
       <textarea

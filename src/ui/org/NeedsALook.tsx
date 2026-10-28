@@ -7,7 +7,8 @@ import type { TopicInfo } from "@/hub/topics";
 import { noticesDb, type NoticesNow } from "@/org/notices";
 import { projectHref, topicHref, type Project } from "@/projects/model";
 import { QalamAIGlyph } from "../brand/ai-glyph";
-import { Button, IconBtn, Tag } from "../controls";
+import { Button, IconBtn } from "../controls";
+import { StatusDot } from "../viz";
 import { r } from "../recipes";
 import { ago } from "../time";
 import { reviewNow, useReview } from "../notices/review";
@@ -37,6 +38,13 @@ const cardHref = (board: string, card: string) => `${projectHref({ id: board, ty
 
 export function NeedsALook({ now, scope, projects, topics }: { now: NoticesNow | null; scope: (n: Notice) => boolean; projects: Project[]; topics: TopicInfo[] | null }) {
   const [all, setAll] = useState(false);
+  const [open, setOpen] = useState<Set<string>>(() => new Set());
+  const toggle = (key: string) =>
+    setOpen((o) => {
+      const next = new Set(o);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
   const review = useReview();
   // "New" is against the visit before this one, for as long as the page is open.
   const since = useRef<number | null | undefined>(undefined);
@@ -75,8 +83,9 @@ export function NeedsALook({ now, scope, projects, topics }: { now: NoticesNow |
       {now === null ? (
         <p className="text-body text-fg-muted">Looking…</p>
       ) : !list.length ? (
-        <p className="text-body text-fg-muted">
-          Nothing needs a look. Qalam checks your boards, decisions and topic pages as they change{now.reviewedAt ? `; Qalam AI last reviewed them ${ago(now.reviewedAt)}` : ""}.
+        <p className="flex items-center gap-[8px] text-body text-fg-muted">
+          <StatusDot tone="ok" />
+          Nothing needs a look{now.reviewedAt ? <span className="text-caption text-fg-subtle">· reviewed {ago(now.reviewedAt)}</span> : null}
         </p>
       ) : (
         <ul className="flex flex-col divide-y divide-line-subtle rounded-lg bg-panel shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
@@ -85,14 +94,19 @@ export function NeedsALook({ now, scope, projects, topics }: { now: NoticesNow |
             const isNew = since.current != null && n.at > since.current;
             const Icon = n.kind === "review" ? null : KIND_ICON[n.kind];
             return (
-              <li key={n.key} className="flex items-start gap-[10px] px-[12px] py-[10px]">
-                <span className={clsx("mt-[2px] shrink-0", n.kind === "disputed" || n.kind === "untested" ? "text-warning" : "text-fg-subtle")}>{Icon ? <Icon {...ICON} /> : <QalamAIGlyph size={14} />}</span>
-                <div className="flex min-w-0 flex-1 flex-col gap-[2px]">
-                  <span className="text-body text-fg">{n.title}</span>
-                  <span className="line-clamp-2 text-caption text-fg-muted">{n.why}</span>
-                  <span className="flex flex-wrap items-center gap-x-[6px] gap-y-[2px] text-caption text-fg-subtle">
-                    {isNew && <Tag tone="ai">New</Tag>}
-                    <span>{NOTICE_LABEL[n.kind]}</span>
+              <li key={n.key} className="flex items-start gap-[10px] px-[12px] py-[8px]">
+                <span className={clsx("mt-[3px] shrink-0", n.kind === "disputed" || n.kind === "untested" ? "text-warning" : "text-fg-subtle")}>{Icon ? <Icon {...ICON} /> : <QalamAIGlyph size={14} />}</span>
+                <div className="flex min-w-0 flex-1 flex-col gap-[4px]">
+                  {/* One line; why it needs a look, and where, open on a click. */}
+                  <button type="button" aria-expanded={open.has(n.key)} onClick={() => toggle(n.key)} className="flex min-w-0 items-center gap-[8px] text-left">
+                    <span className={clsx("min-w-0 text-body text-fg", !open.has(n.key) && "truncate")}>{n.title}</span>
+                    {isNew && <span aria-label="New since your last visit" className="size-[6px] shrink-0 rounded-full bg-fg" />}
+                    <span className="ml-auto shrink-0 text-caption text-fg-subtle">{NOTICE_LABEL[n.kind]}</span>
+                  </button>
+                  {open.has(n.key) && <span className="text-caption text-fg-muted">{n.why}</span>}
+                  {open.has(n.key) && (
+                    <span className="flex flex-wrap items-center gap-x-[6px] gap-y-[2px] text-caption text-fg-subtle">
+                    <span>{ago(n.at)}</span>
                     {w && (
                       <>
                         <span aria-hidden>·</span>
@@ -109,9 +123,8 @@ export function NeedsALook({ now, scope, projects, topics }: { now: NoticesNow |
                         </a>
                       </>
                     )}
-                    <span aria-hidden>·</span>
-                    <span>{ago(n.at)}</span>
-                  </span>
+                    </span>
+                  )}
                 </div>
                 <Actions n={n} />
               </li>

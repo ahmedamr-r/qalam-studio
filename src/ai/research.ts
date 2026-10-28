@@ -274,7 +274,7 @@ function viaCli(req: ResearchRequest, deps: Deps, sel: Selection, step: (s: stri
     signal.addEventListener("abort", kill, { once: true });
     proc.on("error", (e) => {
       config?.remove();
-      reject(new Error(`Couldn't start the Claude CLI (${e.message}).`));
+      reject(new Error(`Couldn't start Claude Code (${e.message}).`));
     });
     proc.stdin.on("error", () => {});
     proc.stdin.end(JSON.stringify({ type: "user", message: { role: "user", content: req.task } }) + "\n");
@@ -326,7 +326,7 @@ function viaCli(req: ResearchRequest, deps: Deps, sel: Selection, step: (s: stri
       config?.remove();
       reportUsage(fromCliResult(result as Parameters<typeof fromCliResult>[0], model));
       if (signal.aborted) return reject(new DOMException("Research was stopped.", "AbortError"));
-      if (!result) return reject(new Error(stderr.trim() || `The Claude CLI exited with code ${code}.`));
+      if (!result) return reject(new Error(stderr.trim() || `Claude Code exited with code ${code}.`));
       if (result.is_error || result.subtype !== "success") return reject(new Error(result.result || result.errors?.join("; ") || result.subtype));
       resolve({ text: result.result ?? "", cited: [], searched, found, model, captures });
     });

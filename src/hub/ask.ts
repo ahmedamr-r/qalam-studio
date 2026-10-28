@@ -53,6 +53,23 @@ export interface Found {
   href?: string;
 }
 
+/**
+ * An answer in numbers, for the strip on top of it: the claims backed and not, the quotes under the
+ * backed ones and the sources they come from ("Sara · Sara interview": the interview), and what
+ * nobody knows yet.
+ */
+export function claimStrip(a: Pick<AskAnswer, "claims" | "unknowns">) {
+  const backed = a.claims.filter((c) => c.backed);
+  const support = backed.flatMap((c) => c.support);
+  return {
+    backed: backed.length,
+    unbacked: a.claims.length - backed.length,
+    quotes: support.length,
+    sources: new Set(support.map((s) => s.label.split(" · ").pop() ?? s.label)).size,
+    unknowns: a.unknowns.length,
+  };
+}
+
 /** An answer runs longer than asked now and then: its length isn't what code checks, its quotes and numbers are. */
 export const ASK_LIMITS = { claims: 12, support: 4, unknowns: 6, answer: 1600, claim: 400, question: 300, why: 200 } as const;
 

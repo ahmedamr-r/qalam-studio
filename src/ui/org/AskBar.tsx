@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import clsx from "clsx";
-import { ArrowUp, Plus, Quote, X } from "lucide-react";
+import { ArrowUp, Check, Plus, Quote, X } from "lucide-react";
 import { nanoid } from "nanoid";
 import { aiStatus } from "@/ai/client";
 import type { AskAnswer, AskClaim, AskUnknown } from "@/hub/ask";
 import type { TopicInfo } from "@/hub/topics";
 import { askOrganization } from "@/org/ask";
+import { claimStrip } from "@/hub/ask";
 import { topicsDb } from "@/org/topics";
 import { topicHref } from "@/projects/model";
 import { QalamAIGlyph } from "../brand/ai-glyph";
-import { Button, IconBtn, Tag } from "../controls";
+import { Button, IconBtn, Tag, Tip } from "../controls";
+import { Dots, StatusDot } from "../viz";
 import { r } from "../recipes";
 import { AddToOrg } from "./AddToOrg";
 import { ASK_EVENT, takeAskNext } from "./ask-next";
@@ -123,7 +125,8 @@ function Answer({ a, secs, topics, onClose }: { a: AskAnswer; secs: number; topi
           <X {...ICON} />
         </IconBtn>
       </header>
-      {a.answer ? <p className="text-body text-fg">{a.answer}</p> : backed.length ? <p className="text-body text-fg-muted">Qalam AI&apos;s summary said more than what it found shows, so it&apos;s left out. Here&apos;s what it found.</p> : <p className="text-body text-fg-muted">Qalam AI couldn&apos;t back an answer with what the organization has.</p>}
+      <Strip a={a} secs={secs} />
+      {a.answer ? <p className="text-body text-fg">{a.answer}</p> : backed.length ? <p className="text-body text-fg-muted">Its summary said more than what it found shows, so it&apos;s left out.</p> : <p className="text-body text-fg-muted">Nothing the organization has backs an answer.</p>}
       {backed.length > 0 && (
         <section className="flex flex-col gap-[8px]">
           <h4 className="text-caption font-medium text-fg-muted">What it rests on</h4>
@@ -156,18 +159,52 @@ function Answer({ a, secs, topics, onClose }: { a: AskAnswer; secs: number; topi
           </ul>
         </section>
       )}
-      <p className="text-micro text-fg-subtle">
-        {a.how === "agent" ? "Qalam AI searched the organization's folder" : "Qalam AI read what the organization's search found"} in {secs} s. Every quote was found word for word where it says.
-      </p>
     </article>
   );
 }
 
+/** The answer at a glance: what's backed, by how much, what isn't, and what nobody knows. */
+function Strip({ a, secs }: { a: AskAnswer; secs: number }) {
+  const n = claimStrip(a);
+  const plural = (k: number, one: string) => `${k} ${k === 1 ? one : `${one}s`}`;
+  return (
+    <div className="flex flex-wrap items-center gap-x-[12px] gap-y-[6px] text-caption tnum">
+      <span className="inline-flex items-center gap-[6px] text-fg">
+        <StatusDot tone={n.backed ? "ok" : "off"} />
+        {plural(n.backed, "claim")} backed
+      </span>
+      {n.quotes > 0 && (
+        <span className="inline-flex items-center gap-[6px] text-fg-muted">
+          <Dots count={n.sources} label={plural(n.sources, "source")} />
+          {plural(n.quotes, "quote")} · {plural(n.sources, "source")}
+        </span>
+      )}
+      {n.unbacked > 0 && <span className="text-warning">{n.unbacked} not backed</span>}
+      {n.unknowns > 0 && <span className="text-fg-muted">{plural(n.unknowns, "open question")}</span>}
+      <Tip label={`${a.how === "agent" ? "Qalam AI searched the organization's folder" : "Qalam AI read what the organization's search found"}. Every quote was found word for word where it says.`}>
+        <span className="ml-auto inline-flex items-center gap-[4px] text-fg-subtle">
+          <Check size={12} absoluteStrokeWidth strokeWidth={1.5} />
+          Checked · {secs} s
+        </span>
+      </Tip>
+    </div>
+  );
+}
+
 function ClaimRow({ c }: { c: AskClaim }) {
+  const [open, setOpen] = useState(false);
   return (
     <li className="flex flex-col gap-[6px]">
-      <span className="text-body text-fg">{c.text}</span>
-      {c.support.map((s, i) => (
+      <div className="flex items-start gap-[8px]">
+        <span className="min-w-0 flex-1 text-body text-fg">{c.text}</span>
+        {c.support.length > 0 && (
+          <button type="button" aria-expanded={open} aria-label={open ? "Hide the quotes" : "Show the quotes"} onClick={() => setOpen((o) => !o)} className={clsx(r.chip, "mt-[2px] shrink-0 hover:text-fg aria-expanded:bg-hover aria-expanded:text-fg")}>
+            <Quote size={10} absoluteStrokeWidth strokeWidth={1.25} />
+            <span className="tnum">{c.support.length}</span>
+          </button>
+        )}
+      </div>
+      {open && c.support.map((s, i) => (
         <figure key={i} className="flex flex-col gap-[2px] rounded-md bg-muted px-[10px] py-[6px]">
           <blockquote className="flex gap-[6px] text-caption text-fg" dir="auto">
             <Quote size={12} className="mt-[2px] shrink-0 text-fg-subtle" />

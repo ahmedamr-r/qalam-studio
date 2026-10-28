@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { errorFix } from "../errors";
 import { CircleAlert } from "lucide-react";
 import { aiStatus, type AIStatus } from "@/ai/client";
 import { QalamAIGlyph } from "../brand/ai-glyph";
@@ -38,11 +39,22 @@ export function Progress({ tokens, started, label }: { tokens: number; started: 
 }
 
 export function ErrorNote({ message, onSample }: { message: string; onSample?: () => void }) {
+  // Engine problems are fixed in Connections: a few words and a link instead of the whole message.
+  const fix = errorFix(message);
   return (
     <div className="q-fade flex items-start gap-[8px] rounded-lg bg-danger-subtle px-[12px] py-[8px] text-caption text-danger" role="alert">
       <CircleAlert size={14} className="mt-[1px] shrink-0" />
       <div className="min-w-0">
-        {message}
+        {fix ? (
+          <>
+            {fix.word}.{" "}
+            <a href={fix.href} className="font-medium underline decoration-current/40 underline-offset-2 hover:decoration-current">
+              Fix in Connections
+            </a>
+          </>
+        ) : (
+          message
+        )}
         {onSample && (
           <button type="button" className="ml-[4px] font-medium underline decoration-current/40 underline-offset-2 hover:decoration-current" onClick={onSample}>
             Use sample output

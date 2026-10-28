@@ -1,7 +1,9 @@
 import { Target } from "lucide-react";
 import { metricText } from "@/discovery/dump";
 import type { OstMetric } from "@/discovery/types";
+import { metricProgress } from "@/discovery/metric";
 import { projectHref } from "@/projects/model";
+import { Meter } from "../viz";
 
 /**
  * The organization's goals: every outcome on every board, sub-outcomes under the outcome they
@@ -31,17 +33,27 @@ export function GoalsList({ goals, showBoard = true }: { goals: Goal[]; showBoar
     else roots.push(g);
   }
   const row = (g: Goal, depth: number) => {
-    const metric = metricText(g.metric);
+    const m = g.metric;
+    const progress = metricProgress(m);
+    // Where it is against where it's going: "41 / 50 orders", or just the target.
+    const nums = m && m.target !== null ? `${m.current ?? m.baseline ?? "?"} / ${m.target}${m.unit ? ` ${m.unit}` : ""}` : null;
     return (
       <li key={key(g)}>
-        <a href={`${projectHref({ id: g.board, type: "discovery" })}?card=${g.id}`} className="q-item flex items-start gap-[10px] rounded-md px-[8px] py-[6px] hover:bg-hover" style={{ paddingLeft: 8 + depth * 20 }}>
-          <span className="mt-[2px] text-fg-subtle">
+        <a
+          href={`${projectHref({ id: g.board, type: "discovery" })}?card=${g.id}`}
+          title={metricText(m) || undefined}
+          className="q-item grid grid-cols-[16px_minmax(0,1fr)_96px_minmax(0,140px)] items-center gap-x-[10px] rounded-md px-[8px] py-[6px] hover:bg-hover"
+          style={{ paddingLeft: 8 + depth * 20 }}
+        >
+          <span className="text-fg-subtle">
             <Target {...ICON} />
           </span>
           <span className="flex min-w-0 flex-col">
-            <span className="text-body text-fg">{g.title}</span>
-            {(metric || showBoard) && <span className="truncate text-caption text-fg-muted">{[metric, showBoard && g.boardName].filter(Boolean).join(" · ")}</span>}
+            <span className="truncate text-body text-fg">{g.title}</span>
+            {showBoard && <span className="truncate text-micro text-fg-subtle">{g.boardName}</span>}
           </span>
+          {progress !== null ? <Meter value={progress} label={`${Math.round(progress * 100)}% of the way to the target`} /> : <span />}
+          <span className="truncate text-right text-caption text-fg-muted tnum">{nums ?? (m?.name ? "No target yet" : "")}</span>
         </a>
         {!!children.get(key(g))?.length && <ul>{children.get(key(g))!.map((c) => row(c, depth + 1))}</ul>}
       </li>

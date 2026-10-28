@@ -76,14 +76,14 @@ function Start() {
       <Header title={hasTree ? "Start over" : "Map your product's opportunities"} />
       <div className="flex flex-col gap-[16px] p-[16px]">
         <p className="text-body leading-[20px] text-fg-muted">
-          A tree from the outcome you want to move, down to what your customers need and the solutions worth trying (an opportunity solution tree). Qalam AI drafts it from what you tell it; anything you didn&apos;t say shows as <b className="font-medium text-fg">Assumed</b> until you have evidence.
+          The outcome, what customers need, what to try. What nobody has shown yet is marked <b className="font-medium text-fg">Assumed</b>.
         </p>
         <div className="flex flex-col gap-[8px]">
-          <Option icon={<MessagesSquare {...ICON} />} title="Answer six questions" body="About the product, who it's for and what you've heard. Takes two minutes; Qalam AI may ask up to three more." onClick={() => useDiscovery.setState({ sheet: "interview" })} primary />
-          <Option icon={<NotebookPen {...ICON} />} title="Start from a brain dump" body="Paste your thinking as it comes: goals, needs, ideas, numbers. Qalam AI pushes back, asks, then places it on the board for you to accept." onClick={() => openBrainDump()} />
-          <Option icon={<FileUp {...ICON} />} title="Import research" body="Interview notes, transcripts, support tickets, survey answers or a web page. Qalam AI picks out what customers said and proposes opportunities from it." onClick={() => useDiscovery.setState({ sheet: "import" })} />
-          <Option icon={<Play {...ICON} />} title="Try a sample" body="Watch Qalam AI draft a tree for Basket, a fictional grocery app." onClick={() => void sample()} />
-          {!hasTree && <Option icon={<Network {...ICON} />} title="Start with a blank tree" body="Name your outcome and build the tree yourself: ⇥ adds a card under one, ↵ next to it." onClick={blank} />}
+          <Option icon={<MessagesSquare {...ICON} />} title="Answer six questions" body="Two minutes. Qalam AI drafts the tree." onClick={() => useDiscovery.setState({ sheet: "interview" })} primary />
+          <Option icon={<NotebookPen {...ICON} />} title="Start from a brain dump" body="Paste your thinking. Qalam AI asks, then places it." onClick={() => openBrainDump()} />
+          <Option icon={<FileUp {...ICON} />} title="Import research" body="Interviews, tickets, a page: what customers said, as opportunities." onClick={() => useDiscovery.setState({ sheet: "import" })} />
+          <Option icon={<Play {...ICON} />} title="Try a sample" body="A tree drafted for Basket, a made-up grocery app." onClick={() => void sample()} />
+          {!hasTree && <Option icon={<Network {...ICON} />} title="Start with a blank tree" body="Name the outcome and build it yourself." onClick={blank} />}
         </div>
       </div>
     </>
