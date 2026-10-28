@@ -14,6 +14,7 @@ const Studio = lazy(() => import("./Studio"));
 const Home = lazy(() => import("./home/Home"));
 const SystemProject = lazy(() => import("./SystemProject"));
 const TopicPage = lazy(() => import("./topics/TopicPage"));
+const GoalPage = lazy(() => import("./goals/GoalPage"));
 const SetupPage = lazy(() => import("./setup/SetupPage"));
 const WelcomePage = lazy(() => import("./welcome/WelcomePage"));
 const CapturePage = lazy(() => import("./capture/CapturePage"));
@@ -58,6 +59,15 @@ export function TopicLoader({ id }: { id: string }) {
   return (
     <Loading>
       <TopicPage id={id} />
+    </Loading>
+  );
+}
+
+/** A goal's page: its number and the problems behind it. */
+export function GoalLoader({ id }: { id: string }) {
+  return (
+    <Loading>
+      <GoalPage id={id} />
     </Loading>
   );
 }

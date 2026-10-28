@@ -3,12 +3,12 @@ import { metricText } from "@/discovery/dump";
 import { metricProgress } from "@/discovery/metric";
 import { childrenOf, rootsOf } from "@/goals/tree";
 import type { Goal, GoalTree } from "@/goals/types";
-import { projectHref } from "@/projects/model";
+import { goalHref } from "@/projects/model";
 import { Meter } from "../viz";
 
 /**
  * The organization's goals as one tree (goals.md): the North Star on top, each goal under the goal
- * it feeds, then the goals not under one yet. A goal a board works on opens that board on its card.
+ * it feeds, then the goals not under one yet. Each opens its own page.
  */
 
 const ICON = { size: 14, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
@@ -35,18 +35,11 @@ export function GoalsList({ tree, boards, products, keep }: { tree: GoalTree; bo
         <span className="truncate text-right text-caption text-fg-muted tnum">{nums ?? (m?.name ? "No target yet" : "")}</span>
       </>
     );
-    const cls = "q-item grid grid-cols-[16px_minmax(0,1fr)_96px_minmax(0,140px)] items-center gap-x-[10px] rounded-md px-[8px] py-[6px]";
     return (
       <li key={g.id}>
-        {g.on && board ? (
-          <a href={`${projectHref({ id: g.on.board, type: "discovery" })}?card=${g.on.card}`} title={metricText(m) || undefined} className={`${cls} hover:bg-hover`} style={{ paddingLeft: 8 + depth * 20 }}>
-            {body}
-          </a>
-        ) : (
-          <div title={metricText(m) || undefined} className={cls} style={{ paddingLeft: 8 + depth * 20 }}>
-            {body}
-          </div>
-        )}
+        <a href={goalHref(g.id)} title={metricText(m) || undefined} className="q-item grid grid-cols-[16px_minmax(0,1fr)_96px_minmax(0,140px)] items-center gap-x-[10px] rounded-md px-[8px] py-[6px] hover:bg-hover" style={{ paddingLeft: 8 + depth * 20 }}>
+          {body}
+        </a>
         {!!childrenOf(tree, g.id).length && <ul>{childrenOf(tree, g.id).map((c) => row(c, depth + 1))}</ul>}
       </li>
     );

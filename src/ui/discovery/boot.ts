@@ -26,6 +26,10 @@ import { ensureDumpHandlers, resumeDumps } from "./dump";
 import { loadPlacements, reviewPlacements } from "./placements";
 import { startRecorder } from "../decisions/recorder";
 import { startGoalSync } from "./goals";
+import { problemCard } from "../topics/start-board";
+import { addCardIn, makeCardNode, newCard } from "@/discovery/ops";
+import { sourcesDb } from "@/discovery/db";
+import { sameTopic } from "@/hub/topics";
 
 /**
  * A Discovery project opening: the board's layout pass, gestures and commands are installed (a
@@ -74,6 +78,7 @@ export function startDiscoveryStudio(p: Project): (doc: Doc) => void {
   document.addEventListener("visibilitychange", refresh);
   window.addEventListener("focus", refresh);
   focusCardFromUrl();
+  void addProblemFromUrl(p.id);
 
   afterSave = (doc: Doc) => {
     scheduleBoardThumbnail(doc);
@@ -140,6 +145,35 @@ function openSourceFromUrl() {
   params.delete("source");
   history.replaceState(null, "", `${location.pathname}${params.size ? `?${params}` : ""}`);
   if (sourceOf(id)) openSource(id);
+}
+
+/**
+ * /d/<id>?problem=<topic>&under=<card>: "Work on it" on a goal's page. The problem goes under the
+ * goal's outcome card, resting on what customers said, as an edit of the board's own (undo takes
+ * it back); one the board has already, under the same name, is just shown.
+ */
+async function addProblemFromUrl(boardId: string) {
+  const params = new URLSearchParams(location.search);
+  const topic = params.get("problem");
+  const under = params.get("under");
+  if (!topic) return;
+  params.delete("problem");
+  params.delete("under");
+  history.replaceState(null, "", `${location.pathname}${params.size ? `?${params}` : ""}`);
+  const c = await problemCard(topic);
+  if (!c) return;
+  const doc = studio().doc;
+  const parent = under && isOstCard(doc.nodes[under]) ? under : null;
+  const there = Object.values(doc.nodes).find((n) => isOstCard(n) && n.meta.ost?.kind === "opportunity" && sameTopic(n.meta.ost.title, c.title));
+  let id = there?.id;
+  if (!id) {
+    const node = makeCardNode(newCard("opportunity", { title: c.title, evidence: c.evidence }));
+    studio().mutate((d) => addCardIn(d, node, parent));
+    id = node.id;
+    for (const s of c.sources) await sourcesDb.link(s.id, boardId, true).catch(() => {});
+  }
+  studio().select([id]);
+  onCanvasReady((canvas) => glideToLayer(canvas, id!));
 }
 
 /** /d/<id>?card=<cardId>: select that card and bring it into view (a Screens project's link back). */

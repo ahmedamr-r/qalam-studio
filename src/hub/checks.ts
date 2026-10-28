@@ -7,6 +7,7 @@ import { cardRef } from "./pieces";
 import { needEvidence, type PieceFacts, type ShownOn } from "./needs";
 import { WORK_LABEL, workKey, type WorkStatus } from "@/connectors/work";
 import { sameTopic, type Topic } from "./topics";
+import type { GoalTree } from "@/goals/types";
 
 /**
  * What needs a look (pure): checks code runs over the organization's boards, decisions and topic
@@ -33,6 +34,10 @@ export interface Notice {
   board?: string;
   card?: string;
   topic?: string;
+  /** The goal it's about (goals.md). */
+  goal?: string;
+  /** The goals it bears on: its own, its card's, or its page's links (filled in by the server). */
+  goals?: string[];
   /** The other card (the same need on two boards). */
   other?: { board: string; card: string };
   /** The pieces it rests on. */
@@ -87,6 +92,8 @@ export interface CheckInput {
   placed?: { board: string; sourceId: string; title: string; count: number; at: number }[];
   /** Where the work linked to solutions stands, as the tools last said (by connector:ref). */
   work?: Record<string, WorkStatus>;
+  /** The goals (goals.md): a goal's number is checked there, not on the board's copy of it. */
+  goals?: GoalTree;
 }
 
 type Node = { parentId?: string | null; meta?: { ost?: OstCard } };
@@ -128,6 +135,8 @@ export function runChecks(x: CheckInput): Notice[] {
   const out: Notice[] = [];
   const cards = cardsOf(x.boards);
   const byRef = new Map(cards.map((c) => [cardRef(c.board.id, c.id), c]));
+  /** Outcome cards that work on a goal (their number is the goal's). */
+  const goalCards = new Set((x.goals?.goals ?? []).flatMap((g) => (g.on ? [cardRef(g.on.board, g.on.card)] : [])));
 
   // What customers said against a line on a topic page (Qalam AI's disputes, from filing).
   for (const t of x.topics)
@@ -322,28 +331,39 @@ export function runChecks(x: CheckInput): Notice[] {
           products: productsOf(c.board),
         });
       }
-    // An outcome whose number nobody has updated in weeks (read from an analytics tool counts as updated).
+    // An outcome whose number nobody has updated in weeks (read from an analytics tool counts as
+    // updated). A card that works on a goal is checked as its goal, below.
     const m = c.card.metric;
-    if (c.card.kind === "outcome" && c.card.stage === "active" && m && m.current !== null && m.target !== null) {
+    if (c.card.kind === "outcome" && !goalCards.has(ref) && c.card.stage === "active" && m && m.current !== null && m.target !== null) {
       const updates = x.decisions.filter((d) => !d.undone && d.kind === "metric" && d.board === c.board.id && d.card === c.id && (d.detail as { field?: unknown } | undefined)?.field === "current");
-      const last = Math.max(c.card.stageAt ?? c.board.createdAt, m.readAt ?? 0, ...updates.map((d) => d.at));
-      if (x.now - last > STALE_METRIC_DAYS * DAY) {
-        const weeks = Math.floor((x.now - last) / (7 * DAY));
-        const flat = m.baseline !== null && m.current === m.baseline;
-        out.push({
-          key: `metric:${ref}:${factHash(String(last))}`,
-          kind: "metric",
-          title: flat ? `${q(c.card.title)} hasn't moved from where it started` : `${q(c.card.title)} hasn't been updated in ${plural(weeks, "week")}`,
-          why: `${m.name || "Its number"} is at ${m.current}${m.unit ? ` ${m.unit}` : ""}${flat ? ", its baseline," : ""} with a target of ${m.target}. Is it moving?`,
-          at: last + STALE_METRIC_DAYS * DAY,
-          board: c.board.id,
-          card: c.id,
-          products: productsOf(c.board),
-        });
-      }
+      const notice = staleNumber(c.card.title, m, Math.max(c.card.stageAt ?? c.board.createdAt, m.readAt ?? 0, ...updates.map((d) => d.at)), x.now, ref);
+      if (notice) out.push({ ...notice, board: c.board.id, card: c.id, products: productsOf(c.board) });
     }
   }
+  // A goal whose number nobody has updated in weeks: on its board or on its page, read or typed.
+  for (const g of x.goals?.goals ?? []) {
+    const m = g.metric;
+    if (g.status !== "active" || !m || m.current === null || m.target === null) continue;
+    const updates = x.decisions.filter((d) => !d.undone && d.kind === "metric" && (d.goal === g.id || (!!g.on && d.board === g.on.board && d.card === g.on.card)) && (d.detail as { field?: unknown } | undefined)?.field === "current");
+    const ref = g.on ? cardRef(g.on.board, g.on.card) : `hub:goal:${g.id}`;
+    const notice = staleNumber(g.title, m, Math.max(g.at, m.readAt ?? 0, ...updates.map((d) => d.at)), x.now, ref);
+    if (notice) out.push({ ...notice, ...(g.on && byRef.has(ref) ? { board: g.on.board, card: g.on.card } : {}), goal: g.id, products: g.product ? [g.product] : [] });
+  }
   return out.sort((a, b) => b.at - a.at);
+}
+
+/** A number not updated in weeks, or still where it started: the notice, or none while it's fresh. */
+function staleNumber(title: string, m: NonNullable<OstCard["metric"]>, last: number, now: number, ref: string): Omit<Notice, "products"> | null {
+  if (now - last <= STALE_METRIC_DAYS * DAY) return null;
+  const weeks = Math.floor((now - last) / (7 * DAY));
+  const flat = m.baseline !== null && m.current === m.baseline;
+  return {
+    key: `metric:${ref}:${factHash(String(last))}`,
+    kind: "metric",
+    title: flat ? `${q(title)} hasn't moved from where it started` : `${q(title)} hasn't been updated in ${plural(weeks, "week")}`,
+    why: `${m.name || "Its number"} is at ${m.current}${m.unit ? ` ${m.unit}` : ""}${flat ? ", its baseline," : ""} with a target of ${m.target}. Is it moving?`,
+    at: last + STALE_METRIC_DAYS * DAY,
+  };
 }
 
 /** Notices about a card (as the card, or as the other card of a pair). */

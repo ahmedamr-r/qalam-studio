@@ -377,7 +377,7 @@ describe("topic pages", () => {
     const md = await readFile(path.join(dir, "hub", "topics", "we-wait-too-long-for-deliveries.md"), "utf8");
     expect(md).toContain("# We wait too long for deliveries\n\n## We know\n\n- Customers waited 50 minutes. *(Call notes)* <!-- qalam ");
     expect(md).toContain("· Qalam AI started this page from “Call notes”, with 1 line.");
-    expect(events).toEqual(expect.arrayContaining([{ kind: "topic", id: r.created[0], tab: "t1" }, { kind: "source", id: "s1abcdefgh", boards: [board.id], tab: "t1" }]));
+    expect(events).toEqual(expect.arrayContaining([{ kind: "topic", id: r.created[0], tab: "t1", filed: true }, { kind: "source", id: "s1abcdefgh", boards: [board.id], tab: "t1" }]));
     expect((await store.getSource("s1abcdefgh"))?.filed).toEqual(["q1"]);
     // A board saving its copy of the source (from before) doesn't forget what was filed.
     await store.putSource({ ...source("s1abcdefgh", board.id), quotes: [quote("q1", "We waited 50 minutes.")] });

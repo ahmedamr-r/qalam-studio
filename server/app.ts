@@ -4,6 +4,7 @@ import { onStoreOpen } from "./org/home";
 export { openLastOrg } from "./org/home";
 import { orgRoutes } from "./org/routes";
 import { startInbox } from "./inbox";
+import { startBearings } from "./org/goals";
 import { onUsage } from "@/ai/usage";
 import { ensureEngine } from "./engine";
 import { connectionsRoutes } from "./routes/connections";
@@ -66,6 +67,8 @@ const ROUTES: Record<string, { GET?: Handler; POST?: Handler }> = {
 export function createApi(): Hono {
   // Each organization's inbox folder is read while its store is open, window or not.
   onStoreOpen(startInbox);
+  // Problems Qalam AI files new material into are read against the goals (server/org/goals.ts).
+  onStoreOpen(startBearings);
   // What each call used is kept on this computer (the Claude card's usage).
   onUsage((e) => void appendUsage(e).catch(() => {}));
   // The engine comes from this computer's settings and Keychain, read before the first answer.

@@ -15,6 +15,7 @@ import { outcomesOf } from "@/goals/mirror";
 import type { NewGoal } from "@/goals/shape";
 import { addGoal, goalById, ordered, patchGoal as patchInTree, removeGoal as removeFromTree, setNorth as setNorthIn, underOf } from "@/goals/tree";
 import { emptyGoals, type Goal, type GoalPatch, type GoalsAt, type GoalTree } from "@/goals/types";
+import type { BearingLog } from "@/goals/bearings";
 import { sameTopic } from "@/hub/topics";
 import type { SourceRecord } from "@/discovery/sources";
 import { topicFromMarkdown, topicToMarkdown } from "@/hub/topic-md";
@@ -52,7 +53,10 @@ export type OrgEvent = { tab?: string } & (
   | { kind: "goal" }
   | { kind: "org" }
   | { kind: "decision"; ids: string[]; boards: string[] }
-  | { kind: "topic"; id: string; removed?: boolean }
+  /** `filed`: Qalam AI filed new material into the page (what's linked to goals may have grown). */
+  | { kind: "topic"; id: string; removed?: boolean; filed?: boolean }
+  /** Which problems bear on which goals changed (hub/bearings.jsonl). */
+  | { kind: "bearing" }
   | { kind: "notice" }
   | { kind: "relation" }
   /** Something changed in the inbox folder (server/inbox.ts reads what's new). */
@@ -681,8 +685,23 @@ export class OrgStore {
       return applied;
     });
     for (const [id, quotes] of Object.entries(o.filed ?? {})) await this.markFiled(id, quotes, o);
-    for (const t of r.pages) this.emit({ kind: "topic", id: t.id, tab: o.tab });
+    for (const t of r.pages) this.emit({ kind: "topic", id: t.id, tab: o.tab, filed: true });
     return r;
+  }
+
+  // -------------------------------------------------------------------------
+  // Which problems bear on which goals (hub/bearings.jsonl): a line per change, never rewritten,
+  // so two people's merge in Git. src/goals/bearings.ts folds them.
+
+  async listBearingLog(): Promise<BearingLog[]> {
+    return this.readLog<BearingLog>("hub/bearings.jsonl");
+  }
+
+  /** Links found by Qalam AI (checked by code first), and its earlier ones they replace taken off. */
+  async addBearings(entries: BearingLog[], opts: { tab?: string } = {}): Promise<void> {
+    if (!entries.length) return;
+    await this.appendLog("hub/bearings.jsonl", entries);
+    this.emit({ kind: "bearing", tab: opts.tab });
   }
 
   // -------------------------------------------------------------------------
@@ -1341,6 +1360,8 @@ export class OrgStore {
       this.emit({ kind: "notice" });
     } else if (rel === "hub/relations.jsonl") {
       this.emit({ kind: "relation" });
+    } else if (rel === "hub/bearings.jsonl") {
+      this.emit({ kind: "bearing" });
     } else if (rel === "about.md") {
       this.emit({ kind: "about" });
     } else if (rel === GOALS) {

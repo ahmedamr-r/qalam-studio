@@ -1,7 +1,29 @@
+import type { OstCard } from "@/discovery/types";
+import { foldBearings, type Bearing } from "@/goals/bearings";
+import type { GoalTree } from "@/goals/types";
 import { pairKey, runChecks, type CheckBoard, type CheckInput, type Notice } from "@/hub/checks";
 import { knowledgeInputs } from "./needs";
 import { workCache } from "../connectors/work";
 import type { OrgStore } from "./store";
+
+type Node = { parentId?: string | null; meta?: { ost?: OstCard } };
+
+/** The goals a notice bears on: the goal it's about, its card's (the outcome above it works on one), its page's links. */
+function withGoals(n: Notice, boards: CheckBoard[], tree: GoalTree, links: Bearing[]): Notice {
+  const out = new Set<string>(n.goal ? [n.goal] : []);
+  const ofCard = (board: string | undefined, card: string | undefined) => {
+    const nodes = (boards.find((b) => b.id === board)?.doc?.nodes ?? {}) as unknown as Record<string, Node>;
+    for (let id: string | null | undefined = card; id; id = nodes[id]?.parentId) {
+      if (nodes[id]?.meta?.ost?.kind !== "outcome") continue;
+      const g = tree.goals.find((x) => x.on?.board === board && x.on?.card === id);
+      if (g) return out.add(g.id);
+    }
+  };
+  if (n.card) ofCard(n.board, n.card);
+  if (n.other) ofCard(n.other.board, n.other.card);
+  if (n.topic) for (const l of links) if (l.need === n.topic) out.add(l.goal);
+  return out.size ? { ...n, goals: [...out] } : n;
+}
 
 /**
  * What needs a look in an organization, now: code's checks over its boards, decisions and topic
@@ -34,9 +56,11 @@ export async function noticesNow(store: OrgStore, now = Date.now()): Promise<Not
     return s ? [{ board: p.board, sourceId: s.id, title: s.title, count: p.proposals.length, at: s.addedAt }] : [];
   });
   const k = await knowledgeInputs(store);
-  const input: CheckInput = { now, boards, decisions: store.listDecisions(), topics: k.topics, indexed: k.indexed, shows: k.shows, pieces: k.pieces, linked: new Set(relations.map((r) => pairKey(r.a, r.b))), placed, work: await workCache(store) };
+  const goals = await store.getGoals();
+  const input: CheckInput = { now, boards, decisions: store.listDecisions(), topics: k.topics, indexed: k.indexed, shows: k.shows, pieces: k.pieces, linked: new Set(relations.map((r) => pairKey(r.a, r.b))), placed, work: await workCache(store), goals };
   const state = await store.noticeState();
-  const all = [...runChecks(input), ...state.found];
+  const { links } = foldBearings(await store.listBearingLog());
+  const all = [...runChecks(input), ...state.found].map((n) => withGoals(n, boards, goals, links));
   return {
     notices: all.filter((n) => !state.dismissed.has(n.key)).sort((a, b) => b.at - a.at),
     lastVisit: store.lastVisit,

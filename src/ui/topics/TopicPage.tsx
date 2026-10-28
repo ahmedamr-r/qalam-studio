@@ -19,6 +19,7 @@ import { confirmDialog, promptDialog } from "../surfaces/dialog";
 import { PageFrame } from "../frame/PageFrame";
 import { QalamAIGlyph } from "../brand";
 import { NeedStrip } from "./NeedStrip";
+import { BearsOn } from "./BearsOn";
 import { ago } from "../time";
 
 /**
@@ -224,6 +225,8 @@ export default function TopicPage({ id }: { id: string }) {
               </section>
             );
           })}
+
+          {t.kind === "need" && <BearsOn need={t.id} />}
 
           <section aria-labelledby="shows" className="flex flex-col gap-[8px]">
             <h2 id="shows" className="text-title font-medium">

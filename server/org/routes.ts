@@ -23,7 +23,10 @@ import type { Ingested } from "@/discovery/ingest/core";
 import type { Proposal } from "@/discovery/proposals";
 import { MAX_SOURCE_TEXT, SOURCE_KIND_LABEL, type SourceRecord } from "@/discovery/sources";
 import { aiConfigured, rateLimited } from "@/ai/server";
+import { foldBearings } from "@/goals/bearings";
 import { goalPatchShape, newGoalShape } from "@/goals/shape";
+import { goalById } from "@/goals/tree";
+import { findProblems, goalPage, linkByHand } from "./goals";
 import { ConflictError, GoalCycleError, GoalInUseError, NotFoundError, type OrgEvent, type OrgStore } from "./store";
 
 /**
@@ -160,6 +163,25 @@ export function orgRoutes(): Hono<Env> {
     } catch (e) {
       return failure(e);
     }
+  });
+  // A goal's page, and the problems behind it (server/org/goals.ts).
+  r.get("/api/org/:org/goals/:id/page", async (c) => {
+    const page = await goalPage(c.get("store"), c.req.param("id"));
+    return page ? c.json(page) : c.json({ error: "not_found", message: "No such goal" }, 404);
+  });
+  r.post("/api/org/:org/goals/:id/problems", async (c) => {
+    if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't link problems to goals." }, 503);
+    const store = c.get("store");
+    const id = c.req.param("id");
+    if (!goalById(await store.getGoals(), id)) return c.json({ error: "not_found", message: "No such goal" }, 404);
+    return streamed(c.req.raw.signal, (emit) => findProblems(store, id, emit));
+  });
+  r.get("/api/org/:org/bearings", async (c) => c.json(foldBearings(await c.get("store").listBearingLog()).links));
+  r.post("/api/org/:org/bearings", async (c) => {
+    const b = (await c.req.json().catch(() => null)) as { need?: unknown; goal?: unknown; on?: unknown; how?: unknown; bears?: unknown } | null;
+    if (!b || typeof b.need !== "string" || !ID.test(b.need) || typeof b.goal !== "string" || !ID.test(b.goal) || typeof b.on !== "boolean") return bad("Name a problem, a goal, and whether they're linked");
+    await linkByHand(c.get("store"), { need: b.need, goal: b.goal, on: b.on, how: typeof b.how === "string" ? b.how : undefined, bears: b.bears === "some" ? "some" : "direct" }, { tab: tabOf(c.req.raw.headers) });
+    return c.json({ ok: true });
   });
   r.put("/api/org/:org/goals-north", async (c) => {
     const { id } = ((await c.req.json().catch(() => ({}))) ?? {}) as { id?: unknown };

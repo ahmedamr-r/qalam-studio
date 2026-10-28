@@ -63,6 +63,9 @@ export const orgHref = (org: string | null = linkOrg) => (org ? `/o/${org}` : "/
 /** A topic page of the organization (src/hub/topics.ts). */
 export const topicHref = (id: string, org: string | null = linkOrg) => `${org ? `/o/${org}` : ""}/t/${encodeURIComponent(id)}`;
 
+/** A goal's page (goals.md, src/goals). */
+export const goalHref = (id: string, org: string | null = linkOrg) => `${org ? `/o/${org}` : ""}/g/${encodeURIComponent(id)}`;
+
 /** Setting the organization up from a brain dump about it (src/ui/setup). */
 export const setupHref = (org: string | null = linkOrg) => `${org ? `/o/${org}` : ""}/setup`;
 

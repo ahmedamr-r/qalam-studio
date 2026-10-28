@@ -7,7 +7,7 @@ import { Splash } from "./brand/splash";
 import { r } from "./recipes";
 import { routeOf, type Route } from "./routes";
 import { legacyTab } from "./frame/places";
-import StudioLoader, { CaptureLoader, HomeLoader, PlaceLoader, SetupLoader, SystemProjectLoader, TopicLoader, WelcomeLoader } from "./StudioLoader";
+import StudioLoader, { CaptureLoader, GoalLoader, HomeLoader, PlaceLoader, SetupLoader, SystemProjectLoader, TopicLoader, WelcomeLoader } from "./StudioLoader";
 import { bootRetryDelay } from "./welcome/steps";
 
 type State = { kind: "loading" } | { kind: "ready"; org: OrgRef } | { kind: "error"; message: string; missingOrg?: boolean } | { kind: "missing" };
@@ -21,7 +21,7 @@ export function App() {
     // The welcome needs no organization (there may be none yet).
     if (route.kind === "welcome") return;
     setState({ kind: "loading" });
-    const org = route.kind === "org" || route.kind === "project" || route.kind === "topic" || route.kind === "setup" || route.kind === "place" ? route.org : null;
+    const org = route.kind === "org" || route.kind === "project" || route.kind === "topic" || route.kind === "goal" || route.kind === "setup" || route.kind === "place" ? route.org : null;
     bootOrg(org).then(
       async (o) => {
         // The bare address opens the organization opened last; an address from before
@@ -60,6 +60,7 @@ export function App() {
   if (state.kind === "missing" || route.kind === "missing") return <Missing title="Page not found" body="There's nothing at this address." />;
   if (route.kind === "org") return <HomeLoader />;
   if (route.kind === "topic") return <TopicLoader id={route.id} />;
+  if (route.kind === "goal") return <GoalLoader id={route.id} />;
   if (route.kind === "setup") return <SetupLoader />;
   if (route.kind === "place") return <PlaceLoader place={route.place} />;
   if (route.kind === "capture") return <CaptureLoader />;
