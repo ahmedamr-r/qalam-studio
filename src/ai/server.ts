@@ -1,13 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { streamViaCli } from "./cli";
+import { orOnModelError, streamViaCli } from "./cli";
 import { runResearch, type ResearchRequest } from "./research";
 import { researchBlock } from "./research-shared";
 import { deltaBatcher } from "./deltas";
-import { apiKey, backend } from "./engine";
+import { apiKey, backend, modelOf, readModelFailed, tierModel } from "./engine";
+import { supportsFallback, tierOf, type CallKind } from "./models";
 import { fromApiUsage, reportUsage } from "./usage";
-
-/** Default is Claude Opus 5.5 for every step; override with CLAUDE_MODEL. */
-export const MODEL = process.env.CLAUDE_MODEL || "claude-opus-5-5";
 
 /**
  * The engine, read at every call (src/ai/engine.ts): "cli" runs the user's own signed-in `claude`
@@ -58,7 +56,9 @@ export interface CallOpts {
   schema: Record<string, unknown>;
   effort: "low" | "medium" | "high" | "xhigh";
   maxTokens?: number;
-  /** Per-call model override (e.g. Opus for extraction). */
+  /** What the call is for: it picks the model (src/ai/models.ts) and labels its usage. None: it decides. */
+  kind?: CallKind;
+  /** Per-call model override (an environment variable of the route's own). */
   model?: string;
   /** Look things up with these connectors first, and add the notes to the content. */
   research?: ResearchRequest;
@@ -66,8 +66,6 @@ export interface CallOpts {
   deltas?: boolean;
 }
 
-/** Server-side fallback on refusals is only offered for these models. */
-const FALLBACK_MODELS = /^claude-(opus-5|fable-5)/;
 /** Models with adaptive thinking, whose thinking text is empty unless summaries are asked for. */
 const ADAPTIVE_MODELS = /^claude-(opus-5|fable-5|sonnet-5|opus-4-[678])/;
 
@@ -83,8 +81,17 @@ const ADAPTIVE_MODELS = /^claude-(opus-5|fable-5|sonnet-5|opus-4-[678])/;
  */
 export function streamStructured(opts: CallOpts): Response {
   if (opts.research?.connectors.length) return streamWithResearch(opts, opts.research);
-  const model = opts.model ?? MODEL;
-  if (backend() === "cli") return streamViaCli(opts, model);
+  const model = opts.model ?? modelOf(opts.kind);
+  if (backend() === "cli") {
+    // A read call Claude Code can't run on its model here runs once more on the decide model, and so do later ones.
+    const decide = tierModel("decide");
+    if (opts.model || tierOf(opts.kind) !== "read" || model === decide) return streamViaCli(opts, model);
+    return orOnModelError(streamViaCli(opts, model), () => {
+      console.warn(`[qalam] Claude Code can't use ${model} here; read calls run on ${decide} from now on`);
+      readModelFailed(model);
+      return streamViaCli(opts, decide);
+    });
+  }
   const anthropic = getClient()!;
   const system = (Array.isArray(opts.system) ? opts.system : [opts.system]).map((text) => ({ type: "text" as const, text, cache_control: { type: "ephemeral" as const } }));
   const encoder = new TextEncoder();
@@ -98,7 +105,7 @@ export function streamStructured(opts: CallOpts): Response {
       };
       const deltas = opts.deltas ? deltaBatcher(send) : null;
       try {
-        const useFallback = FALLBACK_MODELS.test(model);
+        const useFallback = supportsFallback(model);
         const start = (constrained: boolean) =>
           anthropic.beta.messages.stream({
             model,
@@ -162,7 +169,7 @@ export function streamStructured(opts: CallOpts): Response {
           const text = msg.content.map((b) => (b.type === "text" ? b.text : "")).join("");
           const json = text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
           const data = JSON.parse(json);
-          reportUsage(fromApiUsage(msg.usage, msg.model));
+          reportUsage(fromApiUsage(msg.usage, msg.model, opts.kind));
           send({ type: "result", data, usage: msg.usage, model: msg.model });
         }
       } catch (e) {
@@ -192,11 +199,15 @@ export function streamStructured(opts: CallOpts): Response {
   return new Response(body, { headers: { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store" } });
 }
 
-/** The research step's model: the default model unless overridden. */
-const RESEARCH_MODEL = process.env.RESEARCH_MODEL || MODEL;
+/** The research step's engine and model, read at each call: RESEARCH_MODEL, else the read tier's (retried on the decide model where Claude Code can't use it). */
+function researchDeps() {
+  const model = process.env.RESEARCH_MODEL || modelOf("research");
+  const decide = tierModel("decide");
+  return { backend: backend(), client: getClient(), model, ...(!process.env.RESEARCH_MODEL && model !== decide ? { retry: decide } : {}) };
+}
 
 /** The research step on its own, for the core (what others aim for): its notes and sources, or why there are none. */
-export const research = (req: ResearchRequest, emit: (label: string) => void, signal: AbortSignal) => runResearch(req, { backend: backend(), client: getClient(), model: RESEARCH_MODEL }, emit, signal);
+export const research = (req: ResearchRequest, emit: (label: string) => void, signal: AbortSignal) => runResearch(req, researchDeps(), emit, signal);
 
 /** Run the research step (streaming what it looks up), then the structured call with its notes. */
 function streamWithResearch(opts: CallOpts, research: ResearchRequest): Response {
@@ -209,7 +220,7 @@ function streamWithResearch(opts: CallOpts, research: ResearchRequest): Response
         if (!abort.signal.aborted) controller.enqueue(encoder.encode(JSON.stringify(o) + "\n"));
       };
       try {
-        const info = await runResearch(research, { backend: backend(), client: getClient(), model: RESEARCH_MODEL }, (label) => send({ type: "activity", label }), abort.signal);
+        const info = await runResearch(research, researchDeps(), (label) => send({ type: "activity", label }), abort.signal);
         if (info) send({ type: "research", research: info });
         const content: Content = info?.notes ? [...opts.content, { type: "text", text: researchBlock(info.notes) }] : opts.content;
         inner = streamStructured({ ...opts, content, research: undefined }).body!.getReader();
@@ -276,7 +287,7 @@ export function streamResearch(research: ResearchRequest): Response {
         if (!abort.signal.aborted) controller.enqueue(encoder.encode(JSON.stringify(o) + "\n"));
       };
       try {
-        const info = await runResearch(research, { backend: backend(), client: getClient(), model: RESEARCH_MODEL }, (label) => send({ type: "activity", label }), abort.signal);
+        const info = await runResearch(research, researchDeps(), (label) => send({ type: "activity", label }), abort.signal);
         const none = research.purpose === "import" ? "None of those tools is connected here." : "Web search isn't available here, so no libraries were looked up.";
         send({ type: "result", data: info ?? { notes: "", sources: [], steps: [], error: none }, model: info?.model });
       } catch (e) {

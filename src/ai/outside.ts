@@ -44,5 +44,5 @@ export function claimsSchema(m: Pick<ClaimsSent, "pages">) {
 
 /** The call, as the core's structured() runs it. */
 export function claimsCall(m: ClaimsSent) {
-  return { system: CLAIMS_SYSTEM, schema: claimsSchema(m), effort: "low" as const, maxTokens: 4000, content: [{ type: "text" as const, text: m.text }] };
+  return { kind: "claims" as const, system: CLAIMS_SYSTEM, schema: claimsSchema(m), effort: "low" as const, maxTokens: 4000, content: [{ type: "text" as const, text: m.text }] };
 }

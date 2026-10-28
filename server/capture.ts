@@ -18,7 +18,6 @@ import { contextOf, type OrgContext, type PackRequest } from "@/org/pack";
 import { indexFor } from "./index/registry";
 import { packedPieces, packFor } from "./index/search";
 import type { OrgStore } from "./org/store";
-import { DISCOVERY_MODEL } from "./routes/discovery";
 
 /**
  * Capture: material added to the organization rather than to a board (pasted on its home, dropped
@@ -68,7 +67,7 @@ export async function coreDeps(store: OrgStore): Promise<FilingDeps> {
     },
     listTopics: () => store.listTopics(),
     pack,
-    call: async (body) => (await structured<unknown>({ model: DISCOVERY_MODEL, ...topicsCall(body) })).data,
+    call: async (body) => (await structured<unknown>(topicsCall(body))).data,
     file: async (f, from, filed) => {
       const r = await store.fileTopics(f, { from, filed });
       return { created: r.created, counts: r.counts, pages: r.pages.map((p) => ({ id: p.id, title: p.title, kind: p.kind })) };
@@ -113,7 +112,7 @@ async function readIn(store: OrgStore, deps: FilingDeps, s: SourceRecord, o: Cap
       chunks: chunks.map((c) => ({ id: c.ref, source: cur.title.slice(0, 300), kind: SOURCE_KIND_LABEL[cur.kind], text: c.text, ...(cur.transcript ? { speakers: speakerNote(cur.transcript) } : {}) })),
       ...(org ? { context: org.context } : {}),
     };
-    const { data } = await structured<unknown>({ model: DISCOVERY_MODEL, ...extractCall(body) });
+    const { data } = await structured<unknown>(extractCall(body));
     const got = finishExtracted(sanitizeExtract(data, chunks, new Map([[cur.id, cur.quotes.map((q) => q.span)]])), () => cur);
     cur = {
       ...cur,
@@ -174,7 +173,7 @@ async function placeIn(store: OrgStore, deps: FilingDeps, s: SourceRecord, o: Ca
       .slice(0, 60),
     ...(org ? { context: org.context } : {}),
   };
-  const { data } = await structured<unknown>({ model: DISCOVERY_MODEL, ...synthesizeCall(body) });
+  const { data } = await structured<unknown>(synthesizeCall(body));
   const out: Record<string, Proposal[]> = {};
   for (const b of boards) {
     const outcome = b.cards.find((c) => c.kind === "outcome" && !c.parentRef);

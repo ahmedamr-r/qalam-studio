@@ -1,7 +1,8 @@
 import { execFile, spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { childEnv, workDir } from "@/ai/cli";
-import { bin } from "@/ai/engine";
+import { bin, modelOf } from "@/ai/engine";
+import type { CallKind } from "@/ai/models";
 import { resultText } from "@/ai/research-shared";
 import { fromCliResult, reportUsage } from "@/ai/usage";
 import { parseMcpList, toolPrefix, type ListedServer } from "@/connectors/claude-code";
@@ -32,16 +33,16 @@ export async function listClaudeCode(force = false): Promise<ListedServer[] | nu
 /** The last answer, without asking again (null: never asked since Qalam started). */
 export const claudeCodeKnown = () => (g.__qalamMcpList ? { at: g.__qalamMcpList.at, list: g.__qalamMcpList.list } : null);
 
-// An alias Claude Code knows (a full id it doesn't know yet falls back to its default).
-const MODEL = process.env.CONNECTOR_MODEL || "haiku";
 /** A run that hasn't made its calls by now is stopped. */
 const LIMIT_MS = 150_000;
 const pick = (args: Record<string, unknown>, keys: string[] | undefined) => (keys ? Object.fromEntries(keys.map((k) => [k, args?.[k]])) : args);
 const canonical = (v: unknown): string => JSON.stringify(v, (_k, x) => (x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => a.localeCompare(b))) : x));
 
-/** Each call's answer, in order (null: it failed, or wasn't made as planned). */
-export function runTools(server: string, calls: ToolCall[], signal?: AbortSignal): Promise<(string | null)[]> {
+/** Each call's answer, in order (null: it failed, or wasn't made as planned). On the fetch tier: Haiku unless set otherwise. */
+export function runTools(server: string, calls: ToolCall[], signal?: AbortSignal, kind: Extract<CallKind, "connector" | "numbers"> = "connector"): Promise<(string | null)[]> {
   const prefix = toolPrefix(server);
+  // An alias Claude Code knows; what it ran is in its init event.
+  let model = modelOf(kind);
   const names = [...new Set(calls.map((c) => prefix + c.tool))];
   const asked = calls.map((c, i) => `${i + 1}. ${prefix}${c.tool} with ${JSON.stringify(c.args)}`).join("\n");
   return new Promise((resolve, reject) => {
@@ -50,7 +51,7 @@ export function runTools(server: string, calls: ToolCall[], signal?: AbortSignal
       "--input-format", "stream-json",
       "--output-format", "stream-json",
       "--verbose",
-      "--model", MODEL,
+      "--model", model,
       "--system-prompt", "You run the tools you're asked to, each exactly once with exactly the arguments given, and then reply with the word done.",
       "--tools", "",
       "--allowedTools", ...names,
@@ -72,7 +73,7 @@ export function runTools(server: string, calls: ToolCall[], signal?: AbortSignal
       settled = true;
       clearTimeout(limit);
       signal?.removeEventListener("abort", stop);
-      reportUsage(fromCliResult(result, MODEL));
+      reportUsage(fromCliResult(result, model, kind));
       proc.kill();
       then();
     };
@@ -89,7 +90,8 @@ export function runTools(server: string, calls: ToolCall[], signal?: AbortSignal
       } catch {
         return;
       }
-      if (ev.type === "assistant")
+      if (ev.type === "system" && ev.subtype === "init") model = ev.model ?? model;
+      else if (ev.type === "assistant")
         for (const b of ev.message?.content ?? []) {
           if (b.type !== "tool_use") continue;
           // Kept only when it's one of the planned calls, as planned (and not one already made).

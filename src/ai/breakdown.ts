@@ -58,5 +58,5 @@ export function breakdownSchema(m: Pick<BreakdownSent, "pieces" | "benchmarks">)
 
 /** The call, as the core's structured() runs it. */
 export function breakdownCall(m: BreakdownSent) {
-  return { system: BREAKDOWN_SYSTEM, schema: breakdownSchema(m), effort: "medium" as const, maxTokens: 6000, content: [{ type: "text" as const, text: m.text }] };
+  return { kind: "breakdown" as const, system: BREAKDOWN_SYSTEM, schema: breakdownSchema(m), effort: "medium" as const, maxTokens: 6000, content: [{ type: "text" as const, text: m.text }] };
 }

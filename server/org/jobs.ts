@@ -10,7 +10,6 @@ import { goalById } from "@/goals/tree";
 import { rankNeeds } from "@/hub/needs";
 import type { CaptureResult } from "../capture";
 import { connectorsView, importItems, searchConnector, type ImportResult } from "../connectors";
-import { DISCOVERY_MODEL } from "../routes/discovery";
 import { flushBearings, type Linked } from "./goals";
 import { knowledgeInputs } from "./needs";
 import { NotFoundError, type OrgStore } from "./store";
@@ -77,7 +76,7 @@ export async function planJobs(store: OrgStore, goalId: string, emit?: (label: s
   emit?.("Looking at the tools connected here");
   const m = jobMaterial({ tree, goal, gaps, problems, topics, tools: await jobTools(), segments, people: await peopleIn(store), planned, productName: (id) => products.find((p) => p.id === id)?.name });
   emit?.(gaps.length ? `Qalam AI is planning how to find out ${gaps.length === 1 ? "what isn't known" : `${gaps.length} things not known`} yet` : "Qalam AI is planning what would make the problems surer");
-  const { data, model } = await structured<unknown>({ model: DISCOVERY_MODEL, ...jobsCall(m) });
+  const { data, model } = await structured<unknown>(jobsCall(m));
   const now = Date.now();
   const dropped: { why: string; item: unknown }[] = [];
   const jobs = sanitizeJobs(data, m, { goal: goalId, now, id: () => nanoid(10) }, (why, item) => dropped.push({ why, item }));

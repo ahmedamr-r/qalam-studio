@@ -1,3 +1,4 @@
+import type { ModelMix, Tier } from "@/ai/models";
 import type { UsageSummary } from "@/ai/usage-shared";
 import type { HealthRow } from "@/health/doctor";
 import { resetAIStatus } from "@/ai/client";
@@ -34,7 +35,12 @@ export interface EngineTest {
 
 export interface EngineView {
   kind: EngineKind;
+  /** The decide tier's model. */
   model: string;
+  /** "balanced": Sonnet reads, Opus decides; "best": Opus for everything. */
+  models: ModelMix;
+  /** What each tier runs on now, on this engine. */
+  tiers: Record<Tier, string>;
   /** Claude Code on this Mac: there, signed in, and whose account pays. */
   claude: { found: boolean; signedIn: boolean | null; account?: ClaudeAccount };
   /** The API key in use: its last four characters, and where it's kept. */
@@ -66,6 +72,7 @@ const changed = <T>(v: T) => {
 export const engineDb = {
   view: () => fetch("/api/engine").then((r) => json<EngineView>(r)),
   choose: (kind: EngineKind) => send("/api/engine", "PUT", { kind }).then((r) => json<EngineView>(r)).then(changed),
+  models: (models: ModelMix) => send("/api/engine/models", "PUT", { models }).then((r) => json<EngineView>(r)),
   test: (kind?: EngineKind) => send("/api/engine/test", "POST", { kind }).then((r) => json<EngineTest>(r)),
   /** Tested first; kept in the Keychain only when it works. */
   saveKey: (key: string) => send("/api/engine/key", "PUT", { key }).then((r) => json<EngineView>(r)).then(changed),

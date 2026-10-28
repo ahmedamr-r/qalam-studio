@@ -12,7 +12,6 @@ const flushBearings = vi.fn();
 const importItems = vi.fn();
 const searchConnector = vi.fn();
 vi.mock("@/ai/server", () => ({ structured: (...a: unknown[]) => structured(...a) }));
-vi.mock("../routes/discovery", () => ({ DISCOVERY_MODEL: "test-model" }));
 vi.mock("./goals", () => ({ flushBearings: (...a: unknown[]) => flushBearings(...a) }));
 vi.mock("./needs", () => ({ knowledgeInputs: async (s: OrgStore) => ({ topics: await s.listTopics(), pieces: new Map(), shows: new Map(), indexed: false }) }));
 vi.mock("../connectors", () => ({

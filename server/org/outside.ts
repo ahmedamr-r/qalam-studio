@@ -9,7 +9,6 @@ import { claimsMaterial, outsideTask, sanitizeClaims, OUTSIDE_LIMITS, type Outsi
 import { chainOf, goalById } from "@/goals/tree";
 import type { Goal, GoalLever } from "@/goals/types";
 import { coreDeps } from "../capture";
-import { DISCOVERY_MODEL } from "../routes/discovery";
 import { NotFoundError, type OrgStore } from "./store";
 
 /**
@@ -56,7 +55,7 @@ export async function lookOutside(store: OrgStore, goalId: string, emit: (label:
   if (!pages.length) return { kept: 0, read: 0, error: "None of the pages it found could be read." };
   emit("Qalam AI is checking each number on its page");
   const m = claimsMaterial({ task, notes: info.notes, pages });
-  const { data, model } = await structured<unknown>({ model: DISCOVERY_MODEL, ...claimsCall(m) });
+  const { data, model } = await structured<unknown>(claimsCall(m));
   const now = Date.now();
   const dropped: { why: string; item: unknown }[] = [];
   const claims = sanitizeClaims(data, m, { now }, (why, item) => dropped.push({ why, item }));
@@ -78,7 +77,7 @@ export async function breakDown(store: OrgStore, goalId: string, o: { levers: Go
   const benchmarks = (await Promise.all(chainOf(tree, goalId).map((g) => store.getGoalWork(g.id)))).flatMap((w) => w.outside?.claims ?? []).slice(0, 12);
   const m = breakdownMaterial({ tree, goal, productName: product?.name, context: deps.productLine(goal.product ?? null).slice(0, 2500), pack: pack ? { block: pack.context.block, pieces: pack.pieces } : null, benchmarks, levers: o.levers });
   emit("Qalam AI is breaking it down");
-  const { data, model } = await structured<unknown>({ model: DISCOVERY_MODEL, ...breakdownCall(m) });
+  const { data, model } = await structured<unknown>(breakdownCall(m));
   const now = Date.now();
   const dropped: { why: string; item: unknown }[] = [];
   const r = sanitizeBreakdown(data, m, { now, id: () => nanoid(8) }, (why, item) => dropped.push({ why, item }));
