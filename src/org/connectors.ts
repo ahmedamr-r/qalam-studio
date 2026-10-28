@@ -42,6 +42,10 @@ export interface ImportResult {
   added: string[];
   skipped: string[];
   failed: { title: string; why: string }[];
+  /** The sources the items it added became. */
+  sources?: string[];
+  /** The topic pages filing them changed. */
+  pages?: string[];
 }
 
 async function json<T>(res: Response): Promise<T> {

@@ -20,6 +20,7 @@ import { useHealth } from "../frame/useHealth";
 import { StatusDot } from "../viz";
 import { ProblemsList } from "../goals/ProblemsList";
 import { useBearings } from "../goals/useBearings";
+import { useJobs } from "../goals/useJobs";
 import { inScope, withScope } from "./scope";
 import { useScope } from "./useScope";
 import { useNeeds } from "./useNeeds";
@@ -44,6 +45,7 @@ export default function Home() {
   const goalCount = goalTree.goals.length;
 
   const links = useBearings() ?? [];
+  const jobs = useJobs() ?? [];
   const product = scope !== "all" && scope !== "org" ? products.find((p) => p.id === scope) : undefined;
   const yours = homeGoals(goalTree, (g) => inScope(g.product, scope) || g.id === goalTree.north);
   // Problems customers raise (from two sources up) that no goal is linked to.
@@ -76,7 +78,7 @@ export default function Home() {
 
         <AskBar product={product?.id ?? null} topics={topics} />
 
-        <YourGoals tree={goalTree} shown={yours.goals} mine={yours.mine} needs={needs} links={links} />
+        <YourGoals tree={goalTree} shown={yours.goals} mine={yours.mine} needs={needs} links={links} jobs={jobs} />
 
         <NeedsALook
           now={notices}

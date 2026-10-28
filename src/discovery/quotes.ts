@@ -131,8 +131,10 @@ function matchIn(hay: Hay, quote: string, min: number): QuoteMatch | null {
     const spans = parts.map(([a, b]) => original(hay, a, b));
     return { span: [spans[0][0], spans[spans.length - 1][1]], parts: spans, words: spans.map(([a, b]) => hay.text.slice(a, b)).join(" … ") };
   };
-  // As written first (its quotation marks, or an ellipsis, may be the source's own), then without the wrapping.
-  for (const q of [quote.trim(), trimQuote(quote)]) {
+  // As written first (its quotation marks, or an ellipsis, may be the source's own), then without
+  // the wrapping; each also without the comma or full stop a writer puts inside the closing mark.
+  const bare = (q: string) => q.replace(/[\s,.;:]+$/, "");
+  for (const q of [quote.trim(), bare(quote.trim()), trimQuote(quote), bare(trimQuote(quote))]) {
     const needle = normalizeForMatch(q).norm;
     if (needle.length < min) continue;
     const at = hay.norm.indexOf(needle);

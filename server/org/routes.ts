@@ -26,7 +26,9 @@ import { aiConfigured, rateLimited } from "@/ai/server";
 import { foldBearings } from "@/goals/bearings";
 import { goalPatchShape, newGoalShape } from "@/goals/shape";
 import { goalById } from "@/goals/tree";
+import type { Hit as ConnectorHit } from "@/connectors/recipes";
 import { findProblems, goalPage, linkByHand } from "./goals";
+import { changeJob, noteForJob, openJobs, planJobs, searchForJob, takeInForJob } from "./jobs";
 import { ConflictError, GoalCycleError, GoalInUseError, NotFoundError, type OrgEvent, type OrgStore } from "./store";
 
 /**
@@ -182,6 +184,44 @@ export function orgRoutes(): Hono<Env> {
     if (!b || typeof b.need !== "string" || !ID.test(b.need) || typeof b.goal !== "string" || !ID.test(b.goal) || typeof b.on !== "boolean") return bad("Name a problem, a goal, and whether they're linked");
     await linkByHand(c.get("store"), { need: b.need, goal: b.goal, on: b.on, how: typeof b.how === "string" ? b.how : undefined, bears: b.bears === "some" ? "some" : "direct" }, { tab: tabOf(c.req.raw.headers) });
     return c.json({ ok: true });
+  });
+  // Jobs for a goal (server/org/jobs.ts): planned by Qalam AI from what isn't known yet, run here or handed over.
+  r.get("/api/org/:org/jobs", async (c) => c.json(await openJobs(c.get("store"))));
+  r.post("/api/org/:org/goals/:id/jobs", async (c) => {
+    if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't plan jobs." }, 503);
+    const store = c.get("store");
+    const id = c.req.param("id");
+    if (!goalById(await store.getGoals(), id)) return c.json({ error: "not_found", message: "No such goal" }, 404);
+    return streamed(c.req.raw.signal, (emit) => planJobs(store, id, emit));
+  });
+  r.patch("/api/org/:org/jobs/:id", async (c) => {
+    const b = (await c.req.json().catch(() => null)) as { status?: unknown; outcome?: unknown } | null;
+    const status = b?.status === "todo" || b?.status === "done" || b?.status === "dropped" ? b.status : undefined;
+    const outcome = typeof b?.outcome === "string" ? b.outcome.replace(/\s+/g, " ").trim().slice(0, 240) : undefined;
+    if (!ID.test(c.req.param("id")) || (!status && outcome === undefined)) return bad("Not a change to a job");
+    try {
+      await changeJob(c.get("store"), c.req.param("id"), { ...(status ? { status } : {}), ...(outcome !== undefined ? { outcome } : {}) }, { tab: tabOf(c.req.raw.headers) });
+      return c.json({ ok: true });
+    } catch (e) {
+      return failure(e);
+    }
+  });
+  r.post("/api/org/:org/jobs/:id/search", async (c) => {
+    const { query } = ((await c.req.json().catch(() => ({}))) ?? {}) as { query?: unknown };
+    try {
+      return c.json({ hits: await searchForJob(c.get("store"), c.req.param("id"), typeof query === "string" ? query : undefined) });
+    } catch (e) {
+      return e instanceof NotFoundError ? failure(e) : c.json({ error: "search_failed", message: e instanceof Error ? e.message : String(e) }, 400);
+    }
+  });
+  r.post("/api/org/:org/jobs/:id/take", async (c) => {
+    if (!aiConfigured()) return c.json({ error: "no_key", message: "Qalam AI isn't set up here." }, 501);
+    const { hits } = ((await c.req.json().catch(() => ({}))) ?? {}) as { hits?: unknown };
+    const picked = (Array.isArray(hits) ? hits : []).filter((h): h is ConnectorHit => !!h && typeof h.id === "string" && typeof h.title === "string").slice(0, 20);
+    if (!picked.length) return bad("Pick something to bring in");
+    const store = c.get("store");
+    // Taken in to the end even if the window goes: each item is kept, read, filed and placed.
+    return streamed(c.req.raw.signal, (emit) => takeInForJob(store, c.req.param("id"), picked, emit));
   });
   r.put("/api/org/:org/goals-north", async (c) => {
     const { id } = ((await c.req.json().catch(() => ({}))) ?? {}) as { id?: unknown };
@@ -350,12 +390,17 @@ export function orgRoutes(): Hono<Env> {
   r.post("/api/org/:org/capture", async (c) => {
     if (!aiConfigured()) return c.json({ error: "no_key", message: "Qalam AI isn't set up here." }, 501);
     if (rateLimited(c.req.raw)) return c.json({ error: "rate_limited", message: "Too many requests, try again in a few minutes." }, 429);
-    const b = (await c.req.json().catch(() => null)) as { ingested?: unknown; product?: unknown } | null;
+    const b = (await c.req.json().catch(() => null)) as { ingested?: unknown; product?: unknown; job?: unknown } | null;
     const ing = ingestedShape(b?.ingested);
     if (!ing) return bad("Not something to add");
     const product = typeof b?.product === "string" && ID.test(b.product) ? b.product : null;
+    // Notes from a job that was handed over: kept on the job, and linked to the goals at once.
+    const job = typeof b?.job === "string" && ID.test(b.job) ? b.job : null;
     const store = c.get("store");
-    return streamed(c.req.raw.signal, (emit, signal) => captureSource(store, ing, { product, emit, signal }));
+    return streamed(c.req.raw.signal, async (emit, signal) => {
+      const r = await captureSource(store, ing, { product, emit, signal });
+      return job ? { ...r, linked: await noteForJob(store, job, r, emit) } : r;
+    });
   });
   /** Quick capture (the menu bar, the capture page): into the inbox folder, which takes it from there. */
   r.post("/api/org/:org/quick", async (c) => {

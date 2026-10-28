@@ -16,6 +16,7 @@ import type { NewGoal } from "@/goals/shape";
 import { addGoal, goalById, ordered, patchGoal as patchInTree, removeGoal as removeFromTree, setNorth as setNorthIn, underOf } from "@/goals/tree";
 import { emptyGoals, type Goal, type GoalPatch, type GoalsAt, type GoalTree } from "@/goals/types";
 import type { BearingLog } from "@/goals/bearings";
+import type { JobLog } from "@/goals/jobs";
 import { sameTopic } from "@/hub/topics";
 import type { SourceRecord } from "@/discovery/sources";
 import { topicFromMarkdown, topicToMarkdown } from "@/hub/topic-md";
@@ -57,6 +58,8 @@ export type OrgEvent = { tab?: string } & (
   | { kind: "topic"; id: string; removed?: boolean; filed?: boolean }
   /** Which problems bear on which goals changed (hub/bearings.jsonl). */
   | { kind: "bearing" }
+  /** The jobs planned for goals, or what came of them, changed (hub/jobs.jsonl). */
+  | { kind: "job" }
   | { kind: "notice" }
   | { kind: "relation" }
   /** Something changed in the inbox folder (server/inbox.ts reads what's new). */
@@ -702,6 +705,19 @@ export class OrgStore {
     if (!entries.length) return;
     await this.appendLog("hub/bearings.jsonl", entries);
     this.emit({ kind: "bearing", tab: opts.tab });
+  }
+
+  // Jobs for goals (hub/jobs.jsonl): a job, then a line per change to it, never rewritten, so two
+  // people's merge in Git. src/goals/jobs.ts folds them.
+
+  async listJobLog(): Promise<JobLog[]> {
+    return this.readLog<JobLog>("hub/jobs.jsonl");
+  }
+
+  async addJobs(entries: JobLog[], opts: { tab?: string } = {}): Promise<void> {
+    if (!entries.length) return;
+    await this.appendLog("hub/jobs.jsonl", entries);
+    this.emit({ kind: "job", tab: opts.tab });
   }
 
   // -------------------------------------------------------------------------
@@ -1362,6 +1378,8 @@ export class OrgStore {
       this.emit({ kind: "relation" });
     } else if (rel === "hub/bearings.jsonl") {
       this.emit({ kind: "bearing" });
+    } else if (rel === "hub/jobs.jsonl") {
+      this.emit({ kind: "job" });
     } else if (rel === "about.md") {
       this.emit({ kind: "about" });
     } else if (rel === GOALS) {

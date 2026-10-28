@@ -2,6 +2,8 @@ import { nanoid } from "nanoid";
 import { bearingsCall } from "@/ai/goals";
 import { aiConfigured, structured } from "@/ai/server";
 import { bearingMaterial, foldBearings, goalAndUnder, problemsInScope, sanitizeBearings, type BearingLog } from "@/goals/bearings";
+import { gapsOf } from "@/goals/gaps";
+import { foldJobs, jobsOf } from "@/goals/jobs";
 import { rankForGoal } from "@/goals/problems";
 import { chainOf, childrenOf, goalById } from "@/goals/tree";
 import type { Goal } from "@/goals/types";
@@ -36,6 +38,7 @@ export async function goalPage(store: OrgStore, id: string) {
     const p = g?.on ? store.getProject(g.on.board)?.record : undefined;
     return g?.on && p ? [{ goal: gid, board: p.id, name: p.name, card: g.on.card }] : [];
   });
+  const problems = rankForGoal(id, { tree, links, needs });
   return {
     goal,
     north: tree.north,
@@ -43,7 +46,10 @@ export async function goalPage(store: OrgStore, id: string) {
     chain: chainOf(tree, id).slice(1),
     children: childrenOf(tree, id),
     boards,
-    problems: rankForGoal(id, { tree, links, needs }),
+    problems,
+    /** What isn't known yet about it (code's, no tokens), and the jobs planned to find out. */
+    gaps: gapsOf(goal, problems, new Map(k.topics.map((t) => [t.id, t]))),
+    jobs: jobsOf(foldJobs(await store.listJobLog()), id),
     /** Need pages in its scope with no link to it yet, the best-backed first: what "Link a problem" picks from. */
     unlinked: problemsInScope(k.topics, goal)
       .filter((t) => !links.some((l) => l.need === t.id && scope.includes(l.goal)))
@@ -144,7 +150,8 @@ export async function linkByHand(store: OrgStore, x: { need: string; goal: strin
 }
 
 const AFTER_FILING = 20_000;
-const watching = new WeakSet<OrgStore>();
+/** Each watched store's way to link the pages just filed now, without waiting. */
+const watching = new WeakMap<OrgStore, (pages: string[]) => Promise<Linked | null>>();
 
 /**
  * Once Qalam AI has filed new material into need pages and things have settled, one call reads
@@ -153,25 +160,38 @@ const watching = new WeakSet<OrgStore>();
  */
 export function startBearings(store: OrgStore) {
   if (watching.has(store)) return;
-  watching.add(store);
   const changed = new Set<string>();
   let timer: ReturnType<typeof setTimeout> | undefined;
-  let running: Promise<void> = Promise.resolve();
-  const run = () => {
+  let running: Promise<unknown> = Promise.resolve();
+  // The latest run's pages and result: a job asking after the pages it filed gets that run's.
+  let last: { pages: Set<string>; result: Promise<Linked | null> } | null = null;
+  const run = (): Promise<Linked | null> => {
+    clearTimeout(timer);
     const pages = [...changed];
     changed.clear();
-    running = running.then(async () => {
-      if (!pages.length || !aiConfigured()) return;
+    const next = running.then(async () => {
+      if (!pages.length || !aiConfigured()) return null;
       const tree = await store.getGoals();
       const targets = tree.goals.filter((g) => g.status === "active").map((g) => g.id);
-      if (targets.length) await linkProblems(store, { targets, pages, replace: false }).catch(() => {});
+      return targets.length ? linkProblems(store, { targets, pages, replace: false }) : null;
     });
+    running = next.catch(() => null);
+    const result = next.catch(() => null);
+    if (pages.length) last = { pages: new Set(pages), result };
+    return result;
   };
+  watching.set(store, (pages) => (pages.some((p) => changed.has(p)) ? run() : last && pages.some((p) => last!.pages.has(p)) ? last.result : Promise.resolve(null)));
   store.events.on("event", (e: OrgEvent) => {
     if (e.kind !== "topic" || !e.filed || e.removed) return;
     changed.add(e.id);
     clearTimeout(timer);
-    timer = setTimeout(run, AFTER_FILING);
+    timer = setTimeout(() => void run(), AFTER_FILING);
   });
   store.events.on("dispose", () => clearTimeout(timer));
 }
+
+/**
+ * Link the pages a job's material was just filed into now, rather than once things settle (or wait
+ * for the run that took them already). Null when none of them was filed.
+ */
+export const flushBearings = (store: OrgStore, pages: string[]): Promise<Linked | null> => watching.get(store)?.(pages) ?? Promise.resolve(null);

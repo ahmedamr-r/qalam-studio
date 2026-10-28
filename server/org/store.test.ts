@@ -263,6 +263,21 @@ describe("goals", () => {
     await store.setMine(["g1", "g2", "g1"]);
     expect((await OrgStore.open(dir)).mine).toEqual(["g1", "g2"]);
   });
+
+  it("keeps jobs and what came of them, a line per change, and hears the file edited elsewhere", async () => {
+    await store.addJobs([{ id: "j1", goal: "g1", kind: "search", title: "Search Notion for basket", why: "Who rebuilds baskets.", connector: "notion", query: "basket", status: "todo", results: [], by: "qalam", at: 1 }]);
+    await store.addJobs([{ id: "j1", status: "done", results: ["s1"], outcome: "1 item brought in", at: 2 }]);
+    expect(await store.listJobLog()).toHaveLength(2);
+    expect((await readFile(path.join(dir, "hub", "jobs.jsonl"), "utf8")).trim().split("\n")).toHaveLength(2);
+    expect(events.filter((e) => e.kind === "job")).toHaveLength(2);
+    // A line added elsewhere (a merge, another computer).
+    const file = path.join(dir, "hub", "jobs.jsonl");
+    await writeFile(file, `${await readFile(file, "utf8")}${JSON.stringify({ id: "j1", status: "dropped", at: 3 })}\n`);
+    events = [];
+    await store.reload("hub/jobs.jsonl");
+    expect(events).toEqual([{ kind: "job" }]);
+    expect(await store.listJobLog()).toHaveLength(3);
+  });
 });
 
 describe("the organization's name", () => {

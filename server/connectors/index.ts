@@ -132,7 +132,7 @@ export async function importItems(store: OrgStore, id: string, hits: Hit[], emit
             return out;
           })
         : (await runTools(h.server, hits.map((x) => recipe.fetch(x)))).map((t) => (t === null ? null : read(t)));
-  const out: ImportResult = { added: [], skipped: [], failed: [] };
+  const out: ImportResult & { sources: string[]; pages: string[] } = { added: [], skipped: [], failed: [], sources: [], pages: [] };
   const have = await store.listSources();
   for (const [i, hit] of hits.entries()) {
     const text = texts[i]?.trim();
@@ -147,8 +147,10 @@ export async function importItems(store: OrgStore, id: string, hits: Hit[], emit
     }
     try {
       emit(`Taking in “${hit.title}”`);
-      await captureSource(store, { kind: "connector", title: hit.title, origin, text }, { emit });
+      const r = await captureSource(store, { kind: "connector", title: hit.title, origin, text }, { emit });
       out.added.push(hit.title);
+      out.sources.push(r.sourceId);
+      for (const p of r.filed?.pages ?? []) if (!out.pages.includes(p.id)) out.pages.push(p.id);
     } catch (e) {
       out.failed.push({ title: hit.title, why: e instanceof Error ? e.message : String(e) });
     }

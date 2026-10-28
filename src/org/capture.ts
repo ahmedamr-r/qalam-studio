@@ -3,13 +3,23 @@ import type { CaptureResult } from "@/discovery/capture";
 import type { Ingested } from "@/discovery/ingest/core";
 import { orgPath } from "./client";
 
+/** What linking new material to the goals did (server/org/goals.ts). */
+export interface LinkedNow {
+  added: number;
+  kept: number;
+  removed: number;
+  none: string;
+}
+
 /**
  * Add material to the organization (server/capture.ts): read in this window (a paste, a file, a
  * page), handed to the core, which keeps it as a source, picks out what customers said, files it
  * into the topic pages and proposes where it fits on the boards. `onActivity` hears each step.
+ * `job`: notes from a job that was handed over; the core keeps them on the job and links what they
+ * say to the goals at once.
  */
-export async function captureIngested(ingested: Ingested, o: { product?: string | null; onActivity?: (label: string) => void; signal?: AbortSignal } = {}): Promise<CaptureResult> {
-  const { data } = await callAI<CaptureResult>(await orgPath("/capture"), { ingested, ...(o.product ? { product: o.product } : {}) }, undefined, o.signal, (e) => {
+export async function captureIngested(ingested: Ingested, o: { product?: string | null; job?: string; onActivity?: (label: string) => void; signal?: AbortSignal } = {}): Promise<CaptureResult & { linked?: LinkedNow | null }> {
+  const { data } = await callAI<CaptureResult & { linked?: LinkedNow | null }>(await orgPath("/capture"), { ingested, ...(o.product ? { product: o.product } : {}), ...(o.job ? { job: o.job } : {}) }, undefined, o.signal, (e) => {
     if (e.type === "activity") o.onActivity?.(e.label);
   });
   return data;

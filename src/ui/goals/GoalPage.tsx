@@ -7,7 +7,9 @@ import type { Decision } from "@/decisions/model";
 import { metricProgress } from "@/discovery/metric";
 import type { OstMetric } from "@/discovery/types";
 import { changeGoal, goalsNow, removeGoal, setMine, setNorth, useGoals } from "@/goals/client";
+import type { Gap } from "@/goals/gaps";
 import { metricLine } from "@/goals/goals-md";
+import type { Job } from "@/goals/jobs";
 import type { GoalProblem } from "@/goals/problems";
 import { underOf } from "@/goals/tree";
 import type { Goal } from "@/goals/types";
@@ -25,13 +27,15 @@ import { r } from "../recipes";
 import { confirmDialog, promptDialog } from "../surfaces/dialog";
 import { startBoardForGoal } from "../topics/start-board";
 import { Meter, StatusDot } from "../viz";
+import { Unknowns } from "./Unknowns";
 
 /**
  * A goal's page: the number and how far there is to go, the goal it feeds and the goals under it,
  * the board working on it, and the problems behind it, the ones that bear directly on its number
  * first, each with one line on how it would move it. "Find problems" has Qalam AI read the
  * organization's problem pages against the goal (code keeps only links it can stand behind);
- * "Work on it" puts a problem on the goal's board. Below: what was decided about it.
+ * "Work on it" puts a problem on the goal's board. Then what isn't known yet and the jobs that would
+ * find it out (./Unknowns.tsx), and what was decided about it.
  */
 
 interface PageData {
@@ -41,6 +45,8 @@ interface PageData {
   children: Goal[];
   boards: { goal: string; board: string; name: string; card: string }[];
   problems: GoalProblem[];
+  gaps: Gap[];
+  jobs: Job[];
   unlinked: { id: string; title: string; sources: number; quotes: number }[];
   decisions: Decision[];
   indexed: boolean;
@@ -79,7 +85,7 @@ export default function GoalPage({ id }: { id: string }) {
   useEffect(() => {
     load();
     return onOrgChange((c) => {
-      if (c.kind === "goal" || c.kind === "bearing" || c.kind === "topic" || c.kind === "decision" || c.kind === "project") load();
+      if (c.kind === "goal" || c.kind === "bearing" || c.kind === "job" || c.kind === "topic" || c.kind === "decision" || c.kind === "project") load();
     });
   }, [load]);
   // This window's own changes to goals come back through the goals store.
@@ -295,6 +301,8 @@ export default function GoalPage({ id }: { id: string }) {
             </p>
           )}
         </section>
+
+        <Unknowns goal={g} gaps={page.gaps} jobs={page.jobs} onChanged={load} />
 
         {!!page.decisions.length && (
           <section aria-labelledby="history" className="flex flex-col gap-[8px]">

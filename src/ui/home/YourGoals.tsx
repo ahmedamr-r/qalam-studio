@@ -1,11 +1,12 @@
 import clsx from "clsx";
-import { Star, Target } from "lucide-react";
+import { ArrowRight, Star, Target } from "lucide-react";
 import { metricProgress } from "@/discovery/metric";
 import type { GoalsNow } from "@/goals/client";
 import { metricLine } from "@/goals/goals-md";
 import { rankForGoal } from "@/goals/problems";
 import { childrenOf, rootsOf } from "@/goals/tree";
 import type { Bearing } from "@/goals/bearings";
+import type { Job } from "@/goals/jobs";
 import type { Goal } from "@/goals/types";
 import type { NeedsNow } from "@/org/needs";
 import { goalHref, placeHref, topicHref } from "@/projects/model";
@@ -14,8 +15,8 @@ import { Meter, StatusDot } from "../viz";
 
 /*
  * The home's first block: the goals this person works on (the ones they marked theirs, else the
- * North Star and the goals right under it), each with its number and the problems behind it that
- * bear on it most directly. Everything else about a goal is on its page.
+ * North Star and the goals right under it), each with its number, the problems behind it that
+ * bear on it most directly, and the next job to do for it. Everything else about a goal is on its page.
  */
 
 const ICON = { size: 14, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
@@ -32,7 +33,7 @@ export function homeGoals(t: GoalsNow, keep: (g: Goal) => boolean = () => true):
   return { goals: near.filter(keep).slice(0, SHOWN), mine: false };
 }
 
-export function YourGoals({ tree, shown, mine, needs, links }: { tree: GoalsNow; shown: Goal[]; mine: boolean; needs: NeedsNow | null; links: Bearing[] }) {
+export function YourGoals({ tree, shown, mine, needs, links, jobs }: { tree: GoalsNow; shown: Goal[]; mine: boolean; needs: NeedsNow | null; links: Bearing[]; jobs: Job[] }) {
   return (
     <section aria-labelledby="your-goals" className="flex flex-col gap-[10px]">
       <div className="flex items-end justify-between gap-[12px]">
@@ -61,7 +62,7 @@ export function YourGoals({ tree, shown, mine, needs, links }: { tree: GoalsNow;
       ) : (
         <ul className="grid gap-[12px] sm:grid-cols-2">
           {shown.map((g) => (
-            <GoalCard key={g.id} g={g} north={g.id === tree.north} problems={rankForGoal(g.id, { tree, links, needs: needs?.needs ?? [] })} />
+            <GoalCard key={g.id} g={g} north={g.id === tree.north} problems={rankForGoal(g.id, { tree, links, needs: needs?.needs ?? [] })} next={jobs.find((j) => j.goal === g.id)} />
           ))}
         </ul>
       )}
@@ -70,7 +71,7 @@ export function YourGoals({ tree, shown, mine, needs, links }: { tree: GoalsNow;
   );
 }
 
-function GoalCard({ g, north, problems }: { g: Goal; north: boolean; problems: ReturnType<typeof rankForGoal> }) {
+function GoalCard({ g, north, problems, next }: { g: Goal; north: boolean; problems: ReturnType<typeof rankForGoal>; next?: Job }) {
   const progress = metricProgress(g.metric);
   return (
     <li className="flex flex-col gap-[10px] rounded-lg bg-panel px-[14px] py-[12px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
@@ -104,6 +105,12 @@ function GoalCard({ g, north, problems }: { g: Goal; north: boolean; problems: R
       ) : (
         <a href={goalHref(g.id)} className="text-caption text-fg-subtle hover:text-fg">
           No problems linked yet: find the problems behind it
+        </a>
+      )}
+      {next && (
+        <a href={`${goalHref(g.id)}#unknowns`} className="flex min-w-0 items-center gap-[6px] border-t border-line-subtle pt-[8px] text-caption text-fg-muted hover:text-fg">
+          <ArrowRight {...ICON} className="shrink-0 text-fg-subtle" />
+          <span className="truncate">Next: {next.title}</span>
         </a>
       )}
     </li>

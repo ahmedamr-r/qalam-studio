@@ -13,6 +13,10 @@ describe("findVerbatim", () => {
 
   it("drops the marks models wrap quotes in", () => {
     expect(verbatim(text, "“…they can't find what they ordered…”")).toBe("they can’t find what they ordered");
+    // The comma or full stop written inside the closing mark isn't the source's.
+    expect(verbatim(text, "what they ordered last,")).toBe("what they ordered last");
+    expect(verbatim(text, "“order again” shelf.")).toBe("“order again” shelf");
+    expect(findVerbatim(text, "what they ordered first,")).toBeNull();
   });
 
   it("finds nothing that isn't there, and nothing too short to mean anything", () => {

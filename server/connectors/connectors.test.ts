@@ -7,7 +7,7 @@ import type { OrgStore } from "../org/store";
 import { resetSecrets, secrets } from "../secrets";
 
 const captured: Ingested[] = [];
-vi.mock("../capture", () => ({ captureSource: async (_s: unknown, ing: Ingested) => void captured.push(ing) }));
+vi.mock("../capture", () => ({ captureSource: async (_s: unknown, ing: Ingested) => ({ sourceId: `s${captured.push(ing)}` }) }));
 
 const { connectorsView, forgetConnector, importItems, saveToken } = await import("./index");
 
@@ -70,11 +70,11 @@ describe("connectors on this computer", () => {
     const store = { listSources: async () => [] } as unknown as OrgStore;
     const hit = { id: "p1", title: "Sara call", url: "https://n/p1" };
     const first = await importItems(store, "notion", [hit], () => {});
-    expect(first).toEqual({ added: ["Sara call"], skipped: [], failed: [] });
+    expect(first).toEqual({ added: ["Sara call"], skipped: [], failed: [], sources: ["s1"], pages: [] });
     expect(captured).toEqual([{ kind: "connector", title: "Sara call", origin: "https://n/p1", text: "Every Sunday I rebuild my basket." }]);
 
     const again = { listSources: async () => [{ origin: "https://n/p1", text: "Every Sunday I rebuild my basket." }] } as unknown as OrgStore;
-    expect(await importItems(again, "notion", [hit], () => {})).toEqual({ added: [], skipped: ["Sara call"], failed: [] });
+    expect(await importItems(again, "notion", [hit], () => {})).toEqual({ added: [], skipped: ["Sara call"], failed: [], sources: [], pages: [] });
     expect(captured).toHaveLength(1);
   });
 });

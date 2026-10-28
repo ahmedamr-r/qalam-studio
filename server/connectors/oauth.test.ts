@@ -17,7 +17,7 @@ import { resetSecrets, secrets } from "../secrets";
 import { readSettings } from "../settings";
 
 const captured: Ingested[] = [];
-vi.mock("../capture", () => ({ captureSource: async (_s: unknown, ing: Ingested) => void captured.push(ing) }));
+vi.mock("../capture", () => ({ captureSource: async (_s: unknown, ing: Ingested) => ({ sourceId: `s${captured.push(ing)}` }) }));
 
 const { cancelSignIn, keepApp, signIn } = await import("./oauth");
 const { connectorsView, forgetConnector, importItems, searchConnector } = await import("./index");
@@ -308,7 +308,7 @@ describe("Qalam's own sign-in to a connector's MCP server", () => {
     const hits = await searchConnector("intercom", 'sheets" OR object_type:contacts');
     expect(hits).toEqual([{ id: "conversation_42", title: "Exports", url: "https://app.intercom.com/a/inbox/x/inbox/conversation/42", snippet: 'object_type:conversations q:"sheets OR object_type:contacts" limit:20' }]);
     const store = { listSources: async () => [] } as unknown as OrgStore;
-    expect(await importItems(store, "intercom", hits, () => {})).toEqual({ added: ["Exports"], skipped: [], failed: [] });
+    expect(await importItems(store, "intercom", hits, () => {})).toEqual({ added: ["Exports"], skipped: [], failed: [], sources: [expect.any(String)], pages: [] });
     expect(captured).toEqual([{ kind: "connector", title: "Exports", origin: "https://app.intercom.com/a/inbox/x/inbox/conversation/42", text: "Customer (Dana Lee): We export to sheets every Friday.\n\nTeam (Omar): Which sheet?" }]);
   });
 
@@ -384,7 +384,7 @@ describe("Qalam's own sign-in to a connector's MCP server", () => {
       const hits = await searchConnector("slack", "export");
       expect(hits).toEqual([{ id: "C01/1790771415.332219", title: "We export to sheets every Friday.", url: "https://acme.slack.com/archives/C01/p1790771415332219", snippet: "#feedback (C01) · Dana Lee" }]);
       const store = { listSources: async () => [] } as unknown as OrgStore;
-      expect(await importItems(store, "slack", hits, () => {})).toEqual({ added: ["We export to sheets every Friday."], skipped: [], failed: [] });
+      expect(await importItems(store, "slack", hits, () => {})).toEqual({ added: ["We export to sheets every Friday."], skipped: [], failed: [], sources: [expect.any(String)], pages: [] });
       expect(captured[0]).toMatchObject({ kind: "connector", origin: "https://acme.slack.com/archives/C01/p1790771415332219", text: "Dana Lee: We export to sheets every Friday.\nOmar: Which sheet?" });
     });
 
