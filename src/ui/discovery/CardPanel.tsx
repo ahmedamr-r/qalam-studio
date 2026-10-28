@@ -6,7 +6,7 @@ import { noticesDb, onNoticesWritten, type LinkedCard } from "@/org/notices";
 import { useEffect, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import clsx from "clsx";
-import { ChartLine, ExternalLink, Plus, Quote, X } from "lucide-react";
+import { ChartLine, ExternalLink, PenLine, Plus, Quote, X } from "lucide-react";
 import { studio, useStudio } from "@/doc/store";
 import { newId } from "@/doc/factory";
 import { isOstCard } from "@/doc/board";
@@ -14,7 +14,8 @@ import { runCommand } from "@/commands/registry";
 import { cardOf, kindsFor, setKindIn, setStage, setTargetIn, updateCardIn } from "@/discovery/ops";
 import { ASSUMPTION_CATEGORIES, ASSUMPTION_HINT, ASSUMPTION_LABEL, KIND_LABEL, STAGES, SUB_OUTCOME_LABEL } from "@/discovery/kinds";
 import { kindLabel } from "@/discovery/tree";
-import { evidenceLabel, isAIIdea, isAssumed } from "@/discovery/evidence";
+import { evidenceRows, evidenceSummary, isAIIdea, isAssumed, type EvidenceSummary } from "@/discovery/evidence";
+import { strengthFill, strengthOf, type Strength } from "@/hub/needs";
 import { feedback } from "@/commands/feedback";
 import type { AssumptionCategory, OstCard, OstEvidence, OstMetric, OstStage } from "@/discovery/types";
 import { parseWorkUrl, WORK_LABEL, workKey } from "@/connectors/work";
@@ -24,8 +25,9 @@ import { numbersDb } from "@/org/connectors";
 import { placeHref } from "@/projects/model";
 import { ago } from "../time";
 import { refreshWork } from "./work";
-import { Button, Field, Hint, IconBtn, Row, Section, Segmented, Select, Tag } from "../controls";
+import { Button, Field, Hint, IconBtn, Row, Section, Segmented, Select, Tag, Tip } from "../controls";
 import { r } from "../recipes";
+import { Meter } from "../viz";
 import { CommitArea, CommitInput, CommitNumber } from "./fields";
 import { useDiscovery } from "./store";
 import KindMark from "./KindMark";
@@ -455,7 +457,17 @@ function WorkSection({ id, card }: { id: string; card: OstCard }) {
 }
 
 const SOURCE: Record<OstEvidence["kind"], string> = { answer: "From your answers", note: "Your note", quote: "Quote", dump: "From your brain dump" };
+/** Whose words a row is when no one is named: the team's own, by kind. */
+const SHORT: Record<OstEvidence["kind"], string> = { answer: "Your answer", note: "Your note", quote: "Quote", dump: "Brain dump" };
+/** A source's title up to its first comma or bracket ("Support tickets, week of Oct 6": "Support tickets"), for a row's narrow label. */
+const shortTitle = (title: string) => title.split(/\s*[,(]/)[0].trim() || title;
+const STRENGTH: Record<Strength, string> = { strong: "Strong", growing: "Growing", thin: "Thin", assumed: "Assumed" };
+const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
 
+/**
+ * What a card rests on: a strip with how strong that is (as a need page's strip counts it), then a
+ * line per piece of evidence, the whole words, where they're from and Remove on a click.
+ */
 function EvidenceSection({ id, card }: { id: string; card: OstCard }) {
   const [note, setNote] = useState("");
   const add = () => {
@@ -464,31 +476,22 @@ function EvidenceSection({ id, card }: { id: string; card: OstCard }) {
     edit(id, (c) => void c.evidence.push({ id: newId(), kind: "note", text, addedBy: "user", at: Date.now() }));
     setNote("");
   };
+  const rows = evidenceRows(card);
   return (
-    <Section title={`Evidence${card.evidence.length ? ` · ${card.evidence.length}` : ""}`}>
-      {card.evidence.length === 0 && (
-        <p className="text-caption text-fg-muted">
-          {evidenceLabel(card) || "Nothing yet"}. Quotes from customers make a card solid: drag one here from{" "}
-          <button type="button" className="font-medium text-fg underline decoration-fg/30 underline-offset-2" onClick={() => studio().setLeftTab("sources")}>
-            Sources
-          </button>
-          .
-        </p>
+    <Section title="Evidence">
+      {rows.length === 0 ? (
+        <NoEvidence />
+      ) : (
+        <>
+          {/* An outcome's words say where the goal came from, not how solid it is. */}
+          {card.kind !== "outcome" && <EvidenceStrip s={evidenceSummary(card)} />}
+          <ul aria-label="Evidence" className="-mx-[6px] flex flex-col">
+            {rows.map((e) => (
+              <EvidenceRow key={e.id} id={id} e={e} />
+            ))}
+          </ul>
+        </>
       )}
-      {card.evidence.map((e) => (
-        <figure key={e.id} className="group relative flex flex-col gap-[4px] rounded-lg bg-muted py-[8px] pr-[28px] pl-[10px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
-          <blockquote className="flex gap-[6px] text-caption text-fg" dir="auto">
-            <Quote size={12} className="mt-[2px] shrink-0 text-fg-subtle" />
-            <span className="leading-[18px]">{e.text}</span>
-          </blockquote>
-          <figcaption className="pl-[18px] text-micro text-fg-subtle">{fromSource(e) && e.sourceId ? <SourceCite e={e} /> : SOURCE[e.kind]}</figcaption>
-          <span className="absolute top-[4px] right-[4px] hidden group-hover:block">
-            <IconBtn size="sm" label="Remove" onClick={() => edit(id, (c) => void (c.evidence = c.evidence.filter((x) => x.id !== e.id)))}>
-              <X {...ICON} />
-            </IconBtn>
-          </span>
-        </figure>
-      ))}
       <div className="flex flex-col gap-[6px]">
         <textarea
           aria-label="Add a note as evidence"
@@ -506,6 +509,109 @@ function EvidenceSection({ id, card }: { id: string; card: OstCard }) {
         </Button>
       </div>
     </Section>
+  );
+}
+
+/** The card's evidence at a glance: how strong (by the sources of its customers' quotes), how many quotes and sources, what's against it, who said it. */
+function EvidenceStrip({ s }: { s: EvidenceSummary }) {
+  const word = s.quotes ? STRENGTH[strengthOf(s)] : s.ours ? "Your words only" : "Nothing backs it";
+  return (
+    <div role="group" aria-label="What backs this card" className="flex flex-col gap-[8px] rounded-lg bg-muted px-[10px] py-[8px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
+      <div className="flex items-center gap-[12px]">
+        <span className="flex w-[104px] shrink-0 flex-col gap-[6px]">
+          <span className="text-caption font-medium text-fg">{word}</span>
+          <Meter value={strengthFill(s)} label={s.quotes ? `${word}, from ${plural(s.sources, "source")}` : word} />
+        </span>
+        <span className="flex min-w-0 flex-col gap-[2px] text-caption tnum">
+          {s.quotes ? (
+            <Tip label={s.from.length ? s.from.join(" · ") : plural(s.sources, "source")}>
+              <span tabIndex={0} className="truncate text-fg">
+                {plural(s.quotes, "quote")} · {plural(s.sources, "source")}
+              </span>
+            </Tip>
+          ) : (
+            <span className="text-fg-muted">No customer words yet</span>
+          )}
+          <span className={s.against ? "text-warning" : "text-fg-subtle"}>{s.against ? `${s.against} against` : "Nothing against"}</span>
+        </span>
+      </div>
+      {s.who.length > 0 && (
+        <div className="flex flex-wrap items-center gap-[4px]">
+          <span className="mr-[2px] text-micro text-fg-subtle">Who</span>
+          {s.who.slice(0, 4).map((w) => (
+            <span key={w} className={clsx(r.chip, "max-w-[120px]")}>
+              <span className="truncate">{w}</span>
+            </span>
+          ))}
+          {s.who.length > 4 && (
+            <Tip label={s.who.slice(4).join(", ")}>
+              <span tabIndex={0} className="text-micro text-fg-subtle tnum">
+                +{s.who.length - 4}
+              </span>
+            </Tip>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** One piece of evidence in a line: how its words start and whose they are. A click shows them whole, where they're from, and Remove. */
+function EvidenceRow({ id, e }: { id: string; e: OstEvidence }) {
+  const [open, setOpen] = useState(false);
+  const against = e.stance === "against";
+  const who = e.kind === "quote" ? (e.speaker ?? (e.sourceTitle ? shortTitle(e.sourceTitle) : SHORT.quote)) : SHORT[e.kind];
+  const Mark = e.kind === "quote" ? Quote : PenLine;
+  return (
+    <li className="flex flex-col">
+      <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} className="q-item flex h-[28px] w-full items-center gap-[6px] rounded-md px-[6px] text-left hover:bg-hover aria-expanded:bg-hover">
+        <Mark {...ICON} className={clsx("shrink-0", against ? "text-warning" : "text-fg-subtle")} />
+        <span className="min-w-0 flex-1 truncate text-caption text-fg" dir="auto">
+          {e.text}
+        </span>
+        <span className="max-w-[104px] shrink-0 truncate text-micro text-fg-subtle">
+          {against && <span className="text-warning">Against · </span>}
+          {who}
+        </span>
+      </button>
+      {open && (
+        <figure className="mx-[6px] mt-[2px] mb-[6px] flex flex-col gap-[6px] rounded-md bg-muted px-[10px] py-[8px]">
+          <blockquote className="text-caption leading-[18px] text-fg" dir="auto">
+            {e.text}
+          </blockquote>
+          <figcaption className="flex items-start gap-[8px] text-micro text-fg-subtle">
+            <span className="min-w-0 flex-1">{fromSource(e) && e.sourceId ? <SourceCite e={e} /> : SOURCE[e.kind]}</span>
+            <button type="button" className="shrink-0 hover:text-danger" onClick={() => edit(id, (c) => void (c.evidence = c.evidence.filter((x) => x.id !== e.id)))}>
+              Remove
+            </button>
+          </figcaption>
+        </figure>
+      )}
+    </li>
+  );
+}
+
+/** Before any evidence: what its lines will look like, faded, and where quotes come from. */
+function NoEvidence() {
+  return (
+    <div className="relative overflow-hidden rounded-lg bg-muted px-[10px] py-[4px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
+      <div aria-hidden className="flex flex-col opacity-40">
+        {[0.62, 0.4].map((w, i) => (
+          <div key={i} className="flex h-[26px] items-center gap-[6px]">
+            <Quote {...ICON} className="shrink-0 text-fg-subtle" />
+            <span className="h-[6px] rounded-full bg-active" style={{ width: `${w * 100}%` }} />
+            <span className="ml-auto h-[6px] w-[40px] rounded-full bg-active" />
+          </div>
+        ))}
+      </div>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <Tip label="Customers' words make a card solid. Drag a quote from Sources onto the card.">
+          <button type="button" className={clsx(r.buttonSm, r.buttonSecondary)} onClick={() => studio().setLeftTab("sources")}>
+            <Quote {...ICON} /> Find quotes in Sources
+          </button>
+        </Tip>
+      </div>
+    </div>
   );
 }
 

@@ -25,6 +25,54 @@ export function tierOf(card: Pick<OstCard, "evidence">): EvidenceTier {
   return "none";
 }
 
+/** A card's evidence at a glance, for the strip on top of it in the card panel. */
+export interface EvidenceSummary {
+  /** Customers' quotes that back it, and the sources they come from. */
+  quotes: number;
+  sources: number;
+  /** The team's own words that back it: interview answers, a brain dump, notes. */
+  ours: number;
+  against: number;
+  /** Who said those quotes, as their sources name them, the most quoted first. */
+  who: string[];
+  /** The sources' titles, the most quoted first. */
+  from: string[];
+}
+
+/** Names counted, the most first (ties: the first seen first); the same name in another case is one. */
+function mostFirst(names: (string | undefined)[]): string[] {
+  const seen = new Map<string, { name: string; n: number }>();
+  for (const raw of names) {
+    const name = raw?.trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    const s = seen.get(key);
+    if (s) s.n++;
+    else seen.set(key, { name, n: 1 });
+  }
+  return [...seen.values()].sort((a, b) => b.n - a.n).map((s) => s.name);
+}
+
+export function evidenceSummary(card: Pick<OstCard, "evidence">): EvidenceSummary {
+  const backs = backing(card);
+  const quotes = backs.filter((e) => e.kind === "quote");
+  return {
+    quotes: quotes.length,
+    // A quote with no source of its own counts as one.
+    sources: new Set(quotes.map((e) => e.sourceId ?? e.sourceTitle ?? e.id)).size,
+    ours: backs.length - quotes.length,
+    against: againstCount(card),
+    who: mostFirst(quotes.map((e) => e.speaker)),
+    from: mostFirst(quotes.map((e) => e.sourceTitle)),
+  };
+}
+
+/** A card's evidence in the order its rows read: customers' quotes, the team's own words, then what speaks against it (each kept as attached). */
+export function evidenceRows(card: Pick<OstCard, "evidence">): OstEvidence[] {
+  const rank = (e: OstEvidence) => (e.stance === "against" ? 2 : e.kind === "quote" ? 0 : 1);
+  return [...card.evidence].sort((a, b) => rank(a) - rank(b));
+}
+
 /** An opportunity Qalam AI drafted that nothing backs yet (dashed on the board). */
 export const isAssumed = (card: Pick<OstCard, "kind" | "createdBy" | "evidence">) => card.kind === "opportunity" && card.createdBy === "ai" && backing(card).length === 0;
 

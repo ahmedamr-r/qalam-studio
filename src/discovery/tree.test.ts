@@ -9,11 +9,11 @@ import { allCards, isSubOutcome, kindLabel, outcomeOf, outcomePath, outcomeRoots
 import { treeRootOf } from "@/doc/board";
 import { addCardIn, deleteKeepIn, dropProblem, makeCardNode, moveCardsIn, newCard, reorderCardIn, setTargetIn, updateCardIn } from "./ops";
 import { neighbor } from "./navigate";
-import { evidenceLabel, isAIIdea, isAssumed, tierOf } from "./evidence";
+import { evidenceLabel, evidenceRows, evidenceSummary, isAIIdea, isAssumed, tierOf } from "./evidence";
 import { CARD_WIDTH, defaultChildKind } from "./kinds";
 import { GAPS } from "./layout";
 import { CARD, cardBox } from "./metrics";
-import type { OstKind } from "./types";
+import type { OstEvidence, OstKind } from "./types";
 
 let off: () => void;
 beforeAll(() => {
@@ -321,6 +321,30 @@ describe("evidence", () => {
   it("labels Qalam AI's own solution ideas", () => {
     expect(isAIIdea(newCard("solution", { createdBy: "ai" }))).toBe(true);
     expect(isAIIdea(newCard("solution", { createdBy: "ai", evidence: [{ id: "e", kind: "answer", text: "an order again shelf", addedBy: "ai", at }] }))).toBe(false);
+  });
+
+  const quote = (id: string, sourceId: string, speaker?: string, more: Partial<OstEvidence> = {}): OstEvidence => ({ id, kind: "quote", text: `words ${id}`, sourceId, sourceTitle: `${sourceId} interview`, ...(speaker ? { speaker } : {}), addedBy: "user", at, ...more });
+
+  it("sums a card's evidence for its strip: customers' quotes by source, the team's words apart, what's against, who said it", () => {
+    const card = newCard("opportunity", {
+      evidence: [
+        quote("a", "sara", "Sara"),
+        { id: "n", kind: "note", text: "seen in the shop", addedBy: "user", at },
+        quote("b", "omar", "Omar"),
+        quote("c", "omar", "omar"),
+        quote("d", "lee", "Lee", { stance: "against" }),
+        { id: "p", kind: "dump", text: "parents hate substitutions", sourceId: "dump", addedBy: "ai", at },
+        quote("e", "notes"),
+      ],
+    });
+    expect(evidenceSummary(card)).toEqual({ quotes: 4, sources: 3, ours: 2, against: 1, who: ["Omar", "Sara"], from: ["omar interview", "sara interview", "notes interview"] });
+    // The brain dump's words are the team's, and the quote against isn't counted as backing.
+    expect(evidenceSummary(newCard("opportunity"))).toEqual({ quotes: 0, sources: 0, ours: 0, against: 0, who: [], from: [] });
+  });
+
+  it("reads a card's evidence as customers' quotes, then the team's words, then what's against", () => {
+    const card = newCard("solution", { evidence: [quote("x", "lee", "Lee", { stance: "against" }), { id: "n", kind: "note", text: "a note", addedBy: "user", at }, quote("a", "sara"), quote("b", "omar")] });
+    expect(evidenceRows(card).map((e) => e.id)).toEqual(["a", "b", "n", "x"]);
   });
 });
 
