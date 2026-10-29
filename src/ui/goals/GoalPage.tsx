@@ -34,6 +34,7 @@ import { Meter, StatusDot } from "../viz";
 import { GoalsUnder, OtherAims } from "./Breakdown";
 import { Funnel } from "./Funnel";
 import { Unknowns } from "./Unknowns";
+import { navigate } from "../nav";
 
 /**
  * A goal's page: the number and how far there is to go, the goal it feeds and the goals under it,
@@ -84,13 +85,18 @@ export default function GoalPage({ id }: { id: string }) {
 
   const load = useCallback(() => {
     void orgJson<PageData>(`/goals/${encodeURIComponent(id)}/page`).then(
-      (p) => {
-        setPage(p);
-        document.title = `${p.goal.title} · Qalam`;
-      },
+      (p) => setPage(p),
       () => setMissing(true),
     );
   }, [id]);
+  // The tab names the goal, and gives the title back when the page goes (moving in place, src/ui/nav.ts).
+  const title = page?.goal.title;
+  useEffect(() => {
+    if (!title) return;
+    const was = document.title;
+    document.title = `${title} · Qalam`;
+    return () => void (document.title = was);
+  }, [title]);
 
   useEffect(() => {
     load();
@@ -175,7 +181,7 @@ export default function GoalPage({ id }: { id: string }) {
     const ok = await confirmDialog({ title: `Take “${g.title}” off the goals?`, body: "The goals under it move up to the goal it feeds. What was decided about it stays in the log.", confirmLabel: "Take it off", danger: true });
     if (!ok) return;
     await removeGoal(g.id).then(
-      () => window.location.assign(spaceHref(space)),
+      () => navigate(spaceHref(space)),
       (e) => feedback(board ? "A board works on this goal: delete its outcome card there first." : `Couldn't take it off: ${message(e)}`, { kind: "error", id: "goal.remove" }),
     );
   };

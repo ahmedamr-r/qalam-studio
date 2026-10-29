@@ -18,6 +18,7 @@ import { useOrgData } from "../org/useOrgData";
 import { useTopics } from "../topics/list";
 import { PlaceHead } from "./PlaceHead";
 import { ProductMaps } from "./ProductMaps";
+import { navigate } from "../nav";
 
 /**
  * What the organization has heard and read, in the space (all of it in the organization's, one
@@ -42,7 +43,7 @@ export default function EvidencePage({ product: productId = null }: { product?: 
     const now = Date.now();
     const t: Topic = { id: nanoid(10), kind: "segment", title: title.trim().replace(/\s+/g, " ").slice(0, 100), products: product ? [product] : [], createdAt: now, updatedAt: now, lines: [], history: [] };
     await topicsDb.put(t, null);
-    window.location.assign(topicHref(t.id));
+    navigate(topicHref(t.id));
   };
 
   return (

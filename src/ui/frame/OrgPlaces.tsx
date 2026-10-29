@@ -16,8 +16,8 @@ import { StatusDot } from "../viz";
  * The organization's places, drawn two ways. On a page, the sidebar: the space you're in on top
  * (the organization's or a product's, ./spaces.ts; it opens the picker), then Home, Goals,
  * Problems, Evidence and Decisions in that space, and Connections at the foot; ⌘\ folds it to a
- * labelled rail. On a board, a few icon links above its own panels in Studio's rail. Moving
- * between places is a full page load, like every link in the app.
+ * labelled rail. On a board, a few icon links above its own panels in Studio's rail. Between
+ * pages, places move in place (../nav.ts); from a board, leaving is a full page load.
  */
 
 const ICONS: Record<Place, LucideIcon> = { home: House, goals: Target, problems: MessageSquareWarning, evidence: Files, decisions: Milestone, connections: Cable };

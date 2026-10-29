@@ -23,6 +23,7 @@ import { NeedStrip } from "./NeedStrip";
 import { BearsOn } from "./BearsOn";
 import { ago } from "../time";
 import { Dictated } from "../voice/MicButton";
+import { navigate } from "../nav";
 
 /**
  * One topic page: what the organization knows about a need, a kind of customer or a product, what
@@ -60,11 +61,18 @@ export default function TopicPage({ id }: { id: string }) {
         if (!v) return setMissing(true);
         version.current = v.topic.version;
         setView(v);
-        document.title = `${v.topic.title} · Qalam`;
       },
       () => setMissing(true),
     );
   }, [id]);
+  // The tab names the page, and gives the title back when the page goes (moving in place, src/ui/nav.ts).
+  const title = view?.topic.title;
+  useEffect(() => {
+    if (!title) return;
+    const was = document.title;
+    document.title = `${title} · Qalam`;
+    return () => void (document.title = was);
+  }, [title]);
 
   useEffect(() => {
     load();
@@ -157,7 +165,7 @@ export default function TopicPage({ id }: { id: string }) {
     const ok = await confirmDialog({ title: `Delete “${t.title}”?`, body: "The page is removed from the organization's folder. The sources and boards its lines rest on stay as they are.", confirmLabel: "Delete page", danger: true });
     if (!ok) return;
     await topicsDb.remove(t.id);
-    window.location.assign(spaceHref(space, t.kind === "need" ? "problems" : "evidence"));
+    navigate(spaceHref(space, t.kind === "need" ? "problems" : "evidence"));
   };
 
   const productNames = t.products.map((p) => products.find((x) => x.id === p)?.name).filter(Boolean) as string[];

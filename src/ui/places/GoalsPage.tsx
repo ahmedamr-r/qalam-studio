@@ -18,6 +18,7 @@ import { GoalsList } from "../org/Goals";
 import { useOrgData } from "../org/useOrgData";
 import { PlaceHead } from "./PlaceHead";
 import { ProjectCard, StartTile } from "./ProjectCard";
+import { navigate } from "../nav";
 
 /**
  * The organization's goals as one tree (goals.md), in the space: all of them in the organization's,
@@ -54,7 +55,7 @@ export default function GoalsPage({ product: productId = null }: { product?: str
     });
     if (!title?.trim()) return;
     const g = await createGoal({ title: title.trim(), product: product?.id ?? null, parent: tree.north, north: "if-none" }).catch((e) => feedback(`Couldn't add it: ${e instanceof Error ? e.message : String(e)}`, { kind: "error", id: "goals.new" }));
-    if (g) window.location.assign(goalHref(g.id));
+    if (g) navigate(goalHref(g.id));
   };
   const placeAll = async () => {
     setPlacing(true);

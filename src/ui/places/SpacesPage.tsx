@@ -13,6 +13,7 @@ import { SpaceTile } from "../frame/OrgPlaces";
 import { spaceSummary, type Space } from "../frame/spaces";
 import { useCurrentOrg } from "../frame/store";
 import { lastSpace } from "../frame/useSpace";
+import { navigate } from "../nav";
 
 /*
  * Where you pick a space before going in (src/ui/frame/spaces.ts): the whole organization, where
@@ -40,7 +41,7 @@ export default function SpacesPage() {
     await saveProduct(p);
     await editContext({ kind: "product", product: p });
     // Deleted from the editor straight away: stay here.
-    if (productOf(p.id)) window.location.assign(spaceHref(p.id));
+    if (productOf(p.id)) navigate(spaceHref(p.id));
   };
 
   const name = org?.name ?? "";

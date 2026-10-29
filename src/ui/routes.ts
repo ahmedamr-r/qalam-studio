@@ -3,8 +3,8 @@ import { isPagePlace, MOVED_PLACES, type PagePlace } from "./frame/places";
 import { isSpacePlace } from "./frame/spaces";
 
 /**
- * The app's pages, read from the address. Moving between them is a full page load (links and
- * `location.assign`), so there is no client router: each load reads its page once.
+ * The app's pages, read from the address. The frame's pages move in place (src/ui/nav.ts reads
+ * the next address here); a board, setup and the welcome are a full page load each.
  *
  * Pages live under their organization: /o/<org> is its home, /o/<org>/d/<id> a board. A product's
  * space has its own home and places under /o/<org>/products/<id> (src/ui/frame/spaces.ts), and

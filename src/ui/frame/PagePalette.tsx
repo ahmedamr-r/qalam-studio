@@ -17,6 +17,7 @@ import { SpaceTile } from "./OrgPlaces";
 import { PLACES, type Place } from "./places";
 import type { Space } from "./spaces";
 import { useCurrentOrg } from "./store";
+import { navigate } from "../nav";
 
 /*
  * ⌘K on a page: one field that finds the places (in the space the page is in), the spaces, the
@@ -71,12 +72,12 @@ function Palette({ space }: { space: Space }) {
     };
     for (const p of PLACES) {
       const Icon = ICONS[p.id];
-      add("Go to", `place:${p.id}`, p.label, <Icon {...ICON} />, () => window.location.assign(spaceHref(space, p.id)));
+      add("Go to", `place:${p.id}`, p.label, <Icon {...ICON} />, () => navigate(spaceHref(space, p.id)));
     }
-    if (q) for (const s of [{ id: null, name: org?.name ?? "Organization" }, ...products]) add("Spaces", `space:${s.id ?? ""}`, s.name, <SpaceTile name={s.name} size="sm" />, () => window.location.assign(spaceHref(s.id)), s.id ? "Product" : "The whole organization");
-    if (q) for (const g of goals) add("Goals", `goal:${g.id}`, g.title, <Target {...ICON} />, () => window.location.assign(goalHref(g.id)), "Goal");
-    for (const b of boards.slice(0, q ? boards.length : 4)) add("Boards", `board:${b.id}`, b.name, <Network {...ICON} />, () => window.location.assign(projectHref(b)), "Board");
-    if (q) for (const t of topics ?? []) add("Problems and pages", `topic:${t.id}`, t.title, <NotebookText {...ICON} />, () => window.location.assign(topicHref(t.id)), TOPIC_KIND_LABEL[t.kind]);
+    if (q) for (const s of [{ id: null, name: org?.name ?? "Organization" }, ...products]) add("Spaces", `space:${s.id ?? ""}`, s.name, <SpaceTile name={s.name} size="sm" />, () => navigate(spaceHref(s.id)), s.id ? "Product" : "The whole organization");
+    if (q) for (const g of goals) add("Goals", `goal:${g.id}`, g.title, <Target {...ICON} />, () => navigate(goalHref(g.id)), "Goal");
+    for (const b of boards.slice(0, q ? boards.length : 4)) add("Boards", `board:${b.id}`, b.name, <Network {...ICON} />, () => navigate(projectHref(b)), "Board");
+    if (q) for (const t of topics ?? []) add("Problems and pages", `topic:${t.id}`, t.title, <NotebookText {...ICON} />, () => navigate(topicHref(t.id)), TOPIC_KIND_LABEL[t.kind]);
     add("Actions", "theme", "Toggle dark and light", <Moon {...ICON} />, () => runCommand("view.theme-toggle", "palette"), undefined, ["theme", "appearance"]);
     add("Actions", "sidebar", "Fold the sidebar", <PanelLeft {...ICON} />, () => runCommand("frame.sidebar", "palette"), undefined, ["rail", "collapse"]);
     // Grouped as listed; within a group, the best match first, and a few per group.

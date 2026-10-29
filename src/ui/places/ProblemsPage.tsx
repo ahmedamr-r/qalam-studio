@@ -17,6 +17,7 @@ import { useBearings } from "../goals/useBearings";
 import { FilingBanner } from "../org/TopicsList";
 import { useOrgData } from "../org/useOrgData";
 import { PlaceHead } from "./PlaceHead";
+import { navigate } from "../nav";
 
 /**
  * The problems customers have (one page each, hub/topics), in the space (all of them in the
@@ -51,7 +52,7 @@ export default function ProblemsPage({ product: productId = null }: { product?: 
     const now = Date.now();
     const t: Topic = { id: nanoid(10), kind: "need", title: title.trim().replace(/\s+/g, " ").slice(0, 100), products: product ? [product.id] : [], createdAt: now, updatedAt: now, lines: [], history: [] };
     await topicsDb.put(t, null);
-    window.location.assign(topicHref(t.id));
+    navigate(topicHref(t.id));
   };
 
   return (

@@ -28,100 +28,61 @@ const SPACE_PAGES = {
   decisions: lazy(() => import("./places/DecisionsPage")),
 } satisfies Record<Exclude<PagePlace, "connections">, unknown>;
 
-const Loading = ({ children }: { children: ReactNode }) => <Suspense fallback={loading}>{children}</Suspense>;
+/**
+ * The one boundary every page loads under (App). One for all, so moving between pages in place
+ * (src/ui/nav.ts, in a transition) keeps the page showing until the next one's code is in,
+ * instead of the splash.
+ */
+export const PageSuspense = ({ children }: { children: ReactNode }) => <Suspense fallback={loading}>{children}</Suspense>;
 
 export default function StudioLoader({ projectId, mode }: { projectId: string; mode: ProjectType }) {
-  return (
-    <Loading>
-      <Studio projectId={projectId} mode={mode} />
-    </Loading>
-  );
+  return <Studio projectId={projectId} mode={mode} />;
 }
 
 /** A space's home: the organization's, or a product's. */
 export function HomeLoader({ product = null }: { product?: string | null }) {
-  return (
-    <Loading>
-      <Home product={product} />
-    </Loading>
-  );
+  return <Home product={product} />;
 }
 
 /** Picking a space: the whole organization or one product. */
 export function SpacesLoader() {
-  return (
-    <Loading>
-      <SpacesPage />
-    </Loading>
-  );
+  return <SpacesPage />;
 }
 
 /** A design-system project: its brand interview, or its system once saved. */
 export function SystemProjectLoader({ projectId }: { projectId: string }) {
-  return (
-    <Loading>
-      <SystemProject projectId={projectId} />
-    </Loading>
-  );
+  return <SystemProject projectId={projectId} />;
 }
 
 /** One of the organization's topic pages. */
 export function TopicLoader({ id }: { id: string }) {
-  return (
-    <Loading>
-      <TopicPage id={id} />
-    </Loading>
-  );
+  return <TopicPage id={id} />;
 }
 
 /** A goal's page: its number and the problems behind it. */
 export function GoalLoader({ id }: { id: string }) {
-  return (
-    <Loading>
-      <GoalPage id={id} />
-    </Loading>
-  );
+  return <GoalPage id={id} />;
 }
 
 /** Setting the organization up from a brain dump about it. */
 export function SetupLoader() {
-  return (
-    <Loading>
-      <SetupPage />
-    </Loading>
-  );
+  return <SetupPage />;
 }
 
 /** One of the organization's places: its goals, problems, evidence or decisions (in a product's space with `product`), or its connections. */
 export function PlaceLoader({ place, product = null }: { place: PagePlace; product?: string | null }) {
   if (place === "connections")
-    return (
-      <Loading>
-        <ConnectionsPage />
-      </Loading>
-    );
+    return <ConnectionsPage />;
   const Page = SPACE_PAGES[place];
-  return (
-    <Loading>
-      <Page product={product} />
-    </Loading>
-  );
+  return <Page product={product} />;
 }
 
 /** The welcome: the first run, a new organization, or checking the setup again. */
 export function WelcomeLoader() {
-  return (
-    <Loading>
-      <WelcomePage />
-    </Loading>
-  );
+  return <WelcomePage />;
 }
 
 /** Quick capture, into the inbox (the menu bar's capture window). */
 export function CaptureLoader() {
-  return (
-    <Loading>
-      <CapturePage />
-    </Loading>
-  );
+  return <CapturePage />;
 }

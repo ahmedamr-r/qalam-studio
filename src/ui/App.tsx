@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { startTransition, useEffect, useState } from "react";
 import clsx from "clsx";
 import { bootOrg } from "@/org/boot";
 import { CantReachFiles, listOrgs, NoOrgYet, OrgMissing, type OrgRef } from "@/org/client";
@@ -8,15 +8,21 @@ import { Splash } from "./brand/splash";
 import { r } from "./recipes";
 import { routeOf, type Route } from "./routes";
 import { movedTo } from "./frame/spaces";
-import StudioLoader, { CaptureLoader, GoalLoader, HomeLoader, PlaceLoader, SetupLoader, SpacesLoader, SystemProjectLoader, TopicLoader, WelcomeLoader } from "./StudioLoader";
+import StudioLoader, { CaptureLoader, GoalLoader, HomeLoader, PageSuspense, PlaceLoader, SetupLoader, SpacesLoader, SystemProjectLoader, TopicLoader, WelcomeLoader } from "./StudioLoader";
+import { startInPlace } from "./nav";
 import { bootRetryDelay } from "./welcome/steps";
 
 type State = { kind: "loading" } | { kind: "ready"; org: OrgRef } | { kind: "error"; message: string; missingOrg?: boolean } | { kind: "missing" };
 
-/** The page for this address, once the organization's files are within reach. */
+/** The page for this address, once the organization's files are within reach; the frame's pages then move in place (./nav.ts). */
 export function App() {
-  const [route] = useState<Route>(() => routeOf(window.location.pathname));
+  const [route, setRoute] = useState<Route>(() => routeOf(window.location.pathname));
   const [state, setState] = useState<State>({ kind: "loading" });
+  const ready = state.kind === "ready" ? state.org.id : null;
+  useEffect(() => {
+    if (!ready) return;
+    return startInPlace(ready, (r) => startTransition(() => setRoute(r)));
+  }, [ready]);
 
   const boot = (attempt = 0) => {
     // The welcome needs no organization (there may be none yet).
@@ -56,6 +62,16 @@ export function App() {
   };
   useEffect(() => boot(), []);
 
+  // One boundary for every page; each address is a page of its own, so moving in place mounts the
+  // next one fresh while the last one shows until its code is in.
+  return (
+    <PageSuspense>
+      <Page key={window.location.pathname + window.location.search} route={route} state={state} retry={boot} />
+    </PageSuspense>
+  );
+}
+
+function Page({ route, state, retry }: { route: Route; state: State; retry: () => void }) {
   if (route.kind === "welcome") return <WelcomeLoader />;
   if (state.kind === "loading")
     return (
@@ -63,7 +79,7 @@ export function App() {
         <Splash />
       </div>
     );
-  if (state.kind === "error") return state.missingOrg ? <Missing title="Organization not found" body="It isn't on this computer: its folder moved, or it was made on another computer." /> : <CantReach message={state.message} onRetry={boot} />;
+  if (state.kind === "error") return state.missingOrg ? <Missing title="Organization not found" body="It isn't on this computer: its folder moved, or it was made on another computer." /> : <CantReach message={state.message} onRetry={retry} />;
   if (state.kind === "missing" || route.kind === "missing") return <Missing title="Page not found" body="There's nothing at this address." />;
   if (route.kind === "org") return <HomeLoader product={route.product} />;
   if (route.kind === "spaces") return <SpacesLoader />;

@@ -1,4 +1,5 @@
 import { hereHref } from "../frame/useSpace";
+import { navigate } from "../nav";
 
 /*
  * A question for Ask the org from anywhere (⌘K on any page): handed to the home's Ask bar at once
@@ -19,7 +20,7 @@ export function askNext(question: string) {
   } catch {
     /* no storage: the home opens without it */
   }
-  window.location.assign(hereHref("home"));
+  navigate(hereHref("home"));
 }
 
 /** The question waiting for the Ask bar, once (null when there's none). */
