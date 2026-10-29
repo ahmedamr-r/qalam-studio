@@ -1,5 +1,8 @@
 import type { OstCard } from "@/discovery/types";
+import { funnelOf } from "@/code/map";
+import { foldPins } from "@/code/steps";
 import { foldBearings, type Bearing } from "@/goals/bearings";
+import type { GoalWork } from "@/goals/breakdown";
 import type { GoalTree } from "@/goals/types";
 import { pairKey, runChecks, type CheckBoard, type CheckInput, type Notice } from "@/hub/checks";
 import { knowledgeInputs } from "./needs";
@@ -57,7 +60,16 @@ export async function noticesNow(store: OrgStore, now = Date.now()): Promise<Not
   });
   const k = await knowledgeInputs(store);
   const goals = await store.getGoals();
-  const input: CheckInput = { now, boards, decisions: store.listDecisions(), topics: k.topics, indexed: k.indexed, shows: k.shows, pieces: k.pieces, linked: new Set(relations.map((r) => pairKey(r.a, r.b))), placed, work: await workCache(store), goals };
+  // Goals' funnels with PostHog's counts, and what's pinned at their steps.
+  const maps = await store.listMaps();
+  const funnels: NonNullable<CheckInput["funnels"]> = [];
+  for (const g of goals.goals) {
+    const f = g.status === "active" ? funnelOf(g, maps) : null;
+    const numbers = f ? (await store.getGoalWork(g.id).catch(() => ({}) as GoalWork)).funnel : undefined;
+    if (f && numbers) funnels.push({ goal: g.id, map: f.map.key, flow: f.flow, numbers });
+  }
+  const stepPins = funnels.length ? foldPins(await store.listStepLog()).pins : [];
+  const input: CheckInput = { now, boards, decisions: store.listDecisions(), topics: k.topics, indexed: k.indexed, shows: k.shows, pieces: k.pieces, linked: new Set(relations.map((r) => pairKey(r.a, r.b))), placed, work: await workCache(store), goals, funnels, stepPins };
   const state = await store.noticeState();
   const { links } = foldBearings(await store.listBearingLog());
   const all = [...runChecks(input), ...state.found].map((n) => withGoals(n, boards, goals, links));

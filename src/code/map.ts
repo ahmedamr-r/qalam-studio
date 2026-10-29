@@ -7,10 +7,13 @@ import { checkWords } from "@/hub/topics";
  * code reader proposes them; code keeps a step only when its file is in the copy that was read, its
  * snippet is in that file, and its events are ones the scanner found (src/code/scan.ts). A flow can
  * say which goal its events measure: that's the goal's funnel. Kept in hub/maps/<repo>.md, readable
- * like a topic page, each step's record in a comment.
+ * like a topic page, each step's record in a comment. A step keeps its key across reads while its file
+ * and its title, snippet or events hold, so what's pinned to it stays (src/code/steps.ts).
  */
 
 export interface MapStep {
+  /** Its name within its map: what pins and pictures name, as "<map key>/<step key>" (`stepRef`). */
+  key: string;
   title: string;
   file: string;
   /** The code's own words, found in the file. */
@@ -73,14 +76,14 @@ function inFile(text: string | undefined, snippet: string): string | null {
  * What code keeps of the reader's flows: steps whose file is in the copy, whose snippet is in that
  * file, with only the events the scanner found; a flow with fewer than two steps left goes.
  */
-export function verifyFlows(raw: unknown, o: { root: string; files: ReadonlyMap<string, string>; events: ReadonlySet<string>; goals: ReadonlySet<string> }, dropped?: (why: string, item: unknown) => void): MapFlow[] {
-  const out: MapFlow[] = [];
+export function verifyFlows(raw: unknown, o: { root: string; files: ReadonlyMap<string, string>; events: ReadonlySet<string>; goals: ReadonlySet<string>; before?: MapFlow[] }, dropped?: (why: string, item: unknown) => void): MapFlow[] {
+  const out: Unkeyed[] = [];
   const drop = (why: string, x: unknown) => void dropped?.(why, x);
   for (const x of Array.isArray(rec(raw).flows) ? (rec(raw).flows as unknown[]) : []) {
     if (out.length >= MAP_LIMITS.flows) break;
     const f = rec(x);
     const name = clip(f.name, MAP_LIMITS.name);
-    const steps: MapStep[] = [];
+    const steps: Omit<MapStep, "key">[] = [];
     for (const y of Array.isArray(f.steps) ? (f.steps as unknown[]) : []) {
       if (steps.length >= MAP_LIMITS.steps) break;
       const s = rec(y);
@@ -102,7 +105,64 @@ export function verifyFlows(raw: unknown, o: { root: string; files: ReadonlyMap<
     const goal = typeof f.goal === "string" && o.goals.has(f.goal.trim()) ? f.goal.trim() : undefined;
     out.push({ name, ...(goal ? { goal } : {}), steps });
   }
-  return out;
+  return withStepKeys(out, o.before);
+}
+
+type Unkeyed = Omit<MapFlow, "steps"> & { steps: (Omit<MapStep, "key"> & { key?: string })[] };
+
+export const STEP_KEY = /^[a-z0-9-]{1,60}$/;
+
+/** What pins and pictures name a step by: its map's key and its own. */
+export const stepRef = (map: string, step: string) => `${map}/${step}`;
+
+const slug = (title: string) =>
+  title
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48)
+    .replace(/-+$/, "") || "step";
+
+/**
+ * Each step's key: the one a step of the map before had, in the same file and with the same title,
+ * snippet or events (in that order); else a new one from its title, never one the map had before,
+ * so what was pinned to a step that's gone doesn't land on another.
+ */
+export function withStepKeys(flows: Unkeyed[], before: MapFlow[] = []): MapFlow[] {
+  const old = before.flatMap((f) => f.steps);
+  const taken = new Set(old.map((s) => s.key));
+  const used = new Set<string>();
+  const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+  const tests: ((o: MapStep, s: Omit<MapStep, "key">) => boolean)[] = [(o, s) => same(o.title, s.title), (o, s) => o.snippet === s.snippet, (o, s) => s.events.length > 0 && o.events.length === s.events.length && o.events.every((e) => s.events.includes(e))];
+  const claim = (key: string) => {
+    used.add(key);
+    return key;
+  };
+  const kept = flows.map((f) =>
+    f.steps.map((s) => {
+      if (s.key && STEP_KEY.test(s.key) && !used.has(s.key)) return claim(s.key);
+      for (const t of tests) {
+        const o = old.find((o) => o.file === s.file && !used.has(o.key) && t(o, s));
+        if (o) return claim(o.key);
+      }
+      return null;
+    }),
+  );
+  return flows.map((f, fi) => ({
+    ...f,
+    steps: f.steps.map((s, si) => {
+      let key = kept[fi][si];
+      if (!key) {
+        const base = slug(s.title);
+        key = base;
+        for (let n = 2; used.has(key) || taken.has(key); n++) key = `${base}-${n}`;
+        claim(key);
+      }
+      return { key, title: s.title, file: s.file, snippet: s.snippet, events: s.events };
+    }),
+  }));
 }
 
 export interface CodeAnswer {
@@ -147,7 +207,7 @@ export function mapToMarkdown(m: ProductMap, o: { productName?: string; goalTitl
       return [
         `## ${f.name}${goal ? ` · measures “${goal}”` : ""}${f.goal ? ` <!-- qalam ${JSON.stringify({ goal: f.goal })} -->` : ""}`,
         "",
-        ...f.steps.map((s, i) => `${i + 1}. ${s.title} · \`${s.file}\`${s.events.length ? ` · sends ${s.events.map((e) => `\`${e}\``).join(", ")}` : ""} <!-- qalam ${JSON.stringify({ file: s.file, snippet: s.snippet, events: s.events })} -->`),
+        ...f.steps.map((s, i) => `${i + 1}. ${s.title} · \`${s.file}\`${s.events.length ? ` · sends ${s.events.map((e) => `\`${e}\``).join(", ")}` : ""} <!-- qalam ${JSON.stringify({ key: s.key, file: s.file, snippet: s.snippet, events: s.events })} -->`),
         "",
       ];
     }),
@@ -168,7 +228,7 @@ export function mapFromMarkdown(md: string): ProductMap | null {
       return undefined;
     }
   };
-  const flows: MapFlow[] = [];
+  const flows: Unkeyed[] = [];
   for (const line of md.slice(fm[0].length).split("\n")) {
     const flow = /^##\s+(.+)$/.exec(line);
     if (flow) {
@@ -184,7 +244,7 @@ export function mapFromMarkdown(md: string): ProductMap | null {
     const data = json(r[1]);
     if (typeof data.file !== "string" || typeof data.snippet !== "string") continue;
     const title = step[1].replace(RECORD, "").replace(/\s·\s`[^`]+`(\s·\ssends\s.+)?$/, "").trim();
-    flows[flows.length - 1].steps.push({ title, file: data.file, snippet: data.snippet, events: Array.isArray(data.events) ? data.events.filter((e): e is string => typeof e === "string") : [] });
+    flows[flows.length - 1].steps.push({ ...(typeof data.key === "string" ? { key: data.key } : {}), title, file: data.file, snippet: data.snippet, events: Array.isArray(data.events) ? data.events.filter((e): e is string => typeof e === "string") : [] });
   }
   const key = field("key");
   const repo = field("repo");
@@ -193,7 +253,7 @@ export function mapFromMarkdown(md: string): ProductMap | null {
   const commit = field("commit");
   const product = field("product");
   const events = field("events");
-  return { key, repo, ...(typeof commit === "string" ? { commit } : {}), product: typeof product === "string" ? product : null, readAt, flows: flows.filter((f) => f.steps.length), events: Array.isArray(events) ? events.filter((e): e is string => typeof e === "string") : [] };
+  return { key, repo, ...(typeof commit === "string" ? { commit } : {}), product: typeof product === "string" ? product : null, readAt, flows: withStepKeys(flows.filter((f) => f.steps.length)), events: Array.isArray(events) ? events.filter((e): e is string => typeof e === "string") : [] };
 }
 
 /** The flow that measures a goal, from the maps of its product (or any, for the whole organization's). */

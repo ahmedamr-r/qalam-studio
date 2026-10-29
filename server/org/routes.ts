@@ -24,10 +24,12 @@ import type { Proposal } from "@/discovery/proposals";
 import { MAX_SOURCE_TEXT, SOURCE_KIND_LABEL, type SourceRecord } from "@/discovery/sources";
 import { aiConfigured, rateLimited } from "@/ai/server";
 import { foldBearings } from "@/goals/bearings";
+import { pinShape } from "@/code/steps";
 import { goalPatchShape, newGoalShape } from "@/goals/shape";
 import { goalById } from "@/goals/tree";
 import type { Hit as ConnectorHit } from "@/connectors/recipes";
 import { findProblems, goalPage, linkByHand } from "./goals";
+import { pinByHand, placeQuotes } from "./steps";
 import { changeJob, noteForJob, openJobs, planJobs, searchForJob, takeInForJob } from "./jobs";
 import { breakDown, decidePart, lookOutside } from "./outside";
 import { addRepo, answerFromCode, codeView, readRepo, removeRepo, type NewRepo } from "../code";
@@ -187,6 +189,25 @@ export function orgRoutes(): Hono<Env> {
     if (!b || typeof b.need !== "string" || !ID.test(b.need) || typeof b.goal !== "string" || !ID.test(b.goal) || typeof b.on !== "boolean") return bad("Name a problem, a goal, and whether they're linked");
     await linkByHand(c.get("store"), { need: b.need, goal: b.goal, on: b.on, how: typeof b.how === "string" ? b.how : undefined, bears: b.bears === "some" ? "some" : "direct" }, { tab: tabOf(c.req.raw.headers) });
     return c.json({ ok: true });
+  });
+  // What sits at the steps of a goal's funnel (server/org/steps.ts): Qalam AI places quotes, people pin and unpin.
+  r.post("/api/org/:org/goals/:id/steps", async (c) => {
+    if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't place quotes at steps." }, 503);
+    const store = c.get("store");
+    const id = c.req.param("id");
+    if (!goalById(await store.getGoals(), id)) return c.json({ error: "not_found", message: "No such goal" }, 404);
+    return streamed(c.req.raw.signal, (emit) => placeQuotes(store, id, emit));
+  });
+  r.post("/api/org/:org/steps", async (c) => {
+    const b = (await c.req.json().catch(() => null)) as { step?: unknown; what?: unknown; id?: unknown; on?: unknown } | null;
+    const pin = b && typeof b.on === "boolean" ? pinShape({ step: b.step, what: b.what, id: b.id, by: "you", at: Date.now() }) : null;
+    if (!pin || !b) return bad("Name a step, what's pinned there, and whether it is");
+    try {
+      await pinByHand(c.get("store"), { step: pin.step, what: pin.what, id: pin.id, on: b.on as boolean }, { tab: tabOf(c.req.raw.headers) });
+      return c.json({ ok: true });
+    } catch (e) {
+      return failure(e);
+    }
   });
   // The product's code, read-only (server/code): the repositories this computer reads, and what each product does today.
   const KEY = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,139}$/;

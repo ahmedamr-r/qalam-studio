@@ -8,6 +8,10 @@ import { needEvidence, type PieceFacts, type ShownOn } from "./needs";
 import { WORK_LABEL, workKey, type WorkStatus } from "@/connectors/work";
 import { sameTopic, type Topic } from "./topics";
 import type { GoalTree } from "@/goals/types";
+import { stepRef, type MapFlow } from "@/code/map";
+import type { StepPin } from "@/code/steps";
+import type { FunnelNumbers } from "@/goals/breakdown";
+import { funnelDrops } from "@/goals/math";
 
 /**
  * What needs a look (pure): checks code runs over the organization's boards, decisions and topic
@@ -15,11 +19,12 @@ import type { GoalTree } from "@/goals/types";
  * said against what the team believes (Qalam AI's disputes on the topic pages), needs customers
  * keep raising that no board has, the same need on two boards, a parked or dropped card that new
  * evidence now backs, a test that's run too long, a solution being built on a risky assumption
- * nothing tests, an outcome whose number nobody has updated. Every notice has a stable key, made
+ * nothing tests, an outcome whose number nobody has updated, a funnel losing the most people at a
+ * step no problem is pinned to. Every notice has a stable key, made
  * of what it's about and how strong it is: dismissed, it stays dismissed until it grows.
  */
 
-export type NoticeKind = "disputed" | "pattern" | "same-need" | "revisit" | "stale-test" | "untested" | "metric" | "orphan" | "review" | "placed" | "work-drift";
+export type NoticeKind = "disputed" | "pattern" | "same-need" | "revisit" | "stale-test" | "untested" | "metric" | "orphan" | "review" | "placed" | "work-drift" | "drop";
 
 export interface Notice {
   /** Stable: the same finding keeps its key, so a dismissed one never comes back. */
@@ -58,6 +63,7 @@ export const NOTICE_LABEL: Record<NoticeKind, string> = {
   review: "Qalam AI review",
   placed: "To review",
   "work-drift": "Work",
+  drop: "Funnel",
 };
 
 /** How long before a running test, or an outcome's number, needs a look. */
@@ -94,6 +100,10 @@ export interface CheckInput {
   work?: Record<string, WorkStatus>;
   /** The goals (goals.md): a goal's number is checked there, not on the board's copy of it. */
   goals?: GoalTree;
+  /** Goals' funnels counted in PostHog, with the flow in the code whose events measure each. */
+  funnels?: { goal: string; map: string; flow: MapFlow; numbers: FunnelNumbers }[];
+  /** What's pinned at funnels' steps (hub/steps.jsonl). */
+  stepPins?: StepPin[];
 }
 
 type Node = { parentId?: string | null; meta?: { ost?: OstCard } };
@@ -348,6 +358,28 @@ export function runChecks(x: CheckInput): Notice[] {
     const ref = g.on ? cardRef(g.on.board, g.on.card) : `hub:goal:${g.id}`;
     const notice = staleNumber(g.title, m, Math.max(g.at, m.readAt ?? 0, ...updates.map((d) => d.at)), x.now, ref);
     if (notice) out.push({ ...notice, ...(g.on && byRef.has(ref) ? { board: g.on.board, card: g.on.card } : {}), goal: g.id, products: g.product ? [g.product] : [] });
+  }
+  // A funnel losing the most people at a step no problem is pinned to: the team works there blind.
+  // Its key holds the step and the drop in 5% bands, so a dismissed one comes back when it moves.
+  for (const f of x.funnels ?? []) {
+    const g = x.goals?.goals.find((y) => y.id === f.goal);
+    if (!g || g.status !== "active") continue;
+    const drops = funnelDrops(f.numbers.steps);
+    const at = drops.findIndex((d) => d.biggest);
+    const step = at > 0 ? f.flow.steps.find((s) => s.events.includes(drops[at].label)) : undefined;
+    if (!step) continue;
+    const ref = stepRef(f.map, step.key);
+    if ((x.stepPins ?? []).some((p) => p.what === "need" && p.step === ref)) continue;
+    const d = drops[at];
+    out.push({
+      key: `drop:${g.id}:${ref}:${Math.round((d.rate ?? 0) * 20)}`,
+      kind: "drop",
+      title: `The funnel loses the most people at ${q(step.title)}, and no problem is pinned there`,
+      why: `${d.count.toLocaleString("en-US")} of ${drops[at - 1].count.toLocaleString("en-US")} (${Math.round((d.rate ?? 0) * 100)}%) get there on the way to ${q(g.title)}, as PostHog counted on ${date(f.numbers.at)}. Which problem explains it?`,
+      at: f.numbers.at,
+      goal: g.id,
+      products: g.product ? [g.product] : [],
+    });
   }
   return out.sort((a, b) => b.at - a.at);
 }

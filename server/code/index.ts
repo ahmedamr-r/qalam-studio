@@ -177,7 +177,9 @@ export async function readRepo(store: OrgStore, key: string, emit: (label: strin
   emit("Qalam AI is reading the code");
   const { raw, model } = backend() === "cli" ? await viaAgent(root, content, [...refs.keys()], emit, signal) : await viaExcerpts(files, scan, content, [...refs.keys()]);
   const dropped: { why: string; item: unknown }[] = [];
-  const flows = verifyFlows(raw, { root, files: new Map(files.map((f) => [f.path, f.text])), events: new Set(scan.events.map((e) => e.name)), goals: new Set(refs.keys()) }, (why, item) => dropped.push({ why, item })).map((f) => (f.goal ? { ...f, goal: refs.get(f.goal)!.id } : f));
+  // The map as it was: a step that's still there keeps its key, and what's pinned to it.
+  const before = (await store.listMaps()).find((m) => m.key === key)?.flows;
+  const flows = verifyFlows(raw, { root, files: new Map(files.map((f) => [f.path, f.text])), events: new Set(scan.events.map((e) => e.name)), goals: new Set(refs.keys()), before }, (why, item) => dropped.push({ why, item })).map((f) => (f.goal ? { ...f, goal: refs.get(f.goal)!.id } : f));
   const now = Date.now();
   const map: ProductMap = { key, repo: repo.repo ?? path.basename(root), ...(commit ? { commit } : {}), product: repo.product, readAt: now, flows, events: scan.events.map((e) => e.name) };
   await store.putMap(map);

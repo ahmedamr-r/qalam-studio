@@ -7,7 +7,8 @@ import type { Decision } from "@/decisions/model";
 import { metricProgress } from "@/discovery/metric";
 import type { OstMetric } from "@/discovery/types";
 import { changeGoal, goalsNow, removeGoal, setMine, setNorth, useGoals } from "@/goals/client";
-import type { MapFlow, ProductMap } from "@/code/map";
+import { stepRef, type MapFlow, type ProductMap } from "@/code/map";
+import type { StepView } from "@/code/steps";
 import type { GoalWork } from "@/goals/breakdown";
 import type { Gap } from "@/goals/gaps";
 import { metricLine } from "@/goals/goals-md";
@@ -54,6 +55,7 @@ interface PageData {
   jobs: Job[];
   work: GoalWork;
   funnel: { map: ProductMap; flow: MapFlow } | null;
+  steps: StepView | null;
   unlinked: { id: string; title: string; sources: number; quotes: number }[];
   decisions: Decision[];
   indexed: boolean;
@@ -92,7 +94,7 @@ export default function GoalPage({ id }: { id: string }) {
   useEffect(() => {
     load();
     return onOrgChange((c) => {
-      if (c.kind === "goal" || c.kind === "bearing" || c.kind === "job" || (c.kind === "goalwork" && c.goal === id) || c.kind === "map" || c.kind === "topic" || c.kind === "decision" || c.kind === "project") load();
+      if (c.kind === "goal" || c.kind === "bearing" || c.kind === "job" || c.kind === "step" || (c.kind === "goalwork" && c.goal === id) || c.kind === "map" || c.kind === "topic" || c.kind === "decision" || c.kind === "project") load();
     });
   }, [load]);
   // This window's own changes to goals come back through the goals store.
@@ -150,6 +152,10 @@ export default function GoalPage({ id }: { id: string }) {
     if (on) return window.location.assign(`${projectHref({ id: on.board, type: "discovery" })}?problem=${encodeURIComponent(p.topic)}&under=${encodeURIComponent(on.card)}`);
     void startBoardForGoal(target, p.topic);
   };
+
+  // The funnel's steps each problem is pinned at.
+  const stepTitle = new Map(page.funnel ? page.funnel.flow.steps.map((s) => [stepRef(page.funnel!.map.key, s.key), s.title]) : []);
+  const atSteps = (topic: string) => (page.steps?.pins ?? []).flatMap((p) => (p.what === "need" && p.id === topic && stepTitle.has(p.step) ? [stepTitle.get(p.step)!] : []));
 
   const rename = async () => {
     const title = await promptDialog({ title: "Rename the goal", label: "The change it's after", defaultValue: g.title, confirmLabel: "Rename", validate: (v) => (v.trim() ? null : "Say what it's after") });
@@ -218,7 +224,7 @@ export default function GoalPage({ id }: { id: string }) {
 
         <NumberBlock goal={g} />
 
-        <Funnel goal={g} funnel={page.funnel} numbers={page.work.funnel} onChanged={load} />
+        <Funnel goal={g} funnel={page.funnel} numbers={page.work.funnel} steps={page.steps} problems={page.problems} onWork={workOn} onChanged={load} />
 
         <section aria-label="The board working on it" className="flex flex-wrap items-center justify-between gap-[12px] rounded-lg bg-panel px-[14px] py-[10px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
           {board ? (
@@ -287,7 +293,7 @@ export default function GoalPage({ id }: { id: string }) {
           {page.problems.length ? (
             <ul className="flex flex-col rounded-lg bg-panel py-[4px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
               {page.problems.map((p) => (
-                <ProblemRow key={p.topic} p={p} via={p.via ? goals.goals.find((x) => x.id === p.via)?.title : undefined} onWork={() => workOn(p)} onUnlink={() => void link(p.topic, p.via ?? g.id, false)} boardName={(b) => page.boards.find((x) => x.board === b)?.name} />
+                <ProblemRow key={p.topic} p={p} via={p.via ? goals.goals.find((x) => x.id === p.via)?.title : undefined} at={atSteps(p.topic)} onWork={() => workOn(p)} onUnlink={() => void link(p.topic, p.via ?? g.id, false)} boardName={(b) => page.boards.find((x) => x.board === b)?.name} />
               ))}
             </ul>
           ) : (
@@ -320,7 +326,7 @@ export default function GoalPage({ id }: { id: string }) {
 
 const STRENGTH: Record<ReturnType<typeof strengthOf>, string> = { strong: "Strong", growing: "Growing", thin: "Thin", assumed: "Assumed" };
 
-function ProblemRow({ p, via, onWork, onUnlink, boardName }: { p: GoalProblem; via?: string; onWork: () => void; onUnlink: () => void; boardName: (board: string) => string | undefined }) {
+function ProblemRow({ p, via, at, onWork, onUnlink, boardName }: { p: GoalProblem; via?: string; at: string[]; onWork: () => void; onUnlink: () => void; boardName: (board: string) => string | undefined }) {
   const strength = strengthOf(p);
   const onThis = p.onBoard ? p.boards.find((b) => boardName(b.board)) : undefined;
   return (
@@ -343,6 +349,11 @@ function ProblemRow({ p, via, onWork, onUnlink, boardName }: { p: GoalProblem; v
           <span className="text-caption text-fg-subtle">Linked by you</span>
         )}
         {via && <span className="text-micro text-fg-subtle">Through “{via}”</span>}
+        {!!at.length && (
+          <a href="#funnel" className="truncate text-micro text-fg-subtle hover:text-fg">
+            At {at.map((t) => `“${t}”`).join(", ")} in the funnel
+          </a>
+        )}
       </span>
       <span className="wide pt-[6px]">
         <Tip label={`${STRENGTH[strength]}: from ${plural(p.sources, "source")}`}>

@@ -188,3 +188,33 @@ describe("work and numbers", () => {
     expect(runChecks(input({ boards: [outcome(ago(2))] })).some((x) => x.kind === "metric")).toBe(false);
   });
 });
+
+describe("a goal's funnel", () => {
+  const goals = { north: null, goals: [{ id: "g1", title: "More customers reorder weekly", parent: null, product: "grocery", status: "active" as const, cites: [], by: "person" as const, at: ago(30) }] };
+  const flow = {
+    name: "Reordering",
+    goal: "g1",
+    steps: [
+      { key: "opens-past-orders", title: "Opens past orders", file: "app/orders/page.tsx", snippet: "x", events: ["orders_viewed"] },
+      { key: "picks-a-slot", title: "Picks a delivery slot", file: "app/slot/page.tsx", snippet: "y", events: ["slot_picked"] },
+      { key: "pays", title: "Pays", file: "app/pay/page.tsx", snippet: "z", events: ["paid"] },
+    ],
+  };
+  const numbers = { at: ago(1), insight: { ref: "123", name: "Reorder funnel" }, steps: [{ label: "orders_viewed", count: 1000 }, { label: "slot_picked", count: 300 }, { label: "paid", count: 270 }] };
+  const funnels = [{ goal: "g1", map: "acme__basket", flow, numbers }];
+
+  it("says when it loses the most people at a step no problem is pinned to", () => {
+    const n = runChecks(input({ goals, funnels })).filter((x) => x.kind === "drop");
+    expect(n.map((x) => [x.key, x.title, x.goal, x.products])).toEqual([["drop:g1:acme__basket/picks-a-slot:6", "The funnel loses the most people at “Picks a delivery slot”, and no problem is pinned there", "g1", ["grocery"]]]);
+    expect(n[0].why).toContain("300 of 1,000 (30%)");
+  });
+
+  it("goes quiet once a problem is pinned there, and says nothing without a step in the code", () => {
+    const pinned = [{ step: "acme__basket/picks-a-slot", what: "need" as const, id: "tp1", by: "you" as const, at: ago(1) }];
+    expect(runChecks(input({ goals, funnels, stepPins: pinned })).some((x) => x.kind === "drop")).toBe(false);
+    // A quote at the step isn't a problem pinned there.
+    expect(runChecks(input({ goals, funnels, stepPins: [{ ...pinned[0], what: "quote", id: "hub:quote:q1" }] })).some((x) => x.kind === "drop")).toBe(true);
+    const unmapped = [{ ...funnels[0], numbers: { ...numbers, steps: [{ label: "orders_viewed", count: 1000 }, { label: "app_opened_again", count: 100 }] } }];
+    expect(runChecks(input({ goals, funnels: unmapped })).some((x) => x.kind === "drop")).toBe(false);
+  });
+});

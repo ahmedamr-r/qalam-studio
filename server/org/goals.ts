@@ -13,6 +13,7 @@ import { indexFor } from "../index/registry";
 import { search } from "../index/search";
 import { DISCOVERY_MODEL } from "../routes/discovery";
 import { knowledgeInputs } from "./needs";
+import { stepView } from "./steps";
 import type { OrgEvent, OrgStore } from "./store";
 
 /**
@@ -40,6 +41,7 @@ export async function goalPage(store: OrgStore, id: string) {
     return g?.on && p ? [{ goal: gid, board: p.id, name: p.name, card: g.on.card }] : [];
   });
   const problems = rankForGoal(id, { tree, links, needs });
+  const funnel = funnelOf(goal, await store.listMaps());
   return {
     goal,
     north: tree.north,
@@ -54,7 +56,9 @@ export async function goalPage(store: OrgStore, id: string) {
     /** What others report for it, and the goals proposed under it (hub/goals/<goal>.json). */
     work: await store.getGoalWork(id),
     /** The flow in the product's code whose events measure it (hub/maps). */
-    funnel: funnelOf(goal, await store.listMaps()),
+    funnel,
+    /** What's pinned at its funnel's steps: problems, quotes, pictures (hub/steps.jsonl). */
+    steps: funnel ? await stepView(store, funnel.map.key, funnel.flow) : null,
     /** Need pages in its scope with no link to it yet, the best-backed first: what "Link a problem" picks from. */
     unlinked: problemsInScope(k.topics, goal)
       .filter((t) => !links.some((l) => l.need === t.id && scope.includes(l.goal)))

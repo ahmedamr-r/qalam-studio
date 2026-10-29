@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import clsx from "clsx";
-import { CircleAlert, FileX, FlaskConical, Gauge, GitPullRequest, History, Inbox, Link2, TriangleAlert, Users, X } from "lucide-react";
+import { CircleAlert, FileX, FlaskConical, Gauge, GitPullRequest, History, Inbox, Link2, TrendingDown, TriangleAlert, Users, X } from "lucide-react";
 import { NOTICE_LABEL, type Notice, type NoticeKind } from "@/hub/checks";
 import { cardRef } from "@/hub/pieces";
 import type { TopicInfo } from "@/hub/topics";
 import { noticesDb, type NoticesNow } from "@/org/notices";
-import { projectHref, topicHref, type Project } from "@/projects/model";
+import { goalHref, projectHref, topicHref, type Project } from "@/projects/model";
 import { QalamAIGlyph } from "../brand/ai-glyph";
 import { Button, IconBtn } from "../controls";
 import { StatusDot } from "../viz";
@@ -31,6 +31,7 @@ const KIND_ICON: Record<Exclude<NoticeKind, "review">, typeof X> = {
   metric: Gauge,
   orphan: FileX,
   "work-drift": GitPullRequest,
+  drop: TrendingDown,
   placed: Inbox,
 };
 const SHOWN = 5;
@@ -76,6 +77,8 @@ export function NeedsALook({ now, scope, projects, topics, groups }: { now: Noti
   const where = (n: Notice): { href: string; label: string } | null => {
     // Proposals waiting on a board: the board opens with them under review.
     if (n.kind === "placed" && n.board) return { href: `${projectHref({ id: n.board, type: "discovery" })}?review=placed`, label: boardName(n.board) ?? "The board" };
+    // A funnel's drop: the goal's page, where its steps are.
+    if (n.kind === "drop" && n.goal) return { href: `${goalHref(n.goal)}#funnel`, label: "The goal's funnel" };
     if (n.topic && (n.kind === "disputed" || n.kind === "pattern" || n.kind === "orphan")) return { href: topicHref(n.topic), label: topicTitle(n.topic) ?? "The topic page" };
     if (n.board && n.card) return { href: cardHref(n.board, n.card), label: boardName(n.board) ?? "The board" };
     if (n.topic) return { href: topicHref(n.topic), label: topicTitle(n.topic) ?? "The topic page" };

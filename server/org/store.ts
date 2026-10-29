@@ -16,6 +16,7 @@ import type { NewGoal } from "@/goals/shape";
 import { addGoal, goalById, ordered, patchGoal as patchInTree, removeGoal as removeFromTree, setNorth as setNorthIn, underOf } from "@/goals/tree";
 import { emptyGoals, type Goal, type GoalPatch, type GoalsAt, type GoalTree } from "@/goals/types";
 import type { BearingLog } from "@/goals/bearings";
+import type { StepPinLog } from "@/code/steps";
 import type { GoalWork } from "@/goals/breakdown";
 import { mapFromMarkdown, mapToMarkdown, type CodeRepo, type ProductMap } from "@/code/map";
 import type { JobLog } from "@/goals/jobs";
@@ -62,6 +63,8 @@ export type OrgEvent = { tab?: string } & (
   | { kind: "bearing" }
   /** The jobs planned for goals, or what came of them, changed (hub/jobs.jsonl). */
   | { kind: "job" }
+  /** What's pinned at a funnel's steps changed (hub/steps.jsonl). */
+  | { kind: "step" }
   /** What others report for a goal, or the goals proposed under it, changed (hub/goals/<goal>.json). */
   | { kind: "goalwork"; goal: string }
   /** What a product does today, from its code, changed (hub/maps/<key>.md). */
@@ -713,6 +716,19 @@ export class OrgStore {
     if (!entries.length) return;
     await this.appendLog("hub/bearings.jsonl", entries);
     this.emit({ kind: "bearing", tab: opts.tab });
+  }
+
+  // What's pinned at the steps of goals' funnels (hub/steps.jsonl): a line per change, never
+  // rewritten, so two people's merge in Git. src/code/steps.ts folds them.
+
+  async listStepLog(): Promise<StepPinLog[]> {
+    return this.readLog<StepPinLog>("hub/steps.jsonl");
+  }
+
+  async addStepPins(entries: StepPinLog[], opts: { tab?: string } = {}): Promise<void> {
+    if (!entries.length) return;
+    await this.appendLog("hub/steps.jsonl", entries);
+    this.emit({ kind: "step", tab: opts.tab });
   }
 
   // Jobs for goals (hub/jobs.jsonl): a job, then a line per change to it, never rewritten, so two
@@ -1459,6 +1475,8 @@ export class OrgStore {
       this.emit({ kind: "bearing" });
     } else if (rel === "hub/jobs.jsonl") {
       this.emit({ kind: "job" });
+    } else if (rel === "hub/steps.jsonl") {
+      this.emit({ kind: "step" });
     } else if (parts[0] === "hub" && parts[1] === "goals" && parts.length === 3 && rel.endsWith(".json")) {
       this.emit({ kind: "goalwork", goal: path.basename(rel, ".json") });
     } else if (parts[0] === "hub" && parts[1] === "maps" && parts.length === 3 && rel.endsWith(".md")) {
