@@ -1,6 +1,5 @@
 import { SetupBody, setupCall } from "@/ai/setup";
 import { aiConfigured, jsonError, rateLimited, streamStructured } from "@/ai/server";
-import { DISCOVERY_MODEL } from "./discovery";
 
 /**
  * Setting an organization up from a brain dump about it: read it (what Qalam AI took from it, its
@@ -13,5 +12,5 @@ export async function POST(req: Request) {
   if (rateLimited(req)) return jsonError(429, "rate_limited", "Too many requests, try again in a few minutes.");
   const parsed = SetupBody.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return jsonError(400, "bad_input", parsed.error.issues[0]?.message ?? "Invalid input");
-  return streamStructured({ model: DISCOVERY_MODEL, ...setupCall(parsed.data) });
+  return streamStructured(setupCall(parsed.data));
 }

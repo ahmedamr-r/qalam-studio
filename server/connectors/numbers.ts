@@ -16,13 +16,13 @@ async function server(): Promise<string> {
 }
 
 export async function searchInsights(query: string): Promise<Hit[]> {
-  const [answer] = await runTools(await server(), [posthogSearch(query)]);
+  const [answer] = await runTools(await server(), [posthogSearch(query)], undefined, "numbers");
   if (answer === null) throw new Error("PostHog didn't answer through Claude Code. Is it signed in there?");
   return insightHits(answer);
 }
 
 export async function readInsight(ref: string): Promise<InsightNumbers> {
-  const [answer] = await runTools(await server(), [posthogRead(ref)]);
+  const [answer] = await runTools(await server(), [posthogRead(ref)], undefined, "numbers");
   if (answer === null) throw new Error("PostHog didn't run the insight through Claude Code.");
   return insightNumbers(answer);
 }

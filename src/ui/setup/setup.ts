@@ -39,9 +39,11 @@ export interface SetupUI {
   busy: { label: string; started: number; tokens: number } | null;
   /** Reading the page or the text failed before there was a source. */
   error: string | null;
+  /** What they sent, while the page is fetched and before there's a source to keep it on. */
+  pending: { text: string; url: string } | null;
 }
 
-export const useSetup = create<SetupUI>(() => ({ source: null, busy: null, error: null }));
+export const useSetup = create<SetupUI>(() => ({ source: null, busy: null, error: null, pending: null }));
 
 const PATH = "/api/setup";
 let run: AbortController | null = null;
@@ -123,21 +125,28 @@ const failed = (at: "reading" | "analyzing" | "placing", e: unknown) => setSessi
 
 /** What they wrote and the page they pointed at, as one brain dump: kept as a source of the organization's, then read. */
 export async function startSetup(input: { text: string; url: string }) {
-  useSetup.setState({ error: null });
-  if (!(await aiStatus()).ai) return useSetup.setState({ error: "Qalam AI isn't set up here, so it can't read what you wrote. Fill in the organization by hand from its home." });
-  const org = await currentOrg();
+  run?.abort();
+  const ctrl = new AbortController();
+  run = ctrl;
+  // What they sent shows at once, with the reading under way (Stop works on the page fetch too).
+  useSetup.setState({ error: null, pending: { text: input.text.trim(), url: input.url.trim() }, busy: { label: input.url.trim() ? "Reading the page" : "Reading what you wrote", started: Date.now(), tokens: 0 } });
+  const fail = (error: string | null) => useSetup.setState({ error, pending: null, busy: null });
   let text = input.text.trim();
   let origin: string | undefined;
   try {
+    if (!(await aiStatus()).ai) return fail("Qalam AI isn't set up here, so it can't read what you wrote. Fill in the organization by hand from its home.");
     if (input.url.trim()) {
-      const page = await ingestUrl(input.url.trim());
+      const page = await ingestUrl(input.url.trim(), ctrl.signal);
       origin = page.origin;
       text = [text, `From ${page.title}:\n${page.text.trim()}`].filter(Boolean).join("\n\n");
     } else text = (await ingestPaste(text)).text.trim();
   } catch (e) {
-    return useSetup.setState({ error: e instanceof IngestError ? e.message : `Qalam couldn't read that: ${message(e)}` });
+    return fail((e as Error).name === "AbortError" ? null : e instanceof IngestError ? e.message : `Qalam couldn't read that: ${message(e)}`);
+  } finally {
+    if (run === ctrl) run = null;
   }
-  if (text.length < 40) return useSetup.setState({ error: "There's too little there to set anything up from. Write a few sentences about the company." });
+  if (text.length < 40) return fail("There's too little there to set anything up from. Write a few sentences about the company.");
+  const org = await currentOrg();
   const rec: SourceRecord = {
     v: 1,
     id: newId(),
@@ -152,10 +161,10 @@ export async function startSetup(input: { text: string; url: string }) {
     read: [],
     quotes: [],
     needs: [],
-    setup: { v: 1, phase: "reading", understanding: "", challenges: [], buckets: [] },
+    setup: { v: 1, phase: "reading", ...(input.text.trim() ? { said: input.text.trim().slice(0, DUMP_MAX_CHARS) } : {}), understanding: "", challenges: [], buckets: [] },
   };
   await sourcesDb.put(rec);
-  useSetup.setState({ source: rec });
+  useSetup.setState({ source: rec, pending: null, busy: null });
   await readSetup();
 }
 

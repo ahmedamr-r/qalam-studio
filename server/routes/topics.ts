@@ -1,6 +1,5 @@
 import { TopicsBody, topicsCall } from "@/ai/topics";
 import { aiConfigured, jsonError, rateLimited, streamStructured } from "@/ai/server";
-import { DISCOVERY_MODEL } from "./discovery";
 
 /**
  * Filing new material into the organization's topic pages: what customers said in a source (or the
@@ -13,5 +12,5 @@ export async function POST(req: Request) {
   if (rateLimited(req)) return jsonError(429, "rate_limited", "Too many requests, try again in a few minutes.");
   const parsed = TopicsBody.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return jsonError(400, "bad_input", parsed.error.issues[0]?.message ?? "Invalid input");
-  return streamStructured({ model: DISCOVERY_MODEL, ...topicsCall(parsed.data) });
+  return streamStructured(topicsCall(parsed.data));
 }

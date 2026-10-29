@@ -194,6 +194,19 @@ const spec = {
   composerPill: "q-item inline-flex h-[24px] items-center gap-[5px] rounded-md bg-hover px-[7px] text-caption font-medium text-fg-muted shadow-[inset_0_0_0_1px_var(--color-line-subtle)] hover:text-fg",
   stopButton: "h-[26px] gap-[6px] rounded-md pl-[8px] pr-[4px] text-body",  // + buttonBase + buttonPrimary, with an Esc kbdOnInverse
 
+  // ── Panels (AI surfaces: steps · chat · so far, src/ui/chat) ──────────
+  panelBackdrop: "grid h-full min-h-0 gap-[8px] bg-app p-[8px]",
+  panelBox: "flex min-h-0 flex-col overflow-hidden rounded-xl bg-panel shadow-[inset_0_0_0_1px_var(--color-line-subtle)]",
+  panelHead: "flex h-[44px] shrink-0 items-center gap-[8px] border-b border-line-subtle pl-[14px] pr-[8px]",
+  panelBoxTitle: "truncate text-body font-semibold text-fg",
+  panelDrawer: "q-rise absolute bottom-[8px] right-[8px] top-[8px] z-20 flex w-[min(400px,calc(100%-16px))] shadow-floating",
+  stepDot: "grid size-[18px] shrink-0 place-items-center rounded-full text-micro tnum",
+  chatViewport: "flex min-h-0 flex-1 flex-col gap-[14px] overflow-y-auto px-[18px] pt-[18px]",
+  chatYou: "max-w-[min(480px,85%)] self-end whitespace-pre-wrap rounded-[12px_12px_4px_12px] bg-active px-[12px] py-[8px] text-body leading-[20px] text-fg",
+  chatFooter: "mt-auto flex flex-col gap-[8px] bg-panel pb-[14px] pt-[6px]",           // + "sticky bottom-0" for a composer
+  replyChip: "q-item inline-flex h-[28px] items-center gap-[6px] rounded-md bg-raised px-[10px] text-body font-medium text-fg shadow-button hover:bg-elevated light:hover:bg-muted disabled:opacity-50",
+  replyChipPrimary: "q-item inline-flex h-[28px] items-center gap-[6px] rounded-md bg-inverse px-[10px] text-body font-medium text-fg-inverse shadow-button-invert hover:bg-inverse/90 disabled:opacity-50",
+
   // ── Canvas DOM overlays ───────────────────────────────────────────────
   agentTag: "absolute left-[13px] top-[15px] inline-flex h-[20px] items-center whitespace-nowrap rounded-[4px_10px_10px_10px] px-[7px] text-micro font-semibold text-[#141412] shadow-[0_1px_2px_rgb(0_0_0/.25)] [background:var(--ai-gradient-soft)]",
   busyFrame: "q-ai-ring q-ai-frame pointer-events-none absolute rounded-[3px]", // data-busy; positioned at the frame's screen rect

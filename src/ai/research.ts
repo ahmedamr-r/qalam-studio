@@ -5,7 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { childEnv, workDir } from "./cli";
-import { bin } from "./engine";
+import { bin, readModelFailed } from "./engine";
+import { supportsFallback } from "./models";
 import { fromApiUsage, fromCliResult, reportUsage } from "./usage";
 import { resolveConnectors, type McpServerDef } from "./connectors";
 import { NO_RESEARCH, citedSources, hostOf, keepCaptures, mergeSources, parseNotes, resultText, stepLabel, type Capture, type ResearchInfo, type ResearchPurpose, type ResearchSource } from "./research-shared";
@@ -27,7 +28,12 @@ interface Deps {
   backend: "api" | "cli";
   client: Anthropic | null;
   model: string;
+  /** Claude Code can't use `model` here: look things up on this one instead (once). */
+  retry?: string;
 }
+
+/** Claude Code answered that it can't use the model it was given. */
+class ModelUnavailable extends Error {}
 
 interface Selection {
   web: boolean;
@@ -55,7 +61,6 @@ const MAX_LOOKUPS = 4;
 /** An import opens a handful of items after finding them. */
 const IMPORT_LOOKUPS = 10;
 const lookups = (purpose: ResearchPurpose) => (purpose === "import" ? IMPORT_LOOKUPS : MAX_LOOKUPS);
-const FALLBACK_MODELS = /^claude-(opus-5|fable-5)/;
 
 const PURPOSE: Record<ResearchPurpose, string> = {
   generate:
@@ -128,7 +133,7 @@ async function viaApi(req: ResearchRequest, deps: Deps, sel: Selection, step: (s
   if (sel.web) tools.push({ type: "web_search_20260209", name: "web_search", max_uses: lookups(req.purpose) }, { type: "web_fetch_20260209", name: "web_fetch", max_uses: req.purpose === "import" ? 6 : 3 });
   const remote = sel.servers.filter((s) => s.url);
   for (const s of remote) tools.push({ type: "mcp_toolset", mcp_server_name: s.name });
-  const fallback = FALLBACK_MODELS.test(deps.model);
+  const fallback = supportsFallback(deps.model);
   const betas: Anthropic.Beta.AnthropicBeta[] = [...(remote.length ? ["mcp-client-2025-11-20"] : []), ...(fallback ? ["server-side-fallback-2026-07-01"] : [])];
   const messages: Anthropic.Beta.Messages.BetaMessageParam[] = [{ role: "user", content: req.task }];
   const searched: ResearchSource[] = [];
@@ -186,7 +191,7 @@ async function viaApi(req: ResearchRequest, deps: Deps, sel: Selection, step: (s
     });
     const msg = await stream.finalMessage();
     model = msg.model;
-    reportUsage(fromApiUsage(msg.usage, msg.model));
+    reportUsage(fromApiUsage(msg.usage, msg.model, "research"));
     for (const b of msg.content) {
       if (b.type !== "text") {
         // Keep only what comes after the last tool call: the notes, not "Let me search…".
@@ -291,6 +296,7 @@ function viaCli(req: ResearchRequest, deps: Deps, sel: Selection, step: (s: stri
     const captures: Capture[] = [];
     let found = 0;
     let result: { subtype: string; is_error?: boolean; result?: string; errors?: string[] } | undefined;
+    let apiError: string | undefined;
     createInterface({ input: proc.stdout }).on("line", (line) => {
       let ev;
       try {
@@ -302,6 +308,7 @@ function viaCli(req: ResearchRequest, deps: Deps, sel: Selection, step: (s: stri
         model = ev.model ?? model;
         for (const s of ev.mcp_servers ?? []) if (s.status !== "connected") step(`${labelOf(s.name)} isn't connected (${s.status}). Sign in to it in Claude Code.`);
       } else if (ev.type === "assistant") {
+        if (ev.error) apiError = ev.error;
         for (const b of ev.message?.content ?? []) {
           if (b.type !== "tool_use") continue;
           const label = stepLabel(b.name, b.input, labelOf);
@@ -326,9 +333,10 @@ function viaCli(req: ResearchRequest, deps: Deps, sel: Selection, step: (s: stri
     proc.on("close", (code) => {
       signal.removeEventListener("abort", kill);
       config?.remove();
-      reportUsage(fromCliResult(result as Parameters<typeof fromCliResult>[0], model));
+      reportUsage(fromCliResult(result as Parameters<typeof fromCliResult>[0], model, "research"));
       if (signal.aborted) return reject(new DOMException("Research was stopped.", "AbortError"));
       if (!result) return reject(new Error(stderr.trim() || `Claude Code exited with code ${code}.`));
+      if (apiError === "model_not_found") return reject(new ModelUnavailable(`Claude Code can't use ${deps.model} here.`));
       if (result.is_error || result.subtype !== "success") return reject(new Error(result.result || result.errors?.join("; ") || result.subtype));
       resolve({ text: result.result ?? "", cited: [], searched, found, model, captures });
     });
@@ -355,7 +363,11 @@ export async function runResearch(req: ResearchRequest, deps: Deps, emit: (label
   const timeout = AbortSignal.timeout(req.purpose === "import" ? IMPORT_TIME_LIMIT_MS : TIME_LIMIT_MS);
   const both = AbortSignal.any([signal, timeout]);
   try {
-    const raw = await (deps.backend === "cli" ? viaCli : viaApi)(req, deps, sel, step, labelOf, both);
+    const raw = await (deps.backend === "cli" ? viaCli : viaApi)(req, deps, sel, step, labelOf, both).catch((e: unknown) => {
+      if (!(e instanceof ModelUnavailable) || !deps.retry) throw e;
+      readModelFailed(deps.model);
+      return viaCli(req, { ...deps, model: deps.retry, retry: undefined }, sel, step, labelOf, both);
+    });
     // Notes need at least one lookup that returned something; otherwise they'd be from memory.
     const notes = raw.found ? parseNotes(raw.text) : "";
     let sources = notes ? mergeSources([citedSources(notes), raw.cited]) : [];

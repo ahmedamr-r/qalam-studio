@@ -33,13 +33,15 @@
     "prepack": "pnpm build && pnpm build:desktop",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "eval:retrieval": "tsx eval/retrieval/run.ts"
+    "eval:retrieval": "tsx eval/retrieval/run.ts",
+    "eval:tiers": "tsx eval/tiers/run.ts"
   },
   "dependencies": {
     "electron": "^45.0.0"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.128.0",
+    "@assistant-ui/react": "0.15.28",
     "@fontsource-variable/geist-mono": "^5.3.0",
     "@fontsource-variable/inter": "^5.3.0",
     "@hono/node-server": "^2.1.5",
@@ -87,5 +89,16 @@
   },
   "optionalDependencies": {
     "node-llama-cpp": "3.22.2"
+  },
+  "pnpm": {
+    "overrides": {
+      "@assistant-ui/core": "0.3.27",
+      "@assistant-ui/store": "0.3.19",
+      "@assistant-ui/tap": "0.9.23",
+      "assistant-stream": "0.3.50",
+      "assistant-cloud": "0.2.7",
+      "safe-content-frame": "0.0.34",
+      "radix-ui": "1.8.1"
+    }
   }
 }

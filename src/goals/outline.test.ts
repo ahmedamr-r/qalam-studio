@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { missingQuestions } from "@/ui/setup/GoalsForm";
+import { missingQuestions } from "@/ui/setup/know-state";
 import { missingOf, readOutline, sanitizeShaped, withoutGoal } from "./outline";
 import { metricFrom, withoutIds, wordsHold } from "./said";
 
@@ -58,9 +58,9 @@ describe("what Qalam AI reads from each line", () => {
     const shaped = sanitizeShaped({ goals: [{ id: "o1", title: "2M dirhams a month in orders", product: "org", productName: "", metric: { name: "Orders a month", unit: "", direction: "increase", baseline: null, current: null, target: 2_000_000, timeframe: "by end of Q2" } }] }, { goals, products, answers: new Map() });
     expect(missingOf(shaped[0].metric)).toEqual(["today"]);
     expect(missingQuestions(shaped).map((q) => [q.id, q.title])).toEqual([
-      ["o1", "Where does “Orders a month” stand today?"],
-      ["o2", "How would you know “More customers reorder every week: 1.2 now, 1.5 by March” is moving? The number, where it is today, and where it should get to by when."],
-      ["o3", "How would you know “Offices on Basket for Business reorder monthly” is moving? The number, where it is today, and where it should get to by when."],
+      ["o1", "“Orders a month”: where is it today?"],
+      ["o2", "“More customers reorder every week: 1.2 now, 1.5 by March”: which number shows it moving?"],
+      ["o3", "“Offices on Basket for Business reorder monthly”: which number shows it moving?"],
     ]);
     // A goal taken off: the goals under it move up.
     expect(withoutGoal(shaped, "o1").map((g) => [g.ref, g.parent])).toEqual([

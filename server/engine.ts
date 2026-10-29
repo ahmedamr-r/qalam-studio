@@ -1,8 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { streamViaCli } from "@/ai/cli";
-import { apiKey, backend, resolveEngine, setEngineState, type EngineKind } from "@/ai/engine";
+import { apiKey, backend, modelMix, resolveEngine, setEngineState, tierModel, type EngineKind } from "@/ai/engine";
+import { DEFAULT_MIX, type ModelMix } from "@/ai/models";
 export type { EngineTest, EngineView } from "@/org/engine";
-import { MODEL, readStructured } from "@/ai/server";
+import { readStructured } from "@/ai/server";
 import type { EngineTest, EngineView } from "@/org/engine";
 import { claudeState, findClaude } from "./claude";
 import { announceAll } from "./org/home";
@@ -32,7 +33,7 @@ export function ensureEngine(): Promise<Loaded> {
   g.__qalamEngineLoad ??= (async () => {
     const [settings, stored] = await Promise.all([readSettings(), secrets().get(KEY).catch(() => null)]);
     const key = stored ?? (process.env.ANTHROPIC_API_KEY || null);
-    setEngineState({ kind: resolveEngine(settings.engine, process.env), key, bin: process.env.CLAUDE_CLI_PATH || findClaude() || "claude" });
+    setEngineState({ kind: resolveEngine(settings.engine, process.env), key, bin: process.env.CLAUDE_CLI_PATH || findClaude() || "claude", mix: settings.models ?? DEFAULT_MIX });
     // An inbox that looked before this was read may have waited for nothing.
     void announce();
     return { keyFrom: stored ? "keychain" : key ? "environment" : null, tests: {} };
@@ -51,6 +52,13 @@ export async function chooseEngine(kind: EngineKind) {
   await writeSettings({ engine: kind });
   setEngineState({ kind, ...(kind === "cli" ? { bin: process.env.CLAUDE_CLI_PATH || findClaude() || "claude" } : {}) });
   await announce();
+}
+
+/** Run every read on Sonnet and decisions on Opus ("balanced"), or Opus with Sonnet only for the reads that hold there ("best"), from the next call. */
+export async function chooseModels(mix: ModelMix) {
+  await ensureEngine();
+  await writeSettings({ models: mix });
+  setEngineState({ mix });
 }
 
 /** Test a key, keep it in the Keychain, and switch to it. A key that fails the test is never kept. */
@@ -87,8 +95,9 @@ const TEST_MS = 60_000;
 const TEST_SCHEMA = { type: "object", properties: { ok: { type: "boolean" } }, required: ["ok"], additionalProperties: false };
 
 /**
- * A short real call to the engine: an API key is first checked for free (does it open the model?),
- * Claude Code is found and asked whether it's signed in, then a one-word answer is asked of it.
+ * A short real call to the engine: an API key is checked for free (does it open each tier's model?
+ * Fetch runs only through Claude Code, so it isn't asked), Claude Code is found and asked whether
+ * it's signed in, then a one-word answer is asked of it.
  * `key`: a key not saved yet (it's tested before it's kept).
  */
 /** `fetch`: the API's, replaced in tests. */
@@ -107,13 +116,21 @@ export async function liveTest(kind: EngineKind = backend(), key?: string, o: Te
   if (kind === "api") {
     const k = key ?? apiKey();
     if (!k) return done(false, "No key", "Paste a Claude API key from the Claude Console.");
+    const client = new Anthropic({ apiKey: k, maxRetries: 0, timeout: 20_000, ...(o.fetch ? { fetch: o.fetch } : {}) });
+    const models = [...new Set([tierModel("decide"), tierModel("read")])];
+    let asked = models[0];
     try {
-      const m = await new Anthropic({ apiKey: k, maxRetries: 0, timeout: 20_000, ...(o.fetch ? { fetch: o.fetch } : {}) }).models.retrieve(MODEL);
-      return done(true, "Ready", undefined, m.id);
+      let id = asked;
+      for (const m of models) {
+        asked = m;
+        const got = await client.models.retrieve(m);
+        if (m === models[0]) id = got.id;
+      }
+      return done(true, "Ready", undefined, id);
     } catch (e) {
       if (e instanceof Anthropic.AuthenticationError) return done(false, "Key rejected", "Anthropic didn't accept this key.");
-      if (e instanceof Anthropic.PermissionDeniedError) return done(false, "No access", `This key can't use ${MODEL}.`);
-      if (e instanceof Anthropic.NotFoundError) return done(false, "No access", `This key can't use ${MODEL}.`);
+      if (e instanceof Anthropic.PermissionDeniedError) return done(false, "No access", `This key can't use ${asked}.`);
+      if (e instanceof Anthropic.NotFoundError) return done(false, "No access", `This key can't use ${asked}.`);
       if (e instanceof Anthropic.APIConnectionError) return done(false, "Offline", "Couldn't reach Anthropic from this computer.");
       return done(false, "Didn't answer", e instanceof Error ? e.message : String(e));
     }
@@ -124,7 +141,7 @@ export async function liveTest(kind: EngineKind = backend(), key?: string, o: Te
   if (state.signedIn === false) return done(false, "Signed out", "Run claude auth login in a terminal, then test again.");
   setEngineState({ bin: found });
   // Claude Code itself, whichever engine is live now (the welcome tests it before switching).
-  const res = streamViaCli({ system: "You check that Qalam AI can reach its engine. Answer with ok set to true.", content: [{ type: "text", text: "Are you there?" }], schema: TEST_SCHEMA, effort: "low", maxTokens: 512 }, MODEL);
+  const res = streamViaCli({ system: "You check that Qalam AI can reach its engine. Answer with ok set to true.", content: [{ type: "text", text: "Are you there?" }], schema: TEST_SCHEMA, effort: "low", maxTokens: 512 }, tierModel("decide"));
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const out = await Promise.race([
@@ -153,7 +170,9 @@ export async function engineView(): Promise<EngineView> {
   const test = loaded.tests[kind] ?? null;
   const view: EngineView = {
     kind,
-    model: MODEL,
+    model: tierModel("decide"),
+    models: modelMix(),
+    tiers: { decide: tierModel("decide"), read: tierModel("read"), fetch: tierModel("fetch") },
     claude,
     key: k ? { last4: k.slice(-4), from: loaded.keyFrom ?? "environment" } : null,
     canStore: secrets().available,

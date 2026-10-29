@@ -39,6 +39,7 @@ export function stepsSchema(m: Pick<StepSent, "steps" | "quotes">) {
 /** The call, as the core's structured() runs it. */
 export function stepsCall(m: StepSent) {
   return {
+    kind: "steps" as const,
     system: STEPS_SYSTEM,
     schema: stepsSchema(m),
     effort: "medium" as const,

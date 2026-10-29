@@ -57,6 +57,7 @@ export function readerContent(o: { product: string; root: string; scan: CodeScan
 /** One call over the scanner's results and excerpts of the files (an API key: no tools). */
 export function readerCall(o: { content: string; excerpts: { file: string; text: string }[]; goals: string[] }) {
   return {
+    kind: "reader" as const,
     system: READER_SYSTEM,
     schema: readerSchema(o.goals),
     effort: "medium" as const,

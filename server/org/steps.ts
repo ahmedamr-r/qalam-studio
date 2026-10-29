@@ -10,7 +10,6 @@ import type { Goal } from "@/goals/types";
 import { rankNeeds } from "@/hub/needs";
 import { indexFor } from "../index/registry";
 import { search } from "../index/search";
-import { DISCOVERY_MODEL } from "../routes/discovery";
 import { figmaPicture } from "../connectors/figma";
 import { assetHash } from "./fsx";
 import { knowledgeInputs } from "./needs";
@@ -85,7 +84,7 @@ export async function placeQuotes(store: OrgStore, goalId: string, emit?: (label
   const m = stepMaterial({ goal, map: funnel.map.key, flow: funnel.flow, quotes });
   emit?.(`Qalam AI is reading ${quotes.length === 1 ? "a quote" : `${quotes.length} quotes`} against the steps`);
   const { pins, refused } = foldPins(await store.listStepLog());
-  const { data, model } = await structured<unknown>({ model: DISCOVERY_MODEL, ...stepsCall(m) });
+  const { data, model } = await structured<unknown>(stepsCall(m));
   const now = Date.now();
   const dropped: { why: string; item: unknown }[] = [];
   const found = sanitizeSteps(data, m, { now, refused }, (why, item) => dropped.push({ why, item }));

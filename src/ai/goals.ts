@@ -49,6 +49,7 @@ export function bearingsSchema(m: Pick<BearingSent, "problems" | "targets" | "li
 /** The call, as the core's structured() and a route both run it. */
 export function bearingsCall(m: BearingSent) {
   return {
+    kind: "bearings" as const,
     system: BEARINGS_SYSTEM,
     schema: bearingsSchema(m),
     effort: "medium" as const,

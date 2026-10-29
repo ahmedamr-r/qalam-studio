@@ -11,7 +11,6 @@ import type { Goal } from "@/goals/types";
 import { rankNeeds } from "@/hub/needs";
 import { indexFor } from "../index/registry";
 import { search } from "../index/search";
-import { DISCOVERY_MODEL } from "../routes/discovery";
 import { knowledgeInputs } from "./needs";
 import { stepView } from "./steps";
 import type { OrgEvent, OrgStore } from "./store";
@@ -102,7 +101,7 @@ export async function linkProblems(store: OrgStore, o: { targets: string[]; page
   const near = await nearGoals(store, targets.map((id) => goalById(tree, id)!));
   const m = bearingMaterial({ tree, targets, problems: pages, evidence: new Map(ranked.map((n) => [n.topic, n])), productName: (id) => products.find((p) => p.id === id)?.name, near });
   o.emit?.(`Qalam AI is reading ${m.problems.size === 1 ? "a problem" : `${m.problems.size} problems`} against ${targets.length === 1 ? "the goal" : `${targets.length} goals`}`);
-  const { data, model } = await structured<unknown>({ model: DISCOVERY_MODEL, ...bearingsCall(m) });
+  const { data, model } = await structured<unknown>(bearingsCall(m));
   const now = Date.now();
   const dropped: { why: string; item: unknown }[] = [];
   const found = sanitizeBearings(data, m, { now, refused }, (why, item) => dropped.push({ why, item }));
