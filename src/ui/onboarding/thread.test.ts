@@ -14,6 +14,7 @@ const base = (over: Partial<ThreadInput> = {}): ThreadInput => ({
   voice: { offer: "apple", chosen: "apple" },
   step: "goals",
   door: null,
+  goals: 0,
   opened: true,
   know: { phase: "write", sent: false, answered: null, added: 0, error: null, goals: 0, questions: 0 },
   find: { session: null, pending: false, error: null, open: 0, accepted: 0 },
@@ -178,6 +179,14 @@ describe("the goals", () => {
     expect(ids(at("yours")).slice(-2)).toEqual(["goals:in", "yours:ask"]);
     expect(choices(at("yours").find((x) => x.id === "goals:in"))).toEqual([]);
     expect(ids(at("connect")).slice(-3)).toEqual(["yours:ask", "yours:you", "connect:ask"]);
+  });
+
+  it("picked up past the goals with no way in chosen, says what the tree has instead of asking again", () => {
+    const m = threadOf(base({ step: "yours", goals: 3 }));
+    expect(ids(m).slice(-2)).toEqual(["goals:had", "yours:ask"]);
+    expect(m.find((x) => x.id === "goals:had")?.parts[0]).toEqual({ type: "text", text: "Basket has 3 goals already." });
+    expect(m.flatMap((x) => choices(x) ?? [])).toEqual([]);
+    expect(threadOf(base({ step: "goals", goals: 3 })).some((x) => x.id === "goals:ask")).toBe(true);
   });
 });
 

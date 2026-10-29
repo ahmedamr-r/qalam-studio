@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bootRetryDelay, changesThings, connectFor, setupStep, stepStates, welcomeMode } from "./steps";
+import { bootRetryDelay, changesThings, connectFor, firstRunLeft, setupStep, stepStates, welcomeMode } from "./steps";
 
 describe("the welcome", () => {
   it("marks the steps before the one being done as done, and the rest as next", () => {
@@ -22,6 +22,18 @@ describe("the welcome", () => {
     expect(setupStep("?first=1&step=voice")).toBe("voice");
     expect(setupStep("?step=connect")).toBe("connect");
     expect(setupStep("?step=engine")).toBe("goals");
+  });
+
+  it("picks the first run up at the first step it left open, and offers nothing once it's finished", () => {
+    const kept = { you: true, voice: true, goals: 3, settingUp: false, picked: true, finished: false };
+    expect(firstRunLeft({ ...kept, you: false, goals: 0, picked: false })).toEqual({ step: "you", done: 2, of: 7 });
+    expect(firstRunLeft({ ...kept, voice: false })?.step).toBe("voice");
+    expect(firstRunLeft({ ...kept, goals: 0, picked: false })).toEqual({ step: "goals", done: 4, of: 7 });
+    // A brain dump still waiting on them keeps it on the goals, whatever is in the tree already.
+    expect(firstRunLeft({ ...kept, settingUp: true })?.step).toBe("goals");
+    expect(firstRunLeft({ ...kept, picked: false })?.step).toBe("yours");
+    expect(firstRunLeft(kept)).toEqual({ step: "connect", done: 6, of: 7 });
+    expect(firstRunLeft({ ...kept, you: false, finished: true })).toBeNull();
   });
 
   it("suggests reading the goals' numbers first once a goal has one", () => {

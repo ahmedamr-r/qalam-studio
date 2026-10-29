@@ -353,6 +353,9 @@ export function orgRoutes(): Hono<Env> {
     await c.get("store").setMe(me);
     return c.json({ me: c.get("store").me });
   });
+  // The first run on this computer: finished or not (the home offers to pick it up until it is), and Finish.
+  r.get("/api/org/:org/first-run", (c) => c.json(c.get("store").firstRun));
+  r.post("/api/org/:org/first-run", async (c) => c.json(await c.get("store").finishFirstRun()));
 
   // Decisions: the log, newest first (a board's, a card's or a goal's), added to as boards change.
   r.get("/api/org/:org/decisions", (c) => {

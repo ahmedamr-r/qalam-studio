@@ -28,6 +28,7 @@ import { applyFiling, type Applied, type Filing, type Topic, type TopicInfo } fr
 import { factHash } from "@/knowledge/refs";
 import { aboutFromMarkdown, aboutToMarkdown, emptyContext, legacyGoals, productFromMarkdown, productToMarkdown, type ContextFields, type Product } from "@/org/context-md";
 import type { Project, ProjectType } from "@/projects/model";
+import type { FirstRunView } from "@/org/first-run";
 import type { Me } from "@/org/you";
 import { assetExt, assetType, decodeProject, decodeSource, docVersion, encodeProject, encodeSource, isLocalField, recordVersion, splitLocal, type LocalFields } from "./codecs";
 import { assetHash, atomicWrite, contentHash, inside, locked, readJson, slugify, stableStringify, uniqueName } from "./fsx";
@@ -136,6 +137,8 @@ interface LocalState {
   mine?: string[];
   /** This computer's person's position at the organization, from the first run. */
   me?: Me;
+  /** When the first run here was finished (Finish, on its last step); until then the home offers to pick it up. */
+  firstRun?: number;
   /** The repositories and folders this computer reads for the products. */
   code?: CodeRepo[];
 }
@@ -1037,6 +1040,17 @@ export class OrgStore {
   async setMe(me: Me): Promise<void> {
     this.local.me = me;
     await locked(this.abs(".qalam/local/state.json"), () => atomicWrite(this.abs(".qalam/local/state.json"), stableStringify(this.local)));
+  }
+
+  /** The first run on this computer: when it was finished, and whether which goals are theirs was answered (even with none). */
+  get firstRun(): FirstRunView {
+    return { done: this.local.firstRun ?? null, picked: this.local.mine !== undefined };
+  }
+
+  async finishFirstRun(): Promise<FirstRunView> {
+    this.local.firstRun ??= Date.now();
+    await locked(this.abs(".qalam/local/state.json"), () => atomicWrite(this.abs(".qalam/local/state.json"), stableStringify(this.local)));
+    return this.firstRun;
   }
 
   /**

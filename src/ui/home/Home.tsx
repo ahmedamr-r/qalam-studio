@@ -25,9 +25,11 @@ import { inScope, withScope } from "./scope";
 import { useScope } from "./useScope";
 import { useNeeds } from "./useNeeds";
 import { homeGoals, YourGoals } from "./YourGoals";
+import { ContinueSetup, useFirstRunLeft } from "./ContinueSetup";
 
 /**
- * An organization's home, for the product in view: asking what it knows, then the goals this
+ * An organization's home, for the product in view: picking up the first run while it isn't
+ * finished here (./ContinueSetup.tsx), asking what it knows, then the goals this
  * person works on, each with the problems behind it; what needs a look, under the goal it bears
  * on; and what customers keep raising that no goal covers. Goals, problems, evidence and decisions
  * each have a place of their own in the sidebar. Everything is saved in the organization's folder.
@@ -43,6 +45,7 @@ export default function Home() {
   const topics = useTopics();
   const { products, about, loaded } = useOrgContext();
   const goalCount = goalTree.goals.length;
+  const left = useFirstRunLeft(sources);
 
   const links = useBearings() ?? [];
   const jobs = useJobs() ?? [];
@@ -74,7 +77,11 @@ export default function Home() {
           </div>
         )}
 
-        <SetupNotice org={org} sources={sources} empty={loaded && !products.length && !about.audience.trim() && !about.context.trim() && !goalCount && !about.segments.length} />
+        {org && left ? (
+          <ContinueSetup org={org} left={left} sources={sources} />
+        ) : (
+          left === null && <SetupNotice org={org} sources={sources} empty={loaded && !products.length && !about.audience.trim() && !about.context.trim() && !goalCount && !about.segments.length} />
+        )}
 
         <AskBar product={product?.id ?? null} topics={topics} />
 

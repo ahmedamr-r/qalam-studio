@@ -44,6 +44,8 @@ export interface ThreadInput {
   voice: { offer: "apple" | "parakeet" | "none"; chosen: VoiceChoice | null } | null;
   step: SetupStep;
   door: Door | null;
+  /** Goals in the organization's tree (goals.md). */
+  goals: number;
   /** The setup page has found what it shows. */
   opened: boolean;
   know: Pick<KnowState, "phase" | "sent" | "answered" | "added" | "error"> & { goals: number; questions: number };
@@ -138,10 +140,13 @@ export function threadOf(i: ThreadInput): ChatMessage[] {
   }
   if (!i.opened) return out;
 
-  // Goals: a way in, then either door.
+  // Goals: a way in, then either door. Picked up past them (from the home, or another window), the goals are the tree's.
   const door = doorOf(i);
-  out.push(ai("goals:ask", text(i.first ? `Let's start with ${org}'s goals. Do you know them, or shall I help find them?` : `Do you know ${org}'s goals, or shall I help find them?`), ...(door ? [] : [part("choices", { set: "door" })])));
-  if (door) out.push(you("goals:door", text(door === "know" ? "I know them" : "Help me find them")));
+  if (i.first && i.step !== "goals" && !door) out.push(ai("goals:had", text(i.goals ? `${org} has ${i.goals === 1 ? "a goal" : `${i.goals} goals`} already.` : "There are no goals yet: add them on the Goals page any time.")));
+  else {
+    out.push(ai("goals:ask", text(i.first ? `Let's start with ${org}'s goals. Do you know them, or shall I help find them?` : `Do you know ${org}'s goals, or shall I help find them?`), ...(door ? [] : [part("choices", { set: "door" })])));
+    if (door) out.push(you("goals:door", text(door === "know" ? "I know them" : "Help me find them")));
+  }
 
   if (door === "know") {
     const k = i.know;

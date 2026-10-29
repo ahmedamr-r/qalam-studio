@@ -49,6 +49,7 @@ function useThreadInput(): ThreadInput {
   const setup = useSetup();
   const mine = useGoals((g) => g.mine);
   const me = useGoals((g) => g.me);
+  const goals = useGoals((g) => g.goals.length);
   const yourName = useYou((y) => y.name);
   const voice = useVoice((v) => v.view);
   const session = setup.source?.setup ?? null;
@@ -63,6 +64,7 @@ function useThreadInput(): ThreadInput {
     voice: voice ? { offer: voiceOffer(voice), chosen: voice.chosen } : null,
     step: fr.step,
     door: fr.door,
+    goals,
     opened: fr.route === "welcome" || fr.opened,
     know: { phase: know.phase, sent: know.sent, answered: know.answered, added: know.added, error: know.error, goals: know.goals.length, questions: know.questions.length },
     find: {

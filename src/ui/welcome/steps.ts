@@ -32,6 +32,29 @@ export const setupStep = (search: string): SetupStep => {
   return s === "you" || s === "voice" || s === "yours" || s === "connect" ? s : "goals";
 };
 
+/** What the first run left behind here, read from what's kept (nothing about where they stopped is saved but Finish). */
+export interface FirstRunKept {
+  /** Their name on this Mac, and their position at the organization. */
+  you: boolean;
+  /** How this Mac talks instead of typing is settled, or there's nothing to choose. */
+  voice: boolean;
+  /** Goals in the organization's tree. */
+  goals: number;
+  /** A brain dump about the organization is still being set up. */
+  settingUp: boolean;
+  /** Which goals are theirs was answered on this computer. */
+  picked: boolean;
+  /** Finish was clicked on this computer. */
+  finished: boolean;
+}
+
+/** Where the first run picks up again (the home's card), and how many steps are behind it; null: it's finished. */
+export function firstRunLeft(k: FirstRunKept): { step: SetupStep; done: number; of: number } | null {
+  if (k.finished) return null;
+  const step: SetupStep = !k.you ? "you" : !k.voice ? "voice" : k.settingUp || !k.goals ? "goals" : !k.picked ? "yours" : "connect";
+  return { step, done: WELCOME_STEPS.findIndex((s) => s.id === step), of: WELCOME_STEPS.length };
+}
+
 /**
  * What to connect for the goals, the most useful first: their numbers (once a goal has one), what
  * customers say about the problems behind them, the team's docs, and the product's code.

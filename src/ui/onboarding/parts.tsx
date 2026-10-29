@@ -29,7 +29,7 @@ import { acceptLines, placeSetup, retrySetup, skipSetupRest, startBoard, useSetu
 import { connectFor } from "../welcome/steps";
 import { Dictated } from "../voice/MicButton";
 import { ParakeetInstall } from "../voice/ParakeetInstall";
-import { checkEngine, goStep, keySaved, openKeyField, openSoFar, pickDoor, saveVoice, saveYou, saveYours, skipEngine, togglePick, useFirstRun } from "./flow";
+import { checkEngine, finishFirstRun, goStep, keySaved, openKeyField, openSoFar, pickDoor, saveVoice, saveYou, saveYours, skipEngine, togglePick, useFirstRun } from "./flow";
 import { treeRows } from "./soFar";
 
 /*
@@ -532,7 +532,7 @@ function ConnectPart() {
         })}
       </ul>
       <ReplyChips>
-        <button type="button" className={r.replyChipPrimary} onClick={() => window.location.assign(firstGoalHref())}>
+        <button type="button" className={r.replyChipPrimary} onClick={() => void finishFirstRun(firstGoalHref())}>
           Finish
         </button>
         <a href={placeHref("connections")} className={r.replyChip}>

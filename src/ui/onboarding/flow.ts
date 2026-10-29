@@ -6,7 +6,8 @@ import { createOrg, currentOrg, type OrgRef } from "@/org/client";
 import { engineDb, type EngineTest, type EngineView } from "@/org/engine";
 import { chooseVoice, loadVoice } from "@/org/voice";
 import { loadYou, setYourName, type Me } from "@/org/you";
-import { voiceOffer, type VoiceChoice } from "@/voice/model";
+import { voiceSettled, type VoiceChoice } from "@/voice/model";
+import { firstRunDb } from "@/org/first-run";
 import { setupHref } from "@/projects/model";
 import { openKnow, useKnow } from "../setup/know";
 import { openSetup, useSetup } from "../setup/setup";
@@ -170,10 +171,7 @@ export function goStep(step: SetupStep) {
 export async function saveYou(name: string, me: Me): Promise<void> {
   await setYourName(name);
   await setMe(me);
-  const v = await loadVoice();
-  // Decided: their own app, off, or an engine that works here (one chosen on a Mac that lost it isn't).
-  const decided = !v || voiceOffer(v) === "none" || v.chosen === "own" || v.chosen === "off" || !!v.use;
-  goStep(decided ? "goals" : "voice");
+  goStep(voiceSettled(await loadVoice()) ? "goals" : "voice");
 }
 
 /** How this Mac talks instead of typing, then on to the goals. */
@@ -197,6 +195,12 @@ export async function saveYours(order: string[]) {
   await setMine(order.filter((id) => chosen.has(id))).catch(() => {});
   useFirstRun.setState({ picked: [...chosen] });
   goStep("connect");
+}
+
+/** Finish: the first run is done here (the home stops offering to pick it up), then on to `href`. */
+export async function finishFirstRun(href: string) {
+  await firstRunDb.finish().catch(() => {});
+  window.location.assign(href);
 }
 
 export async function loadConnect() {

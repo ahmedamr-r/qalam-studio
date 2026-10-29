@@ -39,6 +39,9 @@ export function voiceUse(chosen: VoiceChoice | null, f: VoiceFacts): VoiceEngine
 /** What the voice step offers: Apple's engine, Parakeet to install, or nothing here. */
 export const voiceOffer = (f: VoiceFacts): "apple" | "parakeet" | "none" => (!f.here ? "none" : f.apple.available ? "apple" : "parakeet");
 
+/** Nothing left to ask about voice here: nothing to offer, their own app or off, or an engine that works here (one chosen on a Mac that lost it isn't). Unknown counts as settled. */
+export const voiceSettled = (v: VoiceView | null): boolean => !v || voiceOffer(v) === "none" || v.chosen === "own" || v.chosen === "off" || !!v.use;
+
 /** A line from the helper. */
 export type VoiceLine =
   | { t: "loading" }
