@@ -89,7 +89,7 @@ const ENGINE_LINE: Record<EngineState, string> = {
 
 const VOICE_ASK = {
   apple: "Want to talk instead of typing? Click the mic in any box, or press ⌃⌥D. It runs on this Mac: nothing you say leaves it.",
-  parakeet: "Want to talk instead of typing? This Mac needs a speech engine for that. It runs on the Mac: nothing you say leaves it.",
+  parakeet: "Want to talk instead of typing? Click the mic in any box, or press ⌃⌥D. Parakeet runs it on this Mac: nothing you say leaves it.",
 } as const;
 
 const VOICE_SAID: Record<VoiceChoice, string> = { apple: "Talk with Apple's engine", parakeet: "Talk with Parakeet", own: "I use my own dictation app", off: "Not now" };

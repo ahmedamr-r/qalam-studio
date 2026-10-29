@@ -15,6 +15,9 @@ describe("which engine the mic uses", () => {
     expect(voiceUse(null, mac(false))).toBeNull();
     expect(voiceUse("parakeet", mac(false))).toBeNull();
     expect(voiceUse("parakeet", mac(false, true))).toBe("parakeet");
+    // An engine chosen on a Mac that lost it falls back to what's here.
+    expect(voiceUse("apple", mac(false, true))).toBe("parakeet");
+    expect(voiceUse("parakeet", mac(true, false))).toBe("apple");
     expect(voiceUse("apple", NO_VOICE)).toBeNull();
     expect([voiceOffer(mac(true)), voiceOffer(mac(false)), voiceOffer(NO_VOICE)]).toEqual(["apple", "parakeet", "none"]);
   });

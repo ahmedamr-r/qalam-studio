@@ -77,3 +77,23 @@ export async function installVoice(engine: VoiceEngine, on: (l: VoiceLine) => vo
   await loadVoice(true);
   if (failed) throw new Error(failed);
 }
+
+/** How big Parakeet's download is, in bytes (Hugging Face's listing, asked once). */
+let size: Promise<number> | null = null;
+export function parakeetSize(): Promise<number> {
+  size ??= fetch("/api/voice/parakeet")
+    .then((r) => json<{ size: number }>(r))
+    .then((v) => v.size)
+    .catch((e) => {
+      size = null;
+      throw e;
+    });
+  return size;
+}
+
+export async function removeParakeet(): Promise<VoiceView> {
+  const view = await fetch("/api/voice/parakeet", { method: "DELETE" }).then((r) => json<VoiceView>(r));
+  useVoice.setState({ view });
+  asked = Promise.resolve(view);
+  return view;
+}

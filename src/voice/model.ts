@@ -28,12 +28,12 @@ export interface VoiceView extends VoiceFacts {
 
 export const NO_VOICE: VoiceFacts = { here: false, apple: { available: false, ready: false }, parakeet: { installed: false }, mic: "undetermined" };
 
-/** The mic's engine: what they chose if it's here, else Apple's engine where the Mac has it. Their own app, or off: none. */
+/** The mic's engine: what they chose if it works here, else Apple's engine where the Mac has it, else Parakeet once installed. Their own app, or off: none. */
 export function voiceUse(chosen: VoiceChoice | null, f: VoiceFacts): VoiceEngine | null {
-  if (!f.here) return null;
-  if (chosen === "own" || chosen === "off") return null;
-  if (chosen === "parakeet") return f.parakeet.installed ? "parakeet" : null;
-  return f.apple.available ? "apple" : null;
+  if (!f.here || chosen === "own" || chosen === "off") return null;
+  if (chosen === "parakeet" && f.parakeet.installed) return "parakeet";
+  if (f.apple.available) return "apple";
+  return f.parakeet.installed ? "parakeet" : null;
 }
 
 /** What the voice step offers: Apple's engine, Parakeet to install, or nothing here. */

@@ -4,7 +4,7 @@ import { Check, ChevronRight, Link2, RotateCcw, Star, Target } from "lucide-reac
 import { CHALLENGE_LABEL } from "@/discovery/dump";
 import { useGoals } from "@/goals/client";
 import { NAME_MAX, POSITIONS, TITLE_MAX, useYou, type Position } from "@/org/you";
-import { useVoice } from "@/org/voice";
+import { chooseVoice, useVoice } from "@/org/voice";
 import type { VoiceChoice } from "@/voice/model";
 import { childrenOf } from "@/goals/tree";
 import { useOrgContext } from "@/org/context";
@@ -28,6 +28,7 @@ import { addKnown, editKnown, skipKnown, useKnow } from "../setup/know";
 import { acceptLines, placeSetup, retrySetup, skipSetupRest, startBoard, useSetup } from "../setup/setup";
 import { connectFor } from "../welcome/steps";
 import { Dictated } from "../voice/MicButton";
+import { ParakeetInstall } from "../voice/ParakeetInstall";
 import { checkEngine, goStep, keySaved, openKeyField, openSoFar, pickDoor, saveVoice, saveYou, saveYours, skipEngine, togglePick, useFirstRun } from "./flow";
 import { treeRows } from "./soFar";
 
@@ -404,17 +405,35 @@ function VoicePart({ data }: { data: PartData }) {
   );
 }
 
+/** Parakeet to install (never unasked), then a box to try it in; or their own app, or not now. */
 function ParakeetOffer({ pick, busy, error }: { pick: (use: VoiceChoice) => void; busy: VoiceChoice | null; error: string | null }) {
+  const installed = useVoice((v) => v.view?.parakeet.installed ?? false);
+  const [tried, setTried] = useState("");
+  const box = useRef<HTMLTextAreaElement>(null);
   return (
     <div className="flex flex-col gap-[10px]">
+      {installed ? (
+        <Dictated field={box} set={setTried}>
+          <textarea ref={box} rows={2} dir="auto" aria-label="Try talking" className={clsx(r.textarea, "text-body")} placeholder="Try it: click the mic and say something" value={tried} onChange={(e) => setTried(e.target.value)} />
+        </Dictated>
+      ) : (
+        <ParakeetInstall onDone={() => void chooseVoice("parakeet")} />
+      )}
       {error && <ErrorNote message={error} />}
       <ReplyChips>
+        {installed && (
+          <button type="button" disabled={!!busy} className={r.replyChipPrimary} onClick={() => pick("parakeet")}>
+            Use it
+          </button>
+        )}
         <button type="button" disabled={!!busy} className={r.replyChip} onClick={() => pick("own")}>
           I use my own dictation app
         </button>
-        <button type="button" disabled={!!busy} className={r.replyChip} onClick={() => pick("off")}>
-          Not now
-        </button>
+        {!installed && (
+          <button type="button" disabled={!!busy} className={r.replyChip} onClick={() => pick("off")}>
+            Not now
+          </button>
+        )}
       </ReplyChips>
     </div>
   );

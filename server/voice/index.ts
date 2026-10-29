@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { NO_VOICE, parseVoiceLine, voiceUse, type VoiceChoice, type VoiceEngine, type VoiceFacts, type VoiceLine, type VoiceView } from "@/voice/model";
 import { readSettings, writeSettings } from "../settings";
+import { installParakeet, parakeetDir, parakeetInstalled, removeParakeet } from "./parakeet";
 
 /*
  * This Mac's voice helper (native/voice), run by the core: what the Mac has (check), Apple's English
@@ -68,7 +69,8 @@ export async function voiceFacts(fresh = false): Promise<VoiceFacts> {
     if (l.t === "check") seen = l;
   });
   clearTimeout(timer);
-  const v: VoiceFacts = seen ? { here: true, apple: (seen as Extract<VoiceLine, { t: "check" }>).apple, parakeet: { installed: false }, mic: (seen as Extract<VoiceLine, { t: "check" }>).mic } : NO_VOICE;
+  const check = seen as Extract<VoiceLine, { t: "check" }> | null;
+  const v: VoiceFacts = check ? { here: true, apple: check.apple, parakeet: { installed: parakeetInstalled() }, mic: check.mic } : NO_VOICE;
   facts = { at: Date.now(), v };
   return v;
 }
@@ -84,9 +86,13 @@ export async function chooseVoice(use: VoiceChoice): Promise<VoiceView> {
   return voiceView();
 }
 
-/** Apple's English pack, fetched by macOS (it comes on first listen too). */
-export async function installVoice(engine: VoiceEngine, on: (l: VoiceLine) => void, _signal?: AbortSignal): Promise<void> {
-  if (engine !== "apple") throw new Error("Only Apple's engine installs here so far.");
+/** Apple's English pack, fetched by macOS (it comes on first listen too), or Parakeet's model, downloaded here: only ever when asked. */
+export async function installVoice(engine: VoiceEngine, on: (l: VoiceLine) => void, signal?: AbortSignal): Promise<void> {
+  if (engine === "parakeet") {
+    await installParakeet(on, signal);
+    facts = null;
+    return;
+  }
   const child = run(["install", "--engine", "apple"]);
   if (!child) throw new Error("The voice helper isn't on this Mac.");
   let failed: string | null = null;
@@ -109,7 +115,7 @@ let listening: ChildProcessWithoutNullStreams | null = null;
  */
 export async function listen(engine: VoiceEngine, signal: AbortSignal, on: (l: VoiceLine) => void): Promise<void> {
   listening?.stdin.write("cancel\n");
-  const child = run(["listen", "--engine", engine]);
+  const child = run(["listen", "--engine", engine, ...(engine === "parakeet" ? ["--models", parakeetDir()] : [])]);
   if (!child) {
     on({ t: "error", code: "no-helper", message: "The voice helper isn't on this Mac." });
     return;
@@ -134,4 +140,12 @@ export function stopListening(): boolean {
   if (!listening || listening.exitCode !== null) return false;
   listening.stdin.write("stop\n");
   return true;
+}
+
+/** Parakeet's model taken off this Mac; the mic goes back to no engine until they choose. */
+export async function forgetParakeet(): Promise<VoiceView> {
+  await removeParakeet();
+  facts = null;
+  if ((await readSettings()).voice?.use === "parakeet") await writeSettings({ voice: undefined });
+  return voiceView();
 }

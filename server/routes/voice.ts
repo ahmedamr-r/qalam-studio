@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { VoiceChoice, VoiceLine } from "@/voice/model";
-import { chooseVoice, installVoice, listen, stopListening, voiceView } from "../voice";
+import { chooseVoice, forgetParakeet, installVoice, listen, stopListening, voiceView } from "../voice";
+import { parakeetSize } from "../voice/parakeet";
 
 const CHOICES: readonly VoiceChoice[] = ["apple", "parakeet", "own", "off"];
 
@@ -48,6 +49,15 @@ export function voiceRoutes(): Hono {
       send({ t: "done" });
     });
   });
+  // Parakeet's download, as Hugging Face lists it today (asked only where it's offered), and taking it off.
+  r.get("/api/voice/parakeet", async (c) => {
+    try {
+      return c.json({ size: await parakeetSize() });
+    } catch (e) {
+      return c.json({ error: "unreachable", message: e instanceof Error ? e.message : String(e) }, 502);
+    }
+  });
+  r.delete("/api/voice/parakeet", async (c) => c.json(await forgetParakeet()));
   r.post("/api/voice/listen", async (c) => {
     const view = await voiceView();
     if (!view.use) return c.json({ error: "no_voice", message: "Voice isn't on for this Mac. Turn it on in Connections." }, 409);

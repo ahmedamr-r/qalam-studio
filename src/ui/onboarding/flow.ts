@@ -171,7 +171,9 @@ export async function saveYou(name: string, me: Me): Promise<void> {
   await setYourName(name);
   await setMe(me);
   const v = await loadVoice();
-  goStep(v && voiceOffer(v) !== "none" && !v.chosen ? "voice" : "goals");
+  // Decided: their own app, off, or an engine that works here (one chosen on a Mac that lost it isn't).
+  const decided = !v || voiceOffer(v) === "none" || v.chosen === "own" || v.chosen === "off" || !!v.use;
+  goStep(decided ? "goals" : "voice");
 }
 
 /** How this Mac talks instead of typing, then on to the goals. */
