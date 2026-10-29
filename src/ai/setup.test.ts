@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SETUP_PLACE_SYSTEM, SETUP_READ_SYSTEM, SetupBody, setupCall, setupContent, setupPlaceSchema, setupReadSchema } from "./setup";
+import { SETUP_FOLLOWUP_SYSTEM, SETUP_PLACE_SYSTEM, SETUP_READ_SYSTEM, SetupBody, setupCall, setupContent, setupPlaceSchema, setupReadSchema } from "./setup";
 
 /** Objects whose properties aren't all required, or that take more than they name. */
 function openRequired(node: unknown, path = "#"): string[] {
@@ -61,5 +61,16 @@ describe("setting an organization up", () => {
     expect(setupCall({ stage: "place", ...base, ...read, answers: [] })).toMatchObject({ system: SETUP_PLACE_SYSTEM, effort: "high" });
     // UI copy names Qalam AI; the prompt's rules hold the model to their words.
     expect(SETUP_PLACE_SYSTEM).toContain("a new product only under a name they used");
+  });
+
+  it("asks who they are in it and how the company is funded, and makes what its backers want a company goal", () => {
+    for (const system of [SETUP_READ_SYSTEM, SETUP_FOLLOWUP_SYSTEM]) {
+      expect(system).toContain("Who they are in it");
+      expect(system).toContain("How the company makes money and is funded");
+      expect(system).toContain("what they want to see by the next raise or board meeting");
+      expect(system).toContain("Pitch the questions to them");
+    }
+    expect(SETUP_PLACE_SYSTEM).toContain("What investors, a board or a parent company want to see is a company goal");
+    expect(SETUP_PLACE_SYSTEM).toContain("it's never a line");
   });
 });

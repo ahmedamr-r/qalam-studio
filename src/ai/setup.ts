@@ -63,7 +63,7 @@ const ids = (list: string[]) => (list.length ? list : ["none"]);
 
 /** What each piece of a dump about a company can be. */
 const ROLE_HINT =
-  "context (what the company does, its products, who it serves, where, its market and business) · goal (a result the company or a product's team wants: a business number, or a change in what customers do) · metric (a number: where things are, where they want them) · need (a customer's need, pain or desire) · idea (a product, feature or change they plan) · test (a way they'd try something out) · assumption (something they believe has to be true) · evidence (something seen, measured or heard that backs or speaks against a belief) · question (something they're unsure about)";
+  "context (what the company does, its products, who it serves, where, its market and business: who pays, how it's funded, its stage) · goal (a result the company or a product's team wants: a business number, or a change in what customers do) · metric (a number: where things are, where they want them) · need (a customer's need, pain or desire) · idea (a product, feature or change they plan) · test (a way they'd try something out) · assumption (something they believe has to be true) · evidence (something seen, measured or heard that backs or speaks against a belief) · question (something they're unsure about)";
 
 const CHALLENGE_HINT =
   "solution-as-need (a feature written as if it were customers' need) · business-goal (a business result such as revenue given as a product's goal, where a change in what customers do would move it) · second-hand (a claim about customers from someone else or a hunch, with no source) · conflict (it contradicts what the organization already says, or another part of the dump) · competing-goals (several goals pull different ways and none is said to lead) · unmeasured (a goal with no way to tell it moved) · vague (too broad to set up: which product, which customers)";
@@ -78,6 +78,12 @@ Code checks you: it keeps a piece of the dump only where it finds the words, a n
 
 const QUESTION_RULES = `Questions, in rounds:
 - You ask in rounds, at most ${MAX_DUMP_ROUNDS}. After each round they answer and you read the answers. Ask what decides how the organization is set up now: what its products are (one, or several that teams work on apart), who each is for, which goal leads when several pull different ways, the number a goal is measured by and where it is today, which kinds of customers are worth telling apart. A round is one question or several (at most ${BUCKET_MAX}), as many as matter now; never pad it.
+- Find out early (the first round, unless the dump, the pages or an answer already says):
+  - Who they are in it: a founder or executive, a product lead over several PMs, the only PM, or a PM on one product among several. It tells whether the company's goals are theirs to set or come from above, and which products' goals they can speak for.
+  - How the company makes money and is funded: who pays and how (a subscription, per order, a share of each sale, ads), and its stage (venture-backed and which round, self-funded, a public company, part of a bigger company).
+- When someone outside the team judges the company (investors, a board, a parent company), ask what they want to see by the next raise or board meeting, and the number if there is one: that's a company goal. Options may name what such backers usually watch (venture investors: growth, customers who stay and spend more, cash burned for each new dollar of revenue; private equity: profit and cash; a public company's shareholders: what it promised them; a parent company: its own goal), but what counts is what they answer.
+- When the company's goals come from above, ask whether they know them and where they're written. Never guess them from a product's goals.
+- Pitch the questions to them: tell from how they write and what they say of their role how much product practice they have. New to it: plain words, a "why" that says in one line why it matters, and always a recommendation. Seasoned: no teaching, and options in the terms they use. A founder or executive: the company's level, and as few questions as will do.
 - Ask for context only they have: an open question (no options, answered in their own words) when they know something you can't guess, such as where a number came from.
 - Never ask what the dump, the organization's pages or an earlier answer already settles. When everything is clear, ask nothing.
 - Each choice question has 2–4 options written for this company (never "Option A"), a one-line description each, and your recommendation. Allow a free-text answer where the options can't cover theirs.`;
@@ -85,7 +91,7 @@ const QUESTION_RULES = `Questions, in rounds:
 export const SETUP_READ_SYSTEM = `${BASE}
 
 Your task: read the brain dump.
-1. Say back what you took from it: what the company does, its products and who each serves, the goals, and what's unclear.
+1. Say back what you took from it: what the company does, how it makes money, its products and who each serves, the goals, and what's unclear.
 2. Cut it into pieces: every phrase or sentence the organization's pages could rest on (a product, who it's for, a goal, a number, a need, a plan, a belief, something seen or heard, context, an open question), copied exactly, each with its role. Leave out filler ("ok so", "idk", "anyway"). Pieces never overlap.
 3. Push back where it won't hold up as what the organization goes by, each tied to the piece it's about: a feature given as customers' need, a business number given as a product's goal, a claim about customers with no source, a contradiction, goals that compete with none said to lead, a goal with no measure, something too vague to set up. Only where it changes what gets set up, and say what would settle it.
 4. Ask the first round of questions.
@@ -106,11 +112,14 @@ export const SETUP_PLACE_SYSTEM = `${BASE}
 
 Your task: set the organization up from the brain dump and the answers, as lines they accept or discard one by one.
 - Products: one for each product or service the company offers that a team works on (an app, a service for businesses), named as they name it. A company with one product gets one. Never a feature, a market or a team. A product the organization has already (p…) takes its lines by its id.
-- The organization's About: who it serves and what it does (a few plain sentences each), the goals the whole company moves (revenue, growth, a market), and kinds of customers that span its products.
+- The organization's About: who it serves and what it does (a few plain sentences each; what it does says how it makes money and how it's funded, as they said), the goals the whole company moves (revenue, growth, a market), and kinds of customers that span its products.
 - Each product: who it's for, its context (how it works, where, what's true of its market), its goals and its segments.
 - Customers' needs and complaints, and ideas for meeting them, aren't for these pages: Qalam files them on the topic pages, and boards work on them. Context says how things are, not what customers want.
 - Goals are results a team wants, as they state them, at most 12 words: a business number for the company; a change in what customers do for a product ("More parents reorder every week"). Follow their answers on which goal leads.
 - Goals make one tree: give each an id (G1, G2… across the whole answer) and the id of the goal it feeds (parent): a product's goal usually feeds one of the company's. The company's lead goal, its North Star, feeds none and comes first. Its number (metric) only as they wrote it: what it measures, where it started or stands, where they want it, by when; null when they gave none.
+- What investors, a board or a parent company want to see is a company goal, in their words, with the number they gave, citing their answer. It leads only when they said so.
+- When they don't know the company's goals, set up the goals they do know and leave the company's out; the summary says whom to ask for them, as they named them.
+- Who they are in it shaped your questions: it's never a line.
 - Segments are kinds of customers worth telling apart ("Parents of young children", "Offices that restock weekly"), a few words each, on the product they're customers of.
 - Leave a field that already says something as it is (null), and never repeat a goal or segment that's there.
 - Every line cites what it rests on: the pieces of the dump (f…) and their answers (a…). Nothing of your own: no products, goals, numbers, customers or claims they didn't give. What they were unsure of and the answers didn't settle stays out.`;
@@ -123,7 +132,7 @@ const challenge = (fragment: Record<string, unknown>) =>
 /** The read schema: the reading streams first, then the pieces, the pushback and the first round. */
 export function setupReadSchema() {
   return obj({
-    understanding: str("2–4 plain sentences back to them: what you took from it (what the company does, its products, who they serve, the goals) and what's still unclear. No praise"),
+    understanding: str("2–4 plain sentences back to them: what you took from it (what the company does, how it makes money, its products, who they serve, the goals) and what's still unclear. No praise"),
     fragments: arr(
       obj({ id: str("f1, f2, …"), quote: str("Their words exactly as written, a phrase to two sentences. Leave words out only with …"), role: enm(DUMP_ROLES, ROLE_HINT) }),
       "Every piece the organization's pages could rest on, in the order written. Skip filler; pieces never overlap",
@@ -209,7 +218,7 @@ export function setupPlaceSchema(o: { fragments: string[]; answers: string[]; pr
   const refs = [...o.products, ...Array.from({ length: SETUP_LIMITS.products }, (_, i) => `n${i + 1}`)];
   return obj({
     summary: str("One short plain sentence to them, at most 25 words: what you'd set up. The lines carry the rest"),
-    about: obj(fields("the organization", "What the company does: a few plain sentences"), "The organization's About. null for a field that already says something"),
+    about: obj(fields("the organization", "What the company does, how it makes money and how it's funded: a few plain sentences"), "The organization's About. null for a field that already says something"),
     products: arr(
       obj({
         id: enm(refs, "A product the organization has already (p…), or n1, n2… for a new one"),

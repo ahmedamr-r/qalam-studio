@@ -288,8 +288,11 @@ export function setGroup(a: Multi, g: MultiGroup, on: boolean): Multi {
   return { ...a, values: [...rest, ...ids.slice(0, room)] };
 }
 
+/** Longest answer typed in, as an option of its own or as Other: room for a sentence with its numbers. */
+export const CUSTOM_MAX = 200;
+
 export function addCustom(a: Multi, name: string): Multi {
-  const n = name.trim().replace(/\s+/g, " ").slice(0, 40);
+  const n = name.trim().replace(/\s+/g, " ").slice(0, CUSTOM_MAX);
   if (!n || a.custom.some((c) => c.toLowerCase() === n.toLowerCase())) return a;
   return { ...a, custom: [...a.custom, n] };
 }

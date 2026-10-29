@@ -113,6 +113,9 @@ describe("questionnaire flow", () => {
     let a = { kind: "multi" as const, values: ["z"], custom: [] as string[] };
     a = addCustom(addCustom(addCustom(a, " Balance  card "), "balance card"), "Hero");
     expect(a.custom).toEqual(["Balance card", "Hero"]);
+    // A sentence with its numbers is kept whole.
+    const ask = "The CEO says investors want $1M in recurring revenue and net revenue retention above 110% before the Series A";
+    expect(addCustom({ kind: "multi", values: [], custom: [] }, ask).custom).toEqual([ask]);
     expect(validate(q2, a)).toBe("Up to 2 in “G2”.");
     expect(setGroup({ kind: "multi", values: [], custom: ["Hero"] }, q2.groups[1], true).values).toEqual(["z"]);
     expect(setGroup(a, q2.groups[0], true).values).toEqual(["z", "x", "y"]);

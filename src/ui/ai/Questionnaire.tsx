@@ -6,6 +6,7 @@ import { QalamAIGlyph } from "../brand/ai-glyph";
 import { r } from "../recipes";
 import { Button, Checkbox, Kbd, Tag } from "../controls";
 import {
+  CUSTOM_MAX,
   OTHER,
   REVIEW,
   addCustom,
@@ -275,7 +276,7 @@ function SingleStep({ q, a, onAnswer }: { q: SingleQuestion; a: Answer; onAnswer
               ref={otherInput}
               className="ds-input q-fade ml-[24px] w-auto placeholder:text-fg-faint"
               dir="auto"
-              maxLength={200}
+              maxLength={CUSTOM_MAX}
               placeholder={q.other.placeholder ?? "Your answer"}
               value={other}
               aria-label="Your answer"
@@ -368,8 +369,8 @@ function GroupBox({ g, a, first, onAnswer }: { g: MultiGroup; a: { kind: "multi"
           {a.custom.length > 0 && (
             <div className="flex flex-wrap gap-[4px]">
               {a.custom.map((n, k) => (
-                <span key={n} style={{ "--i": k } as CSSProperties} className="q-fade inline-flex h-[22px] items-center gap-[4px] rounded-md bg-active pr-[2px] pl-[8px] text-caption text-fg" dir="auto">
-                  {n}
+                <span key={n} style={{ "--i": k } as CSSProperties} className="q-fade inline-flex min-h-[22px] max-w-full items-center gap-[4px] rounded-md bg-active py-[2px] pr-[2px] pl-[8px] text-caption text-fg" dir="auto">
+                  <span className="min-w-0 break-words">{n}</span>
                   <button type="button" aria-label={`Remove ${n}`} className="q-item grid size-[18px] place-items-center rounded-sm text-fg-subtle hover:bg-hover hover:text-fg" onClick={() => onAnswer(removeCustom(a, n))}>
                     <X size={12} {...icon} />
                   </button>
@@ -383,7 +384,7 @@ function GroupBox({ g, a, first, onAnswer }: { g: MultiGroup; a: { kind: "multi"
               dir="auto"
               placeholder={full ? `Up to ${g.max}` : g.custom.placeholder}
               value={draft}
-              maxLength={40}
+              maxLength={CUSTOM_MAX}
               disabled={full}
               aria-label={g.custom.placeholder}
               onChange={(e) => setDraft(e.target.value)}
