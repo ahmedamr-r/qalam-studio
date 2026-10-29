@@ -7,7 +7,7 @@
 export type Dot = "ok" | "warn" | "bad" | "off";
 
 export interface HealthRow {
-  id: "engine" | "search" | "models" | "inbox" | "all";
+  id: "engine" | "search" | "models" | "inbox" | "voice" | "all";
   dot: Dot;
   /** What it is: "Qalam AI", "Search"… */
   label: string;
@@ -24,6 +24,8 @@ export interface HealthFacts {
   search: { ok: boolean; node: string };
   models: { status: "idle" | "loading" | "ready" | "failed"; error?: string; download?: { done: number; total: number } } | null;
   inbox: { waiting: number; notRead: number; lastReason?: string; paused: boolean } | null;
+  /** Talking instead of typing: whether a mic is on here, and whether macOS lets Qalam use the microphone. */
+  voice?: { on: boolean; mic: "granted" | "denied" | "undetermined" } | null;
 }
 
 const RANK: Record<Dot, number> = { bad: 0, warn: 1, off: 2, ok: 3 };
@@ -57,6 +59,7 @@ export function diagnose(f: HealthFacts): HealthRow[] {
     rows.push({ id: "models", dot: "off", label: "Meaning search", word: `Downloading ${Math.round((100 * f.models.download.done) / Math.max(1, f.models.download.total))}%`, detail: "A small model, once. Search by words works meanwhile." });
   if (f.inbox?.paused && f.inbox.waiting) rows.push({ id: "inbox", dot: "warn", label: "Inbox", word: `${f.inbox.waiting} waiting`, detail: "Files wait until Qalam AI is set up." });
   else if (f.inbox?.notRead) rows.push({ id: "inbox", dot: "warn", label: "Inbox", word: `${f.inbox.notRead} not read`, ...(f.inbox.lastReason ? { detail: f.inbox.lastReason } : {}) });
+  if (f.voice?.on && f.voice.mic === "denied") rows.push({ id: "voice", dot: "warn", label: "Voice", word: "Microphone off", detail: "Allow Qalam in System Settings → Privacy & Security → Microphone, or choose your own dictation app in Connections." });
   if (!rows.length) return [{ id: "all", dot: "ok", label: "This Mac", word: "All good" }];
   return rows.sort((a, b) => RANK[a.dot] - RANK[b.dot]);
 }

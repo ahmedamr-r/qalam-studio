@@ -15,6 +15,7 @@ import { Dots, StatusDot } from "../viz";
 import { r } from "../recipes";
 import { AddToOrg } from "./AddToOrg";
 import { ASK_EVENT, takeAskNext } from "./ask-next";
+import { MicButton, speechInto } from "../voice/MicButton";
 
 /**
  * Ask the organization, from its home: a question in plain words, and Qalam AI's answer from what
@@ -33,6 +34,7 @@ export function AskBar({ product, topics }: { product: string | null; topics: To
   const [state, setState] = useState<State>({ kind: "idle" });
   const [adding, setAdding] = useState(false);
   const ctrl = useRef<AbortController | null>(null);
+  const field = useRef<HTMLInputElement>(null);
 
   const ask = async (e?: FormEvent, text?: string) => {
     e?.preventDefault();
@@ -77,6 +79,7 @@ export function AskBar({ product, topics }: { product: string | null; topics: To
       <form onSubmit={(e) => void ask(e)} className="flex items-center gap-[8px] rounded-lg bg-panel py-[6px] pr-[6px] pl-[12px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)] focus-within:shadow-[inset_0_0_0_1px_var(--color-line-strong)]">
         <QalamAIGlyph size={14} />
         <input
+          ref={field}
           aria-label="Ask what your organization knows"
           className={clsx(r.fieldInput, "h-[28px] text-body")}
           placeholder="Ask what your organization knows: why do parents stop ordering?"
@@ -84,6 +87,7 @@ export function AskBar({ product, topics }: { product: string | null; topics: To
           onChange={(e) => setQuestion(e.target.value)}
           disabled={state.kind === "asking"}
         />
+        {state.kind !== "asking" && <MicButton size="md" field={field} onText={speechInto(field, setQuestion)} />}
         {state.kind === "asking" ? (
           <Button variant="secondary" size="sm" onClick={() => ctrl.current?.abort()}>
             Stop

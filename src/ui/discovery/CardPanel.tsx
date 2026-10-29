@@ -3,7 +3,7 @@ import { aboutCard } from "@/hub/checks";
 import { cardRef } from "@/hub/pieces";
 import { onOrgChange } from "@/org/live";
 import { noticesDb, onNoticesWritten, type LinkedCard } from "@/org/notices";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import clsx from "clsx";
 import { ExternalLink, PenLine, Plus, Quote, X } from "lucide-react";
@@ -35,6 +35,7 @@ import { useProject } from "@/projects/session";
 import DecisionRow from "../decisions/DecisionRow";
 import { useDecisions } from "../decisions/list";
 import { citation, fromSource, quoteOf, type SourceRecord } from "@/discovery/sources";
+import { Dictated } from "../voice/MicButton";
 
 const ICON = { size: 12, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 
@@ -113,7 +114,7 @@ function OneCard({ id, card }: { id: string; card: OstCard }) {
       </section>
       <NoticedSection id={id} />
       <Section title="Notes">
-        <CommitArea ariaLabel="Description" value={card.description ?? ""} placeholder="What it means, why it matters" rows={3} onCommit={(v) => edit(id, (c) => (v.trim() ? (c.description = v.trim()) : delete c.description))} />
+        <CommitArea voice ariaLabel="Description" value={card.description ?? ""} placeholder="What it means, why it matters" rows={3} onCommit={(v) => edit(id, (c) => (v.trim() ? (c.description = v.trim()) : delete c.description))} />
       </Section>
       {card.kind === "outcome" && <MetricSection id={id} card={card} />}
       {(card.kind === "opportunity" || card.kind === "solution" || (card.kind === "outcome" && card.evidence.length > 0)) && <EvidenceSection id={id} card={card} />}
@@ -346,6 +347,7 @@ const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
  */
 function EvidenceSection({ id, card }: { id: string; card: OstCard }) {
   const [note, setNote] = useState("");
+  const noteBox = useRef<HTMLTextAreaElement>(null);
   const add = () => {
     const text = note.trim();
     if (!text) return;
@@ -369,17 +371,20 @@ function EvidenceSection({ id, card }: { id: string; card: OstCard }) {
         </>
       )}
       <div className="flex flex-col gap-[6px]">
-        <textarea
-          aria-label="Add a note as evidence"
-          className={clsx(r.textarea, "text-body")}
-          rows={2}
-          value={note}
-          placeholder="What you heard or saw, in their words"
-          onChange={(e) => setNote(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) add();
-          }}
-        />
+        <Dictated field={noteBox} set={setNote}>
+          <textarea
+            ref={noteBox}
+            aria-label="Add a note as evidence"
+            className={clsx(r.textarea, "text-body")}
+            rows={2}
+            value={note}
+            placeholder="What you heard or saw, in their words"
+            onChange={(e) => setNote(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) add();
+            }}
+          />
+        </Dictated>
         <Button size="sm" variant="secondary" className="self-start" disabled={!note.trim()} onClick={add}>
           <Plus {...ICON} /> Add as evidence
         </Button>
@@ -555,6 +560,7 @@ function useOrgSource(id: string | undefined): SourceRecord | null | undefined {
 function AssumptionsSection({ id, card }: { id: string; card: OstCard }) {
   const [cat, setCat] = useState<AssumptionCategory>("desirability");
   const [text, setText] = useState("");
+  const box = useRef<HTMLTextAreaElement>(null);
   const list = card.assumptions ?? [];
   const add = () => {
     const t = text.trim();
@@ -579,7 +585,9 @@ function AssumptionsSection({ id, card }: { id: string; card: OstCard }) {
         </div>
       ))}
       <Select<AssumptionCategory> ariaLabel="Kind of assumption" value={cat} options={ASSUMPTION_CATEGORIES.map((c) => ({ value: c, label: `${ASSUMPTION_LABEL[c]}: ${ASSUMPTION_HINT[c]}` }))} onChange={setCat} />
-      <textarea aria-label="Assumption" className={clsx(r.textarea, "text-body")} rows={2} value={text} placeholder="Customers will notice the shelf on the home screen" onChange={(e) => setText(e.target.value)} />
+      <Dictated field={box} set={setText}>
+        <textarea ref={box} aria-label="Assumption" className={clsx(r.textarea, "text-body")} rows={2} value={text} placeholder="Customers will notice the shelf on the home screen" onChange={(e) => setText(e.target.value)} />
+      </Dictated>
       <Button size="sm" variant="secondary" className="self-start" disabled={!text.trim()} onClick={add}>
         <Plus {...ICON} /> Add assumption
       </Button>
@@ -646,7 +654,7 @@ function TestSection({ id, card }: { id: string; card: OstCard }) {
         <CommitInput ariaLabel="Pass mark" value={t.criterion ?? ""} placeholder="4 of 5 find it without help" onCommit={(criterion) => set({ criterion: criterion.trim() || undefined })} />
       </Field>
       <Field label="What happened">
-        <CommitArea ariaLabel="Result" value={t.result ?? ""} placeholder="3 of 5 found it; two scrolled past" onCommit={(result) => set({ result: result.trim() || undefined })} />
+        <CommitArea voice ariaLabel="Result" value={t.result ?? ""} placeholder="3 of 5 found it; two scrolled past" onCommit={(result) => set({ result: result.trim() || undefined })} />
       </Field>
     </Section>
   );

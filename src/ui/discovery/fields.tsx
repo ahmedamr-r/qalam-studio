@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import { r } from "../recipes";
+import { Dictated } from "../voice/MicButton";
 
 /**
  * Text fields for the card panel that save when you leave them (↵ in a one-line field, or a
@@ -33,11 +34,14 @@ export function CommitInput({ value, onCommit, placeholder, ariaLabel, className
   );
 }
 
-export function CommitArea({ value, onCommit, placeholder, ariaLabel, rows = 2 }: { value: string; onCommit: (v: string) => void; placeholder?: string; ariaLabel: string; rows?: number }) {
+/** Saves on leave (or ⌘↵); Esc takes it back. `voice`: the mic in its corner (what was said is saved on leave, like typing). */
+export function CommitArea({ value, onCommit, placeholder, ariaLabel, rows = 2, voice }: { value: string; onCommit: (v: string) => void; placeholder?: string; ariaLabel: string; rows?: number; voice?: boolean }) {
   const [v, setV] = useState(value);
+  const box = useRef<HTMLTextAreaElement>(null);
   useEffect(() => setV(value), [value]);
-  return (
+  const area = (
     <textarea
+      ref={box}
       aria-label={ariaLabel}
       className={clsx(r.textarea, "text-body")}
       rows={rows}
@@ -54,6 +58,13 @@ export function CommitArea({ value, onCommit, placeholder, ariaLabel, rows = 2 }
         }
       }}
     />
+  );
+  return voice ? (
+    <Dictated field={box} set={setV}>
+      {area}
+    </Dictated>
+  ) : (
+    area
   );
 }
 

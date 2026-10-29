@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key>
+  <string>studio.qalam.voice</string>
+  <key>CFBundleName</key>
+  <string>Qalam voice</string>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Qalam listens only while the mic is on, to type what you say.</string>
+  <key>NSSpeechRecognitionUsageDescription</key>
+  <string>Qalam turns what you say into text on this Mac.</string>
+</dict>
+</plist>

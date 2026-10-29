@@ -1,6 +1,7 @@
 import { MAX_DUMP_ROUNDS } from "@/discovery/dump";
 import type { SetupSession } from "@/org/setup";
 import type { KnowState } from "../setup/know-state";
+import type { VoiceChoice } from "@/voice/model";
 import type { SetupStep, StepState, WelcomeMode } from "../welcome/steps";
 
 /*
@@ -12,7 +13,7 @@ import type { SetupStep, StepState, WelcomeMode } from "../welcome/steps";
 
 export type Door = "know" | "find";
 
-export type PartName = "engine" | "verify" | "choices" | "outline" | "said" | "took" | "pushback" | "answers" | "you" | "yours" | "connect" | "allSet" | "error" | "working";
+export type PartName = "engine" | "verify" | "choices" | "outline" | "said" | "took" | "pushback" | "answers" | "you" | "voice" | "yours" | "connect" | "allSet" | "error" | "working";
 
 /** Small values only: a part's renderer reads the rest from the stores. */
 export type PartData = Record<string, string | number | boolean | null>;
@@ -39,6 +40,8 @@ export interface ThreadInput {
   naming: { name: string | null; busy: boolean; error: string | null };
   /** Who they said they are, once they have ("Ahmed · Product manager"). */
   person: string | null;
+  /** Talking instead of typing: what this Mac can have, and what was chosen here (null: not known yet). */
+  voice: { offer: "apple" | "parakeet" | "none"; chosen: VoiceChoice | null } | null;
   step: SetupStep;
   door: Door | null;
   /** The setup page has found what it shows. */
@@ -84,6 +87,13 @@ const ENGINE_LINE: Record<EngineState, string> = {
   unknown: "Qalam AI is set up.",
 };
 
+const VOICE_ASK = {
+  apple: "Want to talk instead of typing? Click the mic in any box, or press ⌃⌥D. It runs on this Mac: nothing you say leaves it.",
+  parakeet: "Want to talk instead of typing? This Mac needs a speech engine for that. It runs on the Mac: nothing you say leaves it.",
+} as const;
+
+const VOICE_SAID: Record<VoiceChoice, string> = { apple: "Talk with Apple's engine", parakeet: "Talk with Parakeet", own: "I use my own dictation app", off: "Not now" };
+
 /** The asking round is answered (or there's none to answer). */
 function roundOpen(s: SetupSession): boolean {
   const last = s.buckets[s.buckets.length - 1];
@@ -118,6 +128,13 @@ export function threadOf(i: ThreadInput): ChatMessage[] {
     out.push(ai("you:ask", text(`What's your name, and your position at ${org}?`), part("you", { open: i.step === "you" })));
     if (i.step === "you") return out;
     if (i.person) out.push(you("you:you", text(i.person)));
+    // Talking instead of typing, once per Mac: shown while it's asked, and what was chosen after.
+    const v = i.voice;
+    if (v && v.offer !== "none" && (i.step === "voice" || v.chosen)) {
+      out.push(ai("voice:ask", text(VOICE_ASK[v.offer]), part("voice", { open: i.step === "voice", offer: v.offer })));
+      if (i.step === "voice") return out;
+      if (v.chosen) out.push(you("voice:you", text(VOICE_SAID[v.chosen])));
+    }
   }
   if (!i.opened) return out;
 
@@ -214,6 +231,7 @@ export function askOf(i: ThreadInput): Ask {
     return { kind: "name", placeholder: "Basket", submit: "enter", key: "name" };
   }
   if (i.first && i.step === "you") return none("Fill in your name and position above", "you");
+  if (i.first && i.step === "voice") return none("Choose above, then on to the goals", "voice");
   if (!i.opened) return none("", "opening");
   if (i.step === "yours") return none("Pick your goals above, then Next", "yours");
   if (i.step === "connect") return none("Connect what you need, then Finish", "connect");
@@ -274,13 +292,14 @@ export function stepsOf(i: ThreadInput): StepItem[] {
   }
   const welcome = i.route === "welcome";
   const at = welcome ? (engineDone(i) ? "name" : "engine") : i.step;
-  const order = ["engine", "name", "you", "goals", "yours", "connect"];
+  const order = ["engine", "name", "you", "voice", "goals", "yours", "connect"];
   const k = order.indexOf(at);
   const state = (id: string): StepState => (order.indexOf(id) < k ? "done" : order.indexOf(id) === k ? "now" : "next");
   return [
     { id: "engine", label: "Qalam AI", state: state("engine") },
     { id: "name", label: "Name it", state: state("name") },
     { id: "you", label: "You", state: state("you") },
+    { id: "voice", label: "Voice", state: state("voice") },
     { id: "goals", label: "Goals", state: state("goals"), ...(at === "goals" ? { sub: goalSubs(i) } : {}) },
     { id: "yours", label: "Yours", state: state("yours") },
     { id: "connect", label: "Connect", state: state("connect") },

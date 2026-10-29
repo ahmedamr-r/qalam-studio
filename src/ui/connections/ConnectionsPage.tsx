@@ -6,6 +6,7 @@ import { EngineCard } from "./EngineCard";
 import { ThisMac } from "./ThisMac";
 import { Connectors } from "./Connectors";
 import { ProductCode } from "./ProductCode";
+import { VoiceCard } from "./VoiceCard";
 
 /**
  * Connections: what Qalam AI runs on (the engine, who pays, what it used), the tools the
@@ -27,6 +28,10 @@ export default function ConnectionsPage() {
         <div className="flex flex-col gap-[8px]">
           <h2 className="text-micro font-medium text-fg-subtle">Product code</h2>
           <ProductCode />
+        </div>
+        <div className="flex flex-col gap-[8px]">
+          <h2 className="text-micro font-medium text-fg-subtle">Voice</h2>
+          <VoiceCard />
         </div>
         <div className="flex flex-col gap-[8px]">
           <div className="flex items-center justify-between gap-[12px]">

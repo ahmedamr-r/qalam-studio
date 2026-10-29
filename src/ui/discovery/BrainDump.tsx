@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import clsx from "clsx";
 import { Minus, RotateCcw, Square, X } from "lucide-react";
 import { studio, useStudio } from "@/doc/store";
@@ -21,6 +21,7 @@ import { getController } from "../CanvasView";
 import { glideToLayer } from "./canvas";
 import { answerRound, closeBrainDump, placeDump, retryDump, saveRound, sessionOf, setDraft, skipRest, startDump, stopDump, useDump } from "./dump";
 import { openSource, useSources } from "./sources";
+import { Dictated } from "../voice/MicButton";
 
 const W = 380;
 const icon = { absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
@@ -124,24 +125,28 @@ function Bubble({ box, session, vp }: { box: Box | null; session: DumpSession | 
 // Writing it
 
 function Compose({ draft }: { draft: string }) {
+  const box = useRef<HTMLTextAreaElement>(null);
   const n = draft.trim().length;
   const over = draft.length > DUMP_MAX_CHARS;
   return (
     <div className="flex min-h-0 flex-col gap-[10px] overflow-y-auto p-[14px]">
       <p className="text-caption leading-[18px] text-fg-muted">Goals, needs, ideas, numbers, what you&apos;ve heard: as it comes. Qalam AI reads it, pushes back and asks before anything lands on the board.</p>
-      <textarea
-        aria-label="Your brain dump"
-        autoFocus
-        dir="auto"
-        rows={10}
-        className={clsx(r.textarea, "min-h-[180px] text-body")}
-        placeholder="ok so the thing is…"
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && n >= 40 && !over) void startDump(draft);
-        }}
-      />
+      <Dictated field={box} set={setDraft} max={DUMP_MAX_CHARS} className="flex flex-col">
+        <textarea
+          ref={box}
+          aria-label="Your brain dump"
+          autoFocus
+          dir="auto"
+          rows={10}
+          className={clsx(r.textarea, "min-h-[180px] text-body")}
+          placeholder="ok so the thing is…"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && n >= 40 && !over) void startDump(draft);
+          }}
+        />
+      </Dictated>
       <div className="flex items-center gap-[8px]">
         <span className={clsx("text-micro tnum", over ? "text-danger" : "text-fg-subtle")}>
           {draft.length.toLocaleString()} / {DUMP_MAX_CHARS.toLocaleString()}

@@ -1,6 +1,7 @@
 import path from "node:path";
 import { atomicWrite, locked, readJson, stableStringify } from "./org/fsx";
 import { localDir } from "./paths";
+import type { VoiceChoice } from "@/voice/model";
 
 /*
  * This computer's settings (~/Qalam/.qalam/settings.json): which engine Qalam AI runs on and on
@@ -18,6 +19,8 @@ export interface Settings {
   welcomedAt?: number;
   /** Who's on this computer, as they gave it in the first run (their position is per organization, in its `.qalam/local`). */
   you?: { name: string };
+  /** Talking instead of typing: the engine they chose, their own dictation app, or none (unset: Apple's engine where the Mac has it, src/voice/model.ts). */
+  voice?: { use: VoiceChoice };
   /** How each connector is reached: through Claude Code's server of that name, a token in the Keychain, or Qalam's own sign-in to the service's MCP server at `url` (its tokens in the Keychain). */
   connectors?: Record<string, { via: "claude-code"; server: string } | { via: "token" } | { via: "oauth"; url: string }>;
 }

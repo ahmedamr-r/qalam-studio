@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { toggleSidebar } from "@/ui/frame/store";
 import { commandState, commandsFor, kb, registerCommands, runCommand, type Command } from "./registry";
 import "./theme";
+import "@/ui/voice/commands";
 
 /*
  * The keys of the pages outside the canvas (home, places, topic pages, setup). Studio has the whole

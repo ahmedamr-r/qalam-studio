@@ -32,6 +32,14 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
+      # The voice helper (native/voice) uses Apple's speech engine, in the macOS 26 SDK.
+      - name: Xcode 26 or later
+        run: |
+          xcode="$(ls -d /Applications/Xcode_2[6-9]*.app 2>/dev/null | sort -V | tail -1)"
+          if [ -z "$xcode" ]; then echo "::error::No Xcode 26 or later on this runner: the voice helper needs its SDK."; exit 1; fi
+          sudo xcode-select -s "$xcode"
+          swift --version
+
       - name: Check
         run: pnpm typecheck && pnpm test
 

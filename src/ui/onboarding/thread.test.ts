@@ -11,6 +11,7 @@ const base = (over: Partial<ThreadInput> = {}): ThreadInput => ({
   engine: "ready",
   naming: { name: null, busy: false, error: null },
   person: "Ahmed · Product manager",
+  voice: { offer: "apple", chosen: "apple" },
   step: "goals",
   door: null,
   opened: true,
@@ -33,7 +34,7 @@ describe("the welcome", () => {
     const i = base({ route: "welcome", engine: "looking" });
     expect(ids(threadOf(i))).toEqual(["engine"]);
     expect(askOf(i)).toMatchObject({ kind: "none", key: "engine" });
-    expect(stepsOf(i).map((s) => s.state)).toEqual(["now", "next", "next", "next", "next", "next"]);
+    expect(stepsOf(i).map((s) => s.state)).toEqual(["now", "next", "next", "next", "next", "next", "next"]);
   });
 
   it("asks for the name once Qalam AI is ready or left for later", () => {
@@ -41,7 +42,7 @@ describe("the welcome", () => {
       const i = base({ route: "welcome", engine });
       expect(ids(threadOf(i))).toEqual(["engine", "name:ask"]);
       expect(askOf(i)).toMatchObject({ kind: "name", submit: "enter" });
-      expect(stepsOf(i).map((s) => s.state)).toEqual(["done", "now", "next", "next", "next", "next"]);
+      expect(stepsOf(i).map((s) => s.state)).toEqual(["done", "now", "next", "next", "next", "next", "next"]);
     }
   });
 
@@ -69,6 +70,7 @@ describe("who they are", () => {
       ["engine", "done"],
       ["name", "done"],
       ["you", "now"],
+      ["voice", "next"],
       ["goals", "next"],
       ["yours", "next"],
       ["connect", "next"],
@@ -87,11 +89,33 @@ describe("who they are", () => {
   });
 });
 
+describe("talking instead of typing", () => {
+  it("offers Apple's engine where the Mac has it, and waits for a choice", () => {
+    const i = base({ step: "voice", voice: { offer: "apple", chosen: null } });
+    const m = threadOf(i);
+    expect(ids(m).slice(-3)).toEqual(["you:ask", "you:you", "voice:ask"]);
+    expect(m.at(-1)?.parts.find((p) => p.type === "data")).toMatchObject({ name: "voice", data: { open: true, offer: "apple" } });
+    expect(askOf(i)).toMatchObject({ kind: "none", key: "voice" });
+    expect(stepsOf(i).find((s) => s.id === "voice")?.state).toBe("now");
+  });
+
+  it("offers an engine to install where it doesn't", () => {
+    const m = threadOf(base({ step: "voice", voice: { offer: "parakeet", chosen: null } }));
+    expect(m.at(-1)?.parts.find((p) => p.type === "data")).toMatchObject({ data: { offer: "parakeet" } });
+  });
+
+  it("shows what was chosen once they move on, and nothing on a Mac that can't", () => {
+    expect(threadOf(base({ voice: { offer: "parakeet", chosen: "own" } })).find((x) => x.id === "voice:you")?.parts).toEqual([{ type: "text", text: "I use my own dictation app" }]);
+    expect(ids(threadOf(base({ voice: { offer: "none", chosen: null } }))).some((x) => x.startsWith("voice:"))).toBe(false);
+    expect(ids(threadOf(base({ voice: null }))).some((x) => x.startsWith("voice:"))).toBe(false);
+  });
+});
+
 describe("the goals", () => {
   it("offers the two doors after the earlier steps", () => {
     const i = base();
     const m = threadOf(i);
-    expect(ids(m)).toEqual(["engine", "name:ask", "name:you", "you:ask", "you:you", "goals:ask"]);
+    expect(ids(m)).toEqual(["engine", "name:ask", "name:you", "you:ask", "you:you", "voice:ask", "voice:you", "goals:ask"]);
     expect(choices(m.at(-1))).toEqual(["door"]);
     expect(askOf(i)).toMatchObject({ kind: "none", key: "door" });
     const goals = stepsOf(i).find((s) => s.id === "goals")!;

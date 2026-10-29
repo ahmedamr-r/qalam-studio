@@ -5,6 +5,7 @@ import { formatKeys } from "@/commands/registry";
 import { QalamAIGlyph } from "../brand/ai-glyph";
 import { r } from "../recipes";
 import { Button, Checkbox, Kbd, Tag } from "../controls";
+import { Dictated } from "../voice/MicButton";
 import {
   CUSTOM_MAX,
   OTHER,
@@ -81,6 +82,7 @@ export function Questionnaire({ questions, state, onChange, onSubmit, review, ti
   const head = useRef<HTMLDivElement>(null);
   const step = useRef<HTMLDivElement>(null);
   const acted = useRef(false);
+  const textArea = useRef<HTMLTextAreaElement>(null);
   const cur = currentOf(state, questions);
   const q = questions.find((x) => x.id === cur);
   const { index, total } = position(state, questions, !!review);
@@ -172,26 +174,29 @@ export function Questionnaire({ questions, state, onChange, onSubmit, review, ti
             {q.kind === "single" && <SingleStep q={q} a={answerOf(q, state.answers)} onAnswer={answer} />}
             {q.kind === "multi" && <MultiStep q={q} a={answerOf(q, state.answers)} onAnswer={answer} />}
             {q.kind === "text" && (
-              <textarea
-                rows={3}
-                dir="auto"
-                className="ds-textarea block w-full resize-none placeholder:text-fg-faint"
-                placeholder={q.placeholder}
-                maxLength={q.maxLength}
-                value={(() => {
-                  const a = answerOf(q, state.answers);
-                  return a.kind === "text" ? a.text : "";
-                })()}
-                onChange={(e) => answer({ kind: "text", text: e.target.value })}
-                onKeyDown={(e) => {
-                  // Enter goes on, as everywhere in the card; Shift+Enter starts a new line.
-                  if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && !e.metaKey && !e.ctrlKey && !e.altKey) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    next();
-                  }
-                }}
-              />
+              <Dictated field={textArea} set={(text) => answer({ kind: "text", text })}>
+                <textarea
+                  ref={textArea}
+                  rows={3}
+                  dir="auto"
+                  className="ds-textarea block w-full resize-none placeholder:text-fg-faint"
+                  placeholder={q.placeholder}
+                  maxLength={q.maxLength}
+                  value={(() => {
+                    const a = answerOf(q, state.answers);
+                    return a.kind === "text" ? a.text : "";
+                  })()}
+                  onChange={(e) => answer({ kind: "text", text: e.target.value })}
+                  onKeyDown={(e) => {
+                    // Enter goes on, as everywhere in the card; Shift+Enter starts a new line.
+                    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && !e.metaKey && !e.ctrlKey && !e.altKey) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      next();
+                    }
+                  }}
+                />
+              </Dictated>
             )}
           </>
         )}
@@ -272,16 +277,18 @@ function SingleStep({ q, a, onAnswer }: { q: SingleQuestion; a: Answer; onAnswer
             <Kbd keys={String(q.options.length + 1)} size="sm" className="mt-[1px]" />
           </button>
           {value === OTHER && (
-            <input
-              ref={otherInput}
-              className="ds-input q-fade ml-[24px] w-auto placeholder:text-fg-faint"
-              dir="auto"
-              maxLength={CUSTOM_MAX}
-              placeholder={q.other.placeholder ?? "Your answer"}
-              value={other}
-              aria-label="Your answer"
-              onChange={(e) => onAnswer({ kind: "single", value: OTHER, other: e.target.value })}
-            />
+            <Dictated field={otherInput} set={(t) => onAnswer({ kind: "single", value: OTHER, other: t })} className="ml-[24px]">
+              <input
+                ref={otherInput}
+                className="ds-input q-fade w-full placeholder:text-fg-faint"
+                dir="auto"
+                maxLength={CUSTOM_MAX}
+                placeholder={q.other.placeholder ?? "Your answer"}
+                value={other}
+                aria-label="Your answer"
+                onChange={(e) => onAnswer({ kind: "single", value: OTHER, other: e.target.value })}
+              />
+            </Dictated>
           )}
         </div>
       )}
@@ -304,6 +311,7 @@ function GroupBox({ g, a, first, onAnswer }: { g: MultiGroup; a: { kind: "multi"
   const foldable = g.options.length > FOLD_AT;
   const [open, setOpen] = useState(!foldable || first);
   const [draft, setDraft] = useState("");
+  const own = useRef<HTMLInputElement>(null);
   const picked = g.options.filter((o) => a.values.includes(o.value)).length + (g.custom ? a.custom.length : 0);
   const count = g.options.length + (g.custom ? a.custom.length : 0);
   const full = g.max !== undefined && picked >= g.max;
@@ -379,23 +387,26 @@ function GroupBox({ g, a, first, onAnswer }: { g: MultiGroup; a: { kind: "multi"
             </div>
           )}
           <div className="flex gap-[6px]">
-            <input
-              className="ds-input h-[28px] placeholder:text-fg-faint"
-              dir="auto"
-              placeholder={full ? `Up to ${g.max}` : g.custom.placeholder}
-              value={draft}
-              maxLength={CUSTOM_MAX}
-              disabled={full}
-              aria-label={g.custom.placeholder}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  add();
-                }
-              }}
-            />
+            <Dictated field={own} set={setDraft} className="flex-1">
+              <input
+                ref={own}
+                className="ds-input h-[28px] w-full placeholder:text-fg-faint"
+                dir="auto"
+                placeholder={full ? `Up to ${g.max}` : g.custom.placeholder}
+                value={draft}
+                maxLength={CUSTOM_MAX}
+                disabled={full}
+                aria-label={g.custom.placeholder}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    add();
+                  }
+                }}
+              />
+            </Dictated>
             <Button variant="secondary" onClick={add} disabled={!draft.trim() || full}>
               <Plus size={14} {...icon} /> Add
             </Button>

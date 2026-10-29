@@ -4,10 +4,11 @@ import { engineView, liveTest } from "./engine";
 import { inboxStatus } from "./inbox";
 import { models } from "./models/client";
 import { storeFor } from "./org/home";
+import { voiceView } from "./voice";
 
 /*
- * This Mac, checked (src/health/doctor.ts): the engine, search, the meaning model and the
- * organization's inbox. Asked by Connections and the sidebar's dot; costs no model call.
+ * This Mac, checked (src/health/doctor.ts): the engine, search, the meaning model, the
+ * organization's inbox and the microphone for voice. Asked by Connections and the sidebar's dot; costs no model call.
  */
 
 let fts: boolean | null = null;
@@ -24,7 +25,7 @@ export function searchWorks(): boolean {
 }
 
 export async function healthNow(org?: string | null): Promise<HealthRow[]> {
-  const view = await engineView();
+  const [view, voice] = await Promise.all([engineView(), voiceView().catch(() => null)]);
   const store = org ? await storeFor(org).catch(() => null) : null;
   const m = models().state();
   return diagnose({
@@ -32,6 +33,7 @@ export async function healthNow(org?: string | null): Promise<HealthRow[]> {
     search: { ok: searchWorks(), node: process.versions.node },
     models: { status: m.status, ...(m.error ? { error: m.error } : {}), ...(m.download ? { download: { done: m.download.done, total: m.download.total } } : {}) },
     inbox: store ? await inboxStatus(store) : null,
+    voice: voice ? { on: !!voice.use, mic: voice.mic } : null,
   });
 }
 

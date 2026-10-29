@@ -4,7 +4,9 @@ import { codeDb } from "@/org/code";
 import { connectorsDb, type ConnectorState } from "@/org/connectors";
 import { createOrg, currentOrg, type OrgRef } from "@/org/client";
 import { engineDb, type EngineTest, type EngineView } from "@/org/engine";
+import { chooseVoice, loadVoice } from "@/org/voice";
 import { loadYou, setYourName, type Me } from "@/org/you";
+import { voiceOffer, type VoiceChoice } from "@/voice/model";
 import { setupHref } from "@/projects/model";
 import { openKnow, useKnow } from "../setup/know";
 import { openSetup, useSetup } from "../setup/setup";
@@ -129,6 +131,7 @@ export async function startSetupPage(search: string) {
   useFirstRun.setState({ org });
   if (org) openKnow(org.id);
   void loadYou().catch(() => {});
+  void loadVoice();
   // The engine as it was last tested here: never a new call just to show it.
   void engineDb.view().then((view) => setEngine({ view, test: view.test }), () => {});
   // A setup named in the address wins; then the know door; then the latest one not finished.
@@ -163,10 +166,17 @@ export function goStep(step: SetupStep) {
   if (step === "connect") void loadConnect();
 }
 
-/** Their name (this Mac's) and their position here (this organization's, on this computer), then on to the goals. */
+/** Their name (this Mac's) and their position here (this organization's, on this computer), then voice if this Mac hasn't chosen, else the goals. */
 export async function saveYou(name: string, me: Me): Promise<void> {
   await setYourName(name);
   await setMe(me);
+  const v = await loadVoice();
+  goStep(v && voiceOffer(v) !== "none" && !v.chosen ? "voice" : "goals");
+}
+
+/** How this Mac talks instead of typing, then on to the goals. */
+export async function saveVoice(use: VoiceChoice): Promise<void> {
+  await chooseVoice(use);
   goStep("goals");
 }
 

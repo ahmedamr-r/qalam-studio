@@ -5,7 +5,9 @@ import { DUMP_MAX_CHARS, MAX_DUMP_ROUNDS } from "@/discovery/dump";
 import { useGoals } from "@/goals/client";
 import { readOutline } from "@/goals/outline";
 import { pendingLines } from "@/org/setup";
+import { useVoice } from "@/org/voice";
 import { positionLabel, useYou } from "@/org/you";
+import { voiceOffer } from "@/voice/model";
 import { orgHref } from "@/projects/model";
 import { QalamAIGlyph, QalamMark } from "../brand";
 import { toQuestion } from "../ai/plan";
@@ -48,6 +50,7 @@ function useThreadInput(): ThreadInput {
   const mine = useGoals((g) => g.mine);
   const me = useGoals((g) => g.me);
   const yourName = useYou((y) => y.name);
+  const voice = useVoice((v) => v.view);
   const session = setup.source?.setup ?? null;
   return {
     route: fr.route,
@@ -57,6 +60,7 @@ function useThreadInput(): ThreadInput {
     engine: engineState(fr.route, fr.engine),
     naming: { name: fr.naming.name, busy: fr.naming.busy, error: fr.naming.error },
     person: yourName && me ? `${yourName} · ${positionLabel(me)}` : null,
+    voice: voice ? { offer: voiceOffer(voice), chosen: voice.chosen } : null,
     step: fr.step,
     door: fr.door,
     opened: fr.route === "welcome" || fr.opened,

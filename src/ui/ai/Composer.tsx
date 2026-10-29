@@ -24,6 +24,8 @@ import { ShotsButtons, ShotsRow, useShots } from "./ExtractComposer";
 import { selectedSection, type Section } from "@/design-system/section";
 import { composerAttach, composerDraft } from "./composerBridge";
 import { revisable } from "./componentImport";
+import { MicButton, speechInto } from "../voice/MicButton";
+import "../voice/commands";
 
 /** The store keeps the composer's tool as the AI tab (the top bar's Generate button sets it). */
 const TAB_TOOL: Record<AITab, ChatTool> = { generate: "generate", critique: "critique", import: "detective", audit: "audit", direction: "direction", tune: "tune", extract: "extract", component: "component" };
@@ -402,6 +404,7 @@ export default function Composer() {
               <CommandKbd command="ai.new-line" size="sm" /> New line
             </span>
           )}
+          {!running && tool !== "critique" && tool !== "direction" && tool !== "detective" && <MicButton field={area} onText={speechInto(area, setText)} className="mr-[4px]" />}
           {running ? (
             <button type="button" onClick={() => chat && stopTurn(chat.id, running.id)} className={clsx(invertBtn, "q-fade h-[26px] gap-[6px] pr-[4px] pl-[8px]")}>
               <span aria-hidden className="size-[8px] rounded-[2px] bg-current" />

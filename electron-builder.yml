@@ -15,6 +15,12 @@ files:
   - "!package-lock.json"
   # llama.cpp's source, for building it where no prebuilt binary fits: never done in the app.
   - "!node_modules/node-llama-cpp/llama/gitRelease.bundle"
+  # The voice helper runs from Resources (extraResources), not from inside the archive.
+  - "!out/qalam-voice"
+# The voice helper (native/voice, scripts/build-voice.mjs): Contents/Resources/qalam-voice.
+extraResources:
+  - from: out/qalam-voice
+    to: qalam-voice
 # Native code is loaded from real files, outside the archive.
 asarUnpack:
   - node_modules/node-llama-cpp/**
@@ -29,6 +35,12 @@ mac:
       arch: arm64
   category: public.app-category.productivity
   hardenedRuntime: true
+  # electron-builder's own entitlements, and the microphone, for talking instead of typing.
+  entitlements: ../../build/entitlements.mac.plist
+  entitlementsInherit: ../../build/entitlements.mac.inherit.plist
+  extendInfo:
+    NSMicrophoneUsageDescription: Qalam listens only while the mic is on, to type what you say.
+    NSSpeechRecognitionUsageDescription: Qalam turns what you say into text on this Mac.
   darkModeSupport: true
   # The zip's name (the .dmg names its own below).
   artifactName: Qalam-Studio-${version}-${arch}-mac.${ext}

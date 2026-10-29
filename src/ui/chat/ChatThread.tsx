@@ -6,6 +6,7 @@ import { formatKeys } from "@/commands/registry";
 import { QalamAIGlyph } from "../brand/ai-glyph";
 import { Kbd } from "../controls";
 import { r } from "../recipes";
+import { MicButton, speechInto } from "../voice/MicButton";
 import type { ChatMessage, PartData } from "./types";
 
 /*
@@ -168,6 +169,7 @@ export function ChatComposer({
         />
         <div className={r.composerBar}>
           <span className="flex min-w-0 flex-1 items-center gap-[6px] truncate text-micro text-fg-subtle">{hint}</span>
+          {!disabled && !running && <MicButton field={input} onText={speechInto(input, (t) => aui.composer.setText(t))} />}
           {running ? (
             <button type="button" onClick={onStop} className={clsx(r.buttonBase, r.buttonPrimary, r.stopButton)}>
               Stop <Kbd keys={STOP} size="sm" onInverse />

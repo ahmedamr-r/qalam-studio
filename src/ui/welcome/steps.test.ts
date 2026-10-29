@@ -3,8 +3,8 @@ import { bootRetryDelay, changesThings, connectFor, setupStep, stepStates, welco
 
 describe("the welcome", () => {
   it("marks the steps before the one being done as done, and the rest as next", () => {
-    expect(stepStates("engine")).toEqual({ engine: "now", name: "next", you: "next", goals: "next", yours: "next", connect: "next" });
-    expect(stepStates("goals")).toEqual({ engine: "done", name: "done", you: "done", goals: "now", yours: "next", connect: "next" });
+    expect(stepStates("engine")).toEqual({ engine: "now", name: "next", you: "next", voice: "next", goals: "next", yours: "next", connect: "next" });
+    expect(stepStates("goals")).toEqual({ engine: "done", name: "done", you: "done", voice: "done", goals: "now", yours: "next", connect: "next" });
   });
 
   it("reads its mode from the address, and checking again never changes anything", () => {
@@ -19,6 +19,7 @@ describe("the welcome", () => {
     expect(setupStep("?first=1")).toBe("goals");
     expect(setupStep("?first=1&step=yours")).toBe("yours");
     expect(setupStep("?first=1&step=you")).toBe("you");
+    expect(setupStep("?first=1&step=voice")).toBe("voice");
     expect(setupStep("?step=connect")).toBe("connect");
     expect(setupStep("?step=engine")).toBe("goals");
   });

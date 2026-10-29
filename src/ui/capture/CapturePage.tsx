@@ -7,6 +7,7 @@ import { orgFetch } from "@/org/client";
 import { Button, Kbd, Segmented } from "../controls";
 import { r } from "../recipes";
 import { useCurrentOrg } from "../frame/store";
+import { Dictated } from "../voice/MicButton";
 
 /**
  * Quick capture, from any app (⌃⌥Space in the menu bar's Qalam): a note, a customer's quote with
@@ -92,14 +93,16 @@ export default function CapturePage() {
             <input autoFocus value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" aria-label="Link" className={r.fieldInput} />
           </span>
         )}
-        <textarea
-          ref={area}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder={kind === "quote" ? "What the customer said, word for word" : kind === "link" ? "Why it matters (optional)" : "What you noticed"}
-          aria-label={kind === "quote" ? "Quote" : "Note"}
-          className="min-h-0 flex-1 resize-none rounded-md bg-field px-[10px] py-[8px] text-body text-fg outline-none placeholder:text-fg-faint focus:shadow-focus-field [-webkit-app-region:no-drag]"
-        />
+        <Dictated field={area} set={setText} className="flex min-h-0 flex-1 flex-col [-webkit-app-region:no-drag]">
+          <textarea
+            ref={area}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder={kind === "quote" ? "What the customer said, word for word" : kind === "link" ? "Why it matters (optional)" : "What you noticed"}
+            aria-label={kind === "quote" ? "Quote" : "Note"}
+            className="min-h-0 flex-1 resize-none rounded-md bg-field px-[10px] py-[8px] text-body text-fg outline-none placeholder:text-fg-faint focus:shadow-focus-field"
+          />
+        </Dictated>
         <div className="flex items-center gap-[8px] [-webkit-app-region:no-drag]">
           {kind === "quote" && (
             <span className={clsx(r.field, "w-[200px]")}>

@@ -8,6 +8,7 @@ import { startBearings } from "./org/goals";
 import { onUsage } from "@/ai/usage";
 import { ensureEngine } from "./engine";
 import { connectionsRoutes } from "./routes/connections";
+import { voiceRoutes } from "./routes/voice";
 import { appendUsage } from "./usage";
 import * as audit from "./routes/audit";
 import * as component from "./routes/component";
@@ -84,6 +85,8 @@ export function createApi(): Hono {
   }
   // What Qalam AI runs on, what it used, and This Mac's health: Connections.
   api.route("/", connectionsRoutes());
+  // Talking instead of typing: this Mac's voice helper (server/voice).
+  api.route("/", voiceRoutes());
   // The organization's files (projects, sources, chats, images…): server/org.
   api.route("/", orgRoutes());
   api.all("/api/*", (c) => c.json({ error: "not_found", message: `No ${c.req.method} ${new URL(c.req.url).pathname}` }, 404));

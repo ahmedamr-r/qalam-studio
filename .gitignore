@@ -13,3 +13,6 @@ out
 
 # The desktop app being packaged, and the packages (scripts/stage-app.mjs, electron-builder.yml)
 /release/
+
+# The voice helper's Swift build (scripts/build-voice.mjs)
+/native/voice/.build/

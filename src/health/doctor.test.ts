@@ -34,6 +34,12 @@ describe("This Mac, checked", () => {
     expect(diagnose({ ...fine, models: { status: "loading", download: { done: 18, total: 36 } } })[0]).toMatchObject({ id: "models", dot: "off", word: "Downloading 50%" });
   });
 
+  it("says when the microphone is refused, only while a mic is on", () => {
+    expect(diagnose({ ...fine, voice: { on: true, mic: "denied" } })[0]).toMatchObject({ id: "voice", dot: "warn", word: "Microphone off" });
+    expect(diagnose({ ...fine, voice: { on: false, mic: "denied" } })[0].id).toBe("all");
+    expect(diagnose({ ...fine, voice: { on: true, mic: "undetermined" } })[0].id).toBe("all");
+  });
+
   it("puts what blocks Qalam AI first, and says files wait for it", () => {
     const rows = diagnose({ ...fine, search: { ok: false, node: "22.13.0" }, engine: { kind: "cli", ready: false, word: "Signed out" }, inbox: { waiting: 3, notRead: 0, paused: true } });
     expect(rows.map((r) => r.id)).toEqual(["engine", "search", "inbox"]);

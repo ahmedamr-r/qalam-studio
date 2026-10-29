@@ -21,6 +21,7 @@ import { QalamAIGlyph } from "../brand";
 import { NeedStrip } from "./NeedStrip";
 import { BearsOn } from "./BearsOn";
 import { ago } from "../time";
+import { Dictated } from "../voice/MicButton";
 
 /**
  * One topic page: what the organization knows about a need, a kind of customer or a product, what
@@ -474,7 +475,9 @@ function LineInput({ initial, placeholder, onSave, onCancel }: { initial: string
   };
   return (
     <div className="flex flex-col gap-[6px]">
-      <textarea ref={ref} rows={2} value={text} placeholder={placeholder} onChange={(e) => setText(e.target.value)} onKeyDown={onKey} className={r.textarea} />
+      <Dictated field={ref} set={setText}>
+        <textarea ref={ref} rows={2} value={text} placeholder={placeholder} onChange={(e) => setText(e.target.value)} onKeyDown={onKey} className={r.textarea} />
+      </Dictated>
       <div className="flex justify-end gap-[6px]">
         <Button variant="ghost" size="sm" onClick={onCancel}>
           Cancel
