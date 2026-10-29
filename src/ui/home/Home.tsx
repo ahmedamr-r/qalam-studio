@@ -5,7 +5,7 @@ import { useGoals } from "@/goals/client";
 import type { OrgRef } from "@/org/client";
 import { useOrgContext } from "@/org/context";
 import { browserProjectsToMove, moveBrowserProjects } from "@/org/import-browser";
-import { goalHref, placeHref, setupHref, type Project } from "@/projects/model";
+import { goalHref, placeHref, setupHref, spaceHref, type Project } from "@/projects/model";
 import { importLegacy } from "@/projects/library";
 import { Button } from "../controls";
 import { r } from "../recipes";
@@ -21,25 +21,27 @@ import { StatusDot } from "../viz";
 import { ProblemsList } from "../goals/ProblemsList";
 import { useBearings } from "../goals/useBearings";
 import { useJobs } from "../goals/useJobs";
-import { inScope, withScope } from "./scope";
-import { useScope } from "./useScope";
+import { inSpace } from "../frame/spaces";
+import { useSpace } from "../frame/useSpace";
 import { useNeeds } from "./useNeeds";
+import { ProductsRow } from "./ProductsRow";
 import { homeGoals, YourGoals } from "./YourGoals";
 import { ContinueSetup, useFirstRunLeft } from "./ContinueSetup";
 
 /**
- * An organization's home, for the product in view: picking up the first run while it isn't
- * finished here (./ContinueSetup.tsx), asking what it knows, then the goals this
+ * A space's home (the organization's, or with `product` that product's): picking up the first run
+ * while it isn't finished here (./ContinueSetup.tsx), asking what it knows, then the goals this
  * person works on, each with the problems behind it; what needs a look, under the goal it bears
- * on; and what customers keep raising that no goal covers. Goals, problems, evidence and decisions
- * each have a place of their own in the sidebar. Everything is saved in the organization's folder.
+ * on; and what customers keep raising that no goal covers. The organization's ends with its
+ * products, each opening its own space. Goals, problems, evidence and decisions each have a place
+ * of their own in the sidebar. Everything is saved in the organization's folder.
  */
 
-export default function Home() {
+export default function Home({ product: productId = null }: { product?: string | null }) {
   const { projects, legacy, sources, refresh } = useOrgData();
   const goalTree = useGoals();
   const org = useCurrentOrg();
-  const [scope, setScope] = useScope();
+  const { space } = useSpace(productId, "home");
   const notices = useNotices();
   const needs = useNeeds();
   const topics = useTopics();
@@ -49,13 +51,12 @@ export default function Home() {
 
   const links = useBearings() ?? [];
   const jobs = useJobs() ?? [];
-  const product = scope !== "all" && scope !== "org" ? products.find((p) => p.id === scope) : undefined;
-  const yours = homeGoals(goalTree, (g) => inScope(g.product, scope) || g.id === goalTree.north);
+  const yours = homeGoals(goalTree, space);
   // Problems customers raise (from two sources up) that no goal is linked to.
-  const uncovered = needs?.indexed ? needs.needs.filter((n) => inScope(n.products[0] ?? null, scope) && n.sources >= 2 && !links.some((l) => l.need === n.topic)) : [];
+  const uncovered = needs?.indexed ? needs.needs.filter((n) => inSpace(n.products, space) && n.sources >= 2 && !links.some((l) => l.need === n.topic)) : [];
 
   return (
-    <PageFrame place="home" scope={scope} onScope={setScope}>
+    <PageFrame place="home" space={space}>
       <div className={clsx(r.pageMain, "max-w-[1080px]")}>
         <EngineNotice />
         <MoveFromBrowser org={org} onMoved={refresh} />
@@ -83,13 +84,13 @@ export default function Home() {
           left === null && <SetupNotice org={org} sources={sources} empty={loaded && !products.length && !about.audience.trim() && !about.context.trim() && !goalCount && !about.segments.length} />
         )}
 
-        <AskBar product={product?.id ?? null} topics={topics} />
+        <AskBar product={space} topics={topics} />
 
-        <YourGoals tree={goalTree} shown={yours.goals} mine={yours.mine} needs={needs} links={links} jobs={jobs} />
+        <YourGoals tree={goalTree} space={space} shown={yours.goals} mine={yours.mine} needs={needs} links={links} jobs={jobs} />
 
         <NeedsALook
           now={notices}
-          scope={(n) => scope === "all" || (scope === "org" ? !n.products.length : n.products.includes(scope))}
+          scope={(n) => inSpace(n.products, space)}
           projects={projects ?? []}
           topics={topics}
           groups={yours.goals.map((g) => ({ id: g.id, title: g.title, href: goalHref(g.id) }))}
@@ -104,13 +105,15 @@ export default function Home() {
                 </h2>
                 <p className="text-caption text-fg-subtle">What customers keep raising that no goal is linked to yet: link one from its page, or ask whether a goal is missing.</p>
               </div>
-              <a href={placeHref("problems") + withScope("", scope)} className={clsx(r.buttonSm, r.buttonGhost)}>
+              <a href={spaceHref(space, "problems")} className={clsx(r.buttonSm, r.buttonGhost)}>
                 All problems
               </a>
             </div>
             <ProblemsList needs={uncovered} links={[]} goals={[]} projects={projects ?? []} limit={4} />
           </section>
         )}
+
+        {space === null && !!products.length && <ProductsRow products={products} tree={goalTree} topics={topics} sources={sources} />}
 
         <p className="text-caption text-fg-subtle">{org ? `Saved in ${org.name}, at ${org.dir}.` : "Saved in your organization's folder."}</p>
       </div>

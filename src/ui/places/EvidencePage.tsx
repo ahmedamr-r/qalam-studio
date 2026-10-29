@@ -9,8 +9,8 @@ import { Button } from "../controls";
 import { r } from "../recipes";
 import { promptDialog } from "../surfaces/dialog";
 import { PageFrame } from "../frame/PageFrame";
-import { inScope } from "../home/scope";
-import { useScope } from "../home/useScope";
+import { inSpace } from "../frame/spaces";
+import { useSpace } from "../frame/useSpace";
 import { AddToOrg } from "../org/AddToOrg";
 import { SourcesList } from "../org/SourcesList";
 import { TopicsList } from "../org/TopicsList";
@@ -20,20 +20,21 @@ import { PlaceHead } from "./PlaceHead";
 import { ProductMaps } from "./ProductMaps";
 
 /**
- * What the organization has heard and read, for the product in view: its sources (interviews,
+ * What the organization has heard and read, in the space (all of it in the organization's, one
+ * product's in its own): its sources (interviews,
  * tickets, documents, pages, brain dumps) with the boards that use each, the pages on its
  * segments and products, and what the product does today, from its code. The problems themselves
  * have a place of their own.
  */
-export default function EvidencePage() {
-  const [scope, setScope] = useScope();
+export default function EvidencePage({ product: productId = null }: { product?: string | null }) {
+  const { space } = useSpace(productId, "evidence");
   const [adding, setAdding] = useState(false);
   const { projects, sources, refresh } = useOrgData();
   const topics = useTopics();
   const products = useOrgContext((s) => s.products);
-  const scopedSources = sources.filter((s) => inScope(s.product, scope));
-  const pages = topics?.filter((t) => t.kind !== "need" && (scope === "all" ? true : scope === "org" ? !t.products.length : t.products.includes(scope))) ?? null;
-  const product = scope !== "all" && scope !== "org" ? scope : null;
+  const scopedSources = sources.filter((s) => inSpace(s.product, space));
+  const pages = topics?.filter((t) => t.kind !== "need" && inSpace(t.products, space)) ?? null;
+  const product = space;
 
   const newSegment = async () => {
     const title = await promptDialog({ title: "New segment", body: "A kind of customer the team tells apart.", label: "Title", placeholder: "Parents of young children", confirmLabel: "Add page", validate: (v) => (v.trim() ? null : "Name it") });
@@ -45,9 +46,9 @@ export default function EvidencePage() {
   };
 
   return (
-    <PageFrame place="evidence" crumbs={[{ label: "Evidence" }]} scope={scope} onScope={setScope}>
+    <PageFrame place="evidence" crumbs={[{ label: "Evidence" }]} space={space}>
       <div className={clsx(r.pageMain, "max-w-[880px]")}>
-        <PlaceHead title="Evidence" count={projects ? scopedSources.length : null} scope={scope}>
+        <PlaceHead title="Evidence" count={projects ? scopedSources.length : null} space={space}>
           <span className="flex items-center gap-[8px]">
             <Button size="sm" variant="ghost" onClick={() => void newSegment()}>
               New segment

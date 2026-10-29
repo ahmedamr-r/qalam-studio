@@ -1,25 +1,23 @@
-import type { MouseEvent } from "react";
 import clsx from "clsx";
-import { Cable, Files, House, MessageSquareWarning, Milestone, Moon, PanelLeft, PanelLeftClose, Plus, Sun, Target, type LucideIcon } from "lucide-react";
-import { newProduct, saveProduct, useOrgContext } from "@/org/context";
-import { placeHref } from "@/projects/model";
+import { Cable, ChevronsUpDown, Files, House, MessageSquareWarning, Milestone, Moon, PanelLeft, PanelLeftClose, Sun, Target, type LucideIcon } from "lucide-react";
+import { placeHref, spaceHref, spacesHref } from "@/projects/model";
 import { runCommand } from "@/commands/registry";
 import { Tip } from "../controls";
 import { r } from "../recipes";
 import { useTheme } from "../theme";
-import { promptDialog } from "../surfaces/dialog";
-import { editContext } from "../org/ContextEditor";
-import { withScope, type Scope } from "../home/scope";
 import { PLACES, RAIL_PLACES, type Place } from "./places";
+import type { Space } from "./spaces";
 import { useFrame } from "./store";
 import { useHealthDot } from "./useHealth";
+import { hereHref, useSpaceName } from "./useSpace";
 import { StatusDot } from "../viz";
 
 /*
- * The organization's places, drawn two ways. On a page, the sidebar: Home, Goals, Problems,
- * Evidence and Decisions, the products (a filter that rides in ?product=), and Connections at the
- * foot; ⌘\ folds it to a labelled rail. On a board, a few icon links above its own panels in
- * Studio's rail. Moving between places is a full page load, like every link in the app.
+ * The organization's places, drawn two ways. On a page, the sidebar: the space you're in on top
+ * (the organization's or a product's, ./spaces.ts; it opens the picker), then Home, Goals,
+ * Problems, Evidence and Decisions in that space, and Connections at the foot; ⌘\ folds it to a
+ * labelled rail. On a board, a few icon links above its own panels in Studio's rail. Moving
+ * between places is a full page load, like every link in the app.
  */
 
 const ICONS: Record<Place, LucideIcon> = { home: House, goals: Target, problems: MessageSquareWarning, evidence: Files, decisions: Milestone, connections: Cable };
@@ -28,15 +26,32 @@ const ICON = { size: 16, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const
 const PRIMARY = PLACES.filter((p) => p.id !== "connections");
 const CONNECTIONS = PLACES.find((p) => p.id === "connections")!;
 
-/** The sidebar of a page: `scope` and `onScope` let the page switch products without a reload. */
-export function OrgSidebar({ place, scope = "all", onScope }: { place: Place | null; scope?: Scope; onScope?: (s: Scope) => void }) {
+const TILE = { sm: "size-[16px] rounded-[4px] text-micro", md: "size-[24px] rounded-md text-caption", lg: "size-[36px] rounded-lg text-heading" } as const;
+
+/** A space's initial, its mark in the sidebar, ⌘K and the picker. */
+export function SpaceTile({ name, size = "md" }: { name: string; size?: keyof typeof TILE }) {
+  return (
+    <span aria-hidden className={clsx(r.spaceTile, TILE[size])}>
+      {name.trim().charAt(0).toUpperCase()}
+    </span>
+  );
+}
+
+/** The sidebar of a page, its places in `space`. */
+export function OrgSidebar({ place, space }: { place: Place | null; space: Space }) {
   const folded = useFrame((s) => s.sidebar) === "rail";
-  const { products } = useOrgContext();
-  const href = (p: Place) => placeHref(p) + (p === "connections" ? "" : withScope("", scope));
+  const name = useSpaceName(space);
+  const href = (p: Place) => spaceHref(space, p);
 
   if (folded)
     return (
       <nav aria-label="Organization" data-region="rail" className={r.rail}>
+        <Tip label={`${name} · Switch space`} side="right">
+          <a href={spacesHref()} aria-label={`${name}: switch space`} className={r.railItem}>
+            <SpaceTile name={name} />
+          </a>
+        </Tip>
+        <span aria-hidden className={r.railDivider} />
         {PLACES.map((p) => {
           const Icon = ICONS[p.id];
           return (
@@ -53,25 +68,15 @@ export function OrgSidebar({ place, scope = "all", onScope }: { place: Place | n
       </nav>
     );
 
-  // A product picked here filters this place; from a topic page (one page, not a list) it opens the list.
-  const scoped = (s: Scope) => placeHref(place && place !== "connections" ? place : "home") + withScope("", s);
-  const pick = (s: Scope) => (e: MouseEvent) => {
-    if (!onScope) return;
-    e.preventDefault();
-    onScope(s);
-  };
-  const addProduct = async () => {
-    const name = await promptDialog({ title: "New product", body: "Boards and sources can be for one product, or for the whole organization.", label: "Name", placeholder: "Grocery app", confirmLabel: "Add product", validate: (v) => (v.trim() ? null : "Name it") });
-    if (!name) return;
-    const p = newProduct(name);
-    await saveProduct(p);
-    editContext({ kind: "product", product: p });
-    if (onScope) onScope(p.id);
-    else window.location.assign(scoped(p.id));
-  };
-
   return (
     <nav aria-label="Organization" className={r.sidebar}>
+      <Tip label="Switch space" side="right">
+        <a href={spacesHref()} aria-label={`${name}: switch space`} className={r.sidebarSpace}>
+          <SpaceTile name={name} />
+          <span className="truncate">{name}</span>
+          <ChevronsUpDown size={14} absoluteStrokeWidth strokeWidth={1.25} />
+        </a>
+      </Tip>
       {PRIMARY.map((p) => {
         const Icon = ICONS[p.id];
         return (
@@ -82,22 +87,8 @@ export function OrgSidebar({ place, scope = "all", onScope }: { place: Place | n
         );
       })}
 
-      <div className={r.sidebarGroup}>
-        <span>Products</span>
-        <Tip label="New product" side="right">
-          <button type="button" aria-label="New product" onClick={() => void addProduct()} className={r.iconButtonSm}>
-            <Plus size={12} absoluteStrokeWidth strokeWidth={1.25} />
-          </button>
-        </Tip>
-      </div>
-      {[{ id: "all", name: "Everything" }, { id: "org", name: "Whole organization" }, ...products].map((p) => (
-        <a key={p.id} href={scoped(p.id)} onClick={pick(p.id)} aria-current={scope === p.id && place !== "connections" ? true : undefined} className={r.sidebarSub}>
-          <span className="truncate">{p.name}</span>
-        </a>
-      ))}
-
       <span className="flex-1" />
-      <a href={href("connections")} aria-current={place === "connections" ? "page" : undefined} className={r.sidebarItem}>
+      <a href={placeHref("connections")} aria-current={place === "connections" ? "page" : undefined} className={r.sidebarItem}>
         <Cable {...ICON} />
         {CONNECTIONS.label}
         <ConnectionsDot />
@@ -135,15 +126,16 @@ function Foot({ folded }: { folded?: boolean }) {
 
 /**
  * The organization's places above a board's panels, in Studio's rail: icons only, named in their
- * tooltips. `leave` saves the board before the page goes (session's leaveTo).
+ * tooltips, in the space the board shows in (its product's, or the one this tab came from).
+ * `leave` saves the board before the page goes (session's leaveTo).
  */
-export function RailPlaces({ current, leave }: { current: Place | null; leave: (href: string) => void }) {
+export function RailPlaces({ current, product, leave }: { current: Place | null; product: string | null | undefined; leave: (href: string) => void }) {
   return (
     <div role="group" aria-label="Organization" className="flex flex-col items-center gap-[2px]">
       {RAIL_PLACES.map((id) => {
         const p = PLACES.find((x) => x.id === id)!;
         const Icon = ICONS[id];
-        const href = placeHref(id);
+        const href = hereHref(id, product ? [product] : []);
         return (
           <Tip key={id} label={p.label} side="right">
             <a

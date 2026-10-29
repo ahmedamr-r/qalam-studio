@@ -20,10 +20,11 @@ import { strengthFill, strengthOf } from "@/hub/needs";
 import { orgFetch, orgJson, orgPath } from "@/org/client";
 import { useOrgContext } from "@/org/context";
 import { onOrgChange } from "@/org/live";
-import { goalHref, orgHref, placeHref, projectHref, topicHref } from "@/projects/model";
+import { goalHref, projectHref, spaceHref, topicHref } from "@/projects/model";
 import { Button, Tip } from "../controls";
 import DecisionRow from "../decisions/DecisionRow";
 import { PageFrame } from "../frame/PageFrame";
+import { useItemSpace } from "../frame/useSpace";
 import { Menu, MenuItem, MenuSeparator, SubMenu } from "../menu";
 import { QalamAIGlyph } from "../brand";
 import { r } from "../recipes";
@@ -102,18 +103,27 @@ export default function GoalPage({ id }: { id: string }) {
     if (goals.loaded) load();
   }, [goals.version, goals.loaded, load]);
 
+  // The space it shows in: the tab's, else its product's (src/ui/frame/spaces.ts).
+  const space = useItemSpace(page ? (page.goal.product ? [page.goal.product] : []) : null);
+  const goalsCrumb = { label: "Goals", href: spaceHref(space, "goals") };
+
   if (missing)
     return (
-      <PageFrame place="goals" crumbs={[{ label: "Goals", href: placeHref("goals") }]}>
+      <PageFrame place="goals" crumbs={[goalsCrumb]} space={space}>
         <div className={clsx(r.pageMain, "max-w-[880px] items-start")}>
           <p className="text-title font-medium">This goal isn&apos;t here</p>
-          <a href={orgHref()} className={clsx(r.button, r.buttonSecondary)}>
+          <a href={spaceHref(space)} className={clsx(r.button, r.buttonSecondary)}>
             Back home
           </a>
         </div>
       </PageFrame>
     );
-  if (!page) return <PageFrame place="goals" crumbs={[{ label: "Goals", href: placeHref("goals") }]}>{null}</PageFrame>;
+  if (!page)
+    return (
+      <PageFrame place="goals" crumbs={[goalsCrumb]} space={space}>
+        {null}
+      </PageFrame>
+    );
 
   const g = page.goal;
   const north = page.north === g.id;
@@ -165,13 +175,13 @@ export default function GoalPage({ id }: { id: string }) {
     const ok = await confirmDialog({ title: `Take “${g.title}” off the goals?`, body: "The goals under it move up to the goal it feeds. What was decided about it stays in the log.", confirmLabel: "Take it off", danger: true });
     if (!ok) return;
     await removeGoal(g.id).then(
-      () => window.location.assign(orgHref()),
+      () => window.location.assign(spaceHref(space)),
       (e) => feedback(board ? "A board works on this goal: delete its outcome card there first." : `Couldn't take it off: ${message(e)}`, { kind: "error", id: "goal.remove" }),
     );
   };
 
   return (
-    <PageFrame place="goals" crumbs={[{ label: "Goals", href: placeHref("goals") }, ...[...page.chain].reverse().map((c) => ({ label: c.title, href: goalHref(c.id) })), { label: g.title }]}>
+    <PageFrame place="goals" crumbs={[goalsCrumb, ...[...page.chain].reverse().map((c) => ({ label: c.title, href: goalHref(c.id) })), { label: g.title }]} space={space}>
       <div className={clsx(r.pageMain, "max-w-[880px]")}>
         <header className="flex flex-col gap-[8px]">
           <div className="flex items-start justify-between gap-[12px]">

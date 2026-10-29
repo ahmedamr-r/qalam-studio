@@ -2,12 +2,13 @@ import { useEffect, useState } from "react";
 import clsx from "clsx";
 import { bootOrg } from "@/org/boot";
 import { CantReachFiles, listOrgs, NoOrgYet, OrgMissing, type OrgRef } from "@/org/client";
-import { orgHref, placeHref, projectLetter, welcomeHref, type ProjectType } from "@/projects/model";
+import { useOrgContext } from "@/org/context";
+import { orgHref, projectLetter, spaceHref, spacesHref, welcomeHref, type ProjectType } from "@/projects/model";
 import { Splash } from "./brand/splash";
 import { r } from "./recipes";
 import { routeOf, type Route } from "./routes";
-import { legacyTab } from "./frame/places";
-import StudioLoader, { CaptureLoader, GoalLoader, HomeLoader, PlaceLoader, SetupLoader, SystemProjectLoader, TopicLoader, WelcomeLoader } from "./StudioLoader";
+import { movedTo } from "./frame/spaces";
+import StudioLoader, { CaptureLoader, GoalLoader, HomeLoader, PlaceLoader, SetupLoader, SpacesLoader, SystemProjectLoader, TopicLoader, WelcomeLoader } from "./StudioLoader";
 import { bootRetryDelay } from "./welcome/steps";
 
 type State = { kind: "loading" } | { kind: "ready"; org: OrgRef } | { kind: "error"; message: string; missingOrg?: boolean } | { kind: "missing" };
@@ -21,17 +22,21 @@ export function App() {
     // The welcome needs no organization (there may be none yet).
     if (route.kind === "welcome") return;
     setState({ kind: "loading" });
-    const org = route.kind === "org" || route.kind === "project" || route.kind === "topic" || route.kind === "goal" || route.kind === "setup" || route.kind === "place" ? route.org : null;
+    const org = route.kind === "root" || route.kind === "capture" || route.kind === "missing" ? null : route.org;
     bootOrg(org).then(
       async (o) => {
-        // The bare address opens the organization opened last; an address from before
-        // organizations moves to its organization's.
-        if (route.kind === "root") return window.location.replace(orgHref(o.id) + window.location.search);
-        // The home's old tabs are places of their own now.
-        const tab = route.kind === "org" ? legacyTab(window.location.search) : null;
-        if (tab) return window.location.replace(placeHref(tab.place, o.id) + tab.search);
-        // Places from before the job order (boards, topics, sources) moved.
-        if (route.kind === "place" && route.moved) return window.location.replace(placeHref(route.place, o.id) + window.location.search);
+        // Opening an organization (the bare address opens the one opened last) lands on picking a
+        // space once it has products, else on its home.
+        const products = useOrgContext.getState().products.length;
+        if (route.kind === "root") return window.location.replace(products && !window.location.search ? spacesHref(o.id) : orgHref(o.id) + window.location.search);
+        if (route.kind === "spaces" && new URLSearchParams(window.location.search).has("open")) {
+          if (!products) return window.location.replace(orgHref(o.id));
+          history.replaceState(null, "", spacesHref(o.id));
+        }
+        // Addresses from before spaces: the sidebar's ?product=, the home's old tabs, places from before the job order.
+        const moved = movedTo(route, window.location.search);
+        if (moved) return window.location.replace(spaceHref(moved.product, moved.place, o.id) + moved.search + window.location.hash);
+        // An address from before organizations moves to its organization's.
         if (route.kind === "project" && !route.org) {
           const home = await findProject(route.id, route.type, o.id);
           if (home) return window.location.replace(`${home}${window.location.search}${window.location.hash}`);
@@ -60,11 +65,12 @@ export function App() {
     );
   if (state.kind === "error") return state.missingOrg ? <Missing title="Organization not found" body="It isn't on this computer: its folder moved, or it was made on another computer." /> : <CantReach message={state.message} onRetry={boot} />;
   if (state.kind === "missing" || route.kind === "missing") return <Missing title="Page not found" body="There's nothing at this address." />;
-  if (route.kind === "org") return <HomeLoader />;
+  if (route.kind === "org") return <HomeLoader product={route.product} />;
+  if (route.kind === "spaces") return <SpacesLoader />;
   if (route.kind === "topic") return <TopicLoader id={route.id} />;
   if (route.kind === "goal") return <GoalLoader id={route.id} />;
   if (route.kind === "setup") return <SetupLoader />;
-  if (route.kind === "place") return <PlaceLoader place={route.place} />;
+  if (route.kind === "place") return <PlaceLoader place={route.place} product={route.product} />;
   if (route.kind === "capture") return <CaptureLoader />;
   if (route.kind !== "project") return null;
   if (route.type === "system") return <SystemProjectLoader projectId={route.id} />;

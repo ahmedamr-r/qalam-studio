@@ -17,8 +17,9 @@ import { confirmDialog } from "../surfaces/dialog";
 
 type Target = { kind: "product"; product: Product } | { kind: "org"; name: string; about: ContextFields };
 
-const useEditor = create<{ target: Target | null }>(() => ({ target: null }));
-export const editContext = (target: Target) => useEditor.setState({ target });
+const useEditor = create<{ target: Target | null; closed?: () => void }>(() => ({ target: null }));
+/** Open the editor; settles once it closes (saved, deleted or left). */
+export const editContext = (target: Target) => new Promise<void>((closed) => useEditor.setState({ target, closed }));
 
 const lines = (v: string) =>
   v
@@ -82,7 +83,11 @@ export function ContextCard({ title, context, onEdit, empty }: { title: string; 
 export function ContextEditorHost() {
   const target = useEditor((s) => s.target);
   if (!target) return null;
-  return <Editor key={target.kind === "product" ? target.product.id : "org"} target={target} onClose={() => useEditor.setState({ target: null })} />;
+  const close = () => {
+    useEditor.getState().closed?.();
+    useEditor.setState({ target: null, closed: undefined });
+  };
+  return <Editor key={target.kind === "product" ? target.product.id : "org"} target={target} onClose={close} />;
 }
 
 function Editor({ target, onClose }: { target: Target; onClose: () => void }) {

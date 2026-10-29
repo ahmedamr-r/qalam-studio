@@ -5,8 +5,9 @@ import { forStorage } from "@/doc/pages";
 import { ConflictError } from "@/org/client";
 import { loadedDocVersion, projectsDb, type ProjectRepo } from "./db";
 import { openStores } from "@/ui/idb";
+import { hereHref } from "@/ui/frame/useSpace";
 import { frameCount } from "./migrate";
-import { newProject, orgHref, projectHref, type Project, type ProjectType } from "./model";
+import { newProject, projectHref, type Project, type ProjectType } from "./model";
 
 /**
  * The project open in this page. Opening another project is a full page load, so everything
@@ -223,7 +224,11 @@ export async function reopenInterview() {
   window.location.reload();
 }
 
-export const goHome = () => leaveTo(orgHref());
+/** Home in the space the board shows in (src/ui/frame/spaces.ts). */
+export const goHome = () => {
+  const product = currentProject()?.product;
+  return leaveTo(hereHref("home", product ? [product] : []));
+};
 
 /** Go to another page (the rail's places), once the open document is saved. */
 export async function leaveTo(href: string) {

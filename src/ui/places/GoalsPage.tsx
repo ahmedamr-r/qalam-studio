@@ -11,8 +11,8 @@ import { r } from "../recipes";
 import { promptDialog } from "../surfaces/dialog";
 import { PageFrame } from "../frame/PageFrame";
 import { useCurrentOrg } from "../frame/store";
-import { inScope } from "../home/scope";
-import { useScope } from "../home/useScope";
+import { inSpace } from "../frame/spaces";
+import { useSpace } from "../frame/useSpace";
 import { editContext } from "../org/ContextEditor";
 import { GoalsList } from "../org/Goals";
 import { useOrgData } from "../org/useOrgData";
@@ -20,7 +20,8 @@ import { PlaceHead } from "./PlaceHead";
 import { ProjectCard, StartTile } from "./ProjectCard";
 
 /**
- * The organization's goals as one tree (goals.md), for the product in view: the North Star on top,
+ * The organization's goals as one tree (goals.md), in the space: all of them in the organization's,
+ * each marked with its product, or one product's in its own. The North Star on top,
  * each goal under the goal it feeds, each opening its page (its number, its board, the problems
  * behind it). Boards that work on no goal, and design work on hold, wait below. What the
  * organization is (About) opens from here too.
@@ -28,20 +29,19 @@ import { ProjectCard, StartTile } from "./ProjectCard";
 
 const ICON = { size: 16, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 
-export default function GoalsPage() {
-  const [scope, setScope] = useScope();
+export default function GoalsPage({ product: productId = null }: { product?: string | null }) {
+  const { space, product } = useSpace(productId, "goals");
   const [placing, setPlacing] = useState(false);
   const { projects, refresh } = useOrgData();
   const tree = useGoals();
   const { products, about } = useOrgContext();
   const org = useCurrentOrg();
   const orgName = org?.name ?? "the organization";
-  const product = scope !== "all" && scope !== "org" ? products.find((p) => p.id === scope) : undefined;
-  const scoped = tree.goals.filter((g) => inScope(g.product, scope));
+  const scoped = tree.goals.filter((g) => inSpace(g.product, space));
   const linked = new Set(tree.goals.flatMap((g) => (g.on ? [g.on.board] : [])));
-  const loose = (projects ?? []).filter((p) => p.type === "discovery" && inScope(p.product, scope) && !linked.has(p.id));
+  const loose = (projects ?? []).filter((p) => p.type === "discovery" && inSpace(p.product, space) && !linked.has(p.id));
   const design = (projects ?? []).filter((p) => p.type !== "discovery");
-  const unplaced = tree.north ? tree.goals.filter((g) => !g.parent && g.id !== tree.north) : [];
+  const unplaced = tree.north ? scoped.filter((g) => !g.parent && g.id !== tree.north) : [];
 
   const newGoal = async () => {
     const title = await promptDialog({
@@ -67,9 +67,9 @@ export default function GoalsPage() {
   };
 
   return (
-    <PageFrame place="goals" crumbs={[{ label: "Goals" }]} scope={scope} onScope={setScope}>
+    <PageFrame place="goals" crumbs={[{ label: "Goals" }]} space={space}>
       <div className={clsx(r.pageMain, "max-w-[1080px]")}>
-        <PlaceHead title="Goals" count={tree.loaded ? scoped.length : null} scope={scope}>
+        <PlaceHead title="Goals" count={tree.loaded ? scoped.length : null} space={space}>
           <span className="flex items-center gap-[8px]">
             <Button variant="ghost" size="sm" onClick={() => (product ? editContext({ kind: "product", product }) : editContext({ kind: "org", name: orgName, about }))}>
               About {product?.name ?? orgName}
@@ -81,7 +81,7 @@ export default function GoalsPage() {
         </PlaceHead>
 
         {scoped.length ? (
-          <GoalsList tree={tree} boards={new Map((projects ?? []).map((p) => [p.id, p.name]))} products={new Map(products.map((p) => [p.id, p.name]))} keep={(g) => inScope(g.product, scope)} />
+          <GoalsList tree={tree} boards={new Map((projects ?? []).map((p) => [p.id, p.name]))} products={new Map(products.map((p) => [p.id, p.name]))} keep={(g) => inSpace(g.product, space)} />
         ) : (
           <p className="text-body text-fg-muted">{tree.goals.length ? "No goals for this product yet." : "No goals yet. The North Star goes on top, what the whole company is trying to move; each goal goes under the goal it feeds, and a board works on one."}</p>
         )}

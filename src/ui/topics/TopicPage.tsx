@@ -11,12 +11,13 @@ import { ConflictError, currentOrg, type OrgRef } from "@/org/client";
 import { useOrgContext } from "@/org/context";
 import { onOrgChange } from "@/org/live";
 import { topicsDb, type CitedPiece, type TopicView } from "@/org/topics";
-import { placeHref, projectHref } from "@/projects/model";
+import { projectHref, spaceHref } from "@/projects/model";
 import { Button, Tip } from "../controls";
 import { Menu, MenuItem, MenuSeparator, SubMenu } from "../menu";
 import { r } from "../recipes";
 import { confirmDialog, promptDialog } from "../surfaces/dialog";
 import { PageFrame } from "../frame/PageFrame";
+import { useItemSpace } from "../frame/useSpace";
 import { QalamAIGlyph } from "../brand";
 import { NeedStrip } from "./NeedStrip";
 import { BearsOn } from "./BearsOn";
@@ -78,13 +79,16 @@ export default function TopicPage({ id }: { id: string }) {
     });
   }, [id, load]);
 
+  // The space it shows in: the tab's, else its product's when it has one (src/ui/frame/spaces.ts).
+  const space = useItemSpace(view?.topic.products ?? null);
+
   if (missing)
     return (
       <div className="fixed inset-0 grid place-items-center bg-app text-fg">
         <div className="flex w-[320px] flex-col items-center gap-[12px] text-center">
           <p className="text-title font-medium">This page isn&apos;t here</p>
           <p className="text-body text-fg-muted">It was deleted, or its file moved out of the organization&apos;s folder.</p>
-          <a className={clsx(r.button, r.buttonSecondary)} href={placeHref("problems")}>
+          <a className={clsx(r.button, r.buttonSecondary)} href={spaceHref(space, "problems")}>
             Back to the problems
           </a>
         </div>
@@ -92,7 +96,7 @@ export default function TopicPage({ id }: { id: string }) {
     );
   if (!view)
     return (
-      <PageFrame place="problems" crumbs={[{ label: "Problems", href: placeHref("problems") }]}>
+      <PageFrame place="problems" crumbs={[{ label: "Problems", href: spaceHref(space, "problems") }]} space={space}>
         <div />
       </PageFrame>
     );
@@ -153,12 +157,12 @@ export default function TopicPage({ id }: { id: string }) {
     const ok = await confirmDialog({ title: `Delete “${t.title}”?`, body: "The page is removed from the organization's folder. The sources and boards its lines rest on stay as they are.", confirmLabel: "Delete page", danger: true });
     if (!ok) return;
     await topicsDb.remove(t.id);
-    window.location.assign(placeHref(t.kind === "need" ? "problems" : "evidence"));
+    window.location.assign(spaceHref(space, t.kind === "need" ? "problems" : "evidence"));
   };
 
   const productNames = t.products.map((p) => products.find((x) => x.id === p)?.name).filter(Boolean) as string[];
   return (
-    <PageFrame place={t.kind === "need" ? "problems" : "evidence"} crumbs={[t.kind === "need" ? { label: "Problems", href: placeHref("problems") } : { label: "Evidence", href: placeHref("evidence") }, { label: t.title }]}>
+    <PageFrame place={t.kind === "need" ? "problems" : "evidence"} crumbs={[t.kind === "need" ? { label: "Problems", href: spaceHref(space, "problems") } : { label: "Evidence", href: spaceHref(space, "evidence") }, { label: t.title }]} space={space}>
         <div className={clsx(r.pageMain, "max-w-[760px]")}>
           <div className="flex flex-col gap-[8px]">
             <div className="flex items-start justify-between gap-[12px]">

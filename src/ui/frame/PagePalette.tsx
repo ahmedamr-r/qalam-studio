@@ -5,19 +5,24 @@ import { useGoals } from "@/goals/client";
 import { runCommand } from "@/commands/registry";
 import { usePagePalette } from "@/commands/pages";
 import { listProjects } from "@/projects/library";
-import { goalHref, placeHref, projectHref, topicHref, type Project } from "@/projects/model";
+import { useOrgContext } from "@/org/context";
+import { goalHref, projectHref, spaceHref, topicHref, type Project } from "@/projects/model";
 import { TOPIC_KIND_LABEL } from "@/hub/topics";
 import { QalamAIGlyph } from "../brand";
 import { r } from "../recipes";
 import { highlightRuns, scoreItem } from "../surfaces/fuzzy";
 import { useTopics } from "../topics/list";
 import { askNext } from "../org/ask-next";
+import { SpaceTile } from "./OrgPlaces";
 import { PLACES, type Place } from "./places";
+import type { Space } from "./spaces";
+import { useCurrentOrg } from "./store";
 
 /*
- * ⌘K on a page: one field that finds the organization's places, its boards and its topic pages by
- * name, a few actions, and hands anything else to Qalam AI (Ask the org, on the home). Studio's own
- * palette (src/ui/surfaces/CommandPalette.tsx) also searches the canvas; this one has no canvas.
+ * ⌘K on a page: one field that finds the places (in the space the page is in), the spaces, the
+ * boards and the topic pages by name, a few actions, and hands anything else to Qalam AI (Ask the
+ * org, on the home). Studio's own palette (src/ui/surfaces/CommandPalette.tsx) also searches the
+ * canvas; this one has no canvas.
  */
 
 interface Row {
@@ -35,19 +40,21 @@ const ICONS: Record<Place, LucideIcon> = { home: House, goals: Target, problems:
 const ICON = { size: 16, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 const MAX = 8;
 
-export function PagePalette() {
+export function PagePalette({ space }: { space: Space }) {
   const open = usePagePalette((s) => s.open);
-  return open ? <Palette /> : null;
+  return open ? <Palette space={space} /> : null;
 }
 
 const close = () => usePagePalette.setState({ open: false });
 
-function Palette() {
+function Palette({ space }: { space: Space }) {
   const [query, setQuery] = useState("");
   const [at, setAt] = useState(0);
   const [boards, setBoards] = useState<Project[]>([]);
   const topics = useTopics();
   const goals = useGoals((s) => s.goals);
+  const products = useOrgContext((s) => s.products);
+  const org = useCurrentOrg();
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => {
     input.current?.focus();
@@ -64,8 +71,9 @@ function Palette() {
     };
     for (const p of PLACES) {
       const Icon = ICONS[p.id];
-      add("Go to", `place:${p.id}`, p.label, <Icon {...ICON} />, () => window.location.assign(placeHref(p.id)));
+      add("Go to", `place:${p.id}`, p.label, <Icon {...ICON} />, () => window.location.assign(spaceHref(space, p.id)));
     }
+    if (q) for (const s of [{ id: null, name: org?.name ?? "Organization" }, ...products]) add("Spaces", `space:${s.id ?? ""}`, s.name, <SpaceTile name={s.name} size="sm" />, () => window.location.assign(spaceHref(s.id)), s.id ? "Product" : "The whole organization");
     if (q) for (const g of goals) add("Goals", `goal:${g.id}`, g.title, <Target {...ICON} />, () => window.location.assign(goalHref(g.id)), "Goal");
     for (const b of boards.slice(0, q ? boards.length : 4)) add("Boards", `board:${b.id}`, b.name, <Network {...ICON} />, () => window.location.assign(projectHref(b)), "Board");
     if (q) for (const t of topics ?? []) add("Problems and pages", `topic:${t.id}`, t.title, <NotebookText {...ICON} />, () => window.location.assign(topicHref(t.id)), TOPIC_KIND_LABEL[t.kind]);
@@ -82,7 +90,7 @@ function Palette() {
     if (q.length >= 3)
       ranked.unshift({ key: "ask", group: "Qalam AI", label: `Ask: ${q}`, hits: [], icon: <QalamAIGlyph size={16} />, score: 0, run: () => askNext(q) });
     return ranked;
-  }, [query, boards, topics, goals]);
+  }, [query, boards, topics, goals, space, products, org]);
 
   useEffect(() => setAt(0), [query]);
   const run = (row: Row | undefined) => {

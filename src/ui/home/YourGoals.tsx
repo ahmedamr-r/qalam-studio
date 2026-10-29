@@ -9,8 +9,9 @@ import type { Bearing } from "@/goals/bearings";
 import type { Job } from "@/goals/jobs";
 import type { Goal } from "@/goals/types";
 import type { NeedsNow } from "@/org/needs";
-import { goalHref, placeHref, topicHref } from "@/projects/model";
+import { goalHref, spaceHref, topicHref } from "@/projects/model";
 import { r } from "../recipes";
+import { inSpace, type Space } from "../frame/spaces";
 import { Meter, StatusDot } from "../viz";
 
 /*
@@ -24,25 +25,30 @@ const SHOWN = 6;
 const PROBLEMS = 3;
 const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
 
-/** The goals the home leads with. */
-export function homeGoals(t: GoalsNow, keep: (g: Goal) => boolean = () => true): { goals: Goal[]; mine: boolean } {
-  const mine = t.goals.filter((g) => t.mine.includes(g.id) && keep(g));
+/**
+ * The goals a space's home leads with: this person's in it, else the North Star and the goals right
+ * under it; in a product's space, the North Star and the product's goals that feed no other of its own.
+ */
+export function homeGoals(t: GoalsNow, space: Space = null): { goals: Goal[]; mine: boolean } {
+  const mine = t.goals.filter((g) => t.mine.includes(g.id) && (inSpace(g.product, space) || g.id === t.north));
   if (mine.length) return { goals: mine.slice(0, SHOWN), mine: true };
   const north = t.goals.find((g) => g.id === t.north);
-  const near = north ? [north, ...childrenOf(t, north.id)] : rootsOf(t);
-  return { goals: near.filter(keep).slice(0, SHOWN), mine: false };
+  const own = new Set(t.goals.filter((g) => space && g.product === space).map((g) => g.id));
+  const near = space ? t.goals.filter((g) => own.has(g.id) && (!g.parent || !own.has(g.parent))) : north ? childrenOf(t, north.id) : rootsOf(t);
+  return { goals: [...(north ? [north] : []), ...near.filter((g) => g !== north)].slice(0, SHOWN), mine: false };
 }
 
-export function YourGoals({ tree, shown, mine, needs, links, jobs }: { tree: GoalsNow; shown: Goal[]; mine: boolean; needs: NeedsNow | null; links: Bearing[]; jobs: Job[] }) {
+export function YourGoals({ tree, space, shown, mine, needs, links, jobs }: { tree: GoalsNow; space: Space; shown: Goal[]; mine: boolean; needs: NeedsNow | null; links: Bearing[]; jobs: Job[] }) {
+  const all = tree.goals.filter((g) => inSpace(g.product, space)).length;
   return (
     <section aria-labelledby="your-goals" className="flex flex-col gap-[10px]">
       <div className="flex items-end justify-between gap-[12px]">
         <h2 id="your-goals" className="text-title font-medium">
           {mine ? "Your goals" : "Goals"}
         </h2>
-        {tree.goals.length > shown.length && (
-          <a href={placeHref("goals")} className={clsx(r.buttonSm, r.buttonGhost)}>
-            All {tree.goals.length}
+        {all > shown.length && (
+          <a href={spaceHref(space, "goals")} className={clsx(r.buttonSm, r.buttonGhost)}>
+            All {all}
           </a>
         )}
       </div>
@@ -54,8 +60,8 @@ export function YourGoals({ tree, shown, mine, needs, links, jobs }: { tree: Goa
         </div>
       ) : !shown.length ? (
         <div className="flex flex-wrap items-center justify-between gap-[12px] rounded-lg bg-panel px-[14px] py-[12px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
-          <p className="text-body text-fg-muted">No goals yet. Start with the North Star: what the whole company is trying to move.</p>
-          <a href={placeHref("goals")} className={clsx(r.buttonSm, r.buttonSecondary)}>
+          <p className="text-body text-fg-muted">{space ? "No goals for this product yet." : "No goals yet. Start with the North Star: what the whole company is trying to move."}</p>
+          <a href={spaceHref(space, "goals")} className={clsx(r.buttonSm, r.buttonSecondary)}>
             Set the goals
           </a>
         </div>

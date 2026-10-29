@@ -3,16 +3,15 @@ import clsx from "clsx";
 import { nanoid } from "nanoid";
 import { useGoals } from "@/goals/client";
 import type { Topic } from "@/hub/topics";
-import { useOrgContext } from "@/org/context";
 import { topicsDb } from "@/org/topics";
 import { topicHref } from "@/projects/model";
 import { Button, Select } from "../controls";
 import { r } from "../recipes";
 import { promptDialog } from "../surfaces/dialog";
 import { PageFrame } from "../frame/PageFrame";
-import { inScope } from "../home/scope";
+import { inSpace } from "../frame/spaces";
+import { useSpace } from "../frame/useSpace";
 import { useNeeds } from "../home/useNeeds";
-import { useScope } from "../home/useScope";
 import { ProblemsList } from "../goals/ProblemsList";
 import { useBearings } from "../goals/useBearings";
 import { FilingBanner } from "../org/TopicsList";
@@ -20,20 +19,19 @@ import { useOrgData } from "../org/useOrgData";
 import { PlaceHead } from "./PlaceHead";
 
 /**
- * The problems customers have (one page each, hub/topics), for the product in view, the best-backed
+ * The problems customers have (one page each, hub/topics), in the space (all of them in the
+ * organization's, one product's in its own), the best-backed
  * first, each with the goals it bears on: all of them, one goal's, or the ones no goal covers yet.
  * What customers said that the pages haven't taken in waits on top.
  */
-export default function ProblemsPage() {
-  const [scope, setScope] = useScope();
+export default function ProblemsPage({ product: productId = null }: { product?: string | null }) {
+  const { space, product } = useSpace(productId, "problems");
   const [goal, setGoal] = useState<string>("all");
   const { projects, sources, refresh } = useOrgData();
   const needs = useNeeds();
   const links = useBearings() ?? [];
   const tree = useGoals();
-  const products = useOrgContext((s) => s.products);
-  const product = scope !== "all" && scope !== "org" ? products.find((p) => p.id === scope) : undefined;
-  const scoped = (needs?.needs ?? []).filter((n) => (scope === "all" ? true : scope === "org" ? !n.products.length : n.products.includes(scope)));
+  const scoped = (needs?.needs ?? []).filter((n) => inSpace(n.products, space));
   const shown = scoped.filter((n) => {
     if (goal === "all") return true;
     const of = links.filter((l) => l.need === n.topic);
@@ -57,9 +55,9 @@ export default function ProblemsPage() {
   };
 
   return (
-    <PageFrame place="problems" crumbs={[{ label: "Problems" }]} scope={scope} onScope={setScope}>
+    <PageFrame place="problems" crumbs={[{ label: "Problems" }]} space={space}>
       <div className={clsx(r.pageMain, "max-w-[1080px]")}>
-        <PlaceHead title="Problems" count={needs ? scoped.length : null} scope={scope}>
+        <PlaceHead title="Problems" count={needs ? scoped.length : null} space={space}>
           <span className="flex items-center gap-[8px]">
             {!!tree.goals.length && (
               <Select
@@ -75,7 +73,7 @@ export default function ProblemsPage() {
             </Button>
           </span>
         </PlaceHead>
-        <FilingBanner sources={sources.filter((s) => inScope(s.product, scope))} onFiled={refresh} />
+        <FilingBanner sources={sources.filter((s) => inSpace(s.product, space))} onFiled={refresh} />
         {!needs ? (
           <div className="flex flex-col gap-[6px]" aria-hidden>
             {[0, 1, 2].map((i) => (

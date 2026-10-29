@@ -18,13 +18,15 @@ const GoalPage = lazy(() => import("./goals/GoalPage"));
 const SetupPage = lazy(() => import("./setup/SetupPage"));
 const WelcomePage = lazy(() => import("./welcome/WelcomePage"));
 const CapturePage = lazy(() => import("./capture/CapturePage"));
-const PLACE_PAGES = {
+const SpacesPage = lazy(() => import("./places/SpacesPage"));
+const ConnectionsPage = lazy(() => import("./connections/ConnectionsPage"));
+/** The places a space has its own of (src/ui/frame/spaces.ts); Connections is the organization's. */
+const SPACE_PAGES = {
   goals: lazy(() => import("./places/GoalsPage")),
   problems: lazy(() => import("./places/ProblemsPage")),
   evidence: lazy(() => import("./places/EvidencePage")),
   decisions: lazy(() => import("./places/DecisionsPage")),
-  connections: lazy(() => import("./connections/ConnectionsPage")),
-} satisfies Record<PagePlace, unknown>;
+} satisfies Record<Exclude<PagePlace, "connections">, unknown>;
 
 const Loading = ({ children }: { children: ReactNode }) => <Suspense fallback={loading}>{children}</Suspense>;
 
@@ -36,11 +38,20 @@ export default function StudioLoader({ projectId, mode }: { projectId: string; m
   );
 }
 
-/** The projects home. */
-export function HomeLoader() {
+/** A space's home: the organization's, or a product's. */
+export function HomeLoader({ product = null }: { product?: string | null }) {
   return (
     <Loading>
-      <Home />
+      <Home product={product} />
+    </Loading>
+  );
+}
+
+/** Picking a space: the whole organization or one product. */
+export function SpacesLoader() {
+  return (
+    <Loading>
+      <SpacesPage />
     </Loading>
   );
 }
@@ -81,12 +92,18 @@ export function SetupLoader() {
   );
 }
 
-/** One of the organization's places: its boards, topic pages, sources, decisions or connections. */
-export function PlaceLoader({ place }: { place: PagePlace }) {
-  const Page = PLACE_PAGES[place];
+/** One of the organization's places: its goals, problems, evidence or decisions (in a product's space with `product`), or its connections. */
+export function PlaceLoader({ place, product = null }: { place: PagePlace; product?: string | null }) {
+  if (place === "connections")
+    return (
+      <Loading>
+        <ConnectionsPage />
+      </Loading>
+    );
+  const Page = SPACE_PAGES[place];
   return (
     <Loading>
-      <Page />
+      <Page product={product} />
     </Loading>
   );
 }

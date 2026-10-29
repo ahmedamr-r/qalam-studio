@@ -37,8 +37,8 @@ const spec = {
   // ── Sidebar (pages outside the canvas; ⌘\ folds it to the rail) ─────
   sidebar: "flex w-(--sidebar-w) shrink-0 flex-col gap-[2px] overflow-y-auto border-r border-line-subtle bg-app px-[8px] pt-[8px] pb-[10px]",
   sidebarItem: "q-item relative flex h-[32px] shrink-0 items-center gap-[10px] rounded-md px-[10px] text-body text-fg-muted hover:bg-hover hover:text-fg aria-[current=page]:bg-active aria-[current=page]:font-medium aria-[current=page]:text-fg [&>svg]:shrink-0 [&>svg]:text-fg-subtle aria-[current=page]:[&>svg]:text-fg",
-  sidebarGroup: "flex h-[28px] shrink-0 items-center justify-between pl-[10px] pr-[2px] pt-[12px] text-micro font-medium text-fg-subtle",
-  sidebarSub: "q-item flex h-[28px] shrink-0 items-center gap-[8px] rounded-md px-[10px] text-caption text-fg-muted hover:bg-hover hover:text-fg aria-[current=true]:bg-active aria-[current=true]:font-medium aria-[current=true]:text-fg",
+  sidebarSpace: "q-item q-press mb-[6px] flex h-[40px] shrink-0 items-center gap-[8px] rounded-md px-[6px] text-body font-medium text-fg hover:bg-hover [&>svg]:ml-auto [&>svg]:shrink-0 [&>svg]:text-fg-subtle", // the space you're in, on top: opens the picker
+  spaceTile: "grid shrink-0 place-items-center bg-raised font-semibold text-fg shadow-[inset_0_0_0_1px_var(--color-line)]", // a space's initial; sizes in SpaceTile
   /** The column a page's content sits in, under the frame's top bar. */
   pageMain: "mx-auto flex w-full flex-col gap-[28px] px-[24px] py-[28px]",
 

@@ -25,7 +25,7 @@ import OutlinePanel from "./discovery/OutlinePanel";
 import ContextPanel from "./discovery/ContextPanel";
 import SourcesPanel, { SourcesHeaderActions } from "./discovery/SourcesPanel";
 import { RailPlaces } from "./frame/OrgPlaces";
-import { leaveTo } from "@/projects/session";
+import { leaveTo, useProject } from "@/projects/session";
 
 /**
  * Figma-style left navigation: a labelled rail that switches the panel beside it. The organization's
@@ -190,6 +190,7 @@ export function PanelHeader({ title, children }: { title: string; children?: Rea
 
 function NavRail() {
   const items = useItems();
+  const product = useProject((s) => s.project?.product);
   const tab = useStudio((s) => s.leftTab);
   const open = useStudio((s) => s.leftOpen);
   const chatOpen = useStudio((s) => s.chatOpen);
@@ -230,7 +231,7 @@ function NavRail() {
         style={{ top: "calc(var(--h, 0px) / 2)" } as CSSProperties}
         onAnimationEnd={(e) => delete e.currentTarget.dataset.landed}
       />
-      <RailPlaces current="goals" leave={(href) => void leaveTo(href)} />
+      <RailPlaces current="goals" product={product} leave={(href) => void leaveTo(href)} />
       {items.map((i) => {
         const ai = i.tab === "ai";
         const active = ai ? chatOpen : marked === i.tab;

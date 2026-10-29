@@ -56,6 +56,7 @@ export const projectLetter = (type: ProjectType) => (type === "system" ? "s" : t
 /** The organization this window's links point into (set once the window knows it). */
 let linkOrg: string | null = null;
 export const setLinkOrg = (id: string | null) => void (linkOrg = id);
+export const linkOrgNow = () => linkOrg;
 
 /** The organization's home (the projects home when no organization is known yet). */
 export const orgHref = (org: string | null = linkOrg) => (org ? `/o/${org}` : "/");
@@ -72,8 +73,18 @@ export const setupHref = (org: string | null = linkOrg) => `${org ? `/o/${org}` 
 /** The welcome (src/ui/welcome): `new` names another organization; `verify` checks the setup again, changing nothing. */
 export const welcomeHref = (mode?: "new" | "verify") => `/welcome${mode ? `?${mode}=1` : ""}`;
 
-/** One of the organization's places (src/ui/frame/places.ts); Home is the organization's own address. */
+/** One of the organization's places (src/ui/frame/places.ts) in its own space; Home is the organization's own address. */
 export const placeHref = (place: Place, org: string | null = linkOrg) => (place === "home" ? orgHref(org) : `${org ? `/o/${org}` : ""}/${place}`);
+
+/** A place in a space (src/ui/frame/spaces.ts): the organization's (`product` null) is placeHref's, a product's is under /products/<id>. Connections is the organization's in every space. */
+export const spaceHref = (product: string | null, place: Place = "home", org: string | null = linkOrg) =>
+  !product || place === "connections" ? placeHref(place, org) : `${org ? `/o/${org}` : ""}/products/${encodeURIComponent(product)}${place === "home" ? "" : `/${place}`}`;
+
+/** Where you pick a space: the whole organization or one product. */
+export const spacesHref = (org: string | null = linkOrg) => `${org ? `/o/${org}` : ""}/products`;
+
+/** Opening an organization (its menu): the picker once it has products, else its home (the app decides as it boots). */
+export const openOrgHref = (org: string) => `${spacesHref(org)}?open=1`;
 
 /** Where a project opens. */
 export const projectHref = (p: Pick<Project, "id" | "type">, org: string | null = linkOrg) => `${org ? `/o/${org}` : ""}/${projectLetter(p.type)}/${p.id}`;

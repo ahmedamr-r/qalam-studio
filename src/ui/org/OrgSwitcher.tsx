@@ -3,7 +3,7 @@ import clsx from "clsx";
 import { ChevronDown } from "lucide-react";
 import { feedback } from "@/commands/feedback";
 import { listOrgs, openOrgFolder, OrgRequestError, renameOrg, type OrgRef } from "@/org/client";
-import { orgHref, welcomeHref } from "@/projects/model";
+import { openOrgHref, welcomeHref } from "@/projects/model";
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from "../menu";
 import { r } from "../recipes";
 import { promptDialog } from "../surfaces/dialog";
@@ -16,7 +16,7 @@ export function OrgSwitcher({ org, onRenamed }: { org: OrgRef; onRenamed: (o: Or
   const [orgs, setOrgs] = useState<OrgRef[]>([]);
   useEffect(() => void listOrgs().then((j) => setOrgs(j.orgs), () => {}), []);
 
-  const go = (o: OrgRef) => window.location.assign(orgHref(o.id));
+  const go = (o: OrgRef) => window.location.assign(openOrgHref(o.id));
 
   // A new organization goes through the welcome: Qalam AI checked, the name, then telling Qalam AI about it.
   const create = () => window.location.assign(welcomeHref("new"));
