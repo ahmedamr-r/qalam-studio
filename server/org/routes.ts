@@ -11,6 +11,7 @@ import { indexFor } from "../index/registry";
 import { packedPieces, packFor, search, showsUp, type Hit } from "../index/search";
 import { orgGraph } from "@/hub/graph";
 import { filingShape, topicShape, type Topic } from "@/hub/topics";
+import { personShape, whoShape } from "@/hub/people";
 import { chooseFolder, createOrg, currentOrg, listOrgs, openFolder, qalamHome, rememberOrg, storeFor } from "./home";
 import { noticesNow } from "./notices";
 import { reviewOrg } from "./review";
@@ -122,6 +123,20 @@ export function orgRoutes(): Hono<Env> {
     return c.json({ ok: true });
   });
   r.get("/api/org/:org/goals", async (c) => c.json(await c.get("store").listGoals()));
+
+  // People the organization hears from (people/*.md).
+  r.get("/api/org/:org/people", async (c) => c.json(await c.get("store").listPeople()));
+  r.put("/api/org/:org/people/:id", async (c) => {
+    const id = c.req.param("id");
+    const p = ID.test(id) ? personShape(await c.req.json().catch(() => null), id) : null;
+    if (!p) return bad("Not a person");
+    await c.get("store").putPerson(p, { tab: tabOf(c.req.raw.headers) });
+    return c.json({ ok: true });
+  });
+  r.delete("/api/org/:org/people/:id", async (c) => {
+    await c.get("store").removePerson(c.req.param("id"), { tab: tabOf(c.req.raw.headers) });
+    return c.json({ ok: true });
+  });
 
   // Decisions: the log, newest first (a board's or a card's), added to as boards change.
   r.get("/api/org/:org/decisions", (c) => {
@@ -398,7 +413,8 @@ export function orgRoutes(): Hono<Env> {
   r.put("/api/org/:org/sources/:id", async (c) => {
     const s = (await c.req.json()) as SourceRecord;
     if (!s || s.id !== c.req.param("id") || !ID.test(s.id) || typeof s.text !== "string") return bad("Not a source");
-    await c.get("store").putSource(s, { tab: tabOf(c.req.raw.headers) });
+    const who = whoShape(s.who);
+    await c.get("store").putSource({ ...s, who }, { tab: tabOf(c.req.raw.headers) });
     return c.json({ ok: true });
   });
   r.delete("/api/org/:org/sources/:id", async (c) => {

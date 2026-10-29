@@ -23,6 +23,9 @@ import { Menu, MenuItem, MenuSeparator, SubMenu } from "../menu";
 import { r } from "../recipes";
 import { confirmDialog, DialogHost, promptDialog } from "../surfaces/dialog";
 import { ContextCard, ContextEditorHost, editContext } from "../org/ContextEditor";
+import { editPerson, PersonEditorHost } from "../org/PersonEditor";
+import { PeopleList } from "../org/PeopleList";
+import { usePeople } from "@/org/people";
 import { GoalsList, type Goal } from "../org/Goals";
 import { OrgSwitcher } from "../org/OrgSwitcher";
 import { SourcesList } from "../org/SourcesList";
@@ -38,7 +41,8 @@ import { ago } from "../time";
 /**
  * An organization's home: asking what it knows, what needs a look (since the last visit), what it and its products are,
  * every board's goals, the boards, the topic pages (what the organization knows about each need,
- * segment and product), the sources and the decisions made on the boards, by product. Design work
+ * segment and product), the sources, the decisions made on the boards and the people it hears
+ * from, by product. Design work
  * (screens, design systems) waits below, on hold. Everything is saved in the organization's folder
  * on disk.
  */
@@ -60,6 +64,7 @@ export default function Home() {
   const topics = useTopics();
   const notices = useNotices();
   const { products, about, loaded } = useOrgContext();
+  const people = usePeople((s) => s.people);
 
   const refresh = useCallback(() => {
     void listProjects()
@@ -232,11 +237,17 @@ export default function Home() {
                   { value: "topics", label: <span className="whitespace-nowrap px-[4px]">Topics{scopedTopics?.length ? ` · ${scopedTopics.length}` : ""}</span> },
                   { value: "sources", label: <span className="whitespace-nowrap px-[4px]">Sources{scopedSources.length ? ` · ${scopedSources.length}` : ""}</span> },
                   { value: "decisions", label: <span className="whitespace-nowrap px-[4px]">Decisions{scopedDecisions.length ? ` · ${scopedDecisions.length}` : ""}</span> },
+                  { value: "people", label: <span className="whitespace-nowrap px-[4px]">People{people.length ? ` · ${people.length}` : ""}</span> },
                 ]}
               />
               {tab === "boards" && (
                 <Button size="sm" onClick={() => void start("discovery")}>
                   New board
+                </Button>
+              )}
+              {tab === "people" && (
+                <Button size="sm" variant="secondary" onClick={() => void editPerson(null, { product: product?.id ?? null })}>
+                  New person
                 </Button>
               )}
               {tab === "topics" && (
@@ -257,6 +268,8 @@ export default function Home() {
             </div>
             {tab === "topics" ? (
               <TopicsList topics={scopedTopics} sources={scopedSources} products={products} onFiled={refresh} />
+            ) : tab === "people" ? (
+              <PeopleList people={people} sources={sources} product={product?.id ?? null} />
             ) : tab === "decisions" ? (
               <DecisionsList decisions={scopedDecisions} projects={projects ?? []} />
             ) : tab === "sources" ? (
@@ -318,13 +331,14 @@ export default function Home() {
         </main>
       </div>
       <ContextEditorHost />
+      <PersonEditorHost />
       <DialogHost />
     </Tooltip.Provider>
   );
 }
 
-type Tab = "boards" | "topics" | "sources" | "decisions";
-const TABS: Tab[] = ["boards", "topics", "sources", "decisions"];
+type Tab = "boards" | "topics" | "sources" | "decisions" | "people";
+const TABS: Tab[] = ["boards", "topics", "sources", "decisions", "people"];
 const readTab = (): Tab => {
   const t = new URLSearchParams(window.location.search).get("tab");
   return TABS.includes(t as Tab) ? (t as Tab) : "boards";

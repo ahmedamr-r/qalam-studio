@@ -71,6 +71,22 @@ describe("what needs a look", () => {
     expect(runChecks(input({ topics: [t], pieces, indexed: false }))).toEqual([]);
   });
 
+  it("counts the people who raise a need, not the sources: two people in one survey are two voices", () => {
+    const line = { id: "l1", section: "know" as const, text: "l1", by: "qalam" as const, cites: ["hub:quote:a", "hub:quote:b", "hub:quote:c"], from: [], at: ago(3) };
+    const t = topic({ lines: [line] });
+    const pieces = new Map(["a", "b", "c"].map((id) => [`hub:quote:${id}`, { type: "quote", sub: "pain", source: "s1", stage: null, at: ago(5) }]));
+    // One source, no one named: not yet a pattern.
+    expect(runChecks(input({ topics: [t], pieces }))).toEqual([]);
+    const voice = (key: string, name: string, segments: string[]) => ({ key, name, segments, source: "s1", at: ago(5) });
+    const voices = new Map([
+      ["hub:quote:a", voice("person:p1", "Sara", ["Parents"])],
+      ["hub:quote:b", voice("person:p1", "Sara", ["Parents"])],
+      ["hub:quote:c", voice("source:s1:s3", "S3", ["Offices"])],
+    ]);
+    const [n] = runChecks(input({ topics: [t], pieces, voices }));
+    expect(n).toMatchObject({ key: "pattern:tp1:2", kind: "pattern", why: "3 quotes from 2 voices in 2 segments (1 source) on its topic page; no card on a board rests on them." });
+  });
+
   it("finds the same need on two boards, unless the team linked them", () => {
     const a = board("b1", "Weekly reorders", { id: "o1", kind: "outcome", title: "More reorders", stage: "active", children: [{ id: "n1", kind: "opportunity", title: "Rebuilding my basket takes too long" }] });
     const b = board("b2", "Office pantry", { id: "o2", kind: "outcome", title: "Offices reorder", stage: "active", children: [{ id: "n8", kind: "opportunity", title: "Copying old orders by hand" }] }, "business");

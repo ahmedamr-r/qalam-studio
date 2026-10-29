@@ -5,6 +5,7 @@ import type { OstCard } from "@/discovery/types";
 import { factHash } from "@/knowledge/refs";
 import { cardRef } from "./pieces";
 import { isEvidence, sameTopic, type Topic } from "./topics";
+import { tally, tallyText, type Voice } from "./people";
 
 /**
  * What needs a look (pure): checks code runs over the organization's boards, decisions and topic
@@ -88,6 +89,8 @@ export interface CheckInput {
   linked: Set<string>;
   /** Proposals waiting on a board from material added to the organization (a capture, the inbox). */
   placed?: { board: string; sourceId: string; title: string; count: number; at: number }[];
+  /** Who said each quote (by its piece ref): people and segments, so voices are counted, not quotes. */
+  voices?: ReadonlyMap<string, Voice>;
 }
 
 type Node = { parentId?: string | null; meta?: { ost?: OstCard } };
@@ -150,11 +153,13 @@ export function runChecks(x: CheckInput): Notice[] {
   if (x.indexed) {
     for (const t of x.topics) {
       const shown = x.shows.get(t.id) ?? [];
-      // A need customers keep raising, on no board: its known lines rest on two sources or more.
+      // A need customers keep raising, on no board: its known lines rest on two voices or more
+      // (people, or unnamed voices of different sources).
       if (t.kind === "need" && !shown.length) {
         const known = t.lines.filter((l) => l.section === "know");
         const quotes = new Set<string>();
         const sources = new Set<string>();
+        const voices: Voice[] = [];
         let newest = 0;
         for (const l of known)
           for (const ref of l.cites) {
@@ -163,13 +168,17 @@ export function runChecks(x: CheckInput): Notice[] {
             quotes.add(ref);
             sources.add(p.source ?? ref);
             newest = Math.max(newest, l.at, p.at);
+            const v = x.voices?.get(ref);
+            voices.push(v ?? { key: `source:${p.source ?? ref}`, segments: [], source: p.source ?? ref, at: p.at });
           }
-        if (sources.size >= 2)
+        const who = tally(voices);
+        const strength = Math.max(sources.size, who.voices);
+        if (strength >= 2)
           out.push({
-            key: `pattern:${t.id}:${tier(sources.size)}`,
+            key: `pattern:${t.id}:${tier(strength)}`,
             kind: "pattern",
             title: `Customers keep raising ${q(t.title)}, and no board has it`,
-            why: `${plural(quotes.size, "quote")} from ${plural(sources.size, "source")} on its topic page; no card on a board rests on them.`,
+            why: `${plural(quotes.size, "quote")} from ${x.voices ? tallyText(who) : plural(sources.size, "source")} on its topic page; no card on a board rests on them.`,
             at: newest || t.updatedAt,
             topic: t.id,
             refs: [...quotes],

@@ -1,4 +1,5 @@
 import { pairKey, runChecks, type CheckBoard, type CheckInput, type Notice, type ShownOn } from "@/hub/checks";
+import { voicesByQuote } from "@/hub/people";
 import { indexFor } from "../index/registry";
 import { showsUp } from "../index/search";
 import type { OrgStore } from "./store";
@@ -34,7 +35,8 @@ export async function noticesNow(store: OrgStore, now = Date.now()): Promise<Not
     const s = sources.find((x) => x.id === p.sourceId);
     return s ? [{ board: p.board, sourceId: s.id, title: s.title, count: p.proposals.length, at: s.addedAt }] : [];
   });
-  const input: CheckInput = { now, boards, decisions: store.listDecisions(), topics, indexed: false, shows: new Map(), pieces: new Map(), linked: new Set(relations.map((r) => pairKey(r.a, r.b))), placed };
+  const voices = voicesByQuote(sources, await store.listPeople());
+  const input: CheckInput = { now, boards, decisions: store.listDecisions(), topics, indexed: false, shows: new Map(), pieces: new Map(), linked: new Set(relations.map((r) => pairKey(r.a, r.b))), placed, voices };
   try {
     const ix = indexFor(store);
     // Caught up with the folder first: a page's pieces not indexed yet would look gone.

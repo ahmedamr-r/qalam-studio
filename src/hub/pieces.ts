@@ -8,6 +8,7 @@ import { factHash } from "@/knowledge/refs";
 import { goalText, type ContextFields } from "@/org/context-md";
 import type { Project } from "@/projects/model";
 import { SECTION_HEADING, type Topic, type TopicSection } from "./topics";
+import { saidAt, voiceOf, type Person } from "./people";
 
 /**
  * The organization's knowledge as pieces: small and typed, one fact each (a customer's words, a
@@ -87,6 +88,8 @@ export interface Built {
 /** Names the context lines use. */
 export interface Names {
   product: (id: string) => string | undefined;
+  /** The people the organization hears from, by id (who said a quote). */
+  people?: ReadonlyMap<string, Person>;
 }
 
 export const cardRef = (board: string, card: string) => `hub:card:${board}:${card}`;
@@ -109,11 +112,16 @@ export function sourcePieces(s: SourceRecord, n: Names): Built {
   const edges: HubEdge[] = [];
   const src = sourceRef(s.id);
   const product = s.product ?? null;
-  const where = `${q(s.title)}${date(s.addedAt) ? `, ${date(s.addedAt)}` : ""}`;
+  const said = saidAt(s);
+  const where = `${q(s.title)}${date(said) ? `, ${date(said)}` : ""}`;
   for (const quote of s.quotes) {
     const ref = quotePiece(quote.id);
     const dump = s.kind === "dump";
-    const what = dump ? `${quote.role ? `${/^[aeiou]/i.test(quote.role) ? "An" : "A"} ${quote.role}` : "A piece"} from the brain dump` : `${QUOTE_KIND_LABEL[quote.kind] ?? "A quote"}${quote.speaker ? ` ${quote.speaker} said` : " a customer said"}`;
+    // Who said it, as the organization knows them (a person and their segment), or as the source names them.
+    const voice = dump ? null : voiceOf(s, quote, n.people ?? new Map());
+    const who = voice?.name ?? quote.speaker;
+    const seg = voice?.segments.length ? ` (${voice.segments.join(", ")})` : "";
+    const what = dump ? `${quote.role ? `${/^[aeiou]/i.test(quote.role) ? "An" : "A"} ${quote.role}` : "A piece"} from the brain dump` : `${QUOTE_KIND_LABEL[quote.kind] ?? "A quote"}${who ? ` ${who}${seg} said` : ` a customer${seg} said`}`;
     pieces.push({
       ref,
       type: "quote",
@@ -125,13 +133,13 @@ export function sourcePieces(s: SourceRecord, n: Names): Built {
       product,
       source: s.id,
       ...(quote.speaker ? { speaker: quote.speaker } : {}),
-      at: quote.at || s.addedAt,
+      at: s.who?.saidAt ?? (quote.at || s.addedAt),
     });
     edges.push({ from: ref, to: src, kind: "in" });
   }
   for (const need of s.needs) {
     const ref = `hub:need:${s.id}:${need.id}`;
-    pieces.push({ ref, type: "need", text: need.title, line: join(`A need seen in ${where}`, forProduct(product, n)), title: s.title, product, source: s.id, at: s.addedAt });
+    pieces.push({ ref, type: "need", text: need.title, line: join(`A need seen in ${where}`, forProduct(product, n)), title: s.title, product, source: s.id, at: said });
     edges.push({ from: ref, to: src, kind: "in" });
     for (const id of need.quoteIds) edges.push({ from: ref, to: quotePiece(id), kind: "shows" });
   }

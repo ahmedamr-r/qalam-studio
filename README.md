@@ -128,6 +128,7 @@ All settings are optional and go in `.env.local`. `.env.example` lists them with
   - Qalam AI picks out what customers said, files it into the topic pages, and proposes where it fits on your boards.
   - Each board finds its proposals waiting, and you accept or discard them there as with any other.
   - A file Qalam can't read moves to `inbox/not-read`, with a note saying why. Nothing is deleted.
+- **People.** Say who said what: on a source, map each speaker to a person (or say all of it is from one person, or one segment) and when it was said. People are files in `people/`, each with the segments they're in. Qalam then counts the people behind a need, not the quotes, and tells segments apart; the home's **People** tab shows who you hear from and when you last did.
 - **Ask the organization** in plain words, at the top of its home.
   - **How it looks:** with Claude Code, Qalam AI looks through the organization's folder on its own, using its search (words, meaning and links), its topic pages, sources, boards and decisions. It only reads, and only that folder; nothing runs code and nothing goes to the web. With an API key it answers from one call, with what search finds for the question.
   - **What you get back:** each claim comes with the exact words that show it, found word for word by code where Qalam AI says they are, with a link there. What it can't back is marked as such, and what nobody knows yet can go on a topic page as an open question.

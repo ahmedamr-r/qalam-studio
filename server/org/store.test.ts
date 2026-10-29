@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { newGoal } from "@/org/context-md";
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -150,6 +150,31 @@ describe("sources shared by boards", () => {
     const { boards: _b, product: _p, ...older } = (await store.getSource("s1abcdefgh"))!;
     await store.putSource({ ...older, title: "Renamed" });
     expect(await store.getSource("s1abcdefgh")).toMatchObject({ title: "Renamed", boards: [board.id, "b2abcdefgh"], product: "pGrocery1" });
+  });
+});
+
+describe("people", () => {
+  it("keeps each person as a Markdown file, and a source's who with it", async () => {
+    await store.putPerson({ id: "pSara", name: "Sara Ahmed", segments: ["Parents"], role: "Mother of two" });
+    expect(await readdir(path.join(dir, "people"))).toEqual(["sara-ahmed.md"]);
+    expect(events.at(-1)).toMatchObject({ kind: "person", id: "pSara" });
+    await store.putProject(board);
+    await store.putSource({ ...source("s1abcdefgh", board.id), who: { person: "pSara", saidAt: Date.UTC(2026, 9, 1) } });
+    const again = await OrgStore.open(dir);
+    expect(await again.listPeople()).toEqual([{ id: "pSara", name: "Sara Ahmed", segments: ["Parents"], role: "Mother of two" }]);
+    expect((await again.getSource("s1abcdefgh"))?.who).toEqual({ person: "pSara", saidAt: Date.UTC(2026, 9, 1) });
+    await again.removePerson("pSara");
+    expect(await again.listPeople()).toEqual([]);
+    expect(await readdir(path.join(dir, "people"))).toEqual([]);
+    again.dispose();
+  });
+
+  it("picks up a person written by hand", async () => {
+    await mkdir(path.join(dir, "people"), { recursive: true });
+    await writeFile(path.join(dir, "people", "omar.md"), "---\nid: pOmar\nname: Omar\nsegments: [\"Offices\"]\n---\n");
+    await store.reload("people/omar.md");
+    expect(events.at(-1)).toMatchObject({ kind: "person", id: "pOmar" });
+    expect((await store.listPeople()).map((p) => p.name)).toEqual(["Omar"]);
   });
 });
 

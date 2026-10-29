@@ -14,6 +14,8 @@ import { pairKey, type Notice } from "@/hub/checks";
 import { applyFiling, type Applied, type Filing, type Topic, type TopicInfo } from "@/hub/topics";
 import { factHash } from "@/knowledge/refs";
 import { aboutFromMarkdown, aboutToMarkdown, emptyContext, productFromMarkdown, productToMarkdown, type ContextFields, type Product } from "@/org/context-md";
+import { personFromMarkdown, personToMarkdown } from "@/org/people-md";
+import type { Person } from "@/hub/people";
 import type { Project, ProjectType } from "@/projects/model";
 import { assetExt, assetType, decodeProject, decodeSource, docVersion, encodeProject, encodeSource, isLocalField, recordVersion, splitLocal, type LocalFields } from "./codecs";
 import { assetHash, atomicWrite, contentHash, inside, locked, readJson, slugify, stableStringify, uniqueName } from "./fsx";
@@ -39,6 +41,7 @@ export type OrgEvent = { tab?: string } & (
   | { kind: "chat"; id: string; removed?: boolean }
   | { kind: "naming" }
   | { kind: "product"; id: string; removed?: boolean }
+  | { kind: "person"; id: string; removed?: boolean }
   | { kind: "about" }
   | { kind: "org" }
   | { kind: "decision"; ids: string[]; boards: string[] }
@@ -131,6 +134,8 @@ export class OrgStore {
   private chats = new Map<string, string>();
   private assets = new Map<string, string>();
   private products = new Map<string, string>();
+  /** People the organization hears from (people/*.md), by id. */
+  private people = new Map<string, string>();
   /** The decision log: each month file's decisions. */
   private decisions = new Map<string, Decision[]>();
   /** Topic pages (hub/topics/*.md), by id. */
@@ -215,6 +220,7 @@ export class OrgStore {
     for (const md of await this.files("sources", ".md")) await this.indexSource(md);
     for (const file of await this.files("design-systems", ".json")) await this.indexSystem(file);
     for (const file of await this.files("products", ".md")) await this.indexProduct(file);
+    for (const file of await this.files("people", ".md")) await this.indexPerson(file);
     for (const file of await this.files("decisions", ".md")) await this.indexDecisions(file);
     for (const file of await this.files("hub/topics", ".md")) await this.indexTopic(file);
     for (const file of await this.files("assets", "")) this.assets.set(path.basename(file).replace(/\.[^.]+$/, ""), file);
@@ -269,6 +275,17 @@ export class OrgStore {
     try {
       const p = productFromMarkdown(await readFile(file, "utf8"));
       if (p) this.products.set(p.id, file);
+      return p;
+    } catch {
+      return null;
+    }
+  }
+
+  private async indexPerson(file: string): Promise<Person | null> {
+    try {
+      const p = personFromMarkdown(await readFile(file, "utf8"));
+      // Two files with the same id (a copied file): the first one keeps it.
+      if (p && (!this.people.has(p.id) || this.people.get(p.id) === file)) this.people.set(p.id, file);
       return p;
     } catch {
       return null;
@@ -723,6 +740,46 @@ export class OrgStore {
     this.emit({ kind: "product", id, removed: true, tab: opts.tab });
   }
 
+  // -------------------------------------------------------------------------
+  // People the organization hears from (people/<slug>.md): who is behind what customers said.
+
+  async listPeople(): Promise<Person[]> {
+    const out: Person[] = [];
+    for (const [id, file] of this.people) {
+      try {
+        const p = personFromMarkdown(await readFile(file, "utf8"));
+        if (p?.id === id) out.push(p);
+      } catch {
+        // removed meanwhile
+      }
+    }
+    return out.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  putPerson(p: Person, opts: { tab?: string } = {}): Promise<void> {
+    return locked(`person:${p.id}`, async () => {
+      let file = this.people.get(p.id);
+      if (!file) {
+        const dir = this.abs("people");
+        const used = new Set(this.people.values());
+        file = path.join(dir, uniqueName(slugify(p.name, "person"), ".md", (n) => used.has(path.join(dir, n))));
+      }
+      await this.write(file, personToMarkdown(p));
+      this.people.set(p.id, file);
+      this.emit({ kind: "person", id: p.id, tab: opts.tab });
+    });
+  }
+
+  /** Forget a person: sources that named them keep their words, as an unnamed voice. */
+  async removePerson(id: string, opts: { tab?: string } = {}): Promise<void> {
+    await locked(`person:${id}`, async () => {
+      const file = this.people.get(id);
+      if (file) await rm(file, { force: true });
+      this.people.delete(id);
+    });
+    this.emit({ kind: "person", id, removed: true, tab: opts.tab });
+  }
+
   /** Every board's outcomes (and sub-outcomes), for the organization's goals. */
   async listGoals(): Promise<Goal[]> {
     const out: Goal[] = [];
@@ -1115,6 +1172,16 @@ export class OrgStore {
         if (gone) {
           this.products.delete(gone[0]);
           this.emit({ kind: "product", id: gone[0], removed: true });
+        }
+      }
+    } else if (parts[0] === "people" && parts.length === 2 && rel.endsWith(".md")) {
+      const p = bytes ? await this.indexPerson(file) : null;
+      if (p) this.emit({ kind: "person", id: p.id });
+      else {
+        const gone = [...this.people].find(([, f]) => f === file);
+        if (gone) {
+          this.people.delete(gone[0]);
+          this.emit({ kind: "person", id: gone[0], removed: true });
         }
       }
     } else if (parts[0] === "decisions" && parts.length === 2 && rel.endsWith(".md")) {
