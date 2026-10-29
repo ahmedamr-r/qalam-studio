@@ -7,11 +7,12 @@ import Speech
  * Qalam's voice helper. A command in, one JSON object per line out (server/voice reads them):
  *   check                            what this Mac has: Apple's engine and its English pack, the microphone
  *   install [--engine apple]         macOS fetches Apple's English pack: progress lines, then done
- *   listen [--engine apple|parakeet] [--models dir] [--file f]
- *                                    ready, then level and partial lines (everything heard so far), then
+ *   listen [--engine apple|parakeet] [--models dir] [--file f] [--feed f]
+ *                                    loading (while a model gets ready), ready, then level and partial lines (everything heard so far), then
  *                                    final; "stop" on stdin finishes the last words, "cancel" or the end of
  *                                    stdin drops them. Parakeet reads its model from --models (the core
- *                                    downloads it, only when asked). --file reads a recording instead (for tests).
+ *                                    downloads it, only when asked). --file reads a recording instead, --feed
+ *                                    plays one into the live path at speaking pace (both for tests).
  * Errors are {"t":"error","code","message"} and exit 1. Audio never leaves this Mac.
  */
 
@@ -110,7 +111,10 @@ func level(_ b: AVAudioPCMBuffer) -> Double {
 @available(macOS 26, *)
 func listenApple(file: String?) async throws {
   guard let transcriber = await appleTranscriber() else { fail("unavailable", "Apple's speech engine isn't on this Mac.") }
-  if await AssetInventory.status(forModules: [transcriber]) != .installed { try await installApple(transcriber) }
+  if await AssetInventory.status(forModules: [transcriber]) != .installed {
+    emit(["t": "loading"])
+    try await installApple(transcriber)
+  }
   let analyzer = SpeechAnalyzer(modules: [transcriber])
 
   // Everything heard so far: what's settled, then what's still being worked out.
@@ -217,13 +221,33 @@ func parakeet() async -> AsrManager {
   }
 }
 
-/// Quiet at the end: the last 0.6 s are well below speech.
+/// Loudness of each 20 ms of a stretch.
+func frameLevels(_ s: [Float]) -> [Float] {
+  stride(from: 0, to: s.count - 319, by: 320).map { i in
+    var sum: Float = 0
+    for x in s[i..<(i + 320)] { sum += x * x }
+    return sqrt(sum / 320)
+  }
+}
+
+/// Where someone speaks in a stretch, with a little air around it; nil when it's only room noise
+/// (Parakeet makes words up from silence). Speech is well above the stretch's quietest part.
+func speechSpan(_ s: [Float]) -> Range<Int>? {
+  let levels = frameLevels(s)
+  guard levels.count >= 25 else { return nil }
+  let floor = levels.sorted()[levels.count / 5]
+  let loud = max(0.003, floor * 4)
+  let voiced = levels.indices.filter { levels[$0] > loud }
+  guard voiced.count >= 15, let first = voiced.first, let last = voiced.last else { return nil }
+  return max(0, (first - 10) * 320)..<min(s.count, (last + 16) * 320)
+}
+
+/// Quiet at the end: the last 0.6 s are near the stretch's quietest.
 func quietTail(_ s: [Float]) -> Bool {
-  let n = 9600
-  guard s.count > n else { return false }
-  var sum: Float = 0
-  for x in s[(s.count - n)...] { sum += x * x }
-  return sqrt(sum / Float(n)) < 0.008
+  let levels = frameLevels(s)
+  guard levels.count > 60 else { return false }
+  let floor = levels.sorted()[levels.count / 5]
+  return levels.suffix(30).allSatisfy { $0 < max(0.003, floor * 2.5) }
 }
 
 func joined(_ a: String, _ b: String) -> String {
@@ -232,6 +256,8 @@ func joined(_ a: String, _ b: String) -> String {
 }
 
 func listenParakeet(file: String?) async throws {
+  // Loading takes a second; the first time on a Mac, CoreML prepares the model for its chip (about 40 s).
+  emit(["t": "loading"])
   let asr = await parakeet()
   func words(_ samples: [Float]) async throws -> String {
     var state = TdtDecoderState.make(decoderLayers: await asr.decoderLayerCount)
@@ -246,6 +272,24 @@ func listenParakeet(file: String?) async throws {
     return
   }
 
+  let heard = Heard()
+  // --feed plays a recording into the live path at the pace it was spoken (for tests: no microphone).
+  if let feed = option("--feed") {
+    let samples = try sixteenK(URL(fileURLWithPath: feed))
+    emit(["t": "ready"])
+    Task.detached {
+      var i = 0
+      while i < samples.count {
+        let n = min(1600, samples.count - i)
+        samples[i..<(i + n)].withUnsafeBufferPointer { heard.add($0) }
+        i += n
+        try? await Task.sleep(nanoseconds: 100_000_000)
+      }
+    }
+    try await transcribeLive(heard, words: words, stopMic: {})
+    return
+  }
+
   guard await AVCaptureDevice.requestAccess(for: .audio) else {
     fail("mic-denied", "Qalam can't use the microphone. Allow it in System Settings → Privacy & Security → Microphone.")
   }
@@ -253,7 +297,6 @@ func listenParakeet(file: String?) async throws {
   let node = engine.inputNode
   let natural = node.outputFormat(forBus: 0)
   guard natural.sampleRate > 0, let converter = AVAudioConverter(from: natural, to: sixteen) else { fail("no-mic", "No microphone is set up on this Mac.") }
-  let heard = Heard()
   var lastLevel = Date.distantPast
   node.installTap(onBus: 0, bufferSize: 4096, format: natural) { buffer, _ in
     if Date().timeIntervalSince(lastLevel) > 0.08 {
@@ -278,7 +321,37 @@ func listenParakeet(file: String?) async throws {
   engine.prepare()
   try engine.start()
   emit(["t": "ready"])
+  try await transcribeLive(heard, words: words) {
+    engine.stop()
+    node.removeTap(onBus: 0)
+  }
+}
 
+/// A recording as Parakeet hears it: 16 kHz, one channel.
+func sixteenK(_ url: URL) throws -> [Float] {
+  let file = try AVAudioFile(forReading: url)
+  guard let input = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length)),
+    let converter = AVAudioConverter(from: file.processingFormat, to: sixteen),
+    let out = AVAudioPCMBuffer(pcmFormat: sixteen, frameCapacity: AVAudioFrameCount(Double(file.length) * 16000 / file.processingFormat.sampleRate) + 4096)
+  else { fail("format", "Couldn't read the recording.") }
+  try file.read(into: input)
+  var given = false
+  var error: NSError?
+  converter.convert(to: out, error: &error) { _, status in
+    if given {
+      status.pointee = .endOfStream
+      return nil
+    }
+    given = true
+    status.pointee = .haveData
+    return input
+  }
+  if let error { throw error }
+  return Array(UnsafeBufferPointer(start: out.floatChannelData![0], count: Int(out.frameLength)))
+}
+
+/// Text as it's spoken, from what `heard` collects, until stop (or cancel) comes in.
+func transcribeLive(_ heard: Heard, words: @escaping ([Float]) async throws -> String, stopMic: () -> Void) async throws {
   // Stretches of speech, cut at a pause (or at 12 s, inside the model's window): what's settled,
   // then the stretch going on, read again every second as it grows.
   var settled = ""
@@ -289,8 +362,9 @@ func listenParakeet(file: String?) async throws {
       if Task.isCancelled { break }
       let stretch = heard.since(cut)
       if stretch.count < 8000 { continue }
-      guard let text = try? await words(stretch) else { continue }
-      emit(["t": "partial", "text": joined(settled, text)])
+      let span = speechSpan(stretch)
+      let text = span == nil ? "" : ((try? await words(Array(stretch[span!]))) ?? "")
+      if !text.isEmpty { emit(["t": "partial", "text": joined(settled, text)]) }
       if (stretch.count > 48000 && quietTail(stretch)) || stretch.count > 192_000 {
         settled = joined(settled, text)
         cut += stretch.count
@@ -299,13 +373,13 @@ func listenParakeet(file: String?) async throws {
   }
 
   let word = await untilDone()
-  engine.stop()
-  node.removeTap(onBus: 0)
+  stopMic()
   reader.cancel()
   _ = await reader.value
   if word == "stop" {
     let rest = heard.since(cut)
-    let text = rest.count >= 4800 ? ((try? await words(rest)) ?? "") : ""
+    let span = speechSpan(rest)
+    let text = span == nil ? "" : ((try? await words(Array(rest[span!]))) ?? "")
     emit(["t": "final", "text": joined(settled, text)])
   } else {
     emit(["t": "cancelled"])

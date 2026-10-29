@@ -41,6 +41,7 @@ export const voiceOffer = (f: VoiceFacts): "apple" | "parakeet" | "none" => (!f.
 
 /** A line from the helper. */
 export type VoiceLine =
+  | { t: "loading" }
   | { t: "ready" }
   | { t: "level"; v: number }
   | { t: "partial"; text: string }
@@ -65,6 +66,7 @@ export function parseVoiceLine(line: string): VoiceLine | null {
   const num = (x: unknown) => (typeof x === "number" && Number.isFinite(x) ? Math.min(1, Math.max(0, x)) : 0);
   const str = (x: unknown) => (typeof x === "string" ? x : "");
   switch (o.t) {
+    case "loading":
     case "ready":
     case "cancelled":
     case "done":

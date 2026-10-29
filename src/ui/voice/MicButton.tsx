@@ -15,21 +15,21 @@ import { insertAtCursor, selectionOf } from "./insert";
 
 type Phase = "idle" | "starting" | "listening" | "finishing";
 
-const useDictation = create<{
-  owner: symbol | null;
-  phase: Phase;
-  partial: string;
-  level: number;
-  error: { owner: symbol; text: string } | null;
-}>(() => ({ owner: null, phase: "idle", partial: "", level: 0, error: null }));
+const useDictation = create<{ owner: symbol | null; phase: Phase; loading: boolean; partial: string; level: number; error: { owner: symbol; text: string } | null }>(() => ({ owner: null, phase: "idle", loading: false, partial: "", level: 0, error: null }));
+
+/** How long the mic may take to start: the first time on a Mac, Parakeet's model is prepared for its chip (about 40 s). */
+const START_LIMIT = 120_000;
 
 let ctrl: AbortController | null = null;
 let deliver: ((said: string) => void) | null = null;
+let watchdog: ReturnType<typeof setTimeout> | null = null;
 
 function end() {
   ctrl = null;
   deliver = null;
-  useDictation.setState({ owner: null, phase: "idle", partial: "", level: 0 });
+  if (watchdog) clearTimeout(watchdog);
+  watchdog = null;
+  useDictation.setState({ owner: null, phase: "idle", loading: false, partial: "", level: 0 });
 }
 
 function startDictation(owner: symbol, onText: (said: string) => void) {
@@ -37,21 +37,21 @@ function startDictation(owner: symbol, onText: (said: string) => void) {
   const c = new AbortController();
   ctrl = c;
   deliver = onText;
-  useDictation.setState({
-    owner,
-    phase: "starting",
-    partial: "",
-    level: 0,
-    error: null,
-  });
+  useDictation.setState({ owner, phase: "starting", loading: false, partial: "", level: 0, error: null });
   const failed = (text: string) => {
+    c.abort();
     end();
     useDictation.setState({ error: { owner, text } });
   };
+  // A mic that never starts says so, instead of waiting for ever.
+  watchdog = setTimeout(() => ctrl === c && useDictation.getState().phase === "starting" && failed("The mic didn't start. Try again; if it happens again, Connections → Voice can switch engines."), START_LIMIT);
   void listenVoice(c.signal, (l) => {
     if (ctrl !== c) return;
-    if (l.t === "ready") useDictation.setState({ phase: "listening" });
-    else if (l.t === "level") useDictation.setState({ level: l.v });
+    if (l.t === "loading") useDictation.setState({ loading: true });
+    else if (l.t === "ready") {
+      if (watchdog) clearTimeout(watchdog);
+      useDictation.setState({ phase: "listening", loading: false });
+    } else if (l.t === "level") useDictation.setState({ level: l.v });
     else if (l.t === "partial") useDictation.setState({ partial: l.text });
     else if (l.t === "final") {
       const put = deliver;
@@ -78,10 +78,7 @@ export function cancelDictation() {
 }
 
 /** The mics on screen, by the box each writes into (for the Talk shortcut). */
-const mics = new Set<{
-  field: RefObject<HTMLElement | null>;
-  toggle: () => void;
-}>();
+const mics = new Set<{ field: RefObject<HTMLElement | null>; toggle: () => void }>();
 
 /** Talk into the focused box, or finish: false when it has no mic. */
 export function toggleDictationHere(): boolean {
@@ -100,10 +97,7 @@ export function speechInto(ref: RefObject<HTMLInputElement | HTMLTextAreaElement
   return (said: string) => {
     const el = ref.current;
     if (!el) return;
-    const { value, caret } = insertAtCursor(el.value, selectionOf(el), said, {
-      oneLine: el.tagName === "INPUT",
-      max: o.max ?? (el.maxLength > 0 ? el.maxLength : undefined),
-    });
+    const { value, caret } = insertAtCursor(el.value, selectionOf(el), said, { oneLine: el.tagName === "INPUT", max: o.max ?? (el.maxLength > 0 ? el.maxLength : undefined) });
     set(value);
     requestAnimationFrame(() => {
       el.focus();
@@ -113,6 +107,11 @@ export function speechInto(ref: RefObject<HTMLInputElement | HTMLTextAreaElement
 }
 
 const ICON = { absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
+
+/** While it starts: the mic, or the engine getting ready (a model to load, or Apple's English pack to fetch). */
+function startingWords(loading: boolean) {
+  return loading ? "Getting the speech engine ready (the first time takes about a minute)…" : "Starting the mic…";
+}
 
 export function MicButton({ onText, field, size = "sm", className }: { onText: (said: string) => void; field?: RefObject<HTMLElement | null>; size?: "sm" | "md"; className?: string }) {
   const use = useVoice((v) => v.view?.use ?? null);
@@ -170,31 +169,16 @@ export function MicButton({ onText, field, size = "sm", className }: { onText: (
           onClick={() => toggle.current()}
           className={clsx(size === "sm" ? r.iconButtonSm : r.iconButton, "relative", on && "text-ai", className)}
         >
-          {on && (
-            <span
-              aria-hidden
-              className="absolute inset-[2px] rounded-full bg-ai/15 transition-transform duration-quick"
-              style={{
-                transform: `scale(${(0.7 + d.level * 0.6).toFixed(2)})`,
-              }}
-            />
-          )}
+          {on && <span aria-hidden className="absolute inset-[2px] rounded-full bg-ai/15 transition-transform duration-quick" style={{ transform: `scale(${(0.7 + d.level * 0.6).toFixed(2)})` }} />}
           <Mic size={size === "sm" ? 14 : 16} {...ICON} className="relative" />
         </button>
       </Tooltip.Trigger>
       <Tooltip.Portal>
-        <Tooltip.Content
-          side="top"
-          align="end"
-          sideOffset={6}
-          collisionPadding={8}
-          className={clsx(r.tooltip, "h-auto min-h-[26px] max-w-[320px] py-[4px] pr-[8px]")}
-          onPointerDownOutside={(e) => on && e.preventDefault()}
-        >
+        <Tooltip.Content side="top" align="end" sideOffset={6} collisionPadding={8} className={clsx(r.tooltip, "h-auto min-h-[26px] max-w-[320px] py-[4px] pr-[8px]")} onPointerDownOutside={(e) => on && e.preventDefault()}>
           {on ? (
             <span className="flex min-w-0 flex-col gap-[2px] py-[2px]">
               <span className={clsx("text-fg-muted", !d.partial && "q-shimmer-text")} dir="auto">
-                {d.partial || (d.phase === "starting" ? "Starting the mic…" : d.phase === "finishing" ? "Finishing…" : "Listening…")}
+                {d.partial || (d.phase === "starting" ? startingWords(d.loading) : d.phase === "finishing" ? "Finishing…" : "Listening…")}
               </span>
               <span className="text-micro font-normal text-fg-subtle">Click the mic to put it in · Esc to drop it</span>
             </span>
@@ -213,19 +197,7 @@ export function MicButton({ onText, field, size = "sm", className }: { onText: (
  * A text box with the mic in its corner (bottom right for a box of lines, the middle of the right
  * edge for one line); the box makes room for it only when this Mac has a mic on.
  */
-export function Dictated({
-  field,
-  set,
-  children,
-  className,
-  max,
-}: {
-  field: RefObject<HTMLInputElement | HTMLTextAreaElement | null>;
-  set: (value: string) => void;
-  children: ReactNode;
-  className?: string;
-  max?: number;
-}) {
+export function Dictated({ field, set, children, className, max }: { field: RefObject<HTMLInputElement | HTMLTextAreaElement | null>; set: (value: string) => void; children: ReactNode; className?: string; max?: number }) {
   const use = useVoice((v) => v.view?.use ?? null);
   const [line, setLine] = useState(false);
   useEffect(() => setLine(field.current?.tagName === "INPUT"), [field]);

@@ -34,9 +34,10 @@ function run(args: string[]): ChildProcessWithoutNullStreams | null {
   return spawn(bin, args, { stdio: ["pipe", "pipe", "pipe"], env: process.env });
 }
 
-/** Each line the helper writes, as it writes it; resolves when it exits. */
+/** Each line the helper writes, as it writes it; resolves when it exits. What goes wrong goes to the core's log too. */
 function lines(child: ChildProcessWithoutNullStreams, on: (l: VoiceLine) => void): Promise<number | null> {
   let rest = "";
+  let said = "";
   child.stdout.setEncoding("utf8");
   child.stdout.on("data", (chunk: string) => {
     rest += chunk;
@@ -44,13 +45,22 @@ function lines(child: ChildProcessWithoutNullStreams, on: (l: VoiceLine) => void
     while ((i = rest.indexOf("\n")) >= 0) {
       const l = parseVoiceLine(rest.slice(0, i));
       rest = rest.slice(i + 1);
+      if (l?.t === "error") console.warn(`[voice] ${child.spawnargs.slice(1, 4).join(" ")}: ${l.code}: ${l.message}`);
       if (l) on(l);
     }
   });
-  child.stderr.resume();
+  // What the helper and its frameworks print, kept short, for when it stops without a word.
+  child.stderr.setEncoding("utf8");
+  child.stderr.on("data", (chunk: string) => (said = (said + chunk).slice(-2000)));
   return new Promise((done) => {
-    child.on("error", () => done(null));
-    child.on("close", (code) => done(code));
+    child.on("error", (e) => {
+      console.warn(`[voice] couldn't run the helper: ${e.message}`);
+      done(null);
+    });
+    child.on("close", (code, signal) => {
+      if (code !== 0 && signal !== "SIGTERM") console.warn(`[voice] ${child.spawnargs.slice(1, 4).join(" ")} ended (${code ?? signal})${said.trim() ? `: ${said.trim()}` : ""}`);
+      done(code);
+    });
   });
 }
 

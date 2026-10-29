@@ -26,6 +26,7 @@ describe("which engine the mic uses", () => {
 describe("the helper's lines", () => {
   it("reads what it knows and nothing else", () => {
     expect(parseVoiceLine('{"t":"partial","text":"Boat owners"}')).toEqual({ t: "partial", text: "Boat owners" });
+    expect(parseVoiceLine('{"t":"loading"}')).toEqual({ t: "loading" });
     expect(parseVoiceLine('{"t":"level","v":3}')).toEqual({ t: "level", v: 1 });
     expect(parseVoiceLine('{"t":"check","apple":{"available":true},"mic":"maybe"}')).toEqual({ t: "check", apple: { available: true, ready: false }, mic: "undetermined" });
     expect(parseVoiceLine('{"t":"error","code":"mic-denied"}')).toMatchObject({ t: "error", code: "mic-denied", message: "The voice helper stopped." });
