@@ -134,6 +134,7 @@ All settings are optional and go in `.env.local`. `.env.example` lists them with
   - **What you get back:** each claim comes with the exact words that show it, found word for word by code where Qalam AI says they are, with a link there. What it can't back is marked as such, and what nobody knows yet can go on a topic page as an open question.
 - **Needs a look.** The home starts with what needs your attention, newest first, marking what's new since your last visit. Code checks your boards, decisions and topic pages as they change, at no AI cost:
   - something customers said against what the team believes;
+  - a target need resting on thin evidence (one voice, stale words, or only the team's belief);
   - a need customers keep raising that no board has;
   - the same need on two boards (link them);
   - a parked or dropped card that new evidence backs;
@@ -153,6 +154,7 @@ All settings are optional and go in `.env.local`. `.env.example` lists them with
   - Qalam AI picks out what customers said. Code keeps a quote only if it finds it word for word in the source.
   - In an interview's transcript, only the participants are quoted, never the interviewer.
 - **Assumed:** an opportunity that Qalam AI drafted with no evidence behind it is marked **Assumed** until someone attaches a quote, an answer or a note.
+- **How strong it is:** each need and solution says how strong what it rests on is (nothing yet, the team's belief, thin, some or strong), counted by code from how many people said it, in how many segments and sources, how recently, and what speaks against it, with what would make it stronger. A target resting on thin evidence shows in **Needs a look**.
 - **Boards build on what the organization knows.** Drafting a tree, picking out quotes, mapping them and placing a brain dump each send Qalam AI the pieces of the organization's knowledge that bear on the work, within a token budget.
   - A new board's needs can rest on what customers said in sources added to other boards. A quote from elsewhere brings its source onto the board when you accept it.
   - Qalam AI says which pieces shaped each answer. Code keeps only pieces it was sent, and the board keeps that trace.

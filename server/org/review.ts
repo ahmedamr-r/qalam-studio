@@ -3,6 +3,7 @@ import { structured } from "@/ai/server";
 import { contextText } from "@/org/context-md";
 import type { CheckBoard, Notice } from "@/hub/checks";
 import { reviewMaterial, sanitizeReview } from "@/hub/review";
+import { voicesByQuote } from "@/hub/people";
 import { noticesNow } from "./notices";
 import type { OrgStore } from "./store";
 
@@ -24,7 +25,8 @@ export async function reviewOrg(store: OrgStore, opts: { tab?: string } = {}): P
   const products = await store.listProducts();
   const flagged = (await noticesNow(store)).notices.filter((n) => n.kind !== "review").map((n) => n.title);
   const org = [contextText(await store.getAbout(), `${store.info.name}:`), ...products.map((p) => contextText(p, `${p.name} (a product):`))].filter(Boolean).join("\n\n");
-  const m = reviewMaterial({ org: org.slice(0, 4000), topics: await store.listTopics(), boards, decisions: store.listDecisions(), flagged, productName: (id) => products.find((p) => p.id === id)?.name });
+  const voices = voicesByQuote(await store.listSources(), await store.listPeople());
+  const m = reviewMaterial({ org: org.slice(0, 4000), topics: await store.listTopics(), boards, decisions: store.listDecisions(), flagged, productName: (id) => products.find((p) => p.id === id)?.name, voices });
   const { data } = await structured<unknown>({ model: REVIEW_MODEL, system: REVIEW_SYSTEM, schema: reviewSchema(m), effort: "high", maxTokens: 16000, content: [{ type: "text", text: m.text }] });
   const findings = sanitizeReview(data, m, Date.now());
   await store.addFindings(findings, opts);

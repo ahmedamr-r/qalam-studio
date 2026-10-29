@@ -183,3 +183,18 @@ describe("what needs a look", () => {
     expect(noticeShape({ ...n, board: "../x" })?.board).toBeUndefined();
   });
 });
+
+describe("a target on thin evidence", () => {
+  it("says so, and says what would make it stronger, until three voices in two sources back it", () => {
+    const tree = (evidence: OstEvidence[]) => board("b1", "Reorders", { id: "o1", kind: "outcome", title: "More reorders", stage: "active", children: [{ id: "n1", kind: "opportunity", title: "I wait at home for the courier", stage: "target", stageAt: ago(3), evidence }] });
+    const one = runChecks(input({ boards: [tree([{ ...quote("a", ago(4)), sourceId: "s1", speaker: "Sara" }])] }));
+    expect(one).toEqual([
+      expect.objectContaining({ key: "thin-target:hub:card:b1:n1:thin:1", kind: "thin-target", title: "The target “I wait at home for the courier” rests on thin evidence", board: "b1", card: "n1" }),
+    ]);
+    expect(one[0].why).toBe("Thin: 1 voice (1 source) · newest 4 days ago. Hear it from more people (three or more, in two sources) before betting on it.");
+    const team = runChecks(input({ boards: [tree([{ id: "d", kind: "dump", text: "We think so", addedBy: "user", at: ago(2) }])] }));
+    expect(team[0].title).toBe("The target “I wait at home for the courier” rests on the team's belief alone");
+    const strong = runChecks(input({ boards: [tree([{ ...quote("a", ago(4)), sourceId: "s1" }, { ...quote("b", ago(4)), sourceId: "s2" }, { ...quote("c", ago(4)), sourceId: "s3" }])] }));
+    expect(strong).toEqual([]);
+  });
+});

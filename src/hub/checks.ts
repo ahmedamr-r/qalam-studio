@@ -6,18 +6,20 @@ import { factHash } from "@/knowledge/refs";
 import { cardRef } from "./pieces";
 import { isEvidence, sameTopic, type Topic } from "./topics";
 import { tally, tallyText, type Voice } from "./people";
+import { STRENGTH_LABEL, strengthOf } from "./strength";
 
 /**
  * What needs a look (pure): checks code runs over the organization's boards, decisions and topic
  * pages at no token cost. Each finds something a product team should hear about: what customers
  * said against what the team believes (Qalam AI's disputes on the topic pages), needs customers
  * keep raising that no board has, the same need on two boards, a parked or dropped card that new
- * evidence now backs, a test that's run too long, a solution being built on a risky assumption
- * nothing tests, an outcome whose number nobody has updated. Every notice has a stable key, made
+ * evidence now backs, a target need resting on thin evidence, a test that's run too long, a
+ * solution being built on a risky assumption nothing tests, an outcome whose number nobody has
+ * updated. Every notice has a stable key, made
  * of what it's about and how strong it is: dismissed, it stays dismissed until it grows.
  */
 
-export type NoticeKind = "disputed" | "pattern" | "same-need" | "revisit" | "stale-test" | "untested" | "metric" | "orphan" | "review" | "placed";
+export type NoticeKind = "disputed" | "pattern" | "same-need" | "revisit" | "stale-test" | "untested" | "metric" | "orphan" | "review" | "placed" | "thin-target";
 
 export interface Notice {
   /** Stable: the same finding keeps its key, so a dismissed one never comes back. */
@@ -51,6 +53,7 @@ export const NOTICE_LABEL: Record<NoticeKind, string> = {
   orphan: "Page",
   review: "Qalam AI review",
   placed: "To review",
+  "thin-target": "Target",
 };
 
 /** How long before a running test, or an outcome's number, needs a look. */
@@ -306,6 +309,21 @@ export function runChecks(x: CheckInput): Notice[] {
         products: productsOf(c.board),
       });
     }
+    // The need the team targets, resting on thin evidence: one voice, stale words, more against than for, or only the team's belief.
+    if (c.card.kind === "opportunity" && c.card.stage === "target") {
+      const s = strengthOf(c.card, { now: x.now, voices: x.voices });
+      if (s.level === "none" || s.level === "team" || s.level === "thin")
+        out.push({
+          key: `thin-target:${ref}:${s.level}:${s.tally.voices}`,
+          kind: "thin-target",
+          title: `The target ${q(c.card.title)} rests on ${s.level === "thin" ? "thin evidence" : s.level === "team" ? "the team's belief alone" : "nothing yet"}`,
+          why: `${STRENGTH_LABEL[s.level]}${s.why ? `: ${s.why}` : ""}. ${s.next ?? ""}`.trim(),
+          at: Math.max(c.card.stageAt ?? 0, s.tally.newest) || c.board.createdAt,
+          board: c.board.id,
+          card: c.id,
+          products: productsOf(c.board),
+        });
+    }
     // A solution being built, or tested, on a risky assumption no test checks.
     if (c.card.kind === "solution" && (c.card.stage === "building" || c.card.stage === "shipped" || c.card.stage === "testing")) {
       const tested = new Set(cards.filter((t) => t.board === c.board && t.parent === c.id && t.card.kind === "test").flatMap((t) => t.card.test?.assumptionIds ?? []));
@@ -350,7 +368,7 @@ export function runChecks(x: CheckInput): Notice[] {
 /** Notices about a card (as the card, or as the other card of a pair). */
 export const aboutCard = (n: Pick<Notice, "board" | "card" | "other">, board: string, card: string) => (n.board === board && n.card === card) || (n.other?.board === board && n.other.card === card);
 
-const KINDS: readonly NoticeKind[] = ["disputed", "pattern", "same-need", "revisit", "stale-test", "untested", "metric", "orphan", "review", "placed"];
+const KINDS: readonly NoticeKind[] = ["disputed", "pattern", "same-need", "revisit", "stale-test", "untested", "metric", "orphan", "review", "placed", "thin-target"];
 const isStr = (v: unknown, max: number): v is string => typeof v === "string" && v.length <= max;
 const ID = /^[A-Za-z0-9_~-]{1,64}$/;
 

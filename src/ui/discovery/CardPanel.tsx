@@ -29,6 +29,8 @@ import { useProject } from "@/projects/session";
 import DecisionRow from "../decisions/DecisionRow";
 import { useDecisions } from "../decisions/list";
 import { citation, fromSource, quoteOf, type SourceRecord } from "@/discovery/sources";
+import { STRENGTH_LABEL, type Strength } from "@/hub/strength";
+import { useStrength } from "./strength";
 
 const ICON = { size: 12, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 
@@ -249,6 +251,29 @@ function MetricSection({ id, card }: { id: string; card: OstCard }) {
 
 const SOURCE: Record<OstEvidence["kind"], string> = { answer: "From your answers", note: "Your note", quote: "Quote", dump: "From your brain dump" };
 
+const STRENGTH_TONE: Record<Strength["level"], string> = {
+  none: "bg-warning-subtle text-fg",
+  team: "bg-warning-subtle text-fg",
+  thin: "bg-warning-subtle text-fg",
+  some: "bg-muted text-fg",
+  strong: "bg-success-subtle text-fg",
+};
+
+/** How strong what the card rests on is: how many people, segments and sources, how recent, what's against it. */
+function StrengthLine({ id, card }: { id: string; card: OstCard }) {
+  const s = useStrength(id, card);
+  if (s.level === "none" && card.kind !== "opportunity") return null;
+  return (
+    <div className={clsx("flex flex-col gap-[2px] rounded-lg px-[10px] py-[8px]", STRENGTH_TONE[s.level])} aria-label="How strong its evidence is">
+      <p className="text-caption">
+        <span className="font-semibold">{STRENGTH_LABEL[s.level]}</span>
+        {s.why && <span className="text-fg-muted"> · {s.why}</span>}
+      </p>
+      {s.next && <p className="text-micro text-fg-muted">{s.next}</p>}
+    </div>
+  );
+}
+
 function EvidenceSection({ id, card }: { id: string; card: OstCard }) {
   const [note, setNote] = useState("");
   const add = () => {
@@ -259,6 +284,7 @@ function EvidenceSection({ id, card }: { id: string; card: OstCard }) {
   };
   return (
     <Section title={`Evidence${card.evidence.length ? ` · ${card.evidence.length}` : ""}`}>
+      <StrengthLine id={id} card={card} />
       {card.evidence.length === 0 && (
         <p className="text-caption text-fg-muted">
           {evidenceLabel(card) || "Nothing yet"}. Quotes from customers make a card solid: drag one here from{" "}

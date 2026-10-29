@@ -6,6 +6,8 @@ import { factHash } from "@/knowledge/refs";
 import { cardsOf, type CheckBoard, type Notice } from "./checks";
 import { cardRef, decisionRef, topicLineRef, topicRef } from "./pieces";
 import { checkWords, sameWords, SECTION_HEADING, type Topic } from "./topics";
+import type { Voice } from "./people";
+import { STRENGTH_LABEL, strengthOf } from "./strength";
 
 /**
  * A review of the organization by Qalam AI (pure parts): the material it reads (its topic pages,
@@ -39,7 +41,7 @@ export const REVIEW_LIMITS = { lines: 250, cards: 300, decisions: 40, findings: 
 
 const one = (s: string) => s.replace(/\s+/g, " ").trim();
 
-export function reviewMaterial(o: { org: string; topics: Topic[]; boards: CheckBoard[]; decisions: Decision[]; flagged: string[]; productName: (id: string) => string | undefined }): ReviewMaterial {
+export function reviewMaterial(o: { org: string; topics: Topic[]; boards: CheckBoard[]; decisions: Decision[]; flagged: string[]; productName: (id: string) => string | undefined; voices?: ReadonlyMap<string, Voice>; now?: number }): ReviewMaterial {
   const sent = new Map<string, ReviewSent>();
   const about: string[] = [];
   const out: string[] = [`The organization: ${one(o.org) || "(not described yet)"}`];
@@ -82,9 +84,12 @@ export function reviewMaterial(o: { org: string; topics: Topic[]; boards: CheckB
       const metric = c.card.kind === "outcome" ? metricText(c.card.metric) : "";
       const risky = (c.card.assumptions ?? []).filter((a) => a.importance === 3).map((a) => `fails without: ${one(a.text)}`);
       const result = c.card.test?.result ? `result: ${one(c.card.test.result)}` : "";
-      const facts = [ev, metric, ...risky, result].filter(Boolean);
+      // How strong what backs a need or a solution is: voices, segments, sources, how recent.
+      const st = c.card.kind === "opportunity" || c.card.kind === "solution" ? strengthOf(c.card, { now: o.now ?? Date.now(), voices: o.voices, tests: (kids.get(c.id) ?? []).filter((k) => k.card.kind === "test").map((k) => k.card) }) : null;
+      const strength = st && st.level !== "none" ? `strength: ${STRENGTH_LABEL[st.level].toLowerCase()}${st.why ? ` (${st.why})` : ""}` : "";
+      const facts = [ev, strength, metric, ...risky, result].filter(Boolean);
       boardLines.push(`${"  ".repeat(depth)}- ${id} · ${c.card.kind} · ${stageLabel(c.card.kind, c.card.stage).toLowerCase()} · ${one(c.card.title) || "(untitled)"}${facts.length ? ` · ${facts.join(" · ")}` : ""}`);
-      sent.set(id, { ref: cardRef(b.id, c.id), text: [c.card.title, c.card.description ?? "", metric, ...risky, result, ...c.card.evidence.map((e) => e.text)].filter(Boolean).join("\n"), board: b.id, card: c.id, products: b.product ? [b.product] : [] });
+      sent.set(id, { ref: cardRef(b.id, c.id), text: [c.card.title, c.card.description ?? "", metric, strength, ...risky, result, ...c.card.evidence.map((e) => e.text)].filter(Boolean).join("\n"), board: b.id, card: c.id, products: b.product ? [b.product] : [] });
       about.push(id);
       for (const k of kids.get(c.id) ?? []) walk(k, depth + 1);
     };
