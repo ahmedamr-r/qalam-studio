@@ -119,7 +119,7 @@ function Card({ c, onView, onImport }: { c: ConnectorState; onView: (v: View) =>
       setSigning(null);
     }
   };
-  const soon = !c.imports && !c.numbers && !c.status && !c.via && !c.claudeCode && !c.canToken && !c.canSignIn;
+  const soon = !c.imports && !c.numbers && !c.screens && !c.status && !c.via && !c.claudeCode && !c.canToken && !c.canSignIn;
   // The service stopped taking Qalam's sign-in.
   const expired = c.via === "oauth" && c.tone === "warn";
   const inClaudeCode = c.claudeCode?.status === "connected";
@@ -155,7 +155,7 @@ function Card({ c, onView, onImport }: { c: ConnectorState; onView: (v: View) =>
               Bring in…
             </Button>
           )}
-          {!c.via && (c.imports || c.numbers) && inClaudeCode && (
+          {!c.via && (c.imports || c.numbers || c.screens) && inClaudeCode && (
             <Button size="sm" variant="secondary" disabled={busy} onClick={() => void act(() => connectorsDb.viaClaudeCode(c.id, c.claudeCode!.server))}>
               Use it
             </Button>
@@ -181,8 +181,8 @@ function Card({ c, onView, onImport }: { c: ConnectorState; onView: (v: View) =>
               Disconnect
             </button>
           )}
-          {(c.via || c.status === "public") && !c.imports && <span className="text-micro text-fg-subtle">{c.numbers ? "Outcomes read their number from it" : "Shows where linked work stands"}</span>}
-          {!c.via && !c.imports && !c.numbers && !c.status && (c.claudeCode || c.canToken) && <span className="text-micro text-fg-subtle">Coming next</span>}
+          {(c.via || c.status === "public") && !c.imports && <span className="text-micro text-fg-subtle">{c.numbers ? "Outcomes read their number from it" : c.screens ? "A funnel step's picture can come from one of its frames" : "Shows where linked work stands"}</span>}
+          {!c.via && !c.imports && !c.numbers && !c.screens && !c.status && (c.claudeCode || c.canToken) && <span className="text-micro text-fg-subtle">Coming next</span>}
         </div>
       )}
       {tokenOpen && c.tokenHelp && (

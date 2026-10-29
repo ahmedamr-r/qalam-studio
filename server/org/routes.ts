@@ -24,12 +24,12 @@ import type { Proposal } from "@/discovery/proposals";
 import { MAX_SOURCE_TEXT, SOURCE_KIND_LABEL, type SourceRecord } from "@/discovery/sources";
 import { aiConfigured, rateLimited } from "@/ai/server";
 import { foldBearings } from "@/goals/bearings";
-import { pinShape } from "@/code/steps";
+import { isStepRef, pinShape } from "@/code/steps";
 import { goalPatchShape, newGoalShape } from "@/goals/shape";
 import { goalById } from "@/goals/tree";
 import type { Hit as ConnectorHit } from "@/connectors/recipes";
 import { findProblems, goalPage, linkByHand } from "./goals";
-import { pinByHand, placeQuotes } from "./steps";
+import { pictureFromFigma, pinByHand, placeQuotes } from "./steps";
 import { changeJob, noteForJob, openJobs, planJobs, searchForJob, takeInForJob } from "./jobs";
 import { breakDown, decidePart, lookOutside } from "./outside";
 import { addRepo, answerFromCode, codeView, readRepo, removeRepo, type NewRepo } from "../code";
@@ -208,6 +208,14 @@ export function orgRoutes(): Hono<Env> {
     } catch (e) {
       return failure(e);
     }
+  });
+  r.post("/api/org/:org/steps/figma", async (c) => {
+    const b = (await c.req.json().catch(() => null)) as { step?: unknown; url?: unknown } | null;
+    if (!b || !isStepRef(b.step) || typeof b.url !== "string" || b.url.length > 2000) return bad("Name a step and a Figma frame's link");
+    const store = c.get("store");
+    const step = b.step;
+    const url = b.url;
+    return streamed(c.req.raw.signal, (emit, signal) => pictureFromFigma(store, step, url, emit, signal, { tab: tabOf(c.req.raw.headers) }));
   });
   // The product's code, read-only (server/code): the repositories this computer reads, and what each product does today.
   const KEY = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,139}$/;

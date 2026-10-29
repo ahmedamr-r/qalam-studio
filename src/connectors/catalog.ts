@@ -39,6 +39,8 @@ export interface ConnectorDef {
   status?: "token" | "public";
   /** An outcome can read its number from it. */
   numbers?: boolean;
+  /** A funnel step's picture can come from one of its frames (through Claude Code). */
+  screens?: boolean;
 }
 
 /**
@@ -100,7 +102,7 @@ export const CATALOG: readonly ConnectorDef[] = [
   { id: "linear", label: "Linear", group: "build", feeds: "work", claudeCode: /\blinear\b/i, token: { label: "Personal API key", href: "https://linear.app/settings/account/security", placeholder: "lin_api_…" }, mcp: { url: "https://mcp.linear.app/mcp", scope: "read" }, imports: false, status: "token" },
   { id: "jira", label: "Jira", group: "build", feeds: "work", claudeCode: /\bjira\b|atlassian/i, mcp: ATLASSIAN, imports: false, status: "token" },
   { id: "github", label: "GitHub", group: "build", feeds: "work", claudeCode: /github/i, imports: false, status: "public" },
-  { id: "figma", label: "Figma", group: "build", feeds: "work", claudeCode: /\bfigma\b/i, imports: false },
+  { id: "figma", label: "Figma", group: "build", feeds: "work", claudeCode: /\bfigma\b/i, imports: false, screens: true },
   { id: "posthog", label: "PostHog", group: "numbers", feeds: "numbers", claudeCode: /posthog/i, imports: false, numbers: true },
   { id: "amplitude", label: "Amplitude", group: "numbers", feeds: "numbers", claudeCode: /amplitude/i, imports: false },
   { id: "mixpanel", label: "Mixpanel", group: "numbers", feeds: "numbers", claudeCode: /mixpanel/i, imports: false },

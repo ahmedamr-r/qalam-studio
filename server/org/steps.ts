@@ -11,6 +11,8 @@ import { rankNeeds } from "@/hub/needs";
 import { indexFor } from "../index/registry";
 import { search } from "../index/search";
 import { DISCOVERY_MODEL } from "../routes/discovery";
+import { figmaPicture } from "../connectors/figma";
+import { assetHash } from "./fsx";
 import { knowledgeInputs } from "./needs";
 import { NotFoundError, type OrgStore } from "./store";
 
@@ -111,4 +113,15 @@ export async function placeQuotes(store: OrgStore, goalId: string, emit?: (label
 export async function pinByHand(store: OrgStore, x: { step: string; what: StepPin["what"]; id: string; on: boolean }, opts: { tab?: string } = {}): Promise<void> {
   if (x.on && x.what === "picture" && !store.getAsset(x.id.replace(/^asset:/, ""))) throw new NotFoundError("That picture isn't here");
   await store.addStepPins([{ step: x.step, what: x.what, id: x.id, by: "you", at: Date.now(), ...(x.on ? {} : { removed: true }) }], opts);
+}
+
+/** A step's picture from a frame in Figma: Figma renders it (through the user's Claude Code), the organization keeps it, the step shows it. */
+export async function pictureFromFigma(store: OrgStore, step: string, link: string, emit: (label: string) => void, signal: AbortSignal, opts: { tab?: string } = {}): Promise<{ id: string; from: string }> {
+  emit("Asking Figma for the frame through Claude Code");
+  const got = await figmaPicture(link, { signal });
+  const hash = assetHash(got.bytes);
+  await store.putAsset(hash, got.bytes, got.type);
+  const id = `asset:${hash}`;
+  await store.addStepPins([{ step, what: "picture", id, from: got.frame.url, by: "you", at: Date.now() }], opts);
+  return { id, from: got.frame.url };
 }

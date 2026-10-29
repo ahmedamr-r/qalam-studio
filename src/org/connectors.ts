@@ -22,6 +22,8 @@ export interface ConnectorState {
   status: "token" | "public" | null;
   /** An outcome can read its number from it. */
   numbers: boolean;
+  /** A funnel step's picture can come from one of its frames. */
+  screens: boolean;
   /** Claude Code's server for it, as `claude mcp list` last said. */
   claudeCode: { server: string; status: ListedStatus } | null;
   token: { last4: string } | null;

@@ -35,7 +35,7 @@ export async function connectorsView(): Promise<{ checkedAt: number | null; conn
       const regions = def.mcp?.regions?.map(({ id, label }) => ({ id, label })) ?? null;
       const own = def.mcp?.ownApp;
       const ownApp = own ? { kept: await appKept(def.id), create: own.create, where: own.where, callback: own.callback } : null;
-      const base = { id: def.id, label: def.label, group: def.group, feeds: def.feeds, imports: def.imports, status: def.status ?? null, numbers: !!def.numbers, claudeCode: listed ? { server: listed.name, status: listed.status } : null, token: token ? { last4: token.slice(-4) } : null, canToken: !!def.token, tokenHelp: def.token ?? null, canSignIn: !!def.mcp, account: def.mcp?.account?.label ?? null, regions, ownApp };
+      const base = { id: def.id, label: def.label, group: def.group, feeds: def.feeds, imports: def.imports, status: def.status ?? null, numbers: !!def.numbers, screens: !!def.screens, claudeCode: listed ? { server: listed.name, status: listed.status } : null, token: token ? { last4: token.slice(-4) } : null, canToken: !!def.token, tokenHelp: def.token ?? null, canSignIn: !!def.mcp, account: def.mcp?.account?.label ?? null, regions, ownApp };
       const kept = how?.via === "oauth" ? await signedIn(def.id) : !!token;
       const state = stateOf(def, how?.via === "claude-code" ? (listed?.name === how.server ? listed.status : "unknown") : null, how?.via ?? null, kept, listed?.status ?? null);
       // Which region's server it signed in to, where there are several.
@@ -55,7 +55,7 @@ function stateOf(def: ConnectorDef, chosenStatus: ListedStatus | null, via: "cla
   if (via === "claude-code") return chosenStatus === "connected" || chosenStatus === "unknown" ? { via, word: "Through Claude Code", tone: "ok" } : { via, word: "Sign in in Claude Code", tone: "warn" };
   if (listed === "connected") return { via: null, word: "In Claude Code", tone: "off" };
   if (listed === "needs-auth") return { via: null, word: "Sign in in Claude Code", tone: "off" };
-  return { via: null, word: def.imports || def.token || def.numbers || def.mcp ? "Not connected" : "Coming next", tone: "off" };
+  return { via: null, word: def.imports || def.token || def.numbers || def.screens || def.mcp ? "Not connected" : "Coming next", tone: "off" };
 }
 
 /** Use Claude Code's server for it (the user signed it in there). */

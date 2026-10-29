@@ -4,6 +4,7 @@ import { ChartLine, ChevronDown, ChevronRight, ExternalLink, ImagePlus, X } from
 import { callAI } from "@/ai/client";
 import { feedback } from "@/commands/feedback";
 import { stepRef, type MapFlow, type MapStep, type ProductMap } from "@/code/map";
+import { figmaFrame } from "@/connectors/figma";
 import type { StepPin, StepView } from "@/code/steps";
 import { findQuote } from "@/discovery/quotes";
 import { assetURL, putAsset } from "@/doc/assets";
@@ -19,15 +20,17 @@ import { QalamAIGlyph } from "../brand";
 import { Button, IconBtn, Tip } from "../controls";
 import { Menu, MenuItem } from "../menu";
 import { r } from "../recipes";
+import { promptDialog } from "../surfaces/dialog";
 import { ago } from "../time";
 
 /**
  * A goal's funnel: the flow in the product's code whose events measure it (hub/maps, read by the
  * code reader), and how many people reach each step, counted by a saved PostHog funnel (code reads
  * the counts from PostHog's own answer). The biggest drop is code's arithmetic. Each step opens on
- * what sits there (src/code/steps.ts): a picture of its screen a person added (a screenshot or a
- * design's frame, never drawn by Qalam AI), the problems pinned to it, and what customers said
- * about it, placed by Qalam AI and kept by code only where the quote's words name the step.
+ * what sits there (src/code/steps.ts): a picture of its screen (a screenshot a person added, or a
+ * frame of their design Figma renders through their Claude Code; never drawn by Qalam AI), the
+ * problems pinned to it, and what customers said about it, placed by Qalam AI and kept by code
+ * only where the quote's words name the step.
  */
 
 const ICON = { size: 12, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
@@ -108,6 +111,11 @@ export function Funnel({ goal, funnel, numbers, steps, problems, onWork, onChang
     await orgFetch("/steps", { method: "POST", json: { step, what, id, on } }).catch((e) => feedback(`Couldn't change it: ${message(e)}`, { kind: "error", id: "goal.step" }));
     onChanged();
   };
+  // Figma renders the frame through the user's Claude Code; the core keeps it as the step's picture.
+  const fromFigma = async (step: string, link: string) => {
+    await callAI(await orgPath("/steps/figma"), { step, url: link });
+    onChanged();
+  };
 
   const drops = numbers ? funnelDrops(numbers.steps) : [];
   const top = Math.max(1, ...drops.map((d) => d.count));
@@ -168,6 +176,7 @@ export function Funnel({ goal, funnel, numbers, steps, problems, onWork, onChang
               open={open === key}
               onToggle={() => setOpen((o) => (o === key ? null : key))}
               onPin={(what, id, on) => row.step && void pin(refOf(row.step), what, id, on)}
+              onFigma={(link) => fromFigma(refOf(row.step!), link)}
               onWork={onWork}
             />
           );
@@ -228,7 +237,7 @@ export function Funnel({ goal, funnel, numbers, steps, problems, onWork, onChang
 }
 
 /** One step: its number, its screen's picture, its title, how many reach it, and what's pinned there. */
-function StepRow({ n, row, top, counted, pins, quotes, problems, open, onToggle, onPin, onWork }: { n: number; row: Row; top: number; counted: boolean; pins: StepPin[]; quotes: StepView["quotes"]; problems: GoalProblem[]; open: boolean; onToggle: () => void; onPin: (what: StepPin["what"], id: string, on: boolean) => void; onWork: (p: GoalProblem) => void }) {
+function StepRow({ n, row, top, counted, pins, quotes, problems, open, onToggle, onPin, onFigma, onWork }: { n: number; row: Row; top: number; counted: boolean; pins: StepPin[]; quotes: StepView["quotes"]; problems: GoalProblem[]; open: boolean; onToggle: () => void; onPin: (what: StepPin["what"], id: string, on: boolean) => void; onFigma: (link: string) => Promise<void>; onWork: (p: GoalProblem) => void }) {
   const picture = pins.find((p) => p.what === "picture");
   const here = pins.flatMap((p) => (p.what === "need" ? (problems.find((x) => x.topic === p.id) ?? []) : []));
   const said = pins.filter((p) => p.what === "quote");
@@ -272,17 +281,17 @@ function StepRow({ n, row, top, counted, pins, quotes, problems, open, onToggle,
       ) : (
         <div className={grid}>{head}</div>
       )}
-      {s && open && <StepDetail step={s} picture={picture?.id} here={here} said={said} quotes={quotes} problems={problems} onPin={onPin} onWork={onWork} />}
+      {s && open && <StepDetail step={s} picture={picture} here={here} said={said} quotes={quotes} problems={problems} onPin={onPin} onFigma={onFigma} onWork={onWork} />}
     </li>
   );
 }
 
 /** What sits at a step: its screen's picture, the problems pinned there, what customers said about it, and where it is in the code. */
-function StepDetail({ step, picture, here, said, quotes, problems, onPin, onWork }: { step: MapStep; picture?: string; here: GoalProblem[]; said: StepPin[]; quotes: StepView["quotes"]; problems: GoalProblem[]; onPin: (what: StepPin["what"], id: string, on: boolean) => void; onWork: (p: GoalProblem) => void }) {
+function StepDetail({ step, picture, here, said, quotes, problems, onPin, onFigma, onWork }: { step: MapStep; picture?: StepPin; here: GoalProblem[]; said: StepPin[]; quotes: StepView["quotes"]; problems: GoalProblem[]; onPin: (what: StepPin["what"], id: string, on: boolean) => void; onFigma: (link: string) => Promise<void>; onWork: (p: GoalProblem) => void }) {
   const others = problems.filter((p) => !here.includes(p));
   return (
     <div className="grid grid-cols-[180px_minmax(0,1fr)] gap-[16px] px-[14px] pt-[4px] pb-[14px] pl-[44px] max-[640px]:grid-cols-1 max-[640px]:pl-[14px]">
-      <Picture src={picture} onAdd={(id) => onPin("picture", id, true)} onRemove={() => picture && onPin("picture", picture, false)} />
+      <Picture src={picture?.id} from={picture?.from} onAdd={(id) => onPin("picture", id, true)} onFigma={onFigma} onRemove={() => picture && onPin("picture", picture.id, false)} />
       <div className="flex min-w-0 flex-col gap-[14px]">
         <Part
           title="Problems here"
@@ -416,31 +425,51 @@ function Thumb({ src }: { src?: string }) {
   return url ? <img src={url} alt="" className="h-[32px] w-[24px] rounded-[3px] object-cover object-top shadow-[0_0_0_1px_var(--color-line-subtle)]" /> : <span aria-hidden className="h-[32px] w-[24px] rounded-[3px] bg-active" />;
 }
 
-/** The screen's picture: added by a person (picked, dropped or pasted), never drawn by Qalam AI. */
-function Picture({ src, onAdd, onRemove }: { src?: string; onAdd: (id: string) => void; onRemove: () => void }) {
+/**
+ * The screen's picture: a screenshot a person picks, drops or pastes, or a frame of their design
+ * (its link pasted or given), which Figma renders through their Claude Code. Never drawn by Qalam AI.
+ */
+function Picture({ src, from, onAdd, onFigma, onRemove }: { src?: string; from?: string; onAdd: (id: string) => void; onFigma: (link: string) => Promise<void>; onRemove: () => void }) {
   const url = useAsset(src);
   const input = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState<string | null>(null);
   const take = async (file: File | undefined) => {
     if (!file) return;
-    if (!file.type.startsWith("image/")) return feedback("That isn't a picture: add a screenshot or an exported frame.", { kind: "error", id: "goal.picture" });
+    if (!file.type.startsWith("image/")) return feedback("That isn't a picture: add a screenshot, or paste a Figma frame's link.", { kind: "error", id: "goal.picture" });
     if (file.size > PICTURE_MAX) return feedback("That picture is too large: export it under 12 MB.", { kind: "error", id: "goal.picture" });
-    setSaving(true);
+    setSaving("Keeping it…");
     try {
       onAdd(await putAsset(file));
     } catch (e) {
       feedback(`Couldn't keep the picture: ${message(e)}`, { kind: "error", id: "goal.picture" });
     } finally {
-      setSaving(false);
+      setSaving(null);
     }
   };
+  const figma = async (link: string) => {
+    setSaving("Asking Figma through Claude Code… about a minute");
+    try {
+      await onFigma(link);
+    } catch (e) {
+      feedback(`Couldn't get the frame: ${message(e)}`, { kind: "error", id: "goal.picture" });
+    } finally {
+      setSaving(null);
+    }
+  };
+  const askFigma = async () => {
+    const link = await promptDialog({ title: "The screen from Figma", label: "The frame's link (right-click the frame, Copy link to selection)", placeholder: "https://www.figma.com/design/…?node-id=…", confirmLabel: "Get it", validate: (v) => (figmaFrame(v) ? null : "Paste a link to one frame: it has node-id in it") });
+    if (link) void figma(link);
+  };
+  const busy = !!saving;
   return (
     <div
       tabIndex={-1}
       onPaste={(e) => {
         const file = [...e.clipboardData.files].find((f) => f.type.startsWith("image/"));
+        const link = e.clipboardData.getData("text/plain");
         if (file) (e.preventDefault(), void take(file));
+        else if (figmaFrame(link)) (e.preventDefault(), void figma(link));
       }}
       onDragOver={(e) => (e.preventDefault(), setOver(true))}
       onDragLeave={() => setOver(false)}
@@ -453,30 +482,48 @@ function Picture({ src, onAdd, onRemove }: { src?: string; onAdd: (id: string) =
     >
       <input ref={input} type="file" accept="image/*" hidden onChange={(e) => (void take(e.target.files?.[0]), (e.target.value = ""))} />
       {url ? (
-        <a href={url} target="_blank" rel="noreferrer" aria-label="Open the picture" className="block overflow-hidden rounded-md shadow-[0_0_0_1px_var(--color-line-subtle)]">
+        <a href={url} target="_blank" rel="noreferrer" aria-label="Open the picture" className={clsx("block overflow-hidden rounded-md shadow-[0_0_0_1px_var(--color-line-subtle)]", busy && "opacity-60")}>
           <img src={url} alt="The step's screen" className="max-h-[360px] w-full object-contain object-top" />
         </a>
       ) : (
         <button
           type="button"
+          disabled={busy}
           onClick={() => input.current?.click()}
           className={clsx("q-item flex aspect-[9/16] w-full flex-col items-center justify-center gap-[6px] rounded-md px-[12px] text-center shadow-[inset_0_0_0_1px_var(--color-line-subtle)] hover:bg-hover", over && "bg-hover")}
         >
           <ImagePlus size={16} absoluteStrokeWidth strokeWidth={1.25} className="text-fg-subtle" />
-          <span className="text-caption text-fg-muted">{saving ? "Keeping it…" : "Add the screen"}</span>
-          <span className="text-micro text-fg-subtle">A screenshot or a design&apos;s frame: pick, drop or paste it</span>
+          <span className={clsx("text-caption text-fg-muted", busy && "q-shimmer-text")}>{saving ?? "Add the screen"}</span>
+          {!busy && <span className="text-micro text-fg-subtle">Pick, drop or paste a screenshot, or paste a Figma frame&apos;s link</span>}
         </button>
       )}
-      {url && (
-        <span className="flex items-center gap-[4px]">
-          <button type="button" onClick={() => input.current?.click()} className={clsx(r.buttonSm, r.buttonGhost, "-ml-[8px]")}>
-            {saving ? "Keeping it…" : "Replace"}
+      {url && saving && <span className="q-shimmer-text text-micro text-fg-muted">{saving}</span>}
+      <span className="flex flex-wrap items-center gap-[4px]">
+        {url && (
+          <button type="button" disabled={busy} onClick={() => input.current?.click()} className={clsx(r.buttonSm, r.buttonGhost, "-ml-[8px]")}>
+            Replace
           </button>
-          <button type="button" onClick={onRemove} className={clsx(r.buttonSm, r.buttonGhost)}>
+        )}
+        {from ? (
+          <button type="button" disabled={busy} onClick={() => void figma(from)} className={clsx(r.buttonSm, r.buttonGhost, !url && "-ml-[8px]")}>
+            Again from Figma
+          </button>
+        ) : (
+          <button type="button" disabled={busy} onClick={() => void askFigma()} className={clsx(r.buttonSm, r.buttonGhost, !url && "-ml-[8px]")}>
+            From a Figma frame…
+          </button>
+        )}
+        {from && (
+          <a href={from} target="_blank" rel="noreferrer" aria-label="Open the frame in Figma" className={r.iconButtonSm}>
+            <ExternalLink {...ICON} />
+          </a>
+        )}
+        {url && (
+          <button type="button" disabled={busy} onClick={onRemove} className={clsx(r.buttonSm, r.buttonGhost)}>
             Take it off
           </button>
-        </span>
-      )}
+        )}
+      </span>
     </div>
   );
 }

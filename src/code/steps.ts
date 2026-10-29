@@ -8,7 +8,7 @@ import { STEP_KEY, stepRef, type MapFlow, type MapStep } from "./map";
  * customers said about the step, and a picture of its screen. Qalam AI places quotes at steps;
  * code keeps one only when the words it points to are in the quote, word for word, and name the
  * step's own thing (its title, its screen's file, its events). A picture is always a person's: a
- * screenshot or a design's frame, never drawn by Qalam AI. A card is at a step through the problem
+ * screenshot they add, or a frame of their design Figma renders; never drawn by Qalam AI. A card is at a step through the problem
  * it came from. hub/steps.jsonl holds a line per change, never rewritten, so two people's merge in
  * Git; a pin a person took off never comes back from Qalam AI.
  */
@@ -23,6 +23,8 @@ export interface StepPin {
   id: string;
   /** A quote's words that put it at the step, as the quote has them. */
   words?: string;
+  /** A picture's frame in Figma, when it came from one. */
+  from?: string;
   by: "you" | "qalam";
   at: number;
 }
@@ -40,7 +42,7 @@ export function foldPins(log: StepPinLog[]): { pins: StepPin[]; refused: Set<str
   for (const e of [...log].sort((a, b) => a.at - b.at)) {
     if (!pinShape(e)) continue;
     const key = pinKey(e);
-    const pin: StepPin = { step: e.step, what: e.what, id: e.id, ...(e.words ? { words: e.words } : {}), by: e.by, at: e.at };
+    const pin: StepPin = { step: e.step, what: e.what, id: e.id, ...(e.words ? { words: e.words } : {}), ...(e.from ? { from: e.from } : {}), by: e.by, at: e.at };
     if (e.by === "you") {
       if (e.removed) {
         refused.add(key);
@@ -60,6 +62,8 @@ export function foldPins(log: StepPinLog[]): { pins: StepPin[]; refused: Set<str
 
 const ID = /^[A-Za-z0-9_~-]{1,64}$/;
 const MAP_KEY = /^[A-Za-z0-9_.-]{1,140}$/;
+/** Where a picture came from: a frame's link in Figma. */
+const FROM = /^https:\/\/www\.figma\.com\/[^\s]{1,500}$/;
 const PIN_ID: Record<PinWhat, RegExp> = { need: ID, quote: /^hub:quote:[A-Za-z0-9_~-]{1,64}$/, picture: /^asset:[0-9a-f]{24}$/ };
 
 /** A step's ref as a pin may name it. */
@@ -75,7 +79,8 @@ export function pinShape(raw: unknown): StepPinLog | null {
   if (!p || !isStepRef(p.step) || !p.what || !Object.hasOwn(PIN_ID, p.what) || typeof p.id !== "string" || !PIN_ID[p.what].test(p.id)) return null;
   if ((p.by !== "you" && p.by !== "qalam") || typeof p.at !== "number" || !Number.isFinite(p.at)) return null;
   if (p.words !== undefined && (typeof p.words !== "string" || p.words.length > STEP_LIMITS.words)) return null;
-  return { step: p.step, what: p.what, id: p.id, ...(p.words ? { words: p.words } : {}), by: p.by, at: p.at, ...(p.removed ? { removed: true } : {}) };
+  if (p.from !== undefined && (p.what !== "picture" || typeof p.from !== "string" || !FROM.test(p.from))) return null;
+  return { step: p.step, what: p.what, id: p.id, ...(p.words ? { words: p.words } : {}), ...(p.from ? { from: p.from } : {}), by: p.by, at: p.at, ...(p.removed ? { removed: true } : {}) };
 }
 
 /** What a goal's page shows at its funnel's steps. */

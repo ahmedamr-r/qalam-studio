@@ -45,6 +45,11 @@ describe("what's pinned at a step", () => {
     expect(pinShape({ step: "acme__basket/address", what: "toString", id: "x", by: "you", at: 1 })).toBeNull();
     expect(pinShape({ step: "acme__basket/address", what: "picture", id: "asset:../../x", by: "you", at: 1 })).toBeNull();
     expect(pinShape({ step: "acme__basket/address", what: "quote", id: "hub:quote:q1", by: "you", at: 1 })).toEqual({ step: "acme__basket/address", what: "quote", id: "hub:quote:q1", by: "you", at: 1 });
+    // A picture can say which Figma frame it came from; nothing else can, and only from Figma.
+    const picture = { step: "acme__basket/address", what: "picture", id: "asset:aaaaaaaaaaaaaaaaaaaaaaaa", by: "you", at: 1 };
+    expect(pinShape({ ...picture, from: "https://www.figma.com/design/AbC/x?node-id=1-2" })?.from).toBe("https://www.figma.com/design/AbC/x?node-id=1-2");
+    expect(pinShape({ ...picture, from: "https://evil.test/x" })).toBeNull();
+    expect(pinShape({ ...picture, what: "need", id: "tp1", from: "https://www.figma.com/design/AbC/x?node-id=1-2" })).toBeNull();
   });
 });
 
