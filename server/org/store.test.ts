@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { newGoal } from "@/org/context-md";
 import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -153,7 +154,7 @@ describe("sources shared by boards", () => {
 });
 
 describe("products and the organization", () => {
-  const grocery = { id: "pGrocery1", name: "Grocery app", audience: "Weekly shoppers.", goals: ["2M AED a month"], context: "", segments: [] };
+  const grocery = { id: "pGrocery1", name: "Grocery app", audience: "Weekly shoppers.", goals: [newGoal("2M AED a month")], context: "", segments: [] };
 
   it("keeps products as Markdown files, and about.md", async () => {
     await store.putProduct(grocery);

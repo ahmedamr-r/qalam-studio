@@ -4,6 +4,7 @@ import type { DumpRole } from "@/discovery/dump";
 import { findQuote } from "@/discovery/quotes";
 import type { QuoteKind, SourceKind, SourceRecord } from "@/discovery/sources";
 import type { AssumptionCategory, OstCard, OstEvidence, OstMetric, OstTest } from "@/discovery/types";
+import { newGoal } from "@/org/context-md";
 import type { Project } from "@/projects/model";
 import { OrgStore } from "../../server/org/store";
 
@@ -405,7 +406,7 @@ export const PRODUCTS = [
     id: "grocery",
     name: "Grocery app",
     audience: "Parents with young kids in Dubai who do a big weekly shop",
-    goals: ["More customers reorder every week", "More first-time customers order a second time"],
+    goals: ["More customers reorder every week", "More first-time customers order a second time"].map(newGoal),
     context: "Basket delivers groceries the same day; most orders are a weekly shop placed in the evening.",
     segments: ["Weekly planners", "Top-up shoppers", "New customers"],
   },
@@ -413,7 +414,7 @@ export const PRODUCTS = [
     id: "business",
     name: "Basket for Business",
     audience: "Office managers and clinic admins who stock pantries for teams of 20 to 200",
-    goals: ["Offices reorder on a schedule"],
+    goals: [newGoal("Offices reorder on a schedule")],
     context: "Offices pay by monthly invoice; deliveries go to reception.",
     segments: ["Startups", "Clinics"],
   },
@@ -481,7 +482,7 @@ function boardDoc(b: BoardIn): Doc {
 /** Write the sample organization into `dir` (made if it isn't there). */
 export async function buildBasket(dir: string): Promise<OrgStore> {
   const store = await OrgStore.create(dir, { id: "basket-eval", name: "Basket", createdAt: AT });
-  await store.putAbout({ audience: "Families and offices in Dubai and Abu Dhabi", goals: ["2M dirhams a month in orders by end of Q2"], context: "Basket is a grocery delivery company with a consumer app and a business service.", segments: [] });
+  await store.putAbout({ audience: "Families and offices in Dubai and Abu Dhabi", goals: [newGoal("2M dirhams a month in orders by end of Q2")], context: "Basket is a grocery delivery company with a consumer app and a business service.", segments: [] });
   for (const p of PRODUCTS) await store.putProduct(p);
   for (const b of BOARDS) {
     const project: Project = { id: b.id, type: "discovery", name: b.name, createdAt: AT, updatedAt: AT, product: b.product };

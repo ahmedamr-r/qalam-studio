@@ -1,4 +1,5 @@
 import { mkdtemp, rm } from "node:fs/promises";
+import { newGoal } from "@/org/context-md";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -93,7 +94,7 @@ const source = (product: string | null = "grocery"): SourceRecord => ({
 beforeEach(async () => {
   dir = path.join(await mkdtemp(path.join(tmpdir(), "qalam-index-")), "Basket");
   store = await OrgStore.create(dir, { id: "org1", name: "Basket", createdAt: at });
-  await store.putProduct({ id: "grocery", name: "Grocery", audience: "Parents with young kids", goals: ["Weekly reorders"], context: "", segments: [] });
+  await store.putProduct({ id: "grocery", name: "Grocery", audience: "Parents with young kids", goals: [newGoal("Weekly reorders")], context: "", segments: [] });
   await store.putSource(source());
   await store.putProject(board);
   await store.putDoc(board.id, boardDoc([ev("e1", "hub:quote:q1", "The courier never says when he will come")]));

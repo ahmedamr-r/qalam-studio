@@ -4,7 +4,7 @@ import { Hono } from "hono";
 import { sanitizeDecision, type Decision } from "@/decisions/model";
 import type { Doc } from "@/doc/schema";
 import type { Project } from "@/projects/model";
-import type { ContextFields, Product } from "@/org/context-md";
+import { contextShape } from "@/org/context-md";
 import { IndexUnavailable } from "../index/db";
 import { topicsOf, type OrgIndex, type PieceRow } from "../index/indexer";
 import { indexFor } from "../index/registry";
@@ -104,16 +104,17 @@ export function orgRoutes(): Hono<Env> {
   // What the organization and its products are (about.md, products/*.md), and their goals.
   r.get("/api/org/:org/about", async (c) => c.json(await c.get("store").getAbout()));
   r.put("/api/org/:org/about", async (c) => {
-    const a = (await c.req.json()) as ContextFields;
-    if (!isContext(a)) return bad("Not an organization's context");
+    const a = contextShape(await c.req.json().catch(() => null));
+    if (!a) return bad("Not an organization's context");
     await c.get("store").putAbout(a, { tab: tabOf(c.req.raw.headers) });
     return c.json({ ok: true });
   });
   r.get("/api/org/:org/products", async (c) => c.json(await c.get("store").listProducts()));
   r.put("/api/org/:org/products/:id", async (c) => {
-    const p = (await c.req.json()) as Product;
-    if (!p || p.id !== c.req.param("id") || !ID.test(p.id) || typeof p.name !== "string" || !p.name.trim() || !isContext(p)) return bad("Not a product");
-    await c.get("store").putProduct({ ...p, name: p.name.trim().slice(0, 80) }, { tab: tabOf(c.req.raw.headers) });
+    const p = (await c.req.json().catch(() => null)) as { id?: unknown; name?: unknown } | null;
+    const fields = contextShape(p);
+    if (!p || !fields || p.id !== c.req.param("id") || typeof p.id !== "string" || !ID.test(p.id) || typeof p.name !== "string" || !p.name.trim()) return bad("Not a product");
+    await c.get("store").putProduct({ ...fields, id: p.id, name: p.name.trim().slice(0, 80) }, { tab: tabOf(c.req.raw.headers) });
     return c.json({ ok: true });
   });
   r.delete("/api/org/:org/products/:id", async (c) => {
@@ -621,7 +622,3 @@ function publicPiece(p: PieceRow | Hit) {
   return { ...rest, topics: topicsOf(p) };
 }
 
-const isContext = (c: unknown): c is ContextFields => {
-  const x = c as ContextFields;
-  return !!x && typeof x.audience === "string" && typeof x.context === "string" && Array.isArray(x.goals) && x.goals.every((g) => typeof g === "string") && Array.isArray(x.segments) && x.segments.every((g) => typeof g === "string");
-};

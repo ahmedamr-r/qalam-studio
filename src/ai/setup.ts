@@ -12,7 +12,15 @@ import { SETUP_LIMITS } from "@/org/setup";
  */
 
 const text = (max: number) => z.string().max(max);
-const FieldsIn = { audience: text(2000), goals: z.array(text(300)).max(30), context: text(4000), segments: z.array(text(200)).max(30) };
+const FieldsIn = {
+  audience: text(2000),
+  goals: z.array(text(300)).max(30),
+  context: text(4000),
+  segments: z.array(text(200)).max(30),
+  strategy: text(2000).optional(),
+  alternatives: z.array(text(200)).max(30).optional(),
+  constraints: z.array(text(300)).max(30).optional(),
+};
 const Base = {
   /** The organization's name. */
   name: text(80),
@@ -96,11 +104,14 @@ export const SETUP_PLACE_SYSTEM = `${BASE}
 
 Your task: set the organization up from the brain dump and the answers, as lines they accept or discard one by one.
 - Products: one for each product or service the company offers that a team works on (an app, a service for businesses), named as they name it. A company with one product gets one. Never a feature, a market or a team. A product the organization has already (p…) takes its lines by its id.
-- The organization's About: who it serves and what it does (a few plain sentences each), the goals the whole company moves (revenue, growth, a market), and kinds of customers that span its products.
-- Each product: who it's for, its context (how it works, where, what's true of its market), its goals and its segments.
+- The organization's About: who it serves and what it does (a few plain sentences each), the goals the whole company moves (revenue, growth, a market), how it means to win, what customers use instead, what it won't do or can't, and kinds of customers that span its products.
+- Each product: who it's for, its context (how it works, where, what's true of its market), its goals, its strategy, what its customers use instead, its constraints and its segments.
 - Customers' needs and complaints, and ideas for meeting them, aren't for these pages: Qalam files them on the topic pages, and boards work on them. Context says how things are, not what customers want.
 - Goals are results a team wants, as they state them, at most 12 words: a business number for the company; a change in what customers do for a product ("More parents reorder every week"). Follow their answers on which goal leads. A number goes in only as they wrote it.
 - Segments are kinds of customers worth telling apart ("Parents of young children", "Offices that restock weekly"), a few words each, on the product they're customers of.
+- Strategy is how they say they mean to win: the bets they're making (being fastest, owning a market), in a few plain sentences, only as they say it.
+- What customers use instead: competitors, workarounds or doing nothing, as they name them, a few words each.
+- Constraints: what they say they won't do or can't (a budget, a rule, a market they stay out of), one line each.
 - Leave a field that already says something as it is (null), and never repeat a goal or segment that's there.
 - Every line cites what it rests on: the pieces of the dump (f…) and their answers (a…). Nothing of your own: no products, goals, numbers, customers or claims they didn't give. What they were unsure of and the answers didn't settle stays out.`;
 
@@ -146,8 +157,11 @@ export function setupPlaceSchema(o: { fragments: string[]; answers: string[]; pr
   const fields = (who: string, context: string) => ({
     audience: nullable(line(`Who ${who} serves: one or two plain sentences`)),
     context: nullable(line(context)),
-    goals: arr(line("A goal as they state it, at most 12 words"), `Goals ${who === "it" ? "the product" : "the whole company"} moves; [] when none`),
+    goals: arr(line("A goal as they state it, at most 12 words"), `Goals ${who === "it" ? "the product" : "the whole company"} moves, the one that leads first; [] when none`),
+    strategy: nullable(line(`How ${who} means to win, as they say it: a few plain sentences`)),
     segments: arr(line("A kind of customer, a few words"), "Kinds of customers worth telling apart; [] when none"),
+    alternatives: arr(line("A competitor, workaround or other way customers manage now, a few words"), "What customers use instead, as they name it; [] when none"),
+    constraints: arr(line("Something they won't do or can't, one line"), "Their constraints; [] when none"),
   });
   const refs = [...o.products, ...Array.from({ length: SETUP_LIMITS.products }, (_, i) => `n${i + 1}`)];
   return obj({
@@ -172,7 +186,15 @@ const flat = (s: string) => s.replace(/\s+/g, " ").trim();
 type Fields = z.infer<z.ZodObject<typeof FieldsIn>>;
 
 const fieldLines = (c: Fields, audience: string, context: string) =>
-  [c.audience.trim() && `  ${audience}: ${flat(c.audience)}`, c.context.trim() && `  ${context}: ${flat(c.context)}`, c.goals.length && `  Goals: ${c.goals.map(flat).join("; ")}`, c.segments.length && `  Segments: ${c.segments.map(flat).join("; ")}`].filter(Boolean) as string[];
+  [
+    c.audience.trim() && `  ${audience}: ${flat(c.audience)}`,
+    c.context.trim() && `  ${context}: ${flat(c.context)}`,
+    c.goals.length && `  Goals: ${c.goals.map(flat).join("; ")}`,
+    c.strategy?.trim() && `  Strategy: ${flat(c.strategy)}`,
+    c.segments.length && `  Segments: ${c.segments.map(flat).join("; ")}`,
+    c.alternatives?.length && `  What customers use instead: ${c.alternatives.map(flat).join("; ")}`,
+    c.constraints?.length && `  Constraints: ${c.constraints.map(flat).join("; ")}`,
+  ].filter(Boolean) as string[];
 
 const material = (b: SetupRequest) => {
   const about = fieldLines(b.about, "Who it serves", "What it does");

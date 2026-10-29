@@ -5,7 +5,7 @@ import { KIND_LABEL, stageLabel } from "@/discovery/kinds";
 import { QUOTE_KIND_LABEL, quotePiece, type SourceRecord } from "@/discovery/sources";
 import type { OstCard, OstEvidence } from "@/discovery/types";
 import { factHash } from "@/knowledge/refs";
-import type { ContextFields } from "@/org/context-md";
+import { goalText, type ContextFields } from "@/org/context-md";
 import type { Project } from "@/projects/model";
 import { SECTION_HEADING, type Topic, type TopicSection } from "./topics";
 
@@ -247,10 +247,13 @@ export function contextPieces(owner: { product: string | null; name: string; at:
   const who = owner.product ? owner.name : `${owner.name} (the organization)`;
   const items: [string, string, string][] = [
     ["audience", `Who ${who} is for`, c.audience],
-    ...c.goals.map((g): [string, string, string] => ["goal", `A goal of ${who}`, g]),
+    ...c.goals.map((g, i): [string, string, string] => ["goal", `A goal of ${who}${i === 0 && c.goals.length > 1 ? ", the one that leads" : ""}`, goalText(g)]),
+    ["strategy", `How ${who} means to win`, c.strategy ?? ""],
     ["context", `About ${who}`, c.context],
     // One piece for all of them: a name like "New customers" alone is near everything in meaning.
     ["segments", `The kinds of customer ${who} tells apart`, c.segments.join("; ")],
+    ["alternatives", `What customers of ${who} use instead`, (c.alternatives ?? []).join("; ")],
+    ["constraints", `What ${who} won't do, or can't`, (c.constraints ?? []).join("; ")],
     ["notes", `Notes on ${who}`, c.notes ?? ""],
   ];
   const pieces: HubPiece[] = [];

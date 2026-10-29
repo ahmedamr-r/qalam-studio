@@ -9,7 +9,7 @@ import type { Topic } from "@/hub/topics";
 import { topicsDb } from "@/org/topics";
 import { currentOrg, orgJson, type OrgRef } from "@/org/client";
 import { newProduct, saveProduct, useOrgContext } from "@/org/context";
-import type { Product } from "@/org/context-md";
+import { contextEmpty, type Product } from "@/org/context-md";
 import { projectsDb } from "@/projects/db";
 import { browserProjectsToMove, moveBrowserProjects } from "@/org/import-browser";
 import { onOrgChange } from "@/org/live";
@@ -202,7 +202,7 @@ export default function Home() {
             </button>
           </nav>
 
-          <SetupNotice org={org} sources={sources} empty={loaded && !products.length && !about.audience.trim() && !about.context.trim() && !about.goals.length && !about.segments.length} />
+          <SetupNotice org={org} sources={sources} empty={loaded && !products.length && contextEmpty(about)} />
 
           <AskBar product={product?.id ?? null} topics={topics} />
 
