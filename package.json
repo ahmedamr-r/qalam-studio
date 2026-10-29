@@ -78,6 +78,7 @@
     "react": "19.3.0",
     "react-colorful": "^5.8.1",
     "react-dom": "19.3.0",
+    "react-grab": "0.2.0",
     "sucrase": "3.35.1",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.23.15",

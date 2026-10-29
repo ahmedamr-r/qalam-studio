@@ -1,3 +1,7 @@
+// React Grab (development only): pick any element on the page to copy its component and source for an agent.
+if (import.meta.env.DEV) {
+  import("react-grab");
+}
 import "@fontsource-variable/inter/opsz.css";
 import "@fontsource-variable/geist-mono/index.css";
 import "./ui/globals.css";
