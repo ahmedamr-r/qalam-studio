@@ -158,6 +158,7 @@ All settings are optional and go in `.env.local`. `.env.example` lists them with
 - **Boards build on what the organization knows.** Drafting a tree, picking out quotes, mapping them and placing a brain dump each send Qalam AI the pieces of the organization's knowledge that bear on the work, within a token budget.
   - A new board's needs can rest on what customers said in sources added to other boards. A quote from elsewhere brings its source onto the board when you accept it.
   - Qalam AI says which pieces shaped each answer. Code keeps only pieces it was sent, and the board keeps that trace.
+- **Numbers, read by code:** an outcome's number keeps its readings over time: type the number in as it moves, or import a CSV from your analytics tool, and code finds the dates and the numbers and says what it read. A sparkline shows the trend, with a tick where a solution under it shipped. A CSV of tickets, survey answers or reviews is read as a table: code counts how many rows a need shows up in ("in 12 of 340 rows"), and a customer column makes one customer's rows one voice.
 - **Decision memory:** what you decide on a board is recorded as you go, by code and without the AI: a new target, a dropped solution, a parked opportunity, a merge, a deleted branch, a move, an outcome's new number.
   - Each entry keeps what the card rested on that day: its quotes, what spoke against it, its tests.
   - A big decision asks for a one-line why, which you can skip and add later.

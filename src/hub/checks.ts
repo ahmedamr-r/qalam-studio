@@ -345,7 +345,8 @@ export function runChecks(x: CheckInput): Notice[] {
     const m = c.card.metric;
     if (c.card.kind === "outcome" && c.card.stage === "active" && m && m.current !== null && m.target !== null) {
       const updates = x.decisions.filter((d) => !d.undone && d.kind === "metric" && d.board === c.board.id && d.card === c.id && (d.detail as { field?: unknown } | undefined)?.field === "current");
-      const last = Math.max(c.card.stageAt ?? c.board.createdAt, ...updates.map((d) => d.at));
+      // A reading (typed in, or read from an export) is an update too.
+      const last = Math.max(c.card.stageAt ?? c.board.createdAt, ...updates.map((d) => d.at), ...(m.readings ?? []).map((r) => r.at));
       if (x.now - last > STALE_METRIC_DAYS * DAY) {
         const weeks = Math.floor((x.now - last) / (7 * DAY));
         const flat = m.baseline !== null && m.current === m.baseline;

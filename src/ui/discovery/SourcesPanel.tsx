@@ -118,7 +118,7 @@ function metaOf(s: SourceRecord): string {
   const t = s.transcript;
   const talk = t ? [`${Math.max(1, Math.round(t.durationSec / 60))} min`, plural(t.speakers.length, "speaker")] : [];
   const pieces = s.kind === "dump" ? plural(s.quotes.length, "piece") : plural(s.quotes.length, "quote");
-  return [SOURCE_KIND_LABEL[s.kind], ...talk, s.pages ? plural(s.pages.length, "page") : "", awaitingRoles(s) ? "Say who is who" : pieces, left && s.read.length ? `${left} unread` : ""].filter(Boolean).join(" · ");
+  return [s.table ? "Table" : SOURCE_KIND_LABEL[s.kind], ...talk, s.pages ? plural(s.pages.length, "page") : "", s.table ? plural(s.table.rows, "row") : "", awaitingRoles(s) ? "Say who is who" : pieces, left && s.read.length ? `${left} unread` : ""].filter(Boolean).join(" · ");
 }
 
 function SourceRow({ source, quoting }: { source: SourceRecord; quoting: boolean }) {

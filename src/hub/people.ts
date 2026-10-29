@@ -1,4 +1,5 @@
 import type { SourceQuote, SourceRecord } from "@/discovery/sources";
+import { dataRows, rowAt, rowWho, type SourceTable } from "@/discovery/table";
 
 /**
  * Who is behind what customers said (pure). The organization keeps the people it hears from
@@ -42,7 +43,12 @@ export interface Voice {
   source: string;
   /** When it was said. */
   at: number;
+  /** A table's row it's in (an export's ticket, answer or review), of how many. */
+  row?: { n: number; of: number };
 }
+
+/** A source as voices are told apart in it: who is in it, and its rows when it's a table. */
+type VoiceSource = Pick<SourceRecord, "id" | "addedAt" | "who"> & { text?: string; table?: SourceTable };
 
 export const PEOPLE_LIMITS = { name: 80, role: 160, segments: 12, notes: 4000 } as const;
 
@@ -64,11 +70,22 @@ export function personOf(s: Pick<SourceRecord, "who">, q: Pick<SourceQuote, "spe
   return !w.speakers && w.person ? people.get(w.person) : undefined;
 }
 
-/** The voice behind a quote of a source. */
-export function voiceOf(s: Pick<SourceRecord, "id" | "addedAt" | "who">, q: Pick<SourceQuote, "speaker" | "speakerId">, people: ReadonlyMap<string, Person>): Voice {
+/**
+ * The voice behind a quote of a source. In a table (an export), each row is someone's: the same
+ * person's rows when its who column says so, else one voice a row.
+ */
+export function voiceOf(s: VoiceSource, q: Pick<SourceQuote, "speaker" | "speakerId"> & { span?: [number, number] }, people: ReadonlyMap<string, Person>): Voice {
   const person = personOf(s, q, people);
   const at = saidAt(s);
-  if (person) return { key: `person:${person.id}`, person, name: person.name, segments: person.segments.length ? person.segments : s.who?.segment ? [s.who.segment] : [], source: s.id, at };
+  // The record itself is the memo's key: its rows are read once for all its quotes.
+  const rows = s.table && s.text !== undefined && q.span ? dataRows(s as { text: string; table: SourceTable }) : [];
+  const n = rows.length && q.span ? rowAt(rows, q.span[0]) : -1;
+  const row = n >= 0 && s.table ? { row: { n, of: s.table.rows } } : {};
+  if (person) return { key: `person:${person.id}`, person, name: person.name, segments: person.segments.length ? person.segments : s.who?.segment ? [s.who.segment] : [], source: s.id, at, ...row };
+  if (n >= 0) {
+    const who = rowWho(s, rows[n]);
+    return { key: `source:${s.id}:${who ? `who:${key(who)}` : `row:${n}`}`, ...(who ? { name: who } : {}), segments: s.who?.segment ? [s.who.segment] : [], source: s.id, at, ...row };
+  }
   const speaker = q.speakerId ?? (q.speaker ? key(q.speaker) : "");
   return { key: `source:${s.id}${speaker ? `:${speaker}` : ""}`, ...(q.speaker ? { name: q.speaker } : {}), segments: s.who?.segment ? [s.who.segment] : [], source: s.id, at };
 }
@@ -118,7 +135,7 @@ export function tallyText(t: Tally): string {
  * Every quote's voice, by its piece ref (hub:quote:<id>): what checks and comparisons count. Built
  * once from the organization's sources and people.
  */
-export function voicesByQuote(sources: Pick<SourceRecord, "id" | "addedAt" | "who" | "quotes" | "kind">[], people: Person[]): Map<string, Voice> {
+export function voicesByQuote(sources: (VoiceSource & Pick<SourceRecord, "quotes" | "kind">)[], people: Person[]): Map<string, Voice> {
   const byId = new Map(people.map((p) => [p.id, p]));
   const out = new Map<string, Voice>();
   for (const s of sources) {

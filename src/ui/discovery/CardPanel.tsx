@@ -31,6 +31,8 @@ import { useDecisions } from "../decisions/list";
 import { citation, fromSource, quoteOf, type SourceRecord } from "@/discovery/sources";
 import { STRENGTH_LABEL, type Strength } from "@/hub/strength";
 import { useStrength } from "./strength";
+import { MetricReadings, type ShipMark } from "./MetricReadings";
+import { withReading } from "@/discovery/readings";
 
 const ICON = { size: 12, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 
@@ -215,9 +217,31 @@ function HistorySection({ id }: { id: string }) {
   );
 }
 
+/** When the solutions under an outcome shipped (from the decision recorder's stamp on each). */
+function useShipMarks(id: string): ShipMark[] {
+  const marks = useStudio(
+    useShallow((s) => {
+      const out: string[] = [];
+      const walk = (nid: string) => {
+        const n = s.doc.nodes[nid];
+        if (!n) return;
+        for (const k of n.children) {
+          const c = cardOf(s.doc, k);
+          if (c?.kind === "solution" && c.stage === "shipped" && c.stageAt) out.push(`${c.stageAt}\u0000${c.title}`);
+          walk(k);
+        }
+      };
+      walk(id);
+      return out;
+    }),
+  );
+  return marks.map((m) => ({ at: Number(m.split("\u0000")[0]), label: `Shipped “${m.split("\u0000")[1]}”` }));
+}
+
 function MetricSection({ id, card }: { id: string; card: OstCard }) {
   const m = card.metric ?? { name: "", direction: "increase" as const, baseline: null, current: null, target: null };
   const set = (patch: Partial<typeof m>) => edit(id, (c) => void (c.metric = { ...m, ...patch }));
+  const marks = useShipMarks(id);
   return (
     <Section title="Metric">
       <Field label="Customer behaviour it measures">
@@ -236,7 +260,8 @@ function MetricSection({ id, card }: { id: string; card: OstCard }) {
           <CommitNumber ariaLabel="Baseline" value={m.baseline} onCommit={(baseline) => set({ baseline })} />
         </Field>
         <Field label="Now">
-          <CommitNumber ariaLabel="Current" value={m.current} onCommit={(current) => set({ current })} />
+          {/* A number typed here is today's reading too. */}
+          <CommitNumber ariaLabel="Current" value={m.current} onCommit={(current) => (current === null ? set({ current }) : edit(id, (c) => void (c.metric = withReading(m, current, Date.now()))))} />
         </Field>
         <Field label="Target">
           <CommitNumber ariaLabel="Target" value={m.target} onCommit={(target) => set({ target })} />
@@ -245,6 +270,7 @@ function MetricSection({ id, card }: { id: string; card: OstCard }) {
       <Field label="By when">
         <CommitInput ariaLabel="Timeframe" value={m.timeframe ?? ""} placeholder="End of Q1" onCommit={(t) => set({ timeframe: t.trim() || undefined })} />
       </Field>
+      <MetricReadings metric={m} marks={marks} onChange={(next) => edit(id, (c) => void (c.metric = next))} />
     </Section>
   );
 }

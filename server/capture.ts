@@ -208,6 +208,7 @@ export async function captureSource(store: OrgStore, ing: Ingested, o: CaptureOp
     ...(ing.pages ? { pages: ing.pages } : {}),
     ...(ing.truncated ? { truncated: true } : {}),
     ...(ing.segments && ing.transcript ? { segments: ing.segments, transcript: ing.transcript } : {}),
+    ...(ing.table ? { table: ing.table } : {}),
     addedAt: Date.now(),
     read: [],
     quotes: [],

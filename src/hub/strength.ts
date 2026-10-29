@@ -27,7 +27,29 @@ export interface Strength {
   /** The team's own words behind it (answers, brain dumps, notes). */
   team: number;
   tests: { passed: number; failed: number; running: number };
+  /** In a table (an export of tickets, answers, reviews): how many of its rows show it, of how many. */
+  rows: { source: string; shown: number; of: number }[];
 }
+
+/** Rows a need shows up in, by table: counted by code from where its quotes sit. */
+export function rowShares(voices: Voice[]): Strength["rows"] {
+  const by = new Map<string, { shown: Set<number>; of: number }>();
+  for (const v of voices) {
+    if (!v.row) continue;
+    const t = by.get(v.source) ?? { shown: new Set<number>(), of: v.row.of };
+    t.shown.add(v.row.n);
+    by.set(v.source, t);
+  }
+  return [...by].map(([source, t]) => ({ source, shown: t.shown.size, of: t.of })).sort((a, b) => b.shown / b.of - a.shown / a.of);
+}
+
+const pct = (n: number, of: number) => {
+  const p = (n / Math.max(1, of)) * 100;
+  return p >= 10 || p === 0 ? `${Math.round(p)}%` : `${p.toFixed(1).replace(/\.0$/, "")}%`;
+};
+
+/** A table's share in words: "in 12 of 340 rows (3.5%)". */
+export const shareText = (r: Strength["rows"][number]) => `in ${r.shown} of ${r.of} rows (${pct(r.shown, r.of)})`;
 
 /** Customers' words older than this read as stale. */
 export const STALE_DAYS = 180;
@@ -76,8 +98,10 @@ export function strengthOf(card: Pick<OstCard, "kind" | "evidence">, o: { now: n
   else level = "thin";
   if (tests.failed && level === "strong") level = "some";
 
+  const rows = rowShares(forVoices);
   const parts = [
     t.voices ? tallyText(t) : team ? `only the team's words (${team})` : "",
+    ...rows.slice(0, 2).map(shareText),
     t.voices ? `newest ${ageText(age)}` : "",
     against ? `${against} against` : "",
     tests.passed ? `${tests.passed} ${tests.passed === 1 ? "test" : "tests"} passed` : "",
@@ -90,7 +114,8 @@ export function strengthOf(card: Pick<OstCard, "kind" | "evidence">, o: { now: n
   else if (stale) next = `The newest is over ${Math.round(STALE_DAYS / 30)} months old: check it still holds.`;
   else if (t.voices < 3) next = "Hear it from more people (three or more, in two sources) before betting on it.";
   else if (t.sources < 2) next = "It all comes from one source: hear it somewhere else too.";
-  else if (t.people < t.voices) next = "Say who said it on its sources, so the same person isn't counted twice.";
+  // A table's rows say who wrote them; elsewhere, an unknown speaker in two sources would count twice.
+  else if (forVoices.some((v) => !v.person && !v.row)) next = "Say who said it on its sources, so the same person isn't counted twice.";
 
-  return { level, why: parts.join(" · "), ...(next ? { next } : {}), tally: t, quotes: quotes.length, against, team, tests };
+  return { level, why: parts.join(" · "), ...(next ? { next } : {}), tally: t, quotes: quotes.length, against, team, tests, rows };
 }

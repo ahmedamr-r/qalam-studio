@@ -75,6 +75,14 @@ export interface OstAssumption {
   at?: number;
 }
 
+/** The number on a day: typed in, or read by code from an export. */
+export interface MetricReading {
+  at: number;
+  value: number;
+  /** The file it was read from; none: typed in. */
+  from?: string;
+}
+
 export interface OstMetric {
   name: string;
   unit?: string;
@@ -84,6 +92,8 @@ export interface OstMetric {
   target: number | null;
   /** By when, in the builder's words ("by March"). */
   timeframe?: string;
+  /** The number over time, oldest first (src/discovery/readings.ts). */
+  readings?: MetricReading[];
 }
 
 export interface OstTest {

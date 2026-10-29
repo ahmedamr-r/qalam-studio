@@ -20,6 +20,7 @@ import { captureSource, fileSources } from "../capture";
 import type { Ingested } from "@/discovery/ingest/core";
 import type { Proposal } from "@/discovery/proposals";
 import { MAX_SOURCE_TEXT, SOURCE_KIND_LABEL, type SourceRecord } from "@/discovery/sources";
+import { tableOf } from "@/discovery/table";
 import { aiConfigured, rateLimited } from "@/ai/server";
 import { ConflictError, NotFoundError, type OrgEvent, type OrgStore } from "./store";
 
@@ -414,7 +415,9 @@ export function orgRoutes(): Hono<Env> {
     const s = (await c.req.json()) as SourceRecord;
     if (!s || s.id !== c.req.param("id") || !ID.test(s.id) || typeof s.text !== "string") return bad("Not a source");
     const who = whoShape(s.who);
-    await c.get("store").putSource({ ...s, who }, { tab: tabOf(c.req.raw.headers) });
+    // A table's rows and columns are code's reading of the text, read again here.
+    const table = s.table ? (tableOf(s.text, s.table.delimiter === "\t" || s.table.delimiter === ";" ? s.table.delimiter : ",") ?? undefined) : undefined;
+    await c.get("store").putSource({ ...s, who, table }, { tab: tabOf(c.req.raw.headers) });
     return c.json({ ok: true });
   });
   r.delete("/api/org/:org/sources/:id", async (c) => {
@@ -611,6 +614,8 @@ function ingestedShape(raw: unknown): Ingested | null {
   if (!i || !KINDS.has(i.kind as string) || i.kind === "dump" || typeof i.title !== "string" || !i.title.trim() || typeof i.text !== "string" || !i.text.trim() || i.text.length > MAX_SOURCE_TEXT) return null;
   const pages = Array.isArray(i.pages) && i.pages.every((n) => typeof n === "number") ? (i.pages as number[]) : undefined;
   const talk = Array.isArray(i.segments) && i.transcript && typeof i.transcript === "object" ? { segments: i.segments as Ingested["segments"], transcript: i.transcript as Ingested["transcript"] } : {};
+  // A table is read again from the text here: what a window says about it isn't taken on trust.
+  const table = i.table && typeof i.table === "object" ? tableOf(i.text, (i.table as { delimiter?: unknown }).delimiter === "\t" ? "\t" : (i.table as { delimiter?: unknown }).delimiter === ";" ? ";" : ",") : null;
   return {
     kind: i.kind as Ingested["kind"],
     title: i.title.replace(/\s+/g, " ").trim().slice(0, 160),
@@ -619,6 +624,7 @@ function ingestedShape(raw: unknown): Ingested | null {
     ...(pages ? { pages } : {}),
     ...(i.truncated === true ? { truncated: true } : {}),
     ...talk,
+    ...(table ? { table } : {}),
   };
 }
 
