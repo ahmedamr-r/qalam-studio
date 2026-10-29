@@ -225,7 +225,7 @@ export function Questionnaire({ questions, state, onChange, onSubmit, review, ti
   );
 }
 
-function Radio({ on }: { on: boolean }) {
+export function Radio({ on }: { on: boolean }) {
   return <span className={clsx(qr.radio, on && qr.radioOn)}>{on && <span className={qr.radioDot} />}</span>;
 }
 

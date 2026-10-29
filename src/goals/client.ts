@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { Decision } from "@/decisions/model";
 import { orgFetch, orgJson } from "@/org/client";
+import type { Me } from "@/org/you";
 import type { NewGoal } from "./shape";
 import { emptyGoals, type Goal, type GoalPatch, type GoalsAt, type GoalTree } from "./types";
 
@@ -14,17 +15,19 @@ export interface GoalsNow extends GoalTree {
   version: string | null;
   /** The goals that are this computer's person's. */
   mine: string[];
+  /** This computer's person's position here (null: not asked yet). */
+  me: Me | null;
   loaded: boolean;
 }
 
-export const useGoals = create<GoalsNow>(() => ({ ...emptyGoals(), version: null, mine: [], loaded: false }));
+export const useGoals = create<GoalsNow>(() => ({ ...emptyGoals(), version: null, mine: [], me: null, loaded: false }));
 
 const take = (at: GoalsAt) => useGoals.setState({ goals: at.goals, north: at.north, notes: at.notes, version: at.version, loaded: true });
 
 export async function loadGoals() {
-  const at = await orgJson<GoalsAt & { mine: string[] }>("/goals");
+  const at = await orgJson<GoalsAt & { mine: string[]; me?: Me | null }>("/goals");
   take(at);
-  useGoals.setState({ mine: at.mine ?? [] });
+  useGoals.setState({ mine: at.mine ?? [], me: at.me ?? null });
 }
 
 export const goalsNow = (): GoalTree => {
@@ -58,6 +61,12 @@ export async function setNorth(id: string | null): Promise<void> {
 export async function setMine(ids: string[]): Promise<void> {
   useGoals.setState({ mine: ids });
   await orgFetch("/goals-mine", { method: "PUT", json: { ids } });
+}
+
+/** Their position here, kept on this computer. */
+export async function setMe(me: Me): Promise<void> {
+  const r = await orgJson<{ me: Me | null }>("/me", { method: "PUT", json: me });
+  useGoals.setState({ me: r.me });
 }
 
 /** The words of a place's goals (the organization's: null), for what setup reads. */

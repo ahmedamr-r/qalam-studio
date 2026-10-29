@@ -28,6 +28,7 @@ import { applyFiling, type Applied, type Filing, type Topic, type TopicInfo } fr
 import { factHash } from "@/knowledge/refs";
 import { aboutFromMarkdown, aboutToMarkdown, emptyContext, legacyGoals, productFromMarkdown, productToMarkdown, type ContextFields, type Product } from "@/org/context-md";
 import type { Project, ProjectType } from "@/projects/model";
+import type { Me } from "@/org/you";
 import { assetExt, assetType, decodeProject, decodeSource, docVersion, encodeProject, encodeSource, isLocalField, recordVersion, splitLocal, type LocalFields } from "./codecs";
 import { assetHash, atomicWrite, contentHash, inside, locked, readJson, slugify, stableStringify, uniqueName } from "./fsx";
 
@@ -133,6 +134,8 @@ interface LocalState {
   visit?: number;
   /** The goals that are this computer's person's ("Which goals are yours?"). */
   mine?: string[];
+  /** This computer's person's position at the organization, from the first run. */
+  me?: Me;
   /** The repositories and folders this computer reads for the products. */
   code?: CodeRepo[];
 }
@@ -1023,6 +1026,16 @@ export class OrgStore {
 
   async setMine(ids: string[]): Promise<void> {
     this.local.mine = [...new Set(ids)].slice(0, 200);
+    await locked(this.abs(".qalam/local/state.json"), () => atomicWrite(this.abs(".qalam/local/state.json"), stableStringify(this.local)));
+  }
+
+  /** This computer's person's position here. None: not asked yet. */
+  get me(): Me | null {
+    return this.local.me ?? null;
+  }
+
+  async setMe(me: Me): Promise<void> {
+    this.local.me = me;
     await locked(this.abs(".qalam/local/state.json"), () => atomicWrite(this.abs(".qalam/local/state.json"), stableStringify(this.local)));
   }
 

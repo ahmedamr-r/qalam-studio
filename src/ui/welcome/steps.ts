@@ -1,15 +1,16 @@
 /*
- * The welcome's steps (pure): Qalam AI found and tested, the organization named, its goals
- * (written down, or found in what they write about it), which are theirs, and what to connect for
- * them (the last three are the setup page, src/ui/setup). Like OpenClaw's QuickStart: everything
+ * The welcome's steps (pure): Qalam AI found and tested, the organization named, who they are
+ * (their name and position there), its goals (written down, or found in what they write about it),
+ * which are theirs, and what to connect for them (from who they are on, the setup page, src/ui/setup). Like OpenClaw's QuickStart: everything
  * else is "set up later", and running it again only checks.
  */
 
-export type WelcomeStep = "engine" | "name" | "goals" | "yours" | "connect";
+export type WelcomeStep = "engine" | "name" | "you" | "goals" | "yours" | "connect";
 
 export const WELCOME_STEPS: readonly { id: WelcomeStep; label: string }[] = [
   { id: "engine", label: "Qalam AI" },
   { id: "name", label: "Name it" },
+  { id: "you", label: "You" },
   { id: "goals", label: "Goals" },
   { id: "yours", label: "Yours" },
   { id: "connect", label: "Connect" },
@@ -23,11 +24,11 @@ export function stepStates(at: WelcomeStep): Record<WelcomeStep, StepState> {
   return Object.fromEntries(WELCOME_STEPS.map((s, k) => [s.id, k < i ? "done" : k === i ? "now" : "next"])) as Record<WelcomeStep, StepState>;
 }
 
-/** The setup page's steps, as its address names them (`?step=`): the goals first. */
-export type SetupStep = Extract<WelcomeStep, "goals" | "yours" | "connect">;
+/** The setup page's steps, as its address names them (`?step=`): the goals unless it says. */
+export type SetupStep = Extract<WelcomeStep, "you" | "goals" | "yours" | "connect">;
 export const setupStep = (search: string): SetupStep => {
   const s = new URLSearchParams(search).get("step");
-  return s === "yours" || s === "connect" ? s : "goals";
+  return s === "you" || s === "yours" || s === "connect" ? s : "goals";
 };
 
 /**

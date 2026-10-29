@@ -3,6 +3,7 @@ import clsx from "clsx";
 import { Check, ChevronRight, Link2, RotateCcw, Star, Target } from "lucide-react";
 import { CHALLENGE_LABEL } from "@/discovery/dump";
 import { useGoals } from "@/goals/client";
+import { NAME_MAX, POSITIONS, TITLE_MAX, useYou, type Position } from "@/org/you";
 import { childrenOf } from "@/goals/tree";
 import { useOrgContext } from "@/org/context";
 import { boardGoals, pendingLines } from "@/org/setup";
@@ -12,7 +13,7 @@ import { QalamAIGlyph } from "../brand/ai-glyph";
 import { ConnectorLogo } from "../brand/ConnectorLogo";
 import { Button, Checkbox, Spinner, Tag } from "../controls";
 import { toQuestion } from "../ai/plan";
-import { qr } from "../ai/Questionnaire";
+import { qr, Radio } from "../ai/Questionnaire";
 import { answerOf, summarize, type Answers, type Question } from "../ai/questionFlow";
 import { ErrorNote, Progress } from "../ai/common";
 import { CopyCommand, KeyField, PLAN } from "../connections/EngineCard";
@@ -24,7 +25,7 @@ import { StatusDot } from "../viz";
 import { addKnown, editKnown, skipKnown, useKnow } from "../setup/know";
 import { acceptLines, placeSetup, retrySetup, skipSetupRest, startBoard, useSetup } from "../setup/setup";
 import { connectFor } from "../welcome/steps";
-import { checkEngine, goStep, keySaved, openKeyField, openSoFar, pickDoor, saveYours, skipEngine, togglePick, useFirstRun } from "./flow";
+import { checkEngine, goStep, keySaved, openKeyField, openSoFar, pickDoor, saveYou, saveYours, skipEngine, togglePick, useFirstRun } from "./flow";
 import { treeRows } from "./soFar";
 
 /*
@@ -299,6 +300,70 @@ function AnswersPart({ data }: { data: PartData }) {
 }
 
 // ---------------------------------------------------------------------------
+// Who they are
+
+/** Their name (this Mac's, filled in when it has one) and their position at this organization. */
+function YouPart({ data }: { data: PartData }) {
+  const saved = useYou((y) => y.name);
+  const me = useGoals((g) => g.me);
+  const org = useFirstRun((s) => s.org?.name ?? "the organization");
+  const [name, setName] = useState<string | null>(null);
+  const [position, setPosition] = useState<Position | null>(null);
+  const [title, setTitle] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (!data.open) return null;
+  const n = name ?? saved ?? "";
+  const p = position ?? me?.position ?? null;
+  const t = title ?? me?.title ?? "";
+  const ready = !!n.trim() && !!p && (p !== "other" || !!t.trim());
+  const save = () => {
+    if (!ready || saving) return;
+    setSaving(true);
+    setError(null);
+    void saveYou(n, p === "other" ? { position: p, title: t } : { position: p! })
+      .catch((e) => setError(message(e)))
+      .finally(() => setSaving(false));
+  };
+  const cardCls = (on: boolean) => clsx(qr.option, "items-center", on ? qr.optionSelected : qr.optionIdle);
+  return (
+    <form
+      className="flex flex-col gap-[10px]"
+      onSubmit={(e) => {
+        e.preventDefault();
+        save();
+      }}
+    >
+      <label className="flex flex-col gap-[4px]">
+        <span className="text-caption text-fg-muted">Your name</span>
+        <input className="ds-input placeholder:text-fg-faint" dir="auto" maxLength={NAME_MAX} placeholder="Ahmed" value={n} autoFocus={!n} onChange={(e) => setName(e.target.value)} />
+      </label>
+      <div className="flex flex-col gap-[4px]">
+        <span className="text-caption text-fg-muted">Your position at {org}</span>
+        <div className="grid grid-cols-2 gap-[6px]" role="radiogroup" aria-label={`Your position at ${org}`}>
+          {POSITIONS.map((o) => (
+            <button key={o.value} type="button" role="radio" aria-checked={p === o.value} className={cardCls(p === o.value)} onClick={() => setPosition(o.value)}>
+              <Radio on={p === o.value} />
+              <span className="text-body font-medium text-fg">{o.label}</span>
+            </button>
+          ))}
+        </div>
+        {p === "other" && (
+          <input className="ds-input q-fade placeholder:text-fg-faint" dir="auto" maxLength={TITLE_MAX} placeholder="Senior PM, Payments" value={t} autoFocus aria-label="Your position" onChange={(e) => setTitle(e.target.value)} />
+        )}
+      </div>
+      {error && <ErrorNote message={error} />}
+      <ReplyChips>
+        <button type="submit" disabled={!ready || saving} className={r.replyChipPrimary}>
+          Next
+        </button>
+        <span className="text-caption text-fg-subtle">Kept on this Mac. Qalam AI asks you less, and in your terms.</span>
+      </ReplyChips>
+    </form>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Which are theirs, what to connect, the end
 
 /** Where finishing goes: their first goal, else the first goal under the North Star, else the North Star. */
@@ -491,6 +556,7 @@ export const PARTS: Record<string, PartComponent> = {
   took: TookPart,
   pushback: PushbackPart,
   answers: AnswersPart,
+  you: YouPart,
   yours: YoursPart,
   connect: ConnectPart,
   allSet: AllSetPart,

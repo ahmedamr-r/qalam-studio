@@ -9,7 +9,7 @@ import { quoteEvidence, type SourceRecord } from "@/discovery/sources";
 import { newId } from "@/doc/factory";
 import { emptyDoc } from "@/doc/schema";
 import { currentOrg, orgFetch } from "@/org/client";
-import { changeGoal, createGoal, goalWords, goalsNow } from "@/goals/client";
+import { changeGoal, createGoal, goalWords, goalsNow, useGoals } from "@/goals/client";
 import { textGoalId } from "@/goals/migrate";
 import { sanitizeShaped, type OutlineGoal, type ShapedGoal } from "@/goals/outline";
 import { goalById } from "@/goals/tree";
@@ -18,6 +18,7 @@ import { saveAbout, saveProduct, useOrgContext } from "@/org/context";
 import { emptyContext } from "@/org/context-md";
 import { applyLines, boardGoals, decide, sanitizeSetup, setupSent, type OrgNow, type PlaceSays, type SetupLine, type SetupSession } from "@/org/setup";
 import { projectHref } from "@/projects/model";
+import { NAME_MAX, TITLE_MAX, useYou } from "@/org/you";
 import { createProject } from "@/projects/session";
 import { initialFlow, type FlowState } from "../ai/questionFlow";
 import { ingestPaste, ingestUrl } from "../discovery/ingest";
@@ -78,10 +79,18 @@ function orgNow(): OrgNow {
   return { about: { ...about, goals: goalWords(null) }, products: products.map((p) => ({ ...p, goals: goalWords(p.id) })) };
 }
 
-/** The organization as the calls name it: its name, its About, its products (p1…, in the order `setupSent` names them). */
+/** Who's answering, once they said (their name on this Mac, their position here): Qalam AI asks them less. */
+function person() {
+  const name = useYou.getState().name;
+  const me = useGoals.getState().me;
+  if (!name || !me) return {};
+  return { person: { name: name.slice(0, NAME_MAX), position: me.position, ...(me.title ? { title: me.title.slice(0, TITLE_MAX) } : {}) } };
+}
+
+/** The organization as the calls name it: its name, who's answering, its About, its products (p1…, in the order `setupSent` names them). */
 function orgFields(name: string, now: OrgNow) {
   const fields = (c: PlaceSays) => ({ audience: c.audience.slice(0, 2000), goals: c.goals.slice(0, 30).map((g) => g.slice(0, 300)), context: c.context.slice(0, 4000), segments: c.segments.slice(0, 30).map((g) => g.slice(0, 200)) });
-  return { name: name.slice(0, 80), about: fields(now.about), products: now.products.slice(0, 30).map((p, i) => ({ id: `p${i + 1}`, name: p.name.slice(0, 80), ...fields(p) })) };
+  return { name: name.slice(0, 80), ...person(), about: fields(now.about), products: now.products.slice(0, 30).map((p, i) => ({ id: `p${i + 1}`, name: p.name.slice(0, 80), ...fields(p) })) };
 }
 
 /** The pieces and the pushback as a call names them (f1…). */
@@ -365,6 +374,7 @@ export async function shapeGoals(goals: OutlineGoal[], answers: ReadonlyMap<stri
   const { raw } = await call(answers.size ? "Qalam AI is reading your answers" : "Qalam AI is reading your goals", {
     stage: "shape",
     name: org.name.slice(0, 80),
+    ...person(),
     products: products.map((p) => ({ id: p.ref, name: p.name.slice(0, 80) })),
     goals: goals.map((g) => ({ id: g.ref, text: g.text, parent: g.parent })),
     answers: [...answers].map(([id, answer]) => ({ id, answer: answer.slice(0, 600) })),

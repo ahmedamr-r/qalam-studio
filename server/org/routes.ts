@@ -34,6 +34,7 @@ import { changeJob, noteForJob, openJobs, planJobs, searchForJob, takeInForJob }
 import { breakDown, decidePart, lookOutside } from "./outside";
 import { addRepo, answerFromCode, codeView, readRepo, removeRepo, type NewRepo } from "../code";
 import { GOAL_LEVERS, type GoalLever } from "@/goals/types";
+import { meShape } from "@/org/you";
 import { ConflictError, GoalCycleError, GoalInUseError, NotFoundError, type OrgEvent, type OrgStore } from "./store";
 
 /**
@@ -141,7 +142,7 @@ export function orgRoutes(): Hono<Env> {
   r.get("/api/org/:org/goals", async (c) => {
     const store = c.get("store");
     const g = await store.getGoals();
-    return c.json({ ...g, mine: store.mine }, 200, { etag: etag(g.version) });
+    return c.json({ ...g, mine: store.mine, me: store.me }, 200, { etag: etag(g.version) });
   });
   r.post("/api/org/:org/goals", async (c) => {
     const g = newGoalShape(await c.req.json().catch(() => null));
@@ -344,6 +345,13 @@ export function orgRoutes(): Hono<Env> {
     if (!Array.isArray(ids) || !ids.every((x) => typeof x === "string" && ID.test(x))) return bad("Name goals");
     await c.get("store").setMine(ids as string[]);
     return c.json({ mine: c.get("store").mine });
+  });
+  // Their position here, from the first run: kept on this computer, never in the organization's pages.
+  r.put("/api/org/:org/me", async (c) => {
+    const me = meShape(await c.req.json().catch(() => null));
+    if (!me) return bad("Pick a position, or write yours");
+    await c.get("store").setMe(me);
+    return c.json({ me: c.get("store").me });
   });
 
   // Decisions: the log, newest first (a board's, a card's or a goal's), added to as boards change.

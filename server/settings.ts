@@ -16,6 +16,8 @@ export interface Settings {
   models?: "balanced" | "best";
   /** When the first-run welcome was finished on this computer. */
   welcomedAt?: number;
+  /** Who's on this computer, as they gave it in the first run (their position is per organization, in its `.qalam/local`). */
+  you?: { name: string };
   /** How each connector is reached: through Claude Code's server of that name, a token in the Keychain, or Qalam's own sign-in to the service's MCP server at `url` (its tokens in the Keychain). */
   connectors?: Record<string, { via: "claude-code"; server: string } | { via: "token" } | { via: "oauth"; url: string }>;
 }

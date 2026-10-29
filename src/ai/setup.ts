@@ -3,6 +3,7 @@ import { BUCKET_MAX, QA, questionItem } from "@/ai/plan";
 import { CHALLENGE_KINDS, DUMP_MAX_CHARS, DUMP_ROLES, MAX_DUMP_ROUNDS } from "@/discovery/dump";
 import { OUTLINE_LIMITS } from "@/goals/outline";
 import { SETUP_LIMITS } from "@/org/setup";
+import { NAME_MAX, POSITIONS, TITLE_MAX, personLine, type Position } from "@/org/you";
 
 /*
  * Setting an organization up from a brain dump about it (src/org/setup.ts): read the dump (what
@@ -16,9 +17,12 @@ import { SETUP_LIMITS } from "@/org/setup";
 
 const text = (max: number) => z.string().max(max);
 const FieldsIn = { audience: text(2000), goals: z.array(text(300)).max(30), context: text(4000), segments: z.array(text(200)).max(30) };
+/** Who's answering, as they said in the first run (their name, their position there). */
+const Person = z.object({ name: text(NAME_MAX), position: z.enum(POSITIONS.map((p) => p.value) as [Position, ...Position[]]), title: text(TITLE_MAX).optional() }).optional();
 const Base = {
   /** The organization's name. */
   name: text(80),
+  person: Person,
   about: z.object(FieldsIn),
   /** Its products now, as the call names them (p1…). */
   products: z.array(z.object({ id: text(12), name: text(80), ...FieldsIn })).max(30),
@@ -35,6 +39,7 @@ export const SetupBody = z.discriminatedUnion("stage", [
   z.object({
     stage: z.literal("shape"),
     name: text(80),
+    person: Person,
     products: z.array(z.object({ id: text(12), name: text(80) })).max(30),
     goals: z.array(z.object({ id: text(12), text: text(OUTLINE_LIMITS.line), parent: text(12).nullable() })).min(1).max(OUTLINE_LIMITS.goals),
     answers: z.array(z.object({ id: text(12), answer: text(600) })).max(OUTLINE_LIMITS.goals),
@@ -79,7 +84,7 @@ Code checks you: it keeps a piece of the dump only where it finds the words, a n
 const QUESTION_RULES = `Questions, in rounds:
 - You ask in rounds, at most ${MAX_DUMP_ROUNDS}. After each round they answer and you read the answers. Ask what decides how the organization is set up now: what its products are (one, or several that teams work on apart), who each is for, which goal leads when several pull different ways, the number a goal is measured by and where it is today, which kinds of customers are worth telling apart. A round is one question or several (at most ${BUCKET_MAX}), as many as matter now; never pad it.
 - Find out early (the first round, unless the dump, the pages or an answer already says):
-  - Who they are in it: a founder or executive, a product lead over several PMs, the only PM, or a PM on one product among several. It tells whether the company's goals are theirs to set or come from above, and which products' goals they can speak for.
+  - Who they are in it: a founder or executive, a product lead over several PMs, the only PM, or a PM on one product among several. It tells whether the company's goals are theirs to set or come from above, and which products' goals they can speak for. When the material says who's answering, that's their position: never ask it again, and ask only what it leaves open (a product manager: the only one, or one among several, and which products are theirs).
   - How the company makes money and is funded: who pays and how (a subscription, per order, a share of each sale, ads), and its stage (venture-backed and which round, self-funded, a public company, part of a bigger company).
 - When someone outside the team judges the company (investors, a board, a parent company), ask what they want to see by the next raise or board meeting, and the number if there is one: that's a company goal. Options may name what such backers usually watch (venture investors: growth, customers who stay and spend more, cash burned for each new dollar of revenue; private equity: profit and cash; a public company's shareholders: what it promised them; a parent company: its own goal), but what counts is what they answer.
 - When the company's goals come from above, ask whether they know them and where they're written. Never guess them from a product's goals.
@@ -240,10 +245,14 @@ type Fields = z.infer<z.ZodObject<typeof FieldsIn>>;
 const fieldLines = (c: Fields, audience: string, context: string) =>
   [c.audience.trim() && `  ${audience}: ${flat(c.audience)}`, c.context.trim() && `  ${context}: ${flat(c.context)}`, c.goals.length && `  Goals: ${c.goals.map(flat).join("; ")}`, c.segments.length && `  Segments: ${c.segments.map(flat).join("; ")}`].filter(Boolean) as string[];
 
+/** Who's answering, when they said: never a line, only how to ask. */
+const personBlock = (p: SetupRequest["person"]) => (p ? [`Who's answering: ${personLine({ ...p, name: flat(p.name), ...(p.title ? { title: flat(p.title) } : {}) })} (as they said when they started)`] : []);
+
 const material = (b: Exclude<SetupRequest, { stage: "shape" }>) => {
   const about = fieldLines(b.about, "Who it serves", "What it does");
   return [
     `The organization: ${b.name.trim() || "(not named yet)"}`,
+    ...personBlock(b.person),
     about.length ? "What its About says now:" : "Its About says nothing yet.",
     ...about,
     "",
@@ -269,6 +278,7 @@ function shapeContent(b: Extract<SetupRequest, { stage: "shape" }>): string {
   const answers = b.answers.filter((a) => a.answer.trim());
   return [
     `The organization: ${b.name.trim() || "(not named yet)"}`,
+    ...personBlock(b.person),
     b.products.length ? "Its products (id · name):" : "It has no products yet.",
     ...b.products.map((p) => `- ${p.id} · ${flat(p.name)}`),
     "",

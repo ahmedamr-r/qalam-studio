@@ -55,6 +55,18 @@ describe("setting an organization up", () => {
     expect(setupContent({ stage: "read", ...base, about: empty, products: [] })).toContain("Its About says nothing yet.\n\nIt has no products yet.");
   });
 
+  it("tells the model who's answering when they said, and never to ask it again", () => {
+    const person = { name: "Ahmed", position: "pm" as const };
+    expect(SetupBody.safeParse({ stage: "read", ...base, person }).success).toBe(true);
+    expect(SetupBody.safeParse({ stage: "read", ...base, person: { name: "Ahmed", position: "ceo" } }).success).toBe(false);
+    expect(setupContent({ stage: "read", ...base, person })).toContain("The organization: Basket\nWho's answering: Ahmed, a product manager (as they said when they started)");
+    const shape = { stage: "shape" as const, name: "Basket", products: [], goals: [{ id: "g1", text: "Grow", parent: null }], answers: [] };
+    expect(setupContent({ ...shape, person: { name: "Sara", position: "other", title: "Senior PM, Payments" } })).toContain("Who's answering: Sara, Senior PM, Payments");
+    // Without it, nothing is said, and the model asks as before.
+    expect(setupContent({ stage: "read", ...base })).not.toContain("Who's answering");
+    for (const system of [SETUP_READ_SYSTEM, SETUP_FOLLOWUP_SYSTEM]) expect(system).toContain("When the material says who's answering, that's their position: never ask it again");
+  });
+
   it("reads and proposes with care, reads answers quicker", () => {
     expect(setupCall({ stage: "read", ...base })).toMatchObject({ system: SETUP_READ_SYSTEM, effort: "high" });
     expect(setupCall({ stage: "followup", ...base, ...read, rounds: [{ answers: [] }], last: true }).effort).toBe("medium");

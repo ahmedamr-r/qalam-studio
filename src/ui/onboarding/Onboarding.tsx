@@ -5,6 +5,7 @@ import { DUMP_MAX_CHARS, MAX_DUMP_ROUNDS } from "@/discovery/dump";
 import { useGoals } from "@/goals/client";
 import { readOutline } from "@/goals/outline";
 import { pendingLines } from "@/org/setup";
+import { positionLabel, useYou } from "@/org/you";
 import { orgHref } from "@/projects/model";
 import { QalamAIGlyph, QalamMark } from "../brand";
 import { toQuestion } from "../ai/plan";
@@ -45,6 +46,8 @@ function useThreadInput(): ThreadInput {
   const know = useKnow();
   const setup = useSetup();
   const mine = useGoals((g) => g.mine);
+  const me = useGoals((g) => g.me);
+  const yourName = useYou((y) => y.name);
   const session = setup.source?.setup ?? null;
   return {
     route: fr.route,
@@ -53,6 +56,7 @@ function useThreadInput(): ThreadInput {
     orgName: fr.org?.name ?? null,
     engine: engineState(fr.route, fr.engine),
     naming: { name: fr.naming.name, busy: fr.naming.busy, error: fr.naming.error },
+    person: yourName && me ? `${yourName} · ${positionLabel(me)}` : null,
     step: fr.step,
     door: fr.door,
     opened: fr.route === "welcome" || fr.opened,

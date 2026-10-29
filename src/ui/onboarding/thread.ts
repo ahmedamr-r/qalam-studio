@@ -12,7 +12,7 @@ import type { SetupStep, StepState, WelcomeMode } from "../welcome/steps";
 
 export type Door = "know" | "find";
 
-export type PartName = "engine" | "verify" | "choices" | "outline" | "said" | "took" | "pushback" | "answers" | "yours" | "connect" | "allSet" | "error" | "working";
+export type PartName = "engine" | "verify" | "choices" | "outline" | "said" | "took" | "pushback" | "answers" | "you" | "yours" | "connect" | "allSet" | "error" | "working";
 
 /** Small values only: a part's renderer reads the rest from the stores. */
 export type PartData = Record<string, string | number | boolean | null>;
@@ -37,6 +37,8 @@ export interface ThreadInput {
   orgName: string | null;
   engine: EngineState;
   naming: { name: string | null; busy: boolean; error: string | null };
+  /** Who they said they are, once they have ("Ahmed · Product manager"). */
+  person: string | null;
   step: SetupStep;
   door: Door | null;
   /** The setup page has found what it shows. */
@@ -112,6 +114,10 @@ export function threadOf(i: ThreadInput): ChatMessage[] {
     out.push(ai("engine", text(ENGINE_LINE[i.engine === "looking" || i.engine === "testing" ? "unknown" : i.engine]), part("engine", { compact: true })));
     out.push(ai("name:ask", text("What should I call your organization?")));
     if (i.orgName) out.push(you("name:you", text(i.orgName)));
+    // Who they are, before the goals: it tells Qalam AI which goals are theirs to set and how to ask.
+    out.push(ai("you:ask", text(`What's your name, and your position at ${org}?`), part("you", { open: i.step === "you" })));
+    if (i.step === "you") return out;
+    if (i.person) out.push(you("you:you", text(i.person)));
   }
   if (!i.opened) return out;
 
@@ -207,6 +213,7 @@ export function askOf(i: ThreadInput): Ask {
     if (!engineDone(i)) return none(i.engine === "problem" ? "Set up Qalam AI above, or set it up later" : "Checking Qalam AI…", "engine");
     return { kind: "name", placeholder: "Basket", submit: "enter", key: "name" };
   }
+  if (i.first && i.step === "you") return none("Fill in your name and position above", "you");
   if (!i.opened) return none("", "opening");
   if (i.step === "yours") return none("Pick your goals above, then Next", "yours");
   if (i.step === "connect") return none("Connect what you need, then Finish", "connect");
@@ -267,12 +274,13 @@ export function stepsOf(i: ThreadInput): StepItem[] {
   }
   const welcome = i.route === "welcome";
   const at = welcome ? (engineDone(i) ? "name" : "engine") : i.step;
-  const order = ["engine", "name", "goals", "yours", "connect"];
+  const order = ["engine", "name", "you", "goals", "yours", "connect"];
   const k = order.indexOf(at);
   const state = (id: string): StepState => (order.indexOf(id) < k ? "done" : order.indexOf(id) === k ? "now" : "next");
   return [
     { id: "engine", label: "Qalam AI", state: state("engine") },
     { id: "name", label: "Name it", state: state("name") },
+    { id: "you", label: "You", state: state("you") },
     { id: "goals", label: "Goals", state: state("goals"), ...(at === "goals" ? { sub: goalSubs(i) } : {}) },
     { id: "yours", label: "Yours", state: state("yours") },
     { id: "connect", label: "Connect", state: state("connect") },

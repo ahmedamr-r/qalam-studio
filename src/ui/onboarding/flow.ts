@@ -1,9 +1,10 @@
 import { create } from "zustand";
-import { setMine, useGoals } from "@/goals/client";
+import { setMe, setMine, useGoals } from "@/goals/client";
 import { codeDb } from "@/org/code";
 import { connectorsDb, type ConnectorState } from "@/org/connectors";
 import { createOrg, currentOrg, type OrgRef } from "@/org/client";
 import { engineDb, type EngineTest, type EngineView } from "@/org/engine";
+import { loadYou, setYourName, type Me } from "@/org/you";
 import { setupHref } from "@/projects/model";
 import { openKnow, useKnow } from "../setup/know";
 import { openSetup, useSetup } from "../setup/setup";
@@ -11,8 +12,8 @@ import { changesThings, setupStep, welcomeMode, type SetupStep, type WelcomeMode
 
 /*
  * The first run as state, apart from the pages that show it: Qalam AI found and tested, the
- * organization named (the welcome), then on the setup page the way into its goals (a door), which
- * goals are theirs, and what to connect. The goals themselves are the setup's (../setup/setup.ts)
+ * organization named (the welcome), then on the setup page who they are, the way into its goals (a
+ * door), which goals are theirs, and what to connect. The goals themselves are the setup's (../setup/setup.ts)
  * and the know door's (../setup/know.ts). The step and the door are in the address, so a reload
  * and Back come back to them.
  */
@@ -97,12 +98,12 @@ export async function keySaved() {
   await checkEngine();
 }
 
-/** The organization's name: a folder in ~/Qalam, then on to its goals (the setup page). */
+/** The organization's name: a folder in ~/Qalam, then on to who they are there (the setup page). */
 export async function nameOrg(name: string): Promise<boolean> {
   useFirstRun.setState({ naming: { name, busy: true, error: null } });
   try {
     const org = await createOrg(name);
-    window.location.assign(`${setupHref(org.id)}?first=1`);
+    window.location.assign(`${setupHref(org.id)}?first=1&step=you`);
     return true;
   } catch (e) {
     useFirstRun.setState({ naming: { name: null, busy: false, error: message(e) } });
@@ -127,6 +128,7 @@ export async function startSetupPage(search: string) {
   const org = await currentOrg().catch(() => null);
   useFirstRun.setState({ org });
   if (org) openKnow(org.id);
+  void loadYou().catch(() => {});
   // The engine as it was last tested here: never a new call just to show it.
   void engineDb.view().then((view) => setEngine({ view, test: view.test }), () => {});
   // A setup named in the address wins; then the know door; then the latest one not finished.
@@ -159,6 +161,13 @@ export function goStep(step: SetupStep) {
   push({ step });
   useFirstRun.setState({ step });
   if (step === "connect") void loadConnect();
+}
+
+/** Their name (this Mac's) and their position here (this organization's, on this computer), then on to the goals. */
+export async function saveYou(name: string, me: Me): Promise<void> {
+  await setYourName(name);
+  await setMe(me);
+  goStep("goals");
 }
 
 export function togglePick(id: string, on: boolean) {

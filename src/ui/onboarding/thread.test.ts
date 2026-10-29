@@ -10,6 +10,7 @@ const base = (over: Partial<ThreadInput> = {}): ThreadInput => ({
   orgName: "Basket",
   engine: "ready",
   naming: { name: null, busy: false, error: null },
+  person: "Ahmed · Product manager",
   step: "goals",
   door: null,
   opened: true,
@@ -32,7 +33,7 @@ describe("the welcome", () => {
     const i = base({ route: "welcome", engine: "looking" });
     expect(ids(threadOf(i))).toEqual(["engine"]);
     expect(askOf(i)).toMatchObject({ kind: "none", key: "engine" });
-    expect(stepsOf(i).map((s) => s.state)).toEqual(["now", "next", "next", "next", "next"]);
+    expect(stepsOf(i).map((s) => s.state)).toEqual(["now", "next", "next", "next", "next", "next"]);
   });
 
   it("asks for the name once Qalam AI is ready or left for later", () => {
@@ -40,7 +41,7 @@ describe("the welcome", () => {
       const i = base({ route: "welcome", engine });
       expect(ids(threadOf(i))).toEqual(["engine", "name:ask"]);
       expect(askOf(i)).toMatchObject({ kind: "name", submit: "enter" });
-      expect(stepsOf(i).map((s) => s.state)).toEqual(["done", "now", "next", "next", "next"]);
+      expect(stepsOf(i).map((s) => s.state)).toEqual(["done", "now", "next", "next", "next", "next"]);
     }
   });
 
@@ -56,11 +57,41 @@ describe("the welcome", () => {
   });
 });
 
+describe("who they are", () => {
+  it("asks their name and position once the organization is named, and waits for it", () => {
+    const i = base({ step: "you", person: null });
+    const m = threadOf(i);
+    expect(ids(m)).toEqual(["engine", "name:ask", "name:you", "you:ask"]);
+    expect(m.at(-1)?.parts.find((p) => p.type === "data")).toMatchObject({ name: "you", data: { open: true } });
+    expect(m.at(-1)?.parts[0]).toEqual({ type: "text", text: "What's your name, and your position at Basket?" });
+    expect(askOf(i)).toMatchObject({ kind: "none", key: "you" });
+    expect(stepsOf(i).map((s) => [s.id, s.state])).toEqual([
+      ["engine", "done"],
+      ["name", "done"],
+      ["you", "now"],
+      ["goals", "next"],
+      ["yours", "next"],
+      ["connect", "next"],
+    ]);
+  });
+
+  it("shows what they said as their message, and closes the form, once they move on", () => {
+    const m = threadOf(base());
+    expect(ids(m).slice(3, 5)).toEqual(["you:ask", "you:you"]);
+    expect(m[3].parts.find((p) => p.type === "data")).toMatchObject({ data: { open: false } });
+    expect(m[4].parts).toEqual([{ type: "text", text: "Ahmed · Product manager" }]);
+  });
+
+  it("isn't asked outside the first run", () => {
+    expect(ids(threadOf(base({ first: false }))).some((x) => x.startsWith("you:"))).toBe(false);
+  });
+});
+
 describe("the goals", () => {
   it("offers the two doors after the earlier steps", () => {
     const i = base();
     const m = threadOf(i);
-    expect(ids(m)).toEqual(["engine", "name:ask", "name:you", "goals:ask"]);
+    expect(ids(m)).toEqual(["engine", "name:ask", "name:you", "you:ask", "you:you", "goals:ask"]);
     expect(choices(m.at(-1))).toEqual(["door"]);
     expect(askOf(i)).toMatchObject({ kind: "none", key: "door" });
     const goals = stepsOf(i).find((s) => s.id === "goals")!;

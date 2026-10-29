@@ -12,6 +12,8 @@ import { cancelSignIn, keepApp, signIn } from "../connectors/oauth";
 import { workStatuses } from "../connectors/work";
 import { forgetGitHub, pollGitHubSignIn, startGitHubSignIn } from "../code/github";
 import { chooseFolder } from "../org/home";
+import { readSettings, writeSettings } from "../settings";
+import { nameShape } from "@/org/you";
 
 /**
  * Connections' API: the engine Qalam AI runs on (which one, who pays, a test, a key kept in the
@@ -48,6 +50,14 @@ export function connectionsRoutes(): Hono {
     return c.json(await engineView());
   });
   r.get("/api/engine/usage", async (c) => c.json(await recentUsage(Date.now(), Math.min(31, Math.max(1, Number(c.req.query("days") ?? 7) || 7)))));
+  // Who's on this Mac: their name, from the first run.
+  r.get("/api/you", async (c) => c.json({ name: (await readSettings()).you?.name ?? null }));
+  r.put("/api/you", async (c) => {
+    const { name } = (await c.req.json().catch(() => ({}))) as { name?: unknown };
+    const n = nameShape(name);
+    if (!n) return c.json({ error: "bad_request", message: "Write your name." }, 400);
+    return c.json({ name: (await writeSettings({ you: { name: n } })).you?.name ?? null });
+  });
   r.get("/api/health", async (c) => c.json({ rows: await healthNow(c.req.query("org")) }));
   r.post("/api/health/fix", async (c) => {
     const { id, org } = (await c.req.json().catch(() => ({}))) as { id?: unknown; org?: unknown };

@@ -264,6 +264,14 @@ describe("goals", () => {
     expect((await OrgStore.open(dir)).mine).toEqual(["g1", "g2"]);
   });
 
+  it("keeps this computer's person's position, out of the organization's pages", async () => {
+    expect(store.me).toBeNull();
+    await store.setMe({ position: "other", title: "Growth lead" });
+    const again = await OrgStore.open(dir);
+    expect(again.me).toEqual({ position: "other", title: "Growth lead" });
+    expect(again.mine).toEqual([]);
+  });
+
   it("keeps jobs and what came of them, a line per change, and hears the file edited elsewhere", async () => {
     await store.addJobs([{ id: "j1", goal: "g1", kind: "search", title: "Search Notion for basket", why: "Who rebuilds baskets.", connector: "notion", query: "basket", status: "todo", results: [], by: "qalam", at: 1 }]);
     await store.addJobs([{ id: "j1", status: "done", results: ["s1"], outcome: "1 item brought in", at: 2 }]);
