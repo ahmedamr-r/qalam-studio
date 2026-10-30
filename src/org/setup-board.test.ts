@@ -54,11 +54,34 @@ describe("a board started from the setup", () => {
     const top = boardFromSetup({ source, session: { proposal: undefined }, goal: null });
     expect(top.outcome).toBeNull();
     expect(top.doc.roots).toEqual(top.problems);
+    // Side by side, never on top of each other.
+    const xs = top.problems.map((id) => top.doc.nodes[id].x);
+    expect(new Set(xs).size).toBe(xs.length);
+    expect(xs[1] - xs[0]).toBeGreaterThan(500);
     const bare = boardFromSetup({ source: { ...source, quotes: QUOTES.filter((x) => x.role !== "need") }, session: { proposal: undefined }, goal: null });
     expect(cardsOf(bare.doc)).toEqual([]);
     const sticky = bare.doc.nodes[bare.ideas[0]];
     const text = bare.doc.nodes[(sticky as { children: string[] }).children[0]] as { text: { content: string } };
     expect(text.text.content).toBe("Your idea: A planner that builds the week's meals from what the family already buys");
+  });
+
+  it("takes what customers said as problems, and at the idea door what they wrote as the idea when nothing was read as one", () => {
+    const SAID = "A planner for parents.";
+    const text = `${SAID}\n\nFrom this computer: notes.md\n\nSara: Every Sunday I rebuild the list.`;
+    const at = (w: string) => [text.indexOf(w), text.indexOf(w) + w.length] as [number, number];
+    const quotes = [
+      { id: "ctx", text: "A planner for parents", span: at("A planner for parents"), kind: "need", role: "context", addedBy: "ai", at: 0 },
+      { id: "sara", text: "Every Sunday I rebuild the list.", span: at("Every Sunday I rebuild the list."), kind: "need", role: "evidence", addedBy: "ai", at: 0 },
+    ] as SourceQuote[];
+    const session = { proposal: undefined, idea: true as const, said: SAID, docs: [{ from: "said", title: "Your words", span: at(SAID) }, { from: "computer", title: "notes.md", span: [text.indexOf("Sara"), text.length] as [number, number] }] };
+    const b = boardFromSetup({ source: { ...source, text, quotes }, session, goal: null });
+    const cards = cardsOf(b.doc);
+    expect(cards.map((c) => [c.kind, c.title, c.pieces])).toEqual([
+      ["opportunity", "Every Sunday I rebuild the list.", ["hub:quote:sara"]],
+      ["solution", "A planner for parents.", ["hub:quote:ctx"]],
+    ]);
+    // Not the idea door: what they wrote isn't taken as an idea.
+    expect(cardsOf(boardFromSetup({ source: { ...source, text, quotes }, session: { ...session, idea: undefined }, goal: null }).doc).map((c) => c.kind)).toEqual(["opportunity"]);
   });
 
   it("finds the need an idea shares the most words with, and titles long words by their first sentence", () => {

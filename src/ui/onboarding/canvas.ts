@@ -87,6 +87,9 @@ export interface CanvasInput {
 
 export const EMPTY: Canvas = { nodes: [], edges: [], width: 0, height: 0 };
 
+/** A problem in what was read: a need it found, or what customers said (their words are the problem in their terms). */
+export const isProblem = (q: Pick<SourceQuote, "role">) => q.role === "need" || q.role === "evidence";
+
 // Sizes, in canvas pixels.
 export const NODE_W: Record<CanvasKind, number> = { source: 184, problem: 212, goal: 212 };
 const COL_GAP = 56;
@@ -132,8 +135,8 @@ export function canvasOf(input: CanvasInput): Canvas {
       nodes[i].quotes.push(q.id);
     }
     const byId = new Map(setup.quotes.map((q) => [q.id, q]));
-    // Problems: the needs it found, each from its source.
-    for (const q of setup.quotes.filter((x) => x.role === "need")) {
+    // Problems: the needs it found and what customers said, each from its source.
+    for (const q of setup.quotes.filter(isProblem)) {
       const id = `need:${q.id}`;
       nodes.push({ id, kind: "problem", title: q.text, quotes: [q.id] });
       const from = sourceOf.get(q.id);
@@ -150,7 +153,7 @@ export function canvasOf(input: CanvasInput): Canvas {
         for (const p of l.pieces) {
           const q = byId.get(p);
           if (!q) continue;
-          if (q.role === "need") wire(`need:${q.id}`, id, "backs", [q.id]);
+          if (isProblem(q)) wire(`need:${q.id}`, id, "backs", [q.id]);
           else {
             const from = sourceOf.get(q.id);
             if (from) wire(from, id, "backs", [q.id]);
