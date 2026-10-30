@@ -155,6 +155,7 @@ export function EngineCard() {
       </div>
 
       <EngineSetup view={view} onView={changed} onError={setError} />
+      {isLocal(view.kind) && <WebSearch view={view} onSaved={changed} onError={setError} />}
 
       {claude && (
         <div className="flex flex-wrap items-center gap-[12px]">
@@ -265,6 +266,61 @@ function TierPicker({ view, picked, onSaved, onError }: { view: EngineView; pick
         <span className="text-micro font-medium text-fg-subtle">Reads</span>
         <Select<string> ariaLabel="The model that reads" value={picked.read ?? SAME} onChange={(m) => void pick("read", m)} className="w-[220px]" options={[{ value: SAME, label: "The same model" }, ...models]} />
       </label>
+    </div>
+  );
+}
+
+/** A model on this computer has no web search of its own: it looks things up through Tavily once a key is kept here. */
+function WebSearch({ view, onSaved, onError }: { view: EngineView; onSaved: (v: EngineView) => void; onError: (m: string | null) => void }) {
+  const [key, setKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  const t = view.web?.tavily;
+  const save = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    onError(null);
+    try {
+      onSaved(await engineDb.saveTavily(key));
+      setKey("");
+    } catch (err) {
+      onError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-[12px]">
+      <span className="text-micro font-medium text-fg-subtle">Web search</span>
+      {t ? (
+        <>
+          <span className="text-caption text-fg-muted">
+            Through Tavily · key ending {t.last4} · {t.from === "keychain" ? "in the Keychain" : "from the environment"}
+          </span>
+          {t.from === "keychain" && (
+            <button
+              type="button"
+              className={clsx(r.buttonSm, r.buttonGhost)}
+              onClick={() =>
+                void engineDb.forgetTavily().then(onSaved, (e: unknown) => onError(e instanceof Error ? e.message : String(e)))
+              }
+            >
+              Remove the key
+            </button>
+          )}
+        </>
+      ) : view.canStore ? (
+        <form onSubmit={(e) => void save(e)} className="flex min-w-[280px] flex-1 items-center gap-[8px]">
+          <label className={clsx(r.field, "flex-1")}>
+            <span className="sr-only">Tavily key</span>
+            <input type="password" autoComplete="off" spellCheck={false} placeholder="Off: paste a Tavily key to look things up online" value={key} onChange={(e) => setKey(e.target.value)} className={r.fieldInput} />
+          </label>
+          <Button type="submit" size="sm" disabled={busy || key.trim().length < 20}>
+            {busy ? "Testing…" : "Test and keep"}
+          </Button>
+        </form>
+      ) : (
+        <span className="text-caption text-fg-subtle">Off: set TAVILY_API_KEY where Qalam starts.</span>
+      )}
     </div>
   );
 }

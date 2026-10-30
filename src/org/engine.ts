@@ -64,6 +64,8 @@ export interface EngineView {
   tiers: Record<Tier, string>;
   /** Claude Code on this Mac: there, signed in, and whose account pays. */
   claude: { found: boolean; signedIn: boolean | null; account?: ClaudeAccount };
+  /** How it looks things up on the web (null: it can't here), and the Tavily key a model on this computer searches with. */
+  web?: { via: "built-in" | "tavily" | null; tavily: { last4: string; from: "keychain" | "environment" } | null };
   /** Codex on this computer: there, signed in, and with ChatGPT (the plan pays) or an API key. */
   codex?: { found: boolean; signedIn: boolean | null; method?: "chatgpt" | "api-key" };
   /** The API key in use: its last four characters, and where it's kept. */
@@ -105,6 +107,9 @@ export const engineDb = {
   tiers: (kind: EngineKind, tiers: Partial<Record<Tier, string>>) => send(`/api/engine/${kind}/tiers`, "PUT", { tiers }).then((r) => json<EngineView>(r)).then(changed),
   /** Where a model on this computer answers (null: its usual address). */
   base: (kind: EngineKind, base: string | null) => send(`/api/engine/${kind}/base`, "PUT", { base }).then((r) => json<EngineView>(r)).then(changed),
+  /** Tested with one small search; kept in the Keychain only when it works. */
+  saveTavily: (key: string) => send("/api/engine/tavily", "PUT", { key }).then((r) => json<EngineView>(r)).then(changed),
+  forgetTavily: () => send("/api/engine/tavily", "DELETE").then((r) => json<EngineView>(r)).then(changed),
   usage: (days = 7) => fetch(`/api/engine/usage?days=${days}`).then((r) => json<UsageSummary>(r)),
 };
 

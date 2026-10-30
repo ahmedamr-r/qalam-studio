@@ -1,3 +1,4 @@
+import { NO_WEB } from "@/ai/abilities";
 import { nanoid } from "nanoid";
 import { breakdownCall } from "@/ai/breakdown";
 import { claimsCall } from "@/ai/outside";
@@ -33,7 +34,7 @@ export async function lookOutside(store: OrgStore, goalId: string, emit: (label:
   const product = goal.product ? (await store.listProducts()).find((p) => p.id === goal.product) : undefined;
   const task = outsideTask({ org: store.info.name, about: [about.context, about.audience].filter((x) => x.trim()).join(" "), product: product?.name, chain: chainOf(tree, goalId), goal });
   const info = await research({ purpose: "goals", task, connectors: ["web"] }, emit, signal);
-  if (!info) return { kept: 0, read: 0, error: "Web search isn't on here." };
+  if (!info) return { kept: 0, read: 0, error: NO_WEB };
   if (!info.notes) return { kept: 0, read: 0, error: info.error ?? "The web had nothing on goals like this one." };
   emit("Reading the pages it found");
   const links = [...new Map(info.sources.filter((s) => /^https?:\/\//i.test(s.url)).map((s) => [s.url, s])).values()].slice(0, OUTSIDE_LIMITS.pages);

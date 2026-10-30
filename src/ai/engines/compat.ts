@@ -14,29 +14,31 @@ import { PRESETS } from "./presets";
  * doesn't hold gets one repair turn. Server-only: keys are here.
  */
 
-type Message = { role: "system" | "user" | "assistant"; content: unknown };
+export type Message = { role: "system" | "user" | "assistant"; content: unknown };
 
-interface ChatAnswer {
+export interface ChatAnswer {
   text: string;
   model?: string;
   usage?: Parameters<typeof fromChatUsage>[0];
+  /** Links the answer cites (OpenRouter's web plugin). */
+  annotations?: unknown[];
 }
 
 // The fetch to use: the platform's, replaced in tests.
 const g = globalThis as { __qalamChatFetch?: typeof fetch };
 export const setChatFetch = (f: typeof fetch | undefined) => void (g.__qalamChatFetch = f);
-const fetcher = () => g.__qalamChatFetch ?? fetch;
+export const fetcher = () => g.__qalamChatFetch ?? fetch;
 
 /** Where an engine answers: the address picked for it, else its usual one. */
 export const baseFor = (kind: CompatKind) => baseOf(kind) ?? PRESETS[kind].base;
 
 /** The request's headers: the key, and what OpenRouter asks callers to say about themselves. */
-function headers(kind: CompatKind, key: string | null): Record<string, string> {
+export function headers(kind: CompatKind, key: string | null): Record<string, string> {
   return { "content-type": "application/json", ...(key ? { authorization: `Bearer ${key}` } : {}), ...(kind === "openrouter" ? { "http-referer": "https://github.com/ahmedamr-r/qalam-studio", "x-title": "Qalam Studio" } : {}) };
 }
 
 /** What went wrong, as the codes the window knows. */
-async function failed(kind: CompatKind, res: Response): Promise<EngineError> {
+export async function failed(kind: CompatKind, res: Response): Promise<EngineError> {
   const body = await res.text().catch(() => "");
   const said = (() => {
     try {
@@ -57,7 +59,7 @@ async function failed(kind: CompatKind, res: Response): Promise<EngineError> {
 const schemaRefused = (status: number, text: string) => status === 400 && /response_format|json_schema|schema|structured/i.test(text);
 
 /** One chat request; `schema` asks for the answer in it (a provider that refuses gets it in the prompt). */
-async function chat(kind: CompatKind, o: { model: string; messages: Message[]; schema: Record<string, unknown> | null; maxTokens: number; signal: AbortSignal }): Promise<ChatAnswer> {
+export async function chat(kind: CompatKind, o: { model: string; messages: Message[]; schema: Record<string, unknown> | null; maxTokens: number; signal: AbortSignal; extra?: Record<string, unknown> }): Promise<ChatAnswer> {
   const preset = PRESETS[kind];
   const key = preset.key ? keyOf(kind) : null;
   if (preset.key && !key) throw new EngineError("auth", `There's no ${preset.label} key here. Paste one in Connections.`);
@@ -72,6 +74,7 @@ async function chat(kind: CompatKind, o: { model: string; messages: Message[]; s
         ...(preset.completionTokens ? { max_completion_tokens: o.maxTokens } : { max_tokens: o.maxTokens }),
         ...(schema ? { response_format: { type: "json_schema", json_schema: { name: "answer", schema: preset.strict ? strictSchema(schema) : schema, strict: preset.strict } } } : {}),
         ...preset.extra,
+        ...o.extra,
       }),
     }).catch((e: unknown) => {
       if (o.signal.aborted) throw e;
@@ -85,11 +88,11 @@ async function chat(kind: CompatKind, o: { model: string; messages: Message[]; s
     res = await send([...o.messages.slice(0, -1), asked], null);
   }
   if (!res.ok) throw await failed(kind, res);
-  const j = (await res.json()) as { model?: string; choices?: { message?: { content?: string | null; refusal?: string | null }; finish_reason?: string }[]; usage?: ChatAnswer["usage"] };
+  const j = (await res.json()) as { model?: string; choices?: { message?: { content?: string | null; refusal?: string | null; annotations?: unknown[] }; finish_reason?: string }[]; usage?: ChatAnswer["usage"] };
   const choice = j.choices?.[0];
   if (choice?.message?.refusal) throw new EngineError("refusal", "The model declined this request.");
   if (choice?.finish_reason === "length") throw new EngineError("max_tokens", "The response was cut off. Try a simpler brief.");
-  return { text: choice?.message?.content ?? "", model: j.model, usage: j.usage };
+  return { text: choice?.message?.content ?? "", model: j.model, usage: j.usage, ...(choice?.message?.annotations ? { annotations: choice.message.annotations } : {}) };
 }
 
 /** The adapter for one of these engines. */

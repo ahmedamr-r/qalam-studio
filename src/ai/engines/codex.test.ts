@@ -114,7 +114,8 @@ describe("Codex, signed in with ChatGPT", () => {
   });
 
   it("reads its events, its errors and its model catalog", () => {
-    expect(readCodexEvents(['{"type":"turn.started"}', '{"type":"item.completed","item":{"type":"agent_message","text":"{}"}}', '{"type":"turn.completed","usage":{"input_tokens":3}}', "not json"])).toEqual({ text: "{}", usage: { input_tokens: 3 }, error: null });
+    expect(readCodexEvents(['{"type":"turn.started"}', '{"type":"item.completed","item":{"type":"agent_message","text":"{}"}}', '{"type":"turn.completed","usage":{"input_tokens":3}}', "not json"])).toEqual({ text: "{}", usage: { input_tokens: 3 }, searches: [], error: null });
+    expect(readCodexEvents(['{"type":"item.completed","item":{"type":"web_search","action":{"type":"search","queries":["slots sold out reddit","more"]}}}']).searches).toEqual(["slots sold out reddit"]);
     expect(readCodexEvents(['{"type":"error","message":"first"}', '{"type":"turn.failed","error":{"message":"failed"}}']).error).toBe("failed");
     expect(codexError('{"status":401,"error":{"message":"Unauthorized"}}', "m").code).toBe("auth");
     expect(codexError('{"status":429,"error":{"message":"You have hit your usage limit"}}', "m").code).toBe("rate_limited");

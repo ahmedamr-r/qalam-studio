@@ -73,21 +73,24 @@ export function codexEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEn
 export interface CodexOutcome {
   text: string | null;
   usage: CodexUsage | null;
+  /** What it searched the web for. */
+  searches: string[];
   /** What Codex said went wrong (its own words, or the API's JSON). */
   error: string | null;
 }
 
 /** Codex's `--json` lines, folded: the last message, the turn's usage, and an error if the turn failed. */
 export function readCodexEvents(lines: string[]): CodexOutcome {
-  const out: CodexOutcome = { text: null, usage: null, error: null };
+  const out: CodexOutcome = { text: null, usage: null, searches: [], error: null };
   for (const line of lines) {
-    let ev: { type?: string; item?: { type?: string; text?: string }; usage?: CodexUsage; message?: string; error?: { message?: string } };
+    let ev: { type?: string; item?: { type?: string; text?: string; query?: string; action?: { queries?: string[]; query?: string } }; usage?: CodexUsage; message?: string; error?: { message?: string } };
     try {
       ev = JSON.parse(line);
     } catch {
       continue;
     }
     if (ev.type === "item.completed" && ev.item?.type === "agent_message" && typeof ev.item.text === "string") out.text = ev.item.text;
+    else if (ev.type === "item.completed" && ev.item?.type === "web_search") out.searches.push(ev.item.action?.queries?.[0] ?? ev.item.action?.query ?? ev.item.query ?? "");
     else if (ev.type === "turn.completed" && ev.usage) out.usage = ev.usage;
     else if (ev.type === "turn.failed") out.error = ev.error?.message ?? out.error ?? "Codex's turn failed.";
     else if (ev.type === "error" && typeof ev.message === "string") out.error ??= ev.message;
@@ -146,7 +149,7 @@ export async function codexModels(bin = codexBin()): Promise<string[]> {
 const EXT: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp" };
 
 /** One `codex exec`: the prompt on stdin, the call's instructions and schema as files in a folder of its own, removed after. */
-async function runCodex(o: { prompt: string; instructions: string; schema: Record<string, unknown> | null; images: { media: string; data: string }[]; model: string; effort: string; signal: AbortSignal }): Promise<CodexOutcome> {
+async function runCodex(o: { prompt: string; instructions: string; schema: Record<string, unknown> | null; images: { media: string; data: string }[]; model: string; effort: string; signal: AbortSignal; search?: boolean }): Promise<CodexOutcome> {
   const dir = await mkdtemp(path.join(tmpdir(), "qalam-codex-"));
   try {
     const work = path.join(dir, "empty");
@@ -162,7 +165,7 @@ async function runCodex(o: { prompt: string; instructions: string; schema: Recor
         return file;
       }),
     );
-    const args = codexArgs({ dir: work, instructions, schema, images, model: o.model, effort: o.effort });
+    const args = codexArgs({ dir: work, instructions, schema, images, model: o.model, effort: o.effort, search: o.search });
     return await new Promise<CodexOutcome>((resolve, reject) => {
       const child = spawn(/*turbopackIgnore: true*/ codexBin(), args, { cwd: work, env: codexEnv(), stdio: ["pipe", "pipe", "pipe"] });
       const lines: string[] = [];
@@ -189,6 +192,15 @@ async function runCodex(o: { prompt: string; instructions: string; schema: Recor
   } finally {
     void rm(dir, { recursive: true, force: true });
   }
+}
+
+/** A research step on Codex: its own live web search, the notes as its last message. */
+export async function codexSearch(o: { system: string; task: string; model: string; signal: AbortSignal }): Promise<CodexOutcome & { model: string }> {
+  const model = o.model || (await codexModels())[0] || "";
+  const out = await runCodex({ prompt: o.task, instructions: o.system, schema: null, images: [], model, effort: "low", signal: o.signal, search: true });
+  if (out.usage) reportUsage(fromCodexUsage(out.usage, model || "codex", "research"));
+  if (out.text === null) throw codexError(out.error ?? "Codex gave no answer.", model);
+  return { ...out, model: model || "codex" };
 }
 
 const asking = (schema: Record<string, unknown>) => `Respond with only a JSON object (no prose, no code fence) that validates against this JSON Schema:\n${JSON.stringify(schema)}`;

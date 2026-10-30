@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { EngineKind } from "./engine-kinds";
+import { webVia } from "./abilities";
+import { tavilyKey } from "./engine";
 import type { ConnectorInfo } from "./research-shared";
 
 /**
@@ -81,9 +83,14 @@ export function mcpServers(backend: EngineKind): McpServerDef[] {
   return [...remote, ...local];
 }
 
+const webEnabledVia = (backend: EngineKind) => (webSearchEnabled() ? webVia(backend, !!tavilyKey()) : null);
+
 export function listConnectors(backend: EngineKind): ConnectorInfo[] {
-  // Looking things up runs on Claude only, until each engine has its own way (src/ai/research.ts).
-  if (backend !== "api" && backend !== "cli") return [];
+  // Another engine: its own web search, or Tavily's for a model on this computer (src/ai/engines/search.ts).
+  if (backend !== "api" && backend !== "cli") {
+    const via = webEnabledVia(backend);
+    return via ? [{ id: "web", label: "Web search", kind: "web", hint: via === "tavily" ? "Through Tavily" : "The engine's own search" }] : [];
+  }
   const list: ConnectorInfo[] = [];
   if (webSearchEnabled()) list.push({ id: "web", label: "Web search", kind: "web", hint: "Built-in search and page reading" });
   for (const s of mcpServers(backend))
@@ -98,7 +105,8 @@ export function listConnectors(backend: EngineKind): ConnectorInfo[] {
 
 /** The requested connectors this backend actually has. */
 export function resolveConnectors(ids: string[], backend: EngineKind): { web: boolean; servers: McpServerDef[] } {
-  if (backend !== "api" && backend !== "cli") return { web: false, servers: [] };
+  // Another engine looks things up on the web its own way, and has no MCP servers here.
+  if (backend !== "api" && backend !== "cli") return { web: ids.includes("web") && webSearchEnabled() && !!webVia(backend, !!tavilyKey()), servers: [] };
   const want = new Set(ids);
   return { web: want.has("web") && webSearchEnabled(), servers: mcpServers(backend).filter((s) => want.has(s.id)) };
 }

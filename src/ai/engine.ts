@@ -27,6 +27,8 @@ interface EngineState {
   bin: string;
   /** The `codex` to run (the person's own, signed in with ChatGPT). */
   codex?: string;
+  /** A Tavily key, for web search on an engine with none of its own (the Keychain's, else TAVILY_API_KEY). */
+  tavily?: string | null;
   /** "balanced": Sonnet reads, Opus decides; "best": Opus, and Sonnet for the reads that hold there. */
   mix: ModelMix;
   /** Read models Claude Code couldn't use here (some plans lack an alias): reads go to decide instead. */
@@ -52,6 +54,7 @@ export const keyOf = (kind: EngineKind): string | null => (kind === "api" ? stat
 export const baseOf = (kind: EngineKind): string | null => state().bases?.[kind] ?? null;
 export const bin = (): string => state().bin;
 export const codexBin = (): string => state().codex ?? (process.env.QALAM_CODEX_BIN || "codex");
+export const tavilyKey = (): string | null => (state().tavily === undefined ? process.env.TAVILY_API_KEY?.trim() || null : state().tavily!);
 export const modelMix = (): ModelMix => state().mix;
 
 /** The model a tier runs on now, on this engine. */

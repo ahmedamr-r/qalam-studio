@@ -1,3 +1,4 @@
+import { NO_WEB } from "@/ai/abilities";
 import { research } from "@/ai/server";
 import { isDiscussion, postAddress, type LookedOnline } from "@/discovery/ingest/posts";
 import { SECTION_HEADING } from "@/hub/topics";
@@ -34,7 +35,7 @@ export async function lookOnline(store: OrgStore, topicId: string, emit: (label:
     "Find public pages where people describe this problem in their own words.",
   ].join("\n");
   const info = await research({ purpose: "posts", task, connectors: ["web"] }, emit, signal);
-  if (!info) return { read: 0, added: 0, quotes: 0, skipped: 0, error: "Web search isn't on here." };
+  if (!info) return { read: 0, added: 0, quotes: 0, skipped: 0, error: NO_WEB };
   // Only where people speak for themselves: an article about them isn't their words.
   const found = [...new Map(info.sources.filter((s) => /^https?:\/\//i.test(s.url)).map((s) => [s.url, s])).values()];
   const links = found.filter((s) => isDiscussion(s.url)).slice(0, ONLINE_LIMITS.pages);

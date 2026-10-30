@@ -1,10 +1,12 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { streamViaCli } from "@/ai/cli";
-import { apiKey, backend, keyOf, modelMix, resolveEngine, setEngineState, tierModel, type EngineKind } from "@/ai/engine";
+import { apiKey, backend, keyOf, modelMix, resolveEngine, setEngineState, tavilyKey, tierModel, type EngineKind } from "@/ai/engine";
 import { ENGINE_LABEL, isCompat, isKeyed, isLocal, KEYED_KINDS, type KeyedKind } from "@/ai/engine-kinds";
 import { adapterFor, streamAdapter } from "@/ai/engines";
 import { baseFor, listModels } from "@/ai/engines/compat";
 import { codexModels } from "@/ai/engines/codex";
+import { testTavily } from "@/ai/engines/search";
+import { webVia } from "@/ai/abilities";
 import { codexState, findCodex } from "./codex";
 import { loopbackBase, PRESETS } from "@/ai/engines/presets";
 import { DEFAULT_MIX, type ModelMix, type Tier } from "@/ai/models";
@@ -36,8 +38,11 @@ const KEYS: Record<KeyedKind, { item: string; env: string[] }> = {
 
 const envKey = (k: KeyedKind) => KEYS[k].env.map((v) => process.env[v]).find((v) => !!v) ?? null;
 
+/** Tavily's key: web search for a model on this computer. */
+const TAVILY = { item: "tavily-api-key", env: "TAVILY_API_KEY" };
+
 interface Loaded {
-  keyFrom: Partial<Record<KeyedKind, "keychain" | "environment">>;
+  keyFrom: Partial<Record<KeyedKind | "tavily", "keychain" | "environment">>;
   tests: Partial<Record<EngineKind, EngineTest>>;
 }
 
@@ -63,8 +68,11 @@ export function ensureEngine(): Promise<Loaded> {
       keys[k] = key;
       keyFrom[k] = v ? "keychain" : "environment";
     }
+    const tavily = await secrets().get(TAVILY.item).catch(() => null);
+    const tavilyEnv = process.env[TAVILY.env]?.trim() || null;
+    if (tavily || tavilyEnv) keyFrom.tavily = tavily ? "keychain" : "environment";
     const kind = resolveEngine(settings.engine, process.env);
-    setEngineState({ kind, key: keys.api ?? null, keys, bin: process.env.CLAUDE_CLI_PATH || findClaude() || "claude", codex: findCodex() ?? undefined, mix: settings.models ?? DEFAULT_MIX, ...fromSettings(settings, kind) });
+    setEngineState({ kind, key: keys.api ?? null, keys, tavily: tavily ?? tavilyEnv, bin: process.env.CLAUDE_CLI_PATH || findClaude() || "claude", codex: findCodex() ?? undefined, mix: settings.models ?? DEFAULT_MIX, ...fromSettings(settings, kind) });
     // An inbox that looked before this was read may have waited for nothing.
     void announce();
     return { keyFrom, tests: {} };
@@ -146,6 +154,31 @@ export async function saveKey(raw: string, o: TestOpts & { kind?: KeyedKind } = 
 }
 
 const currentKeys = () => Object.fromEntries(KEYED_KINDS.flatMap((k) => (k !== "api" && keyOf(k) ? [[k, keyOf(k)!]] : []))) as Partial<Record<EngineKind, string>>;
+
+/** A Tavily key, for web search on a model on this computer: tested with one small search, then kept in the Keychain. */
+export async function saveTavily(raw: string): Promise<{ ok: true } | { ok: false; message: string }> {
+  const loaded = await ensureEngine();
+  const key = raw.trim();
+  const tested = await testTavily(key);
+  if (!tested.ok) return tested;
+  try {
+    await secrets().set(TAVILY.item, key);
+  } catch (e) {
+    return { ok: false, message: e instanceof NoSecretStore ? e.message : `The Keychain didn't keep it: ${e instanceof Error ? e.message : String(e)}` };
+  }
+  loaded.keyFrom.tavily = "keychain";
+  setEngineState({ tavily: key });
+  return { ok: true };
+}
+
+export async function forgetTavily() {
+  const loaded = await ensureEngine();
+  await secrets().remove(TAVILY.item);
+  const env = process.env[TAVILY.env]?.trim() || null;
+  if (env) loaded.keyFrom.tavily = "environment";
+  else delete loaded.keyFrom.tavily;
+  setEngineState({ tavily: env });
+}
 
 /** Take a key out of the Keychain (an environment key, if there is one, is used again). */
 export async function forgetKey(kind: KeyedKind = "api") {
@@ -322,6 +355,7 @@ export async function engineView(): Promise<EngineView> {
     tiers: { decide: tierModel("decide"), read: tierModel("read"), fetch: tierModel("fetch") },
     claude,
     codex,
+    web: { via: webVia(kind, !!tavilyKey()), tavily: tavilyKey() ? { last4: tavilyKey()!.slice(-4), from: loaded.keyFrom.tavily ?? "environment" } : null },
     key: isKeyed(kind) && k ? keyInfo(kind) : null,
     canStore: secrets().available,
     test,

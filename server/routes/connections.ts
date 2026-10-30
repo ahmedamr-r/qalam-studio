@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { chooseBase, chooseEngine, chooseModels, chooseTiers, engineModels, engineView, forgetKey, liveTest, saveKey } from "../engine";
+import { chooseBase, chooseEngine, chooseModels, chooseTiers, engineModels, engineView, forgetKey, forgetTavily, liveTest, saveKey, saveTavily } from "../engine";
 import { adapterFor } from "@/ai/engines";
 import { ENGINE_LABEL, isEngineKind, isKeyed, type EngineKind } from "@/ai/engine-kinds";
 import { fixHealth, healthNow } from "../health";
@@ -76,6 +76,17 @@ export function connectionsRoutes(): Hono {
     const kind = c.req.query("kind") ?? "api";
     if (!isEngineKind(kind) || !isKeyed(kind)) return c.json({ error: "bad_request", message: "Which engine's key?" }, 400);
     await forgetKey(kind);
+    return c.json(await engineView());
+  });
+  // Tavily: web search for a model on this computer.
+  r.put("/api/engine/tavily", async (c) => {
+    const { key } = (await c.req.json().catch(() => ({}))) as { key?: unknown };
+    if (typeof key !== "string" || key.trim().length < 20) return c.json({ error: "bad_request", message: "That doesn't look like a Tavily key." }, 400);
+    const saved = await saveTavily(key);
+    return saved.ok ? c.json(await engineView()) : c.json({ error: "key_failed", message: saved.message }, 400);
+  });
+  r.delete("/api/engine/tavily", async (c) => {
+    await forgetTavily();
     return c.json(await engineView());
   });
   r.get("/api/engine/usage", async (c) => c.json(await recentUsage(Date.now(), Math.min(31, Math.max(1, Number(c.req.query("days") ?? 7) || 7)))));

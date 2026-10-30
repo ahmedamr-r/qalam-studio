@@ -9,11 +9,13 @@ import { bin, readModelFailed, type EngineKind } from "./engine";
 import { supportsFallback } from "./models";
 import { fromApiUsage, fromCliResult, reportUsage } from "./usage";
 import { resolveConnectors, type McpServerDef } from "./connectors";
+import { searchOn } from "./engines/search";
 import { NO_RESEARCH, citedSources, hostOf, keepCaptures, mergeSources, parseNotes, resultText, stepLabel, type Capture, type ResearchInfo, type ResearchPurpose, type ResearchSource } from "./research-shared";
 
 /**
  * The research step: before a request that asked for connectors runs, a short tool-using call
  * looks up outside facts (built-in web search, Tavily, MCP servers) and writes notes with sources.
+ * On an engine that isn't Claude it's that engine's own web search (src/ai/engines/search.ts).
  * It never fails the request: on an error or timeout the request runs without notes.
  */
 
@@ -346,6 +348,14 @@ function viaCli(req: ResearchRequest, deps: Deps, sel: Selection, step: (s: stri
 }
 
 // ---------------------------------------------------------------------------
+// Any other engine: its own web search, the same notes.
+
+async function viaEngine(req: ResearchRequest, deps: Deps, step: (s: string) => void, signal: AbortSignal): Promise<Raw> {
+  const r = await searchOn(deps.backend, { system: systemPrompt(req.purpose, { web: true, servers: [] }), task: req.task, model: deps.model, lookups: lookups(req.purpose), step, signal });
+  return { ...r, captures: [] };
+}
+
+// ---------------------------------------------------------------------------
 
 /**
  * Look things up for a request. Returns null when none of the requested connectors is available;
@@ -354,7 +364,8 @@ function viaCli(req: ResearchRequest, deps: Deps, sel: Selection, step: (s: stri
 export async function runResearch(req: ResearchRequest, deps: Deps, emit: (label: string) => void, signal: AbortSignal): Promise<ResearchInfo | null> {
   const sel = resolveConnectors(req.connectors, deps.backend);
   if (!sel.web && !sel.servers.length) return null;
-  if (deps.backend !== "cli" && (deps.backend !== "api" || !deps.client)) return null;
+  const claude = deps.backend === "cli" || deps.backend === "api";
+  if (deps.backend === "api" && !deps.client) return null;
   const labelOf = (server: string) => sel.servers.find((s) => s.name === server)?.label ?? server;
   const steps: string[] = [];
   const step = (s: string) => {
@@ -365,7 +376,7 @@ export async function runResearch(req: ResearchRequest, deps: Deps, emit: (label
   const timeout = AbortSignal.timeout(req.purpose === "import" ? IMPORT_TIME_LIMIT_MS : TIME_LIMIT_MS);
   const both = AbortSignal.any([signal, timeout]);
   try {
-    const raw = await (deps.backend === "cli" ? viaCli : viaApi)(req, deps, sel, step, labelOf, both).catch((e: unknown) => {
+    const raw = await (!claude ? viaEngine(req, deps, step, both) : (deps.backend === "cli" ? viaCli : viaApi)(req, deps, sel, step, labelOf, both)).catch((e: unknown) => {
       if (!(e instanceof ModelUnavailable) || !deps.retry) throw e;
       readModelFailed(deps.model);
       return viaCli(req, { ...deps, model: deps.retry, retry: undefined }, sel, step, labelOf, both);
