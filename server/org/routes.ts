@@ -15,6 +15,7 @@ import { personShape, whoShape } from "@/hub/people";
 import { chooseFolder, createOrg, currentOrg, listOrgs, openFolder, qalamHome, rememberOrg, storeFor } from "./home";
 import { noticesNow } from "./notices";
 import { reviewOrg } from "./review";
+import { proposeOutcomes } from "./outcomes";
 import { askOrg } from "../ask";
 import { captureSource, fileSources } from "../capture";
 import type { Ingested } from "@/discovery/ingest/core";
@@ -266,6 +267,19 @@ export function orgRoutes(): Hono<Env> {
     try {
       return c.json({ findings: await reviewOrg(c.get("store"), { tab: tabOf(c.req.raw.headers) }) });
     } catch (e) {
+      return c.json({ error: "failed", message: e instanceof Error ? e.message : String(e) }, 502);
+    }
+  });
+  /** Which outcomes would move a stated goal: Qalam AI's candidates, each resting on need pages, checked by code. */
+  r.post("/api/org/:org/outcomes", async (c) => {
+    if (!aiConfigured()) return c.json({ error: "no_key", message: "Qalam AI isn't set up here." }, 501);
+    if (rateLimited(c.req.raw)) return c.json({ error: "rate_limited", message: "Too many requests, try again in a few minutes." }, 429);
+    const b = (await c.req.json().catch(() => null)) as { product?: unknown; goal?: unknown } | null;
+    if (typeof b?.goal !== "string" || !ID.test(b.goal) || (b.product !== null && (typeof b.product !== "string" || !ID.test(b.product)))) return bad("Say which goal");
+    try {
+      return c.json(await proposeOutcomes(c.get("store"), { product: b.product as string | null, goal: b.goal }));
+    } catch (e) {
+      if (e instanceof NotFoundError) return failure(e);
       return c.json({ error: "failed", message: e instanceof Error ? e.message : String(e) }, 502);
     }
   });
