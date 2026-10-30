@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import { ImagePlus, MoreHorizontal, X } from "lucide-react";
 import { useGoals } from "@/goals/client";
@@ -213,6 +213,11 @@ export default function SeenPage({ seenKey }: { seenKey: string }) {
   const view = useSeen((s) => s.view);
   const error = useSeen((s) => s.error);
   const [open, setOpen] = useState<string | null>(null);
+  const sheet = useRef<HTMLDivElement>(null);
+  // A screen opens where its notes show, above the flows: bring them into view.
+  useEffect(() => {
+    if (open) sheet.current?.scrollIntoView({ block: "start" });
+  }, [open]);
   useEffect(() => {
     void openSeen(seenKey);
     return () => closeSeen();
@@ -245,7 +250,11 @@ export default function SeenPage({ seenKey }: { seenKey: string }) {
         </div>
         {error && <p className="text-caption text-danger">{error}</p>}
         {view && !map && <p className="max-w-[560px] text-body text-fg-muted">Add screenshots of {productName} and Qalam AI puts them into flows: each screen in order, the control that leads to the next, and notes it can refer to when you work on goals and problems. Their words are read on this Mac.</p>}
-        {shown && <ScreenSheet s={shown} flows={map?.flows ?? []} screens={screens} onClose={() => setOpen(null)} />}
+        {shown && (
+          <div ref={sheet} className="scroll-mt-[16px]">
+            <ScreenSheet s={shown} flows={map?.flows ?? []} screens={screens} onClose={() => setOpen(null)} />
+          </div>
+        )}
         {map?.flows.map((f) => <FlowRow key={f.key} flow={f} screens={screens} onScreen={setOpen} />)}
         {loose.length > 0 && (
           <section className="flex flex-col gap-[8px]" aria-label="Not in a flow">

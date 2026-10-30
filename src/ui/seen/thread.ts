@@ -114,5 +114,5 @@ export function readingAsk(i: Pick<ReadingInput, "reading" | "answers">): { kind
   const q = openQuestion(i);
   if (q) return { kind: "answer", question: q.id, placeholder: q.options.length ? "Pick one, or say it in your words…" : "Your answer…" };
   const r = i.reading;
-  return { kind: "none", placeholder: r?.phase === "reading" || r?.phase === "placing" ? "Qalam AI is working…" : "Add screenshots above" };
+  return { kind: "none", placeholder: r?.phase === "reading" || r?.phase === "placing" ? "Qalam AI is working…" : r?.phase === "asking" ? "Your answers are ready to send above" : r?.phase === "review" ? "Accept the flows on the right" : "Add screenshots above" };
 }

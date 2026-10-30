@@ -1,4 +1,4 @@
-import { normalizeForMatch } from "@/discovery/quotes";
+import { normalizeForMatch, quoteFinder } from "@/discovery/quotes";
 import { checkWords } from "@/hub/topics";
 import type { SeenLine, SeenText } from "./types";
 
@@ -69,11 +69,21 @@ const PHONE = /(?:\+|\b00)\d[\d\s().-]{7,}\d|\b\d{3}[\s.-]\d{3}[\s.-]\d{4}\b/;
 /** Whether a line carries someone's email address or phone number: notes keep neither. */
 export const personal = (s: string) => EMAIL.test(s) || PHONE.test(s);
 
+/** Words a line puts in single quotes (‘…’, or '…' standing apart from words, not an apostrophe). */
+const SINGLE = /‘([^’]+)’|(?<![\p{L}\p{N}])'([^'\n]{2,}?)'(?![\p{L}\p{N}])/gu;
+
 /**
- * A line of notes as code keeps it: its quoted words and numbers on the screens it's about (or in
- * the person's answers), no email address or phone number, within `max`. Else null.
+ * A line of notes as code keeps it: its quoted words (in double or single quotes) and numbers on
+ * the screens it's about (or in the person's answers), no email address or phone number, within
+ * `max`. Else null.
  */
 export function noteLine(raw: unknown, texts: (SeenText | undefined)[], also = "", max = 400): string | null {
   const line = checkWords(raw, texts.map((t) => ({ text: textOf(t) })), also, max);
-  return line && !personal(line) ? line : null;
+  if (!line || personal(line)) return null;
+  const hay = [...texts.map(textOf), also].filter(Boolean);
+  for (const m of line.matchAll(SINGLE)) {
+    const words = (m[1] ?? m[2]).trim();
+    if (words && !hay.some((h) => quoteFinder(h)(words, Math.min(3, words.length)))) return null;
+  }
+  return line;
 }

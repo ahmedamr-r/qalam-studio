@@ -34,6 +34,11 @@ describe("words on a screen", () => {
     expect(noteLine("Shows a total of 31.00", [CART])).toBeNull();
     expect(noteLine("Offers “Free delivery”", [CART])).toBeNull();
     expect(noteLine("Anything with a number 3", [undefined])).toBeNull();
+    // Single quotes are quotes too; an apostrophe isn't.
+    expect(noteLine("The basket with 'Apply coupon' under it", [CART])).toBe("The basket with 'Apply coupon' under it");
+    expect(noteLine("The basket with 'Free delivery' under it", [CART])).toBeNull();
+    expect(noteLine("Offers ‘Same-day delivery’", [CART])).toBeNull();
+    expect(noteLine("It's what's in the basket, and the shopper's total", [CART])).toBe("It's what's in the basket, and the shopper's total");
     expect(personal("Signed in as sara@example.com")).toBe(true);
     expect(personal("Call +20 100 123 4567")).toBe(true);
     expect(personal("Arrives today 10:00 - 12:00")).toBe(false);

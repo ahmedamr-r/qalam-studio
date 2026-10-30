@@ -45,14 +45,18 @@ const useZoom = create<{ shot: string | null; marks: Mark[]; label: string }>(()
 /** Open a screenshot big. */
 export const zoomShot = (shot: string, label: string, marks: Mark[] = []) => useZoom.setState({ shot, marks, label });
 
-/** A screenshot's thumbnail: its top (where a screen says what it is), `w` wide; a click opens it big. */
+/** How tall a thumbnail may be for its width: a phone's whole screen; a taller one shows its top. */
+const TALLEST = 2.2;
+
+/** A screenshot's thumbnail, `w` wide in its own shape (a long one shows its top, where a screen says what it is); a click opens it big. */
 export function Shot({ shot, label, marks = [], w = 72, className, open = true }: { shot: string; label: string; marks?: Mark[]; w?: number; className?: string; open?: boolean }) {
   const url = useShotURL(shot);
+  const [ratio, setRatio] = useState<number | null>(null);
   const box = (
-    <span className={clsx("relative block overflow-hidden rounded-md bg-active shadow-[0_0_0_1px_var(--color-line-subtle)]", className)} style={{ width: w, height: Math.round(w * 2.1) }}>
+    <span className={clsx("relative block overflow-hidden rounded-md bg-active shadow-[0_0_0_1px_var(--color-line-subtle)]", className)} style={{ width: w, height: Math.round(w * Math.min(ratio ?? 1.6, TALLEST)) }}>
       {url && (
         <span className="relative block w-full">
-          <img src={url} alt={label} className="block w-full" loading="lazy" />
+          <img src={url} alt={label} className="block w-full" loading="lazy" onLoad={(e) => e.currentTarget.naturalWidth && setRatio(e.currentTarget.naturalHeight / e.currentTarget.naturalWidth)} />
           <Marks marks={marks} />
         </span>
       )}
