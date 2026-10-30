@@ -35,6 +35,7 @@ import type { SeenAnswer, Shot } from "@/seen/types";
 import { changeJob, noteForJob, onlineForJob, openJobs, planJobs, searchForJob, takeInForJob } from "./jobs";
 import { breakDown, decidePart, lookOutside } from "./outside";
 import { decideSolution, draftSolutions, solutionsView, type SolutionsCard } from "./solutions";
+import { draftTests, type TestsRequest } from "./tests";
 import { lookOnline } from "./posts";
 import { addRepo, answerFromCode, codeView, readRepo, removeRepo, type NewRepo } from "../code";
 import { GOAL_LEVERS, type GoalLever } from "@/goals/types";
@@ -206,6 +207,14 @@ export function orgRoutes(): Hono<Env> {
     if (!topic && !card) return bad("Name a problem: its page, or its card");
     const store = c.get("store");
     return streamed(c.req.raw.signal, (emit) => draftSolutions(store, { topic, ...(card ? { card } : {}) }, emit, { tab: tabOf(c.req.raw.headers) }));
+  });
+  // Drafting a solution card's tests (server/org/tests.ts): its riskiest assumptions and a test of the riskiest.
+  r.post("/api/org/:org/tests", async (c) => {
+    if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't draft tests." }, 503);
+    const req = testsShape(await c.req.json().catch(() => null));
+    if (!req) return bad("Send the solution card");
+    const store = c.get("store");
+    return streamed(c.req.raw.signal, (emit) => draftTests(store, req, emit));
   });
   // What people say online about a problem (server/org/posts.ts), taken in as people online's.
   r.post("/api/org/:org/topics/:id/online", async (c) => {
@@ -1001,6 +1010,25 @@ function publicPiece(p: PieceRow | Hit) {
 const clipped = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
 
 /** A card asking for solutions, as a board sends it: its title, its words, what's under it. */
+/** A solution card's tests asked for, as a board sends it (clipped; null: no solution in it). */
+function testsShape(x: unknown): TestsRequest | null {
+  const b = x as { solution?: unknown; problem?: unknown; goal?: unknown } | null;
+  const words = (c: unknown) => {
+    const shaped = solutionsCardShape(c);
+    return shaped ? { title: shaped.title, evidence: shaped.evidence } : null;
+  };
+  const s = b?.solution as { description?: unknown; assumptions?: unknown; tests?: unknown } | undefined;
+  const solution = words(b?.solution);
+  if (!solution || !s) return null;
+  const list = (v: unknown) => (Array.isArray(v) ? v : []).slice(0, 12).flatMap((t) => (clipped(t, 300) ? [clipped(t, 300)] : []));
+  const g = b?.goal as { title?: unknown; metric?: unknown } | null | undefined;
+  return {
+    solution: { ...solution, description: clipped(s.description, 600) || "", assumptions: list(s.assumptions), tests: list(s.tests) },
+    problem: words(b?.problem),
+    goal: g && clipped(g.title, 200) ? { title: clipped(g.title, 200), metric: clipped(g.metric, 200) || null } : null,
+  };
+}
+
 function solutionsCardShape(x: unknown): SolutionsCard | null {
   const c = x as { title?: unknown; evidence?: unknown; children?: unknown } | null;
   const title = clipped(c?.title, 200);

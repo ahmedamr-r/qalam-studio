@@ -54,7 +54,7 @@ describe("the model each call runs on", () => {
     const by = (t: Tier) => (Object.keys(TIER_OF) as CallKind[]).filter((k) => TIER_OF[k] === t).sort();
     expect(by("read")).toEqual(["claims", "extract", "reader", "research", "seen-read", "setup-shape", "topics"]);
     expect(by("fetch")).toEqual(["connector", "numbers"]);
-    expect(by("decide")).toEqual(["ask", "bearings", "breakdown", "draft", "dump-followup", "dump-place", "dump-read", "followups", "jobs", "review", "seen-place", "setup-followup", "setup-place", "setup-read", "solutions", "steps", "synthesize"]);
+    expect(by("decide")).toEqual(["ask", "bearings", "breakdown", "draft", "dump-followup", "dump-place", "dump-read", "followups", "jobs", "review", "seen-place", "setup-followup", "setup-place", "setup-read", "solutions", "steps", "synthesize", "tests"]);
     expect(tierOf(undefined)).toBe("decide");
     expect([isCallKind("extract"), isCallKind("toString"), isCallKind(3)]).toEqual([true, false, false]);
   });

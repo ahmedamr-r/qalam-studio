@@ -383,13 +383,14 @@ export async function startBoard(lineId: string) {
   // The goal the line made, as it is now (its words and number may have changed since).
   const g = goalById(goalsNow(), lineGoalId(goal.line.text, goal.product)) ?? goalsNow().goals.find((x) => x.product === goal.product && !x.on && sameTopic(x.title, goal.line.text));
   const title = g?.title ?? goal.line.text;
-  const { doc, outcome } = boardFromSetup({ source: s, session, goal: { line: goal.line, title, metric: g?.metric ?? null } });
+  const { doc, outcome, problems, ideas } = boardFromSetup({ source: s, session, goal: { line: goal.line, title, metric: g?.metric ?? null } });
   const p = await createProject("discovery", title.slice(0, 80), { discovery: { v: 1, stage: "ready" }, ...(goal.product ? { product: goal.product } : {}) }, doc);
   // The board's outcome card is the goal on the canvas.
   if (g && outcome) await changeGoal(g.id, { on: { board: p.id, card: outcome } }).catch(() => {});
   await sourcesDb.link(s.id, p.id, true);
   await setSession((d) => ({ ...d, boards: { ...d.boards, [lineId]: p.id } }));
-  window.location.assign(projectHref(p));
+  // It opens on the idea's card, its next step (drafting its tests) on its bar.
+  window.location.assign(`${projectHref(p)}${problems.length && ideas[0] ? `?card=${ideas[0]}` : ""}`);
 }
 
 /** The idea's board, once they choose: under the first goal they accepted, else on its own, named after the idea, its problems at the top. Either way it's filled from what the setup read. */
@@ -402,11 +403,11 @@ export async function startIdeaBoard() {
   const made = session.boards?.idea;
   if (made) return window.location.assign(projectHref({ id: made, type: "discovery" }));
   const name = ideaBoardName(session.said || session.docs?.[0]?.title.replace(/\.[a-z0-9]{1,5}$/i, "") || s.text);
-  const { doc } = boardFromSetup({ source: s, session, goal: null });
+  const { doc, problems, ideas } = boardFromSetup({ source: s, session, goal: null });
   const p = await createProject("discovery", name, { discovery: { v: 1, stage: "ready" } }, doc);
   await sourcesDb.link(s.id, p.id, true);
   await setSession((d) => ({ ...d, boards: { ...d.boards, idea: p.id } }));
-  window.location.assign(projectHref(p));
+  window.location.assign(`${projectHref(p)}${problems.length && ideas[0] ? `?card=${ideas[0]}` : ""}`);
 }
 
 // ---------------------------------------------------------------------------

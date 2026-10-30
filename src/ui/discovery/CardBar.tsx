@@ -15,6 +15,7 @@ import { QalamAIGlyph } from "../brand";
 import { useDiscovery } from "./store";
 import { addChildCard, addSiblingCard } from "./commands";
 import { draftSolutionsFor, useDrafting } from "./solutions";
+import { draftTestsFor, useTesting } from "./tests";
 
 const ICON = { size: 14, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 const BAR_H = 36;
@@ -32,6 +33,7 @@ export default function CardBar({ vp }: { vp: { w: number; h: number } }) {
   const dragging = useDiscovery((s) => s.dragging);
   const designFor = useDiscovery((s) => s.designFor);
   const drafting = useDrafting((s) => s.card);
+  const testing = useTesting((s) => s.card);
   if (!sel || !isOstCard(node) || editing || dragging || designFor || tool !== "select") return null;
   const card = node.meta.ost;
   const doc = studio().doc;
@@ -87,6 +89,11 @@ export default function CardBar({ vp }: { vp: { w: number; h: number } }) {
         ))}
       </Menu>
       <span className="flex-1" />
+      {card.kind === "solution" && (
+        <Button size="sm" variant="secondary" className="mr-[2px] whitespace-nowrap" disabled={!!testing} onClick={() => void draftTestsFor(sel)}>
+          <QalamAIGlyph size={12} /> {testing === sel ? "Drafting…" : "Draft its tests"}
+        </Button>
+      )}
       {card.kind === "solution" && (
         <Button size="sm" variant="secondary" className="mr-[2px] whitespace-nowrap" onClick={() => runCommand("discovery.design-this", "toolbar")}>
           Design this

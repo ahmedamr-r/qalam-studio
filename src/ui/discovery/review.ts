@@ -30,7 +30,9 @@ export type ReviewOrigin =
   /** What Qalam AI found for this board in material added to the organization (kept on its sources). */
   | { kind: "placed"; sourceIds: string[] }
   /** Solutions Qalam AI drafted for a problem (kept on its page's drafts when it has one). */
-  | { kind: "solutions"; topic: string | null };
+  | { kind: "solutions"; topic: string | null }
+  /** A solution's riskiest assumptions and a test of the riskiest, drafted on its card. */
+  | { kind: "tests" };
 
 export interface ReviewUI {
   origin: ReviewOrigin | null;
@@ -178,7 +180,7 @@ export function startReview(origin: ReviewOrigin, proposals: Proposal[]): boolea
   const same = cur.origin && JSON.stringify(cur.origin) === JSON.stringify(origin);
   if (cur.proposals.length && !same) {
     feedback(
-      cur.origin?.kind === "dump" ? "Accept or discard Qalam AI's proposals from your brain dump first" : cur.origin?.kind === "placed" ? "Accept or discard what Qalam AI found for this board first" : cur.origin?.kind === "solutions" ? "Accept or discard the drafted solutions first" : "Accept or discard Qalam AI's proposals from your sources first",
+      cur.origin?.kind === "dump" ? "Accept or discard Qalam AI's proposals from your brain dump first" : cur.origin?.kind === "placed" ? "Accept or discard what Qalam AI found for this board first" : cur.origin?.kind === "solutions" ? "Accept or discard the drafted solutions first" : cur.origin?.kind === "tests" ? "Accept or discard the drafted tests first" : "Accept or discard Qalam AI's proposals from your sources first",
       { id: "discovery.review" },
     );
     return false;
@@ -198,6 +200,7 @@ export const proposalsOn = (proposals: Proposal[], nodeId: string) => proposals.
 function fromOf(origin: ReviewOrigin | null, list: Proposal[]): string {
   if (origin?.kind === "dump") return "your brain dump";
   if (origin?.kind === "solutions") return "the drafted solutions";
+  if (origin?.kind === "tests") return "the drafted tests";
   const ids = new Set(list.flatMap((p) => (p.kind === "attach" || p.kind === "against" ? [p.quote.sourceId] : p.kind === "card" ? p.backing.quotes.map((q) => q.sourceId) : [])));
   const titles = [...ids].map((id) => sourceOf(id)?.title).filter((t): t is string => !!t);
   if (!titles.length) return "your sources";
@@ -213,8 +216,13 @@ function decided(origin: ReviewOrigin | null, list: Proposal[], decision: "accep
 /** Carry out these proposals, and any they wait on (one undo step together). */
 export function acceptProposals(ids: string[]) {
   const { proposals: all, origin } = useReview.getState();
-  // A drafted solution comes with its test: they're one draft.
-  const tests = origin?.kind === "solutions" ? ids.filter((id) => id.startsWith("sol:")).map((id) => `test:${id.slice(4)}`).filter((t) => all.some((p) => p.id === t)) : [];
+  // A drafted solution comes with its test, and a drafted test with the assumptions it tests: they're one draft.
+  const tests =
+    origin?.kind === "solutions"
+      ? ids.filter((id) => id.startsWith("sol:")).map((id) => `test:${id.slice(4)}`).filter((t) => all.some((p) => p.id === t))
+      : origin?.kind === "tests"
+        ? ids.filter((id) => id.startsWith("test:")).map((id) => `assume:${id.slice(5)}`).filter((t) => all.some((p) => p.id === t))
+        : [];
   const chosen = new Set(withNeeds([...ids, ...tests], all));
   if (!chosen.size) return;
   const n = { added: 0, attached: 0, against: 0, edited: 0, notes: 0 };

@@ -37,6 +37,7 @@ export const TIER_OF = {
   bearings: "decide",
   jobs: "decide",
   solutions: "decide",
+  tests: "decide",
   breakdown: "decide",
   ask: "decide",
   steps: "decide",

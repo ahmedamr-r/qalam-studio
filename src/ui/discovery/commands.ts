@@ -1,3 +1,4 @@
+import { draftTestsFor } from "./tests";
 import { feedback } from "@/commands/feedback";
 import { getCommand, kb, registerCommands, setCommandGuard, type Command } from "@/commands/registry";
 import { studio } from "@/doc/store";
@@ -337,6 +338,17 @@ export function registerDiscoveryCommands() {
           .map((c) => c.id);
         s().select(ids);
         feedback(`${ids.length} assumed ${ids.length === 1 ? "problem" : "problems"}: attach evidence to make them solid`, { id: "discovery.assumed" });
+      },
+    },
+    {
+      id: "discovery.draft-tests",
+      label: "Draft its tests",
+      category: "discovery",
+      keywords: ["assumptions", "riskiest", "test", "experiment", "validate", "qalam ai"],
+      enabled: ofKind("solution"),
+      run: () => {
+        const id = oneCard();
+        if (id) void draftTestsFor(id);
       },
     },
     {

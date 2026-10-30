@@ -46,6 +46,7 @@ const JOB: Record<CallKind | "other", string> = {
   bearings: "Problems against goals",
   jobs: "Planning jobs",
   solutions: "Drafting solutions",
+  tests: "Drafting tests",
   breakdown: "Breaking goals down",
   ask: "Ask",
   steps: "Placing quotes at funnel steps",

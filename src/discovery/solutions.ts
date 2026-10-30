@@ -182,6 +182,23 @@ const strs = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is st
 const OWN_NUMBER = /(“[^”]*”)|\d+(?:[.,]\d+)*/g;
 
 /**
+ * What a drafted line may say, as code keeps it: its ids read as what they stand for, its quoted
+ * words and numbers found in what was sent. A test is a plan: its own numbers (how many people,
+ * what counts as a pass) are Qalam AI's suggestion, and wording it puts in quotes that nobody said
+ * is wording it proposes (‘…’), never someone's words. Null: it says what wasn't sent.
+ */
+export function draftWords(hay: string, name: (ref: string) => string | undefined, letters: string) {
+  const find = quoteFinder(hay);
+  return (v: unknown, max: number, plan = false): string | null => {
+    let text = withoutIds(v, name, letters);
+    if (plan) text = text.replace(/“([^”]+)”/g, (all, said: string) => (find(said.trim(), Math.min(8, said.trim().length)) ? all : `‘${said}’`));
+    // Its own numbers aren't checked; a quote's are, as part of the quote.
+    const masked = plan ? text.replace(OWN_NUMBER, (_n, quote?: string) => quote ?? "#") : text;
+    return checkWords(masked, [], hay, max) ? cleanLine(text) : null;
+  };
+}
+
+/**
  * What code keeps of the answer: at most so many drafts it can stand behind, none on the board
  * already, each with its assumptions and a test of one of them. `dropped` hears what was left out
  * and why (for the call's trace).
@@ -191,16 +208,7 @@ export function sanitizeSolutions(raw: unknown, m: SolutionsSent, o: { now: numb
   const drop = (why: string, x: unknown) => void dropped?.(why, x);
   // An id in what it wrote reads as what it stands for: a goal's title, a step's, whose words; lines and quotes go.
   const name = (ref: string) => m.goals.get(ref)?.title ?? m.steps.get(ref)?.title ?? m.claims.get(ref)?.who;
-  const find = quoteFinder(m.hay);
-  const words = (v: unknown, max: number, plan = false) => {
-    let text = withoutIds(v, name, "lqgcmi");
-    // A test is a plan: its numbers (how many people, what counts as a pass) are Qalam AI's suggestion, and
-    // wording it puts in quotes that nobody said is wording it proposes (‘…’), never someone's words.
-    if (plan) text = text.replace(/“([^”]+)”/g, (all, said: string) => (find(said.trim(), Math.min(8, said.trim().length)) ? all : `‘${said}’`));
-    // Its own numbers aren't checked; a quote's are, as part of the quote.
-    const masked = plan ? text.replace(OWN_NUMBER, (_n, quote?: string) => quote ?? "#") : text;
-    return checkWords(masked, [], m.hay, max) ? cleanLine(text) : null;
-  };
+  const words = draftWords(m.hay, name, "lqgcmi");
   for (const x of Array.isArray(rec(raw).solutions) ? (rec(raw).solutions as unknown[]) : []) {
     if (drafts.length >= SOLUTION_LIMITS.solutions) {
       drop("over the limit", x);

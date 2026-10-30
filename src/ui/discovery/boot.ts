@@ -72,7 +72,7 @@ export function startDiscoveryStudio(p: Project): (doc: Doc) => void {
   // What gets decided on the board goes to the organization's decision log.
   startRecorder();
   ensureDumpHandlers();
-  void loadSources(p.id).then(resumeDumps).then(linkEvidence).then(frameLane).then(openSourceFromUrl).then(() => loadPlacements(p.id)).then(reviewPlacedFromUrl);
+  void loadSources(p.id).then(resumeDumps).then(linkEvidence).then(frameLane).then(selectFromUrl).then(openSourceFromUrl).then(() => loadPlacements(p.id)).then(reviewPlacedFromUrl);
   onOrgChange((c) => {
     if (c.kind === "source" && c.boards.includes(p.id)) void reloadSources(p.id);
     // Material added to the organization may have something for this board (it's on no board yet).
@@ -230,4 +230,14 @@ function frameLane() {
     const out = boardLane().items.some((i) => i.x < view.x || i.y < view.y || i.x + i.w > view.x + view.w || i.y + i.h > view.y + view.h);
     if (out) c.zoomToFit();
   });
+}
+
+/** ?card=<id>: that card selected when the board opens (a board from setup opens on the idea's card, its next step on its bar). */
+function selectFromUrl() {
+  const params = new URLSearchParams(location.search);
+  const id = params.get("card");
+  if (!id) return;
+  params.delete("card");
+  history.replaceState(null, "", `${location.pathname}${params.size ? `?${params}` : ""}`);
+  if (isOstCard(studio().doc.nodes[id])) studio().select([id]);
 }
