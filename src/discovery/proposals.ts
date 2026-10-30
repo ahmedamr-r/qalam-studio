@@ -161,8 +161,10 @@ export function applyProposal(d: Doc, p: Proposal, evidence: EvidenceOf): boolea
       const parent = p.parentId ? card(p.parentId) : null;
       if (d.nodes[p.cardId] || (p.parentId ? !parent || !canHold(parent.kind, p.card.kind) : p.card.kind !== "outcome")) return false;
       const ev = resolve(p.backing, evidence);
-      // Words it was to rest on are gone (their source was removed); only a need may rest on nothing (Assumed).
-      if ((!ev.length && p.backing.quotes.length + p.backing.words.length > 0) || (!ev.length && p.card.kind !== "opportunity")) return false;
+      // Words it was to rest on are gone (their source was removed); only a need may rest on nothing (Assumed),
+      // and a solution or test under a card, which rests on the card above it.
+      const under = !!p.parentId && (p.card.kind === "solution" || p.card.kind === "test");
+      if (!ev.length && !under && (p.backing.quotes.length + p.backing.words.length > 0 || p.card.kind !== "opportunity")) return false;
       addCardIn(d, { ...makeCardNode({ ...p.card, evidence: ev.map((e) => ({ ...e })) }, p.at), id: p.cardId }, p.parentId);
       return true;
     }

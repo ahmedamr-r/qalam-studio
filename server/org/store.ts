@@ -33,6 +33,7 @@ import type { Project, ProjectType } from "@/projects/model";
 import type { FirstRunView } from "@/org/first-run";
 import type { Me } from "@/org/you";
 import type { OrgShape } from "@/org/words";
+import type { SolutionsFile } from "@/discovery/solutions";
 import { assetExt, assetType, decodeProject, decodeSource, docVersion, encodeProject, encodeSource, isLocalField, recordVersion, splitLocal, type LocalFields } from "./codecs";
 import { assetHash, atomicWrite, contentHash, inside, locked, readJson, slugify, stableStringify, uniqueName } from "./fsx";
 
@@ -74,6 +75,8 @@ export type OrgEvent = { tab?: string } & (
   | { kind: "step" }
   /** What others report for a goal, or the goals proposed under it, changed (hub/goals/<goal>.json). */
   | { kind: "goalwork"; goal: string }
+  /** The solutions drafted for a problem, or what was decided about them, changed (hub/solutions/<topic>.json). */
+  | { kind: "solutions"; topic: string }
   /** What a product does today, from its code, changed (hub/maps/<key>.md). */
   | { kind: "map"; key: string; removed?: boolean }
   /** What people see in a product changed (hub/seen/<key>.md), or a reading of screenshots moved on (`reading`). */
@@ -902,6 +905,31 @@ export class OrgStore {
     return next;
   }
 
+  // The solutions Qalam AI drafted for a problem (hub/solutions/<topic>.json), and what was decided
+  // about each, until they're on a board.
+
+  private solutionsFile(topic: string) {
+    if (!/^[A-Za-z0-9_-]{1,80}$/.test(topic)) throw new NotFoundError("No such problem");
+    return this.abs(`hub/solutions/${topic}.json`);
+  }
+
+  async getSolutions(topic: string): Promise<SolutionsFile | null> {
+    const j = await readJson<SolutionsFile>(this.solutionsFile(topic));
+    return j?.qalam === "solutions/1" && Array.isArray(j.drafts) ? { ...j, decided: j.decided ?? {} } : null;
+  }
+
+  async changeSolutions(topic: string, fn: (f: SolutionsFile | null) => SolutionsFile | null, opts: { tab?: string } = {}): Promise<SolutionsFile | null> {
+    const file = this.solutionsFile(topic);
+    let next: SolutionsFile | null = null;
+    await locked(file, async () => {
+      next = fn(await this.getSolutions(topic));
+      if (next) await this.write(file, stableStringify(next));
+      else await rm(file, { force: true });
+    });
+    this.emit({ kind: "solutions", topic, tab: opts.tab });
+    return next;
+  }
+
   // -------------------------------------------------------------------------
   // The organization and its products: what they are, for people and for Qalam AI.
 
@@ -1588,6 +1616,8 @@ export class OrgStore {
       this.emit({ kind: "step" });
     } else if (parts[0] === "hub" && parts[1] === "goals" && parts.length === 3 && rel.endsWith(".json")) {
       this.emit({ kind: "goalwork", goal: path.basename(rel, ".json") });
+    } else if (parts[0] === "hub" && parts[1] === "solutions" && parts.length === 3 && rel.endsWith(".json")) {
+      this.emit({ kind: "solutions", topic: path.basename(rel, ".json") });
     } else if (parts[0] === "hub" && parts[1] === "maps" && parts.length === 3 && rel.endsWith(".md")) {
       this.emit({ kind: "map", key: path.basename(rel, ".md"), ...(bytes ? {} : { removed: true }) });
     } else if (parts[0] === "hub" && parts[1] === "seen" && parts.length === 3 && rel.endsWith(".md")) {

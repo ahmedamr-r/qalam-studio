@@ -21,6 +21,7 @@ import type { AssumptionCategory, OstCard, OstEvidence, OstMetric, OstStage } fr
 import { parseWorkUrl, workKey } from "@/connectors/work";
 import { MetricSource } from "../numbers/MetricSource";
 import { ConnectorLogo } from "../brand/ConnectorLogo";
+import { QalamAIGlyph } from "../brand";
 import { refreshWork } from "./work";
 import { Button, Field, Hint, IconBtn, Row, Section, Segmented, Select, Tag, Tip } from "../controls";
 import { r } from "../recipes";
@@ -651,7 +652,17 @@ function TestSection({ id, card }: { id: string; card: OstCard }) {
         <CommitInput ariaLabel="Method" value={t.method ?? ""} placeholder="5-user prototype test" onCommit={(method) => set({ method: method.trim() || undefined })} />
       </Field>
       <Field label="It passes when">
-        <CommitInput ariaLabel="Pass mark" value={t.criterion ?? ""} placeholder="4 of 5 find it without help" onCommit={(criterion) => set({ criterion: criterion.trim() || undefined })} />
+        <CommitInput ariaLabel="Pass mark" value={t.criterion ?? ""} placeholder="4 of 5 find it without help" onCommit={(criterion) => set({ criterion: criterion.trim() || undefined, ...(criterion.trim() ? { suggested: undefined } : {}) })} />
+        {/* Qalam AI's bar is a suggestion: only the person sets it. */}
+        {!t.criterion && t.suggested && (
+          <div className="flex items-start gap-[6px] pt-[4px] text-caption text-fg-muted">
+            <QalamAIGlyph size={12} />
+            <span className="min-w-0 flex-1">Qalam AI suggests: {t.suggested.criterion}</span>
+            <button type="button" className={clsx(r.link, "shrink-0")} onClick={() => set({ criterion: t.suggested!.criterion, suggested: undefined })}>
+              Use it
+            </button>
+          </div>
+        )}
       </Field>
       <Field label="What happened">
         <CommitArea voice ariaLabel="Result" value={t.result ?? ""} placeholder="3 of 5 found it; two scrolled past" onCommit={(result) => set({ result: result.trim() || undefined })} />

@@ -27,6 +27,7 @@ import { loadPlacements, reviewPlacements } from "./placements";
 import { startRecorder } from "../decisions/recorder";
 import { startGoalSync } from "./goals";
 import { problemCard } from "../topics/start-board";
+import { draftsFromUrl } from "./solutions";
 import { addCardIn, makeCardNode, newCard } from "@/discovery/ops";
 import { sourcesDb } from "@/discovery/db";
 import { sameTopic } from "@/hub/topics";
@@ -78,7 +79,8 @@ export function startDiscoveryStudio(p: Project): (doc: Doc) => void {
   document.addEventListener("visibilitychange", refresh);
   window.addEventListener("focus", refresh);
   focusCardFromUrl();
-  void addProblemFromUrl(p.id);
+  // A problem put on the board from its page first, then the solutions drafted there under it.
+  void addProblemFromUrl(p.id).then(draftsFromUrl);
 
   afterSave = (doc: Doc) => {
     scheduleBoardThumbnail(doc);

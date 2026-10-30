@@ -20,6 +20,7 @@ import { PageFrame } from "../frame/PageFrame";
 import { useItemSpace } from "../frame/useSpace";
 import { QalamAIGlyph } from "../brand";
 import { NeedStrip } from "./NeedStrip";
+import { Drafts } from "./Drafts";
 import { BearsOn } from "./BearsOn";
 import { ago } from "../time";
 import { Dictated } from "../voice/MicButton";
@@ -197,6 +198,7 @@ export default function TopicPage({ id }: { id: string }) {
           </div>
 
           {t.kind === "need" && view.summary && <NeedStrip s={view.summary} shows={view.shows} />}
+          {t.kind === "need" && <Drafts topic={t.id} board={boardOf(view)} />}
 
           {SECTIONS.map((s) => {
             const lines = t.lines.filter((l) => l.section === s);
@@ -384,6 +386,12 @@ function LineRow({ l, view, onEdit, onMove, onRemove, onResolve }: { l: TopicLin
 }
 
 /** "3 quotes from 2 sources": what backs a line, counted by code (only when more than one). */
+/** The board that has the problem as a card (the one sharing most of its words), where its drafts are reviewed. */
+function boardOf(view: TopicView): { board: string; card: string; name: string } | null {
+  const s = view.shows.find((x) => x.kind === "opportunity");
+  return s ? { board: s.board, card: s.card, name: s.boardName ?? "its board" } : null;
+}
+
 function backingOf(refs: string[], view: TopicView): string | null {
   const quotes = refs.map((ref) => view.cited[ref]).filter((p): p is CitedPiece => !!p && (customers(p) || (p.type === "evidence" && p.sub === "quote")));
   if (quotes.length < 2) return null;

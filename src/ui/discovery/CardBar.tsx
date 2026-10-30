@@ -11,8 +11,10 @@ import { Button, IconBtn } from "../controls";
 import { Menu, MenuItem } from "../menu";
 import { r } from "../recipes";
 import { toScreenBox } from "../ai/anchor";
+import { QalamAIGlyph } from "../brand";
 import { useDiscovery } from "./store";
 import { addChildCard, addSiblingCard } from "./commands";
+import { draftSolutionsFor, useDrafting } from "./solutions";
 
 const ICON = { size: 14, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 const BAR_H = 36;
@@ -29,12 +31,13 @@ export default function CardBar({ vp }: { vp: { w: number; h: number } }) {
   const editing = useDiscovery((s) => s.editing);
   const dragging = useDiscovery((s) => s.dragging);
   const designFor = useDiscovery((s) => s.designFor);
+  const drafting = useDrafting((s) => s.card);
   if (!sel || !isOstCard(node) || editing || dragging || designFor || tool !== "select") return null;
   const card = node.meta.ost;
   const doc = studio().doc;
   const box = toScreenBox(worldBounds(doc, sel), cam);
   const hasKids = node.children.some((c) => isOstCard(doc.nodes[c]));
-  const w = card.kind === "solution" ? 312 : 216;
+  const w = card.kind === "solution" ? 312 : card.kind === "opportunity" ? 340 : 216;
   const left = Math.max(8, Math.min(vp.w - w - 8, box.x + box.w / 2 - w / 2));
   const above = box.y - BAR_H - 10;
   const top = above >= 8 ? above : Math.min(vp.h - BAR_H - 8, box.y + box.h + 22);
@@ -87,6 +90,11 @@ export default function CardBar({ vp }: { vp: { w: number; h: number } }) {
       {card.kind === "solution" && (
         <Button size="sm" variant="secondary" className="mr-[2px] whitespace-nowrap" onClick={() => runCommand("discovery.design-this", "toolbar")}>
           Design this
+        </Button>
+      )}
+      {card.kind === "opportunity" && (
+        <Button size="sm" variant="secondary" className="mr-[2px] whitespace-nowrap" disabled={!!drafting} onClick={() => void draftSolutionsFor(sel)}>
+          <QalamAIGlyph size={12} /> {drafting === sel ? "Drafting…" : "Draft solutions"}
         </Button>
       )}
       {hasKids && (

@@ -103,8 +103,10 @@ export interface OstTest {
   assumptionIds: string[];
   /** How it's tested ("5-user prototype test", "fake-door banner"). */
   method?: string;
-  /** What counts as a pass ("4 of 5 find the shelf unprompted"). */
+  /** What counts as a pass ("4 of 5 find the shelf unprompted"): only the person writes it. */
   criterion?: string;
+  /** Qalam AI's suggested pass line, until the person uses it or writes their own (never kept as fact). */
+  suggested?: { criterion: string };
   /** What happened, in the team's words. */
   result?: string;
 }

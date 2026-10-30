@@ -34,6 +34,7 @@ import { answerReading, dropReading, editSeen, seenEditShape, seenMaps, seenView
 import type { SeenAnswer, Shot } from "@/seen/types";
 import { changeJob, noteForJob, openJobs, planJobs, searchForJob, takeInForJob } from "./jobs";
 import { breakDown, decidePart, lookOutside } from "./outside";
+import { decideSolution, draftSolutions, solutionsView, type SolutionsCard } from "./solutions";
 import { addRepo, answerFromCode, codeView, readRepo, removeRepo, type NewRepo } from "../code";
 import { GOAL_LEVERS, type GoalLever } from "@/goals/types";
 import { meShape } from "@/org/you";
@@ -194,6 +195,30 @@ export function orgRoutes(): Hono<Env> {
     const id = c.req.param("id");
     if (!goalById(await store.getGoals(), id)) return c.json({ error: "not_found", message: "No such goal" }, 404);
     return streamed(c.req.raw.signal, (emit) => findProblems(store, id, emit));
+  });
+  // Drafting solutions for a problem (server/org/solutions.ts): a page's, or a card's on a board.
+  r.post("/api/org/:org/solutions", async (c) => {
+    if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't draft solutions." }, 503);
+    const b = (await c.req.json().catch(() => null)) as { topic?: unknown; card?: unknown } | null;
+    const topic = typeof b?.topic === "string" && ID.test(b.topic) ? b.topic : undefined;
+    const card = solutionsCardShape(b?.card);
+    if (!topic && !card) return bad("Name a problem: its page, or its card");
+    const store = c.get("store");
+    return streamed(c.req.raw.signal, (emit) => draftSolutions(store, { topic, ...(card ? { card } : {}) }, emit, { tab: tabOf(c.req.raw.headers) }));
+  });
+  r.get("/api/org/:org/topics/:id/solutions", async (c) => {
+    if (!ID.test(c.req.param("id"))) return bad("No such problem");
+    return c.json(await solutionsView(c.get("store"), c.req.param("id")));
+  });
+  r.put("/api/org/:org/topics/:id/solutions/:draft", async (c) => {
+    const { decision } = (await c.req.json().catch(() => ({}))) as { decision?: unknown };
+    if (!ID.test(c.req.param("id")) || !ID.test(c.req.param("draft")) || (decision !== "accepted" && decision !== "discarded")) return bad("Accept or discard a draft");
+    try {
+      await decideSolution(c.get("store"), c.req.param("id"), c.req.param("draft"), decision, { tab: tabOf(c.req.raw.headers) });
+      return c.json({ ok: true });
+    } catch (e) {
+      return failure(e);
+    }
   });
   r.get("/api/org/:org/bearings", async (c) => c.json(foldBearings(await c.get("store").listBearingLog()).links));
   r.post("/api/org/:org/bearings", async (c) => {
@@ -953,8 +978,23 @@ function publicPiece(p: PieceRow | Hit) {
   return { ...rest, topics: topicsOf(p) };
 }
 
+const clipped = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
+
+/** A card asking for solutions, as a board sends it: its title, its words, what's under it. */
+function solutionsCardShape(x: unknown): SolutionsCard | null {
+  const c = x as { title?: unknown; evidence?: unknown; children?: unknown } | null;
+  const title = clipped(c?.title, 200);
+  if (!c || !title) return null;
+  const evidence = (Array.isArray(c.evidence) ? c.evidence : []).slice(0, 30).flatMap((e: { text?: unknown; piece?: unknown; sourceId?: unknown; sourceTitle?: unknown; kind?: unknown }) => {
+    const text = clipped(e?.text, 1200);
+    return text ? [{ text, kind: clipped(e.kind, 20) || "note", ...(clipped(e.piece, 120) ? { piece: clipped(e.piece, 120) } : {}), ...(clipped(e.sourceId, 64) ? { sourceId: clipped(e.sourceId, 64) } : {}), ...(clipped(e.sourceTitle, 200) ? { sourceTitle: clipped(e.sourceTitle, 200) } : {}) }] : [];
+  });
+  const children = (Array.isArray(c.children) ? c.children : []).slice(0, 30).flatMap((k: { title?: unknown; kind?: unknown }) => (clipped(k?.title, 200) && (k.kind === "solution" || k.kind === "test") ? [{ title: clipped(k.title, 200), kind: k.kind as "solution" | "test" }] : []));
+  return { title, evidence, children };
+}
+
 /** A context as a window sends it. Goals sent with it (a window from before goals.md) go into the goal tree. */
-const isContext = (c: unknown): c is ContextFields & { goals?: string[] } => {
+const isContext =(c: unknown): c is ContextFields & { goals?: string[] } => {
   const x = c as ContextFields & { goals?: unknown };
   const goals = x?.goals === undefined || (Array.isArray(x.goals) && x.goals.every((g) => typeof g === "string"));
   return !!x && typeof x.audience === "string" && typeof x.context === "string" && goals && Array.isArray(x.segments) && x.segments.every((g) => typeof g === "string");

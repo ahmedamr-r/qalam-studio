@@ -78,7 +78,7 @@ export default function ReviewLayer({ vp }: { vp: { w: number; h: number } }) {
       bars.push({ id, box, list: proposals.filter((p) => p.cardId === id) });
     }
   }
-  const from = origin?.kind === "dump" ? "your brain dump" : origin?.kind === "placed" ? "what was added to the organization" : "your sources";
+  const from = origin?.kind === "dump" ? "your brain dump" : origin?.kind === "placed" ? "what was added to the organization" : origin?.kind === "solutions" ? "drafted solutions" : "your sources";
   return (
     <>
       <Pill>

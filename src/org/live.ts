@@ -27,6 +27,7 @@ export type OrgChange = { tab?: string } & (
   | { kind: "job" }
   | { kind: "step" }
   | { kind: "goalwork"; goal: string }
+  | { kind: "solutions"; topic: string }
   | { kind: "map"; key: string; removed?: boolean }
   | { kind: "seen"; key: string; removed?: boolean; reading?: boolean }
   | { kind: "notice" }
