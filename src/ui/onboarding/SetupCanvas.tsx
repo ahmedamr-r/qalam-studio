@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import clsx from "clsx";
 import { Check, FileText, Globe, Maximize, Minus, PenLine, Plus, Star, Target, TrendingUp, TriangleAlert, X } from "lucide-react";
-import { connectorDef } from "@/connectors/catalog";
+import { partLine } from "@/discovery/origin";
 import type { SetupDoc } from "@/org/setup";
 import { QalamAIGlyph } from "../brand/ai-glyph";
 import { ConnectorLogo } from "../brand/ConnectorLogo";
@@ -29,18 +29,6 @@ interface View {
   x: number;
   y: number;
   k: number;
-}
-
-const TYPE_WORD: Record<string, string> = { pdf: "PDF", doc: "Doc", docx: "Word", sheet: "Sheet", slides: "Slides", text: "Text", markdown: "Markdown", paste: "Text", connector: "" };
-
-/** Where a source came from, in words: "Your words", "Web page", "Google Drive · PDF". */
-export function sourceLine(doc: SetupDoc | undefined): string {
-  if (!doc) return "Source";
-  if (doc.from === "said") return "Your words";
-  if (doc.from === "page") return "Web page";
-  const where = doc.from === "computer" ? "This computer" : (connectorDef(doc.from)?.label ?? doc.from);
-  const kind = doc.type ? (TYPE_WORD[doc.type] ?? "") : "";
-  return [where, kind, doc.pages ? `${doc.pages} pages` : ""].filter(Boolean).join(" · ");
 }
 
 /** A source's mark: its connector's logo, else what it is. */
@@ -236,7 +224,7 @@ function NodeCard({ n, dim, selected, onHover, onClick, working, act }: { n: Can
     n.kind === "source" ? (
       <>
         <SourceMark doc={n.doc} />
-        <span className="min-w-0 flex-1 truncate">{sourceLine(n.doc)}</span>
+        <span className="min-w-0 flex-1 truncate">{partLine(n.doc)}</span>
         {n.reading && <Spinner size={10} />}
       </>
     ) : n.kind === "problem" ? (

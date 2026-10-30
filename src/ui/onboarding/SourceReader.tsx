@@ -9,7 +9,8 @@ import { topicsDb } from "@/org/topics";
 import { IconBtn, Spinner } from "../controls";
 import { MarkedText } from "../discovery/MarkedText";
 import { backsOf, type Canvas, type CanvasNode } from "./canvas";
-import { SourceMark, sourceLine } from "./SetupCanvas";
+import { partLine } from "@/discovery/origin";
+import { SourceMark } from "./SetupCanvas";
 
 /*
  * A source read over the canvas: where it came from (its connector, kind, when, a link to open it
@@ -109,7 +110,7 @@ export function SourceReader({ node, canvas, setup, onClose }: { node: CanvasNod
             </a>
           )}
         </div>
-        <p className="pl-[32px] text-micro text-fg-subtle">{[sourceLine(doc), when, doc?.cut ? "cut short to fit what Qalam AI reads" : null].filter(Boolean).join(" · ")}</p>
+        <p className="pl-[32px] text-micro text-fg-subtle">{[partLine(doc), when, doc?.cut ? "cut short to fit what Qalam AI reads" : null].filter(Boolean).join(" · ")}</p>
         {r.backs.length > 0 && (
           <div role="group" aria-label="What it backs" className="flex flex-wrap items-center gap-[6px] pl-[32px]">
             <span className="text-micro text-fg-subtle">Backs</span>

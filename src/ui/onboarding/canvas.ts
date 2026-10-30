@@ -1,6 +1,9 @@
 import type { SourceQuote } from "@/discovery/sources";
 import type { ShapedGoal } from "@/goals/outline";
+import { partOf } from "@/discovery/origin";
 import type { SetupDoc, SetupSession } from "@/org/setup";
+
+export { partOf };
 
 /*
  * The setup's canvas as data (pure): what was sent on the left, the problems and goals Qalam AI found
@@ -98,13 +101,6 @@ export function nodeHeight(kind: CanvasKind, title: string, settle = false): num
   const lines = Math.max(1, Math.min(MAX_LINES, Math.ceil(title.length / CHARS[kind])));
   // 8px padding top and bottom, an 18px head, 4px gaps.
   return 16 + 18 + 4 + lines * LINE + (settle ? 30 : 0);
-}
-
-/** The part of the dump a fragment came from: the one its span starts in. */
-export function partOf(docs: readonly SetupDoc[], q: Pick<SourceQuote, "span">): number {
-  const at = q.span[0];
-  const i = docs.findIndex((d) => d.span && at >= d.span[0] && at < d.span[1]);
-  return i;
 }
 
 type Draft = Omit<CanvasNode, "x" | "y" | "w" | "h">;
