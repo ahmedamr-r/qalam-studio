@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import clsx from "clsx";
-import { Check, FileText, Globe, Maximize, Minus, PenLine, Plus, Star, Target, TriangleAlert, X } from "lucide-react";
+import { Check, FileText, Globe, Maximize, Minus, PenLine, Plus, Star, Target, TrendingUp, TriangleAlert, X } from "lucide-react";
 import { connectorDef } from "@/connectors/catalog";
 import type { SetupDoc } from "@/org/setup";
 import { QalamAIGlyph } from "../brand/ai-glyph";
@@ -248,8 +248,8 @@ function NodeCard({ n, dim, selected, onHover, onClick, working, act }: { n: Can
       </>
     ) : (
       <>
-        <span className="grid size-[16px] shrink-0 place-items-center rounded-[3px] bg-kh-you/15 text-kh-you">{n.state === "kept" ? <Star size={10} {...ICON} /> : <Target size={10} {...ICON} />}</span>
-        <span className="min-w-0 flex-1 truncate">{n.state === "seen" ? "Goal it read" : n.state === "kept" ? "Your goal" : "Goal"}</span>
+        <span className="grid size-[16px] shrink-0 place-items-center rounded-[3px] bg-kh-you/15 text-kh-you">{n.state === "kept" ? <Star size={10} {...ICON} /> : n.number ? <TrendingUp size={10} {...ICON} /> : <Target size={10} {...ICON} />}</span>
+        <span className="min-w-0 flex-1 truncate">{n.number ? "A number it read" : n.state === "seen" ? "Goal it read" : n.state === "kept" ? "Your goal" : "Goal"}</span>
         {n.state === "proposed" && <QalamAIGlyph size={12} />}
       </>
     );

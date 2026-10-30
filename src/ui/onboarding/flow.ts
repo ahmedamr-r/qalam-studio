@@ -215,13 +215,15 @@ export async function sendProblems(text: string, docs: SentDoc[] = []) {
     const all = [...typed.map((ing) => ({ ing, doc: isAddress(words) ? { from: "page", title: ing.title, ...(ing.origin ? { origin: ing.origin } : {}) } : { from: "said", title: "Your words" } })), ...docs.map((d) => ({ ing: d.ingested, doc: docRef(d) }))];
     let quotes = 0;
     const needs = new Map<string, { id: string; title: string }>();
-    const sources: ProblemSource[] = [];
-    for (const { ing, doc } of all) {
+    // Every part shows on the canvas at once, each filled in as it's taken in.
+    const sources: ProblemSource[] = all.map(({ doc }) => ({ doc, sourceId: "", pages: [] }));
+    useFirstRun.setState((s) => ({ problems: { ...s.problems, sources: [...sources] } }));
+    for (const [i, { ing, doc }] of all.entries()) {
       const r = await captureIngested(ing, { onActivity: working });
       quotes += r.quotes;
       const pages = (r.filed?.pages ?? []).filter((p) => p.kind === "need").map(({ id, title }) => ({ id, title }));
       for (const p of pages) needs.set(p.id, p);
-      sources.push({ doc, sourceId: r.sourceId, pages });
+      sources[i] = { doc, sourceId: r.sourceId, pages };
       useFirstRun.setState((s) => ({ problems: { ...s.problems, sources: [...sources] } }));
     }
     useFirstRun.setState((s) => ({ problems: { ...s.problems, result: { pages: needs.size, quotes, needs: [...needs.values()] } } }));

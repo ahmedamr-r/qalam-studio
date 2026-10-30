@@ -45,6 +45,8 @@ describe("the setup's canvas", () => {
       ["frag:q3", "goal"],
     ]);
     expect(c.nodes.find((n) => n.id === "src:1")?.quotes).toEqual(["q2", "q3"]);
+    // Their own words are titled by how they begin.
+    expect(c.nodes.find((n) => n.id === "src:0")?.title).toBe("A planner for busy parents.");
     expect(c.edges.map((e) => [e.from, e.to, e.quotes])).toEqual([
       ["src:1", "need:q2", ["q2"]],
       ["src:1", "frag:q3", ["q3"]],
@@ -108,6 +110,8 @@ describe("the setup's canvas", () => {
       ["psrc:1", "page:p1"],
     ]);
     expect(backsOf(problems, "psrc:1").map((b) => b.node.id)).toEqual(["page:p1"]);
+    // A part not taken in yet shows, being read.
+    expect(canvasOf({ problems: [{ doc: { from: "computer", title: "notes.txt" }, sourceId: "", pages: [] }] }).nodes[0]).toMatchObject({ kind: "source", reading: true });
   });
 
   it("sizes a node from its words, clamped, with room for ✓ and ✕", () => {

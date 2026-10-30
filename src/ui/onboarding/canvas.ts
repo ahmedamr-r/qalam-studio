@@ -32,6 +32,8 @@ export interface CanvasNode {
   quotes: string[];
   /** A goal. */
   state?: GoalState;
+  /** A number it read (a goal's or a baseline), not a goal itself. */
+  number?: true;
   /** The setup line to accept or leave out, or the know door's goal. */
   lineId?: string;
   goalRef?: string;
@@ -60,7 +62,7 @@ export interface Canvas {
   height: number;
 }
 
-/** What was sent at the problems door, part by part: its source and the problem pages it was filed into. */
+/** What was sent at the problems door, part by part: its source and the problem pages it was filed into (no source yet: still being taken in). */
 export interface ProblemPart {
   doc: SetupDoc;
   sourceId: string;
@@ -164,7 +166,7 @@ export function canvasOf(input: CanvasInput): Canvas {
       // Before a proposal: the goals and numbers it read, as found.
       for (const q of setup.quotes.filter((x) => x.role === "goal" || x.role === "metric")) {
         const id = `frag:${q.id}`;
-        nodes.push({ id, kind: "goal", title: q.text, quotes: [q.id], state: "seen" });
+        nodes.push({ id, kind: "goal", title: q.text, quotes: [q.id], state: "seen", ...(q.role === "metric" ? { number: true as const } : {}) });
         const from = sourceOf.get(q.id);
         if (from) wire(from, id, "backs", [q.id]);
       }
@@ -190,7 +192,8 @@ export function canvasOf(input: CanvasInput): Canvas {
     // The problems door: each part's source, wired to the problem pages it was filed into (the reader finds the quotes).
     input.problems.forEach((p, i) => {
       const src = `psrc:${i}`;
-      nodes.push({ id: src, kind: "source", title: p.doc.title, doc: p.doc, sourceId: p.sourceId, quotes: [] });
+      // Not taken in yet: it shows, being read.
+      nodes.push({ id: src, kind: "source", title: p.doc.title, doc: p.doc, quotes: [], ...(p.sourceId ? { sourceId: p.sourceId } : { reading: true }) });
       for (const page of p.pages) {
         const id = `page:${page.id}`;
         if (!nodes.some((n) => n.id === id)) nodes.push({ id, kind: "problem", title: page.title, quotes: [], pageId: page.id });
