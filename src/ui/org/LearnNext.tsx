@@ -35,7 +35,17 @@ export function LearnNext({ product }: { product: string | null }) {
   const load = useCallback(() => void orgJson<Result>("/learn", { method: "POST", json: { product } }).then((x) => setGaps(x.items), () => setGaps([])), [product]);
   useEffect(() => {
     load();
-    return onOrgChange((c) => (c.kind === "project" || c.kind === "topic" || c.kind === "source" || c.kind === "person" || c.kind === "product" || c.kind === "about") && load());
+    // A board being edited elsewhere saves often: read the gaps again once changes settle.
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const off = onOrgChange((c) => {
+      if (c.kind !== "project" && c.kind !== "topic" && c.kind !== "source" && c.kind !== "person" && c.kind !== "product" && c.kind !== "about") return;
+      clearTimeout(t);
+      t = setTimeout(load, 1500);
+    });
+    return () => {
+      clearTimeout(t);
+      off();
+    };
   }, [load]);
   useEffect(() => {
     setPlan(null);
