@@ -19,6 +19,7 @@ import { acceptAll, discardAll, reviewing } from "./review";
 import { placeFor } from "./draft";
 import { openBrainDump } from "./dump";
 import { openCompare } from "./CompareView";
+import { copyBoardSummary } from "./summary";
 import { canCompare } from "@/discovery/compare";
 
 /*
@@ -425,6 +426,13 @@ export function registerDiscoveryCommands() {
         const id = oneCard();
         if (id) openCompare(id);
       },
+    },
+    {
+      id: "discovery.summary",
+      label: "Copy where the board stands",
+      category: "discovery",
+      keywords: ["share", "status", "summary", "report", "stakeholders", "update", "markdown", "copy"],
+      run: () => void copyBoardSummary(),
     },
     {
       id: "discovery.new-tree",

@@ -39,6 +39,9 @@ import { goalsFor, statedGoals } from "@/org/goals";
 import { newGoal } from "@/org/context-md";
 import { saveAbout, saveProduct, useOrgContext } from "@/org/context";
 import { promptDialog } from "../surfaces/dialog";
+import type { CardComment } from "@/org/comments";
+import { orgFetch } from "@/org/client";
+import { ago } from "../time";
 
 const ICON = { size: 12, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 
@@ -107,6 +110,9 @@ function OneCard({ id, card }: { id: string; card: OstCard }) {
               }}
             />
           </Field>
+          <Field label="Owner">
+            <CommitInput ariaLabel="Owner" value={card.owner ?? ""} placeholder="Who answers for it" onCommit={(v) => edit(id, (c) => (v.trim() ? (c.owner = v.replace(/\s+/g, " ").trim().slice(0, 80)) : delete c.owner))} />
+          </Field>
           {card.kind === "outcome" && !underOutcome && <ServesField id={id} card={card} />}
           {(card.kind === "outcome" || card.kind === "opportunity") && <CompareButton id={id} />}
           {assumed && <Hint>Qalam AI drafted this need and nothing backs it yet. Add a quote, a source or a note to make it solid.</Hint>}
@@ -127,8 +133,86 @@ function OneCard({ id, card }: { id: string; card: OstCard }) {
       {card.kind === "solution" && <AssumptionsSection id={id} card={card} />}
       {card.kind === "solution" && <DesignsSection id={id} card={card} />}
       {card.kind === "test" && <TestSection id={id} card={card} />}
+      <CommentsSection id={id} />
       <HistorySection id={id} />
     </>
+  );
+}
+
+/** The team's talk about the card: questions and notes to each other, with who wrote them. Never evidence. */
+function CommentsSection({ id }: { id: string }) {
+  const board = useProject((s) => s.project?.id);
+  const ref = board ? cardRef(board, id) : null;
+  const [list, setList] = useState<CardComment[]>([]);
+  const [text, setText] = useState("");
+  const [showResolved, setShowResolved] = useState(false);
+  useEffect(() => {
+    if (!ref) return;
+    let alive = true;
+    const load = () => void orgJson<CardComment[]>(`/comments?card=${encodeURIComponent(ref)}`).then((l) => alive && setList(l), () => {});
+    load();
+    const off = onOrgChange((c) => c.kind === "comment" && (!c.cards.length || c.cards.includes(ref)) && load());
+    return () => {
+      alive = false;
+      off();
+    };
+  }, [ref]);
+  if (!ref) return null;
+  const add = async () => {
+    const t = text.trim();
+    if (!t) return;
+    const c = await orgJson<CardComment>("/comments", { method: "POST", json: { card: ref, text: t } });
+    setList((l) => [...l, c]);
+    setText("");
+  };
+  const resolve = async (c: CardComment, on: boolean) => {
+    await orgFetch(`/comments/${c.id}/resolve`, { method: "POST", json: { on } });
+    setList((l) => l.map((x) => (x.id === c.id ? { ...x, ...(on ? { resolved: { at: Date.now() } } : { resolved: undefined }) } : x)));
+  };
+  const open = list.filter((c) => !c.resolved);
+  const done = list.filter((c) => c.resolved);
+  const row = (c: CardComment) => (
+    <div key={c.id} className={clsx("flex flex-col gap-[2px] rounded-lg px-[10px] py-[6px]", c.resolved ? "bg-muted opacity-70" : "bg-muted")}>
+      <p className="flex items-baseline justify-between gap-[8px] text-micro text-fg-subtle">
+        <span>
+          {c.who ?? "Someone"} · {ago(c.at)}
+        </span>
+        <button type="button" className="hover:text-fg" onClick={() => void resolve(c, !c.resolved)}>
+          {c.resolved ? "Open again" : "Resolve"}
+        </button>
+      </p>
+      <p className="whitespace-pre-wrap text-caption text-fg" dir="auto">
+        {c.text}
+      </p>
+    </div>
+  );
+  return (
+    <Section title={`Comments${open.length ? ` · ${open.length}` : ""}`}>
+      {open.map(row)}
+      {done.length > 0 && (
+        <button type="button" className="self-start text-caption text-fg-subtle hover:text-fg" onClick={() => setShowResolved(!showResolved)}>
+          {showResolved ? "Hide" : "Show"} {done.length} resolved
+        </button>
+      )}
+      {showResolved && done.map(row)}
+      <div className="flex flex-col gap-[6px]">
+        <textarea
+          aria-label="Write a comment"
+          className={clsx(r.textarea, "text-body")}
+          rows={2}
+          value={text}
+          placeholder="A question or a note for the team"
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void add();
+          }}
+        />
+        <Button size="sm" variant="secondary" className="self-start" disabled={!text.trim()} onClick={() => void add()}>
+          Comment
+        </Button>
+      </div>
+    </Section>
   );
 }
 

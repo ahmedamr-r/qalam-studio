@@ -17,6 +17,7 @@ import { aboutFromMarkdown, aboutToMarkdown, emptyContext, productFromMarkdown, 
 import { personFromMarkdown, personToMarkdown } from "@/org/people-md";
 import type { Person } from "@/hub/people";
 import type { Feed } from "@/org/feeds";
+import { commentsFromLog, type CardComment } from "@/org/comments";
 import type { Project, ProjectType } from "@/projects/model";
 import { assetExt, assetType, decodeProject, decodeSource, docVersion, encodeProject, encodeSource, isLocalField, recordVersion, splitLocal, type LocalFields } from "./codecs";
 import { assetHash, atomicWrite, contentHash, inside, locked, readJson, slugify, stableStringify, uniqueName } from "./fsx";
@@ -55,6 +56,8 @@ export type OrgEvent = { tab?: string } & (
   | { kind: "placement"; board: string }
   /** The feeds, or what one of them pulled, changed. */
   | { kind: "feeds" }
+  /** A comment on a card was written or resolved. */
+  | { kind: "comment"; cards: string[] }
 );
 
 
@@ -72,6 +75,7 @@ export interface Goal {
   /** The stated goal it serves. */
   serves?: OstCard["serves"];
   stage?: OstCard["stage"];
+  owner?: string;
 }
 
 export class ConflictError extends Error {
@@ -110,6 +114,8 @@ interface LocalState {
   projects: Record<string, LocalFields>;
   /** When this computer last opened the organization's home ("since your last visit"). */
   visit?: number;
+  /** Who works on this computer, as the team names them (decisions and comments carry it). */
+  you?: string;
 }
 
 /** A line of hub/notices.jsonl: a notice dismissed or brought back, a review's finding, a review ran. */
@@ -980,6 +986,25 @@ export class OrgStore {
     this.emit({ kind: "notice", tab: opts.tab });
   }
 
+  /** Comments on cards, as they are now: all of them, or one card's. */
+  async listComments(card?: string): Promise<CardComment[]> {
+    const all = commentsFromLog(await this.readLog<unknown>("hub/comments.jsonl"));
+    return card ? all.filter((c) => c.card === card) : all;
+  }
+
+  async addComment(c: CardComment, opts: { tab?: string } = {}): Promise<void> {
+    await this.appendLog("hub/comments.jsonl", [{ comment: c }]);
+    this.emit({ kind: "comment", cards: [c.card], tab: opts.tab });
+  }
+
+  /** Resolve a comment, or open it again. */
+  async resolveComment(id: string, on: boolean, who: string | null, opts: { tab?: string } = {}): Promise<void> {
+    const c = (await this.listComments()).find((x) => x.id === id);
+    if (!c) throw new NotFoundError(id);
+    await this.appendLog("hub/comments.jsonl", [{ resolve: id, at: Date.now(), ...(who ? { who } : {}), ...(on ? {} : { open: true }) }]);
+    this.emit({ kind: "comment", cards: [c.card], tab: opts.tab });
+  }
+
   /** Cards linked as the same need, as they are now. */
   async listRelations(): Promise<Relation[]> {
     const now = new Map<string, Relation>();
@@ -1008,6 +1033,18 @@ export class OrgStore {
   /** When this computer last opened the organization's home. */
   get lastVisit(): number | null {
     return this.local.visit ?? null;
+  }
+
+  /** Who works on this computer (null: they haven't said). */
+  get you(): string | null {
+    return this.local.you ?? null;
+  }
+
+  async setYou(name: string | null): Promise<void> {
+    const n = name?.replace(/\s+/g, " ").trim().slice(0, 80);
+    if (n) this.local.you = n;
+    else delete this.local.you;
+    await locked(this.abs(".qalam/local/state.json"), () => atomicWrite(this.abs(".qalam/local/state.json"), stableStringify(this.local)));
   }
 
   // -------------------------------------------------------------------------
@@ -1258,6 +1295,8 @@ export class OrgStore {
       this.emit({ kind: "feeds" });
     } else if (rel === "hub/notices.jsonl") {
       this.emit({ kind: "notice" });
+    } else if (rel === "hub/comments.jsonl") {
+      this.emit({ kind: "comment", cards: [] });
     } else if (rel === "hub/relations.jsonl") {
       this.emit({ kind: "relation" });
     } else if (rel === "about.md") {
@@ -1293,7 +1332,7 @@ function goalsOf(record: Project, doc: Doc | null): Omit<Goal, "boardName" | "pr
   for (const [id, n] of Object.entries(nodes)) {
     const c = n.meta?.ost;
     if (c?.kind !== "outcome") continue;
-    out.push({ board: record.id, id, title: c.title, ...(c.metric ? { metric: c.metric } : {}), parent: parentOutcome(id), ...(c.serves ? { serves: c.serves } : {}), stage: c.stage });
+    out.push({ board: record.id, id, title: c.title, ...(c.metric ? { metric: c.metric } : {}), parent: parentOutcome(id), ...(c.serves ? { serves: c.serves } : {}), stage: c.stage, ...(c.owner ? { owner: c.owner } : {}) });
   }
   return out;
 }

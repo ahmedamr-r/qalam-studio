@@ -178,6 +178,26 @@ describe("people", () => {
   });
 });
 
+describe("the team", () => {
+  it("keeps who works on this computer out of the shared files, and comments in an append-only log", async () => {
+    expect(store.you).toBeNull();
+    await store.setYou("  Sara  ");
+    expect(store.you).toBe("Sara");
+    expect((await OrgStore.open(dir)).you).toBe("Sara");
+    expect(await readFile(path.join(dir, ".gitignore"), "utf8")).toContain(".qalam/");
+    const card = "hub:card:b1:n1";
+    await store.addComment({ id: "c1", card, text: "Is this one parent or several?", who: "Sara", at: 1 });
+    await store.addComment({ id: "c2", card: "hub:card:b1:n2", text: "Ask offices.", at: 2 });
+    await store.resolveComment("c1", true, "Omar");
+    expect(await store.listComments(card)).toEqual([{ id: "c1", card, text: "Is this one parent or several?", who: "Sara", at: 1, resolved: { at: expect.any(Number), who: "Omar" } }]);
+    expect(events.filter((e) => e.kind === "comment")).toHaveLength(3);
+    // A line a merge broke doesn't lose the rest.
+    await writeFile(path.join(dir, "hub", "comments.jsonl"), `${await readFile(path.join(dir, "hub", "comments.jsonl"), "utf8")}{broken\n`);
+    expect(await store.listComments()).toHaveLength(2);
+    expect(await readFile(path.join(dir, ".gitattributes"), "utf8")).toContain("hub/*.jsonl merge=union");
+  });
+});
+
 describe("products and the organization", () => {
   const grocery = { id: "pGrocery1", name: "Grocery app", audience: "Weekly shoppers.", goals: [newGoal("2M AED a month")], context: "", segments: [] };
 

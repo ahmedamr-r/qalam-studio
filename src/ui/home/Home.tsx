@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import clsx from "clsx";
 import * as Tooltip from "@radix-ui/react-tooltip";
-import { ChevronRight, Frame, MoreHorizontal, Network, Palette, Plus } from "lucide-react";
+import { ChevronRight, Frame, MoreHorizontal, Network, Palette, Plus, UserRound } from "lucide-react";
 import { nanoid } from "nanoid";
 import type { AIStatus } from "@/ai/client";
 import type { SourceRecord } from "@/discovery/sources";
@@ -29,6 +29,7 @@ import { PeopleList } from "../org/PeopleList";
 import { LearnNext } from "../org/LearnNext";
 import { Feeds } from "../org/Feeds";
 import { usePeople } from "@/org/people";
+import { setYou, useYou } from "@/org/you";
 import { GoalsList, type Goal } from "../org/Goals";
 import { OrgSwitcher } from "../org/OrgSwitcher";
 import { SourcesList } from "../org/SourcesList";
@@ -171,6 +172,8 @@ export default function Home() {
             /
           </span>
           {org && <OrgSwitcher org={org} onRenamed={setOrg} />}
+          <span className="flex-1" />
+          <YouChip />
         </header>
         <main className="mx-auto flex w-full max-w-[1080px] flex-col gap-[28px] px-[16px] py-[28px]">
           <ClaudeNotice />
@@ -368,6 +371,29 @@ function ScopeChip({ on, onClick, title, children }: { on: boolean; onClick: () 
       className={clsx("q-item h-[28px] rounded-md px-[10px] text-caption font-medium", on ? "bg-raised text-fg shadow-button" : "text-fg-muted hover:bg-hover hover:text-fg")}
     >
       {children}
+    </button>
+  );
+}
+
+/** Who works on this computer: decisions and comments carry it, so the team sees who decided and who asked. */
+function YouChip() {
+  const { name, loaded } = useYou();
+  if (!loaded) return null;
+  const change = async () => {
+    const next = await promptDialog({
+      title: "Who are you?",
+      body: "Your name on this computer. Decisions you make and comments you write carry it, so a team sharing the organization's folder sees who decided. It stays on this computer.",
+      label: "Name",
+      defaultValue: name ?? "",
+      placeholder: "Sara",
+      confirmLabel: "Save",
+    });
+    if (next !== null) await setYou(next.trim() || null);
+  };
+  return (
+    <button type="button" onClick={() => void change()} title="Who you are on this computer" className={clsx(r.button, r.buttonGhost, "h-[28px] gap-[6px] px-[8px] text-caption")}>
+      <UserRound size={14} absoluteStrokeWidth strokeWidth={1.25} />
+      {name ?? "Say who you are"}
     </button>
   );
 }

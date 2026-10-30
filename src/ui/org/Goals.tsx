@@ -38,6 +38,7 @@ export interface Goal {
   parent: string | null;
   serves?: Serves;
   stage?: OstStage;
+  owner?: string;
 }
 
 const ICON = { size: 14, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
@@ -167,7 +168,7 @@ function OutcomeRows({ goals, roots, showBoard, depth = 0 }: { goals: Goal[]; ro
                   {g.title}
                   {g.stage && g.stage !== "active" && <span className="ml-[6px] text-caption text-fg-subtle">{g.stage}</span>}
                 </span>
-                {(metric || showBoard) && <span className="truncate text-caption text-fg-muted">{[metric, showBoard && g.boardName].filter(Boolean).join(" · ")}</span>}
+                {(metric || showBoard || g.owner) && <span className="truncate text-caption text-fg-muted">{[metric, g.owner && `owner: ${g.owner}`, showBoard && g.boardName].filter(Boolean).join(" · ")}</span>}
               </span>
             </a>
             {kids.length > 0 && <OutcomeRows goals={goals} roots={kids} showBoard={showBoard} depth={depth + 1} />}

@@ -103,6 +103,9 @@ function TreePanel() {
               Select {assumed} assumed
             </Button>
           )}
+          <Button size="sm" variant="secondary" className="self-start" onClick={() => runCommand("discovery.summary", "toolbar")}>
+            Copy where it stands
+          </Button>
         </Section>
       )}
       {roots.length > 0 && (

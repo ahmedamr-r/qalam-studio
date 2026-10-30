@@ -5,6 +5,7 @@ import { chooseOrg, currentOrg, forgetOrg, rememberOrg, type OrgRef } from "./cl
 import { loadOrgContext } from "./context";
 import { onOrgChange, startLive } from "./live";
 import { loadPeople } from "./people";
+import { loadYou } from "./you";
 
 let booted: Promise<OrgRef> | null = null;
 
@@ -19,7 +20,7 @@ export function bootOrg(orgId: string | null = null): Promise<OrgRef> {
     const org = await currentOrg();
     setLinkOrg(org.id);
     void rememberOrg(org.id);
-    await Promise.all([hydrateSystems(org.id), hydrateNaming(), loadOrgContext(), loadPeople()]);
+    await Promise.all([hydrateSystems(org.id), hydrateNaming(), loadOrgContext(), loadPeople(), loadYou()]);
     startLive();
     onOrgChange((c) => {
       if (c.kind === "system") void reloadSystems();

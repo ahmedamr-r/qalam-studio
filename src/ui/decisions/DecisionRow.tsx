@@ -18,7 +18,7 @@ export default function DecisionRow({ d, board }: { d: Decision; board?: { name:
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const proposals = Array.isArray(d.detail?.proposals) ? (d.detail.proposals as { line?: string; why?: string }[]).filter((p) => typeof p.line === "string") : [];
-  const facts = [d.by === "qalam" ? "Qalam AI proposed it, you accepted" : null, d.undone ? "Undone" : null].filter(Boolean).join(" · ");
+  const facts = [d.by === "qalam" ? `Qalam AI proposed it, ${d.who ?? "you"} accepted` : d.who ? `By ${d.who}` : null, d.undone ? "Undone" : null].filter(Boolean).join(" · ");
   return (
     <article className="group/decision flex flex-col gap-[2px] py-[6px]">
       <div className="flex items-baseline gap-[8px]">

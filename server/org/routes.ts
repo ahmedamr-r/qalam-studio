@@ -19,6 +19,8 @@ import { proposeOutcomes } from "./outcomes";
 import { learnNext } from "./learn";
 import { pullFeed } from "../feeds";
 import { feedShape } from "@/org/feeds";
+import { COMMENT_MAX, isCardRef as isCommentCard } from "@/org/comments";
+import { nanoid } from "nanoid";
 import { askOrg } from "../ask";
 import { captureSource, fileSources } from "../capture";
 import type { Ingested } from "@/discovery/ingest/core";
@@ -143,6 +145,15 @@ export function orgRoutes(): Hono<Env> {
     return c.json({ ok: true });
   });
 
+  // Who works on this computer (kept with its local state, out of Git).
+  r.get("/api/org/:org/you", (c) => c.json({ name: c.get("store").you }));
+  r.put("/api/org/:org/you", async (c) => {
+    const b = (await c.req.json().catch(() => null)) as { name?: unknown } | null;
+    if (b?.name !== null && typeof b?.name !== "string") return bad("Say your name");
+    await c.get("store").setYou(b.name as string | null);
+    return c.json({ name: c.get("store").you });
+  });
+
   // Decisions: the log, newest first (a board's or a card's), added to as boards change.
   r.get("/api/org/:org/decisions", (c) => {
     const { board, card, limit } = c.req.query();
@@ -153,7 +164,9 @@ export function orgRoutes(): Hono<Env> {
     const body = (await c.req.json().catch(() => null)) as { decisions?: unknown[] } | null;
     const list = Array.isArray(body?.decisions) && body.decisions.length <= 200 ? body.decisions.map(sanitizeDecision) : [];
     if (!list.length || list.some((d) => !d)) return bad("Not decisions");
-    await c.get("store").appendDecisions(list as Decision[], { tab: tabOf(c.req.raw.headers) });
+    // Who decided: the person on this computer, when they've said who they are.
+    const you = c.get("store").you;
+    await c.get("store").appendDecisions((list as Decision[]).map((d) => (d.who || !you ? d : { ...d, who: you })), { tab: tabOf(c.req.raw.headers) });
     return c.json({ ok: true });
   });
   r.patch("/api/org/:org/decisions/:id", async (c) => {
@@ -379,6 +392,30 @@ export function orgRoutes(): Hono<Env> {
     await c.get("store").setPlacements(b.board, b.sourceId, b.proposals as Proposal[], { tab: tabOf(c.req.raw.headers) });
     return c.json({ ok: true });
   });
+  // Comments on cards: the team's talk about a card (hub/comments.jsonl).
+  r.get("/api/org/:org/comments", async (c) => {
+    const card = c.req.query("card");
+    return c.json(await c.get("store").listComments(card && isCommentCard(card) ? card : undefined));
+  });
+  r.post("/api/org/:org/comments", async (c) => {
+    const b = (await c.req.json().catch(() => null)) as { card?: unknown; text?: unknown } | null;
+    const text = typeof b?.text === "string" ? b.text.trim() : "";
+    if (!isCommentCard(b?.card) || !text || text.length > COMMENT_MAX) return bad("Say which card, and what to say");
+    const store = c.get("store");
+    const comment = { id: nanoid(10), card: b.card, text, at: Date.now(), ...(store.you ? { who: store.you } : {}) };
+    await store.addComment(comment, { tab: tabOf(c.req.raw.headers) });
+    return c.json(comment);
+  });
+  r.post("/api/org/:org/comments/:id/resolve", async (c) => {
+    const b = (await c.req.json().catch(() => ({}))) as { on?: unknown };
+    try {
+      await c.get("store").resolveComment(c.req.param("id"), b.on !== false, c.get("store").you, { tab: tabOf(c.req.raw.headers) });
+      return c.json({ ok: true });
+    } catch (e) {
+      return failure(e);
+    }
+  });
+
   // Cards on two boards linked as the same need.
   /** All links, or one card's: the cards it's linked to, with their titles and boards. */
   r.get("/api/org/:org/relations", async (c) => {

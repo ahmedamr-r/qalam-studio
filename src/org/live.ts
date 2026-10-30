@@ -27,6 +27,7 @@ export type OrgChange = { tab?: string } & (
   | { kind: "inbox" }
   | { kind: "placement"; board: string }
   | { kind: "feeds" }
+  | { kind: "comment"; cards: string[] }
 );
 
 const listeners = new Set<(c: OrgChange) => void>();

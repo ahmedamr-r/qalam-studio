@@ -171,6 +171,7 @@ All settings are optional and go in `.env.local`. `.env.example` lists them with
   - Undo marks the entry undone instead of deleting it.
   - A card's **History** and the organization's **Decisions** tab show them, and each month is a Markdown file in `decisions/`.
 - **Which need to target:** **Compare the needs under it** (on an outcome's or a need's card, or **⌘K**) puts them side by side. Code counts what backs each: how strong it is, how many people and segments, sources, rows of an export, how recent, what speaks against it, what's under it. You rate what it can't count: how often it happens, how much it hurts, how it fits your strategy. Qalam AI can weigh it all with your goals, strategy and constraints and argue for one; code shows its argument only when every quote and number in it is in what it cites. A draft's recommended target now says why it comes first.
+- **A team on one folder:** say who you are (top right of the home); the decisions you make and the comments you write carry your name, so a team sharing the organization's folder through Git sees who decided. Cards have an owner, and a **Comments** thread for questions to each other (never counted as evidence). **Copy where the board stands** puts a status update on the clipboard as Markdown: each outcome with its goal and number, the target with what backs it, the solutions and tests and how the number moved since they shipped, the other needs, and the latest decisions with their whys.
 - **Design this:** carries a solution, the quotes behind it and its riskiest assumptions into a Screens project, where Qalam AI plans the screens with that context.
 
 ### Topic pages and search
@@ -265,7 +266,7 @@ The design tools work, and their projects are saved in the organization's folder
 
 - **Your work stays on your computer, as files.** Each organization is a folder in `~/Qalam` (set `QALAM_HOME` to move it), or any folder you open as one.
   - **What's in it:** projects are readable JSON (a Discovery board lists its cards at the top). A source's text is Markdown, and so is what the organization and each product are (`about.md`, `products/`). Decisions are a Markdown log per month (`decisions/`), and images are kept once, by their content.
-  - **Git:** the folder is ready for it. `.gitattributes` keeps both people's entries when two people add to the same month's log. Its `.gitignore` leaves out `.qalam/` (this computer's state: when a project was last opened, thumbnails, the Knowledge hub's layout) and `chats/` (chats and AI traces).
+  - **Git:** the folder is ready for it. `.gitattributes` keeps both people's entries when two people add to the same month's log, or comment on cards at once. Its `.gitignore` leaves out `.qalam/` (this computer's state: when a project was last opened, thumbnails, the Knowledge hub's layout, who works on it) and `chats/` (chats and AI traces).
   - **No upload:** nothing is uploaded to a Qalam server, because there isn't one. Qalam's own server runs on your machine and only answers this computer.
 - **What goes to the AI.** When you use an AI tool, the local server sends Anthropic what that request needs. Depending on the tool, that can be:
   - your prompt and earlier turns in the chat;
