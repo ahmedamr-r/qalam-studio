@@ -4,7 +4,10 @@ import { runResearch, type ResearchRequest } from "./research";
 import { researchBlock } from "./research-shared";
 import { deltaBatcher } from "./deltas";
 import { adapterFor, streamAdapter } from "./engines";
-import { apiKey, backend, modelOf, readModelFailed, tierModel, tierNow } from "./engine";
+import "./engines/compat";
+import { PRESETS } from "./engines/presets";
+import { isCompat } from "./engine-kinds";
+import { apiKey, backend, keyOf, modelOf, readModelFailed, tierModel, tierNow } from "./engine";
 import { supportsFallback, type CallKind } from "./models";
 import { fromApiUsage, reportUsage } from "./usage";
 
@@ -15,7 +18,12 @@ import { fromApiUsage, reportUsage } from "./usage";
 export { backend } from "./engine";
 
 export function aiConfigured(): boolean {
-  return backend() === "cli" || !!getClient();
+  const b = backend();
+  if (b === "cli") return true;
+  // Another engine: its key, or none needed for a model on this computer.
+  if (isCompat(b)) return !PRESETS[b].key || !!keyOf(b);
+  if (b !== "api") return !!adapterFor(b);
+  return !!getClient();
 }
 
 // Built once; it asks for the key before each request, so a new one is used from the next call.

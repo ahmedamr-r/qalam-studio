@@ -1,3 +1,4 @@
+import type { EngineKind } from "./engine-kinds";
 import { modelFamily, type CallKind } from "./models";
 
 /*
@@ -8,7 +9,7 @@ import { modelFamily, type CallKind } from "./models";
 
 export interface UsageEntry {
   at: number;
-  engine: "cli" | "api";
+  engine: EngineKind;
   model: string;
   /** What the call was for (src/ai/models.ts); none: a call without one (the design side). */
   kind?: CallKind;

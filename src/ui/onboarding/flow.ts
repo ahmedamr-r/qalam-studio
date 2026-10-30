@@ -4,7 +4,8 @@ import { codeDb } from "@/org/code";
 import { connectorsDb, type ConnectorState } from "@/org/connectors";
 import { createOrg, currentOrg, type OrgRef } from "@/org/client";
 import { orgShape, type OrgShape } from "@/org/words";
-import { engineDb, type EngineTest, type EngineView } from "@/org/engine";
+import { engineDb, type EngineKind, type EngineTest, type EngineView } from "@/org/engine";
+import { isKeyed } from "@/ai/engine-kinds";
 import { chooseVoice, loadVoice } from "@/org/voice";
 import { loadYou, setYourName, type Me } from "@/org/you";
 import { voiceSettled, type VoiceChoice } from "@/voice/model";
@@ -104,15 +105,22 @@ export function pickShape(shape: OrgShape) {
   useFirstRun.setState({ shape });
 }
 
-/** What this Mac has, tested with a short real call: Claude Code signed in, with no key set, is used. */
+/** Which engine the welcome picks when the live one has no key: Claude Code signed in, then a key kept here, then a model on this computer. */
+const FIRST_CHOICE: EngineKind[] = ["cli", "codex", "api", "openai", "gemini", "openrouter", "ollama", "lmstudio"];
+
+/** What this computer has, tested with a short real call: an engine reached with a key that has none gives way to the first that's ready. */
 export async function checkEngine() {
   const { mode } = useFirstRun.getState();
   setEngine({ checking: true, error: null });
   try {
     let v = await engineDb.view();
-    if (changesThings(mode) && v.kind === "api" && !v.key && v.claude.found && v.claude.signedIn) v = await engineDb.choose("cli");
+    const stateOf = (k: EngineKind) => (k === "cli" ? (v.claude.found && v.claude.signedIn ? "ready" : null) : (v.options?.find((o) => o.kind === k)?.state ?? null));
+    if (changesThings(mode) && isKeyed(v.kind) && !v.key) {
+      const next = FIRST_CHOICE.find((k) => k !== v.kind && stateOf(k) === "ready");
+      if (next) v = await engineDb.choose(next);
+    }
     setEngine({ view: v });
-    const testable = v.kind === "cli" ? v.claude.found && v.claude.signedIn !== false : !!v.key;
+    const testable = v.kind === "cli" ? v.claude.found && v.claude.signedIn !== false : stateOf(v.kind) === "ready" || (v.kind === "api" && !!v.key);
     setEngine({ test: testable ? await engineDb.test() : null });
   } catch (e) {
     setEngine({ error: message(e) });
@@ -124,8 +132,10 @@ export async function checkEngine() {
 export const skipEngine = () => setEngine({ skipped: true, keyOpen: false });
 export const openKeyField = (keyOpen: boolean) => setEngine({ keyOpen });
 
-/** A key was kept (tested first): check again with it. */
-export async function keySaved() {
+/** Another engine was picked, a key kept (tested first) or a model chosen: once it's ready, check again with it. */
+export async function engineChanged(view: EngineView) {
+  setEngine({ view, test: null });
+  if (!view.ready) return;
   setEngine({ keyOpen: false });
   await checkEngine();
 }

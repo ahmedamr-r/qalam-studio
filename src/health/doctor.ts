@@ -37,10 +37,10 @@ const RANK: Record<Dot, number> = { bad: 0, warn: 1, off: 2, ok: 3 };
 export function diagnose(f: HealthFacts): HealthRow[] {
   const rows: HealthRow[] = [];
   if (!f.engine.ready) {
-    const signedOut = f.engine.word === "Signed out";
-    const missing = f.engine.word === "Not installed";
-    // No key yet: Connections' card is where one goes, so no button here.
-    const noKey = f.engine.word === "No key";
+    const signedOut = f.engine.kind === "cli" && f.engine.word === "Signed out";
+    const missing = f.engine.kind === "cli" && f.engine.word === "Not installed";
+    // No key or no model picked yet: Connections' card is where they go, so no button here.
+    const noKey = f.engine.word === "No key" || f.engine.word === "Pick a model";
     rows.push({
       id: "engine",
       dot: "bad",

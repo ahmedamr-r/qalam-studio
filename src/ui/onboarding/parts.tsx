@@ -20,7 +20,7 @@ import { toQuestion } from "../ai/plan";
 import { qr, Radio } from "../ai/Questionnaire";
 import { answerOf, summarize, type Answers, type Question } from "../ai/questionFlow";
 import { ErrorNote, Progress } from "../ai/common";
-import { CopyCommand, KeyField, PLAN } from "../connections/EngineCard";
+import { CopyCommand, EngineSetup, whoLine } from "../connections/EngineCard";
 import { ThisMac } from "../connections/ThisMac";
 import { ReplyChips, type PartComponent } from "../chat/ChatThread";
 import type { PartData } from "../chat/types";
@@ -32,7 +32,7 @@ import { connectFor } from "../welcome/steps";
 import { Dictated } from "../voice/MicButton";
 import { ParakeetInstall } from "../voice/ParakeetInstall";
 import { wordsFor } from "@/org/words";
-import { checkEngine, finishFirstRun, goStep, keySaved, openKeyField, openSoFar, pickDoor, pickShape, saveVoice, saveYou, saveYours, skipEngine, togglePick, useFirstRun } from "./flow";
+import { checkEngine, engineChanged, finishFirstRun, goStep, openKeyField, openSoFar, pickDoor, pickShape, saveVoice, saveYou, saveYours, skipEngine, togglePick, useFirstRun } from "./flow";
 import { treeRows } from "./soFar";
 
 /*
@@ -73,8 +73,7 @@ function EnginePart({ data }: { data: PartData }) {
   const v = e.view;
   const test = e.test ?? v?.test ?? null;
   const ok = !!test?.ok;
-  const a = v?.claude.account;
-  const who = !v ? "" : v.kind === "cli" ? ["Claude Code", a?.plan ? `${PLAN[a.plan] ?? a.plan} plan` : null, a?.email ?? null].filter(Boolean).join(" · ") : v.key ? `API key ending ${v.key.last4}` : "Claude API key";
+  const who = v ? whoLine(v) : "";
   if (data.compact)
     return who ? (
       <p className="flex items-center gap-[6px] text-caption text-fg-muted">
@@ -112,7 +111,7 @@ function EnginePart({ data }: { data: PartData }) {
           </button>
           {changes && !e.keyOpen && (
             <button type="button" className={r.replyChip} onClick={() => openKeyField(true)}>
-              Use an API key
+              Use another engine
             </button>
           )}
           {changes && (
@@ -122,7 +121,7 @@ function EnginePart({ data }: { data: PartData }) {
           )}
         </ReplyChips>
       )}
-      {e.keyOpen && v && !ok && <KeyField view={{ ...v, key: null }} onError={setError} onSaved={() => void keySaved()} />}
+      {e.keyOpen && v && !ok && <EngineSetup view={v} fresh onError={setError} onView={(next) => void engineChanged(next)} />}
     </div>
   );
 }

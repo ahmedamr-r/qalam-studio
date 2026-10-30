@@ -2,22 +2,23 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import clsx from "clsx";
 import { Copy } from "lucide-react";
 import { feedback } from "@/commands/feedback";
-import { modelFamily, type CallKind, type ModelMix } from "@/ai/models";
+import { modelFamily, type CallKind, type ModelMix, type Tier } from "@/ai/models";
 import { shortCount, type UsageSummary } from "@/ai/usage-shared";
-import { engineDb, type EngineKind, type EngineTest, type EngineView } from "@/org/engine";
+import { engineDb, type EngineKind, type EngineOption, type EngineTest, type EngineView } from "@/org/engine";
+import { ENGINE_LABEL, isKeyed, isLocal, type KeyedKind } from "@/ai/engine-kinds";
 import { QalamAIGlyph } from "../brand";
-import { Button, Segmented, Tip } from "../controls";
+import { Button, Segmented, Select, Tip } from "../controls";
 import { r } from "../recipes";
 import { Sparkline, StatusDot } from "../viz";
 import { refreshHealth } from "../frame/useHealth";
 
 /*
  * The engine behind Qalam AI, on one card: which one is live and whether it's ready (a dot and a
- * word), whose account pays, a Test that makes a short real call, the switch between Claude Code on
- * this Mac and a Claude API key (tested before it's kept in the Keychain), which models its calls
- * run on (Balanced: Sonnet reads, Opus decides; Best: Opus, and Sonnet where it measured as good),
- * and what Qalam AI used this week, by model and by job. "Claude Code" names the engine; Qalam's
- * own AI is Qalam AI.
+ * word), whose account pays, a Test that makes a short real call, which engine (Claude Code on this
+ * computer, a model on this computer through Ollama or LM Studio, or a key for Claude, OpenAI,
+ * Gemini or OpenRouter, tested before it's kept in the Keychain), which models its calls run on
+ * (Claude: Balanced or Best; any other: the models picked from its own list), and what Qalam AI used
+ * this week, by model and by job. "Claude Code" names the engine; Qalam's own AI is Qalam AI.
  */
 
 export const PLAN: Record<string, string> = { max: "Max", pro: "Pro", team: "Team", enterprise: "Enterprise" };
@@ -61,6 +62,22 @@ function mixLine(view: EngineView) {
   return view.models === "balanced" ? `${read} reads, ${decide} decides` : `${decide}, and ${read} where it measured as good`;
 }
 
+/** How an engine stands, after its name in the picker. */
+const STATE_WORD: Record<EngineOption["state"], string | null> = { ready: null, "no-key": "no key yet", "pick-model": "pick a model", offline: "not running", missing: "not installed", "signed-out": "signed out" };
+
+/** A keyed engine's key, for people. */
+const KEY_WORD: Record<KeyedKind, string> = { api: "Claude API key", openai: "OpenAI API key", gemini: "Gemini API key", openrouter: "OpenRouter key" };
+const article = (w: string) => `${/^[AEIOU]/.test(w) ? "an" : "a"} ${w}`;
+
+/** Who runs Qalam AI and who pays, in one line: the Claude plan, the key's last four, or this computer. */
+export function whoLine(view: EngineView): string {
+  const a = view.claude.account;
+  if (view.kind === "cli") return ["Claude Code on this computer", a?.plan ? `${PLAN[a.plan] ?? a.plan} plan` : null, a?.email ?? null].filter(Boolean).join(" · ");
+  if (isKeyed(view.kind)) return view.key ? `${KEY_WORD[view.kind]} ending ${view.key.last4} · ${view.key.from === "keychain" ? "in the Keychain" : "from the environment"}` : KEY_WORD[view.kind];
+  if (isLocal(view.kind)) return `${view.label ?? ENGINE_LABEL[view.kind]} on this computer · nothing leaves it`;
+  return view.label ?? ENGINE_LABEL[view.kind];
+}
+
 export function EngineCard() {
   const [view, setView] = useState<EngineView | null>(null);
   const [usage, setUsage] = useState<UsageSummary | null>(null);
@@ -85,12 +102,6 @@ export function EngineCard() {
       setTesting(false);
     }
   };
-  const choose = async (kind: EngineKind) => {
-    if (!view || kind === view.kind) return;
-    setTest(null);
-    setView(await engineDb.choose(kind));
-    void refreshHealth();
-  };
   const chooseModels = async (models: ModelMix) => {
     if (!view || models === view.models) return;
     setError(null);
@@ -100,6 +111,11 @@ export function EngineCard() {
       setError(e instanceof Error ? e.message : String(e));
     }
   };
+  const changed = useCallback((v: EngineView) => {
+    setView(v);
+    setTest(null);
+    void refreshHealth();
+  }, []);
 
   if (!view) return <div className={clsx(r.skeleton, "h-[132px] rounded-lg")} aria-hidden />;
   const shown = test ?? view.test;
@@ -107,6 +123,7 @@ export function EngineCard() {
   const word = shown && !shown.ok ? shown.word : view.ready ? "Ready" : view.word;
   const detail = shown && !shown.ok ? shown.detail : view.ready ? undefined : view.detail;
   const a = view.claude.account;
+  const claude = view.kind === "cli" || view.kind === "api";
 
   return (
     <section aria-label="Qalam AI" className="flex flex-col gap-[14px] rounded-lg bg-panel p-[16px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
@@ -123,13 +140,7 @@ export function EngineCard() {
               {shown?.ok && <span className="text-fg-subtle tnum">· {(shown.ms / 1000).toFixed(1)} s</span>}
             </span>
           </p>
-          <p className="truncate text-caption text-fg-subtle">
-            {view.kind === "cli"
-              ? ["Claude Code on this Mac", a?.plan ? `${PLAN[a.plan] ?? a.plan} plan` : null, a?.email ?? null].filter(Boolean).join(" · ")
-              : view.key
-                ? `API key ending ${view.key.last4} · ${view.key.from === "keychain" ? "in the Keychain" : "from the environment"}`
-                : "Claude API key"}
-          </p>
+          <p className="truncate text-caption text-fg-subtle">{whoLine(view)}</p>
           {detail && <p className="pt-[2px] text-caption text-fg-muted">{detail}</p>}
           {view.kind === "cli" && a?.apiKeySource && <p className="pt-[2px] text-caption text-warning">{a.apiKeySource} is set on this Mac. Qalam leaves it out, so your sign-in is what's used.</p>}
         </div>
@@ -141,33 +152,23 @@ export function EngineCard() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-[12px]">
-        <Segmented<EngineKind>
-          label="Engine"
-          value={view.kind}
-          onChange={(k) => void choose(k)}
-          className="w-[240px]"
-          options={[
-            { value: "cli", label: "Claude Code", title: "Your own Claude Code on this Mac, signed in with your Claude plan" },
-            { value: "api", label: "API key", title: "A Claude API key from the Claude Console, kept in the Keychain" },
-          ]}
-        />
-        {view.kind === "api" && <KeyField view={view} onSaved={(v) => (setView(v), setTest(null), void refreshHealth())} onError={setError} />}
-      </div>
+      <EngineSetup view={view} onView={changed} onError={setError} />
 
-      <div className="flex flex-wrap items-center gap-[12px]">
-        <Segmented<ModelMix>
-          label="Models"
-          value={view.models}
-          onChange={(m) => void chooseModels(m)}
-          className="w-[240px]"
-          options={[
-            { value: "balanced", label: "Balanced", title: "Sonnet reads sources and files them, Opus proposes and decides. Fewer tokens." },
-            { value: "best", label: "Best", title: "Opus, and Sonnet only for the reads it measured as good at (goals' numbers, outside numbers)" },
-          ]}
-        />
-        <span className="text-caption text-fg-subtle">{mixLine(view)}</span>
-      </div>
+      {claude && (
+        <div className="flex flex-wrap items-center gap-[12px]">
+          <Segmented<ModelMix>
+            label="Models"
+            value={view.models}
+            onChange={(m) => void chooseModels(m)}
+            className="w-[240px]"
+            options={[
+              { value: "balanced", label: "Balanced", title: "Sonnet reads sources and files them, Opus proposes and decides. Fewer tokens." },
+              { value: "best", label: "Best", title: "Opus, and Sonnet only for the reads it measured as good at (goals' numbers, outside numbers)" },
+            ]}
+          />
+          <span className="text-caption text-fg-subtle">{mixLine(view)}</span>
+        </div>
+      )}
       {error && <p className="text-caption text-danger">{error}</p>}
 
       {usage && <Usage u={usage} kind={view.kind} />}
@@ -175,8 +176,120 @@ export function EngineCard() {
   );
 }
 
+/**
+ * Which engine, and what it needs: a key for one reached with a key (tested before it's kept), the
+ * address of a model on this computer, and the models an engine that isn't Claude runs on. The
+ * welcome shows the same. `fresh`: a key field even when a key is kept (the welcome, after a test failed).
+ */
+export function EngineSetup({ view, onView, onError, fresh }: { view: EngineView; onView: (v: EngineView) => void; onError: (m: string | null) => void; fresh?: boolean }) {
+  const options: EngineOption[] = view.options ?? [
+    { kind: "cli", label: ENGINE_LABEL.cli, state: "ready" },
+    { kind: "api", label: ENGINE_LABEL.api, state: "ready" },
+  ];
+  const choose = async (kind: EngineKind) => {
+    if (kind === view.kind) return;
+    onError(null);
+    try {
+      onView(await engineDb.choose(kind));
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e));
+    }
+  };
+  const live = options.find((o) => o.kind === view.kind);
+  return (
+    <div className="flex flex-col gap-[10px]">
+      <div className="flex flex-wrap items-center gap-[12px]">
+        <Select<EngineKind>
+          ariaLabel="Engine"
+          value={view.kind}
+          onChange={(k) => void choose(k)}
+          className="w-[240px]"
+          options={options.map((o) => ({ value: o.kind, label: [o.label, STATE_WORD[o.state]].filter(Boolean).join(" · "), group: o.kind === "cli" || isLocal(o.kind) ? "On this computer" : "With a key" }))}
+        />
+        {isKeyed(view.kind) && <KeyField view={fresh ? { ...view, key: null } : view} kind={view.kind} onSaved={onView} onError={onError} />}
+        {isLocal(view.kind) && <BaseField key={view.kind} view={view} onSaved={onView} onError={onError} />}
+      </div>
+      {!(view.kind === "cli" || view.kind === "api") && (live?.state === "ready" || live?.state === "pick-model") && <TierPicker key={view.kind} view={view} picked={live.models ?? {}} onSaved={onView} onError={onError} />}
+    </div>
+  );
+}
+
+const SAME = "same";
+
+/** The models an engine that isn't Claude runs on, from its own list: one that decides, and one that reads (the same, unless picked). */
+function TierPicker({ view, picked, onSaved, onError }: { view: EngineView; picked: Partial<Record<Tier, string>>; onSaved: (v: EngineView) => void; onError: (m: string | null) => void }) {
+  const [list, setList] = useState<string[] | null>(null);
+  const kind = view.kind;
+  useEffect(() => {
+    let live = true;
+    void engineDb.list(kind).then(
+      (l) => live && setList(l),
+      (e: unknown) => {
+        if (!live) return;
+        setList([]);
+        onError(e instanceof Error ? e.message : String(e));
+      },
+    );
+    return () => void (live = false);
+  }, [kind, view.key?.last4, view.base, onError]);
+  const pick = async (tier: Tier, model: string) => {
+    const next = { ...picked, [tier]: model };
+    if (model === SAME) delete next[tier];
+    onError(null);
+    try {
+      onSaved(await engineDb.tiers(kind, next));
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e));
+    }
+  };
+  if (!list) return <span className="q-shimmer-text text-caption text-fg-subtle">Looking at its models…</span>;
+  if (!list.length) return <span className="text-caption text-fg-subtle">{isLocal(kind) ? `No models yet. Download one in ${view.label ?? ENGINE_LABEL[kind]}, then come back.` : "This key offers no models."}</span>;
+  const models = list.map((m) => ({ value: m, label: m }));
+  return (
+    <div className="flex flex-wrap items-center gap-[12px]">
+      <label className="flex items-center gap-[8px]">
+        <span className="text-micro font-medium text-fg-subtle">Decides</span>
+        <Select<string> ariaLabel="The model that decides" value={picked.decide ?? ""} onChange={(m) => void pick("decide", m)} className="w-[220px]" options={models} />
+      </label>
+      <label className="flex items-center gap-[8px]">
+        <span className="text-micro font-medium text-fg-subtle">Reads</span>
+        <Select<string> ariaLabel="The model that reads" value={picked.read ?? SAME} onChange={(m) => void pick("read", m)} className="w-[220px]" options={[{ value: SAME, label: "The same model" }, ...models]} />
+      </label>
+    </div>
+  );
+}
+
+/** Where a model on this computer answers: its usual address, or another one on this computer. */
+function BaseField({ view, onSaved, onError }: { view: EngineView; onSaved: (v: EngineView) => void; onError: (m: string | null) => void }) {
+  const [base, setBase] = useState(view.base ?? "");
+  const save = async () => {
+    if (base.trim() === (view.base ?? "")) return;
+    onError(null);
+    try {
+      onSaved(await engineDb.base(view.kind, base.trim() || null));
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e));
+      setBase(view.base ?? "");
+    }
+  };
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        void save();
+      }}
+      className="flex min-w-[220px] flex-1 items-center gap-[8px]"
+    >
+      <label className={clsx(r.field, "flex-1")}>
+        <span className="sr-only">Its address on this computer</span>
+        <input spellCheck={false} value={base} onChange={(e) => setBase(e.target.value)} onBlur={() => void save()} className={clsx(r.fieldInput, "font-mono")} />
+      </label>
+    </form>
+  );
+}
+
 /** A key typed in once: tested, then kept in the Keychain (never shown again, only its last four). */
-export function KeyField({ view, onSaved, onError }: { view: EngineView; onSaved: (v: EngineView) => void; onError: (m: string | null) => void }) {
+export function KeyField({ view, kind = "api", onSaved, onError }: { view: EngineView; kind?: KeyedKind; onSaved: (v: EngineView) => void; onError: (m: string | null) => void }) {
   const [key, setKey] = useState("");
   const [busy, setBusy] = useState(false);
   if (view.key && !key)
@@ -187,7 +300,7 @@ export function KeyField({ view, onSaved, onError }: { view: EngineView; onSaved
             type="button"
             className={clsx(r.buttonSm, r.buttonGhost)}
             onClick={() =>
-              void engineDb.forgetKey().then(
+              void engineDb.forgetKey(kind).then(
                 (v) => onSaved(v),
                 (e: unknown) => onError(e instanceof Error ? e.message : String(e)),
               )
@@ -198,13 +311,13 @@ export function KeyField({ view, onSaved, onError }: { view: EngineView; onSaved
         )}
       </span>
     );
-  if (!view.canStore) return <span className="text-caption text-fg-subtle">Set ANTHROPIC_API_KEY where Qalam starts: this computer has no Keychain.</span>;
+  if (!view.canStore) return <span className="text-caption text-fg-subtle">Set the key where Qalam starts: this computer has no Keychain.</span>;
   const save = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
     onError(null);
     try {
-      onSaved(await engineDb.saveKey(key));
+      onSaved(await engineDb.saveKey(key, kind));
       setKey("");
     } catch (err) {
       onError(err instanceof Error ? err.message : String(err));
@@ -215,8 +328,8 @@ export function KeyField({ view, onSaved, onError }: { view: EngineView; onSaved
   return (
     <form onSubmit={(e) => void save(e)} className="flex min-w-[280px] flex-1 items-center gap-[8px]">
       <label className={clsx(r.field, "flex-1")}>
-        <span className="sr-only">Claude API key</span>
-        <input type="password" autoComplete="off" spellCheck={false} placeholder="Paste a Claude API key" value={key} onChange={(e) => setKey(e.target.value)} className={r.fieldInput} />
+        <span className="sr-only">{KEY_WORD[kind]}</span>
+        <input type="password" autoComplete="off" spellCheck={false} placeholder={`Paste ${article(KEY_WORD[kind])}`} value={key} onChange={(e) => setKey(e.target.value)} className={r.fieldInput} />
       </label>
       <Button type="submit" size="sm" disabled={busy || key.trim().length < 20}>
         {busy ? "Testing…" : "Test and keep"}
@@ -251,7 +364,7 @@ function Usage({ u, kind }: { u: UsageSummary; kind: EngineKind }) {
       )}
       {u.calls > 0 && <span className="text-caption text-fg-subtle tnum">{`${shortCount(u.input)} in · ${shortCount(u.output)} out`}</span>}
       {u.cost !== null && (
-        <Tip label={kind === "cli" ? "Claude Code's own estimate, at API prices. Your Claude plan covers these calls." : "As the calls reported it."}>
+        <Tip label={kind === "cli" ? "Claude Code's own estimate, at API prices. Your Claude plan covers these calls." : isLocal(kind) ? "Calls on this computer cost nothing." : "As the calls reported it."}>
           <span className="text-caption text-fg-subtle tnum">≈ ${u.cost.toFixed(2)}</span>
         </Tip>
       )}

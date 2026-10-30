@@ -16,6 +16,10 @@ interface EngineState {
   kind: EngineKind;
   /** The models picked for this engine in Connections, by tier (an engine that isn't Claude names its own). */
   models?: Partial<Record<Tier, string>>;
+  /** Keys for engines that aren't Claude's (the Keychain's, else the environment's). */
+  keys?: Partial<Record<EngineKind, string>>;
+  /** Where a model on this computer answers, when not the usual address. */
+  bases?: Partial<Record<EngineKind, string>>;
   /** The API key in use (the Keychain's, else the environment's); null: none. */
   key: string | null;
   /** The `claude` to run. */
@@ -39,6 +43,10 @@ const state = (): EngineState =>
 
 export const backend = (): EngineKind => state().kind;
 export const apiKey = (): string | null => state().key;
+/** An engine's key: Claude's API key, or another engine's. */
+export const keyOf = (kind: EngineKind): string | null => (kind === "api" ? state().key : (state().keys?.[kind] ?? null));
+/** Where a model on this computer answers, if not the usual address. */
+export const baseOf = (kind: EngineKind): string | null => state().bases?.[kind] ?? null;
 export const bin = (): string => state().bin;
 export const modelMix = (): ModelMix => state().mix;
 

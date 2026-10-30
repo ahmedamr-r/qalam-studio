@@ -16,6 +16,8 @@ export interface Settings {
   engine?: EngineKind;
   /** "balanced": Sonnet reads, Opus decides; "best": Opus, and Sonnet for the reads that hold there. Unset: "best" (src/ai/models.ts). */
   models?: "balanced" | "best";
+  /** Engines that aren't Claude: the models picked for each tier, and where a model on this computer answers (a local address only). */
+  engines?: Partial<Record<EngineKind, { models?: Partial<Record<"decide" | "read" | "fetch", string>>; baseUrl?: string }>>;
   /** When the first-run welcome was finished on this computer. */
   welcomedAt?: number;
   /** Who's on this computer, as they gave it in the first run (their position is per organization, in its `.qalam/local`). */

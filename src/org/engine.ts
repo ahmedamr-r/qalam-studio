@@ -35,8 +35,27 @@ export interface EngineTest {
   at: number;
 }
 
+/** An engine Qalam AI could run on, as the card lists it. */
+export interface EngineOption {
+  kind: EngineKind;
+  label: string;
+  /** In a word: ready, needs a key, needs a model picked, not running, not installed, signed out. */
+  state: "ready" | "no-key" | "pick-model" | "offline" | "missing" | "signed-out";
+  key?: { last4: string; from: "keychain" | "environment" } | null;
+  /** Where a model on this computer answers. */
+  base?: string;
+  /** The models picked for it, by tier. */
+  models?: Partial<Record<Tier, string>>;
+}
+
 export interface EngineView {
   kind: EngineKind;
+  /** The engine's name for people ("Claude Code", "OpenAI API key"…). */
+  label?: string;
+  /** Every engine it could run on, and how each stands. */
+  options?: EngineOption[];
+  /** Where a model on this computer answers (the live engine's). */
+  base?: string;
   /** The decide tier's model. */
   model: string;
   /** "balanced": Sonnet reads, Opus decides; "best": Opus, and Sonnet for the reads that hold there. */
@@ -77,8 +96,13 @@ export const engineDb = {
   models: (models: ModelMix) => send("/api/engine/models", "PUT", { models }).then((r) => json<EngineView>(r)),
   test: (kind?: EngineKind) => send("/api/engine/test", "POST", { kind }).then((r) => json<EngineTest>(r)),
   /** Tested first; kept in the Keychain only when it works. */
-  saveKey: (key: string) => send("/api/engine/key", "PUT", { key }).then((r) => json<EngineView>(r)).then(changed),
-  forgetKey: () => send("/api/engine/key", "DELETE").then((r) => json<EngineView>(r)).then(changed),
+  saveKey: (key: string, kind: EngineKind = "api") => send("/api/engine/key", "PUT", { key, kind }).then((r) => json<EngineView>(r)).then(changed),
+  forgetKey: (kind: EngineKind = "api") => send(`/api/engine/key?kind=${kind}`, "DELETE").then((r) => json<EngineView>(r)).then(changed),
+  /** The models an engine that isn't Claude offers, from its own list. */
+  list: (kind: EngineKind) => fetch(`/api/engine/${kind}/models`).then((r) => json<{ models: string[] }>(r)).then((x) => x.models),
+  tiers: (kind: EngineKind, tiers: Partial<Record<Tier, string>>) => send(`/api/engine/${kind}/tiers`, "PUT", { tiers }).then((r) => json<EngineView>(r)).then(changed),
+  /** Where a model on this computer answers (null: its usual address). */
+  base: (kind: EngineKind, base: string | null) => send(`/api/engine/${kind}/base`, "PUT", { base }).then((r) => json<EngineView>(r)).then(changed),
   usage: (days = 7) => fetch(`/api/engine/usage?days=${days}`).then((r) => json<UsageSummary>(r)),
 };
 

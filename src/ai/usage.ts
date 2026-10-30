@@ -1,3 +1,4 @@
+import type { EngineKind } from "./engine-kinds";
 import type { CallKind } from "./models";
 import type { UsageEntry } from "./usage-shared";
 
@@ -30,6 +31,21 @@ interface ApiUsage {
 export function fromApiUsage(u: ApiUsage | null | undefined, model: string, kind?: CallKind, now = Date.now()): UsageEntry | null {
   if (!u) return null;
   return { at: now, engine: "api", model, ...(kind ? { kind } : {}), input: u.input_tokens ?? 0, output: u.output_tokens ?? 0, cacheRead: u.cache_read_input_tokens ?? 0, cacheWrite: u.cache_creation_input_tokens ?? 0, cost: null };
+}
+
+interface ChatUsage {
+  prompt_tokens?: number | null;
+  completion_tokens?: number | null;
+  prompt_tokens_details?: { cached_tokens?: number | null } | null;
+  /** OpenRouter's own figure, in dollars, when asked for. */
+  cost?: number | null;
+}
+
+/** An OpenAI-style chat answer's usage: its tokens, what was read from cache, and a cost only where the engine said (OpenRouter), or none for a model on this computer. */
+export function fromChatUsage(u: ChatUsage | null | undefined, engine: EngineKind, model: string, kind?: CallKind, now = Date.now()): UsageEntry | null {
+  if (!u) return null;
+  const local = engine === "ollama" || engine === "lmstudio";
+  return { at: now, engine, model, ...(kind ? { kind } : {}), input: u.prompt_tokens ?? 0, output: u.completion_tokens ?? 0, cacheRead: u.prompt_tokens_details?.cached_tokens ?? 0, cacheWrite: 0, cost: local ? 0 : typeof u.cost === "number" ? u.cost : null };
 }
 
 /** What Claude Code's result line reports: its usage, and its own estimate of the cost. */

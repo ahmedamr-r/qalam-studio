@@ -2,9 +2,10 @@ import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { backend } from "@/ai/engine";
+import { backend, keyOf, tierModel } from "@/ai/engine";
+import { setChatFetch } from "@/ai/engines/compat";
 import { resetSecrets, secrets } from "./secrets";
-import { chooseEngine, engineView, liveTest, resetEngine, saveKey } from "./engine";
+import { chooseBase, chooseEngine, chooseTiers, engineView, forgetKey, liveTest, resetEngine, saveKey } from "./engine";
 
 let dir: string;
 const env = { ...process.env };
@@ -22,6 +23,8 @@ beforeEach(async () => {
   process.env.QALAM_HOME = path.join(dir, `home-${Math.random().toString(36).slice(2)}`);
   process.env.QALAM_SECRETS = "memory";
   delete process.env.ANTHROPIC_API_KEY;
+  delete process.env.OPENAI_API_KEY;
+  setChatFetch(undefined);
   delete process.env.AI_BACKEND;
   resetSecrets();
   resetEngine();
@@ -69,5 +72,50 @@ describe("the engine behind Qalam AI", () => {
     const view = await engineView();
     expect(view.key).toEqual({ last4: "abcd", from: "keychain" });
     expect(JSON.stringify(view)).not.toContain("1111111111");
+  });
+
+  it("keeps another engine's key under its own name, once its list of models answers, and says to pick one", async () => {
+    setChatFetch(async (_url, init) => (new Headers(init?.headers).get("authorization")?.endsWith("good-key-0000000000000wxyz") ? Response.json({ data: [{ id: "gpt-b" }, { id: "gpt-a" }] }) : Response.json({ error: { message: "Incorrect API key" } }, { status: 401 })));
+    expect(await saveKey("bad-key-00000000000000000000", { kind: "openai" })).toMatchObject({ ok: false, test: { word: "Key rejected" } });
+    expect(await secrets().get("openai-api-key")).toBeNull();
+
+    expect(await saveKey("good-key-0000000000000wxyz", { kind: "openai" })).toEqual({ ok: true });
+    expect(backend()).toBe("openai");
+    expect(await secrets().get("anthropic-api-key")).toBeNull();
+    let view = await engineView();
+    expect(view).toMatchObject({ kind: "openai", key: { last4: "wxyz", from: "keychain" }, ready: false, word: "Pick a model" });
+    expect(view.options?.find((o) => o.kind === "openai")).toMatchObject({ state: "pick-model" });
+
+    await chooseTiers("openai", { decide: "gpt-a", read: "gpt-b", bogus: "x" } as never);
+    expect(tierModel("decide")).toBe("gpt-a");
+    expect(tierModel("read")).toBe("gpt-b");
+    view = await engineView();
+    expect(view).toMatchObject({ ready: true, tiers: { decide: "gpt-a", read: "gpt-b" } });
+    expect(JSON.parse(await readFile(path.join(process.env.QALAM_HOME!, ".qalam", "settings.json"), "utf8")).engines).toEqual({ openai: { models: { decide: "gpt-a", read: "gpt-b" } } });
+
+    // Read again from the settings and the Keychain after a restart; forgetting the key falls back to the environment's.
+    resetEngine();
+    expect((await engineView()).tiers.decide).toBe("gpt-a");
+    process.env.OPENAI_API_KEY = "env-key-000000000000000000";
+    await forgetKey("openai");
+    expect(keyOf("openai")).toBe("env-key-000000000000000000");
+    expect((await engineView()).key).toEqual({ last4: "0000", from: "environment" });
+  });
+
+  it("takes a model on this computer only at a local address, and says when it isn't running", async () => {
+    await chooseEngine("ollama");
+    expect(await chooseBase("ollama", "http://192.168.1.4:11434/v1")).toMatchObject({ ok: false });
+    expect(await chooseBase("openai", "http://127.0.0.1:9/v1")).toMatchObject({ ok: false });
+    expect(await chooseBase("ollama", "http://127.0.0.1:9/v1/")).toEqual({ ok: true });
+    await chooseTiers("ollama", { decide: "qwen3" });
+    const view = await engineView();
+    expect(view).toMatchObject({ kind: "ollama", base: "http://127.0.0.1:9/v1", ready: false, word: "Offline" });
+    expect(view.options?.find((o) => o.kind === "ollama")).toMatchObject({ state: "offline", base: "http://127.0.0.1:9/v1" });
+    setChatFetch(async (url) => (String(url).endsWith("/models") ? Response.json({ data: [{ id: "qwen3" }] }) : Response.json({ model: "qwen3:8b", choices: [{ message: { content: '{"ok":false}' } }] })));
+    expect(await liveTest("ollama")).toMatchObject({ ok: false, word: "Didn't answer" });
+    setChatFetch(async (url) => (String(url).endsWith("/models") ? Response.json({ data: [{ id: "qwen3" }] }) : Response.json({ model: "qwen3:8b", choices: [{ message: { content: '{"ok":true}' } }] })));
+    expect(await liveTest("ollama")).toMatchObject({ ok: true, model: "qwen3:8b" });
+    expect(await chooseBase("ollama", null)).toEqual({ ok: true });
+    expect((await engineView()).base).toBe("http://127.0.0.1:11434/v1");
   });
 });

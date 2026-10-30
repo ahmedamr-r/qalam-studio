@@ -5,11 +5,14 @@
  * cache mark) is Claude's own and goes.
  */
 
-export type Block = { type: string; text?: string; source?: { type?: string; media_type?: string; data?: string } };
+export type Block = { type: string; text?: string; source?: unknown };
 
 export type ChatPart = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
 
-const image = (b: Block): { media: string; data: string } | null => (b.type === "image" && b.source?.type === "base64" && b.source.data && b.source.media_type ? { media: b.source.media_type, data: b.source.data } : null);
+function image(b: Block): { media: string; data: string } | null {
+  const s = (b.source && typeof b.source === "object" ? b.source : {}) as { type?: unknown; media_type?: unknown; data?: unknown };
+  return b.type === "image" && s.type === "base64" && typeof s.data === "string" && typeof s.media_type === "string" ? { media: s.media_type, data: s.data } : null;
+}
 
 /** The blocks as OpenAI chat parts: text as text, a base64 image as a data address. */
 export function toChatParts(blocks: Block[]): ChatPart[] {

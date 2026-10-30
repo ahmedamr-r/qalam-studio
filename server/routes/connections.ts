@@ -1,5 +1,7 @@
 import { Hono } from "hono";
-import { chooseEngine, chooseModels, engineView, forgetKey, liveTest, saveKey } from "../engine";
+import { chooseBase, chooseEngine, chooseModels, chooseTiers, engineModels, engineView, forgetKey, liveTest, saveKey } from "../engine";
+import { adapterFor } from "@/ai/engines";
+import { ENGINE_LABEL, isEngineKind, isKeyed, type EngineKind } from "@/ai/engine-kinds";
 import { fixHealth, healthNow } from "../health";
 import { recentUsage } from "../usage";
 import { connectorDef } from "@/connectors/catalog";
@@ -25,7 +27,7 @@ export function connectionsRoutes(): Hono {
   r.get("/api/engine", async (c) => c.json(await engineView()));
   r.put("/api/engine", async (c) => {
     const { kind } = (await c.req.json().catch(() => ({}))) as { kind?: unknown };
-    if (kind !== "cli" && kind !== "api") return c.json({ error: "bad_request", message: "Pick cli or api." }, 400);
+    if (!runs(kind)) return c.json({ error: "bad_request", message: "Qalam AI can't run on that here." }, 400);
     await chooseEngine(kind);
     return c.json(await engineView());
   });
@@ -35,18 +37,45 @@ export function connectionsRoutes(): Hono {
     await chooseModels(models);
     return c.json(await engineView());
   });
+  // The models an engine that isn't Claude offers (its own list), and the ones picked for each tier.
+  r.get("/api/engine/:kind/models", async (c) => {
+    const kind = c.req.param("kind");
+    if (!runs(kind)) return c.json({ error: "bad_request", message: "Which engine?" }, 400);
+    try {
+      return c.json({ models: await engineModels(kind) });
+    } catch (e) {
+      return c.json({ error: "models", message: e instanceof Error ? e.message : String(e) }, 502);
+    }
+  });
+  r.put("/api/engine/:kind/tiers", async (c) => {
+    const kind = c.req.param("kind");
+    const { tiers } = (await c.req.json().catch(() => ({}))) as { tiers?: unknown };
+    if (!runs(kind) || !tiers || typeof tiers !== "object") return c.json({ error: "bad_request", message: "Pick a model." }, 400);
+    await chooseTiers(kind, tiers as Record<string, string>);
+    return c.json(await engineView());
+  });
+  r.put("/api/engine/:kind/base", async (c) => {
+    const kind = c.req.param("kind");
+    const { base } = (await c.req.json().catch(() => ({}))) as { base?: unknown };
+    if (!runs(kind) || (base !== null && typeof base !== "string")) return c.json({ error: "bad_request", message: "Give an address on this computer." }, 400);
+    const set = await chooseBase(kind, base);
+    return set.ok ? c.json(await engineView()) : c.json({ error: "bad_request", message: set.message }, 400);
+  });
   r.post("/api/engine/test", async (c) => {
     const { kind } = (await c.req.json().catch(() => ({}))) as { kind?: unknown };
-    return c.json(await liveTest(kind === "cli" || kind === "api" ? kind : undefined));
+    return c.json(await liveTest(runs(kind) ? kind : undefined));
   });
   r.put("/api/engine/key", async (c) => {
-    const { key } = (await c.req.json().catch(() => ({}))) as { key?: unknown };
-    if (typeof key !== "string" || key.trim().length < 20) return c.json({ error: "bad_request", message: "That doesn't look like a Claude API key." }, 400);
-    const saved = await saveKey(key);
+    const { key, kind = "api" } = (await c.req.json().catch(() => ({}))) as { key?: unknown; kind?: unknown };
+    if (!isEngineKind(kind) || !isKeyed(kind)) return c.json({ error: "bad_request", message: "Which engine is the key for?" }, 400);
+    if (typeof key !== "string" || key.trim().length < 20) return c.json({ error: "bad_request", message: `That doesn't look like ${keyName(kind)}.` }, 400);
+    const saved = await saveKey(key, { kind });
     return saved.ok ? c.json(await engineView()) : c.json({ error: "key_failed", message: saved.message, test: saved.test }, 400);
   });
   r.delete("/api/engine/key", async (c) => {
-    await forgetKey();
+    const kind = c.req.query("kind") ?? "api";
+    if (!isEngineKind(kind) || !isKeyed(kind)) return c.json({ error: "bad_request", message: "Which engine's key?" }, 400);
+    await forgetKey(kind);
     return c.json(await engineView());
   });
   r.get("/api/engine/usage", async (c) => c.json(await recentUsage(Date.now(), Math.min(31, Math.max(1, Number(c.req.query("days") ?? 7) || 7)))));
@@ -180,6 +209,11 @@ export function connectionsRoutes(): Hono {
   });
   return r;
 }
+
+/** An engine this version can run Qalam AI on: Claude's own two, or one with an adapter. */
+const runs = (kind: unknown): kind is EngineKind => isEngineKind(kind) && (kind === "cli" || kind === "api" || !!adapterFor(kind));
+
+const keyName = (kind: EngineKind) => (kind === "api" ? "a Claude API key" : `${/^[AEIOU]/.test(ENGINE_LABEL[kind]) ? "an" : "a"} ${ENGINE_LABEL[kind]}`);
 
 /** Work streamed as NDJSON (activity lines and any others it sends, then the result or the error); it runs to its end whoever listens. */
 function ndjson(run: (emit: (label: string) => void, send: (line: Record<string, unknown>) => void) => Promise<unknown>): Response {
