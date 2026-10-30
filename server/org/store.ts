@@ -19,6 +19,8 @@ import type { BearingLog } from "@/goals/bearings";
 import type { StepPinLog } from "@/code/steps";
 import type { GoalWork } from "@/goals/breakdown";
 import { mapFromMarkdown, mapToMarkdown, type CodeRepo, type ProductMap } from "@/code/map";
+import { seenFromMarkdown, seenToMarkdown } from "@/seen/seen-md";
+import { SEEN_KEY, type SeenMap, type SeenReading } from "@/seen/types";
 import type { JobLog } from "@/goals/jobs";
 import { sameTopic } from "@/hub/topics";
 import type { SourceRecord } from "@/discovery/sources";
@@ -71,6 +73,8 @@ export type OrgEvent = { tab?: string } & (
   | { kind: "goalwork"; goal: string }
   /** What a product does today, from its code, changed (hub/maps/<key>.md). */
   | { kind: "map"; key: string; removed?: boolean }
+  /** What people see in a product changed (hub/seen/<key>.md), or a reading of screenshots moved on (`reading`). */
+  | { kind: "seen"; key: string; removed?: boolean; reading?: boolean }
   | { kind: "notice" }
   | { kind: "relation" }
   /** Something changed in the inbox folder (server/inbox.ts reads what's new). */
@@ -779,6 +783,72 @@ export class OrgStore {
   async removeMap(key: string, opts: { tab?: string } = {}): Promise<void> {
     await rm(this.mapFile(key), { force: true });
     this.emit({ kind: "map", key, removed: true, tab: opts.tab });
+  }
+
+  // What people see in each product, from its screenshots (hub/seen/<key>.md), and a batch of
+  // screenshots on its way there (chats/seen/<key>.json: this computer's, out of Git).
+
+  private seenFile(key: string) {
+    if (!SEEN_KEY.test(key)) throw new NotFoundError("No such product");
+    return this.abs(`hub/seen/${key}.md`);
+  }
+
+  async listSeen(): Promise<SeenMap[]> {
+    const names = await readdir(this.abs("hub/seen")).catch(() => [] as string[]);
+    const out: SeenMap[] = [];
+    for (const n of names.filter((n) => n.endsWith(".md")).sort()) {
+      const m = seenFromMarkdown(await readFile(this.abs(`hub/seen/${n}`), "utf8").catch(() => ""));
+      if (m) out.push(m);
+    }
+    return out;
+  }
+
+  async getSeen(key: string): Promise<SeenMap | null> {
+    return seenFromMarkdown(await readFile(this.seenFile(key), "utf8").catch(() => ""));
+  }
+
+  /** Change a product's map under its lock: `fn` gets it as it is (null when there's none) and returns it as it should be (null takes it away). */
+  async changeSeen(key: string, fn: (m: SeenMap | null) => SeenMap | null, opts: { tab?: string } = {}): Promise<SeenMap | null> {
+    const file = this.seenFile(key);
+    const products = await this.listProducts();
+    const goals = await this.getGoals();
+    const next = await locked(file, async () => {
+      const m = fn(seenFromMarkdown(await readFile(file, "utf8").catch(() => "")));
+      if (!m) {
+        await rm(file, { force: true });
+        return null;
+      }
+      const picture = (ref: string) => {
+        const f = this.assets.get(ref.replace(/^asset:/, ""));
+        return f ? `../../assets/${path.basename(f)}` : undefined;
+      };
+      await this.write(file, seenToMarkdown({ ...m, key }, { productName: products.find((p) => p.id === m.product)?.name, goalTitle: (id) => goalById(goals, id)?.title, picture }));
+      return m;
+    });
+    this.emit({ kind: "seen", key, ...(next ? {} : { removed: true }), tab: opts.tab });
+    return next;
+  }
+
+  private readingFile(key: string) {
+    if (!SEEN_KEY.test(key)) throw new NotFoundError("No such product");
+    return this.abs(`chats/seen/${key}.json`);
+  }
+
+  getReading(key: string): Promise<SeenReading | null> {
+    return readJson<SeenReading>(this.readingFile(key));
+  }
+
+  /** Change a reading under its lock (null takes it away); every change is announced, so its window follows along. */
+  async changeReading(key: string, fn: (r: SeenReading | null) => SeenReading | null, opts: { tab?: string } = {}): Promise<SeenReading | null> {
+    const file = this.readingFile(key);
+    const next = await locked(file, async () => {
+      const r = fn(await readJson<SeenReading>(file));
+      if (r) await atomicWrite(file, stableStringify(r));
+      else await rm(file, { force: true });
+      return r;
+    });
+    this.emit({ kind: "seen", key, reading: true, tab: opts.tab });
+    return next;
   }
 
   get codeRepos(): CodeRepo[] {
@@ -1508,6 +1578,8 @@ export class OrgStore {
       this.emit({ kind: "goalwork", goal: path.basename(rel, ".json") });
     } else if (parts[0] === "hub" && parts[1] === "maps" && parts.length === 3 && rel.endsWith(".md")) {
       this.emit({ kind: "map", key: path.basename(rel, ".md"), ...(bytes ? {} : { removed: true }) });
+    } else if (parts[0] === "hub" && parts[1] === "seen" && parts.length === 3 && rel.endsWith(".md")) {
+      this.emit({ kind: "seen", key: path.basename(rel, ".md"), ...(bytes ? {} : { removed: true }) });
     } else if (rel === "about.md") {
       this.emit({ kind: "about" });
     } else if (rel === GOALS) {

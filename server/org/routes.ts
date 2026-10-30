@@ -30,6 +30,8 @@ import { goalById } from "@/goals/tree";
 import type { Hit as ConnectorHit } from "@/connectors/recipes";
 import { findProblems, goalPage, linkByHand } from "./goals";
 import { pictureFromFigma, pinByHand, placeQuotes } from "./steps";
+import { answerReading, dropReading, editSeen, seenEditShape, seenMaps, seenView, settleReading, startReading } from "./seen";
+import type { SeenAnswer, Shot } from "@/seen/types";
 import { changeJob, noteForJob, openJobs, planJobs, searchForJob, takeInForJob } from "./jobs";
 import { breakDown, decidePart, lookOutside } from "./outside";
 import { addRepo, answerFromCode, codeView, readRepo, removeRepo, type NewRepo } from "../code";
@@ -48,6 +50,8 @@ type Env = { Variables: { store: OrgStore } };
 
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
 const HASH = /^[0-9a-f]{24}$/;
+/** The largest image or file a window may keep in assets/. */
+const ASSET_MAX = 16 * 1024 * 1024;
 const tabOf = (h: Headers) => h.get("x-qalam-tab") ?? undefined;
 const ifMatch = (h: Headers) => h.get("if-match")?.replace(/^W\//, "").replace(/"/g, "") || undefined;
 const etag = (v: string) => `"${v}"`;
@@ -696,6 +700,69 @@ export function orgRoutes(): Hono<Env> {
     return c.json({ ok: true });
   });
 
+  // What people see in each product, from its screenshots (server/org/seen.ts).
+  r.get("/api/org/:org/seen", async (c) => c.json(await seenMaps(c.get("store"))));
+  r.get("/api/org/:org/seen/:key", async (c) => {
+    try {
+      return c.json(await seenView(c.get("store"), c.req.param("key")));
+    } catch (e) {
+      return failure(e);
+    }
+  });
+  r.post("/api/org/:org/seen/:key/read", async (c) => {
+    if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't read screenshots." }, 503);
+    const b = (await c.req.json().catch(() => null)) as { shots?: unknown } | null;
+    const shots: Shot[] = (Array.isArray(b?.shots) ? b.shots : []).flatMap((x) => {
+      const s = x as Record<string, unknown>;
+      return typeof s?.ref === "string" && /^asset:[0-9a-f]{24}$/.test(s.ref) && typeof s.name === "string" ? [{ ref: s.ref, name: s.name.slice(0, 200), ...(typeof s.modified === "number" && Number.isFinite(s.modified) ? { modified: s.modified } : {}) }] : [];
+    });
+    if (!shots.length) return bad("Add screenshots the organization keeps");
+    try {
+      return c.json(await startReading(c.get("store"), c.req.param("key"), shots, { tab: tabOf(c.req.raw.headers) }));
+    } catch (e) {
+      return e instanceof NotFoundError ? failure(e) : bad(e instanceof Error ? e.message : String(e));
+    }
+  });
+  r.post("/api/org/:org/seen/:key/answer", async (c) => {
+    const b = (await c.req.json().catch(() => null)) as { answers?: unknown; skip?: unknown } | null;
+    const answers: SeenAnswer[] = (Array.isArray(b?.answers) ? b.answers : []).flatMap((x) => {
+      const a = x as Record<string, unknown>;
+      return typeof a?.question === "string" && typeof a.answer === "string" ? [{ question: a.question, ask: "", answer: a.answer.slice(0, 300) }] : [];
+    });
+    if (!b?.skip && !aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here." }, 503);
+    try {
+      return c.json(await answerReading(c.get("store"), c.req.param("key"), answers, { tab: tabOf(c.req.raw.headers), skip: b?.skip === true }));
+    } catch (e) {
+      return e instanceof NotFoundError ? failure(e) : bad(e instanceof Error ? e.message : String(e));
+    }
+  });
+  r.post("/api/org/:org/seen/:key/settle", async (c) => {
+    const b = (await c.req.json().catch(() => null)) as { flows?: unknown; steps?: unknown } | null;
+    const decisions = (v: unknown) => Object.fromEntries(Object.entries(v && typeof v === "object" ? (v as Record<string, unknown>) : {}).filter((e): e is [string, "accepted" | "discarded"] => /^[a-z0-9-]{1,60}$/.test(e[0]) && (e[1] === "accepted" || e[1] === "discarded")));
+    try {
+      return c.json(await settleReading(c.get("store"), c.req.param("key"), { flows: decisions(b?.flows), steps: decisions(b?.steps) }, { tab: tabOf(c.req.raw.headers) }));
+    } catch (e) {
+      return e instanceof NotFoundError ? failure(e) : bad(e instanceof Error ? e.message : String(e));
+    }
+  });
+  r.delete("/api/org/:org/seen/:key/reading", async (c) => {
+    try {
+      await dropReading(c.get("store"), c.req.param("key"), { tab: tabOf(c.req.raw.headers) });
+      return c.json({ ok: true });
+    } catch (e) {
+      return e instanceof NotFoundError ? failure(e) : bad(e instanceof Error ? e.message : String(e));
+    }
+  });
+  r.patch("/api/org/:org/seen/:key", async (c) => {
+    const edit = seenEditShape(await c.req.json().catch(() => null));
+    if (!edit) return bad("Say which screen or flow, and what changes");
+    try {
+      return c.json(await editSeen(c.get("store"), c.req.param("key"), edit, { tab: tabOf(c.req.raw.headers) }));
+    } catch (e) {
+      return failure(e);
+    }
+  });
+
   // Images, by content hash (immutable).
   r.get("/api/org/:org/assets/:hash", (c) => {
     const hash = c.req.param("hash");
@@ -707,8 +774,11 @@ export function orgRoutes(): Hono<Env> {
   r.put("/api/org/:org/assets/:hash", async (c) => {
     const hash = c.req.param("hash");
     if (!HASH.test(hash)) return bad("Not an image name");
+    if (Number(c.req.header("content-length") ?? 0) > ASSET_MAX) return c.json({ error: "too_large", message: "That file is over 16 MB." }, 413);
     try {
-      await c.get("store").putAsset(hash, new Uint8Array(await c.req.arrayBuffer()), c.req.header("content-type") ?? "application/octet-stream");
+      const bytes = new Uint8Array(await c.req.arrayBuffer());
+      if (bytes.byteLength > ASSET_MAX) return c.json({ error: "too_large", message: "That file is over 16 MB." }, 413);
+      await c.get("store").putAsset(hash, bytes, c.req.header("content-type") ?? "application/octet-stream");
       return c.json({ ok: true });
     } catch (e) {
       return bad(e instanceof Error ? e.message : String(e));

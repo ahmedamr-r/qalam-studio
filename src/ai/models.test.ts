@@ -9,6 +9,7 @@ import { jobsCall } from "./jobs";
 import { bearingsCall } from "./goals";
 import { readerCall } from "./code";
 import { stepsCall } from "./steps";
+import { placeCall, readCall } from "./seen";
 
 const api = { backend: "api" as const, env: {} };
 const cli = { backend: "cli" as const, env: {} };
@@ -23,7 +24,7 @@ describe("the model each call runs on", () => {
   it('sends every read to the read tier with "balanced", and with "best" only the reads that held there in the eval', () => {
     const reads = (Object.keys(TIER_OF) as CallKind[]).filter((k) => TIER_OF[k] === "read");
     expect(reads.map((k) => tierFor(k, "balanced"))).toEqual(reads.map(() => "read"));
-    expect(Object.fromEntries(reads.map((k) => [k, tierFor(k, "best")]))).toEqual({ extract: "decide", topics: "decide", "setup-shape": "read", claims: "read", reader: "decide", research: "decide" });
+    expect(Object.fromEntries(reads.map((k) => [k, tierFor(k, "best")]))).toEqual({ extract: "decide", topics: "decide", "setup-shape": "read", claims: "read", reader: "decide", research: "decide", "seen-read": "decide" });
     expect([...READS_THAT_HOLD].every((k) => TIER_OF[k] === "read")).toBe(true);
     // Deciding and fetching stay where they are with either mix; a call with no kind decides.
     for (const mix of ["balanced", "best"] as const) expect([tierFor("synthesize", mix), tierFor("connector", mix), tierFor(undefined, mix)]).toEqual(["decide", "fetch", "decide"]);
@@ -50,9 +51,9 @@ describe("the model each call runs on", () => {
 
   it("gives every kind of call a tier, as the plan has it", () => {
     const by = (t: Tier) => (Object.keys(TIER_OF) as CallKind[]).filter((k) => TIER_OF[k] === t).sort();
-    expect(by("read")).toEqual(["claims", "extract", "reader", "research", "setup-shape", "topics"]);
+    expect(by("read")).toEqual(["claims", "extract", "reader", "research", "seen-read", "setup-shape", "topics"]);
     expect(by("fetch")).toEqual(["connector", "numbers"]);
-    expect(by("decide")).toEqual(["ask", "bearings", "breakdown", "draft", "dump-followup", "dump-place", "dump-read", "followups", "jobs", "review", "setup-followup", "setup-place", "setup-read", "steps", "synthesize"]);
+    expect(by("decide")).toEqual(["ask", "bearings", "breakdown", "draft", "dump-followup", "dump-place", "dump-read", "followups", "jobs", "review", "seen-place", "setup-followup", "setup-place", "setup-read", "steps", "synthesize"]);
     expect(tierOf(undefined)).toBe("decide");
     expect([isCallKind("extract"), isCallKind("toString"), isCallKind(3)]).toEqual([true, false, false]);
   });
@@ -78,6 +79,8 @@ describe("each shared call says what it's for", () => {
     expectTypeOf<ReturnType<typeof jobsCall>["kind"]>().toEqualTypeOf<"jobs">();
     expectTypeOf<ReturnType<typeof bearingsCall>["kind"]>().toEqualTypeOf<"bearings">();
     expectTypeOf<ReturnType<typeof stepsCall>["kind"]>().toEqualTypeOf<"steps">();
+    expectTypeOf<ReturnType<typeof readCall>["kind"]>().toEqualTypeOf<"seen-read">();
+    expectTypeOf<ReturnType<typeof placeCall>["kind"]>().toEqualTypeOf<"seen-place">();
   });
 
   it("names each setup stage", () => {
