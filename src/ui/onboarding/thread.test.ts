@@ -20,7 +20,6 @@ const base = (over: Partial<ThreadInput> = {}): ThreadInput => ({
   know: { phase: "write", sent: false, answered: null, added: 0, error: null, goals: 0, questions: 0 },
   find: { session: null, pending: false, error: null, open: 0, accepted: 0 },
   problems: { sent: null, result: null, error: null },
-  idea: { sent: null, error: null },
   busy: null,
   picked: 0,
   ...over,
@@ -272,12 +271,32 @@ describe("the other ways in", () => {
     expect(choices(m.at(-1))).toEqual(["door"]);
   });
 
-  it("takes an idea for its board", () => {
+  it("reads an idea in the chat, asks, has its lines reviewed, and opens its board only when they choose", () => {
     const i = base({ door: "idea", shape: "solo" });
     expect(ids(threadOf(i)).slice(-2)).toEqual(["goals:door", "idea:ask"]);
-    expect(askOf(i)).toMatchObject({ kind: "idea", submit: "ctrlEnter" });
-    const sent = base({ door: "idea", idea: { sent: "A planner…", error: null }, busy: { label: "Making its board" } });
+    expect(askOf(i)).toMatchObject({ kind: "idea", submit: "ctrlEnter", sources: "docs" });
+    // Sent: what they said shows while it's read, and nothing opens.
+    const sent = base({ door: "idea", find: { session: null, pending: true, error: null, open: 0, accepted: 0 }, busy: { label: "Reading what you wrote" } });
     expect(ids(threadOf(sent)).slice(-2)).toEqual(["idea:said", "status:idea:said"]);
+    expect(askOf(sent).kind).toBe("none");
+    // A round of questions, as for goals to find.
+    const asking = base({ door: "idea", find: { session: session({ idea: true, buckets: [bucket(false)] }), pending: false, error: null, open: 0, accepted: 0 } });
+    expect(ids(threadOf(asking)).slice(-3)).toEqual(["idea:said", "idea:took", "idea:round:0"]);
+    expect(askOf(asking)).toMatchObject({ kind: "questions", scope: "find" });
+    // A reload without the door in the address still knows it's an idea.
+    expect(ids(threadOf({ ...asking, door: null })).slice(-1)).toEqual(["idea:round:0"]);
+    // Every line settled: its board, when they choose.
+    const done = base({ door: "idea", shape: "solo", find: { session: session({ idea: true, phase: "done", proposal: { summary: "Two goals.", products: [], lines: [line("g1")] }, decided: { g1: "accepted" } }), pending: false, error: null, open: 0, accepted: 1 } });
+    const m = threadOf(done);
+    expect(m.at(-1)?.id).toBe("goals:in");
+    expect(choices(m.at(-1))).toEqual(["idea-board"]);
+    expect(askOf(done)).toMatchObject({ kind: "none", key: "idea:done" });
+    expect(stepsOf(done).find((s) => s.id === "goals")?.sub?.map((s) => [s.label, s.state])).toEqual([
+      ["Way in", "done"],
+      ["Describe it", "done"],
+      ["Review", "done"],
+      ["Its board", "now"],
+    ]);
   });
 
   it("takes docs besides words where material is asked for: their own for an idea or a dump, customers' for problems", () => {
@@ -290,9 +309,8 @@ describe("the other ways in", () => {
 
   it("shows the docs that went with what they sent, and a doc alone is enough", () => {
     const docs = [{ from: "drive", title: "Pitch deck.pdf" }];
-    const alone = threadOf(base({ door: "idea", idea: { sent: "", docs, error: null }, busy: { label: "Making its board" } }));
-    expect(alone.find((x) => x.id === "idea:said")?.parts).toEqual([{ type: "data", name: "docs", data: { scope: "idea" } }]);
-    expect(askOf(base({ door: "idea", idea: { sent: "", docs, error: null } })).kind).toBe("none");
+    const alone = threadOf(base({ door: "problems", problems: { sent: "", docs, result: null, error: null }, busy: { label: "Reading what you sent" } }));
+    expect(alone.find((x) => x.id === "problems:said")?.parts).toEqual([{ type: "data", name: "docs", data: { scope: "problems" } }]);
     const both = threadOf(base({ door: "problems", problems: { sent: "Tickets…", docs, result: null, error: null } }));
     expect(both.find((x) => x.id === "problems:said")?.parts.map((p) => (p.type === "data" ? p.name : p.text))).toEqual(["Tickets…", "docs"]);
   });

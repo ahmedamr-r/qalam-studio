@@ -64,6 +64,8 @@ export interface SetupSession {
   said?: string;
   /** The docs that came with it: where each came from ("computer" or a connector's id) and its title. */
   docs?: { from: string; title: string }[];
+  /** Read as an idea to test (the idea door): it ends on the idea's board. */
+  idea?: true;
   /** What Qalam AI took from it, revised after each round of answers. */
   understanding: string;
   /** Pushback still open. */

@@ -23,7 +23,7 @@ import { r } from "../recipes";
 import Toasts from "../toast";
 import { answerKnown, readKnown, saveKnownForm, useKnow } from "../setup/know";
 import { answerSetupRound, saveSetupRound, startSetup, stopSetup, useSetup } from "../setup/setup";
-import { nameOrg, openSoFar, sendProblems, startIdea, startSetupPage, startWelcome, useFirstRun, type FirstRun } from "./flow";
+import { nameOrg, openSoFar, sendProblems, startSetupPage, startWelcome, useFirstRun, type FirstRun } from "./flow";
 import { PARTS } from "./parts";
 import { SoFar } from "./SoFarPanel";
 import { askOf, isAddress, stepsOf, threadOf, type EngineState, type ThreadInput } from "./thread";
@@ -79,7 +79,6 @@ function useThreadInput(): ThreadInput {
       accepted: Object.values(session?.decided ?? {}).filter((d) => d === "accepted").length,
     },
     problems: fr.problems,
-    idea: fr.idea,
     busy: setup.busy ? { label: setup.busy.label } : fr.working,
     picked: (fr.picked ?? mine).length,
   };
@@ -207,7 +206,7 @@ export function Onboarding({ route }: { route: "welcome" | "setup" }) {
         running={running}
         onStop={stopSetup}
         draftKey={ask.key}
-        draft={ask.kind === "outline" ? knowText : ask.kind === "dump" ? lastDump.current : ""}
+        draft={ask.kind === "outline" ? knowText : ask.kind === "dump" || ask.kind === "idea" ? lastDump.current : ""}
         onKeyDown={ask.kind === "outline" ? indent : undefined}
         above={ask.sources ? <SourceRow fit={ask.sources} /> : undefined}
         attached={ask.sources ? <AttachmentChips /> : undefined}
@@ -244,7 +243,8 @@ export function Onboarding({ route }: { route: "welcome" | "setup" }) {
             return true;
           }
           if (ask.kind === "idea") {
-            void startIdea(t, docs);
+            lastDump.current = t;
+            void startSetup({ text: t, url: "", docs, idea: true });
             return true;
           }
           return false;

@@ -10,13 +10,10 @@ import { chooseVoice, loadVoice } from "@/org/voice";
 import { loadYou, setYourName, type Me } from "@/org/you";
 import { voiceSettled, type VoiceChoice } from "@/voice/model";
 import { firstRunDb } from "@/org/first-run";
-import { projectHref, setupHref } from "@/projects/model";
-import { createProject } from "@/projects/session";
-import { emptyDoc } from "@/doc/schema";
+import { setupHref } from "@/projects/model";
 import { captureIngested } from "@/org/capture";
 import { ingestPaste, ingestUrl } from "../discovery/ingest";
-import { docRef, withDocs, type DocRef, type SentDoc } from "../chat/attach";
-import { handIdea, ideaBoardName } from "../discovery/idea";
+import { docRef, type DocRef, type SentDoc } from "../chat/attach";
 import { isAddress } from "./thread";
 import { openKnow, useKnow } from "../setup/know";
 import { openSetup, useSetup } from "../setup/setup";
@@ -57,8 +54,6 @@ export interface FirstRun {
   soFarOpen: boolean;
   /** The problems door: what they sent (words and docs), and what was filed from it (for this tab): the problem pages it went into. */
   problems: { sent: string | null; docs?: DocRef[]; result: { pages: number; quotes: number; needs?: { id: string; title: string }[] } | null; error: string | null };
-  /** The idea door: what they sent (words and docs) before its board opens. */
-  idea: { sent: string | null; docs?: DocRef[]; error: string | null };
   /** What a door is doing while it reads or makes something. */
   working: { label: string } | null;
 }
@@ -79,7 +74,6 @@ export const useFirstRun = create<FirstRun>(() => ({
   gh: undefined,
   soFarOpen: false,
   problems: { sent: null, result: null, error: null },
-  idea: { sent: null, error: null },
   working: null,
 }));
 
@@ -178,7 +172,8 @@ export async function startSetupPage(search: string) {
   // A setup named in the address wins; then the know door; then the latest one not finished.
   if (at.source) await openSetup(at.source);
   else if (!at.door || at.door === "find") await openSetup(null);
-  const door = at.door === "problems" || at.door === "idea" ? at.door : useSetup.getState().source ? "find" : (at.door ?? (useKnow.getState().sent ? "know" : null));
+  const kept = useSetup.getState().source;
+  const door = at.door === "problems" || at.door === "idea" ? at.door : kept ? (kept.setup?.idea ? "idea" : "find") : (at.door ?? (useKnow.getState().sent ? "know" : null));
   useFirstRun.setState({ door, opened: true });
   if (at.step === "connect") void loadConnect();
   window.addEventListener("popstate", () => {
@@ -198,7 +193,7 @@ export const openSoFar = (soFarOpen: boolean) => useFirstRun.setState({ soFarOpe
 
 export function pickDoor(door: Door) {
   push({ door });
-  useFirstRun.setState({ door, problems: { sent: null, result: null, error: null }, idea: { sent: null, error: null } });
+  useFirstRun.setState({ door, problems: { sent: null, result: null, error: null } });
 }
 
 /**
@@ -225,24 +220,6 @@ export async function sendProblems(text: string, docs: SentDoc[] = []) {
     useFirstRun.setState((s) => ({ problems: { ...s.problems, error: `Qalam couldn't take it in: ${message(e)}` } }));
   } finally {
     useFirstRun.setState({ working: null });
-  }
-}
-
-/**
- * The idea door: a board for the idea, which reads it as a brain dump there (its questions, then the
- * idea as a solution under the problems it would solve). The words go over for this tab only, with
- * each doc's under a line naming it: they're the person's own thinking too.
- */
-export async function startIdea(text: string, docs: SentDoc[] = []) {
-  const words = text.trim();
-  const sent = { sent: words, ...(docs.length ? { docs: docs.map(docRef) } : {}) };
-  useFirstRun.setState({ idea: { ...sent, error: null }, working: { label: "Making its board" } });
-  try {
-    const p = await createProject("discovery", ideaBoardName(words || docs[0]?.title.replace(/\.[a-z0-9]{1,5}$/i, "") || "An idea"), { discovery: { v: 1, stage: "ready" } }, emptyDoc());
-    handIdea(withDocs(words, docs.map((d) => ({ via: d.via, title: d.title, text: d.ingested.text }))));
-    window.location.assign(`${projectHref(p)}?idea=1`);
-  } catch (e) {
-    useFirstRun.setState({ idea: { ...sent, error: `Qalam couldn't make its board: ${message(e)}` }, working: null });
   }
 }
 

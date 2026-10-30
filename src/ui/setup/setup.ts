@@ -22,6 +22,7 @@ import { projectHref } from "@/projects/model";
 import { NAME_MAX, TITLE_MAX, useYou } from "@/org/you";
 import { createProject } from "@/projects/session";
 import { initialFlow, type FlowState } from "../ai/questionFlow";
+import { handIdea, ideaBoardName } from "../discovery/idea";
 import { ingestPaste, ingestUrl } from "../discovery/ingest";
 
 /*
@@ -134,8 +135,8 @@ const failed = (at: "reading" | "analyzing" | "placing", e: unknown) => setSessi
 // Read
 
 /** What they wrote and the page they pointed at, as one brain dump: kept as a source of the organization's, then read. */
-/** What they wrote, a page they pointed at, and the docs that came with them (each joined under a line naming it). */
-export async function startSetup(input: { text: string; url: string; docs?: SentDoc[] }) {
+/** What they wrote, a page they pointed at, and the docs that came with them (each joined under a line naming it). `idea`: the idea door's, which ends on its board. */
+export async function startSetup(input: { text: string; url: string; docs?: SentDoc[]; idea?: boolean }) {
   run?.abort();
   const ctrl = new AbortController();
   run = ctrl;
@@ -178,7 +179,7 @@ export async function startSetup(input: { text: string; url: string; docs?: Sent
     read: [],
     quotes: [],
     needs: [],
-    setup: { v: 1, phase: "reading", ...(input.text.trim() ? { said: input.text.trim().slice(0, DUMP_MAX_CHARS) } : {}), ...(refs.length ? { docs: refs } : {}), understanding: "", challenges: [], buckets: [] },
+    setup: { v: 1, phase: "reading", ...(input.text.trim() ? { said: input.text.trim().slice(0, DUMP_MAX_CHARS) } : {}), ...(refs.length ? { docs: refs } : {}), ...(input.idea ? { idea: true as const } : {}), understanding: "", challenges: [], buckets: [] },
   };
   await sourcesDb.put(rec);
   useSetup.setState({ source: rec, pending: null, busy: null });
@@ -370,8 +371,28 @@ export async function startBoard(lineId: string) {
   // The board's outcome card is the goal on the canvas.
   if (g) await changeGoal(g.id, { on: { board: p.id, card: node.id } }).catch(() => {});
   await sourcesDb.link(s.id, p.id, true);
+  // An idea's first board reads the idea too, and places it as a solution under the problems it solves.
+  const idea = !!session.idea && !Object.keys(session.boards ?? {}).length;
   await setSession((d) => ({ ...d, boards: { ...d.boards, [lineId]: p.id } }));
-  window.location.assign(projectHref(p));
+  if (idea) handIdea(s.text);
+  window.location.assign(`${projectHref(p)}${idea ? "?idea=1" : ""}`);
+}
+
+/** The idea's board, once they choose: under the first goal they accepted, else on its own, named after the idea. Either way the board reads the idea. */
+export async function startIdeaBoard() {
+  const s = source();
+  const session = s?.setup;
+  if (!s || !session) return;
+  const first = boardGoals(session)[0];
+  if (first) return startBoard(first.line.id);
+  const made = session.boards?.idea;
+  if (made) return window.location.assign(projectHref({ id: made, type: "discovery" }));
+  const name = ideaBoardName(session.said || session.docs?.[0]?.title.replace(/\.[a-z0-9]{1,5}$/i, "") || s.text);
+  const p = await createProject("discovery", name, { discovery: { v: 1, stage: "ready" } }, emptyDoc());
+  await sourcesDb.link(s.id, p.id, true);
+  await setSession((d) => ({ ...d, boards: { ...d.boards, idea: p.id } }));
+  handIdea(s.text);
+  window.location.assign(`${projectHref(p)}?idea=1`);
 }
 
 // ---------------------------------------------------------------------------

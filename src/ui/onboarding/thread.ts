@@ -65,8 +65,6 @@ export interface ThreadInput {
   };
   /** The problems door: what they sent (their words, and the docs that went with them), and what was filed from it (the problem pages it went into, the customers' quotes it held). */
   problems: { sent: string | null; docs?: DocRef[]; result: { pages: number; quotes: number } | null; error: string | null };
-  /** The idea door: what they sent, words and docs (the board takes it from there). */
-  idea: { sent: string | null; docs?: DocRef[]; error: string | null };
   /** A Qalam AI call running. */
   busy: { label: string } | null;
   /** Goals picked as theirs, once they moved on from Yours. */
@@ -77,18 +75,21 @@ const text = (t: string): ChatPart => ({ type: "text", text: t });
 const part = (name: PartName, data: PartData = {}): ChatPart => ({ type: "data", name, data });
 const ai = (id: string, ...parts: ChatPart[]): ChatMessage => ({ id, role: "assistant", parts });
 const you = (id: string, ...parts: ChatPart[]): ChatMessage => ({ id, role: "user", parts });
-/** What they sent at a door: their words, then the docs that went with them. */
-const said = (x: { sent: string | null; docs?: DocRef[] }, scope: "problems" | "idea"): ChatPart[] => [...(x.sent ? [text(x.sent)] : []), ...(x.docs?.length ? [part("docs", { scope })] : [])];
+/** What they sent at the problems door: their words, then the docs that went with them. */
+const said = (x: { sent: string | null; docs?: DocRef[] }): ChatPart[] => [...(x.sent ? [text(x.sent)] : []), ...(x.docs?.length ? [part("docs", { scope: "problems" })] : [])];
 
 export const engineDone = (i: Pick<ThreadInput, "engine">) => i.engine === "ready" || i.engine === "skipped";
 
-/** The way in, as chosen or as the setup on the page says. */
-export const doorOf = (i: Pick<ThreadInput, "door" | "find">): Door | null => (i.door === "problems" || i.door === "idea" ? i.door : i.find.session || i.find.pending ? "find" : i.door);
+/** The way in, as chosen or as the setup on the page says (an idea's setup says so itself). */
+export const doorOf = (i: Pick<ThreadInput, "door" | "find">): Door | null => (i.door === "problems" || i.door === "idea" ? i.door : i.find.session?.idea ? "idea" : i.find.session || i.find.pending ? "find" : i.door);
+
+/** The doors whose material Qalam AI reads, asks about, then proposes from: goals to find, or an idea. */
+const reads = (door: Door | null): door is "find" | "idea" => door === "find" || door === "idea";
 
 /** The way in is done: goals added in their words, every proposed line settled, or problems filed from what customers said. */
 export function goalsSettled(i: Pick<ThreadInput, "door" | "find" | "know" | "problems">): boolean {
   const door = doorOf(i);
-  return door === "know" ? i.know.phase === "added" : door === "find" ? i.find.session?.phase === "done" : door === "problems" ? !!i.problems.result?.quotes : false;
+  return door === "know" ? i.know.phase === "added" : reads(door) ? i.find.session?.phase === "done" : door === "problems" ? !!i.problems.result?.quotes : false;
 }
 
 const DOOR_SAID: Record<Door, string> = { know: "I know our goals", find: "Help me find our goals", problems: "Problems we hear about", idea: "An idea to test" };
@@ -182,16 +183,10 @@ export function threadOf(i: ThreadInput): ChatMessage[] {
   if (door === "problems") {
     const p = i.problems;
     out.push(ai("problems:ask", text("Paste what customers tell you: support tickets, reviews, interview notes, or a link to them. I'll file it into problem pages and show which come up most.")));
-    if (p.sent !== null) out.push(you("problems:said", ...said(p, "problems")));
+    if (p.sent !== null) out.push(you("problems:said", ...said(p)));
     if (p.error && !i.busy) out.push(ai("problems:error", part("error", { text: p.error })));
     if (p.result && !p.result.quotes && !i.busy)
       out.push(ai("problems:none", text("I found nothing customers said in it. If it's your own thinking, start from an idea instead, or paste customers' own words."), part("choices", { set: "door", solo })));
-  }
-
-  if (door === "idea") {
-    out.push(ai("idea:ask", text("Tell me the idea: what it does, who it's for, and why you think they need it. I'll put it on a board as a solution to test, ask a few questions, then work back to the problem it solves.")));
-    if (i.idea.sent !== null) out.push(you("idea:said", ...said(i.idea, "idea")));
-    if (i.idea.error && !i.busy) out.push(ai("idea:error", part("error", { text: i.idea.error })));
   }
 
   if (door === "know") {
@@ -206,32 +201,40 @@ export function threadOf(i: ThreadInput): ChatMessage[] {
     if (k.error && !i.busy) out.push(ai("know:error", part("error", { text: k.error })));
   }
 
-  if (door === "find") {
+  // Goals to find, or an idea: Qalam AI reads what they send (words and docs), asks, then proposes. An idea's board comes at the end.
+  if (reads(door)) {
+    const d = door;
     const s = i.find.session;
-    out.push(ai("find:ask", text(solo ? "Paste your notes about the idea, or give its website. I'll read it and ask before I propose anything." : "Paste a strategy doc, OKRs or notes, or give your website. I'll read it and ask before I propose anything.")));
-    if (s || i.find.pending) out.push(you("find:said", part("said")));
-    if (i.find.error && !s && !i.busy) out.push(ai("find:error", part("error", { text: i.find.error })));
+    const ask =
+      d === "idea"
+        ? "Tell me the idea: what it does, who it's for, and why you think they need it. Bring the docs you have about it too. I'll read it all and ask before I propose anything; its board comes at the end."
+        : solo
+          ? "Paste your notes about the idea, or give its website. I'll read it and ask before I propose anything."
+          : "Paste a strategy doc, OKRs or notes, or give your website. I'll read it and ask before I propose anything.";
+    out.push(ai(`${d}:ask`, text(ask)));
+    if (s || i.find.pending) out.push(you(`${d}:said`, part("said")));
+    if (i.find.error && !s && !i.busy) out.push(ai(`${d}:error`, part("error", { text: i.find.error })));
     if (s) {
       const live = s.phase !== "review" && s.phase !== "done";
-      if (s.understanding) out.push(ai("find:took", part("took", { round: -1 }), ...(s.challenges.length && live ? [part("pushback")] : [])));
+      if (s.understanding) out.push(ai(`${d}:took`, part("took", { round: -1 }), ...(s.challenges.length && live ? [part("pushback")] : [])));
       const open = roundOpen(s) && !i.busy;
       s.buckets.forEach((b, n) => {
         const answered = n < s.buckets.length - 1 || b.form.submitted || s.phase !== "asking";
         if (!answered) return;
-        out.push(ai(`find:round:${n}`, text(n === 0 ? "Before I propose anything, a few questions." : `A few more (round ${n + 1} of up to ${MAX_DUMP_ROUNDS}).`)));
-        out.push(you(`find:answers:${n}`, ...(b.form.submitted ? [part("answers", { scope: "find", round: n })] : [text("Skip the questions")])));
-        if (b.analysis) out.push(ai(`find:analysis:${n}`, part("took", { round: n })));
+        out.push(ai(`${d}:round:${n}`, text(n === 0 ? "Before I propose anything, a few questions." : `A few more (round ${n + 1} of up to ${MAX_DUMP_ROUNDS}).`)));
+        out.push(you(`${d}:answers:${n}`, ...(b.form.submitted ? [part("answers", { scope: "find", round: n })] : [text("Skip the questions")])));
+        if (b.analysis) out.push(ai(`${d}:analysis:${n}`, part("took", { round: n })));
       });
       if (open) {
         const n = s.buckets.length - 1;
-        out.push(ai(`find:round:${n}`, text(n === 0 ? "Before I propose anything, a few questions." : `A few more (round ${n + 1} of up to ${MAX_DUMP_ROUNDS}).`), part("choices", { set: "skip" })));
+        out.push(ai(`${d}:round:${n}`, text(n === 0 ? "Before I propose anything, a few questions." : `A few more (round ${n + 1} of up to ${MAX_DUMP_ROUNDS}).`), part("choices", { set: "skip" })));
       }
-      if (s.phase === "ready" && !i.busy) out.push(ai("find:ready", text("I have what I need."), part("choices", { set: "propose" })));
-      if (s.phase === "failed" && s.failed && !i.busy) out.push(ai("find:failed", part("error", { text: s.failed.error === "Stopped." ? "You stopped Qalam AI before it finished." : `Qalam AI couldn't finish: ${s.failed.error}`, retry: true })));
+      if (s.phase === "ready" && !i.busy) out.push(ai(`${d}:ready`, text("I have what I need."), part("choices", { set: "propose" })));
+      if (s.phase === "failed" && s.failed && !i.busy) out.push(ai(`${d}:failed`, part("error", { text: s.failed.error === "Stopped." ? "You stopped Qalam AI before it finished." : `Qalam AI couldn't finish: ${s.failed.error}`, retry: true })));
       if ((s.phase === "review" || s.phase === "done") && s.proposal) {
         if (s.proposal.lines.length)
-          out.push(ai("find:proposal", text(s.proposal.summary), text("Review them on the right: accept what's true, discard the rest."), ...(i.find.open ? [part("choices", { set: "proposal", n: i.find.open })] : [])));
-        else out.push(ai("find:proposal", text(`I found nothing I could set up from it. Fill in the ${wordsFor(i.shape).org} by hand from its home.`)));
+          out.push(ai(`${d}:proposal`, text(s.proposal.summary), text("Review them on the right: accept what's true, discard the rest."), ...(i.find.open ? [part("choices", { set: "proposal", n: i.find.open })] : [])));
+        else out.push(ai(`${d}:proposal`, text(`I found nothing I could set up from it. Fill in the ${wordsFor(i.shape).org} by hand from its home.`)));
       }
     }
   }
@@ -243,6 +246,11 @@ export function threadOf(i: ThreadInput): ChatMessage[] {
     const said = `Filed ${r.quotes === 1 ? "1 thing customers said" : `${r.quotes} things customers said`} into ${r.pages === 1 ? "1 problem page" : `${r.pages} problem pages`}. Each page shows how strong it is and drafts solutions for it.`;
     out.push(ai("goals:in", text(said), part("problems"), ...(i.first && i.step === "goals" ? [part("choices", { set: "goals-in", solo: true })] : [])));
     if (!i.first) out.push(ai("all-set", text("All set."), part("allSet")));
+  } else if (goalsSettled(i) && door === "idea") {
+    // The idea's board, when they choose: it reads the idea and places it under the problems it solves.
+    const written = i.find.accepted;
+    const said = written ? `${written === 1 ? "1 line" : `${written} lines`} written to ${org}.` : "Nothing was written.";
+    out.push(ai("goals:in", text(`${said} Start the idea's board when you're ready: it puts the idea under the problems it would solve.`), ...(i.step === "goals" || !i.first ? [part("choices", { set: "idea-board", solo, first: i.first })] : [])));
   } else if (goalsSettled(i)) {
     const written = door === "find" ? i.find.accepted : i.know.added;
     const said = !written ? null : door === "know" ? (written === 1 ? "Your goal is in." : `Your ${written} goals are in.`) : `${written === 1 ? "1 line" : `${written} lines`} written to ${org}.`;
@@ -302,7 +310,6 @@ export function askOf(i: ThreadInput): Ask {
     if (i.problems.result?.quotes) return none("", "problems:done");
     return { kind: "problems", placeholder: "Paste tickets, reviews or interview notes, or a link to them", submit: "ctrlEnter", key: `problems:${i.problems.sent !== null ? "again" : "first"}`, sources: "customers" };
   }
-  if (door === "idea") return i.idea.sent !== null && !i.idea.error ? none("Opening its board…", "idea:sent") : { kind: "idea", placeholder: "A planner that builds the week's meals from what the family already buys, for parents who…", submit: "ctrlEnter", key: "idea", sources: "docs" };
   if (door === "know") {
     const k = i.know;
     if (k.phase === "write" && !k.sent) return { kind: "outline", placeholder: "2M dirhams a month in orders by end of Q2\n  More customers reorder every week: 1.2 now, 1.5 by March", submit: "ctrlEnter", key: "outline" };
@@ -311,9 +318,15 @@ export function askOf(i: ThreadInput): Ask {
     return none("", "know:done");
   }
   const s = i.find.session;
-  if (!s) return i.find.pending ? none("Qalam AI is reading…", "find:pending") : { kind: "dump", placeholder: "Paste what you have, or a web address like example.com", submit: "ctrlEnter", key: "dump", sources: "docs" };
+  if (!s)
+    return i.find.pending
+      ? none("Qalam AI is reading…", "find:pending")
+      : door === "idea"
+        ? { kind: "idea", placeholder: "A planner that builds the week's meals from what the family already buys, for parents who…", submit: "ctrlEnter", key: "idea", sources: "docs" }
+        : { kind: "dump", placeholder: "Paste what you have, or a web address like example.com", submit: "ctrlEnter", key: "dump", sources: "docs" };
   if (roundOpen(s)) return { kind: "questions", scope: "find", placeholder: "", submit: "enter", key: `find:questions:${s.buckets.length}` };
-  if (s.phase === "review") return none("Accept or discard each line on the right", "find:review");
+  if (s.phase === "review") return none("Accept or leave out each one on the right", "find:review");
+  if (door === "idea" && s.phase === "done") return none("Start the idea's board above when you're ready", "idea:done");
   return none("", `find:${s.phase}`);
 }
 
@@ -338,7 +351,7 @@ function goalSubs(i: ThreadInput): { label: string; state: StepState }[] {
     const p = i.know.phase;
     questions = p === "write" || p === "asking" ? "now" : "done";
     review = p === "review" ? "now" : p === "added" ? "done" : "next";
-  } else if (door === "find") {
+  } else if (reads(door)) {
     const s = i.find.session;
     const placing = s && (s.phase === "placing" || s.phase === "review" || s.phase === "done" || (s.phase === "failed" && s.failed?.at === "placing"));
     questions = placing ? "done" : "now";
@@ -347,11 +360,13 @@ function goalSubs(i: ThreadInput): { label: string; state: StepState }[] {
     const filed = !!i.problems.result?.quotes;
     questions = filed ? "done" : "now";
     review = filed ? "done" : "next";
-  } else if (door === "idea") questions = "now";
+  }
   return [
     { label: "Way in", state: door ? "done" : "now" },
     { label: door === "know" ? "Write them" : door === "problems" ? "File them" : door === "idea" ? "Describe it" : "Read and ask", state: questions },
-    { label: door === "problems" ? "What comes up" : door === "idea" ? "Its board" : "Review", state: review },
+    { label: door === "problems" ? "What comes up" : "Review", state: review },
+    // An idea ends on its board, opened when they choose.
+    ...(door === "idea" ? [{ label: "Its board", state: (review === "done" ? "now" : "next") as StepState }] : []),
   ];
 }
 

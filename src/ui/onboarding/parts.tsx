@@ -28,7 +28,7 @@ import type { PartData } from "../chat/types";
 import { r } from "../recipes";
 import { StatusDot } from "../viz";
 import { addKnown, editKnown, skipKnown, useKnow } from "../setup/know";
-import { acceptLines, placeSetup, retrySetup, skipSetupRest, startBoard, useSetup } from "../setup/setup";
+import { acceptLines, placeSetup, retrySetup, skipSetupRest, startBoard, startIdeaBoard, useSetup } from "../setup/setup";
 import { connectFor } from "../welcome/steps";
 import { Dictated } from "../voice/MicButton";
 import { ParakeetInstall } from "../voice/ParakeetInstall";
@@ -212,6 +212,13 @@ function ChoicesPart({ data }: { data: PartData }) {
       );
     case "goals-in":
       return <ReplyChips>{data.solo ? chip("Next: what to connect", () => goStep("connect"), true) : chip("Next: which are yours", () => goStep("yours"), true)}</ReplyChips>;
+    case "idea-board":
+      return (
+        <ReplyChips>
+          {chip("Start the idea's board", () => startIdeaBoard(), true)}
+          {data.first ? (data.solo ? chip("Next: what to connect", () => goStep("connect")) : chip("Next: which are yours", () => goStep("yours"))) : null}
+        </ReplyChips>
+      );
     case "verify":
       return (
         <ReplyChips>
@@ -257,9 +264,9 @@ function SaidPart() {
   );
 }
 
-/** The docs that went with their words at the problems or idea door. */
-function DocsPart({ data }: { data: PartData }) {
-  const docs = useFirstRun((s) => (data.scope === "idea" ? s.idea.docs : s.problems.docs));
+/** The docs that went with their words at the problems door (the reading doors show theirs with what they said). */
+function DocsPart() {
+  const docs = useFirstRun((s) => s.problems.docs);
   return docs?.length ? <DocsSent docs={docs} /> : null;
 }
 
