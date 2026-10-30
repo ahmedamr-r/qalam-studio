@@ -83,18 +83,19 @@ export interface CanvasInput {
 export const EMPTY: Canvas = { nodes: [], edges: [], width: 0, height: 0 };
 
 // Sizes, in canvas pixels.
-export const NODE_W: Record<CanvasKind, number> = { source: 200, problem: 232, goal: 232 };
-const COL_GAP = 72;
+export const NODE_W: Record<CanvasKind, number> = { source: 184, problem: 212, goal: 212 };
+const COL_GAP = 56;
 const ROW_GAP = 14;
 const LINE = 18;
-const CHARS = { source: 26, problem: 32, goal: 32 } as const;
+const CHARS = { source: 24, problem: 29, goal: 29 } as const;
 /** Lines of a title the node shows (it's clamped there). */
 export const MAX_LINES = 3;
 
-/** A node's height from its title: a head line, up to three lines of words, and the goal's ✓/✕ row. */
+/** A node's height from its title: its padding and head line, up to three lines of words, and the goal's ✓/✕ row. */
 export function nodeHeight(kind: CanvasKind, title: string, settle = false): number {
   const lines = Math.max(1, Math.min(MAX_LINES, Math.ceil(title.length / CHARS[kind])));
-  return 30 + lines * LINE + (settle ? 30 : 0);
+  // 8px padding top and bottom, an 18px head, 4px gaps.
+  return 16 + 18 + 4 + lines * LINE + (settle ? 30 : 0);
 }
 
 /** The part of the dump a fragment came from: the one its span starts in. */
@@ -122,7 +123,9 @@ export function canvasOf(input: CanvasInput): Canvas {
     const docs: SetupDoc[] = s.docs?.length ? s.docs : [{ from: "said", title: "What you wrote", span: [0, setup.text.length] }];
     const reading = !!input.busy && s.phase === "reading";
     const srcId = (i: number) => `src:${i}`;
-    docs.forEach((doc, i) => nodes.push({ id: srcId(i), kind: "source", title: doc.title, doc, sourceId: setup.sourceId, quotes: [], ...(reading ? { reading } : {}) }));
+    // Their own words are titled by how they begin.
+    const titleOf = (doc: SetupDoc) => (doc.from === "said" && doc.span ? setup.text.slice(doc.span[0], doc.span[1]).replace(/\s+/g, " ").trim().slice(0, 140) || doc.title : doc.title);
+    docs.forEach((doc, i) => nodes.push({ id: srcId(i), kind: "source", title: titleOf(doc), doc, sourceId: setup.sourceId, quotes: [], ...(reading ? { reading } : {}) }));
     const sourceOf = new Map<string, string>();
     for (const q of setup.quotes) {
       const i = partOf(docs, q);

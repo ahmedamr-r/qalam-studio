@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import clsx from "clsx";
 import { Box, Briefcase, Building2, Check, CircleDashed, Plug, Quote, Star, Tags, Target, TrendingUp, Users, X, type LucideIcon } from "lucide-react";
 import { useGoals } from "@/goals/client";
@@ -12,6 +12,8 @@ import { dropKnown, useKnow } from "../setup/know";
 import { acceptLines, discardLines, useSetup } from "../setup/setup";
 import { openSoFar, useFirstRun } from "./flow";
 import { metricLine } from "@/goals/goals-md";
+import { canvasOf, EMPTY, type Canvas } from "./canvas";
+import { SetupCanvas } from "./SetupCanvas";
 import { soFarOf, tally, type GoalRow, type LineField, type LineRow, type RestsOn, type RowState } from "./soFar";
 
 /*
@@ -232,6 +234,23 @@ function ReviewStrip({ accepted, discarded, open }: { accepted: number; discarde
   );
 }
 
+/** What the canvas draws: the door's own material (the setup's reading, the know door's goals, the problems door's sources). */
+function useCanvas(): Canvas {
+  const door = useFirstRun((s) => s.door);
+  const problems = useFirstRun((s) => s.problems.sources);
+  const source = useSetup((s) => s.source);
+  const pending = useSetup((s) => s.pending);
+  const busy = useSetup((s) => !!s.busy);
+  const know = useKnow();
+  return useMemo(() => {
+    if (door === "problems") return canvasOf({ problems: problems ?? [] });
+    if (door === "know") return canvasOf({ know: know.phase === "asking" || know.phase === "review" ? know.goals : [] });
+    if (pending) return canvasOf({ pending: { docs: [...(pending.text ? [{ from: "said", title: "Your words" }] : []), ...(pending.url ? [{ from: "page", title: pending.url }] : []), ...(pending.docs ?? [])] } });
+    if (source?.setup) return canvasOf({ setup: { session: source.setup, sourceId: source.id, quotes: source.quotes, text: source.text }, busy });
+    return EMPTY;
+  }, [door, problems, source, pending, busy, know.phase, know.goals]);
+}
+
 export function SoFar() {
   const org = useFirstRun((s) => s.org);
   const naming = useFirstRun((s) => s.naming);
@@ -253,23 +272,34 @@ export function SoFar() {
   const t = tally(v);
   const mine = new Set(picked ?? goals.mine);
   const connected = (tools ?? []).filter((x) => x.tone === "ok");
+  const canvas = useCanvas();
+  const [selected, setSelected] = useState<string | null>(null);
+  // Once anything is sent, the canvas is what's drawn; the About, products and what's connected sit under it.
+  if (canvas.nodes.length)
+    return (
+      <Panel title={`${name} so far`} actions={<SoFarActions open={v.open} working={working} act={act} wide={wide} />} body={false}>
+        <div className="flex min-h-0 flex-1 flex-col">
+          {v.from === "proposal" && (
+            <div className="px-[10px] pt-[10px]">
+              <ReviewStrip {...t} />
+            </div>
+          )}
+          <div className="relative min-h-[240px] flex-1">
+            <SetupCanvas canvas={canvas} selected={selected} onSelect={setSelected} onOpen={(n) => setSelected(n.id)} working={working} act={act} />
+          </div>
+          {(v.groups.length > 0 || connected.length > 0) && (
+            <div className="flex max-h-[40%] flex-col gap-[14px] overflow-y-auto border-t border-line-subtle p-[12px]">
+              <Groups v={v} working={working} act={act} />
+              <Connected tools={connected} />
+            </div>
+          )}
+        </div>
+      </Panel>
+    );
   return (
     <Panel
       title={`${name} so far`}
-      actions={
-        <>
-          {v.open.length > 0 && (
-            <Button size="sm" disabled={working} onClick={() => act(() => acceptLines(v.open))}>
-              <Check size={12} strokeWidth={2.25} /> Accept all · {v.open.length}
-            </Button>
-          )}
-          {!wide && (
-            <IconBtn size="sm" label="Close" onClick={() => openSoFar(false)}>
-              <X size={14} {...ICON} />
-            </IconBtn>
-          )}
-        </>
-      }
+      actions={<SoFarActions open={v.open} working={working} act={act} wide={wide} />}
     >
       {v.from === "none" && !connected.length ? (
         <div className="flex flex-col items-center gap-[10px] px-[24px] py-[40px] text-center">
@@ -305,28 +335,61 @@ export function SoFar() {
               </ul>
             </section>
           )}
-          {v.groups.map((g) => (
-            <section key={g.key} aria-label={g.title} className="flex flex-col gap-[8px]">
-              <SectionHead kind={g.key === "org" ? "about" : "product"} title={g.title}>
-                {g.fresh && <Chip tone="text-component bg-component-subtle">New product</Chip>}
-              </SectionHead>
-              {g.lines.length ? g.lines.map((l) => <LineCard key={l.id} l={l} working={working} act={act} />) : <p className="pl-[30px] text-caption text-fg-subtle">Nothing written about it yet.</p>}
-            </section>
-          ))}
-          {connected.length > 0 && (
-            <section aria-label="Connected" className="flex flex-col gap-[8px]">
-              <SectionHead kind="connected" title="Connected" count={connected.length} />
-              <div className="flex flex-wrap gap-[6px]">
-                {connected.map((c) => (
-                  <span key={c.id} className={clsx(r.replyChip, "pointer-events-none h-[30px] pl-[5px]")}>
-                    <ConnectorLogo id={c.id} decorative /> {c.label}
-                  </span>
-                ))}
-              </div>
-            </section>
-          )}
+          <Groups v={v} working={working} act={act} />
+          <Connected tools={connected} />
         </div>
       )}
     </Panel>
+  );
+}
+
+/** Accept all, and Close where So far is a drawer. */
+function SoFarActions({ open, working, act, wide }: { open: string[]; working: boolean; act: (fn: () => Promise<void>) => void; wide: boolean }) {
+  return (
+    <>
+      {open.length > 0 && (
+        <Button size="sm" disabled={working} onClick={() => act(() => acceptLines(open))}>
+          <Check size={12} strokeWidth={2.25} /> Accept all · {open.length}
+        </Button>
+      )}
+      {!wide && (
+        <IconBtn size="sm" label="Close" onClick={() => openSoFar(false)}>
+          <X size={14} {...ICON} />
+        </IconBtn>
+      )}
+    </>
+  );
+}
+
+/** The About and each product, their lines to settle. */
+function Groups({ v, working, act }: { v: ReturnType<typeof soFarOf>; working: boolean; act: (fn: () => Promise<void>) => void }) {
+  return (
+    <>
+      {v.groups.map((g) => (
+        <section key={g.key} aria-label={g.title} className="flex flex-col gap-[8px]">
+          <SectionHead kind={g.key === "org" ? "about" : "product"} title={g.title}>
+            {g.fresh && <Chip tone="text-component bg-component-subtle">New product</Chip>}
+          </SectionHead>
+          {g.lines.length ? g.lines.map((l) => <LineCard key={l.id} l={l} working={working} act={act} />) : <p className="pl-[30px] text-caption text-fg-subtle">Nothing written about it yet.</p>}
+        </section>
+      ))}
+    </>
+  );
+}
+
+/** What's connected. */
+function Connected({ tools }: { tools: { id: string; label: string }[] }) {
+  if (!tools.length) return null;
+  return (
+    <section aria-label="Connected" className="flex flex-col gap-[8px]">
+      <SectionHead kind="connected" title="Connected" count={tools.length} />
+      <div className="flex flex-wrap gap-[6px]">
+        {tools.map((c) => (
+          <span key={c.id} className={clsx(r.replyChip, "pointer-events-none h-[30px] pl-[5px]")}>
+            <ConnectorLogo id={c.id} decorative /> {c.label}
+          </span>
+        ))}
+      </div>
+    </section>
   );
 }
