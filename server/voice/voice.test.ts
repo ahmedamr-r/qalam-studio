@@ -63,7 +63,8 @@ afterAll(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-describe("talking instead of typing", () => {
+// Its stand-in is a script with a shebang, which Windows can't start.
+describe.skipIf(process.platform === "win32")("talking instead of typing", () => {
   it("uses Apple's engine where the Mac has it, until they choose otherwise", async () => {
     expect(await (await call("GET", "/api/voice?fresh=1")).json()).toMatchObject({ here: true, chosen: null, use: "apple", mic: "granted" });
     expect(await (await call("PUT", "/api/voice", { use: "own" })).json()).toMatchObject({ chosen: "own", use: null });

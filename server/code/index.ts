@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -18,6 +17,7 @@ import type { Goal } from "@/goals/types";
 import { NotFoundError, type OrgStore } from "../org/store";
 import { copyWithGh, copyWithToken, ghLogin, readCodeFiles, REPO, repoKey } from "./copy";
 import { githubAppReady, githubSignedIn, githubToken } from "./github";
+import { promptArgs, spawnCli } from "@/ai/commands";
 
 /**
  * A product's code, read-only, in the core: a GitHub repository copied into .qalam/code (this
@@ -67,13 +67,14 @@ function readWithAgent(root: string, content: string, goals: string[], asked: st
     const cwd = await mkdtemp(path.join(tmpdir(), "qalam-read-"));
     try {
       return await new Promise<{ raw: unknown; model?: string }>((resolve, reject) => {
+        const prompt = promptArgs(READER_SYSTEM);
         const args = [
           "-p",
           "--input-format", "stream-json",
           "--output-format", "stream-json",
           "--verbose",
           "--json-schema", JSON.stringify(readerSchema(goals)),
-          "--system-prompt", READER_SYSTEM,
+          ...prompt.args,
           "--model", asked,
           "--effort", "medium",
           "--tools", "Read,Grep,Glob",
@@ -87,7 +88,8 @@ function readWithAgent(root: string, content: string, goals: string[], asked: st
           "--disable-slash-commands",
           "--no-session-persistence",
         ];
-        const proc = spawn(/*turbopackIgnore: true*/ bin(), args, { cwd, env: childEnv(16000) });
+        const proc = spawnCli(bin(), args, { cwd, env: childEnv(16000) });
+        proc.on("close", prompt.done);
         const limit = AbortSignal.timeout(TIME_LIMIT_MS);
         const both = AbortSignal.any([signal, limit]);
         const kill = () => proc.kill();

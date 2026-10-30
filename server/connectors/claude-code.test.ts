@@ -29,7 +29,8 @@ async function fake(calls: { input: Record<string, unknown>; answer: string }[])
   setEngineState({ bin: file });
 }
 
-describe("the tool-runner", () => {
+// Its stand-in is a script with a shebang, which Windows can't start.
+describe.skipIf(process.platform === "win32")("the tool-runner", () => {
   it("keeps an answer when the planned arguments are as asked (metadata the model filled in aside), and stops once answered", async () => {
     const call = posthogSearch("orders");
     await fake([{ input: { ...call.args, llm_model: "claude-haiku", context: "its own words" }, answer: '{"results":[]}' }]);

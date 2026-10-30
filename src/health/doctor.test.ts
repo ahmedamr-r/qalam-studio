@@ -6,7 +6,7 @@ const fine: HealthFacts = { engine: { kind: "cli", ready: true, word: "Ready" },
 describe("This Mac, checked", () => {
   it("says one quiet line when all is well, and gives the sidebar no dot", () => {
     const rows = diagnose(fine);
-    expect(rows).toEqual([{ id: "all", dot: "ok", label: "This Mac", word: "All good" }]);
+    expect(rows).toEqual([{ id: "all", dot: "ok", label: "This computer", word: "All good" }]);
     expect(worstDot(rows)).toBeNull();
   });
 

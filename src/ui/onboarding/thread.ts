@@ -91,7 +91,7 @@ export function goalsSettled(i: Pick<ThreadInput, "door" | "find" | "know" | "pr
 const DOOR_SAID: Record<Door, string> = { know: "I know our goals", find: "Help me find our goals", problems: "Problems we hear about", idea: "An idea to test" };
 
 const ENGINE_LINE: Record<EngineState, string> = {
-  looking: "Looking for Claude on this Mac…",
+  looking: "Looking for an engine on this computer…",
   testing: "Found it. Making a short call to check it…",
   ready: "Qalam AI is ready.",
   problem: "Qalam AI can't answer yet.",

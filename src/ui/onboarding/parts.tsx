@@ -380,7 +380,7 @@ function YouPart({ data }: { data: PartData }) {
         <button type="submit" disabled={!ready || saving} className={r.replyChipPrimary}>
           Next
         </button>
-        <span className="text-caption text-fg-subtle">Kept on this Mac. Qalam AI asks you less, and in your terms.</span>
+        <span className="text-caption text-fg-subtle">Kept on this computer. Qalam AI asks you less, and in your terms.</span>
       </ReplyChips>
     </form>
   );
@@ -531,7 +531,7 @@ function ConnectPart() {
         {connectFor(hasNumbers).map((c) => {
           const t = tools?.find((x) => x.id === c.id);
           // GitHub here is reading the product's code (its card in Connections is for work linked to solutions).
-          const word = c.id === "github" ? (gh ? `Through ${gh.includes(" ") ? gh : `this Mac's CLI, ${gh}`}` : "Not connected") : (t?.word ?? "");
+          const word = c.id === "github" ? (gh ? `Through ${gh.includes(" ") ? gh : `this computer's CLI, ${gh}`}` : "Not connected") : (t?.word ?? "");
           const tone = c.id === "github" ? (gh ? "ok" : "off") : (t?.tone ?? "off");
           return (
             <li key={c.id} className={clsx(qr.inset, "flex items-center gap-[10px] px-[12px] py-[8px]")}>

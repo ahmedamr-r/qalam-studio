@@ -54,7 +54,8 @@ describe("the engine behind Qalam AI", () => {
     expect((await engineView()).kind).toBe("api");
   });
 
-  it("tests Claude Code: signed out says so; signed in makes a short real call", async () => {
+  // Its stand-in is a script with a shebang, which Windows can't start.
+  it.skipIf(process.platform === "win32")("tests Claude Code: signed out says so; signed in makes a short real call", async () => {
     process.env.CLAUDE_CLI_PATH = await fakeClaude("claude-out", false);
     expect(await liveTest("cli")).toMatchObject({ ok: false, word: "Signed out" });
     process.env.CLAUDE_CLI_PATH = await fakeClaude("claude-in", true);

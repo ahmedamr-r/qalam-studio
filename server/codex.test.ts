@@ -10,6 +10,12 @@ describe("Codex on this computer", () => {
     expect(findCodex({ PATH: "/usr/bin" }, has(), "/home/a")).toBeNull();
   });
 
+  it("is found on Windows as npm's shim or a native .exe", () => {
+    const has = (...files: string[]) => (p: string) => files.includes(p);
+    expect(findCodex({ PATH: "C:\\Windows", APPDATA: "C:\\Users\\a\\AppData\\Roaming" }, has("C:\\Users\\a\\AppData\\Roaming\\npm\\codex.cmd"), "C:\\Users\\a", "win32")).toBe("C:\\Users\\a\\AppData\\Roaming\\npm\\codex.cmd");
+    expect(findCodex({ PATH: "C:\\Tools;C:\\Windows" }, has("C:\\Tools\\codex.exe"), "C:\\Users\\a", "win32")).toBe("C:\\Tools\\codex.exe");
+  });
+
   it("reads codex login status: with ChatGPT, with a key, or not signed in", () => {
     expect(codexLogin("Logged in using ChatGPT\n")).toEqual({ signedIn: true, method: "chatgpt" });
     expect(codexLogin("Logged in using an API key - sk-***abcd\n")).toEqual({ signedIn: true, method: "api-key" });

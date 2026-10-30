@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { createInterface } from "node:readline";
@@ -18,6 +17,7 @@ import { packFor, search } from "./index/search";
 import { serveMcp, type McpTool } from "./mcp";
 import { inside } from "./org/fsx";
 import { GOALS, type OrgStore } from "./org/store";
+import { promptArgs, spawnCli } from "@/ai/commands";
 
 /**
  * Ask the organization: a product team's question, answered from what the organization knows.
@@ -250,13 +250,14 @@ function viaAgent(store: OrgStore, ix: OrgIndex | null, q: AskRequest, g: Guide,
       const content = [g.text, ...(first.length ? ["", "What the organization's search finds for the question first:", ...first.map(pieceText)] : []), "", `The question: ${q.question}`].join("\n");
       const asked = modelOf("ask");
       return await new Promise<{ raw: unknown; model?: string }>((resolve, reject) => {
+        const prompt = promptArgs(ASK_SYSTEM);
         const args = [
           "-p",
           "--input-format", "stream-json",
           "--output-format", "stream-json",
           "--verbose",
           "--json-schema", JSON.stringify(askSchema({ topics: g.topicFiles })),
-          "--system-prompt", ASK_SYSTEM,
+          ...prompt.args,
           "--model", asked,
           "--effort", "medium",
           // Read-only, inside the organization's folder: no shell, no web, no edits.
@@ -271,7 +272,8 @@ function viaAgent(store: OrgStore, ix: OrgIndex | null, q: AskRequest, g: Guide,
           "--disable-slash-commands",
           "--no-session-persistence",
         ];
-        const proc = spawn(/*turbopackIgnore: true*/ bin(), args, { cwd: store.dir, env: childEnv(16000) });
+        const proc = spawnCli(bin(), args, { cwd: store.dir, env: childEnv(16000) });
+        proc.on("close", prompt.done);
         const limit = AbortSignal.timeout(TIME_LIMIT_MS);
         const both = AbortSignal.any([signal, limit]);
         const kill = () => proc.kill();

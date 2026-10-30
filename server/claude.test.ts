@@ -6,18 +6,25 @@ import { accountFrom, findClaude, joinPaths, loginShellPath, signedInFrom } from
 
 describe("findClaude", () => {
   it("prefers CLAUDE_CLI_PATH", () => {
-    expect(findClaude({ CLAUDE_CLI_PATH: "/x/claude", PATH: "/usr/bin" }, () => true, "/Users/me")).toBe("/x/claude");
+    expect(findClaude({ CLAUDE_CLI_PATH: "/x/claude", PATH: "/usr/bin" }, () => true, "/Users/me", "darwin")).toBe("/x/claude");
   });
 
   it("looks on PATH first, then where installers put it", () => {
     const has = new Set(["/Users/me/.local/bin/claude"]);
-    expect(findClaude({ PATH: "/usr/bin:/bin" }, (p) => has.has(p), "/Users/me")).toBe("/Users/me/.local/bin/claude");
+    expect(findClaude({ PATH: "/usr/bin:/bin" }, (p) => has.has(p), "/Users/me", "darwin")).toBe("/Users/me/.local/bin/claude");
     has.add("/bin/claude");
-    expect(findClaude({ PATH: "/usr/bin:/bin" }, (p) => has.has(p), "/Users/me")).toBe("/bin/claude");
+    expect(findClaude({ PATH: "/usr/bin:/bin" }, (p) => has.has(p), "/Users/me", "darwin")).toBe("/bin/claude");
+  });
+
+  it("finds the native installer's claude.exe or npm's claude.cmd on Windows", () => {
+    const home = "C:\\Users\\me";
+    expect(findClaude({ PATH: "C:\\Windows" }, (p) => p === "C:\\Users\\me\\.local\\bin\\claude.exe", home, "win32")).toBe("C:\\Users\\me\\.local\\bin\\claude.exe");
+    expect(findClaude({ PATH: "C:\\Windows" }, (p) => p === "C:\\Users\\me\\AppData\\Roaming\\npm\\claude.cmd", home, "win32")).toBe("C:\\Users\\me\\AppData\\Roaming\\npm\\claude.cmd");
+    expect(findClaude({ PATH: "C:\\Windows" }, () => false, home, "win32")).toBeNull();
   });
 
   it("finds nothing when it isn't installed", () => {
-    expect(findClaude({ PATH: "/usr/bin" }, () => false, "/Users/me")).toBeNull();
+    expect(findClaude({ PATH: "/usr/bin" }, () => false, "/Users/me", "darwin")).toBeNull();
   });
 });
 
@@ -49,7 +56,8 @@ describe("accountFrom", () => {
   });
 });
 
-describe("the PATH a terminal would have", () => {
+// A login shell is the Mac's and Linux's; Windows gives an app its PATH.
+describe.skipIf(process.platform === "win32")("the PATH a terminal would have", () => {
   it("asks the login shell, past whatever its startup files print", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "qalam-shell-"));
     try {

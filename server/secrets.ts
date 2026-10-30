@@ -6,8 +6,9 @@ import { randomBytes } from "node:crypto";
  * Keychain under the service "Qalam Studio". The core asks the Keychain itself through
  * /usr/bin/security, so it works the same in the desktop app, `pnpm dev` and browser mode. A value
  * goes in on the tool's stdin, never as an argument (`ps` shows arguments to everyone on the Mac).
- * QALAM_SECRETS=memory keeps them in memory (tests); elsewhere than a Mac there's no store, and a
- * key comes from the environment as before. Claude Code's own Keychain item is never read.
+ * QALAM_SECRETS=memory keeps them in memory (tests). Elsewhere than a Mac the desktop app keeps them
+ * sealed (`useSealedSecrets`); with no app around them (`pnpm dev` on Windows) there's no store, and
+ * a key comes from the environment as before. Claude Code's own Keychain item is never read.
  */
 
 export const SERVICE = "Qalam Studio";
@@ -38,6 +39,19 @@ export function secrets(): Secrets {
 
 /** For tests: start from an empty store. */
 export const resetSecrets = () => void (g.__qalamSecrets = undefined);
+
+/**
+ * Where there's no Keychain (Windows), the desktop app's main process keeps the secrets, sealed
+ * with the system's own encryption (electron/secrets.ts); the core asks it with `ask`.
+ */
+export function useSealedSecrets(ask: (op: "get" | "set" | "remove", name: string, value?: string) => Promise<string | null>) {
+  g.__qalamSecrets = {
+    available: true,
+    get: (name) => ask("get", name),
+    set: async (name, value) => void (await ask("set", name, value)),
+    remove: async (name) => void (await ask("remove", name)),
+  };
+}
 
 function memory(): Secrets {
   const m = new Map<string, string>();

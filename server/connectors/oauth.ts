@@ -246,9 +246,9 @@ function webAddress(u: URL): string {
 }
 
 function openInBrowser(url: string): Promise<void> {
-  const cmd = process.platform === "darwin" ? "/usr/bin/open" : process.platform === "linux" ? "xdg-open" : null;
-  // Elsewhere the window's link opens it.
-  return new Promise((resolve) => (cmd ? execFile(cmd, [url], { timeout: 10_000 }, () => resolve()) : resolve()));
+  // Windows' own URL handler, never through a shell. Elsewhere the window's link opens it.
+  const [cmd, ...args] = process.platform === "darwin" ? ["/usr/bin/open"] : process.platform === "linux" ? ["xdg-open"] : process.platform === "win32" ? ["rundll32.exe", "url.dll,FileProtocolHandler"] : [];
+  return new Promise((resolve) => (cmd ? execFile(cmd, [...args, url], { timeout: 10_000 }, () => resolve()) : resolve()));
 }
 
 interface Answer {

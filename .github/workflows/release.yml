@@ -1,8 +1,9 @@
-# Builds Qalam Studio for macOS (Apple silicon). For a version tag (v0.1.0…) it publishes the .dmg,
-# the .zip the app updates itself from and latest-mac.yml as a draft GitHub release, signed and
-# notarized with the Apple credentials in the repository's secrets (docs/releasing.md); it won't
-# publish without them. Run by hand (Actions ▸ Release ▸ Run workflow), it builds without
-# publishing, signed when the secrets are there, and keeps the files with the run for a week.
+# Builds Qalam Studio for macOS (Apple silicon) and Windows (x64). For a version tag (v0.1.0…) it
+# publishes the .dmg, the .zip the app updates itself from and latest-mac.yml as a draft GitHub
+# release, signed and notarized with the Apple credentials in the repository's secrets
+# (docs/releasing.md); it won't publish without them. The Windows installer and latest.yml go into
+# the same draft, unsigned for now. Run by hand (Actions ▸ Release ▸ Run workflow), it builds
+# without publishing, signed when the secrets are there, and keeps the files with the run for a week.
 name: Release
 
 on:
@@ -89,4 +90,50 @@ jobs:
             release/dist/*.dmg
             release/dist/*.zip
             release/dist/latest-mac.yml
+          retention-days: 7
+
+  # Windows (x64): the installer and latest.yml, into the same draft release. Not signed yet, so
+  # SmartScreen warns the first time it's run. Voice and reading words on screenshots are the Mac's.
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: 9.15.4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Check
+        run: pnpm typecheck && pnpm test
+
+      - name: The tag names the version in package.json
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          version="v$(node -p 'require("./package.json").version')"
+          if [ "$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::The tag is $GITHUB_REF_NAME but package.json says $version."
+            exit 1
+          fi
+
+      - name: Build (and publish, for a tag)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PUBLISH: ${{ startsWith(github.ref, 'refs/tags/v') && 'always' || 'never' }}
+        run: pnpm dist:win --publish "$PUBLISH"
+
+      - name: Keep the files with the run
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: qalam-studio-windows
+          path: |
+            release/dist/*.exe
+            release/dist/latest.yml
           retention-days: 7

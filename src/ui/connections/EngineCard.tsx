@@ -143,7 +143,7 @@ export function EngineCard() {
           </p>
           <p className="truncate text-caption text-fg-subtle">{whoLine(view)}</p>
           {detail && <p className="pt-[2px] text-caption text-fg-muted">{detail}</p>}
-          {view.kind === "cli" && a?.apiKeySource && <p className="pt-[2px] text-caption text-warning">{a.apiKeySource} is set on this Mac. Qalam leaves it out, so your sign-in is what's used.</p>}
+          {view.kind === "cli" && a?.apiKeySource && <p className="pt-[2px] text-caption text-warning">{a.apiKeySource} is set on this computer. Qalam leaves it out, so your sign-in is what's used.</p>}
         </div>
         <div className="flex shrink-0 items-center gap-[6px]">
           {view.kind === "cli" && word === "Signed out" && <CopyCommand command="claude auth login" />}

@@ -59,7 +59,8 @@ afterAll(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-describe("reading the words on screenshots", () => {
+// Its stand-in is a script with a shebang, which Windows can't start.
+describe.skipIf(process.platform === "win32")("reading the words on screenshots", () => {
   it("says whether this Mac has the reader", async () => {
     expect(await seeAvailable()).toBe(true);
     process.env.QALAM_SEE_BIN = path.join(dir, "nowhere");
@@ -127,7 +128,7 @@ describe("reading the words on screenshots", () => {
 
   it("says in This Mac's health when the reader isn't here, and is quiet when it is", async () => {
     const fine: HealthFacts = { engine: { kind: "cli", ready: true, word: "Ready" }, search: { ok: true, node: "24.22.0" }, models: { status: "ready" }, inbox: null };
-    expect(diagnose({ ...fine, see: { here: await seeAvailable() } })).toEqual([{ id: "all", dot: "ok", label: "This Mac", word: "All good" }]);
+    expect(diagnose({ ...fine, see: { here: await seeAvailable() } })).toEqual([{ id: "all", dot: "ok", label: "This computer", word: "All good" }]);
     process.env.QALAM_SEE_BIN = path.join(dir, "nowhere");
     const [row] = diagnose({ ...fine, see: { here: await seeAvailable() } });
     expect(row).toMatchObject({ id: "see", dot: "off", label: "Reading words on screenshots", word: "Not on this Mac" });
@@ -135,7 +136,7 @@ describe("reading the words on screenshots", () => {
   });
 });
 
-describe("the copies Qalam AI is sent", () => {
+describe.skipIf(process.platform === "win32")("the copies Qalam AI is sent", () => {
   it("sends the original when sips can't read it", async () => {
     const notes = path.join(dir, "notes.txt");
     await writeFile(notes, "not a picture");

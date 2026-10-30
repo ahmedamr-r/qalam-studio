@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,6 +7,7 @@ import type { CallOpts } from "./server";
 import { deltaBatcher } from "./deltas";
 import { bin } from "./engine";
 import { fromCliResult, reportUsage } from "./usage";
+import { promptArgs, spawnCli } from "./commands";
 
 /**
  * Local-dev backend (AI_BACKEND=cli): runs the signed-in `claude` CLI headless, so calls
@@ -66,6 +67,7 @@ export function streamViaCli(opts: CallOpts, model: string): Response {
         closed = true;
       };
 
+      const prompt = promptArgs(Array.isArray(opts.system) ? opts.system.join("\n\n") : opts.system);
       const args = [
         "-p",
         "--input-format", "stream-json",
@@ -73,7 +75,7 @@ export function streamViaCli(opts: CallOpts, model: string): Response {
         "--verbose",
         "--include-partial-messages",
         "--json-schema", JSON.stringify(opts.schema),
-        "--system-prompt", Array.isArray(opts.system) ? opts.system.join("\n\n") : opts.system,
+        ...prompt.args,
         "--model", model,
         "--effort", opts.effort,
         "--tools", "",
@@ -82,8 +84,8 @@ export function streamViaCli(opts: CallOpts, model: string): Response {
         "--disable-slash-commands",
         "--no-session-persistence",
       ];
-      // The binary path is dynamic; keep Turbopack from tracing the whole project for it.
-      const proc = spawn(/*turbopackIgnore: true*/ bin(), args, { cwd: workDir(), env: childEnv(opts.maxTokens ?? 32000) });
+      const proc = spawnCli(bin(), args, { cwd: workDir(), env: childEnv(opts.maxTokens ?? 32000) });
+      proc.on("close", prompt.done);
       child = proc;
       proc.on("error", (e) =>
         finish({ type: "error", error: "cli_missing", message: `Couldn't start Claude Code (${e.message}). Install Claude Code or set CLAUDE_CLI_PATH.` }),

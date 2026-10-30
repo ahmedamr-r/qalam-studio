@@ -1,7 +1,7 @@
 // The desktop app as electron-builder packages it (release/app, its project folder): the built UI
 // (dist/), the Node entries (out/), a package.json naming only what the installed app loads at
 // runtime (node-llama-cpp, for search by meaning) and the Electron it runs on, and that package
-// installed by npm for this Mac. The repository's own package.json lists Electron as a
+// installed by npm for this computer. The repository's own package.json lists Electron as a
 // dependency, for `npx qalam-studio`, and electron-builder won't package an app that does; nor
 // should it gather modules through the repository's pnpm lockfile: hence a folder of its own.
 import { execFileSync } from "node:child_process";
@@ -28,5 +28,6 @@ writeFileSync(
 );
 // Its prebuilt binaries come as packages for each platform; its install script would only check
 // them. The lockfile npm writes tells electron-builder which package manager to ask.
-execFileSync("npm", ["install", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"], { cwd: app, stdio: "inherit" });
+// On Windows npm is a .cmd, which Node starts only through a shell (the arguments are fixed here).
+execFileSync("npm", ["install", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"], { cwd: app, stdio: "inherit", shell: process.platform === "win32" });
 console.log(`Staged Qalam Studio ${pkg.version} in ${path.relative(root, app)}`);

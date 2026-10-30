@@ -1,4 +1,3 @@
-import { execFile, spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { childEnv, workDir } from "@/ai/cli";
 import { bin, modelOf } from "@/ai/engine";
@@ -7,6 +6,7 @@ import { resultText } from "@/ai/research-shared";
 import { fromCliResult, reportUsage } from "@/ai/usage";
 import { parseMcpList, toolPrefix, type ListedServer } from "@/connectors/claude-code";
 import type { ToolCall } from "@/connectors/recipes";
+import { execCli, spawnCli } from "@/ai/commands";
 
 /*
  * The connectors the user's Claude Code already has, used through it. `claude mcp list` says which
@@ -23,7 +23,7 @@ export async function listClaudeCode(force = false): Promise<ListedServer[] | nu
   const kept = g.__qalamMcpList;
   if (!force && kept && Date.now() - kept.at < FRESH_MS) return kept.list;
   const out = await new Promise<string | null>((resolve) =>
-    execFile(bin(), ["mcp", "list"], { cwd: workDir(), env: childEnv(4000), timeout: 90_000, maxBuffer: 1 << 20 }, (err, stdout) => resolve(err && !stdout ? null : String(stdout))),
+    execCli(bin(), ["mcp", "list"], { cwd: workDir(), env: childEnv(4000), timeout: 90_000, maxBuffer: 1 << 20 }, (err, stdout) => resolve(err && !stdout ? null : stdout)),
   );
   if (out === null) return null;
   g.__qalamMcpList = { at: Date.now(), list: parseMcpList(out) };
@@ -61,7 +61,7 @@ export function runTools(server: string, calls: ToolCall[], signal?: AbortSignal
       "--disable-slash-commands",
       "--no-session-persistence",
     ];
-    const proc = spawn(/*turbopackIgnore: true*/ bin(), args, { cwd: workDir(), env: { ...childEnv(4000), MAX_MCP_OUTPUT_TOKENS: "40000" } });
+    const proc = spawnCli(bin(), args, { cwd: workDir(), env: { ...childEnv(4000), MAX_MCP_OUTPUT_TOKENS: "40000" } });
     const results: (string | null)[] = calls.map(() => null);
     const made = new Map<string, number>();
     let result: Parameters<typeof fromCliResult>[0] | undefined;

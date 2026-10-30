@@ -1,7 +1,8 @@
-# The desktop app for macOS: a .dmg to install from, and a .zip the app updates itself from
-# (docs/releasing.md). scripts/stage-app.mjs puts what the installed app needs in release/app,
-# and electron-builder runs with that folder as its project, so paths here are relative to it.
-# `pnpm dist:mac` does both. Signed and notarized when the Apple credentials are set.
+# The desktop app for macOS (a .dmg to install from, and a .zip the app updates itself from) and
+# for Windows (an installer, which also updates it) (docs/releasing.md). scripts/stage-app.mjs puts
+# what the installed app needs in release/app, and electron-builder runs with that folder as its
+# project, so paths here are relative to it. `pnpm dist:mac` and `pnpm dist:win` do both. The Mac
+# app is signed and notarized when the Apple credentials are set; the Windows one isn't signed yet.
 appId: io.github.ahmedamr-r.qalam-studio
 productName: Qalam Studio
 copyright: Copyright © 2026 Ahmed Amr
@@ -18,13 +19,6 @@ files:
   # The voice helper and the screenshot reader run from Resources (extraResources), not from inside the archive.
   - "!out/qalam-voice"
   - "!out/qalam-see"
-# The voice helper (native/voice, scripts/build-voice.mjs): Contents/Resources/qalam-voice.
-# The screenshot reader (native/see, scripts/build-see.mjs): Contents/Resources/qalam-see.
-extraResources:
-  - from: out/qalam-voice
-    to: qalam-voice
-  - from: out/qalam-see
-    to: qalam-see
 # Native code is loaded from real files, outside the archive.
 asarUnpack:
   - node_modules/node-llama-cpp/**
@@ -46,10 +40,28 @@ mac:
     NSMicrophoneUsageDescription: Qalam listens only while the mic is on, to type what you say.
     NSSpeechRecognitionUsageDescription: Qalam turns what you say into text on this Mac.
   darkModeSupport: true
+  # The voice helper (native/voice, scripts/build-voice.mjs): Contents/Resources/qalam-voice.
+  # The screenshot reader (native/see, scripts/build-see.mjs): Contents/Resources/qalam-see.
+  # Both are the Mac's own; Windows has neither.
+  extraResources:
+    - from: out/qalam-voice
+      to: qalam-voice
+    - from: out/qalam-see
+      to: qalam-see
   # The zip's name (the .dmg names its own below).
   artifactName: Qalam-Studio-${version}-${arch}-mac.${ext}
 dmg:
   artifactName: Qalam-Studio-${version}-${arch}.${ext}
+win:
+  target:
+    - target: nsis
+      arch: x64
+  artifactName: Qalam-Studio-${version}-${arch}-setup.${ext}
+# Installed for this person, where they choose; the installer is also what the app updates itself from.
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
 # Releases go up as drafts, published by hand once checked.
 publish:
   provider: github

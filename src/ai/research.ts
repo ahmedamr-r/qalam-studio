@@ -1,5 +1,4 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import { spawn } from "node:child_process";
 import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,6 +10,7 @@ import { fromApiUsage, fromCliResult, reportUsage } from "./usage";
 import { resolveConnectors, type McpServerDef } from "./connectors";
 import { searchOn } from "./engines/search";
 import { NO_RESEARCH, citedSources, hostOf, keepCaptures, mergeSources, parseNotes, resultText, stepLabel, type Capture, type ResearchInfo, type ResearchPurpose, type ResearchSource } from "./research-shared";
+import { promptArgs, spawnCli } from "./commands";
 
 /**
  * The research step: before a request that asked for connectors runs, a short tool-using call
@@ -260,12 +260,13 @@ function viaCli(req: ResearchRequest, deps: Deps, sel: Selection, step: (s: stri
   return new Promise((resolve, reject) => {
     const allowed = [...(sel.web ? ["WebSearch", "WebFetch"] : []), ...sel.servers.map((s) => `mcp__${s.name}`)];
     const config = sel.servers.length ? mcpConfigFile(sel.servers) : null;
+    const prompt = promptArgs(systemPrompt(req.purpose, sel));
     const args = [
       "-p",
       "--input-format", "stream-json",
       "--output-format", "stream-json",
       "--verbose",
-      "--system-prompt", systemPrompt(req.purpose, sel),
+      ...prompt.args,
       "--model", deps.model,
       "--effort", "low",
       "--tools", sel.web ? "WebSearch,WebFetch" : "",
@@ -280,7 +281,8 @@ function viaCli(req: ResearchRequest, deps: Deps, sel: Selection, step: (s: stri
     ];
     // An import keeps what the tools return: let whole pages through (the CLI cuts long results by default).
     const env = { ...childEnv(16000), ...(req.purpose === "import" ? { MAX_MCP_OUTPUT_TOKENS: "40000" } : {}) };
-    const proc = spawn(/*turbopackIgnore: true*/ bin(), args, { cwd: workDir(), env });
+    const proc = spawnCli(bin(), args, { cwd: workDir(), env });
+    proc.on("close", prompt.done);
     const kill = () => proc.kill();
     signal.addEventListener("abort", kill, { once: true });
     proc.on("error", (e) => {

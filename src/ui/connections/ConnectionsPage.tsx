@@ -35,7 +35,7 @@ export default function ConnectionsPage() {
         </div>
         <div className="flex flex-col gap-[8px]">
           <div className="flex items-center justify-between gap-[12px]">
-            <h2 className="text-micro font-medium text-fg-subtle">This Mac</h2>
+            <h2 className="text-micro font-medium text-fg-subtle">This computer</h2>
             <a href={welcomeHref("verify")} className="text-caption text-fg-muted hover:text-fg hover:underline">
               Check the whole setup again
             </a>

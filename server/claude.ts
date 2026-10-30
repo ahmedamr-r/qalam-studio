@@ -1,16 +1,18 @@
-import { execFile, spawn } from "node:child_process";
+import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { childEnv } from "@/ai/cli";
 import type { ClaudeAccount } from "@/org/engine";
+import { spawnCli } from "@/ai/commands";
 
 /**
  * Finding the user's own Claude Code. An app opened from the Dock or Finder doesn't get the
  * shell's PATH, so besides PATH this looks where the installers put `claude`.
  */
-export function findClaude(env: NodeJS.ProcessEnv = process.env, exists: (p: string) => boolean = existsSync, home = homedir()): string | null {
+export function findClaude(env: NodeJS.ProcessEnv = process.env, exists: (p: string) => boolean = existsSync, home = homedir(), platform: NodeJS.Platform = process.platform): string | null {
   if (env.CLAUDE_CLI_PATH) return env.CLAUDE_CLI_PATH;
+  if (platform === "win32") return findOnWindows("claude", env, exists, home);
   const dirs = [
     ...(env.PATH ?? "").split(path.delimiter).filter(Boolean),
     path.join(home, ".local", "bin"),
@@ -24,6 +26,17 @@ export function findClaude(env: NodeJS.ProcessEnv = process.env, exists: (p: str
     const bin = path.join(dir, "claude");
     if (exists(bin)) return bin;
   }
+  return null;
+}
+
+/**
+ * A CLI on Windows: its native installer's `<name>.exe` in ~\.local\bin, or npm's `<name>.cmd` in
+ * %APPDATA%\npm, or either on the PATH (a shim is started through its script, src/ai/commands.ts).
+ */
+export function findOnWindows(name: string, env: NodeJS.ProcessEnv, exists: (p: string) => boolean, home: string): string | null {
+  const w = path.win32;
+  const dirs = [...(env.PATH ?? env.Path ?? "").split(";").filter(Boolean), w.join(home, ".local", "bin"), w.join(env.APPDATA ?? w.join(home, "AppData", "Roaming"), "npm")];
+  for (const dir of dirs) for (const ext of [".exe", ".cmd"]) if (exists(w.join(dir, name + ext))) return w.join(dir, name + ext);
   return null;
 }
 
@@ -93,7 +106,7 @@ function authStatus(bin: string): Promise<ClaudeState> {
       resolve(s);
     };
     // With the environment Qalam AI's own calls get (src/ai/cli.ts), so it says who pays for those.
-    const child = spawn(bin, ["auth", "status"], { stdio: ["ignore", "pipe", "ignore"], env: childEnv(16000) });
+    const child = spawnCli(bin, ["auth", "status"], { stdio: ["ignore", "pipe", "ignore"], env: childEnv(16000) });
     const timer = setTimeout(() => {
       child.kill();
       done({ found: true, signedIn: null });

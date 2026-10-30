@@ -1,4 +1,3 @@
-import { spawn, execFile } from "node:child_process";
 import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -8,6 +7,7 @@ import { splitBlocks } from "../content";
 import { fromCodexUsage, reportUsage, type CodexUsage } from "../usage";
 import { checkAnswer, repairPrompt, strictSchema } from "../validate";
 import { EngineError, registerAdapter, type EngineAdapter } from "./index";
+import { execCli, spawnCli } from "../commands";
 
 /*
  * The person's own Codex, signed in with their ChatGPT plan, as an engine: `codex exec` run
@@ -140,7 +140,7 @@ export async function codexModels(bin = codexBin()): Promise<string[]> {
   const kept = g.__qalamCodexModels;
   if (kept && kept.bin === bin && Date.now() - kept.at < CATALOG_MS && kept.models.length) return kept.models;
   const models = await new Promise<string[]>((resolve) =>
-    execFile(bin, ["debug", "models"], { env: codexEnv(), timeout: 15_000, maxBuffer: 32 * 1024 * 1024 }, (_e, out) => resolve(catalogModels(String(out ?? "")))),
+    execCli(bin, ["debug", "models"], { env: codexEnv(), timeout: 15_000, maxBuffer: 32 * 1024 * 1024 }, (_e, out) => resolve(catalogModels(out))),
   );
   g.__qalamCodexModels = { bin, at: Date.now(), models };
   return models;
@@ -167,7 +167,7 @@ async function runCodex(o: { prompt: string; instructions: string; schema: Recor
     );
     const args = codexArgs({ dir: work, instructions, schema, images, model: o.model, effort: o.effort, search: o.search });
     return await new Promise<CodexOutcome>((resolve, reject) => {
-      const child = spawn(/*turbopackIgnore: true*/ codexBin(), args, { cwd: work, env: codexEnv(), stdio: ["pipe", "pipe", "pipe"] });
+      const child = spawnCli(codexBin(), args, { cwd: work, env: codexEnv(), stdio: ["pipe", "pipe", "pipe"] });
       const lines: string[] = [];
       let stderr = "";
       const stop = () => child.kill("SIGTERM");

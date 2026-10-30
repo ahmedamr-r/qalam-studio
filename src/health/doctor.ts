@@ -67,7 +67,7 @@ export function diagnose(f: HealthFacts): HealthRow[] {
   if (f.voice?.on && f.voice.mic === "denied") rows.push({ id: "voice", dot: "warn", label: "Voice", word: "Microphone off", detail: "Allow Qalam in System Settings → Privacy & Security → Microphone, or choose your own dictation app in Connections." });
   if (f.see && !f.see.here)
     rows.push({ id: "see", dot: "off", label: "Reading words on screenshots", word: "Not on this Mac", detail: "This Mac has no reader for the words on screenshots, so they aren't checked: screens are kept without their labels or quotes." });
-  if (!rows.length) return [{ id: "all", dot: "ok", label: "This Mac", word: "All good" }];
+  if (!rows.length) return [{ id: "all", dot: "ok", label: "This computer", word: "All good" }];
   return rows.sort((a, b) => RANK[a.dot] - RANK[b.dot]);
 }
 

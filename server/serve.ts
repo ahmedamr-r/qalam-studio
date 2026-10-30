@@ -10,6 +10,8 @@ import { checkRequest, factsOf, tokenLanding, type GuardConfig } from "./guard";
  * `pnpm build && pnpm start`, then open the printed address.
  */
 
+// Set here rather than in the start script, whose `NODE_ENV=…` prefix Windows' shell doesn't read.
+process.env.NODE_ENV ??= "production";
 const root = process.cwd();
 loadEnvFiles(root);
 // The routes read their settings when they load (src/ai/server.ts), so they load after the env files.

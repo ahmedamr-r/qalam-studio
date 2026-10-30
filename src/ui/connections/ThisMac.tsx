@@ -17,9 +17,9 @@ export function ThisMac({ withEngine = true }: { withEngine?: boolean }) {
   const { rows: all, loading } = useHealth();
   if (!all) return <div className={clsx(r.skeleton, "h-[40px] rounded-lg")} aria-hidden />;
   const left = withEngine ? all : all.filter((x) => x.id !== "engine");
-  const rows: HealthRow[] = left.length ? left : [{ id: "all", dot: "ok", label: "This Mac", word: "All good" }];
+  const rows: HealthRow[] = left.length ? left : [{ id: "all", dot: "ok", label: "This computer", word: "All good" }];
   return (
-    <section aria-label="This Mac" className="flex flex-col rounded-lg bg-panel py-[4px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
+    <section aria-label="This computer" className="flex flex-col rounded-lg bg-panel py-[4px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
       {rows.map((row) => (
         <Row key={row.id} row={row} />
       ))}

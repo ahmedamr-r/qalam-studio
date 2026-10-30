@@ -370,7 +370,7 @@ export async function engineView(): Promise<EngineView> {
   } else if (kind === "codex") {
     if (!codex.found) return { ...view, word: "Not installed", detail: "Install Codex or the ChatGPT app, then sign in with codex login." };
     if (codex.signedIn === false) return { ...view, word: "Signed out", detail: "Run codex login in a terminal, then test again." };
-  } else if (isKeyed(kind) && !k) return { ...view, word: "No key", detail: kind === "api" ? "Paste a Claude API key, or use Claude Code on this Mac." : `Paste a ${ENGINE_LABEL[kind].replace(/ (API )?key$/, "")} key.` };
+  } else if (isKeyed(kind) && !k) return { ...view, word: "No key", detail: kind === "api" ? "Paste a Claude API key, or use Claude Code on this computer." : `Paste a ${ENGINE_LABEL[kind].replace(/ (API )?key$/, "")} key.` };
   else if (isLocal(kind) && !(kind === "ollama" ? ollama : lmstudio)) return { ...view, word: "Offline", detail: `${ENGINE_LABEL[kind]} isn't answering at ${baseFor(kind as "ollama" | "lmstudio")}. Start it, then test again.` };
   else if (isCompat(kind) && !settings.engines?.[kind]?.models?.decide) return { ...view, word: "Pick a model", detail: "Pick the models Qalam AI runs on, below." };
   if (test && !test.ok) return { ...view, word: test.word, detail: test.detail };

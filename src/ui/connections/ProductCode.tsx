@@ -13,7 +13,7 @@ import { ago } from "../time";
 
 /**
  * Product code on Connections: the repositories (or folders) this Mac reads, read-only, each for a
- * product. Qalam copies a repository's code onto this Mac (this Mac's GitHub CLI, or Qalam's own
+ * product. Qalam copies a repository's code onto this computer (this Mac's GitHub CLI, or Qalam's own
  * GitHub sign-in) or reads a folder where it is, then writes what the product does today, the
  * events it sends and the funnel behind each goal, for the team (hub/maps).
  */
@@ -89,7 +89,7 @@ export function ProductCode() {
   return (
     <section aria-label="Product code" className="flex flex-col gap-[10px] rounded-lg bg-panel px-[14px] py-[12px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
       <p className="text-caption text-fg-muted">
-        Read-only. Qalam copies the code onto this Mac and reads it: what each product does today, the events it sends, and the funnel behind each goal. It never writes to the repository.{" "}
+        Read-only. Qalam copies the code onto this computer and reads it: what each product does today, the events it sends, and the funnel behind each goal. It never writes to the repository.{" "}
         <a href={placeHref("evidence")} className="text-fg hover:underline">
           See what it found
         </a>
@@ -125,13 +125,13 @@ export function ProductCode() {
           value={how}
           options={[
             { value: "github", label: "GitHub" },
-            { value: "folder", label: "A folder on this Mac" },
+            { value: "folder", label: "A folder on this computer" },
           ]}
           onChange={setHow}
         />
         {how === "github" && (
           <span className="text-caption text-fg-muted">
-            {view?.gh ? `Through this Mac's GitHub CLI, signed in as ${view.gh}.` : view?.signedIn ? "Through Qalam's GitHub sign-in." : "Sign in to GitHub's CLI on this Mac (gh auth login), or with Qalam's own sign-in."}
+            {view?.gh ? `Through this computer's GitHub CLI, signed in as ${view.gh}.` : view?.signedIn ? "Through Qalam's GitHub sign-in." : "Sign in to GitHub's CLI on this computer (gh auth login), or with Qalam's own sign-in."}
             {!view?.gh && view?.app && !view.signedIn && (
               <>
                 {" "}

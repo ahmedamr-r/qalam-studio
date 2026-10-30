@@ -43,7 +43,8 @@ beforeEach(() => {
 
 const call = (kind: "extract" | "synthesize" | "setup-shape" | "claims") => ({ kind, system: "s", content: [{ type: "text" as const, text: "t" }], schema: { type: "object" }, effort: "low" as const });
 
-describe("calls on Claude Code, by job", () => {
+// Its stand-in is a script with a shebang, which Windows can't start.
+describe.skipIf(process.platform === "win32")("calls on Claude Code, by job", () => {
   it("runs a read call on its model, and once more on the decide model when Claude Code can't use it, from then on", async () => {
     expect(modelOf("extract")).toBe("sonnet");
     const out = await readStructured<{ ok: boolean }>(streamStructured(call("extract")));

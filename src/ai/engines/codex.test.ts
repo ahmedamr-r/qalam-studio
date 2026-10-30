@@ -9,6 +9,8 @@ import type { UsageEntry } from "../usage-shared";
 import { catalogModels, codexArgs, codexEnv, codexError, readCodexEvents } from "./codex";
 
 let dir: string;
+// Its stand-in is a script with a shebang, which Windows can't start.
+const win = process.platform === "win32";
 let out: string;
 let used: UsageEntry[];
 
@@ -67,7 +69,7 @@ beforeEach(async () => {
 });
 
 describe("Codex, signed in with ChatGPT", () => {
-  it("runs from an empty folder with the call's instructions in place of its own, its tools off, the schema made strict, and the plan paying", async () => {
+  it.skipIf(win)("runs from an empty folder with the call's instructions in place of its own, its tools off, the schema made strict, and the plan paying", async () => {
     process.env.OPENAI_API_KEY = "sk-not-for-codex";
     setEngineState({ kind: "codex", models: { decide: "gpt-test" } });
     try {
@@ -83,14 +85,14 @@ describe("Codex, signed in with ChatGPT", () => {
     expect(used).toMatchObject([{ engine: "codex", model: "gpt-test", kind: "jobs", input: 100, cacheRead: 40, output: 7, cost: null }]);
   });
 
-  it("gives it pictures as files, each named where it was", async () => {
+  it.skipIf(win)("gives it pictures as files, each named where it was", async () => {
     setEngineState({ kind: "codex", models: { decide: "gpt-test" } });
     await structured(call([{ type: "text", text: "Read this screen." }, { type: "image", source: { type: "base64", media_type: "image/png", data: Buffer.from("not really a png").toString("base64") } }]));
     const [r] = await records();
     expect(r).toMatchObject({ stdin: "Read this screen.\n\n[Image 1]", images: [16] });
   });
 
-  it("puts the schema in the prompt when Codex won't hold it, and gives one repair turn to an answer that doesn't hold", async () => {
+  it.skipIf(win)("puts the schema in the prompt when Codex won't hold it, and gives one repair turn to an answer that doesn't hold", async () => {
     setEngineState({ kind: "codex", models: { decide: "refuse-schema" } });
     expect((await structured(call())).data).toEqual({ kind: "need" });
     let rs = await records();
@@ -105,7 +107,7 @@ describe("Codex, signed in with ChatGPT", () => {
     expect(String(rs[1].stdin)).toContain("Your previous answer:\n{\"kind\":\"wish\"}");
   });
 
-  it("says what's wrong in words: a model this sign-in can't run, or no Codex at all", async () => {
+  it.skipIf(win)("says what's wrong in words: a model this sign-in can't run, or no Codex at all", async () => {
     setEngineState({ kind: "codex", models: { decide: "missing" } });
     await expect(structured(call())).rejects.toThrow("Codex can't run missing with this sign-in. Pick another in Connections.");
     setEngineState({ kind: "codex", models: { decide: "gpt-test" }, codex: path.join(dir, "no-such-codex") });

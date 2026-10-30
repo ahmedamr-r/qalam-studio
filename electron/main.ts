@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, globalShortcut, ipcMain, MessageChannelMain, protocol, screen, session, shell, utilityProcess, type WebContents } from "electron";
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, MessageChannelMain, protocol, safeStorage, screen, session, shell, utilityProcess, type WebContents } from "electron";
 import { readFileSync, statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -9,6 +9,7 @@ import { assetPath, contentSecurityPolicy, inlineScriptHashes, mimeOf } from "./
 import { watchForUpdates } from "./updates";
 import { readDesktopSettings } from "./desktop-settings";
 import { startTray } from "./tray";
+import { answerSecret, sealedFile, type SecretAsk } from "./secrets";
 
 /**
  * Qalam as a desktop app. The window shows the built UI at qalam://app; its /api/* requests go to
@@ -36,7 +37,14 @@ function startCore() {
   const env: Record<string, string> = { ...(process.env as Record<string, string>), QALAM_APP_DIR: ROOT, NODE_ENV: "production" };
   const claude = findClaude();
   if (claude) env.CLAUDE_CLI_PATH = claude;
+  // No Keychain here (Windows): this process keeps the core's secrets, sealed by the system (electron/secrets.ts).
+  const sealed = process.platform === "darwin" ? null : sealedFile(path.join(app.getPath("userData"), "secrets.json"), { available: () => safeStorage.isEncryptionAvailable(), encrypt: (s) => safeStorage.encryptString(s), decrypt: (b) => safeStorage.decryptString(b) });
+  if (sealed && !env.QALAM_SECRETS) env.QALAM_SECRETS = "electron";
   const child = utilityProcess.fork(path.join(ROOT, "out", "core.js"), [], { serviceName: "Qalam core", stdio: "inherit", env });
+  if (sealed)
+    child.on("message", (m: unknown) => {
+      if ((m as SecretAsk | undefined)?.t === "secret") child.postMessage(answerSecret(sealed, m as SecretAsk));
+    });
   const { port1, port2 } = new MessageChannelMain();
   child.postMessage({ t: "port" }, [port2]);
   const core = requester(
@@ -201,8 +209,9 @@ else {
     // Clipboard for copy and paste on the canvas; every other permission (camera, location…) is refused.
     session.defaultSession.setPermissionRequestHandler((_wc, permission, done) => done(permission === "clipboard-read" || permission === "clipboard-sanitized-write" || permission === "fullscreen"));
     // The installed app, opened from the Dock or Finder, has only the system's PATH: take the one a
-    // terminal has, so Claude Code (and the node an npm-installed one runs on) is found.
-    if (app.isPackaged) process.env.PATH = joinPaths(await loginShellPath(), process.env.PATH);
+    // terminal has, so Claude Code (and the node an npm-installed one runs on) is found. Windows
+    // gives an app the user's PATH already.
+    if (app.isPackaged && process.platform !== "win32") process.env.PATH = joinPaths(await loginShellPath(), process.env.PATH);
     if (!DEV_URL) {
       protocol.handle("qalam", serve);
       startCore();
