@@ -228,3 +228,27 @@ describe("goals and the outcomes that serve them", () => {
     expect(runChecks(input({ boards: [b], goals: [] }))).toEqual([]);
   });
 });
+
+describe("after a solution ships", () => {
+  const metric = (readings: { at: number; value: number }[]) => ({ name: "Weekly reorders", direction: "increase" as const, baseline: 1.2, current: readings.at(-1)?.value ?? 1.2, target: 1.5, readings });
+  const tree = (readings: { at: number; value: number }[], shippedAt = ago(35)) =>
+    board("b1", "Reorders", { id: "o1", kind: "outcome", title: "More reorders", stage: "active", stageAt: ago(1), metric: metric(readings), children: [{ id: "n1", kind: "opportunity", title: "I rebuild my basket", children: [{ id: "s1", kind: "solution", title: "Order again", stage: "shipped", stageAt: shippedAt }] }] });
+
+  it("asks whether it moved the outcome when there's no reading since", () => {
+    const [n] = runChecks(input({ boards: [tree([{ at: ago(40), value: 1.2 }])] })).filter((x) => x.kind === "shipped");
+    expect(n).toMatchObject({ key: `shipped:hub:card:b1:s1:${ago(35)}:unread`, title: "“Order again” shipped 5 weeks ago: did it move “More reorders”?", why: "Weekly reorders has no reading since it shipped. Add this week's number, or import the export, to see.", board: "b1", card: "s1" });
+  });
+
+  it("says when the number hasn't moved the right way since, and nothing when it has", () => {
+    const flat = runChecks(input({ boards: [tree([{ at: ago(40), value: 1.2 }, { at: ago(2), value: 1.18 }])] })).filter((x) => x.kind === "shipped");
+    expect(flat[0]).toMatchObject({ title: "“More reorders” hasn't moved the right way since “Order again” shipped", why: "Weekly reorders went from 1.2 to 1.18 in the 33 days since. Look at whether it reached the customers it was for, or try another way to meet the need." });
+    expect(runChecks(input({ boards: [tree([{ at: ago(40), value: 1.2 }, { at: ago(2), value: 1.3 }])] })).filter((x) => x.kind === "shipped")).toEqual([]);
+    // Too soon to say.
+    expect(runChecks(input({ boards: [tree([{ at: ago(40), value: 1.2 }], ago(10))] })).filter((x) => x.kind === "shipped")).toEqual([]);
+  });
+
+  it("says when an outcome reached its target", () => {
+    const n = runChecks(input({ boards: [tree([{ at: ago(40), value: 1.2 }, { at: ago(2), value: 1.52 }])] })).filter((x) => x.kind === "reached");
+    expect(n).toEqual([expect.objectContaining({ key: "reached:hub:card:b1:o1:1.5", title: "“More reorders” reached its target", why: "Weekly reorders is at 1.52, its target 1.5. Mark it achieved, or set the next target.", at: ago(2) })]);
+  });
+});

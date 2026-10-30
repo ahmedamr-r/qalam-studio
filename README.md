@@ -139,7 +139,9 @@ All settings are optional and go in `.env.local`. `.env.example` lists them with
   - a need customers keep raising that no board has;
   - the same need on two boards (link them);
   - a parked or dropped card that new evidence backs;
-  - a test that's run too long, a solution built on a risky assumption nothing tests, or an outcome whose number nobody updates.
+  - a test that's run too long, a solution built on a risky assumption nothing tests, or an outcome whose number nobody updates;
+  - a solution shipped a month ago whose outcome's number hasn't moved the right way since (or has no reading since), and an outcome that reached its target;
+  - a goal no board works on, and an outcome that serves none of the goals you've stated.
 
   **Review now** asks Qalam AI to read everything for what counting can't find, such as a target the evidence speaks against, or a decision whose reason no longer holds. Each finding must rest on what it read. A card that needs a look is marked on its board, and its panel says why. A notice you dismiss doesn't come back.
 

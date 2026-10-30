@@ -8,6 +8,7 @@ import { isEvidence, sameTopic, type Topic } from "./topics";
 import { tally, tallyText, type Voice } from "./people";
 import { STRENGTH_LABEL, strengthOf } from "./strength";
 import type { OrgGoal } from "@/org/context-md";
+import { mergeReadings, movedSince } from "@/discovery/readings";
 
 /**
  * What needs a look (pure): checks code runs over the organization's boards, decisions and topic
@@ -20,7 +21,7 @@ import type { OrgGoal } from "@/org/context-md";
  * of what it's about and how strong it is: dismissed, it stays dismissed until it grows.
  */
 
-export type NoticeKind = "disputed" | "pattern" | "same-need" | "revisit" | "stale-test" | "untested" | "metric" | "orphan" | "review" | "placed" | "thin-target" | "unworked-goal" | "unanchored";
+export type NoticeKind = "disputed" | "pattern" | "same-need" | "revisit" | "stale-test" | "untested" | "metric" | "orphan" | "review" | "placed" | "thin-target" | "unworked-goal" | "unanchored" | "shipped" | "reached";
 
 export interface Notice {
   /** Stable: the same finding keeps its key, so a dismissed one never comes back. */
@@ -57,11 +58,15 @@ export const NOTICE_LABEL: Record<NoticeKind, string> = {
   "thin-target": "Target",
   "unworked-goal": "Goal",
   unanchored: "Outcome",
+  shipped: "Shipped",
+  reached: "Outcome",
 };
 
 /** How long before a running test, or an outcome's number, needs a look. */
 export const STALE_TEST_DAYS = 14;
 export const STALE_METRIC_DAYS = 21;
+/** How long after a solution ships its outcome's number should say whether it helped. */
+export const SHIPPED_DAYS = 28;
 const DAY = 86_400_000;
 
 export interface CheckBoard {
@@ -398,6 +403,47 @@ export function runChecks(x: CheckInput): Notice[] {
         });
       }
     }
+    // A solution shipped weeks ago: did the number of the outcome above it move the right way?
+    if (c.card.kind === "solution" && c.card.stage === "shipped" && c.card.stageAt && x.now - c.card.stageAt > SHIPPED_DAYS * DAY) {
+      let up = c.parent ? byRef.get(cardRef(c.board.id, c.parent)) : undefined;
+      while (up && up.card.kind !== "outcome") up = up.parent ? byRef.get(cardRef(c.board.id, up.parent)) : undefined;
+      const m = up?.card.metric;
+      if (up && m && up.card.stage === "active") {
+        const moved = movedSince(m, c.card.stageAt);
+        const weeks = Math.floor((x.now - c.card.stageAt) / (7 * DAY));
+        const n = (v: number) => `${v}${m.unit ? ` ${m.unit}` : ""}`;
+        if (!moved || moved.better !== true)
+          out.push({
+            key: `shipped:${ref}:${c.card.stageAt}:${moved ? "flat" : "unread"}`,
+            kind: "shipped",
+            title: moved ? `${q(up.card.title)} hasn't moved the right way since ${q(c.card.title)} shipped` : `${q(c.card.title)} shipped ${plural(weeks, "week")} ago: did it move ${q(up.card.title)}?`,
+            why: moved
+              ? `${m.name || "Its number"} went from ${n(moved.before)} to ${n(moved.after)} in the ${plural(moved.days, "day")} since. Look at whether it reached the customers it was for, or try another way to meet the need.`
+              : `${m.name || "Its number"} has no reading since it shipped. Add this week's number, or import the export, to see.`,
+            at: c.card.stageAt + SHIPPED_DAYS * DAY,
+            board: c.board.id,
+            card: c.id,
+            products: productsOf(c.board),
+          });
+      }
+    }
+    // An outcome that reached its target, still marked active.
+    if (c.card.kind === "outcome" && c.card.stage === "active" && c.card.metric && c.card.metric.current !== null && c.card.metric.target !== null) {
+      const mm = c.card.metric;
+      const reached = mm.direction === "increase" ? mm.current! >= mm.target! : mm.current! <= mm.target!;
+      const last = mergeReadings(mm.readings).at(-1)?.at;
+      if (reached && (mm.baseline === null || mm.baseline !== mm.target))
+        out.push({
+          key: `reached:${ref}:${mm.target}`,
+          kind: "reached",
+          title: `${q(c.card.title)} reached its target`,
+          why: `${mm.name || "Its number"} is at ${mm.current}${mm.unit ? ` ${mm.unit}` : ""}, its target ${mm.target}. Mark it achieved, or set the next target.`,
+          at: last ?? c.card.stageAt ?? c.board.createdAt,
+          board: c.board.id,
+          card: c.id,
+          products: productsOf(c.board),
+        });
+    }
     // An outcome whose number nobody has updated in weeks.
     const m = c.card.metric;
     if (c.card.kind === "outcome" && c.card.stage === "active" && m && m.current !== null && m.target !== null) {
@@ -426,7 +472,7 @@ export function runChecks(x: CheckInput): Notice[] {
 /** Notices about a card (as the card, or as the other card of a pair). */
 export const aboutCard = (n: Pick<Notice, "board" | "card" | "other">, board: string, card: string) => (n.board === board && n.card === card) || (n.other?.board === board && n.other.card === card);
 
-const KINDS: readonly NoticeKind[] = ["disputed", "pattern", "same-need", "revisit", "stale-test", "untested", "metric", "orphan", "review", "placed", "thin-target", "unworked-goal", "unanchored"];
+const KINDS: readonly NoticeKind[] = ["disputed", "pattern", "same-need", "revisit", "stale-test", "untested", "metric", "orphan", "review", "placed", "thin-target", "unworked-goal", "unanchored", "shipped", "reached"];
 const isStr = (v: unknown, max: number): v is string => typeof v === "string" && v.length <= max;
 const ID = /^[A-Za-z0-9_~-]{1,64}$/;
 

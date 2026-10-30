@@ -32,7 +32,7 @@ import { citation, fromSource, quoteOf, type SourceRecord } from "@/discovery/so
 import { STRENGTH_LABEL, type Strength } from "@/hub/strength";
 import { useStrength } from "./strength";
 import { MetricReadings, type ShipMark } from "./MetricReadings";
-import { withReading } from "@/discovery/readings";
+import { movedSince, withReading } from "@/discovery/readings";
 import { goalsFor, statedGoals } from "@/org/goals";
 import { newGoal } from "@/org/context-md";
 import { saveAbout, saveProduct, useOrgContext } from "@/org/context";
@@ -120,6 +120,7 @@ function OneCard({ id, card }: { id: string; card: OstCard }) {
       </Section>
       {card.kind === "outcome" && <MetricSection id={id} card={card} />}
       {(card.kind === "opportunity" || card.kind === "solution" || (card.kind === "outcome" && card.evidence.length > 0)) && <EvidenceSection id={id} card={card} />}
+      {card.kind === "solution" && card.stage === "shipped" && <SinceShipped id={id} card={card} />}
       {card.kind === "solution" && <AssumptionsSection id={id} card={card} />}
       {card.kind === "solution" && <DesignsSection id={id} card={card} />}
       {card.kind === "test" && <TestSection id={id} card={card} />}
@@ -218,6 +219,36 @@ function HistorySection({ id }: { id: string }) {
           <DecisionRow key={d.id} d={d} />
         ))}
       </div>
+    </Section>
+  );
+}
+
+/** A shipped solution: how the number of the outcome above it moved since. */
+function SinceShipped({ id, card }: { id: string; card: OstCard }) {
+  const outcome = useStudio((s) => {
+    for (let p = s.doc.nodes[id]?.parentId; p; p = s.doc.nodes[p]?.parentId) {
+      const c = cardOf(s.doc, p);
+      if (c?.kind === "outcome") return c;
+    }
+    return null;
+  });
+  const m = outcome?.metric;
+  if (!outcome || !m || !card.stageAt) return null;
+  const moved = movedSince(m, card.stageAt);
+  const n = (v: number) => `${v}${m.unit ? ` ${m.unit}` : ""}`;
+  const when = new Date(card.stageAt).toLocaleDateString("en", { month: "short", day: "numeric" });
+  return (
+    <Section title="Since it shipped">
+      <p className={clsx("rounded-lg px-[10px] py-[8px] text-caption", moved?.better ? "bg-success-subtle" : "bg-muted")}>
+        {moved ? (
+          <>
+            {m.name || "The number"} of “{outcome.title}” went from <span className="font-semibold">{n(moved.before)}</span> to <span className="font-semibold">{n(moved.after)}</span> since {when}
+            {moved.better === true ? ", the right way." : moved.better === false ? ", the wrong way." : ", no change."}
+          </>
+        ) : (
+          <>Shipped {when}. “{outcome.title}” has no reading since: add the number on its card to see whether this moved it.</>
+        )}
+      </p>
     </Section>
   );
 }
