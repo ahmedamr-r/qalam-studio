@@ -1,13 +1,13 @@
 import { execFile, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, rename, rm, stat } from "node:fs/promises";
+import { mkdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import type { ShotLine, ShotRead } from "@/seen/shot";
 import { assetType } from "../org/codecs";
-import { atomicWrite, readJson } from "../org/fsx";
+import { atomicWrite, readJson, renameOver } from "../org/fsx";
 
 /*
  * This Mac's screenshot reader (native/see), run by the core: the words on each screenshot, read
@@ -186,7 +186,7 @@ export async function prepShot(orgDir: string, hash: string, file: string, maxSi
     await sips(SIPS, args, { timeout: 30_000 });
     // sips says it skipped a file it can't read, and exits 0.
     if (!(await stat(tmp)).size) throw new Error("empty");
-    await rename(tmp, kept);
+    await renameOver(tmp, kept);
     return { file: kept, type };
   } catch {
     await rm(tmp, { force: true });

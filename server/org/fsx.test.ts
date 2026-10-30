@@ -2,7 +2,7 @@ import { mkdtemp, readdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { atomicWrite, inside, locked, slugify, stableStringify, uniqueName } from "./fsx";
+import { atomicWrite, inside, locked, renameOver, slugify, stableStringify, uniqueName } from "./fsx";
 
 describe("stableStringify", () => {
   it("puts identity first, sorts the rest, drops undefined, ends with a newline", () => {
@@ -33,6 +33,18 @@ describe("files", () => {
     await atomicWrite(file, "two");
     expect(await readFile(file, "utf8")).toBe("two");
     expect(await readdir(path.dirname(file))).toEqual(["a.json"]);
+  });
+
+  it("renames over a file Windows holds open for a moment, and gives up on anything else", async () => {
+    const busy = (times: number, code = "EPERM") => {
+      let n = 0;
+      return async () => {
+        if (n++ < times) throw Object.assign(new Error(code), { code });
+      };
+    };
+    await expect(renameOver("a", "b", { platform: "win32", rename: busy(3) })).resolves.toBeUndefined();
+    await expect(renameOver("a", "b", { platform: "win32", rename: busy(1, "ENOENT") })).rejects.toThrow("ENOENT");
+    await expect(renameOver("a", "b", { platform: "darwin", rename: busy(1) })).rejects.toThrow("EPERM");
   });
 
   it("runs writes to one path one at a time", async () => {

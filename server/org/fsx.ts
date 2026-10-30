@@ -44,12 +44,31 @@ export function inside(root: string, rel: string): string | null {
 }
 
 /** Write a file whole: to a temp file next to it, then rename over it. */
+/**
+ * Rename `from` over `to`. Windows refuses while anything else has `to` open for a moment (a
+ * reader, the folder watcher, an antivirus scan), with EPERM, EACCES or EBUSY: try again, a little
+ * later each time, for about two seconds, as graceful-fs does.
+ */
+export async function renameOver(from: string, to: string, o: { platform?: NodeJS.Platform; rename?: (a: string, b: string) => Promise<void> } = {}) {
+  const move = o.rename ?? rename;
+  const windows = (o.platform ?? process.platform) === "win32";
+  for (let wait = 10; ; wait *= 2) {
+    try {
+      return await move(from, to);
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code;
+      if (!windows || wait > 1280 || (code !== "EPERM" && code !== "EACCES" && code !== "EBUSY")) throw e;
+      await new Promise((r) => setTimeout(r, wait));
+    }
+  }
+}
+
 export async function atomicWrite(file: string, data: string | Uint8Array) {
   await mkdir(path.dirname(file), { recursive: true });
   const tmp = path.join(path.dirname(file), `.${path.basename(file)}.${randomBytes(4).toString("hex")}.tmp`);
   try {
     await writeFile(tmp, data);
-    await rename(tmp, file);
+    await renameOver(tmp, file);
   } catch (e) {
     await rm(tmp, { force: true });
     throw e;
