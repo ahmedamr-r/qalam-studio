@@ -15,7 +15,7 @@ import { fromSource, quoteOf, type SourceRecord } from "./sources";
  */
 
 export const LANE_W = 200;
-export const LANE_ITEM_H = 60;
+export const LANE_ITEM_H = 72;
 /** From the lane's right edge to the tree's left. */
 export const LANE_GAP = 72;
 const ROW_GAP = 10;

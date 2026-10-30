@@ -354,6 +354,7 @@ export const CATALOG: Command[] = [
   flag("layoutGrids", "view.layout-grids", "Layout guides", [kb("⌃G"), kb("⇧G")], { winKeys: [kb("⌃⇧4"), kb("⇧G")], keywords: ["layout grids", "columns"] }),
   flag("agentCursors", "view.agent-cursors", "Qalam AI cursors", [kb("⌥⌘\\")], { keywords: ["multiplayer cursors", "agents"] }),
   flag("routeParts", "view.route-parts", "Prototype parts and wires", [], { keywords: ["prototype", "connections", "noodles", "sheets", "overlays", "states", "routes"] }),
+  flag("sources", "view.sources", "Sources and wires", [], { keywords: ["sources", "evidence", "lane", "wires", "connections", "where it came from"] }),
   {
     id: "view.minimize-ui",
     label: "Minimize UI",

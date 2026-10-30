@@ -62,10 +62,12 @@ export interface ViewOptions {
   agentCursors: boolean;
   /** Screens' prototype parts on the canvas: their sheets, dialogs and bars, and the wires to them. */
   routeParts: boolean;
+  /** A Discovery board's sources lane: the sources its cards rest on, wired to them. */
+  sources: boolean;
 }
 
 const VIEW_KEY = "qalam/view";
-const DEFAULT_VIEW: ViewOptions = { uiHidden: false, rulers: false, outlines: false, pixelGrid: true, pixelPreview: false, snapToPixels: true, layoutGrids: true, agentCursors: true, routeParts: true };
+const DEFAULT_VIEW: ViewOptions = { uiHidden: false, rulers: false, outlines: false, pixelGrid: true, pixelPreview: false, snapToPixels: true, layoutGrids: true, agentCursors: true, routeParts: true, sources: true };
 
 /** View options persist per browser like Figma's, except hiding the UI (a fresh load always shows it). */
 function loadView(): ViewOptions {

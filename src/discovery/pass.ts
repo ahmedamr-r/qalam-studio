@@ -6,6 +6,7 @@ import { reparentIn } from "@/doc/ops";
 import { type Box, boxesIntersect } from "@/doc/geometry";
 import { cardBox } from "./metrics";
 import { layoutTree, type LayoutNode } from "./layout";
+import { LANE_GAP, LANE_W } from "./lane";
 
 /*
  * Keeping the board's trees tidy, after every edit and in the same undo step (registered as a
@@ -113,6 +114,9 @@ function layoutOne(d: Doc, rootId: string) {
 
 /** Room kept between two trees when one grows into the other. */
 export const TREE_GAP = 160;
+/** What a tree's sources lane takes on its left. */
+const LANE_ROOM = LANE_GAP + LANE_W;
+const withLane = (b: Box): Box => ({ ...b, x: b.x - LANE_ROOM, w: b.w + LANE_ROOM });
 
 /** The box a tree's showing cards cover (worked out on the spot: a draft has no cache). */
 function boxOf(d: Doc, rootId: string): Box {
@@ -144,7 +148,8 @@ const grow = (b: Box, by: number): Box => ({ x: b.x - by, y: b.y - by, w: b.w + 
 function separateTrees(prev: Doc, d: Doc, grown: Set<string>) {
   const trees = d.roots.filter((id) => isOstCard(d.nodes[id]));
   if (trees.length < 2) return;
-  const boxes = new Map(trees.map((id) => [id, boxOf(d, id)]));
+  // Each tree keeps room on its left for its sources lane (src/discovery/lane.ts).
+  const boxes = new Map(trees.map((id) => [id, withLane(boxOf(d, id))]));
   const queue = trees.filter((id) => grown.has(id));
   const settled = new Set(queue);
   const pushed = new Set<string>();
@@ -155,12 +160,12 @@ function separateTrees(prev: Doc, d: Doc, grown: Set<string>) {
     if (!pushed.has(a) && !wasTree(a)) continue;
     const A = boxes.get(a)!;
     const room = grow(A, TREE_GAP);
-    const before = pushed.has(a) ? null : grow(boxOf(prev, a), TREE_GAP);
+    const before = pushed.has(a) ? null : grow(withLane(boxOf(prev, a)), TREE_GAP);
     for (const b of trees) {
       if (settled.has(b)) continue;
       const B = boxes.get(b)!;
       if (!boxesIntersect(room, B)) continue;
-      if (before && wasTree(b) && boxesIntersect(before, boxOf(prev, b))) continue;
+      if (before && wasTree(b) && boxesIntersect(before, withLane(boxOf(prev, b)))) continue;
       const right = B.x + B.w / 2 >= A.x + A.w / 2;
       const dx = right ? A.x + A.w + TREE_GAP - B.x : A.x - TREE_GAP - (B.x + B.w);
       d.nodes[b].x += dx;

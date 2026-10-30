@@ -5,7 +5,7 @@ import { isOstCard } from "@/doc/board";
 import { clearMeasureCache } from "@/doc/measure";
 import { onFontsChanged } from "@/engine/fonts";
 import { setCanvasDelegate } from "@/engine/canvas-delegate";
-import { createOstTools } from "@/engine/ost-tools";
+import { boardLane, createOstTools } from "@/engine/ost-tools";
 import { layoutDocTrees, ostPass } from "@/discovery/pass";
 import { allCards } from "@/discovery/tree";
 import { isAssumed } from "@/discovery/evidence";
@@ -54,6 +54,8 @@ export function startDiscoveryStudio(p: Project): (doc: Doc) => void {
   });
   // The canvas redraws for the board's own state (the title being typed, design counts).
   useDiscovery.subscribe(() => studio().invalidate());
+  // ...and its sources lane, as its sources come and change.
+  useSources.subscribe(() => studio().invalidate());
   useStudio.subscribe((s, prev) => {
     if (s.doc !== prev.doc) dropStaleEdit();
   });
@@ -70,7 +72,7 @@ export function startDiscoveryStudio(p: Project): (doc: Doc) => void {
   // What gets decided on the board goes to the organization's decision log.
   startRecorder();
   ensureDumpHandlers();
-  void loadSources(p.id).then(resumeDumps).then(linkEvidence).then(openSourceFromUrl).then(() => loadPlacements(p.id)).then(reviewPlacedFromUrl);
+  void loadSources(p.id).then(resumeDumps).then(linkEvidence).then(frameLane).then(openSourceFromUrl).then(() => loadPlacements(p.id)).then(reviewPlacedFromUrl);
   onOrgChange((c) => {
     if (c.kind === "source" && c.boards.includes(p.id)) void reloadSources(p.id);
     // Material added to the organization may have something for this board (it's on no board yet).
@@ -218,4 +220,14 @@ function focusCardFromUrl() {
     );
   studio().select([id]);
   onCanvasReady((c) => glideToLayer(c, id));
+}
+
+/** The board opens with its sources lane in view too: once its sources are in, a source card off-screen frames the whole board. */
+function frameLane() {
+  onCanvasReady((c) => {
+    const cam = studio().camera;
+    const view = { x: cam.x, y: cam.y, w: c.viewport.w / cam.zoom, h: c.viewport.h / cam.zoom };
+    const out = boardLane().items.some((i) => i.x < view.x || i.y < view.y || i.x + i.w > view.x + view.w || i.y + i.h > view.y + view.h);
+    if (out) c.zoomToFit();
+  });
 }

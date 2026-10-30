@@ -35,6 +35,26 @@ function noticedCards(list: Notice[]): ReadonlySet<string> {
 }
 import type { PointerInfo } from "./vector-tools";
 import { cardWork, type WorkStatus } from "@/connectors/work";
+import { laneOf, litBy, NO_LANE, type Lane, type LaneItem } from "@/discovery/lane";
+import type { SourceRecord } from "@/discovery/sources";
+import { useSources } from "@/ui/discovery/sources";
+import type { LaneRender } from "./lane-painter";
+
+/** The board's sources lane (kept while the document and its sources are the same; none with the view option off). */
+let laneMemo: { doc: Doc; list: SourceRecord[]; visiting: SourceRecord[]; lane: Lane } | null = null;
+export function boardLane(): Lane {
+  const s = studio();
+  if (!s.view.sources) return NO_LANE;
+  const { list, visiting } = useSources.getState();
+  if (laneMemo?.doc === s.doc && laneMemo.list === list && laneMemo.visiting === visiting) return laneMemo.lane;
+  laneMemo = { doc: s.doc, list, visiting, lane: laneOf(s.doc, [...list, ...visiting]) };
+  return laneMemo.lane;
+}
+
+/** The lane's source card at a world point. */
+function laneAt(world: Pt): LaneItem | null {
+  return boardLane().items.find((i) => world.x >= i.x && world.x <= i.x + i.w && world.y >= i.y && world.y <= i.y + i.h) ?? null;
+}
 import type { OstCard } from "@/discovery/types";
 
 /** Each solution's furthest-along linked work (kept while the document and the statuses are the same). */
@@ -121,6 +141,8 @@ function toggleAt(doc: Doc, world: Pt): string | null {
 export function createOstTools(): CanvasDelegate {
   let drag: Drag | null = null;
   let hoverToggle: string | null = null;
+  /** The lane's source under the pointer. */
+  let hoverLane: string | null = null;
 
   /** Where the dragged cards would land with the pointer here. */
   const dropAt = (d: Drag, world: Pt): Drag["drop"] => {
@@ -234,6 +256,12 @@ export function createOstTools(): CanvasDelegate {
         toggleCollapsed([fold]);
         return true;
       }
+      // A source in the lane opens its reader (what it backs, its words marked).
+      const source = laneAt(p.world);
+      if (source) {
+        useDiscovery.setState({ reading: source.key });
+        return true;
+      }
       const id = cardAt(doc, p.world);
       if (!id) return false;
       const n = doc.nodes[id];
@@ -269,11 +297,13 @@ export function createOstTools(): CanvasDelegate {
       const s = studio();
       if (s.tool !== "select") return false;
       const t = toggleAt(s.doc, p.world);
-      if (t !== hoverToggle) {
+      const lane = t ? null : (laneAt(p.world)?.key ?? null);
+      if (t !== hoverToggle || lane !== hoverLane) {
         hoverToggle = t;
+        hoverLane = lane;
         s.invalidate();
       }
-      return !!t;
+      return !!t || !!lane;
     },
 
     pointerUp() {
@@ -305,14 +335,18 @@ export function createOstTools(): CanvasDelegate {
 
     cursor() {
       if (drag?.active) return drag.drop && !drag.drop.ok ? "not-allowed" : "grabbing";
-      if (hoverToggle) return "pointer";
+      if (hoverToggle || hoverLane) return "pointer";
       const tool = studio().tool;
       return tool === "card" || tool === "sticky" ? "crosshair" : null;
     },
 
+    fitBoxes: () => boardLane().items.map(({ x, y, w, h }) => ({ x, y, w, h })),
+
     render(): OstRenderInput {
       const ui = discovery();
+      const lane = boardLane();
       return {
+        lane: lane.items.length ? laneRender(lane, hoverLane ?? ui.reading) : null,
         editingId: ui.editing?.id ?? null,
         drag: drag?.active ? { ids: drag.ids, dx: drag.dx, dy: drag.dy } : null,
         // A card being dragged, else a quote dragged in from the Sources tab.
@@ -323,4 +357,10 @@ export function createOstTools(): CanvasDelegate {
       };
     },
   };
+}
+
+/** What the lane lights: a source under the pointer (or open in the reader), else the selected cards' sources. */
+function laneRender(lane: Lane, focus: string | null): LaneRender {
+  const lit = litBy(lane, focus) ?? studio().selection.map((id) => litBy(lane, id)).find(Boolean) ?? null;
+  return { lane, lit, hover: focus };
 }

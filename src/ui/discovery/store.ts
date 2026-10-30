@@ -35,8 +35,10 @@ interface DiscoveryUI {
   notices: Notice[];
   /** Where the work linked to solutions stands, by connector:ref (src/ui/discovery/work.ts). */
   work: Record<string, WorkStatus>;
+  /** The sources lane's item open in the reader (its key, src/discovery/lane.ts). */
+  reading: string | null;
 }
 
-export const useDiscovery = create<DiscoveryUI>(() => ({ editing: null, sheet: "closed", designFor: null, designs: {}, dragging: false, drafting: null, quoteDrop: null, notices: [], work: {} }));
+export const useDiscovery = create<DiscoveryUI>(() => ({ editing: null, sheet: "closed", designFor: null, designs: {}, dragging: false, drafting: null, quoteDrop: null, notices: [], work: {}, reading: null }));
 
 export const discovery = () => useDiscovery.getState();

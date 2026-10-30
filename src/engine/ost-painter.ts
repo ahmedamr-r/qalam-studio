@@ -12,6 +12,7 @@ import type { OstCard, OstKind } from "@/discovery/types";
 import { getEngine, hexToColor } from "./canvaskit";
 import { buildParagraph } from "./text";
 import { OST_PALETTE, type OstPalette } from "./ost-palette";
+import type { LaneRender } from "./lane-painter";
 
 /*
  * Painting the Discovery board's tree cards (CanvasKit). A card is a frame with no paint of its
@@ -36,6 +37,8 @@ export interface OstRenderInput {
   noticed?: ReadonlySet<string>;
   /** Solutions' linked work, as its tool says it stands ("Merged", "In Progress"), after the kind. */
   work?: ReadonlyMap<string, { label: string; tone: "ok" | "warn" | "off" }>;
+  /** The board's sources lane, wired to its cards (painted by ./lane-painter.ts). */
+  lane?: LaneRender | null;
 }
 
 export interface OstFrame {

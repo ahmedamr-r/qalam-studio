@@ -1099,7 +1099,7 @@ export class Controller {
     const s = studio();
     // Everything: top-level layers, and every card showing in a Discovery tree (a tree's root box isn't its extent).
     const list = ids?.length ? ids : fitTargets(s.doc);
-    const b = selectionBounds(s.doc, list);
+    const b = withExtras(selectionBounds(s.doc, list), ids?.length ? [] : (canvasDelegate()?.fitBoxes?.() ?? []));
     if (b) this.zoomToBox(b);
   }
 
@@ -1401,7 +1401,7 @@ export class Controller {
   /** ⇧1 / ⇧2 / N: glide to fit layers (all top-level layers when none are given). */
   glideToFit(ids?: string[]) {
     const s = studio();
-    const b = selectionBounds(s.doc, ids?.length ? ids : fitTargets(s.doc));
+    const b = withExtras(selectionBounds(s.doc, ids?.length ? ids : fitTargets(s.doc)), ids?.length ? [] : (canvasDelegate()?.fitBoxes?.() ?? []));
     if (b) this.glideTo(this.fitCamera(b));
   }
 
@@ -1438,3 +1438,14 @@ export class Controller {
 }
 
 export type { SceneNode };
+
+/** A box grown to take in others too (what a mode paints outside the document, like a board's sources lane). */
+function withExtras(b: Box | null, extras: readonly Box[]): Box | null {
+  if (!extras.length) return b;
+  const all = b ? [b, ...extras] : [...extras];
+  const x0 = Math.min(...all.map((x) => x.x));
+  const y0 = Math.min(...all.map((x) => x.y));
+  const x1 = Math.max(...all.map((x) => x.x + x.w));
+  const y1 = Math.max(...all.map((x) => x.y + x.h));
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}

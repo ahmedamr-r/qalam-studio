@@ -4,6 +4,7 @@ import type { Camera, ViewOptions } from "@/doc/store";
 import { type Box, type Mat, type Pt, apply, localMatrix, worldCorners, worldBounds, worldMatrix, boxesIntersect, selectionBounds, mul, translate, parentWorldMatrix } from "@/doc/geometry";
 import { type CardNode, isOstCard, isSealed, rootBounds, treeBounds } from "@/doc/board";
 import { OstPainter, type OstRenderInput } from "./ost-painter";
+import { LanePainter } from "./lane-painter";
 import { RoutePainter, type RouteKit } from "./route-painter";
 import { cardDoc } from "@/proto/canvas/cards";
 import { isOnPage } from "@/doc/pages";
@@ -126,6 +127,7 @@ export class Renderer {
   private vectorPainter: VectorPainter;
   /** Discovery's tree cards (painted from their data). */
   private ost: OstPainter;
+  private lanes: LanePainter;
   /** Routes: containers, wires and folds (route-painter.ts). */
   private routes: RoutePainter;
   private offIcons: () => void;
@@ -156,6 +158,7 @@ export class Renderer {
     this.shadow.setAntiAlias(true);
     this.vectorPainter = new VectorPainter(ck);
     this.ost = new OstPainter(ck);
+    this.lanes = new LanePainter(ck);
     this.routes = new RoutePainter(ck);
     // An icon set finished loading: drop what was cached without it and draw again.
     this.offIcons = onIconSetLoaded(() => {
@@ -229,6 +232,7 @@ export class Renderer {
     this.clearVectorPlans();
     this.vectorPainter.dispose();
     this.ost.dispose();
+    this.lanes.dispose();
     this.routes.dispose();
     for (const i of this.imageCache.values()) if (typeof i === "object") i.delete();
     for (const m of this.blurCache.values()) m.delete();
@@ -275,12 +279,19 @@ export class Renderer {
     const { doc } = input;
     this.ost.begin({ doc, selection: input.selection, hoverId: input.hoverId, zoom: input.camera.zoom, ost: input.ost, exporting: input.exporting }, this.theme.dark);
     if (input.view?.routeParts) this.routes.drawContainers(canvas, doc, input.camera.zoom, this.routeKit);
+    // A board's sources lane: its wires first, so they tuck under the cards.
+    const lane = !input.exporting ? input.ost?.lane : null;
+    if (lane) {
+      this.lanes.begin(this.theme.dark, false);
+      this.lanes.drawWires(canvas, doc, lane, input.camera.zoom);
+    }
     // A Discovery tree's root box isn't what it covers: cull by its cards (rootBounds).
     for (const id of doc.roots) {
       if (!doc.nodes[id] || input.coveredRoots?.has(id)) continue;
       if (!boxesIntersect(rootBounds(doc, id), view)) continue;
       this.drawNode(canvas, doc, id, input);
     }
+    if (lane) this.lanes.drawItems(canvas, lane);
     // Routes' state cards: their components, on the cards the route painter drew.
     const cards = input.view?.routeParts ? cardDoc(doc) : null;
     for (const id of cards?.roots ?? []) if (boxesIntersect(rootBounds(cards!, id), view)) this.drawNode(canvas, cards!, id, input);

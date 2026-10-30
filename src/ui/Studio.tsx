@@ -280,7 +280,7 @@ function RightPanel() {
             <CommandItem id="view.pixel-preview" />
             <CommandItem id="view.snap-pixels" />
             <CommandItem id="view.agent-cursors" />
-            <CommandItem id="view.route-parts" />
+            {board ? <CommandItem id="view.sources" /> : <CommandItem id="view.route-parts" />}
           </Menu>
         </div>
         <Tabs.Content value="design" tabIndex={-1} className="min-h-0 flex-1 overflow-y-auto outline-none">

@@ -1,4 +1,4 @@
-import type { Pt } from "@/doc/geometry";
+import type { Box, Pt } from "@/doc/geometry";
 import type { PointerInfo } from "./vector-tools";
 import type { OstRenderInput } from "./ost-painter";
 
@@ -21,6 +21,8 @@ export interface CanvasDelegate {
   render(): OstRenderInput | null;
   /** Text pasted onto the canvas (not the studio's own copied layers): true when it took it. */
   pasteText?(text: string): boolean;
+  /** What it paints outside the document that zoom to fit should take in too (world boxes). */
+  fitBoxes?(): Box[];
 }
 
 let current: CanvasDelegate | null = null;
