@@ -12,6 +12,7 @@ import { ROLE_LABEL } from "@/discovery/dump";
 import { awaitingRoles, clock, finishInterviewQuotes } from "@/discovery/transcript";
 import { feedback } from "@/commands/feedback";
 import { connectorOfOrigin } from "@/connectors/logos";
+import { segmentsOf } from "@/discovery/segments";
 import { Button, IconBtn, Segmented, Select, Spinner, Tag } from "../controls";
 import { r } from "../recipes";
 import { QalamAIGlyph } from "../brand/ai-glyph";
@@ -28,6 +29,7 @@ import { addFromOrganization, openSource, removeSource, updateSource, useSources
 import { sourcesDb } from "@/discovery/db";
 import { SpeakersLine, SpeakersStep } from "./SpeakersStep";
 import { openBrainDump } from "./dump";
+import { MarkedText } from "./MarkedText";
 
 /*
  * The Sources tab of a Discovery board: the material customers' words come from (documents, web
@@ -568,29 +570,6 @@ function QuoteCard({ source, q, cards, onShow }: { source: SourceRecord; q: Sour
 // ---------------------------------------------------------------------------
 // A source's text, its quotes highlighted; selected words can be quoted by hand.
 
-interface Segment {
-  start: number;
-  end: number;
-  quote?: string;
-  /** A page starts here (PDF). */
-  page?: number;
-}
-
-/** The text cut where quotes (and pages) begin and end. */
-function segmentsOf(s: SourceRecord): Segment[] {
-  const marks = s.quotes.flatMap((q) => (q.parts ?? [q.span]).map(([a, b]) => ({ a, b, id: q.id }))).sort((x, y) => x.a - y.a);
-  const cuts = new Set<number>([0, s.text.length, ...marks.flatMap((m) => [m.a, m.b]), ...(s.pages ?? [])]);
-  const at = [...cuts].filter((c) => c >= 0 && c <= s.text.length).sort((a, b) => a - b);
-  const out: Segment[] = [];
-  for (let i = 0; i < at.length - 1; i++) {
-    const [start, end] = [at[i], at[i + 1]];
-    if (start === end) continue;
-    const m = marks.find((x) => x.a <= start && end <= x.b);
-    const page = s.pages && s.pages.length > 1 ? s.pages.indexOf(start) : -1;
-    out.push({ start, end, ...(m ? { quote: m.id } : {}), ...(page >= 0 ? { page: page + 1 } : {}) });
-  }
-  return out;
-}
 
 /** A position in the text from a point in the rendered segments. */
 function offsetIn(node: Node | null, offset: number): number | null {
@@ -601,7 +580,7 @@ function offsetIn(node: Node | null, offset: number): number | null {
 
 const SourceText = memo(function SourceText({ source, focus }: { source: SourceRecord; focus?: string }) {
   const ref = useRef<HTMLDivElement>(null);
-  const segments = useMemo(() => segmentsOf(source), [source]);
+  const segments = useMemo(() => segmentsOf(source.text, source.quotes, { pages: source.pages }), [source]);
   const [pick, setPick] = useState<{ start: number; end: number; x: number; y: number } | null>(null);
   useEffect(() => {
     if (focus) ref.current?.querySelector(`[data-quote="${focus}"]`)?.scrollIntoView({ block: "center" });
@@ -637,24 +616,7 @@ const SourceText = memo(function SourceText({ source, focus }: { source: SourceR
 
   return (
     <div className="relative">
-      <div ref={ref} onMouseUp={onSelect} onKeyUp={onSelect} className="text-caption leading-[19px] break-words whitespace-pre-wrap text-fg select-text" dir="auto">
-        {segments.map((s) => (
-          <span key={s.start}>
-            {s.page && (
-              <span aria-hidden className="mt-[10px] mb-[4px] block text-micro font-medium text-fg-subtle select-none">
-                Page {s.page}
-              </span>
-            )}
-            {s.quote ? (
-              <mark data-start={s.start} data-quote={s.quote} className={clsx("rounded-[2px] text-fg", s.quote === focus ? "bg-selection-subtle shadow-[0_0_0_1px_var(--color-selection)]" : "bg-selection-subtle")}>
-                {source.text.slice(s.start, s.end)}
-              </mark>
-            ) : (
-              <span data-start={s.start}>{source.text.slice(s.start, s.end)}</span>
-            )}
-          </span>
-        ))}
-      </div>
+      <MarkedText ref={ref} text={source.text} segments={segments} focus={focus} onMouseUp={onSelect} onKeyUp={onSelect} />
       {pick && (
         <button
           type="button"

@@ -14,6 +14,7 @@ import { openSoFar, useFirstRun } from "./flow";
 import { metricLine } from "@/goals/goals-md";
 import { canvasOf, EMPTY, type Canvas } from "./canvas";
 import { SetupCanvas } from "./SetupCanvas";
+import { SourceReader } from "./SourceReader";
 import { soFarOf, tally, type GoalRow, type LineField, type LineRow, type RestsOn, type RowState } from "./soFar";
 
 /*
@@ -273,7 +274,10 @@ export function SoFar() {
   const mine = new Set(picked ?? goals.mine);
   const connected = (tools ?? []).filter((x) => x.tone === "ok");
   const canvas = useCanvas();
+  const door = useFirstRun((s) => s.door);
   const [selected, setSelected] = useState<string | null>(null);
+  const [reading, setReading] = useState<string | null>(null);
+  const readingNode = reading ? canvas.nodes.find((n) => n.id === reading && n.kind === "source") : undefined;
   // Once anything is sent, the canvas is what's drawn; the About, products and what's connected sit under it.
   if (canvas.nodes.length)
     return (
@@ -285,7 +289,8 @@ export function SoFar() {
             </div>
           )}
           <div className="relative min-h-[240px] flex-1">
-            <SetupCanvas canvas={canvas} selected={selected} onSelect={setSelected} onOpen={(n) => setSelected(n.id)} working={working} act={act} />
+            <SetupCanvas canvas={canvas} selected={selected} onSelect={setSelected} onOpen={(n) => setReading(n.id)} working={working} act={act} />
+            {readingNode && <SourceReader key={readingNode.id} node={readingNode} canvas={canvas} setup={door !== "problems" && source ? { text: source.text, quotes: source.quotes } : null} onClose={() => setReading(null)} />}
           </div>
           {(v.groups.length > 0 || connected.length > 0) && (
             <div className="flex max-h-[40%] flex-col gap-[14px] overflow-y-auto border-t border-line-subtle p-[12px]">
