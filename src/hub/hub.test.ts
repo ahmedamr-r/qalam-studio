@@ -7,7 +7,7 @@ import type { Project } from "@/projects/model";
 import { dot, mmr, rrf, scoped } from "./fuse";
 import { orgGraph } from "./graph";
 import { pack, tokensOf } from "./pack";
-import { boardPieces, cardRef, contextPieces, decisionPieces, goalPieces, meaningText, searchText, sourcePieces } from "./pieces";
+import { boardPieces, cardRef, contextPieces, decisionPieces, goalPieces, meaningText, searchText, seenPieces, sourcePieces } from "./pieces";
 import { ftsQuery, queryWords } from "./words";
 
 const names = { product: (id: string) => ({ grocery: "Grocery" })[id] };
@@ -124,6 +124,33 @@ describe("pieces of the organization's files", () => {
       { from: "hub:goal:r", to: "hub:quote:q1", kind: "backs" },
     ]);
     expect(searchText(b.pieces[1], ["More weekly reorders"])).toBe("A goal of Grocery · under “2M AED a month” · about “More weekly reorders”\nWeekly reorders (Reorders: 1.3 → 1.5 orders)");
+  });
+});
+
+describe("what people see, as pieces", () => {
+  it("makes each screen and each flow a piece: a screen in its flows, a flow for the goal it serves", () => {
+    const screen = (key: string, name: string, more = {}) => ({ key, name, shots: [`asset:${key.padStart(24, "0")}`], states: {}, kind: "list" as const, can: [], nav: [], by: "qalam" as const, at, ...more });
+    const b = seenPieces(
+      {
+        key: "grocery",
+        product: "grocery",
+        readAt: at,
+        screens: [screen("cart", "Cart", { does: "Lists the basket", can: [{ label: "Checkout" }], states: { x: "With a coupon" } }), screen("pay", "Pay")],
+        flows: [{ key: "checkout", name: "Checkout", aim: "to pay", goal: "r", steps: ["cart", "pay"], moves: [], notShown: ["A failed payment"], by: "qalam", at }],
+        gone: [],
+      },
+      names,
+    );
+    expect(b.pieces.map((p) => [p.ref, p.sub, p.line, p.text])).toEqual([
+      ["hub:screen:grocery:cart", "screen", "What people see in Grocery · a list screen, from a screenshot", "Cart: Lists the basket You can: “Checkout” Also shown: With a coupon"],
+      ["hub:screen:grocery:pay", "screen", "What people see in Grocery · a list screen, from a screenshot", "Pay"],
+      ["hub:flow:grocery:checkout", "flow", "What people see in Grocery · a flow of 2 screens", "Checkout (to pay): Cart → Pay. Not shown yet: A failed payment"],
+    ]);
+    expect(b.edges).toEqual([
+      { from: "hub:screen:grocery:cart", to: "hub:flow:grocery:checkout", kind: "in" },
+      { from: "hub:screen:grocery:pay", to: "hub:flow:grocery:checkout", kind: "in" },
+      { from: "hub:flow:grocery:checkout", to: "hub:goal:r", kind: "for" },
+    ]);
   });
 });
 

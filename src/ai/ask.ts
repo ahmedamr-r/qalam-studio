@@ -46,6 +46,7 @@ export const ASK_SYSTEM = `You are Qalam AI. You answer a product team's questio
 - boards/*.json: Opportunity Solution Trees (an outcome, customers' needs under it, solutions, tests) with each card's evidence.
 - decisions/*.md: what the team decided on its boards, and why.
 - about.md, products/*.md: what the organization and its products are.
+- hub/seen/*.md: what people see in each product, from its screenshots: its flows (each screen in order, the control that leads to the next, what isn't shown yet) and each screen's notes (what it's for, what's on it, its controls). The screenshots themselves are the images in assets/ the file links to; Read one when the notes don't answer.
 
 Tools: the organization's own search (search: words, meaning and links; get: one piece and what links to it; decisions), and Read, Grep and Glob for the files. Start from the guide and the pieces below, search for what they don't cover, and open sources for customers' exact words. A few searches are usually enough.
 

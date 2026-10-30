@@ -11,7 +11,7 @@ import { sourcesIn, verifyAnswer, type AskAnswer, type Found } from "@/hub/ask";
 import { sectionCounts } from "@/hub/topics";
 import { goalsText } from "@/goals/text";
 import { contextText, readFrontMatter } from "@/org/context-md";
-import { orgHref, projectHref, topicHref } from "@/projects/model";
+import { orgHref, projectHref, seenHref, topicHref } from "@/projects/model";
 import type { OrgIndex, PieceRow } from "./index/indexer";
 import { indexFor } from "./index/registry";
 import { packFor, search } from "./index/search";
@@ -58,6 +58,8 @@ function pieceFound(store: OrgStore, row: PieceRow, sourceText: string | null, b
   const href =
     row.type === "page"
       ? topicHref(row.ref.split(":")[2], org)
+      : row.sub === "screen" || row.sub === "flow"
+        ? seenHref(row.ref.split(":")[2], { org })
       : (row.type === "quote" || row.type === "need") && row.source && onBoard
         ? `${board(onBoard)}?source=${encodeURIComponent(row.source)}`
         : row.board
@@ -74,7 +76,11 @@ function pieceFound(store: OrgStore, row: PieceRow, sourceText: string | null, b
             ? `“${row.title ?? ""}” on ${store.getProject(row.board ?? "")?.record.name ?? "a board"}`
             : row.type === "need"
               ? `A need in ${row.title ?? "a source"}`
-              : (row.title ?? row.type);
+              : row.sub === "screen"
+                ? `Screen: ${row.title ?? ""}`
+                : row.sub === "flow"
+                  ? `Flow: ${row.title ?? ""}`
+                  : (row.title ?? row.type);
   return { text: sourceText ? `${row.text}\n${sourceText}` : row.text, label, ...(href ? { href } : {}) };
 }
 
@@ -89,6 +95,10 @@ function fileFound(store: OrgStore, rel: string, text: string, boardsOf: (source
   if (parts[0] === "hub" && parts[1] === "topics") {
     const title = /^# +(.*)$/m.exec(text)?.[1]?.trim();
     return { text, label: `Topic page: ${title ?? rel}`, ...(typeof front.id === "string" ? { href: topicHref(front.id, org) } : {}) };
+  }
+  if (parts[0] === "hub" && parts[1] === "seen" && rel.endsWith(".md")) {
+    const key = path.basename(rel, ".md");
+    return { text, label: /^# +(.*)$/m.exec(text)?.[1]?.trim() ?? rel, href: seenHref(key, { org }) };
   }
   if (parts[0] === "boards" && rel.endsWith(".json")) {
     try {
@@ -160,6 +170,8 @@ async function guide(store: OrgStore, q: AskRequest): Promise<Guide> {
   if (sources.length) out.push("", "Sources (file · title · kind · quotes picked out):", ...sources.map((s) => `- ${store.sourceFile(s.id)} · ${one(s.title)} · ${s.kind} · ${s.quotes.length}`));
   const months = store.decisionFiles();
   if (months.length) out.push("", `Decisions: ${months.join(", ")}`);
+  const seen = await store.listSeen();
+  if (seen.length) out.push("", "What people see (file · for · screens · flows):", ...seen.map((m) => `- hub/seen/${m.key}.md · ${name(m.product)} · ${m.screens.length} · ${m.flows.map((f) => one(f.name)).join(", ") || "no flow yet"}`));
   const byName = new Map<string, string>();
   for (const t of topics) {
     byName.set(t.file, t.id);
@@ -179,7 +191,7 @@ function orgTools(store: OrgStore, ix: OrgIndex | null, product: string | null |
   return [
     {
       name: "search",
-      description: "Search the organization's knowledge by words, meaning and links: customers' quotes, the needs seen in sources, cards on boards, assumptions, decisions, topic page lines, what its products are. Returns each piece's ref (cite it as a source), what it is and where it's from, and its words.",
+      description: "Search the organization's knowledge by words, meaning and links: customers' quotes, the needs seen in sources, cards on boards, assumptions, decisions, topic page lines, what its products are, and their screens and flows from screenshots. Returns each piece's ref (cite it as a source), what it is and where it's from, and its words.",
       inputSchema: { type: "object", properties: { query: { type: "string", description: "What to look for, in plain words" }, limit: { type: "number", description: "At most this many pieces (default 12)" } }, required: ["query"] },
       run: async (a) => {
         if (!ix) return "Search isn't available here: use Grep over the files.";

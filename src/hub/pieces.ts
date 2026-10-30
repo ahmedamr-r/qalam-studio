@@ -1,5 +1,6 @@
 import type { Doc } from "@/doc/schema";
 import type { ProductMap } from "@/code/map";
+import type { SeenMap } from "@/seen/types";
 import { dayOf, type Decision } from "@/decisions/model";
 import { metricText } from "@/discovery/dump";
 import { KIND_LABEL, stageLabel } from "@/discovery/kinds";
@@ -311,6 +312,34 @@ export function mapPieces(m: ProductMap, n: Names): Built {
       if (f.goal && si === 0) edges.push({ from: ref, to: goalRef(f.goal), kind: "for" });
     }),
   );
+  return { pieces, edges, entities: [] };
+}
+
+// ---------------------------------------------------------------------------
+// What people see in a product, from its screenshots (hub/seen/*.md): each screen a piece (what
+// it's for, what's on it, its controls as it shows them), each flow a piece (its screens in
+// order); a screen is in its flows, a flow is for the goal it serves
+
+export const screenRef = (key: string, screen: string) => `hub:screen:${key}:${screen}`;
+export const flowRef = (key: string, flow: string) => `hub:flow:${key}:${flow}`;
+
+export function seenPieces(m: SeenMap, n: Names): Built {
+  const pieces: HubPiece[] = [];
+  const edges: HubEdge[] = [];
+  const who = m.product ? (n.product(m.product) ?? "a product") : "the organization";
+  const names = new Map(m.screens.map((s) => [s.key, s.name]));
+  for (const s of m.screens) {
+    const states = Object.values(s.states).filter(Boolean);
+    const text = [`${s.name}${s.does ? `: ${s.does}` : ""}`, s.on ? `On it: ${s.on}` : "", s.can.length ? `You can: ${s.can.map((c) => `“${c.label}”`).join(", ")}` : "", states.length ? `Also shown: ${states.join("; ")}` : ""].filter(Boolean).join(" ");
+    pieces.push({ ref: screenRef(m.key, s.key), type: "context", sub: "screen", text, line: join(`What people see in ${who}`, `a ${s.kind} screen, from a screenshot`), title: s.name, product: m.product, at: s.at });
+  }
+  for (const f of m.flows) {
+    const ref = flowRef(m.key, f.key);
+    const text = `${f.name}${f.aim ? ` (${f.aim})` : ""}: ${f.steps.map((s) => names.get(s) ?? s).join(" → ")}${f.notShown.length ? `. Not shown yet: ${f.notShown.join("; ")}` : ""}`;
+    pieces.push({ ref, type: "context", sub: "flow", text, line: join(`What people see in ${who}`, `a flow of ${f.steps.length} screens`), title: f.name, product: m.product, at: f.at });
+    for (const s of new Set(f.steps)) edges.push({ from: screenRef(m.key, s), to: ref, kind: "in" });
+    if (f.goal) edges.push({ from: ref, to: goalRef(f.goal), kind: "for" });
+  }
   return { pieces, edges, entities: [] };
 }
 
