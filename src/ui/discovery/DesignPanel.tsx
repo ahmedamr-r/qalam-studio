@@ -13,6 +13,7 @@ import { useOrgContext } from "@/org/context";
 import { updateProject, useProject } from "@/projects/session";
 import PropertiesPanel from "../PropertiesPanel";
 import { getController } from "../CanvasView";
+import { useWords } from "../frame/store";
 import CardPanel from "./CardPanel";
 import KindMark from "./KindMark";
 import { useDiscovery } from "./store";
@@ -160,13 +161,14 @@ function OutcomeButton({ id, depth }: { id: string; depth: number }) {
 function BoardProduct() {
   const products = useOrgContext((s) => s.products);
   const product = useProject((s) => s.project?.product ?? null);
+  const words = useWords();
   const value = product && products.some((p) => p.id === product) ? product : "org";
   return (
     <Field label="For">
       <Select
         ariaLabel="The product this board is for"
         value={value}
-        options={[{ value: "org", label: "The whole organization" }, ...products.map((p) => ({ value: p.id, label: p.name }))]}
+        options={[{ value: "org", label: words.whole }, ...products.map((p) => ({ value: p.id, label: p.name }))]}
         onChange={(v) => void updateProject({ product: v === "org" ? undefined : v })}
       />
     </Field>

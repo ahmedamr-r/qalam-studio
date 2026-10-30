@@ -1,8 +1,11 @@
+import type { OrgShape } from "@/org/words";
+
 /*
  * The welcome's steps (pure): Qalam AI found and tested, the organization named, who they are
  * (their name and position there), talking instead of typing (once per Mac), its goals (written down, or found in what they write about it),
  * which are theirs, and what to connect for them (from who they are on, the setup page, src/ui/setup). Like OpenClaw's QuickStart: everything
- * else is "set up later", and running it again only checks.
+ * else is "set up later", and running it again only checks. On your own there's no "which are
+ * theirs": every goal is yours.
  */
 
 export type WelcomeStep = "engine" | "name" | "you" | "voice" | "goals" | "yours" | "connect";
@@ -16,6 +19,9 @@ export const WELCOME_STEPS: readonly { id: WelcomeStep; label: string }[] = [
   { id: "yours", label: "Yours" },
   { id: "connect", label: "Connect" },
 ];
+
+/** The steps for a team, or for one person on their own (no "Yours"). */
+export const stepsFor = (shape?: OrgShape | null) => (shape === "solo" ? WELCOME_STEPS.filter((s) => s.id !== "yours") : WELCOME_STEPS);
 
 export type StepState = "done" | "now" | "next";
 
@@ -46,13 +52,17 @@ export interface FirstRunKept {
   picked: boolean;
   /** Finish was clicked on this computer. */
   finished: boolean;
+  /** A team's, or one person's own (none: a team). */
+  shape?: OrgShape | null;
 }
 
 /** Where the first run picks up again (the home's card), and how many steps are behind it; null: it's finished. */
 export function firstRunLeft(k: FirstRunKept): { step: SetupStep; done: number; of: number } | null {
   if (k.finished) return null;
-  const step: SetupStep = !k.you ? "you" : !k.voice ? "voice" : k.settingUp || !k.goals ? "goals" : !k.picked ? "yours" : "connect";
-  return { step, done: WELCOME_STEPS.findIndex((s) => s.id === step), of: WELCOME_STEPS.length };
+  const solo = k.shape === "solo";
+  const step: SetupStep = !k.you ? "you" : !k.voice ? "voice" : k.settingUp || !k.goals ? "goals" : !k.picked && !solo ? "yours" : "connect";
+  const steps = stepsFor(k.shape);
+  return { step, done: steps.findIndex((s) => s.id === step), of: steps.length };
 }
 
 /**

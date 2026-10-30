@@ -1,4 +1,5 @@
 import type { Topic } from "@/hub/topics";
+import { wordsFor, type OrgShape } from "@/org/words";
 import type { GoalProblem } from "./problems";
 import type { Goal } from "./types";
 
@@ -27,8 +28,8 @@ export const GAP_LIMITS = { problems: 8, questions: 4, perPage: 2 } as const;
 
 const one = (s: string) => s.replace(/\s+/g, " ").trim();
 
-/** The gaps, the goal's own number first, then its problems (the ones that bear most directly first). */
-export function gapsOf(goal: Goal, problems: GoalProblem[], topics: ReadonlyMap<string, Topic>): Gap[] {
+/** The gaps, the goal's own number first, then its problems (the ones that bear most directly first). On your own, it's whether only you say so. */
+export function gapsOf(goal: Goal, problems: GoalProblem[], topics: ReadonlyMap<string, Topic>, shape?: OrgShape | null): Gap[] {
   const out: Gap[] = [];
   const m = goal.metric;
   const name = m?.name?.trim();
@@ -40,7 +41,7 @@ export function gapsOf(goal: Goal, problems: GoalProblem[], topics: ReadonlyMap<
   if (!problems.length) out.push({ key: `no-problems:${goal.id}`, kind: "no-problems", title: "Which customer problems would move it" });
   const top = problems.slice(0, GAP_LIMITS.problems);
   for (const p of top)
-    if (!p.quotes) out.push({ key: `team-only:${p.topic}`, kind: "team-only", title: `Whether customers have “${one(p.title)}”, or only the team says so`, page: p.topic });
+    if (!p.quotes) out.push({ key: `team-only:${p.topic}`, kind: "team-only", title: `Whether customers have “${one(p.title)}”, or ${wordsFor(shape).onlyUs}`, page: p.topic });
     else if (!p.segments.length) out.push({ key: `no-segment:${p.topic}`, kind: "no-segment", title: `Who has “${one(p.title)}”`, page: p.topic });
   let questions = 0;
   for (const p of top) {

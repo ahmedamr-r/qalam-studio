@@ -29,7 +29,8 @@ import { acceptLines, placeSetup, retrySetup, skipSetupRest, startBoard, useSetu
 import { connectFor } from "../welcome/steps";
 import { Dictated } from "../voice/MicButton";
 import { ParakeetInstall } from "../voice/ParakeetInstall";
-import { checkEngine, finishFirstRun, goStep, keySaved, openKeyField, openSoFar, pickDoor, saveVoice, saveYou, saveYours, skipEngine, togglePick, useFirstRun } from "./flow";
+import { wordsFor } from "@/org/words";
+import { checkEngine, finishFirstRun, goStep, keySaved, openKeyField, openSoFar, pickDoor, pickShape, saveVoice, saveYou, saveYours, skipEngine, togglePick, useFirstRun } from "./flow";
 import { treeRows } from "./soFar";
 
 /*
@@ -151,6 +152,13 @@ function ChoicesPart({ data }: { data: PartData }) {
   );
   const n = Number(data.n ?? 0);
   switch (data.set) {
+    case "shape":
+      return (
+        <ReplyChips>
+          {chip("A company or team", () => pickShape("team"))}
+          {chip("Just me, on my own idea", () => pickShape("solo"))}
+        </ReplyChips>
+      );
     case "door":
       return (
         <ReplyChips>
@@ -194,7 +202,7 @@ function ChoicesPart({ data }: { data: PartData }) {
         </ReplyChips>
       );
     case "goals-in":
-      return <ReplyChips>{chip("Next: which are yours", () => goStep("yours"), true)}</ReplyChips>;
+      return <ReplyChips>{data.solo ? chip("Next: what to connect", () => goStep("connect"), true) : chip("Next: which are yours", () => goStep("yours"), true)}</ReplyChips>;
     case "verify":
       return (
         <ReplyChips>
@@ -306,7 +314,7 @@ function AnswersPart({ data }: { data: PartData }) {
 // ---------------------------------------------------------------------------
 // Who they are
 
-/** Their name (this Mac's, filled in when it has one) and their position at this organization. */
+/** Their name (this Mac's, filled in when it has one) and their position at this organization; on their own, only the name. */
 function YouPart({ data }: { data: PartData }) {
   const saved = useYou((y) => y.name);
   const me = useGoals((g) => g.me);
@@ -317,8 +325,9 @@ function YouPart({ data }: { data: PartData }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   if (!data.open) return null;
+  const solo = !!data.solo;
   const n = name ?? saved ?? "";
-  const p = position ?? me?.position ?? null;
+  const p = solo ? "solo" : (position ?? (me?.position === "solo" ? null : me?.position) ?? null);
   const t = title ?? me?.title ?? "";
   const ready = !!n.trim() && !!p && (p !== "other" || !!t.trim());
   const save = () => {
@@ -342,20 +351,22 @@ function YouPart({ data }: { data: PartData }) {
         <span className="text-caption text-fg-muted">Your name</span>
         <input className="ds-input placeholder:text-fg-faint" dir="auto" maxLength={NAME_MAX} placeholder="Ahmed" value={n} autoFocus={!n} onChange={(e) => setName(e.target.value)} />
       </label>
-      <div className="flex flex-col gap-[4px]">
-        <span className="text-caption text-fg-muted">Your position at {org}</span>
-        <div className="grid grid-cols-2 gap-[6px]" role="radiogroup" aria-label={`Your position at ${org}`}>
-          {POSITIONS.map((o) => (
-            <button key={o.value} type="button" role="radio" aria-checked={p === o.value} className={cardCls(p === o.value)} onClick={() => setPosition(o.value)}>
-              <Radio on={p === o.value} />
-              <span className="text-body font-medium text-fg">{o.label}</span>
-            </button>
-          ))}
+      {!solo && (
+        <div className="flex flex-col gap-[4px]">
+          <span className="text-caption text-fg-muted">Your position at {org}</span>
+          <div className="grid grid-cols-2 gap-[6px]" role="radiogroup" aria-label={`Your position at ${org}`}>
+            {POSITIONS.map((o) => (
+              <button key={o.value} type="button" role="radio" aria-checked={p === o.value} className={cardCls(p === o.value)} onClick={() => setPosition(o.value)}>
+                <Radio on={p === o.value} />
+                <span className="text-body font-medium text-fg">{o.label}</span>
+              </button>
+            ))}
+          </div>
+          {p === "other" && (
+            <input className="ds-input q-fade placeholder:text-fg-faint" dir="auto" maxLength={TITLE_MAX} placeholder="Senior PM, Payments" value={t} autoFocus aria-label="Your position" onChange={(e) => setTitle(e.target.value)} />
+          )}
         </div>
-        {p === "other" && (
-          <input className="ds-input q-fade placeholder:text-fg-faint" dir="auto" maxLength={TITLE_MAX} placeholder="Senior PM, Payments" value={t} autoFocus aria-label="Your position" onChange={(e) => setTitle(e.target.value)} />
-        )}
-      </div>
+      )}
       {error && <ErrorNote message={error} />}
       <ReplyChips>
         <button type="submit" disabled={!ready || saving} className={r.replyChipPrimary}>
@@ -559,7 +570,7 @@ function AllSetPart() {
             <span className="truncate text-body text-fg" dir="auto">
               {line.text}
             </span>
-            <span className="text-micro text-fg-subtle">{product ? (products.find((p) => p.id === product)?.name ?? "A product") : "The whole organization"}</span>
+            <span className="text-micro text-fg-subtle">{product ? (products.find((p) => p.id === product)?.name ?? "A product") : wordsFor(org?.shape).whole}</span>
           </span>
           <Button
             size="sm"
@@ -590,7 +601,7 @@ function AllSetPart() {
       )}
       <ReplyChips>
         <a href={orgHref()} className={r.replyChipPrimary}>
-          Go to {org?.name ?? "the organization"}
+          Go to {org?.name ?? `the ${wordsFor(org?.shape).org}`}
         </a>
         <a href={placeHref("connections")} className={r.replyChip}>
           Connections

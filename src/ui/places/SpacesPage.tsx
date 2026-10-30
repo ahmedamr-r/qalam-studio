@@ -2,6 +2,7 @@ import clsx from "clsx";
 import { ArrowRight, Plus, Star, Target } from "lucide-react";
 import { useGoals } from "@/goals/client";
 import { newProduct, productOf, saveProduct, useOrgContext } from "@/org/context";
+import { wordsFor } from "@/org/words";
 import { spaceHref } from "@/projects/model";
 import { r } from "../recipes";
 import { promptDialog } from "../surfaces/dialog";
@@ -27,6 +28,7 @@ const count = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
 
 export default function SpacesPage() {
   const org = useCurrentOrg();
+  const words = wordsFor(org?.shape);
   const { products, about } = useOrgContext();
   const tree = useGoals();
   const topics = useTopics();
@@ -35,7 +37,7 @@ export default function SpacesPage() {
   const summary = (space: Space) => spaceSummary(space, { goals: tree.goals, north: tree.north, topics, sources });
 
   const addProduct = async () => {
-    const name = await promptDialog({ title: "New product", body: "Goals, problems, boards and sources can be for one product, or for the whole organization.", label: "Name", placeholder: "Grocery app", confirmLabel: "Add product", validate: (v) => (v.trim() ? null : "Name it") });
+    const name = await promptDialog({ title: "New product", body: `Goals, problems, boards and sources can be for one product, or for the whole ${words.org}.`, label: "Name", placeholder: "Grocery app", confirmLabel: "Add product", validate: (v) => (v.trim() ? null : "Name it") });
     if (!name) return;
     const p = newProduct(name);
     await saveProduct(p);
@@ -50,10 +52,10 @@ export default function SpacesPage() {
       <div className={clsx(r.pageMain, "max-w-[760px] gap-[24px] pt-[48px]")}>
         <div className="flex flex-col gap-[4px]">
           <h1 className="text-display font-semibold text-fg">Where do you want to work?</h1>
-          <p className="text-body text-fg-muted">{name ? `${name} as a whole, or one of its products. You can switch any time from the top of the sidebar.` : "The whole organization, or one of its products."}</p>
+          <p className="text-body text-fg-muted">{name ? `${name} as a whole, or one of its products. You can switch any time from the top of the sidebar.` : `${words.whole}, or one of its products.`}</p>
         </div>
 
-        <SpaceCard space={null} name={name} line={about.context.split("\n")[0]?.trim() || "The whole organization"} summary={summary(null)} here={last === null} wide />
+        <SpaceCard space={null} name={name} line={about.context.split("\n")[0]?.trim() || words.whole} summary={summary(null)} here={last === null} wide />
 
         <section aria-labelledby="products" className="flex flex-col gap-[10px]">
           <h2 id="products" className="text-title font-medium">
@@ -76,7 +78,7 @@ export default function SpacesPage() {
               </button>
             </li>
           </ul>
-          {!products.length && <p className="text-caption text-fg-subtle">No products yet. Add one when a product has goals, customers or a team of its own; until then everything is the organization&apos;s.</p>}
+          {!products.length && <p className="text-caption text-fg-subtle">No products yet. Add one when a product has goals, customers or a team of its own; until then everything is the {words.org}&apos;s.</p>}
         </section>
       </div>
     </PageFrame>

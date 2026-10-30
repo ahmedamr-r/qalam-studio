@@ -6,6 +6,7 @@ import { runCommand } from "@/commands/registry";
 import { usePagePalette } from "@/commands/pages";
 import { listProjects } from "@/projects/library";
 import { useOrgContext } from "@/org/context";
+import { wordsFor } from "@/org/words";
 import { goalHref, projectHref, spaceHref, topicHref, type Project } from "@/projects/model";
 import { TOPIC_KIND_LABEL } from "@/hub/topics";
 import { QalamAIGlyph } from "../brand";
@@ -74,7 +75,7 @@ function Palette({ space }: { space: Space }) {
       const Icon = ICONS[p.id];
       add("Go to", `place:${p.id}`, p.label, <Icon {...ICON} />, () => navigate(spaceHref(space, p.id)));
     }
-    if (q) for (const s of [{ id: null, name: org?.name ?? "Organization" }, ...products]) add("Spaces", `space:${s.id ?? ""}`, s.name, <SpaceTile name={s.name} size="sm" />, () => navigate(spaceHref(s.id)), s.id ? "Product" : "The whole organization");
+    if (q) for (const s of [{ id: null, name: org?.name ?? "Organization" }, ...products]) add("Spaces", `space:${s.id ?? ""}`, s.name, <SpaceTile name={s.name} size="sm" />, () => navigate(spaceHref(s.id)), s.id ? "Product" : wordsFor(org?.shape).whole);
     if (q) for (const g of goals) add("Goals", `goal:${g.id}`, g.title, <Target {...ICON} />, () => navigate(goalHref(g.id)), "Goal");
     for (const b of boards.slice(0, q ? boards.length : 4)) add("Boards", `board:${b.id}`, b.name, <Network {...ICON} />, () => navigate(projectHref(b)), "Board");
     if (q) for (const t of topics ?? []) add("Problems and pages", `topic:${t.id}`, t.title, <NotebookText {...ICON} />, () => navigate(topicHref(t.id)), TOPIC_KIND_LABEL[t.kind]);

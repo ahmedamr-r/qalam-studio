@@ -3,7 +3,7 @@ import { BUCKET_MAX, QA, questionItem } from "@/ai/plan";
 import { CHALLENGE_KINDS, DUMP_MAX_CHARS, DUMP_ROLES, MAX_DUMP_ROUNDS } from "@/discovery/dump";
 import { OUTLINE_LIMITS } from "@/goals/outline";
 import { SETUP_LIMITS } from "@/org/setup";
-import { NAME_MAX, POSITIONS, TITLE_MAX, personLine, type Position } from "@/org/you";
+import { ALL_POSITIONS, NAME_MAX, TITLE_MAX, personLine, type Position } from "@/org/you";
 
 /*
  * Setting an organization up from a brain dump about it (src/org/setup.ts): read the dump (what
@@ -18,7 +18,7 @@ import { NAME_MAX, POSITIONS, TITLE_MAX, personLine, type Position } from "@/org
 const text = (max: number) => z.string().max(max);
 const FieldsIn = { audience: text(2000), goals: z.array(text(300)).max(30), context: text(4000), segments: z.array(text(200)).max(30) };
 /** Who's answering, as they said in the first run (their name, their position there). */
-const Person = z.object({ name: text(NAME_MAX), position: z.enum(POSITIONS.map((p) => p.value) as [Position, ...Position[]]), title: text(TITLE_MAX).optional() }).optional();
+const Person = z.object({ name: text(NAME_MAX), position: z.enum(ALL_POSITIONS.map((p) => p.value) as [Position, ...Position[]]), title: text(TITLE_MAX).optional() }).optional();
 const Base = {
   /** The organization's name. */
   name: text(80),

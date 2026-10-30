@@ -3,6 +3,7 @@ import { setMe, setMine, useGoals } from "@/goals/client";
 import { codeDb } from "@/org/code";
 import { connectorsDb, type ConnectorState } from "@/org/connectors";
 import { createOrg, currentOrg, type OrgRef } from "@/org/client";
+import { orgShape, type OrgShape } from "@/org/words";
 import { engineDb, type EngineTest, type EngineView } from "@/org/engine";
 import { chooseVoice, loadVoice } from "@/org/voice";
 import { loadYou, setYourName, type Me } from "@/org/you";
@@ -29,6 +30,8 @@ export interface FirstRun {
   /** The setup page as the first run's last three steps (?first=1). */
   first: boolean;
   org: OrgRef | null;
+  /** A company or team, or just them: picked on the welcome before the name (`?for=`), then the organization's. */
+  shape: OrgShape | null;
   engine: { view: EngineView | null; test: EngineTest | null; checking: boolean; error: string | null; keyOpen: boolean; skipped: boolean };
   naming: { name: string | null; busy: boolean; error: string | null };
   step: SetupStep;
@@ -50,6 +53,7 @@ export const useFirstRun = create<FirstRun>(() => ({
   mode: "first",
   first: true,
   org: null,
+  shape: null,
   engine: { view: null, test: null, checking: false, error: null, keyOpen: false, skipped: false },
   naming: { name: null, busy: false, error: null },
   step: "goals",
@@ -70,9 +74,18 @@ export const engineDone = (s: FirstRun) => !!s.engine.test?.ok || s.engine.skipp
 // ---------------------------------------------------------------------------
 // The welcome
 
+const shapeIn = (search: string) => orgShape(new URLSearchParams(search).get("for"));
+
 export function startWelcome(search: string) {
-  useFirstRun.setState({ route: "welcome", mode: welcomeMode(search) });
+  useFirstRun.setState({ route: "welcome", mode: welcomeMode(search), shape: shapeIn(search) });
   void checkEngine();
+  window.addEventListener("popstate", () => useFirstRun.setState({ shape: shapeIn(window.location.search) }));
+}
+
+/** Who it's for, before its name (in the address, so Back takes it back). */
+export function pickShape(shape: OrgShape) {
+  push({ for: shape });
+  useFirstRun.setState({ shape });
 }
 
 /** What this Mac has, tested with a short real call: Claude Code signed in, with no key set, is used. */
@@ -105,7 +118,7 @@ export async function keySaved() {
 export async function nameOrg(name: string): Promise<boolean> {
   useFirstRun.setState({ naming: { name, busy: true, error: null } });
   try {
-    const org = await createOrg(name);
+    const org = await createOrg(name, useFirstRun.getState().shape ?? undefined);
     window.location.assign(`${setupHref(org.id)}?first=1&step=you`);
     return true;
   } catch (e) {
@@ -129,7 +142,7 @@ export async function startSetupPage(search: string) {
   const first = new URLSearchParams(search).get("first") === "1";
   useFirstRun.setState({ route: "setup", first, step: at.step, door: at.door });
   const org = await currentOrg().catch(() => null);
-  useFirstRun.setState({ org });
+  useFirstRun.setState({ org, shape: org?.shape ?? null });
   if (org) openKnow(org.id);
   void loadYou().catch(() => {});
   void loadVoice();

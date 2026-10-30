@@ -4,6 +4,7 @@ import { ArrowRight } from "lucide-react";
 import type { SourceRecord } from "@/discovery/sources";
 import { useGoals } from "@/goals/client";
 import type { OrgRef } from "@/org/client";
+import type { OrgShape } from "@/org/words";
 import { firstRunDb, type FirstRunView } from "@/org/first-run";
 import { loadVoice } from "@/org/voice";
 import { loadYou, useYou } from "@/org/you";
@@ -28,7 +29,7 @@ const ICON = { size: 14, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const
 const settingUp = (sources: SourceRecord[]) => sources.filter((s) => s.setup && s.setup.phase !== "done").sort((a, b) => b.addedAt - a.addedAt)[0];
 
 /** Where the first run picks up (null: finished; undefined: still finding out). */
-export function useFirstRunLeft(sources: SourceRecord[]): Left | null | undefined {
+export function useFirstRunLeft(sources: SourceRecord[], shape?: OrgShape | null): Left | null | undefined {
   const name = useYou((y) => y.name);
   const youLoaded = useYou((y) => y.loaded);
   const goals = useGoals();
@@ -43,13 +44,13 @@ export function useFirstRunLeft(sources: SourceRecord[]): Left | null | undefine
   const you = !!name && !!goals.me;
   // Voice is only asked once who they are is in.
   if (run.done === null && you && voice === undefined) return undefined;
-  return firstRunLeft({ you, voice: voice === undefined || voiceSettled(voice), goals: goals.goals.length, settingUp: !!settingUp(sources), picked: run.picked, finished: run.done !== null });
+  return firstRunLeft({ you, voice: voice === undefined || voiceSettled(voice), goals: goals.goals.length, settingUp: !!settingUp(sources), picked: run.picked, finished: run.done !== null, shape });
 }
 
-function nextLine(step: SetupStep, org: string, waiting: boolean): string {
+function nextLine(step: SetupStep, org: string, waiting: boolean, solo: boolean): string {
   switch (step) {
     case "you":
-      return `Next: who you are at ${org}, so Qalam AI asks you the right questions.`;
+      return solo ? "Next: your name, so Qalam AI knows who it's talking to." : `Next: who you are at ${org}, so Qalam AI asks you the right questions.`;
     case "voice":
       return "Next: talking instead of typing. It runs on this Mac, and nothing you say leaves it.";
     case "goals":
@@ -67,7 +68,7 @@ export function ContinueSetup({ org, left, sources }: { org: OrgRef; left: Left;
   return (
     <section aria-labelledby="continue-setup" className="q-rise flex flex-col gap-[16px] rounded-lg bg-panel p-[10px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)] sm:flex-row sm:items-center">
       <a href={href} tabIndex={-1} aria-hidden className="flex h-[140px] shrink-0 justify-center overflow-hidden rounded-md bg-app shadow-[inset_0_0_0_1px_var(--color-line-subtle)] sm:w-[248px]">
-        <SetupPicture done={left.done} />
+        <SetupPicture done={left.done} of={left.of} />
       </a>
       <div className="flex min-w-0 flex-col items-start gap-[6px] px-[6px] pb-[6px] sm:py-[6px] sm:pr-[16px]">
         <span className="text-caption text-fg-subtle tnum">
@@ -76,7 +77,7 @@ export function ContinueSetup({ org, left, sources }: { org: OrgRef; left: Left;
         <h2 id="continue-setup" className="text-heading font-medium text-fg">
           Finish setting up {org.name}
         </h2>
-        <p className="max-w-[520px] text-body text-fg-muted">{nextLine(left.step, org.name, !!waiting)} What you&apos;ve done is kept.</p>
+        <p className="max-w-[520px] text-body text-fg-muted">{nextLine(left.step, org.name, !!waiting, org.shape === "solo")} What you&apos;ve done is kept.</p>
         <a href={href} className={clsx(r.button, r.buttonPrimary, "mt-[6px]")}>
           Continue setup <ArrowRight {...ICON} />
         </a>
@@ -93,13 +94,14 @@ const BAR = [28, 24, 12, 18, 18, 18, 26];
 const GOALS_AT = WELCOME_STEPS.findIndex((s) => s.id === "goals");
 
 /** The setup's three panels on the backdrop: steps done ticked, the one now ringed, goals dashed until they're in. */
-function SetupPicture({ done }: { done: number }) {
+function SetupPicture({ done, of }: { done: number; of: number }) {
   const goalsIn = done > GOALS_AT;
+  const bars = BAR.slice(0, of);
   return (
     <svg width={248} height={140} viewBox="0 0 248 140" aria-hidden className="shrink-0">
       {/* Steps */}
       <rect x={10.5} y={10.5} width={62} height={140} rx={6} className="fill-panel stroke-line" />
-      {BAR.map((w, i) => {
+      {bars.map((w, i) => {
         const y = 18 + i * 15;
         const state = i < done ? "done" : i === done ? "now" : "next";
         return (
@@ -123,7 +125,7 @@ function SetupPicture({ done }: { done: number }) {
         );
       })}
       <rect x={16} y={128} width={50} height={2} rx={1} className="fill-active" />
-      <rect x={16} y={128} width={(50 * done) / BAR.length} height={2} rx={1} className="fill-fg-muted" />
+      <rect x={16} y={128} width={(50 * done) / bars.length} height={2} rx={1} className="fill-fg-muted" />
 
       {/* Qalam AI */}
       <rect x={78.5} y={10.5} width={110} height={140} rx={6} className="fill-panel stroke-line" />

@@ -7,6 +7,7 @@ import { useOrgContext } from "@/org/context";
 import { onOrgChange } from "@/org/live";
 import { placeHref } from "@/projects/model";
 import { Button, IconBtn, Segmented, Select } from "../controls";
+import { useWords } from "../frame/store";
 import { r } from "../recipes";
 import { ago } from "../time";
 
@@ -30,6 +31,7 @@ export function ProductCode() {
   const [error, setError] = useState<string | null>(null);
   const [signIn, setSignIn] = useState<{ code: string; url: string } | null>(null);
   const { products } = useOrgContext();
+  const words = useWords();
   const [product, setProduct] = useState<string>("org");
   useEffect(() => {
     if (products.length && product === "org") setProduct(products[0].id);
@@ -82,7 +84,7 @@ export function ProductCode() {
   };
 
   const ready = how === "github" ? /^[\w.-]+\/[\w.-]+$/.test(repo.trim().replace(/^https?:\/\/github\.com\//i, "").replace(/\.git$/, "").replace(/\/+$/, "")) && (!!view?.gh || !!view?.signedIn) : !!folder.trim();
-  const productName = (id: string | null) => (id ? (products.find((p) => p.id === id)?.name ?? "A product") : "The whole organization");
+  const productName = (id: string | null) => (id ? (products.find((p) => p.id === id)?.name ?? "A product") : words.whole);
 
   return (
     <section aria-label="Product code" className="flex flex-col gap-[10px] rounded-lg bg-panel px-[14px] py-[12px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
@@ -164,7 +166,7 @@ export function ProductCode() {
               </Button>
             </>
           )}
-          <Select ariaLabel="The product it's for" value={product} options={[{ value: "org", label: "The whole organization" }, ...products.map((p) => ({ value: p.id, label: p.name }))]} onChange={setProduct} />
+          <Select ariaLabel="The product it's for" value={product} options={[{ value: "org", label: words.whole }, ...products.map((p) => ({ value: p.id, label: p.name }))]} onChange={setProduct} />
           <Button size="sm" disabled={!ready || !!busy} onClick={add}>
             Read it
           </Button>

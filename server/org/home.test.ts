@@ -37,6 +37,24 @@ describe("organizations", () => {
     expect((await readdir(home)).filter((n) => !n.startsWith(".")).sort()).toEqual(["Basket", "Basket 2", "سلة Basket"].sort());
   });
 
+  it("keeps who it's for in org.json, so it travels with the folder; one from before says nothing", async () => {
+    const solo = await createOrg("Meal planner", home, "solo");
+    const team = await createOrg("Basket", home);
+    expect(solo.shape).toBe("solo");
+    expect(JSON.parse(await readFile(path.join(solo.dir, "org.json"), "utf8"))).toMatchObject({ name: "Meal planner", shape: "solo" });
+    expect((await listOrgs(home)).map((o) => [o.name, o.shape ?? null])).toEqual([
+      ["Basket", null],
+      ["Meal planner", "solo"],
+    ]);
+    // Turning it into a team is one switch, and every goal stops being theirs by default.
+    const store = (await storeFor(solo.id))!;
+    expect(store.firstRun.picked).toBe(true);
+    await store.setShape("team");
+    expect(JSON.parse(await readFile(path.join(solo.dir, "org.json"), "utf8")).shape).toBe("team");
+    expect(store.firstRun.picked).toBe(false);
+    expect((await storeFor(team.id))!.info.shape).toBeUndefined();
+  });
+
   it("opens any folder as an organization, keeping its files, and lists it after", async () => {
     const repo = path.join(base, "projects", "basket-research");
     await mkdir(repo, { recursive: true });

@@ -13,6 +13,7 @@ import { QalamAIGlyph } from "../brand/ai-glyph";
 import { Button, IconBtn, Tag, Tip } from "../controls";
 import { Dots, StatusDot } from "../viz";
 import { r } from "../recipes";
+import { useWords } from "../frame/store";
 import { AddToOrg } from "./AddToOrg";
 import { ASK_EVENT, takeAskNext } from "./ask-next";
 import { MicButton, speechInto } from "../voice/MicButton";
@@ -35,6 +36,7 @@ export function AskBar({ product, topics }: { product: string | null; topics: To
   const [adding, setAdding] = useState(false);
   const ctrl = useRef<AbortController | null>(null);
   const field = useRef<HTMLInputElement>(null);
+  const { org } = useWords();
 
   const ask = async (e?: FormEvent, text?: string) => {
     e?.preventDefault();
@@ -75,14 +77,14 @@ export function AskBar({ product, topics }: { product: string | null; topics: To
   }, []);
 
   return (
-    <section aria-label="Ask the organization" data-ask-bar className="flex flex-col gap-[10px]">
+    <section aria-label={`Ask the ${org}`} data-ask-bar className="flex flex-col gap-[10px]">
       <form onSubmit={(e) => void ask(e)} className="flex items-center gap-[8px] rounded-lg bg-panel py-[6px] pr-[6px] pl-[12px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)] focus-within:shadow-[inset_0_0_0_1px_var(--color-line-strong)]">
         <QalamAIGlyph size={14} />
         <input
           ref={field}
-          aria-label="Ask what your organization knows"
+          aria-label={`Ask what your ${org} knows`}
           className={clsx(r.fieldInput, "h-[28px] text-body")}
-          placeholder="Ask what your organization knows: why do parents stop ordering?"
+          placeholder={`Ask what your ${org} knows: why do parents stop ordering?`}
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
           disabled={state.kind === "asking"}
@@ -97,14 +99,16 @@ export function AskBar({ product, topics }: { product: string | null; topics: To
             <ArrowUp {...ICON} />
           </IconBtn>
         )}
-        <IconBtn label={adding ? "Close" : "Add to the organization: interviews, tickets, notes, pages"} active={adding} onClick={() => setAdding(!adding)}>
+        <IconBtn label={adding ? "Close" : `Add to the ${org}: interviews, tickets, notes, pages`} active={adding} onClick={() => setAdding(!adding)}>
           <Plus {...ICON} />
         </IconBtn>
       </form>
       {adding && <AddToOrg product={product} />}
       {state.kind === "asking" && (
         <div role="status" className="flex flex-col gap-[2px] px-[2px] text-caption text-fg-muted">
-          <span>Qalam AI is looking through the organization for “{state.question}”…</span>
+          <span>
+            Qalam AI is looking through the {org} for “{state.question}”…
+          </span>
           {state.steps.map((s, i) => (
             <span key={i} className={clsx("truncate", i < state.steps.length - 1 && "text-fg-subtle")}>
               {s}

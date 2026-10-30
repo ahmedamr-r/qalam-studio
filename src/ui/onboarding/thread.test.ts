@@ -8,6 +8,7 @@ const base = (over: Partial<ThreadInput> = {}): ThreadInput => ({
   mode: "first",
   first: true,
   orgName: "Basket",
+  shape: null,
   engine: "ready",
   naming: { name: null, busy: false, error: null },
   person: "Ahmed · Product manager",
@@ -38,18 +39,31 @@ describe("the welcome", () => {
     expect(stepsOf(i).map((s) => s.state)).toEqual(["now", "next", "next", "next", "next", "next", "next"]);
   });
 
-  it("asks for the name once Qalam AI is ready or left for later", () => {
+  it("asks who it's for once Qalam AI is ready or left for later, and takes nothing until they pick", () => {
     for (const engine of ["ready", "skipped"] as const) {
       const i = base({ route: "welcome", engine });
-      expect(ids(threadOf(i))).toEqual(["engine", "name:ask"]);
-      expect(askOf(i)).toMatchObject({ kind: "name", submit: "enter" });
+      const m = threadOf(i);
+      expect(ids(m)).toEqual(["engine", "shape:ask"]);
+      expect(choices(m.at(-1))).toEqual(["shape"]);
+      expect(askOf(i)).toMatchObject({ kind: "none", key: "shape" });
       expect(stepsOf(i).map((s) => s.state)).toEqual(["done", "now", "next", "next", "next", "next", "next"]);
     }
   });
 
+  it("asks for an organization's name for a team, a project's for one person", () => {
+    const team = threadOf(base({ route: "welcome", shape: "team" }));
+    expect(ids(team)).toEqual(["engine", "shape:ask", "shape:you", "name:ask"]);
+    expect(team.find((x) => x.id === "shape:you")?.parts).toEqual([{ type: "text", text: "A company or team" }]);
+    expect(team.at(-1)?.parts[0]).toEqual({ type: "text", text: "What should I call your organization? A company, a client or a side project." });
+    const solo = base({ route: "welcome", shape: "solo" });
+    expect(threadOf(solo).at(-1)?.parts[0]).toEqual({ type: "text", text: "What's your project called? A working name is fine." });
+    expect(askOf(solo)).toMatchObject({ kind: "name", submit: "enter" });
+    expect(stepsOf(solo).map((s) => s.id)).toEqual(["engine", "name", "you", "voice", "goals", "connect"]);
+  });
+
   it("shows the name sent while the organization is made", () => {
-    const m = threadOf(base({ route: "welcome", naming: { name: "Basket", busy: true, error: null } }));
-    expect(ids(m)).toEqual(["engine", "name:ask", "name:you", "status:name"]);
+    const m = threadOf(base({ route: "welcome", shape: "team", naming: { name: "Basket", busy: true, error: null } }));
+    expect(ids(m)).toEqual(["engine", "shape:ask", "shape:you", "name:ask", "name:you", "status:name"]);
   });
 
   it("only checks in verify mode", () => {
@@ -187,6 +201,43 @@ describe("the goals", () => {
     expect(m.find((x) => x.id === "goals:had")?.parts[0]).toEqual({ type: "text", text: "Basket has 3 goals already." });
     expect(m.flatMap((x) => choices(x) ?? [])).toEqual([]);
     expect(threadOf(base({ step: "goals", goals: 3 })).some((x) => x.id === "goals:ask")).toBe(true);
+  });
+});
+
+describe("on your own", () => {
+  const solo = (over: Partial<ThreadInput> = {}) => base({ orgName: "Meal planner", shape: "solo", person: "Sara", ...over });
+
+  it("says who it's for on the setup page, then asks only their name", () => {
+    const i = solo({ step: "you", person: null });
+    const m = threadOf(i);
+    expect(ids(m)).toEqual(["engine", "shape:ask", "shape:you", "name:ask", "name:you", "you:ask"]);
+    expect(m.find((x) => x.id === "name:ask")?.parts[0]).toEqual({ type: "text", text: "What's your project called? A working name is fine." });
+    expect(m.at(-1)?.parts[0]).toEqual({ type: "text", text: "What's your name?" });
+    expect(m.at(-1)?.parts.find((p) => p.type === "data")).toMatchObject({ name: "you", data: { open: true, solo: true } });
+    expect(askOf(i)).toMatchObject({ kind: "none", placeholder: "Fill in your name above" });
+  });
+
+  it("an organization from before there was a choice says nothing about it", () => {
+    expect(ids(threadOf(base({ step: "you", person: null }))).some((x) => x.startsWith("shape:"))).toBe(false);
+  });
+
+  it("asks for their goals for the project, and skips which are theirs", () => {
+    const s = session({ phase: "done", proposal: { summary: "s", products: [], lines: [line("g1")] }, decided: { g1: "accepted" } });
+    const at = (step: ThreadInput["step"]) => threadOf(solo({ step, find: { session: s, pending: false, error: null, open: 0, accepted: 1 } }));
+    expect(threadOf(solo()).find((x) => x.id === "goals:ask")?.parts[0]).toEqual({ type: "text", text: "Let's start with your goals for Meal planner. Do you know them, or shall I help find them?" });
+    const done = at("goals").find((x) => x.id === "goals:in")!;
+    expect(done.parts[0]).toEqual({ type: "text", text: "1 line written to Meal planner. Next: what to connect." });
+    expect(done.parts.find((p) => p.type === "data")).toMatchObject({ data: { set: "goals-in", solo: true } });
+    expect(ids(at("connect")).slice(-2)).toEqual(["goals:in", "connect:ask"]);
+    expect(ids(at("connect")).some((x) => x.startsWith("yours:"))).toBe(false);
+    expect(stepsOf(solo({ step: "connect" })).map((x) => [x.id, x.state])).toEqual([
+      ["engine", "done"],
+      ["name", "done"],
+      ["you", "done"],
+      ["voice", "done"],
+      ["goals", "done"],
+      ["connect", "now"],
+    ]);
   });
 });
 

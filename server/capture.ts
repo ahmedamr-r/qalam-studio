@@ -14,6 +14,7 @@ import { cardOf } from "@/discovery/ops";
 import { fileMaterial, type FilingDeps, type FilingTotals } from "@/hub/filing";
 import { goalsText } from "@/goals/text";
 import { contextText } from "@/org/context-md";
+import { wordsFor } from "@/org/words";
 import { contextOf, type OrgContext, type PackRequest } from "@/org/pack";
 import { indexFor } from "./index/registry";
 import { packedPieces, packFor } from "./index/search";
@@ -215,7 +216,7 @@ export async function captureSource(store: OrgStore, ing: Ingested, o: CaptureOp
     quotes: [],
     needs: [],
   };
-  emit(`Keeping “${s.title}” in the organization`);
+  emit(`Keeping “${s.title}” in the ${wordsFor(store.info.shape).org}`);
   await store.putSource(s);
   const result = (filed?: FilingTotals, placed: CaptureResult["placed"] = []): CaptureResult => ({ sourceId: s.id, title: s.title, quotes: s.quotes.length, needs: s.needs.length, ...(filed ? { filed } : {}), placed });
   if (awaitingRoles(s)) return { ...result(), waiting: "roles" };

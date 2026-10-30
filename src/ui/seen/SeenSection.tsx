@@ -5,6 +5,7 @@ import { onOrgChange } from "@/org/live";
 import type { Product } from "@/org/context-md";
 import { seenHref } from "@/projects/model";
 import { ORG_SEEN, type SeenMap } from "@/seen/types";
+import { useWords } from "../frame/store";
 import { r } from "../recipes";
 import { ago } from "../time";
 import { seenMaps } from "./client";
@@ -18,6 +19,7 @@ import { Shot } from "./Shot";
  */
 export function SeenSection({ product, products }: { product: string | null; products: Product[] }) {
   const [maps, setMaps] = useState<SeenMap[] | null>(null);
+  const words = useWords();
   useEffect(() => {
     const load = () => void seenMaps().then(setMaps, () => setMaps([]));
     load();
@@ -25,7 +27,7 @@ export function SeenSection({ product, products }: { product: string | null; pro
   }, []);
   if (!maps) return null;
   const keys = product ? [product] : [...products.map((p) => p.id), ...(maps.some((m) => m.key === ORG_SEEN) ? [ORG_SEEN] : [])];
-  const nameOf = (key: string) => (key === ORG_SEEN ? "The whole organization" : (products.find((p) => p.id === key)?.name ?? key));
+  const nameOf = (key: string) => (key === ORG_SEEN ? words.whole : (products.find((p) => p.id === key)?.name ?? key));
   return (
     <section aria-labelledby="seen" className="flex flex-col gap-[8px]">
       <h2 id="seen" className="text-title font-medium">

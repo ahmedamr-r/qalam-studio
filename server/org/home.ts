@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { qalamHome } from "../paths";
 import { atomicWrite, readJson, stableStringify } from "./fsx";
+import type { OrgShape } from "@/org/words";
 import { OrgStore, type OrgEvent, type OrgInfo } from "./store";
 
 /**
@@ -22,6 +23,7 @@ export interface OrgListing {
   id: string;
   name: string;
   dir: string;
+  shape?: OrgShape;
 }
 
 interface Registry {
@@ -38,7 +40,7 @@ const writeRegistry = (home: string, r: Registry) => atomicWrite(registryFile(ho
 
 async function orgAt(dir: string): Promise<OrgListing | null> {
   const info = await readJson<OrgInfo>(path.join(dir, "org.json"));
-  return info?.qalam === "org/1" && info.id ? { id: info.id, name: info.name, dir } : null;
+  return info?.qalam === "org/1" && info.id ? { id: info.id, name: info.name, dir, ...(info.shape ? { shape: info.shape } : {}) } : null;
 }
 
 export async function listOrgs(home = qalamHome()): Promise<OrgListing[]> {
@@ -77,14 +79,14 @@ function folderName(name: string): string {
   return n || "Organization";
 }
 
-/** A new organization: a folder in ~/Qalam named after it. */
-export async function createOrg(name: string, home = qalamHome()): Promise<OrgListing> {
+/** A new organization: a folder in ~/Qalam named after it (a team's, or one person's project). */
+export async function createOrg(name: string, home = qalamHome(), shape?: OrgShape): Promise<OrgListing> {
   const base = folderName(name);
   let dir = path.join(home, base);
   for (let n = 2; await exists(dir); n++) dir = path.join(home, `${base} ${n}`);
-  const store = await OrgStore.create(dir, { id: newOrgId(), name: name.trim().slice(0, 80) || base, createdAt: Date.now() });
+  const store = await OrgStore.create(dir, { id: newOrgId(), name: name.trim().slice(0, 80) || base, createdAt: Date.now(), ...(shape ? { shape } : {}) });
   stores().set(store.info.id, Promise.resolve(opened(store)));
-  return { id: store.info.id, name: store.info.name, dir };
+  return { id: store.info.id, name: store.info.name, dir, ...(shape ? { shape } : {}) };
 }
 
 /**

@@ -5,6 +5,7 @@ import { onOrgChange } from "@/org/live";
 import type { Product } from "@/org/context-md";
 import { goalHref, placeHref } from "@/projects/model";
 import { useGoals } from "@/goals/client";
+import { useWords } from "../frame/store";
 import { ago } from "../time";
 
 /**
@@ -15,6 +16,7 @@ import { ago } from "../time";
 export function ProductMaps({ product, products }: { product: string | null; products: Product[] }) {
   const [maps, setMaps] = useState<ProductMap[] | null>(null);
   const goals = useGoals();
+  const words = useWords();
   useEffect(() => {
     const load = () => void codeDb.view().then((v) => setMaps(v.maps), () => setMaps([]));
     load();
@@ -36,7 +38,7 @@ export function ProductMaps({ product, products }: { product: string | null; pro
       {shown.map((m) => (
         <div key={m.key} className="flex flex-col gap-[6px] rounded-lg bg-panel px-[14px] py-[12px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
           <span className="text-caption text-fg-muted">
-            {[products.find((p) => p.id === m.product)?.name ?? "The whole organization", `${m.repo}${m.commit ? ` at ${m.commit.slice(0, 7)}` : ""}`, `read ${ago(m.readAt)}`, `${m.events.length} events`].join(" · ")}
+            {[products.find((p) => p.id === m.product)?.name ?? words.whole, `${m.repo}${m.commit ? ` at ${m.commit.slice(0, 7)}` : ""}`, `read ${ago(m.readAt)}`, `${m.events.length} events`].join(" · ")}
           </span>
           {m.flows.map((f) => (
             <div key={f.name} className="flex flex-col gap-[2px] pt-[4px]">

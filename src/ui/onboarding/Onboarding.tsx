@@ -58,9 +58,11 @@ function useThreadInput(): ThreadInput {
     mode: fr.mode,
     first: fr.route === "welcome" || fr.first,
     orgName: fr.org?.name ?? null,
+    shape: fr.shape,
     engine: engineState(fr.route, fr.engine),
     naming: { name: fr.naming.name, busy: fr.naming.busy, error: fr.naming.error },
-    person: yourName && me ? `${yourName} · ${positionLabel(me)}` : null,
+    // On your own there's no position to say.
+    person: yourName && me ? (me.position === "solo" ? yourName : `${yourName} · ${positionLabel(me)}`) : null,
     voice: voice ? { offer: voiceOffer(voice), chosen: voice.chosen } : null,
     step: fr.step,
     door: fr.door,
@@ -184,7 +186,7 @@ export function Onboarding({ route }: { route: "welcome" | "setup" }) {
       )
     ) : (
       <ChatComposer
-        label={ask.kind === "name" ? "The organization's name" : ask.kind === "outline" ? "Your goals" : ask.kind === "dump" ? "About the company" : "Message"}
+        label={ask.kind === "name" ? (fr.shape === "solo" ? "The project's name" : "The organization's name") : ask.kind === "outline" ? "Your goals" : ask.kind === "dump" ? (fr.shape === "solo" ? "About the idea" : "About the company") : "Message"}
         placeholder={ask.placeholder}
         submit={ask.submit}
         disabled={ask.kind === "none"}

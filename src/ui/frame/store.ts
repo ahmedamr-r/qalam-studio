@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { currentOrg, type OrgRef } from "@/org/client";
 import { onOrgChange } from "@/org/live";
+import { wordsFor, type OrgWords } from "@/org/words";
 
 /*
  * The frame's own state, apart from Studio's doc store: whether the sidebar is open or folded to
@@ -48,3 +49,6 @@ export function useCurrentOrg(): OrgRef | null {
 
 /** After this window renamed it (its own changes aren't announced back to it). */
 export const setCurrentOrg = (org: OrgRef) => useOrgState.setState({ org });
+
+/** The words for this organization: a team's, or one person's own project. */
+export const useWords = (): OrgWords => wordsFor(useCurrentOrg()?.shape);

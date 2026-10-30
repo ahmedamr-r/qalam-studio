@@ -50,7 +50,7 @@ export async function goalPage(store: OrgStore, id: string) {
     boards,
     problems,
     /** What isn't known yet about it (code's, no tokens), and the jobs planned to find out. */
-    gaps: gapsOf(goal, problems, new Map(k.topics.map((t) => [t.id, t]))),
+    gaps: gapsOf(goal, problems, new Map(k.topics.map((t) => [t.id, t])), store.info.shape),
     jobs: jobsOf(foldJobs(await store.listJobLog()), id),
     /** What others report for it, and the goals proposed under it (hub/goals/<goal>.json). */
     work: await store.getGoalWork(id),

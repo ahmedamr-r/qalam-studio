@@ -67,7 +67,7 @@ export async function planJobs(store: OrgStore, goalId: string, emit?: (label: s
   const needs = rankNeeds({ now: Date.now(), topics: k.topics, pieces: k.pieces, shows: k.shows });
   const problems = rankForGoal(goalId, { tree, links: foldBearings(await store.listBearingLog()).links, needs });
   const topics = new Map(k.topics.map((t) => [t.id, t]));
-  const gaps = gapsOf(goal, problems, topics);
+  const gaps = gapsOf(goal, problems, topics, store.info.shape);
   const planned = foldJobs(await store.listJobLog()).filter((j) => j.goal === goalId && j.status !== "dropped");
   // The segments whose pages cite the problems' evidence first.
   const near = new Set(problems.flatMap((p) => p.segments.map((s) => s.id)));

@@ -1,3 +1,5 @@
+import type { OrgShape } from "./words";
+
 /**
  * The organization this window works in, and requests for its files (server/org/routes.ts).
  * Every write names this window (`x-qalam-tab`), so the change isn't announced back to it.
@@ -8,6 +10,8 @@ export interface OrgRef {
   name: string;
   /** The folder on this computer. */
   dir: string;
+  /** A company or team, or one person on their own (none: a team, made before shapes). */
+  shape?: OrgShape;
 }
 
 /** This window, for the org's change announcements. */
@@ -83,8 +87,8 @@ async function orgsRequest(path: string, body: unknown): Promise<Response> {
   return r;
 }
 
-/** A new organization: a folder in ~/Qalam. */
-export const createOrg = async (name: string): Promise<OrgRef> => (await orgsRequest("/api/orgs", { name })).json();
+/** A new organization: a folder in ~/Qalam (a team's, or one person's project). */
+export const createOrg = async (name: string, shape?: OrgShape): Promise<OrgRef> => (await orgsRequest("/api/orgs", { name, ...(shape ? { shape } : {}) })).json();
 
 /** The desktop app's bridge (electron/preload.cjs): the system's own folder picker. */
 const desktop = () => (globalThis as { qalamDesktop?: { chooseFolder(title: string): Promise<string | null> } }).qalamDesktop;
@@ -103,14 +107,19 @@ export async function openOrgFolder(path?: string): Promise<OrgRef | null> {
   return j.cancelled ? null : j;
 }
 
-/** Rename the organization this window works in. */
-export async function renameOrg(name: string): Promise<OrgRef> {
-  const r = await fetch(await orgPath("/info"), { method: "PATCH", headers: { "content-type": "application/json", "x-qalam-tab": TAB }, body: JSON.stringify({ name }) });
+async function patchInfo(body: { name?: string; shape?: OrgShape }): Promise<OrgRef> {
+  const r = await fetch(await orgPath("/info"), { method: "PATCH", headers: { "content-type": "application/json", "x-qalam-tab": TAB }, body: JSON.stringify(body) });
   if (!r.ok) throw new OrgRequestError(r.status, ((await r.json().catch(() => ({}))) as { message?: string }).message ?? r.statusText);
   const next = (await r.json()) as OrgRef;
   org = Promise.resolve(next);
   return next;
 }
+
+/** Rename the organization this window works in. */
+export const renameOrg = (name: string): Promise<OrgRef> => patchInfo({ name });
+
+/** Say who it is: a company or team, or one person on their own idea. */
+export const setOrgShape = (shape: OrgShape): Promise<OrgRef> => patchInfo({ shape });
 
 /** The organization changed elsewhere (renamed in another window or in its org.json): read it again. */
 export function forgetOrg() {

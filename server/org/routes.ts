@@ -37,6 +37,7 @@ import { breakDown, decidePart, lookOutside } from "./outside";
 import { addRepo, answerFromCode, codeView, readRepo, removeRepo, type NewRepo } from "../code";
 import { GOAL_LEVERS, type GoalLever } from "@/goals/types";
 import { meShape } from "@/org/you";
+import { orgShape } from "@/org/words";
 import { ConflictError, GoalCycleError, GoalInUseError, NotFoundError, type OrgEvent, type OrgStore } from "./store";
 
 /**
@@ -74,12 +75,12 @@ export function orgRoutes(): Hono<Env> {
     const current = await currentOrg();
     const orgs = await listOrgs();
     // None yet (the first run): the window welcomes them instead.
-    return c.json({ home: qalamHome(), current: current?.id ?? null, orgs: orgs.map(({ id, name, dir }) => ({ id, name, dir })) });
+    return c.json({ home: qalamHome(), current: current?.id ?? null, orgs: orgs.map(({ id, name, dir, shape }) => ({ id, name, dir, ...(shape ? { shape } : {}) })) });
   });
   r.post("/api/orgs", async (c) => {
-    const { name } = (await c.req.json().catch(() => ({}))) as { name?: string };
+    const { name, shape } = (await c.req.json().catch(() => ({}))) as { name?: string; shape?: unknown };
     if (!name?.trim()) return bad("Name the organization");
-    return c.json(await createOrg(name));
+    return c.json(await createOrg(name, undefined, orgShape(shape) ?? undefined));
   });
   /** Open a folder as an organization: the one given, or one picked with the Mac's own picker. */
   r.post("/api/orgs/open", async (c) => {
@@ -111,16 +112,20 @@ export function orgRoutes(): Hono<Env> {
     await next();
   });
 
-  r.get("/api/org/:org/info", (c) => {
-    const { id, name } = c.get("store").info;
-    return c.json({ id, name, dir: c.get("store").dir });
-  });
+  const infoOf = (store: OrgStore) => {
+    const { id, name, shape } = store.info;
+    return { id, name, dir: store.dir, ...(shape ? { shape } : {}) };
+  };
+  r.get("/api/org/:org/info", (c) => c.json(infoOf(c.get("store"))));
+  /** Rename it, or say who it is: a company or team, or one person on their own. */
   r.patch("/api/org/:org/info", async (c) => {
-    const { name } = (await c.req.json().catch(() => ({}))) as { name?: string };
-    if (!name?.trim()) return bad("Name the organization");
-    await c.get("store").rename(name);
-    const { id, name: n } = c.get("store").info;
-    return c.json({ id, name: n, dir: c.get("store").dir });
+    const { name, shape } = (await c.req.json().catch(() => ({}))) as { name?: string; shape?: unknown };
+    if (name === undefined && shape === undefined) return bad("Name the organization");
+    if (name !== undefined && !name.trim()) return bad("Name the organization");
+    if (shape !== undefined && !orgShape(shape)) return bad("A team or solo");
+    if (name !== undefined) await c.get("store").rename(name);
+    if (shape !== undefined) await c.get("store").setShape(orgShape(shape)!);
+    return c.json(infoOf(c.get("store")));
   });
 
   // What the organization and its products are (about.md, products/*.md), and their goals.
@@ -146,7 +151,9 @@ export function orgRoutes(): Hono<Env> {
   r.get("/api/org/:org/goals", async (c) => {
     const store = c.get("store");
     const g = await store.getGoals();
-    return c.json({ ...g, mine: store.mine, me: store.me }, 200, { etag: etag(g.version) });
+    // On your own, every goal is yours.
+    const mine = store.info.shape === "solo" ? g.goals.map((x) => x.id) : store.mine;
+    return c.json({ ...g, mine, me: store.me }, 200, { etag: etag(g.version) });
   });
   r.post("/api/org/:org/goals", async (c) => {
     const g = newGoalShape(await c.req.json().catch(() => null));

@@ -1,5 +1,6 @@
 import { MAX_DUMP_ROUNDS } from "@/discovery/dump";
 import type { SetupSession } from "@/org/setup";
+import { wordsFor, type OrgShape } from "@/org/words";
 import type { KnowState } from "../setup/know-state";
 import type { VoiceChoice } from "@/voice/model";
 import type { SetupStep, StepState, WelcomeMode } from "../welcome/steps";
@@ -27,7 +28,7 @@ export interface ChatMessage {
 }
 
 /** Which buttons a `choices` part shows. */
-export type ChoiceSet = "door" | "skip" | "know-skip" | "propose" | "proposal" | "know-review" | "goals-in" | "verify";
+export type ChoiceSet = "shape" | "door" | "skip" | "know-skip" | "propose" | "proposal" | "know-review" | "goals-in" | "verify";
 
 export type EngineState = "looking" | "testing" | "ready" | "problem" | "skipped" | "unknown";
 
@@ -36,6 +37,8 @@ export interface ThreadInput {
   mode: WelcomeMode;
   first: boolean;
   orgName: string | null;
+  /** A company or team, or just them on their own idea: picked before the name (null: not yet, or an organization from before). */
+  shape: OrgShape | null;
   engine: EngineState;
   naming: { name: string | null; busy: boolean; error: string | null };
   /** Who they said they are, once they have ("Ahmed · Product manager"). */
@@ -94,7 +97,13 @@ const VOICE_ASK = {
   parakeet: "Want to talk instead of typing? Click the mic in any box, or press ⌃⌥D. Parakeet runs it on this Mac: nothing you say leaves it.",
 } as const;
 
-const VOICE_SAID: Record<VoiceChoice, string> = { apple: "Talk with Apple's engine", parakeet: "Talk with Parakeet", own: "I use my own dictation app", off: "Not now" };
+const SHAPE_SAID: Record<OrgShape, string> = { team: "A company or team", solo: "Just me, on my own idea" };
+
+/** What to call it, once they said who it's for. */
+const nameAsk = (i: Pick<ThreadInput, "mode" | "shape">, live: boolean) =>
+  i.shape === "solo" ? "What's your project called? A working name is fine." : i.mode === "new" ? "What's the new organization called?" : live ? "What should I call your organization? A company, a client or a side project." : "What should I call your organization?";
+
+const VOICE_SAID: Record<VoiceChoice, string> ={ apple: "Talk with Apple's engine", parakeet: "Talk with Parakeet", own: "I use my own dictation app", off: "Not now" };
 
 /** The asking round is answered (or there's none to answer). */
 function roundOpen(s: SetupSession): boolean {
@@ -104,9 +113,14 @@ function roundOpen(s: SetupSession): boolean {
 
 export function threadOf(i: ThreadInput): ChatMessage[] {
   const out: ChatMessage[] = [];
-  const org = i.orgName ?? "your organization";
+  const solo = i.shape === "solo";
+  const org = i.orgName ?? (solo ? "your project" : "your organization");
+  const shapeAsk = (id: string) => {
+    out.push(ai(`${id}:ask`, text("Is this for a company or team, or just you?"), ...(i.shape ? [] : [part("choices", { set: "shape" })])));
+    if (i.shape) out.push(you(`${id}:you`, text(SHAPE_SAID[i.shape])));
+  };
 
-  // Qalam AI, then the name: live on the welcome, already done on the setup page's first run.
+  // Qalam AI, who it's for, then the name: live on the welcome, already done on the setup page's first run.
   if (i.route === "welcome") {
     out.push(ai("engine", text(ENGINE_LINE[i.engine]), part("engine")));
     if (i.mode === "verify") {
@@ -114,9 +128,12 @@ export function threadOf(i: ThreadInput): ChatMessage[] {
       return out;
     }
     if (engineDone(i)) {
-      out.push(ai("name:ask", text(i.mode === "new" ? "What's the new organization called?" : "What should I call your organization? A company, a client or a side project.")));
-      if (i.naming.name) out.push(you("name:you", text(i.naming.name)));
-      if (i.naming.error) out.push(ai("name:error", part("error", { text: i.naming.error })));
+      shapeAsk("shape");
+      if (i.shape) {
+        out.push(ai("name:ask", text(nameAsk(i, true))));
+        if (i.naming.name) out.push(you("name:you", text(i.naming.name)));
+        if (i.naming.error) out.push(ai("name:error", part("error", { text: i.naming.error })));
+      }
     }
     if (i.naming.busy) out.push(ai("status:name", part("working", { label: "Making it" })));
     return out;
@@ -124,10 +141,12 @@ export function threadOf(i: ThreadInput): ChatMessage[] {
 
   if (i.first) {
     out.push(ai("engine", text(ENGINE_LINE[i.engine === "looking" || i.engine === "testing" ? "unknown" : i.engine]), part("engine", { compact: true })));
-    out.push(ai("name:ask", text("What should I call your organization?")));
+    // Organizations made before there was a choice don't say: they're a team's.
+    if (i.shape) shapeAsk("shape");
+    out.push(ai("name:ask", text(nameAsk(i, false))));
     if (i.orgName) out.push(you("name:you", text(i.orgName)));
-    // Who they are, before the goals: it tells Qalam AI which goals are theirs to set and how to ask.
-    out.push(ai("you:ask", text(`What's your name, and your position at ${org}?`), part("you", { open: i.step === "you" })));
+    // Who they are, before the goals: it tells Qalam AI which goals are theirs to set and how to ask. On your own, only the name.
+    out.push(ai("you:ask", text(solo ? "What's your name?" : `What's your name, and your position at ${org}?`), part("you", { open: i.step === "you", solo })));
     if (i.step === "you") return out;
     if (i.person) out.push(you("you:you", text(i.person)));
     // Talking instead of typing, once per Mac: shown while it's asked, and what was chosen after.
@@ -144,7 +163,8 @@ export function threadOf(i: ThreadInput): ChatMessage[] {
   const door = doorOf(i);
   if (i.first && i.step !== "goals" && !door) out.push(ai("goals:had", text(i.goals ? `${org} has ${i.goals === 1 ? "a goal" : `${i.goals} goals`} already.` : "There are no goals yet: add them on the Goals page any time.")));
   else {
-    out.push(ai("goals:ask", text(i.first ? `Let's start with ${org}'s goals. Do you know them, or shall I help find them?` : `Do you know ${org}'s goals, or shall I help find them?`), ...(door ? [] : [part("choices", { set: "door" })])));
+    const goalsOf = solo ? `your goals for ${org}` : `${org}'s goals`;
+    out.push(ai("goals:ask", text(i.first ? `Let's start with ${goalsOf}. Do you know them, or shall I help find them?` : `Do you know ${goalsOf}, or shall I help find them?`), ...(door ? [] : [part("choices", { set: "door" })])));
     if (door) out.push(you("goals:door", text(door === "know" ? "I know them" : "Help me find them")));
   }
 
@@ -162,7 +182,7 @@ export function threadOf(i: ThreadInput): ChatMessage[] {
 
   if (door === "find") {
     const s = i.find.session;
-    out.push(ai("find:ask", text("Paste a strategy doc, OKRs or notes, or give your website. I'll read it and ask before I propose anything.")));
+    out.push(ai("find:ask", text(solo ? "Paste your notes about the idea, or give its website. I'll read it and ask before I propose anything." : "Paste a strategy doc, OKRs or notes, or give your website. I'll read it and ask before I propose anything.")));
     if (s || i.find.pending) out.push(you("find:said", part("said")));
     if (i.find.error && !s && !i.busy) out.push(ai("find:error", part("error", { text: i.find.error })));
     if (s) {
@@ -185,7 +205,7 @@ export function threadOf(i: ThreadInput): ChatMessage[] {
       if ((s.phase === "review" || s.phase === "done") && s.proposal) {
         if (s.proposal.lines.length)
           out.push(ai("find:proposal", text(s.proposal.summary), text("Review them on the right: accept what's true, discard the rest."), ...(i.find.open ? [part("choices", { set: "proposal", n: i.find.open })] : [])));
-        else out.push(ai("find:proposal", text("I found nothing I could set up from it. Fill in the organization by hand from its home.")));
+        else out.push(ai("find:proposal", text(`I found nothing I could set up from it. Fill in the ${wordsFor(i.shape).org} by hand from its home.`)));
       }
     }
   }
@@ -196,17 +216,17 @@ export function threadOf(i: ThreadInput): ChatMessage[] {
     const said = !written ? null : door === "know" ? (written === 1 ? "Your goal is in." : `Your ${written} goals are in.`) : `${written === 1 ? "1 line" : `${written} lines`} written to ${org}.`;
     if (i.first) {
       const moved = i.step !== "goals";
-      out.push(ai("goals:in", text(said ? `${said} Next: which goals are yours.` : "Nothing was written. You can add goals on the Goals page any time."), ...(moved ? [] : [part("choices", { set: "goals-in" })])));
+      const next = solo ? "Next: what to connect." : "Next: which goals are yours.";
+      out.push(ai("goals:in", text(said ? `${said} ${next}` : "Nothing was written. You can add goals on the Goals page any time."), ...(moved ? [] : [part("choices", { set: "goals-in", solo })])));
     } else out.push(ai("all-set", text(said ? `${said} All set.` : `Nothing was written to ${org}.`), part("allSet")));
   }
 
-  if (i.first && i.step !== "goals") {
+  // Which are theirs (on your own every goal is), then what to connect.
+  if (i.first && i.step !== "goals" && !solo) {
     out.push(ai("yours:ask", text("Which goals are yours? Your home leads with them, each with the problems behind it."), part("yours", { open: i.step === "yours" })));
-    if (i.step === "connect") {
-      out.push(you("yours:you", text(i.picked ? `${i.picked === 1 ? "1 goal" : `${i.picked} goals`} picked` : "None for now")));
-      out.push(ai("connect:ask", text("Connect what your goals need. Qalam only reads from them."), part("connect")));
-    }
+    if (i.step === "connect") out.push(you("yours:you", text(i.picked ? `${i.picked === 1 ? "1 goal" : `${i.picked} goals`} picked` : "None for now")));
   }
+  if (i.first && i.step === "connect") out.push(ai("connect:ask", text("Connect what your goals need. Qalam only reads from them."), part("connect")));
 
   if (i.busy) out.push(ai(`status:${out[out.length - 1]?.id ?? "start"}`, part("working", { label: i.busy.label })));
   return out;
@@ -233,9 +253,10 @@ export function askOf(i: ThreadInput): Ask {
   if (i.route === "welcome") {
     if (i.mode === "verify") return none("Checking only: nothing to type here", "verify");
     if (!engineDone(i)) return none(i.engine === "problem" ? "Set up Qalam AI above, or set it up later" : "Checking Qalam AI…", "engine");
-    return { kind: "name", placeholder: "Basket", submit: "enter", key: "name" };
+    if (!i.shape) return none("Pick one above", "shape");
+    return { kind: "name", placeholder: i.shape === "solo" ? "Meal planner" : "Basket", submit: "enter", key: "name" };
   }
-  if (i.first && i.step === "you") return none("Fill in your name and position above", "you");
+  if (i.first && i.step === "you") return none(i.shape === "solo" ? "Fill in your name above" : "Fill in your name and position above", "you");
   if (i.first && i.step === "voice") return none("Choose above, then on to the goals", "voice");
   if (!i.opened) return none("", "opening");
   if (i.step === "yours") return none("Pick your goals above, then Next", "yours");
@@ -297,7 +318,8 @@ export function stepsOf(i: ThreadInput): StepItem[] {
   }
   const welcome = i.route === "welcome";
   const at = welcome ? (engineDone(i) ? "name" : "engine") : i.step;
-  const order = ["engine", "name", "you", "voice", "goals", "yours", "connect"];
+  // On your own there's no "Yours": every goal is.
+  const order = ["engine", "name", "you", "voice", "goals", "yours", "connect"].filter((s) => s !== "yours" || i.shape !== "solo");
   const k = order.indexOf(at);
   const state = (id: string): StepState => (order.indexOf(id) < k ? "done" : order.indexOf(id) === k ? "now" : "next");
   return [
@@ -308,5 +330,5 @@ export function stepsOf(i: ThreadInput): StepItem[] {
     { id: "goals", label: "Goals", state: state("goals"), ...(at === "goals" ? { sub: goalSubs(i) } : {}) },
     { id: "yours", label: "Yours", state: state("yours") },
     { id: "connect", label: "Connect", state: state("connect") },
-  ];
+  ].filter((s) => order.includes(s.id));
 }

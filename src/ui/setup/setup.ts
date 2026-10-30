@@ -154,7 +154,10 @@ export async function startSetup(input: { text: string; url: string }) {
   } finally {
     if (run === ctrl) run = null;
   }
-  if (text.length < 40) return fail("There's too little there to set anything up from. Write a few sentences about the company.");
+  if (text.length < 40) {
+    const solo = (await currentOrg().catch(() => null))?.shape === "solo";
+    return fail(`There's too little there to set anything up from. Write a few sentences about ${solo ? "the idea" : "the company"}.`);
+  }
   const org = await currentOrg();
   const rec: SourceRecord = {
     v: 1,

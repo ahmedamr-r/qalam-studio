@@ -32,6 +32,7 @@ import { aboutFromMarkdown, aboutToMarkdown, emptyContext, legacyGoals, productF
 import type { Project, ProjectType } from "@/projects/model";
 import type { FirstRunView } from "@/org/first-run";
 import type { Me } from "@/org/you";
+import type { OrgShape } from "@/org/words";
 import { assetExt, assetType, decodeProject, decodeSource, docVersion, encodeProject, encodeSource, isLocalField, recordVersion, splitLocal, type LocalFields } from "./codecs";
 import { assetHash, atomicWrite, contentHash, inside, locked, readJson, slugify, stableStringify, uniqueName } from "./fsx";
 
@@ -47,6 +48,8 @@ export interface OrgInfo {
   id: string;
   name: string;
   createdAt: number;
+  /** A company or team, or one person on their own idea (src/org/words.ts); none: made before shapes, a team. */
+  shape?: OrgShape;
 }
 
 export type OrgEvent = { tab?: string } & (
@@ -204,6 +207,14 @@ export class OrgStore {
     const n = name.trim().replace(/\s+/g, " ").slice(0, 80);
     if (!n) return;
     this.org = { ...this.org, name: n };
+    await this.write(this.abs("org.json"), stableStringify(this.org));
+    this.emit({ kind: "org" });
+  }
+
+  /** A company or team, or one person on their own (the words change, the files don't). */
+  async setShape(shape: OrgShape) {
+    if (this.org.shape === shape) return;
+    this.org = { ...this.org, shape };
     await this.write(this.abs("org.json"), stableStringify(this.org));
     this.emit({ kind: "org" });
   }
@@ -1114,7 +1125,8 @@ export class OrgStore {
 
   /** The first run on this computer: when it was finished, and whether which goals are theirs was answered (even with none). */
   get firstRun(): FirstRunView {
-    return { done: this.local.firstRun ?? null, picked: this.local.mine !== undefined };
+    // On your own, every goal is yours: there's nothing to pick.
+    return { done: this.local.firstRun ?? null, picked: this.local.mine !== undefined || this.org.shape === "solo" };
   }
 
   async finishFirstRun(): Promise<FirstRunView> {

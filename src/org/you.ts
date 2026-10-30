@@ -7,8 +7,9 @@ import { create } from "zustand";
  * questions to them. Neither is ever written into the organization's pages.
  */
 
-export type Position = "founder" | "product-lead" | "pm" | "designer" | "engineer" | "other";
+export type Position = "founder" | "product-lead" | "pm" | "designer" | "engineer" | "other" | "solo";
 
+/** The positions a team's first run offers. */
 export const POSITIONS: readonly { value: Position; label: string; noun: string }[] = [
   { value: "founder", label: "Founder or CEO", noun: "a founder or CEO" },
   { value: "product-lead", label: "Head of product", noun: "the head of product" },
@@ -17,6 +18,12 @@ export const POSITIONS: readonly { value: Position; label: string; noun: string 
   { value: "engineer", label: "Engineer", noun: "an engineer" },
   { value: "other", label: "Other", noun: "" },
 ];
+
+/** One person on their own idea: never offered in the list, it's what a solo project's person is. */
+const SOLO = { value: "solo" as Position, label: "On my own", noun: "working on it alone" };
+
+/** Every position a person can have, solo included (what's accepted and what Qalam AI is told). */
+export const ALL_POSITIONS: readonly { value: Position; label: string; noun: string }[] = [...POSITIONS, SOLO];
 
 /** Their position at one organization: one of the list, or Other in their own words. */
 export interface Me {
@@ -38,7 +45,7 @@ const one = (s: string, max: number) => s.trim().replace(/\s+/g, " ").slice(0, m
 export function meShape(x: unknown): Me | null {
   if (!x || typeof x !== "object") return null;
   const { position, title } = x as { position?: unknown; title?: unknown };
-  if (!POSITIONS.some((p) => p.value === position)) return null;
+  if (!ALL_POSITIONS.some((p) => p.value === position)) return null;
   if (position !== "other") return { position: position as Position };
   const t = typeof title === "string" ? one(title, TITLE_MAX) : "";
   return t ? { position, title: t } : null;
@@ -47,11 +54,11 @@ export function meShape(x: unknown): Me | null {
 export const nameShape = (x: unknown): string | null => (typeof x === "string" && one(x, NAME_MAX) ? one(x, NAME_MAX) : null);
 
 /** The position in words: the list's label, or their own for Other. */
-export const positionLabel = (m: Me) => (m.position === "other" ? (m.title ?? "Other") : POSITIONS.find((p) => p.value === m.position)!.label);
+export const positionLabel = (m: Me) => (m.position === "other" ? (m.title ?? "Other") : ALL_POSITIONS.find((p) => p.value === m.position)!.label);
 
-/** For Qalam AI: "Ahmed, a product manager"; Other as they wrote it. */
+/** For Qalam AI: "Ahmed, a product manager"; Other as they wrote it; "Sara, working on it alone". */
 export function personLine(p: Person): string {
-  const what = p.position === "other" ? p.title : POSITIONS.find((x) => x.value === p.position)!.noun;
+  const what = p.position === "other" ? p.title : ALL_POSITIONS.find((x) => x.value === p.position)!.noun;
   return what ? `${p.name}, ${what}` : p.name;
 }
 

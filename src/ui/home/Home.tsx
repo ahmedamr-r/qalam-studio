@@ -47,7 +47,7 @@ export default function Home({ product: productId = null }: { product?: string |
   const topics = useTopics();
   const { products, about, loaded } = useOrgContext();
   const goalCount = goalTree.goals.length;
-  const left = useFirstRunLeft(sources);
+  const left = useFirstRunLeft(sources, org?.shape);
 
   const links = useBearings() ?? [];
   const jobs = useJobs() ?? [];

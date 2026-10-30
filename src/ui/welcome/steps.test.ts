@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bootRetryDelay, changesThings, connectFor, firstRunLeft, setupStep, stepStates, welcomeMode } from "./steps";
+import { bootRetryDelay, changesThings, connectFor, firstRunLeft, setupStep, stepsFor, stepStates, welcomeMode } from "./steps";
 
 describe("the welcome", () => {
   it("marks the steps before the one being done as done, and the rest as next", () => {
@@ -34,6 +34,15 @@ describe("the welcome", () => {
     expect(firstRunLeft({ ...kept, picked: false })?.step).toBe("yours");
     expect(firstRunLeft(kept)).toEqual({ step: "connect", done: 6, of: 7 });
     expect(firstRunLeft({ ...kept, you: false, finished: true })).toBeNull();
+  });
+
+  it("on your own, never stops at which goals are yours, and counts one step fewer", () => {
+    const kept = { you: true, voice: true, goals: 3, settingUp: false, picked: false, finished: false, shape: "solo" as const };
+    expect(firstRunLeft(kept)).toEqual({ step: "connect", done: 5, of: 6 });
+    expect(firstRunLeft({ ...kept, goals: 0 })).toEqual({ step: "goals", done: 4, of: 6 });
+    expect(stepsFor("solo").map((s) => s.id)).toEqual(["engine", "name", "you", "voice", "goals", "connect"]);
+    expect(stepsFor("team")).toHaveLength(7);
+    expect(stepsFor(null)).toHaveLength(7);
   });
 
   it("suggests reading the goals' numbers first once a goal has one", () => {

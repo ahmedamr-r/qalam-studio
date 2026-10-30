@@ -24,6 +24,7 @@ import { goalHref, projectHref, spaceHref, topicHref } from "@/projects/model";
 import { Button, Tip } from "../controls";
 import DecisionRow from "../decisions/DecisionRow";
 import { PageFrame } from "../frame/PageFrame";
+import { useCurrentOrg, useWords } from "../frame/store";
 import { useItemSpace } from "../frame/useSpace";
 import { Menu, MenuItem, MenuSeparator, SubMenu } from "../menu";
 import { QalamAIGlyph } from "../brand";
@@ -83,6 +84,8 @@ export default function GoalPage({ id }: { id: string }) {
   const [found, setFound] = useState<Linked | null>(null);
   const goals = useGoals();
   const { products } = useOrgContext();
+  const words = useWords();
+  const solo = useCurrentOrg()?.shape === "solo";
 
   const load = useCallback(() => {
     void orgJson<PageData>(`/goals/${encodeURIComponent(id)}/page`).then(
@@ -194,9 +197,12 @@ export default function GoalPage({ id }: { id: string }) {
           <div className="flex items-start justify-between gap-[12px]">
             <h1 className="text-display font-semibold text-fg">{g.title}</h1>
             <div className="flex shrink-0 items-center gap-[8px]">
-              <Button variant={mine ? "secondary" : "ghost"} size="sm" onClick={() => void setMine(mine ? goals.mine.filter((x) => x !== g.id) : [...goals.mine, g.id])}>
-                {mine ? "Yours" : "Make it yours"}
-              </Button>
+              {/* On your own every goal is yours: nothing to pick. */}
+              {!solo && (
+                <Button variant={mine ? "secondary" : "ghost"} size="sm" onClick={() => void setMine(mine ? goals.mine.filter((x) => x !== g.id) : [...goals.mine, g.id])}>
+                  {mine ? "Yours" : "Make it yours"}
+                </Button>
+              )}
               <Menu
                 label="Goal actions"
                 align="end"
@@ -235,7 +241,7 @@ export default function GoalPage({ id }: { id: string }) {
             </div>
           </div>
           <p className="text-caption text-fg-muted">
-            {[north ? "North Star" : null, product ?? "The whole organization", g.status !== "active" ? STATUS[g.status] : null, page.chain[0] ? `feeds “${page.chain[0].title}”` : north ? null : "feeds no goal yet"].filter(Boolean).join(" · ")}
+            {[north ? "North Star" : null, product ?? words.whole, g.status !== "active" ? STATUS[g.status] : null, page.chain[0] ? `feeds “${page.chain[0].title}”` : north ? null : "feeds no goal yet"].filter(Boolean).join(" · ")}
           </p>
         </header>
 
