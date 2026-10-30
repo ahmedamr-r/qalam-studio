@@ -10,6 +10,7 @@ import { browseConnector, connectorsView, forgetConnector, importItems, listClau
 import { storeFor } from "../org/home";
 import type { OstWork } from "@/discovery/types";
 import { readInsight, searchInsights } from "../connectors/numbers";
+import { cancelGoogleSignIn, googleClient, signInGoogle } from "../connectors/google";
 import { cancelSignIn, keepApp, signIn } from "../connectors/oauth";
 import { workStatuses } from "../connectors/work";
 import { forgetGitHub, pollGitHubSignIn, startGitHubSignIn } from "../code/github";
@@ -129,7 +130,14 @@ export function connectionsRoutes(): Hono {
   // Qalam's own sign-in to the service, in the system's browser: the page's address, then the connectors once it's done.
   r.post("/api/connectors/:id/signin", async (c) => {
     const id = c.req.param("id");
-    const mcp = connectorDef(id)?.mcp;
+    const def = connectorDef(id);
+    // Drive: Qalam's own Google sign-in, to Drive's API.
+    if (def?.google && googleClient())
+      return ndjson(async (_emit, send) => {
+        await signInGoogle({ onUrl: (url) => send({ type: "open", url }) });
+        return connectorsView();
+      });
+    const mcp = def?.mcp;
     if (!mcp) return c.json({ error: "bad_request", message: "Qalam can't sign in to this one itself yet." }, 400);
     // Only a server the catalog names: the region picks one of them.
     const { region } = (await c.req.json().catch(() => ({}))) as { region?: unknown };
@@ -140,7 +148,7 @@ export function connectionsRoutes(): Hono {
       return connectorsView();
     });
   });
-  r.delete("/api/connectors/:id/signin", (c) => c.json({ stopped: cancelSignIn(c.req.param("id")) }));
+  r.delete("/api/connectors/:id/signin", (c) => c.json({ stopped: connectorDef(c.req.param("id"))?.google ? cancelGoogleSignIn() : cancelSignIn(c.req.param("id")) }));
   // The ID and secret of an app the workspace made (a service that lets no app register itself), into the Keychain.
   r.put("/api/connectors/:id/app", async (c) => {
     const { clientId, clientSecret } = (await c.req.json().catch(() => ({}))) as { clientId?: unknown; clientSecret?: unknown };

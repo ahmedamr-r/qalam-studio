@@ -8,6 +8,7 @@ import type { OrgStore } from "../org/store";
 import { secrets } from "../secrets";
 import { readSettings, writeSettings } from "../settings";
 import { claudeCodeKnown, listClaudeCode, runTools } from "./claude-code";
+import { browseDrive, forgetGoogle, googleClient, googleSignedIn, readDriveFile } from "./google";
 import { notionPageText, notionSearch, notionWhoAmI } from "./notion-api";
 import { appKept, forgetSignIn, signedIn, SignInAgain, withSignedIn } from "./oauth";
 import { linearWhoAmI } from "./work";
@@ -36,8 +37,10 @@ export async function connectorsView(): Promise<{ checkedAt: number | null; conn
       const regions = def.mcp?.regions?.map(({ id, label }) => ({ id, label })) ?? null;
       const own = def.mcp?.ownApp;
       const ownApp = own ? { kept: await appKept(def.id), create: own.create, where: own.where, callback: own.callback } : null;
-      const base = { id: def.id, label: def.label, group: def.group, feeds: def.feeds, imports: def.imports, status: def.status ?? null, numbers: !!def.numbers, screens: !!def.screens, claudeCode: listed ? { server: listed.name, status: listed.status } : null, token: token ? { last4: token.slice(-4) } : null, canToken: !!def.token, tokenHelp: def.token ?? null, canSignIn: !!def.mcp, account: def.mcp?.account?.label ?? null, regions, ownApp };
-      const kept = how?.via === "oauth" ? await signedIn(def.id) : !!token;
+      // Qalam's own Google sign-in, only in a copy that has a Google client.
+      const google = !!def.google && !!googleClient();
+      const base = { id: def.id, label: def.label, group: def.group, feeds: def.feeds, imports: def.imports, status: def.status ?? null, numbers: !!def.numbers, screens: !!def.screens, claudeCode: listed ? { server: listed.name, status: listed.status } : null, token: token ? { last4: token.slice(-4) } : null, canToken: !!def.token, tokenHelp: def.token ?? null, canSignIn: !!def.mcp || google, account: def.mcp?.account?.label ?? (google ? "Google" : null), regions, ownApp };
+      const kept = how?.via === "oauth" ? await signedIn(def.id) : how?.via === "google" ? await googleSignedIn() : !!token;
       const state = stateOf(def, how?.via === "claude-code" ? (listed?.name === how.server ? listed.status : "unknown") : null, how?.via ?? null, kept, listed?.status ?? null);
       // Which region's server it signed in to, where there are several.
       const region = how?.via === "oauth" && state.tone === "ok" ? def.mcp?.regions?.find((r) => r.url === how.url)?.label : undefined;
@@ -48,10 +51,10 @@ export async function connectorsView(): Promise<{ checkedAt: number | null; conn
 }
 
 /** One word and a dot for a connector's card. */
-function stateOf(def: ConnectorDef, chosenStatus: ListedStatus | null, via: "claude-code" | "token" | "oauth" | null, kept: boolean, listed: ListedStatus | null): Pick<ConnectorState, "via" | "word" | "tone"> {
-  if ((via === "token" || via === "oauth") && kept) return { via, word: "Connected", tone: "ok" };
+function stateOf(def: ConnectorDef, chosenStatus: ListedStatus | null, via: "claude-code" | "token" | "oauth" | "google" | null, kept: boolean, listed: ListedStatus | null): Pick<ConnectorState, "via" | "word" | "tone"> {
+  if ((via === "token" || via === "oauth" || via === "google") && kept) return { via, word: "Connected", tone: "ok" };
   // The service stopped taking Qalam's sign-in (its refresh was refused).
-  if (via === "oauth") return { via, word: "Sign in again", tone: "warn" };
+  if (via === "oauth" || via === "google") return { via, word: "Sign in again", tone: "warn" };
   if (def.status === "public") return { via: null, word: "Public repositories", tone: "ok" };
   if (via === "claude-code") return chosenStatus === "connected" || chosenStatus === "unknown" ? { via, word: "Through Claude Code", tone: "ok" } : { via, word: "Sign in in Claude Code", tone: "warn" };
   if (listed === "connected") return { via: null, word: "In Claude Code", tone: "off" };
@@ -80,6 +83,7 @@ export async function saveToken(id: string, raw: string, f?: typeof fetch): Prom
 export async function forgetConnector(id: string) {
   await secrets().remove(tokenName(id)).catch(() => {});
   if (connectorDef(id)?.mcp) await forgetSignIn(id).catch(() => {});
+  if (connectorDef(id)?.google) await forgetGoogle().catch(() => {});
   const all = { ...((await readSettings()).connectors ?? {}) };
   delete all[id];
   // A sign-in shared with other connectors is gone for them too.
@@ -100,6 +104,7 @@ async function how(id: string) {
     return { via: "token" as const, token };
   }
   if (via.via === "oauth") return { via: "mcp" as const, url: via.url };
+  if (via.via === "google") return { via: "google" as const };
   return { via: "claude-code" as const, server: via.server };
 }
 
@@ -114,7 +119,7 @@ async function siteOf(id: string, recipe: Recipe, ask: (call: ToolCall) => Promi
 type How = Awaited<ReturnType<typeof how>>;
 
 /** Calls on the connector's tools, however it's reached (Qalam's sign-in, or Claude Code: a run per call), the site first when its recipe needs one. */
-async function onTools<T>(id: string, h: Exclude<How, { via: "token" }>, fn: (call: (c: ToolCall) => Promise<string | null>, site: string | undefined) => Promise<T>): Promise<T> {
+async function onTools<T>(id: string, h: Exclude<How, { via: "token" } | { via: "google" }>, fn: (call: (c: ToolCall) => Promise<string | null>, site: string | undefined) => Promise<T>): Promise<T> {
   const recipe = RECIPES[id];
   if (h.via === "mcp") return withSignedIn(id, h.url, async (call) => fn(call, await siteOf(id, recipe, call)));
   const ask = async (c: ToolCall) => (await runTools(h.server, [c]))[0];
@@ -124,6 +129,7 @@ async function onTools<T>(id: string, h: Exclude<How, { via: "token" }>, fn: (ca
 export async function searchConnector(id: string, query: string): Promise<Hit[]> {
   const h = await how(id);
   if (h.via === "token") return notionSearch(h.token, query);
+  if (h.via === "google") return browseDrive({ query });
   const recipe = RECIPES[id];
   const { site, answer } = await onTools(id, h, async (call, site) => ({ site, answer: await call(recipe.search(query, site)) }));
   if (answer === null) throw new Error(h.via === "mcp" ? `${connectorDef(id)?.label ?? id} didn't search it.` : "Claude Code didn't search it. Is it signed in there?");
@@ -161,6 +167,7 @@ async function browseNow(id: string, words: string, folder: string | null | unde
   const h = await how(id);
   // Notion's API lists the pages shared with the integration, newest first.
   if (h.via === "token") return folder === undefined ? notionSearch(h.token, "") : [];
+  if (h.via === "google") return browseDrive(folder !== undefined ? { folder } : {});
   const recipe = RECIPES[id];
   const call = folder !== undefined ? recipe.list?.(folder) : recipe.recent?.();
   if (!call) return [];
@@ -175,8 +182,10 @@ async function readTexts(id: string, hits: Hit[], emit: (label: string) => void)
   const label = connectorDef(id)?.label ?? id;
   const recipe = RECIPES[id];
   const read = recipe.text ?? itemText;
-  emit(`Reading ${hits.length === 1 ? `“${hits[0].title}”` : `${hits.length} items`} from ${label}`);
+  emit(readingLabel(label, hits));
   if (h.via === "token") return Promise.all(hits.map((x) => notionPageText(h.token, x.id).catch(() => null)));
+  // A sign-in Google stopped taking ends it; a file it can't give is noted.
+  if (h.via === "google") return Promise.all(hits.map((x) => readDriveFile(x).then((i) => i.text, (e: unknown) => (e instanceof SignInAgain ? Promise.reject(e) : null))));
   if (h.via === "mcp")
     return withSignedIn(id, h.url, async (call) => {
       const out: (string | null)[] = [];
@@ -187,11 +196,28 @@ async function readTexts(id: string, hits: Hit[], emit: (label: string) => void)
   return (await runTools(h.server, hits.map((x) => recipe.fetch(x)))).map((t) => (t === null ? null : read(t)));
 }
 
+const readingLabel = (label: string, hits: Hit[]) => `Reading ${hits.length === 1 ? `“${hits[0].title}”` : `${hits.length} items`} from ${label}`;
+
 /** Where an item came from: its address, else the tool and its id. */
 const originOf = (id: string, hit: Hit) => hit.url ?? `${id}:${hit.id}`;
 
 /** The picked items as material, read and not taken in: the chat box holds them until it sends. */
 export async function readItems(id: string, hits: Hit[], emit: (label: string) => void): Promise<ReadItem[]> {
+  // Drive's own files read here as files are (a PDF keeps its pages), each on its own.
+  if ((await how(id)).via === "google") {
+    emit(readingLabel(connectorDef(id)?.label ?? id, hits));
+    return Promise.all(
+      hits.map(async (hit): Promise<ReadItem> => {
+        try {
+          const ing = await readDriveFile(hit);
+          return { id: hit.id, title: hit.title, ingested: { ...ing, kind: "connector", title: hit.title, origin: originOf(id, hit) } };
+        } catch (e) {
+          if (e instanceof SignInAgain) throw e;
+          return { id: hit.id, title: hit.title, why: e instanceof Error ? e.message : String(e) };
+        }
+      }),
+    );
+  }
   const texts = await readTexts(id, hits, emit);
   return hits.map((hit, i) => {
     const text = texts[i]?.trim();

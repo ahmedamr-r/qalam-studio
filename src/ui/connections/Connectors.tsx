@@ -143,7 +143,7 @@ export function ConnectActions({ c, onView, onImport }: { c: ConnectorState; onV
     }
   };
   // The service stopped taking Qalam's sign-in.
-  const expired = c.via === "oauth" && c.tone === "warn";
+  const expired = (c.via === "oauth" || c.via === "google") && c.tone === "warn";
   const inClaudeCode = c.claudeCode?.status === "connected";
   // A service that takes only the workspace's own app signs in once that app is kept.
   const canSignIn = c.canSignIn && (!c.via || expired) && (!c.ownApp || c.ownApp.kept);

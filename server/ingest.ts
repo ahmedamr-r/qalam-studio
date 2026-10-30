@@ -44,3 +44,6 @@ export async function ingestPath(file: string, name = path.basename(file)): Prom
   const bytes = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
   return fromBytes(bytes, type, name, name, node);
 }
+
+/** Bytes that came from elsewhere (a file Google Drive gave), read like a file of that type and name. */
+export const ingestBytes = (bytes: ArrayBuffer, type: string, name: string, origin: string): Promise<Ingested> => fromBytes(bytes, type, name, origin, node);

@@ -38,7 +38,7 @@ export interface ConnectorState {
   regions: { id: string; label: string }[] | null;
   /** A service that takes only an app of the workspace's own: whether it's kept here, the link that creates it, where its credentials are, the address it lists. */
   ownApp: { kept: boolean; create: string; where: string; callback: string } | null;
-  via: "claude-code" | "token" | "oauth" | null;
+  via: "claude-code" | "token" | "oauth" | "google" | null;
   word: string;
   tone: "ok" | "warn" | "off";
 }

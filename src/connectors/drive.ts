@@ -35,25 +35,31 @@ export const driveFolder = (folder: string | null) => (folder && /^[A-Za-z0-9_-]
 
 const LIST = { pageSize: 50, excludeContentSnippets: true };
 
-/** search_files' and list_recent_files' answer as hits: folders first, the rest as Drive ordered them. */
-export function driveHits(result: string): Hit[] {
-  let j: unknown;
-  try {
-    j = JSON.parse(result.slice(result.indexOf("{")));
-  } catch {
-    return [];
-  }
-  const files = (j as { files?: unknown } | null)?.files;
-  const hits = (Array.isArray(files) ? files : []).flatMap((f: Record<string, unknown>): Hit[] => {
-    const id = typeof f.id === "string" ? f.id.trim() : "";
+/** Drive's files as hits, folders first: Google's Drive server names them `title` and `viewUrl`, Drive's API `name` and `webViewLink`. */
+export function driveFileHits(files: readonly unknown[]): Hit[] {
+  const word = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+  const hits = files.flatMap((x): Hit[] => {
+    const f = (x ?? {}) as Record<string, unknown>;
+    const id = word(f.id);
     if (!id) return [];
-    const type = driveType(typeof f.mimeType === "string" ? f.mimeType : "");
-    const title = typeof f.title === "string" && f.title.trim() ? f.title.trim() : "Untitled";
-    const url = typeof f.viewUrl === "string" && /^https:\/\/(docs|drive)\.google\.com\//.test(f.viewUrl) ? f.viewUrl : undefined;
-    const at = typeof f.modifiedTime === "string" ? f.modifiedTime : undefined;
+    const type = driveType(word(f.mimeType) ?? "");
+    const title = word(f.title) ?? word(f.name) ?? "Untitled";
+    const link = word(f.viewUrl) ?? word(f.webViewLink);
+    const url = link && /^https:\/\/(docs|drive)\.google\.com\//.test(link) ? link : undefined;
+    const at = word(f.modifiedTime);
     return [{ id, title, type, ...(type === "folder" ? { folder: true } : {}), ...(url ? { url } : {}), ...(at ? { at } : {}) }];
   });
   return [...hits.filter((h) => h.folder), ...hits.filter((h) => !h.folder)];
+}
+
+/** search_files' and list_recent_files' answer as hits. */
+export function driveHits(result: string): Hit[] {
+  try {
+    const files = (JSON.parse(result.slice(result.indexOf("{"))) as { files?: unknown } | null)?.files;
+    return driveFileHits(Array.isArray(files) ? files : []);
+  } catch {
+    return [];
+  }
 }
 
 /** A read file's words as Drive gave them. */
