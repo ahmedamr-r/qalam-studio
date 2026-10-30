@@ -285,7 +285,7 @@ function viaAgent(store: OrgStore, ix: OrgIndex | null, q: AskRequest, g: Guide,
         proc.stderr.on("data", (d) => (stderr = (stderr + d).slice(-2000)));
         let model: string | undefined;
         let result: { subtype: string; is_error?: boolean; result?: string; structured_output?: unknown; errors?: string[] } | undefined;
-        const rel = (f: unknown) => (typeof f === "string" ? path.relative(store.dir, path.resolve(store.dir, f)) || "the folder" : "a file");
+        const rel = (f: unknown) => (typeof f === "string" ? path.relative(store.dir, path.resolve(store.dir, f)).split(path.sep).join("/") || "the folder" : "a file");
         createInterface({ input: proc.stdout }).on("line", (line) => {
           let ev;
           try {

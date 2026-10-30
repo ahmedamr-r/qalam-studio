@@ -101,7 +101,7 @@ describe("organizations", () => {
 
   it("refuses folders that can't be an organization", async () => {
     await expect(openFolder("/", home)).rejects.toThrow();
-    await expect(openFolder("/System/Library", home)).rejects.toThrow("system folder");
+    await expect(openFolder(process.platform === "win32" ? "C:\\Windows\\System32" : "/System/Library", home)).rejects.toThrow("system folder");
     await expect(openFolder(path.join(base, "missing"), home)).rejects.toThrow("doesn't exist");
     await expect(openFolder(home, home)).rejects.toThrow();
   });

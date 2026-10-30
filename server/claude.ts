@@ -13,17 +13,18 @@ import { spawnCli } from "@/ai/commands";
 export function findClaude(env: NodeJS.ProcessEnv = process.env, exists: (p: string) => boolean = existsSync, home = homedir(), platform: NodeJS.Platform = process.platform): string | null {
   if (env.CLAUDE_CLI_PATH) return env.CLAUDE_CLI_PATH;
   if (platform === "win32") return findOnWindows("claude", env, exists, home);
+  const p = path.posix;
   const dirs = [
-    ...(env.PATH ?? "").split(path.delimiter).filter(Boolean),
-    path.join(home, ".local", "bin"),
-    path.join(home, ".claude", "local"),
+    ...(env.PATH ?? "").split(":").filter(Boolean),
+    p.join(home, ".local", "bin"),
+    p.join(home, ".claude", "local"),
     "/opt/homebrew/bin",
     "/usr/local/bin",
-    path.join(home, ".npm-global", "bin"),
-    path.join(home, ".bun", "bin"),
+    p.join(home, ".npm-global", "bin"),
+    p.join(home, ".bun", "bin"),
   ];
   for (const dir of dirs) {
-    const bin = path.join(dir, "claude");
+    const bin = p.join(dir, "claude");
     if (exists(bin)) return bin;
   }
   return null;

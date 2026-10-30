@@ -353,6 +353,9 @@ export class OrgStore {
   /** A page written by hand without Qalam's front matter is named after its file. */
   private topicIdFor = (file: string) => `h${factHash(path.basename(file))}`;
 
+  /** A file's path inside the organization, with "/" on every system (Windows' "\\" never reaches a page or the window). */
+  private rel = (file: string) => path.relative(this.dir, file).split(path.sep).join("/");
+
   private async indexTopic(file: string): Promise<Topic | null> {
     try {
       const t = topicFromMarkdown(await readFile(file, "utf8"), this.topicIdFor(file));
@@ -386,18 +389,18 @@ export class OrgStore {
   /** A project's file, relative to the organization's folder. */
   projectFile(id: string): string | null {
     const e = this.projects.get(id);
-    return e ? path.relative(this.dir, e.file) : null;
+    return e ? this.rel(e.file) : null;
   }
 
   /** A source's text file, relative to the organization's folder. */
   sourceFile(id: string): string | null {
     const e = this.sources.get(id);
-    return e ? path.relative(this.dir, e.md) : null;
+    return e ? this.rel(e.md) : null;
   }
 
   /** The decision log's month files, relative to the organization's folder. */
   decisionFiles(): string[] {
-    return [...this.decisions.keys()].map((f) => path.relative(this.dir, f)).sort();
+    return [...this.decisions.keys()].map((f) => this.rel(f)).sort();
   }
 
   getProject(id: string): { record: Project; version: string } | null {
@@ -652,7 +655,7 @@ export class OrgStore {
     try {
       const text = await readFile(file, "utf8");
       const t = topicFromMarkdown(text, this.topicIdFor(file));
-      return t ? { ...t, id, version: contentHash(text), file: path.relative(this.dir, file) } : null;
+      return t ? { ...t, id, version: contentHash(text), file: this.rel(file) } : null;
     } catch {
       return null; // removed meanwhile
     }
@@ -1498,7 +1501,7 @@ export class OrgStore {
     try {
       this.watcher = watch(this.dir, { recursive: true }, (_type, name) => {
         if (!name) return;
-        const rel = name.toString();
+        const rel = name.toString().split(path.sep).join("/");
         if (IGNORE.test(rel)) return;
         clearTimeout(this.pending.get(rel));
         this.pending.set(

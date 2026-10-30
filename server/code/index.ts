@@ -102,7 +102,7 @@ function readWithAgent(root: string, content: string, goals: string[], asked: st
         let model: string | undefined;
         let apiError: string | undefined;
         let result: { subtype: string; is_error?: boolean; result?: string; structured_output?: unknown; errors?: string[] } | undefined;
-        const rel = (f: unknown) => (typeof f === "string" ? path.relative(root, path.resolve(root, f)) || "the code" : "a file");
+        const rel = (f: unknown) => (typeof f === "string" ? path.relative(root, path.resolve(root, f)).split(path.sep).join("/") || "the code" : "a file");
         createInterface({ input: proc.stdout }).on("line", (line) => {
           let ev;
           try {

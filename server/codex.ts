@@ -15,10 +15,11 @@ import { findOnWindows } from "./claude";
 export function findCodex(env: NodeJS.ProcessEnv = process.env, exists: (p: string) => boolean = existsSync, home = homedir(), platform: NodeJS.Platform = process.platform): string | null {
   if (env.QALAM_CODEX_BIN) return env.QALAM_CODEX_BIN;
   if (platform === "win32") return findOnWindows("codex", env, exists, home);
-  const dirs = [...(env.PATH ?? "").split(path.delimiter).filter(Boolean), path.join(home, ".local", "bin"), "/opt/homebrew/bin", "/usr/local/bin", path.join(home, ".npm-global", "bin"), path.join(home, ".bun", "bin")];
-  for (const dir of dirs) if (exists(path.join(dir, "codex"))) return path.join(dir, "codex");
-  for (const app of ["/Applications/Codex.app", "/Applications/ChatGPT.app", path.join(home, "Applications", "ChatGPT.app")]) {
-    const bin = path.join(app, "Contents", "Resources", "codex");
+  const p = path.posix;
+  const dirs = [...(env.PATH ?? "").split(":").filter(Boolean), p.join(home, ".local", "bin"), "/opt/homebrew/bin", "/usr/local/bin", p.join(home, ".npm-global", "bin"), p.join(home, ".bun", "bin")];
+  for (const dir of dirs) if (exists(p.join(dir, "codex"))) return p.join(dir, "codex");
+  for (const app of ["/Applications/Codex.app", "/Applications/ChatGPT.app", p.join(home, "Applications", "ChatGPT.app")]) {
+    const bin = p.join(app, "Contents", "Resources", "codex");
     if (exists(bin)) return bin;
   }
   return null;

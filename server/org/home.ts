@@ -124,6 +124,7 @@ function refused(dir: string, home: string): string | null {
   if (dir === homedir()) return "Pick a folder inside your home folder, not the home folder itself.";
   if (dir === home) return `That's where Qalam keeps organizations; pick a folder inside it, or another one.`;
   if (/^\/(System|usr|bin|sbin|etc|Library|Applications|dev|cores)(\/|$)/.test(dir)) return "That's a system folder.";
+  if (/^[a-z]:\\(Windows|Program Files|Program Files \(x86\)|ProgramData)(\\|$)/i.test(dir)) return "That's a system folder.";
   return null;
 }
 
