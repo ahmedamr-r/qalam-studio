@@ -28,6 +28,13 @@ import { changesThings, setupStep, welcomeMode, type SetupStep, type WelcomeMode
  */
 
 export type Door = "know" | "find" | "problems" | "idea";
+
+/** What one part of what was sent at the problems door became: its source, and the problem pages it was filed into. */
+export interface ProblemSource {
+  doc: DocRef;
+  sourceId: string;
+  pages: { id: string; title: string }[];
+}
 const DOORS: readonly Door[] = ["know", "find", "problems", "idea"];
 
 export interface FirstRun {
@@ -53,7 +60,7 @@ export interface FirstRun {
   /** The So far drawer, when the window is too narrow for the panel. */
   soFarOpen: boolean;
   /** The problems door: what they sent (words and docs), and what was filed from it (for this tab): the problem pages it went into. */
-  problems: { sent: string | null; docs?: DocRef[]; result: { pages: number; quotes: number; needs?: { id: string; title: string }[] } | null; error: string | null };
+  problems: { sent: string | null; docs?: DocRef[]; result: { pages: number; quotes: number; needs?: { id: string; title: string }[] } | null; error: string | null; sources?: ProblemSource[] };
   /** What a door is doing while it reads or makes something. */
   working: { label: string } | null;
 }
@@ -207,13 +214,18 @@ export async function sendProblems(text: string, docs: SentDoc[] = []) {
   useFirstRun.setState({ problems: { sent: words, ...(docs.length ? { docs: docs.map(docRef) } : {}), result: null, error: null } });
   working("Reading what you sent");
   try {
-    const all = [...(words ? [isAddress(words) ? await ingestUrl(words) : await ingestPaste(text)] : []), ...docs.map((d) => d.ingested)];
+    const typed = words ? [isAddress(words) ? await ingestUrl(words) : await ingestPaste(text)] : [];
+    const all = [...typed.map((ing) => ({ ing, doc: isAddress(words) ? { from: "page", title: ing.title, ...(ing.origin ? { origin: ing.origin } : {}) } : { from: "said", title: "Your words" } })), ...docs.map((d) => ({ ing: d.ingested, doc: docRef(d) }))];
     let quotes = 0;
     const needs = new Map<string, { id: string; title: string }>();
-    for (const ing of all) {
+    const sources: ProblemSource[] = [];
+    for (const { ing, doc } of all) {
       const r = await captureIngested(ing, { onActivity: working });
       quotes += r.quotes;
-      for (const p of r.filed?.pages ?? []) if (p.kind === "need") needs.set(p.id, { id: p.id, title: p.title });
+      const pages = (r.filed?.pages ?? []).filter((p) => p.kind === "need").map(({ id, title }) => ({ id, title }));
+      for (const p of pages) needs.set(p.id, p);
+      sources.push({ doc, sourceId: r.sourceId, pages });
+      useFirstRun.setState((s) => ({ problems: { ...s.problems, sources: [...sources] } }));
     }
     useFirstRun.setState((s) => ({ problems: { ...s.problems, result: { pages: needs.size, quotes, needs: [...needs.values()] } } }));
   } catch (e) {

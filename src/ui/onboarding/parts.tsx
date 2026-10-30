@@ -8,7 +8,7 @@ import { chooseVoice, useVoice } from "@/org/voice";
 import type { VoiceChoice } from "@/voice/model";
 import { childrenOf } from "@/goals/tree";
 import { useOrgContext } from "@/org/context";
-import { boardGoals, pendingLines } from "@/org/setup";
+import { boardGoals, pendingLines, pickedDocs } from "@/org/setup";
 import { goalHref, orgHref, placeHref, topicHref } from "@/projects/model";
 import type { RankedNeed } from "@/hub/needs";
 import { needsDb } from "@/org/needs";
@@ -247,7 +247,7 @@ function OutlinePart() {
 function SaidPart() {
   const pending = useSetup((s) => s.pending);
   const source = useSetup((s) => s.source);
-  const docs = pending ? pending.docs : source?.setup?.docs;
+  const docs = pending ? pending.docs : pickedDocs(source?.setup?.docs);
   // The source's text carries the page and the docs too: it shows only when nothing else says what they sent.
   const text = pending?.text ?? source?.setup?.said ?? (source?.origin || docs?.length ? "" : (source?.text.slice(0, 1200) ?? ""));
   const url = pending?.url || source?.origin;

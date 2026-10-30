@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ConnectorState } from "@/org/connectors";
-import { docsCheck, sourcesFor, withDocs, type Attachment } from "./attach";
+import { docPart, docsCheck, joinParts, sourcesFor, spansWithin, type Attachment } from "./attach";
 
 const c = (id: string, group: ConnectorState["group"], o: Partial<ConnectorState> = {}): ConnectorState =>
   ({ id, label: id[0].toUpperCase() + id.slice(1), group, feeds: "material", imports: true, via: null, tone: "off", claudeCode: null, ...o }) as ConnectorState;
@@ -31,11 +31,25 @@ describe("which sources the box offers", () => {
 });
 
 describe("docs sent with the words", () => {
-  it("joins the words and each doc under a line naming where it came from", () => {
-    expect(withDocs("A planner for families.", [{ via: "Google Drive", title: "Pitch deck.pdf", text: "Families plan on Sunday.\n" }, { via: "this computer", title: "notes.md", text: "Shopping lists." }])).toBe(
-      "A planner for families.\n\nFrom Google Drive: Pitch deck.pdf\n\nFamilies plan on Sunday.\n\nFrom this computer: notes.md\n\nShopping lists.",
-    );
-    expect(withDocs("  ", [{ via: "Google Drive", title: "Pitch", text: "Words." }])).toBe("From Google Drive: Pitch\n\nWords.");
+  it("joins their words, a page and each doc under a line naming where it came from, and knows where each part's words sit", () => {
+    const parts = [{ body: " A planner for families. " }, docPart({ via: "Google Drive", title: "Pitch deck.pdf", text: "Families plan on Sunday.\n" }), docPart({ via: "this computer", title: "notes.md", text: "Shopping lists." })];
+    const { text, spans } = joinParts(parts);
+    expect(text).toBe("A planner for families.\n\nFrom Google Drive: Pitch deck.pdf\n\nFamilies plan on Sunday.\n\nFrom this computer: notes.md\n\nShopping lists.");
+    expect(spans.map(([a, b]) => text.slice(a, b))).toEqual(["A planner for families.", "Families plan on Sunday.", "Shopping lists."]);
+    // A doc alone starts at its header.
+    const alone = joinParts([docPart({ via: "Google Drive", title: "Pitch", text: "Words." })]);
+    expect(alone.text).toBe("From Google Drive: Pitch\n\nWords.");
+    expect(alone.text.slice(...alone.spans[0])).toBe("Words.");
+  });
+
+  it("shortens the part the length cut falls in, and leaves out the ones after it", () => {
+    const { text, spans } = joinParts([{ body: "x".repeat(10) }, docPart({ via: "Drive", title: "A", text: "y".repeat(10) }), docPart({ via: "Drive", title: "B", text: "z".repeat(10) })]);
+    expect(text.length).toBeGreaterThan(40);
+    const kept = spansWithin([{ title: "words" }, { title: "A" }, { title: "B" }], spans, spans[1][0] + 4);
+    expect(kept).toEqual([
+      { title: "words", span: [0, 10] },
+      { title: "A", span: [spans[1][0], spans[1][0] + 4], cut: true },
+    ]);
   });
 
   it("waits for a doc still reading, and says when they're too long together", () => {

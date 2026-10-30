@@ -1,6 +1,6 @@
 import { nanoid } from "nanoid";
 import { create } from "zustand";
-import { docRef, withDocs, type DocRef, type SentDoc } from "../chat/attach";
+import { docPart, docRef, joinParts, spansWithin, type DocRef, type Part, type SentDoc } from "../chat/attach";
 import { AIError, aiStatus, callAI } from "@/ai/client";
 import { addCardIn, makeCardNode, newCard } from "@/discovery/ops";
 import { sourcesDb } from "@/discovery/db";
@@ -134,8 +134,11 @@ const failed = (at: "reading" | "analyzing" | "placing", e: unknown) => setSessi
 // ---------------------------------------------------------------------------
 // Read
 
-/** What they wrote and the page they pointed at, as one brain dump: kept as a source of the organization's, then read. */
-/** What they wrote, a page they pointed at, and the docs that came with them (each joined under a line naming it). `idea`: the idea door's, which ends on its board. */
+/**
+ * What they wrote, a page they pointed at, and the docs that came with them, as one brain dump (each
+ * part under a line naming it, and where its words sit kept on the session): kept as a source of the
+ * organization's, then read. `idea`: the idea door's, which ends on its board.
+ */
 export async function startSetup(input: { text: string; url: string; docs?: SentDoc[]; idea?: boolean }) {
   run?.abort();
   const ctrl = new AbortController();
@@ -145,16 +148,29 @@ export async function startSetup(input: { text: string; url: string; docs?: Sent
   // What they sent shows at once, with the reading under way (Stop works on the page fetch too).
   useSetup.setState({ error: null, pending: { text: input.text.trim(), url: input.url.trim(), ...(refs.length ? { docs: refs } : {}) }, busy: { label: input.url.trim() ? "Reading the page" : "Reading what you wrote", started: Date.now(), tokens: 0 } });
   const fail = (error: string | null) => useSetup.setState({ error, pending: null, busy: null });
-  let text = input.text.trim();
+  let text = "";
   let origin: string | undefined;
+  // Their words, the page, each doc: the parts of the text, and where each came from.
+  const parts: Part[] = [];
+  const from: DocRef[] = [];
+  let spans: [number, number][] = [];
   try {
     if (!(await aiStatus()).ai) return fail("Qalam AI isn't set up here, so it can't read what you wrote. Fill in the organization by hand from its home.");
+    if (input.text.trim()) {
+      parts.push({ body: (await ingestPaste(input.text)).text });
+      from.push({ from: "said", title: "Your words" });
+    }
     if (input.url.trim()) {
       const page = await ingestUrl(input.url.trim(), ctrl.signal);
       origin = page.origin;
-      text = [text, `From ${page.title}:\n${page.text.trim()}`].filter(Boolean).join("\n\n");
-    } else if (text) text = (await ingestPaste(text)).text.trim();
-    if (docs.length) text = withDocs(text, docs.map((d) => ({ via: d.via, title: d.title, text: d.ingested.text })));
+      parts.push({ header: `From ${page.title}:`, body: page.text });
+      from.push({ from: "page", title: page.title, ...(page.origin ? { origin: page.origin } : {}) });
+    }
+    for (const d of docs) {
+      parts.push(docPart({ via: d.via, title: d.title, text: d.ingested.text }));
+      from.push(docRef(d));
+    }
+    ({ text, spans } = joinParts(parts));
   } catch (e) {
     return fail((e as Error).name === "AbortError" ? null : e instanceof IngestError ? e.message : `Qalam couldn't read that: ${message(e)}`);
   } finally {
@@ -179,7 +195,7 @@ export async function startSetup(input: { text: string; url: string; docs?: Sent
     read: [],
     quotes: [],
     needs: [],
-    setup: { v: 1, phase: "reading", ...(input.text.trim() ? { said: input.text.trim().slice(0, DUMP_MAX_CHARS) } : {}), ...(refs.length ? { docs: refs } : {}), ...(input.idea ? { idea: true as const } : {}), understanding: "", challenges: [], buckets: [] },
+    setup: { v: 1, phase: "reading", ...(input.text.trim() ? { said: input.text.trim().slice(0, DUMP_MAX_CHARS) } : {}), docs: spansWithin(from, spans, DUMP_MAX_CHARS), ...(input.idea ? { idea: true as const } : {}), understanding: "", challenges: [], buckets: [] },
   };
   await sourcesDb.put(rec);
   useSetup.setState({ source: rec, pending: null, busy: null });

@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { Ingested } from "@/discovery/ingest/core";
 import type { Hit } from "@/connectors/recipes";
+import type { SetupDoc } from "@/org/setup";
 import { connectorsDb, type ConnectorState } from "@/org/connectors";
 
 /*
@@ -14,11 +15,8 @@ import { connectorsDb, type ConnectorState } from "@/org/connectors";
 /** What Qalam AI asked for: the person's own thinking (an idea, the company), or what customers said. */
 export type SourceFit = "docs" | "customers";
 
-/** A doc as the thread names it once it's sent: where it came from ("computer", or a connector's id) and its title. */
-export interface DocRef {
-  from: string;
-  title: string;
-}
+/** A doc as it's kept once it's sent: where it came from ("computer", or a connector's id), its title, and what was known of it when it was picked. */
+export type DocRef = Omit<SetupDoc, "span" | "cut">;
 
 export interface Attachment extends DocRef {
   /** One per file or item: the same one picked twice stays one. */
@@ -49,9 +47,36 @@ export function sourcesFor(fit: SourceFit, connectors: readonly ConnectorState[]
     .map((x) => x.c);
 }
 
-/** Their words, then each doc under a line naming where it came from: one text, read as their own thinking. */
-export function withDocs(words: string, docs: readonly { via: string; title: string; text: string }[]): string {
-  return [words.trim(), ...docs.map((d) => `From ${d.via}: ${d.title}\n\n${d.text.trim()}`)].filter(Boolean).join("\n\n");
+/** A part of what's sent as one text: its words, under a line naming where they came from (none for their own words). */
+export interface Part {
+  header?: string;
+  body: string;
+}
+
+/** The parts as one text, read as their own thinking, and where each part's words sit in it ([start, end), its header left out). */
+export function joinParts(parts: readonly Part[]): { text: string; spans: [number, number][] } {
+  let text = "";
+  const spans: [number, number][] = [];
+  for (const p of parts) {
+    const body = p.body.trim();
+    if (text) text += "\n\n";
+    if (p.header) text += `${p.header}\n\n`;
+    spans.push([text.length, text.length + body.length]);
+    text += body;
+  }
+  return { text, spans };
+}
+
+/** A doc's part: its words under "From <tool>: <title>". */
+export const docPart = (d: { via: string; title: string; text: string }): Part => ({ header: `From ${d.via}: ${d.title}`, body: d.text });
+
+/** Each part's span once the text is cut at `max`: shortened (`cut`) where the cut falls in it, left out where it falls before it. */
+export function spansWithin<T>(parts: readonly T[], spans: readonly [number, number][], max: number): (T & { span: [number, number]; cut?: true })[] {
+  return parts.flatMap((p, i) => {
+    const [a, b] = spans[i];
+    if (a >= max) return [];
+    return [{ ...p, span: [a, Math.min(b, max)] as [number, number], ...(b > max ? { cut: true as const } : {}) }];
+  });
 }
 
 /** Why the box can't send yet because of its docs (one still reading, too long together), else null. */
@@ -77,6 +102,8 @@ interface AttachState {
 
 export const useAttach = create<AttachState>(() => ({ items: [] }));
 
+/** A PDF's page count, for the reader. */
+const pagesOf = (ing: Ingested) => (ing.pages?.length ? { pages: ing.pages.length } : {});
 const set = (key: string, patch: Partial<Attachment>) => useAttach.setState((s) => ({ items: s.items.map((x) => (x.key === key ? { ...x, ...patch } : x)) }));
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -90,12 +117,12 @@ function add(items: Attachment[]): Attachment[] {
 
 /** Files from this computer: each read here, as the home's Add reads them. */
 export function attachFiles(files: File[]) {
-  const fresh = add(files.map((f) => ({ key: `computer:${f.name}:${f.size}:${f.lastModified}`, from: "computer", via: "this computer", title: f.name, state: "reading" as const })));
+  const fresh = add(files.map((f) => ({ key: `computer:${f.name}:${f.size}:${f.lastModified}`, from: "computer", via: "this computer", title: f.name, at: new Date(f.lastModified).toISOString(), state: "reading" as const })));
   for (const a of fresh) {
     const file = files.find((f) => `computer:${f.name}:${f.size}:${f.lastModified}` === a.key)!;
     void import("../discovery/ingest").then(({ ingestFile }) =>
       ingestFile(file).then(
-        (ingested) => set(a.key, { state: "ready", ingested }),
+        (ingested) => set(a.key, { state: "ready", ingested, type: ingested.kind, ...pagesOf(ingested) }),
         (e: unknown) => set(a.key, { state: "failed", why: message(e) }),
       ),
     );
@@ -104,12 +131,12 @@ export function attachFiles(files: File[]) {
 
 /** Items picked in a connector: read together in the core, not taken in until the box sends. */
 export async function attachHits(connector: Pick<ConnectorState, "id" | "label">, hits: Hit[]) {
-  const fresh = add(hits.map((h) => ({ key: `${connector.id}:${h.id}`, from: connector.id, via: connector.label, title: h.title, state: "reading" as const })));
+  const fresh = add(hits.map((h) => ({ key: `${connector.id}:${h.id}`, from: connector.id, via: connector.label, title: h.title, ...(h.url ? { origin: h.url } : {}), ...(h.type && h.type !== "folder" ? { type: h.type } : {}), ...(h.at ? { at: h.at } : {}), state: "reading" as const })));
   if (!fresh.length) return;
   const picked = hits.filter((h) => fresh.some((a) => a.key === `${connector.id}:${h.id}`));
   try {
     const read = await connectorsDb.read(connector.id, picked);
-    for (const it of read) set(`${connector.id}:${it.id}`, it.ingested ? { state: "ready", ingested: it.ingested } : { state: "failed", why: it.why ?? "Nothing came back for it." });
+    for (const it of read) set(`${connector.id}:${it.id}`, it.ingested ? { state: "ready", ingested: it.ingested, ...pagesOf(it.ingested) } : { state: "failed", why: it.why ?? "Nothing came back for it." });
   } catch (e) {
     for (const a of fresh) set(a.key, { state: "failed", why: message(e) });
   }
@@ -124,5 +151,5 @@ export type SentDoc = Attachment & { ingested: Ingested };
 /** The docs ready to send, with their words. */
 export const readyDocs = (items: readonly Attachment[]): SentDoc[] => items.filter((x): x is SentDoc => x.state === "ready" && !!x.ingested);
 
-/** What the thread keeps of a sent doc. */
-export const docRef = ({ from, title }: DocRef): DocRef => ({ from, title });
+/** What's kept of a sent doc: where it came from and what was known of it. */
+export const docRef = ({ from, title, origin, type, at, pages }: DocRef): DocRef => ({ from, title, ...(origin ? { origin } : {}), ...(type ? { type } : {}), ...(at ? { at } : {}), ...(pages ? { pages } : {}) });

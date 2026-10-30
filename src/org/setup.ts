@@ -54,6 +54,28 @@ export interface SetupProposal {
 }
 
 /** How setting the organization up is going, kept on the dump's source (a reload picks it up). */
+/**
+ * A part of a brain dump and where it came from: their own words (`from: "said"`), the page they
+ * pointed at ("page"), a file from this computer ("computer") or a connector's item (its id), with
+ * what was known of it when it was picked, and where its words sit in the dump's text (`span`,
+ * [start, end); `cut` when the dump's length cut it short). A fragment inside a part's span came from it.
+ */
+export interface SetupDoc {
+  from: string;
+  title: string;
+  origin?: string;
+  /** What kind of file or item ("pdf", "doc", "sheet"…). */
+  type?: string;
+  /** When it last changed, as the tool said. */
+  at?: string;
+  pages?: number;
+  span?: [number, number];
+  cut?: true;
+}
+
+/** Their docs, without their own words or a page they pointed at. */
+export const pickedDocs = (docs: readonly SetupDoc[] | undefined): SetupDoc[] => (docs ?? []).filter((d) => d.from !== "said" && d.from !== "page");
+
 export interface SetupSession {
   v: 1;
   /** reading → asking ⇄ analyzing → ready → placing → review → done. */
@@ -62,8 +84,8 @@ export interface SetupSession {
   failed?: { at: "reading" | "analyzing" | "placing"; error: string };
   /** Exactly what they typed (the source's text also carries the page they pointed at, and the docs). */
   said?: string;
-  /** The docs that came with it: where each came from ("computer" or a connector's id) and its title. */
-  docs?: { from: string; title: string }[];
+  /** Where each part of the text came from, in order: their own words, the page they pointed at, each doc, and where its words sit in the text. */
+  docs?: SetupDoc[];
   /** Read as an idea to test (the idea door): it ends on the idea's board. */
   idea?: true;
   /** What Qalam AI took from it, revised after each round of answers. */
