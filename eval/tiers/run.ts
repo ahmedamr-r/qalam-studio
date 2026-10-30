@@ -4,6 +4,13 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import { DiscoveryBody, extractCall } from "@/ai/discovery";
 import { setEngineState } from "@/ai/engine";
+import { ENGINE_LABEL, isEngineKind, type EngineKind } from "@/ai/engine-kinds";
+import { adapterFor, streamAdapter } from "@/ai/engines";
+import { codexModels } from "@/ai/engines/codex";
+import { solutionsCall } from "@/ai/solutions";
+import { onUsage } from "@/ai/usage";
+import type { UsageEntry } from "@/ai/usage-shared";
+import { sanitizeSolutions, solutionsMaterial } from "@/discovery/solutions";
 import { modelFamily, modelFor, type Tier } from "@/ai/models";
 import { claimsCall } from "@/ai/outside";
 import { streamStructured, type CallOpts } from "@/ai/server";
@@ -18,10 +25,12 @@ import { fileMaterial, type FilingDeps } from "@/hub/filing";
 import { filingSize, type Filing } from "@/hub/topics";
 import { contextText } from "@/org/context-md";
 import { findClaude } from "../../server/claude";
+import { ensureEngine } from "../../server/engine";
+import { readSettings } from "../../server/settings";
 import { loadEnvFiles } from "../../server/env";
 import { secrets } from "../../server/secrets";
 import { buildBasket, SOURCES } from "../retrieval/basket";
-import { ANSWERS, OUTLINE, OUTSIDE_NOTES, OUTSIDE_PAGES, OUTSIDE_TASK, SHAPE_PRODUCTS } from "./sample";
+import { ANSWERS, OUTLINE, OUTSIDE_NOTES, OUTSIDE_PAGES, OUTSIDE_TASK, PROBLEM, SHAPE_PRODUCTS } from "./sample";
 
 /**
  * pnpm eval:tiers: should reading run on Sonnet? The read tier's calls (extract, filing into topic
@@ -31,22 +40,36 @@ import { ANSWERS, OUTLINE, OUTSIDE_NOTES, OUTSIDE_PAGES, OUTSIDE_TASK, SHAPE_PRO
  * the model returned and what the app's own checks keep of it. Each case's outputs are written
  * side by side to a scratch folder.
  *
- * It spends real tokens (on Claude Code, the plan's limits), so it only estimates unless asked:
+ * With --engine <another engine> it asks instead whether that engine's model can take a tier: it
+ * runs Claude's Opus 5.5 (the baseline, on Claude Code or a key: --baseline cli|api) beside the
+ * engine's model (--model, else the one picked in Connections, else Codex's own), on the read calls
+ * and on drafting solutions (a decide call). A model holds a tier when it keeps at least 90% of what
+ * the baseline keeps on every call of that tier.
+ *
+ * It spends real tokens (on Claude Code or Codex, the plan's limits), so it only estimates unless asked:
  *   pnpm eval:tiers                 the plan and the estimate, no model calls (also --dry)
  *   pnpm eval:tiers --yes           run it (--engine api|cli, --runs N, --only extract,claims, --out dir)
+ *   pnpm eval:tiers --engine codex --yes                    Codex's model beside Claude's
+ *   pnpm eval:tiers --engine openai --model gpt-… --yes    a key's model beside Claude's
  */
 
-type Kind = "extract" | "topics" | "shape" | "claims";
+type Kind = "extract" | "topics" | "shape" | "claims" | "solutions";
 type Effort = CallOpts["effort"];
-const KINDS: Kind[] = ["extract", "topics", "shape", "claims"];
+const KINDS: Kind[] = ["extract", "topics", "shape", "claims", "solutions"];
+/** The read tier's calls (the rest decide). */
+const READS: Kind[] = ["extract", "topics", "shape", "claims"];
+/** What another engine's model must keep of the baseline's to take a tier. */
+const HOLDS = 0.9;
 
 interface Config {
-  id: "opus" | "sonnet" | "opus-lower";
+  id: "opus" | "sonnet" | "opus-lower" | "engine";
   name: string;
   tier: Tier;
   lower: boolean;
+  /** Runs on another engine's adapter instead of Claude. */
+  via?: EngineKind;
 }
-const CONFIGS: Config[] = [
+const DEFAULT_CONFIGS: Config[] = [
   { id: "opus", name: "Opus 5.5, its effort", tier: "decide", lower: false },
   { id: "sonnet", name: "Sonnet 5.5, its effort", tier: "read", lower: false },
   { id: "opus-lower", name: "Opus 5.5, one lower", tier: "decide", lower: true },
@@ -59,9 +82,9 @@ const PRICE: Record<string, { in: number; out: number; read: number; write: numb
   Sonnet: { in: 2, out: 10, read: 0.2, write: 2.5 },
 };
 /** What a call writes, thinking included, for the estimate (the run measures it). */
-const OUT_GUESS: Record<Kind, number> = { extract: 2500, topics: 5000, shape: 1800, claims: 1500 };
+const OUT_GUESS: Record<Kind, number> = { extract: 2500, topics: 5000, shape: 1800, claims: 1500, solutions: 3500 };
 const LOWER_OUT = 0.7;
-const SECONDS_GUESS: Record<Kind, number> = { extract: 35, topics: 70, shape: 25, claims: 25 };
+const SECONDS_GUESS: Record<Kind, number> = { extract: 35, topics: 70, shape: 25, claims: 25, solutions: 60 };
 /** Characters a token, roughly, for prompts and JSON schemas. */
 const CHARS_PER_TOKEN = 3.5;
 
@@ -239,14 +262,48 @@ async function casesFor(dir: string, problems: string[]): Promise<{ cases: Case[
     },
   });
 
+  // Solutions: drafting for a problem page written from the sample's quotes (a decide call).
+  const quotes = new Map(SOURCES.flatMap((s) => s.quotes.map((q) => [q.id, { q, s }] as const)));
+  const cited = [...new Set(PROBLEM.lines.flatMap((l) => l.cites))].flatMap((id) => {
+    const found = quotes.get(id);
+    return found ? [{ ref: `hub:quote:${id}`, text: found.q.text, label: found.s.speaker ?? found.s.title, source: found.s.title, evidence: true }] : [];
+  });
+  const sm = solutionsMaterial({
+    problem: { title: PROBLEM.title, topic: null },
+    lines: PROBLEM.lines.map((l, i) => ({ id: `line-${i + 1}`, section: l.section, text: l.text, cites: l.cites.map((id) => `hub:quote:${id}`) })),
+    pieces: cited,
+    goals: [{ id: "g-evening", title: PROBLEM.goal.title, metric: PROBLEM.goal.metric, how: null }],
+    claims: [],
+    steps: [],
+    cards: PROBLEM.cards,
+    ideas: [],
+  });
+  cases.push({
+    kind: "solutions",
+    label: `Drafting solutions for “${PROBLEM.title}”`,
+    run: async (ask) => {
+      const raw = await ask(solutionsCall(sm));
+      let n = 0;
+      const { drafts } = sanitizeSolutions(raw, sm, { now: Date.now(), id: () => `d${++n}` });
+      const proposed = list(rec(raw).solutions);
+      return {
+        raw: [raw],
+        // Each solution, its assumptions and its test count once.
+        returned: proposed.reduce((x, s) => x + 1 + list(s.assumptions).length + (s.test ? 1 : 0), 0),
+        kept: drafts.reduce((x, d) => x + 1 + d.assumptions.length + (d.test ? 1 : 0), 0),
+        items: drafts.map((d) => `${one(d.title)} · ${d.assumptions.length} assumptions${d.test ? ` · test: ${one(d.test.what)}` : ""}`),
+      };
+    },
+  });
+
   return { cases, dispose: () => store.dispose() };
 }
 
 // ---------------------------------------------------------------------------
 // One call, read to its end with what it used (safe to run three at once)
 
-async function callOnce(opts: CallOpts): Promise<{ data: unknown; usage: Usage; model: string }> {
-  const reader = streamStructured(opts).body!.getReader();
+async function callOnce(opts: CallOpts, res: Response = streamStructured(opts)): Promise<{ data: unknown; usage: Usage; model: string }> {
+  const reader = res.body!.getReader();
   const dec = new TextDecoder();
   let buf = "";
   for (;;) {
@@ -295,7 +352,7 @@ const k = (n: number) => (n >= 10_000 ? `${Math.round(n / 1000)}k` : n >= 1000 ?
 const pad = (s: string, n: number) => s.padEnd(n);
 const lpad = (s: string, n: number) => s.padStart(n);
 
-function printEstimate(sent: Awaited<ReturnType<typeof plan>>, runs: number, engine: "api" | "cli", problems: string[]) {
+function printEstimate(sent: Awaited<ReturnType<typeof plan>>, runs: number, engine: "api" | "cli", problems: string[], CONFIGS: Config[], other: EngineKind | null) {
   console.log(`Estimate for ${runs} run${runs === 1 ? "" : "s"} (input from the requests as built; output guessed, thinking included)\n`);
   console.log(`${pad("Call", 9)}${lpad("Calls", 6)}${lpad("Effort", 8)}${lpad("In/call", 9)}${lpad("Out/call", 10)}${CONFIGS.map((c) => lpad(c.name, 24)).join("")}`);
   const totals = new Map<string, { cost: number; calls: number; tokens: number }>(CONFIGS.map((c) => [c.id, { cost: 0, calls: 0, tokens: 0 }]));
@@ -307,23 +364,25 @@ function printEstimate(sent: Awaited<ReturnType<typeof plan>>, runs: number, eng
       if (c.lower && !LOWER[s.effort]) return lpad("n/a (already low)", 24);
       const p = c.tier === "read" ? PRICE.Sonnet : PRICE.Opus;
       const out = OUT_GUESS[kind] * (c.lower ? LOWER_OUT : 1);
-      const cost = (s.calls * runs * (s.input / s.calls) * p.in + s.calls * runs * out * p.out) / 1e6;
+      const cost = c.via ? 0 : (s.calls * runs * (s.input / s.calls) * p.in + s.calls * runs * out * p.out) / 1e6;
       const t = totals.get(c.id)!;
       t.cost += cost;
       t.calls += s.calls * runs;
       t.tokens += s.calls * runs * (s.input / s.calls + out);
-      return lpad(usd(cost), 24);
+      return lpad(c.via ? "its own prices" : usd(cost), 24);
     });
     seconds += SECONDS_GUESS[kind] * s.calls * runs;
     console.log(`${pad(kind, 9)}${lpad(String(s.calls * runs), 6)}${lpad(s.effort, 8)}${lpad(k(s.input / s.calls), 9)}${lpad(k(OUT_GUESS[kind]), 10)}${cells.join("")}`);
   }
   const all = [...totals.values()];
-  console.log(`${pad("All", 9)}${lpad("", 33)}${CONFIGS.map((c) => lpad(usd(totals.get(c.id)!.cost), 24)).join("")}`);
-  console.log(`\n${all.reduce((n, t) => n + t.calls, 0)} calls across the three ways.`);
+  const ways = CONFIGS.length === 2 ? "two ways" : "three ways";
+  console.log(`${pad("All", 9)}${lpad("", 33)}${CONFIGS.map((c) => lpad(c.via ? "" : usd(totals.get(c.id)!.cost), 24)).join("")}`);
+  console.log(`\n${all.reduce((n, t) => n + t.calls, 0)} calls across the ${ways}.`);
   const dollars = all.reduce((n, t) => n + t.cost, 0);
   const tokens = all.reduce((n, t) => n + t.tokens, 0);
-  console.log(`About ${k(tokens)} tokens in all, ${usd(dollars)} at API prices (no cache counted, so likely less). The three ways run side by side: about ${Math.ceil(seconds / 60)} minutes.`);
+  console.log(`About ${k(tokens)} tokens in all, ${usd(dollars)} at API prices (no cache counted, so likely less)${other ? " for Claude's" : ""}. The ${ways} run side by side: about ${Math.ceil(seconds / 60)} minutes.`);
   console.log(engine === "cli" ? "On Claude Code: no money, but it counts against the plan's usage limits." : "On an API key: billed to that key.");
+  if (other) console.log(other === "codex" ? "Codex's calls count against the ChatGPT plan's limits." : other === "ollama" || other === "lmstudio" ? "The other engine's calls run on this computer, for nothing." : `The other engine's calls are billed to the ${ENGINE_LABEL[other]}.`);
   for (const p of [...new Set(problems)]) console.log(`! ${p}`);
 }
 
@@ -331,23 +390,31 @@ function printEstimate(sent: Awaited<ReturnType<typeof plan>>, runs: number, eng
 
 async function main() {
   const { values } = parseArgs({
-    options: { dry: { type: "boolean" }, yes: { type: "boolean" }, engine: { type: "string" }, runs: { type: "string" }, only: { type: "string" }, out: { type: "string" } },
+    options: { dry: { type: "boolean" }, yes: { type: "boolean" }, engine: { type: "string" }, model: { type: "string" }, baseline: { type: "string" }, runs: { type: "string" }, only: { type: "string" }, out: { type: "string" } },
   });
   loadEnvFiles(process.cwd());
   const runs = Math.max(1, Math.min(5, Number(values.runs ?? 1) || 1));
   const only = values.only ? new Set(values.only.split(",").map((s) => s.trim())) : null;
-  const engine: "api" | "cli" = values.engine === "cli" || values.engine === "api" ? values.engine : process.env.ANTHROPIC_API_KEY ? "api" : "cli";
+  // Another engine runs beside Claude's baseline (on --baseline, else a key if there is one, else Claude Code).
+  const other = isEngineKind(values.engine) && values.engine !== "cli" && values.engine !== "api" ? values.engine : null;
+  const pick = other ? values.baseline : values.engine;
+  const engine: "api" | "cli" = pick === "cli" || pick === "api" ? pick : process.env.ANTHROPIC_API_KEY ? "api" : "cli";
+  if (other) await ensureEngine();
+  const otherModel = !other ? "" : values.model || (await readSettings()).engines?.[other]?.models?.decide || (other === "codex" ? ((await codexModels())[0] ?? "") : "");
+  if (other && !otherModel && other !== "codex") throw new Error(`Which ${ENGINE_LABEL[other]} model? Pass --model, or pick one in Connections.`);
+  const CONFIGS: Config[] = other ? [{ id: "opus", name: "Claude: Opus 5.5", tier: "decide", lower: false }, { id: "engine", name: `${other}: ${otherModel || "its own"}`.slice(0, 23), tier: "decide", lower: false, via: other }] : DEFAULT_CONFIGS;
   const dir = path.join(await mkdtemp(path.join(tmpdir(), "qalam-eval-tiers-")), "Basket");
   const problems: string[] = [];
   const { cases: every, dispose } = await casesFor(dir, problems);
-  const cases = every.filter((c) => !only || only.has(c.kind));
+  // Drafting is a decide call: it runs when another engine is asked about, or when named.
+  const cases = every.filter((c) => (only ? only.has(c.kind) : c.kind !== "solutions" || !!other));
   try {
-    const models = Object.fromEntries(CONFIGS.map((c) => [c.id, modelFor(c.tier, { backend: engine, env: {} })]));
-    console.log(`Tier eval on the Basket sample · engine: ${engine === "api" ? "an API key" : "Claude Code"} · ${cases.length} cases · ${CONFIGS.map((c) => `${c.name} (${models[c.id]})`).join(", ")}\n`);
+    const models = Object.fromEntries(CONFIGS.map((c) => [c.id, c.via ? otherModel : modelFor(c.tier, { backend: engine, env: {} })]));
+    console.log(`Tier eval on the Basket sample · engine: ${engine === "api" ? "an API key" : "Claude Code"}${other ? ` beside ${ENGINE_LABEL[other]}` : ""} · ${cases.length} cases · ${CONFIGS.map((c) => `${c.name} (${models[c.id] || "its own"})`).join(", ")}\n`);
     const sent = await plan(cases);
-    printEstimate(sent, runs, engine, problems);
+    printEstimate(sent, runs, engine, problems, CONFIGS, other);
     if (values.dry || !values.yes) {
-      console.log(`\nNothing was sent to a model. To run it: pnpm eval:tiers --yes${engine === "cli" ? " --engine cli" : ""}${runs > 1 ? ` --runs ${runs}` : ""}`);
+      console.log(`\nNothing was sent to a model. To run it: pnpm eval:tiers --yes${other ? ` --engine ${other}${values.model ? ` --model ${values.model}` : ""}` : engine === "cli" ? " --engine cli" : ""}${runs > 1 ? ` --runs ${runs}` : ""}`);
       return;
     }
 
@@ -356,12 +423,15 @@ async function main() {
       if (!key) throw new Error("No API key: set ANTHROPIC_API_KEY, keep one in Connections, or run with --engine cli.");
       setEngineState({ kind: "api", key });
     } else setEngineState({ kind: "cli", bin: process.env.CLAUDE_CLI_PATH || findClaude() || "claude" });
+    // Another engine's adapter reports its usage as it goes; the baseline's comes on its result line.
+    let spent: UsageEntry[] = [];
+    if (other) onUsage((e) => void (e.engine === other && spent.push(e)));
 
     const out = values.out ? path.resolve(values.out) : path.join(tmpdir(), "qalam-eval-tiers", new Date().toISOString().replace(/[:.]/g, "-"));
     await mkdir(out, { recursive: true });
     const totals = new Map<string, Tally>();
     const t = (kind: Kind, id: string) => totals.get(`${kind} ${id}`) ?? (totals.set(`${kind} ${id}`, tally()).get(`${kind} ${id}`) as Tally);
-    const side: string[] = ["# Tier eval: outputs side by side", "", `Engine: ${engine === "api" ? "API key" : "Claude Code"} · ${new Date().toISOString()}`, ""];
+    const side: string[] = ["# Tier eval: outputs side by side", "", `Engine: ${engine === "api" ? "API key" : "Claude Code"}${other ? ` beside ${ENGINE_LABEL[other]} (${otherModel || "its own model"})` : ""} · ${new Date().toISOString()}`, ""];
     let n = 0;
     for (let run = 1; run <= runs; run++) {
       for (const c of cases) {
@@ -377,13 +447,15 @@ async function main() {
                 const effort = cfg.lower ? LOWER[opts.effort] : opts.effort;
                 if (!effort) throw new Skip();
                 kept.effort = effort;
-                const got = await callOnce({ ...opts, model: models[cfg.id], effort });
+                spent = cfg.via ? [] : spent;
+                const got = cfg.via ? await callOnce({ ...opts, effort }, streamAdapter(adapterFor(cfg.via)!, { ...opts, effort }, models[cfg.id])) : await callOnce({ ...opts, model: models[cfg.id], effort });
+                if (cfg.via) got.usage = { input_tokens: spent.reduce((n, e) => n + e.input, 0), output_tokens: spent.reduce((n, e) => n + e.output, 0), cache_read_input_tokens: spent.reduce((n, e) => n + e.cacheRead, 0) };
                 row.calls++;
                 row.input += got.usage.input_tokens ?? 0;
                 row.output += got.usage.output_tokens ?? 0;
                 row.cacheRead += got.usage.cache_read_input_tokens ?? 0;
                 row.cacheWrite += got.usage.cache_creation_input_tokens ?? 0;
-                row.cost += costOf(got.usage, got.model, engine);
+                row.cost += cfg.via ? spent.reduce((n, e) => n + (e.cost ?? 0), 0) : costOf(got.usage, got.model, engine);
                 row.models.add(got.model);
                 return got.data;
               });
@@ -414,7 +486,7 @@ async function main() {
       }
     }
     await writeFile(path.join(out, "side-by-side.md"), side.join("\n"));
-    report(totals, out);
+    report(totals, out, CONFIGS, other ? { kind: other, model: otherModel } : null);
   } finally {
     dispose();
     await rm(path.dirname(dir), { recursive: true, force: true });
@@ -423,7 +495,29 @@ async function main() {
 
 class Skip extends Error {}
 
-function report(totals: Map<string, Tally>, out: string) {
+/** Another engine's model beside Claude's: does it keep enough, call by call, to take the read tier, the decide tier, or neither? */
+function reportEngine(get: (kind: Kind, id: string) => Tally, out: string, other: { kind: EngineKind; model: string }) {
+  const holds = (kind: Kind) => {
+    const base = get(kind, "opus");
+    const it = get(kind, "engine");
+    return { ran: base.calls > 0 || it.calls > 0, ok: !it.errors && it.kept >= base.kept * HOLDS, base, it };
+  };
+  const lines: string[] = [];
+  for (const kind of KINDS) {
+    const h = holds(kind);
+    if (!h.ran) continue;
+    lines.push(`${kind}: ${other.model || "its model"} kept ${h.it.kept} of Claude's ${h.base.kept}${h.it.errors ? `, ${h.it.errors} failed` : ""} (${h.ok ? "holds" : `under ${HOLDS * 100}%`}).`);
+  }
+  const reads = READS.map(holds).filter((h) => h.ran);
+  const decide = holds("solutions");
+  console.log(`\n${lines.join("\n")}`);
+  console.log("");
+  if (reads.length) console.log(reads.every((h) => h.ok) ? `Reads: ${other.model} holds. Pick it for "Reads" on ${ENGINE_LABEL[other.kind]} in Connections.` : `Reads: ${other.model} didn't hold on every read call; keep reads on the model that decides.`);
+  if (decide.ran) console.log(decide.ok ? `Deciding: ${other.model} holds on drafting solutions.` : `Deciding: ${other.model} kept less than ${HOLDS * 100}% of Claude's drafts; Qalam AI's checks will drop more of what it proposes.`);
+  console.log(`\nOutputs side by side: ${path.join(out, "side-by-side.md")} (each case's raw answers in ${out}/<call>/)`);
+}
+
+function report(totals: Map<string, Tally>, out: string, CONFIGS: Config[], other: { kind: EngineKind; model: string } | null) {
   const get = (kind: Kind, id: string) => totals.get(`${kind} ${id}`) ?? tally();
   console.log(`\n${pad("Call", 9)}${pad("Config", 24)}${lpad("Calls", 6)}${lpad("In", 8)}${lpad("Out", 8)}${lpad("Cost", 9)}${lpad("$/call", 9)}${lpad("s/call", 8)}${lpad("Returned", 10)}${lpad("Kept", 6)}${lpad("vs Opus", 9)}`);
   const verdicts: string[] = [];
@@ -442,7 +536,8 @@ function report(totals: Map<string, Tally>, out: string) {
         `${pad(kind, 9)}${pad(c.name, 24)}${lpad(String(r.calls), 6)}${lpad(k(r.input + r.cacheRead + r.cacheWrite), 8)}${lpad(k(r.output), 8)}${lpad(usd(r.cost), 9)}${lpad(r.calls ? usd(r.cost / r.calls) : "—", 9)}${lpad(r.calls ? (r.seconds / r.calls).toFixed(0) : "—", 8)}${lpad(String(r.returned), 10)}${lpad(String(r.kept), 6)}${lpad(vs, 9)}${r.errors ? `  ${r.errors} failed` : ""}`,
       );
     }
-    // The rule: Sonnet keeps checked items within 5% of the baseline, and costs less a call than Opus one effort lower.
+    // The rule (the read calls only): Sonnet keeps checked items within 5% of the baseline, and costs less a call than Opus one effort lower.
+    if (other || !READS.includes(kind)) continue;
     const sonnet = get(kind, "sonnet");
     const lower = get(kind, "opus-lower");
     const quality = !sonnet.errors && sonnet.kept >= base.kept * 0.95;
@@ -453,6 +548,7 @@ function report(totals: Map<string, Tally>, out: string) {
       `${kind}: Sonnet kept ${sonnet.kept} of Opus's ${base.kept} (${quality ? "within" : "not within"} 5%)${lower.calls ? `, ${cheaper ? "cheaper" : "not cheaper"} a call than Opus one lower` : ""}${lowerHolds && !cheaper ? "; Opus one lower holds too, and costs less" : ""}.`,
     );
   }
+  if (other) return reportEngine(get, out, other);
   console.log(`\n${verdicts.join("\n")}`);
   console.log(`\n${balanced ? 'Recommend "balanced" as the default: Sonnet reads as well as Opus here, for less.' : 'Keep "best" as the default: Sonnet didn\'t hold on every read call at a lower cost than Opus one effort lower.'}`);
   console.log(`\nOutputs side by side: ${path.join(out, "side-by-side.md")} (each case's raw answers in ${out}/<call>/)`);

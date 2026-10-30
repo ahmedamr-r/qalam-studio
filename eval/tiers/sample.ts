@@ -76,3 +76,19 @@ export const OUTSIDE_NOTES = `- The median grocery delivery customer places 1.4 
 - 14 of 25 quick-commerce companies use weekly ordering customers as their North Star [How quick-commerce companies pick a North Star](https://example.com/qalam-eval/quick-commerce-north-stars)
 - Fast growers moved reorder frequency from 1.1 to 1.6 orders per customer per week over 18 months [How quick-commerce companies pick a North Star](https://example.com/qalam-eval/quick-commerce-north-stars)
 - Offices with a standing weekly order spent 2.5 times as much a year; 70% kept ordering after a year [How quick-commerce companies pick a North Star](https://example.com/qalam-eval/quick-commerce-north-stars)`;
+
+/**
+ * A problem page for the drafting call (solutions), as filing would write it from the sample's own
+ * sources: its lines cite the sample's quotes by id, and a solution already on the board under it.
+ */
+export const PROBLEM = {
+  title: "Evening slots are full when I need them",
+  lines: [
+    { section: "know" as const, text: "Parents who order after the kids are asleep find every evening slot for tomorrow gone.", cites: ["ahmed-1"] },
+    { section: "know" as const, text: "A full evening slot pushes the order to a morning slot someone stays home for, or to the supermarket.", cites: ["ahmed-2", "ahmed-3"] },
+    { section: "believe" as const, text: "Parents would pay a few dirhams to keep an evening slot.", cites: ["ahmed-4"] },
+    { section: "against" as const, text: "The late-delivery tickets are evening slots slipping past 10pm, which is lateness rather than slots selling out.", cites: ["tix-1"] },
+  ],
+  goal: { title: "Evening delivery slots don't run out before 6pm", metric: "Weekday evening slots gone by 2pm today; none before 6pm from April" },
+  cards: [{ title: "Priority evening slots for a fee", kind: "solution" as const }],
+};
