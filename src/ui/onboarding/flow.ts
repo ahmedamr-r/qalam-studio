@@ -14,6 +14,7 @@ import { setupHref } from "@/projects/model";
 import { captureIngested } from "@/org/capture";
 import { ingestPaste, ingestUrl } from "../discovery/ingest";
 import { docRef, type DocRef, type SentDoc } from "../chat/attach";
+import type { ProblemPart } from "./canvas";
 import { isAddress } from "./thread";
 import { openKnow, useKnow } from "../setup/know";
 import { openSetup, useSetup } from "../setup/setup";
@@ -30,11 +31,7 @@ import { changesThings, setupStep, welcomeMode, type SetupStep, type WelcomeMode
 export type Door = "know" | "find" | "problems" | "idea";
 
 /** What one part of what was sent at the problems door became: its source, and the problem pages it was filed into. */
-export interface ProblemSource {
-  doc: DocRef;
-  sourceId: string;
-  pages: { id: string; title: string }[];
-}
+export type ProblemSource = ProblemPart;
 const DOORS: readonly Door[] = ["know", "find", "problems", "idea"];
 
 export interface FirstRun {
