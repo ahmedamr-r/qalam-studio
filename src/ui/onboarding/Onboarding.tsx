@@ -13,6 +13,8 @@ import { QalamAIGlyph, QalamMark } from "../brand";
 import { toQuestion } from "../ai/plan";
 import { Questionnaire } from "../ai/Questionnaire";
 import { initialFlow, type FlowState } from "../ai/questionFlow";
+import { attachFiles, clearAttachments, docsCheck, readyDocs, useAttach } from "../chat/attach";
+import { AttachmentChips, SourceRow } from "../chat/SourcePicker";
 import { ChatComposer, ChatThread } from "../chat/ChatThread";
 import { Panel, PanelLayout, StepList, useWide, WIDE } from "../chat/Panels";
 import { PageFrame } from "../frame/PageFrame";
@@ -148,6 +150,14 @@ export function Onboarding({ route }: { route: "welcome" | "setup" }) {
   const messages = useMemo(() => threadOf(input), [JSON.stringify(input)]);
   const ask = askOf(input);
   const steps = stepsOf(input);
+  const attached = useAttach((s) => s.items);
+  // Docs belong to the question they were picked for: a new question starts with none, and the same one asked again (after an error) keeps them.
+  const lastAsk = useRef<string | null>(null);
+  useEffect(() => {
+    if (ask.kind === "none") return;
+    if (lastAsk.current !== null && lastAsk.current !== ask.key) clearAttachments();
+    lastAsk.current = ask.key;
+  }, [ask.key, ask.kind]);
   const wide = useWide(WIDE);
   const lastDump = useRef("");
   const running = !!input.busy || fr.naming.busy;
@@ -199,13 +209,21 @@ export function Onboarding({ route }: { route: "welcome" | "setup" }) {
         draftKey={ask.key}
         draft={ask.kind === "outline" ? knowText : ask.kind === "dump" ? lastDump.current : ""}
         onKeyDown={ask.kind === "outline" ? indent : undefined}
+        above={ask.sources ? <SourceRow fit={ask.sources} /> : undefined}
+        attached={ask.sources ? <AttachmentChips /> : undefined}
+        onFiles={ask.sources ? attachFiles : undefined}
+        sendEmpty={!!ask.sources && readyDocs(attached).length > 0}
         hint={ask.kind === "outline" ? "Tab puts a goal under the one above · ⌘↵ sends" : ask.kind === "dump" || ask.kind === "problems" ? "A web address alone reads the page · ⌘↵ sends" : ask.kind === "idea" ? "⌘↵ sends" : null}
         check={(t) => {
           if (ask.kind === "name") return t.trim().length > 80 ? "Keep it under 80 characters." : null;
           if (ask.kind === "outline") return readOutline(t).length ? null : "Write a goal first.";
           if (ask.kind === "dump" || ask.kind === "problems" || ask.kind === "idea") {
             if (t.length > DUMP_MAX_CHARS) return `That's over ${DUMP_MAX_CHARS.toLocaleString()} characters: paste the most useful part.`;
-            if (ask.kind === "idea" ? t.trim().length < 40 : !isAddress(t) && t.trim().length < 40) return ask.kind === "idea" ? "Write a few sentences more: what it does, who it's for, and why." : "Write a few sentences more, or give a web address.";
+            // Problems take each doc in on its own; an idea or a dump is read as one text with its docs.
+            const docs = docsCheck(t, attached, ask.kind === "problems" ? null : DUMP_MAX_CHARS);
+            if (docs) return docs;
+            if (readyDocs(attached).length) return null;
+            if (ask.kind === "idea" ? t.trim().length < 40 : !isAddress(t) && t.trim().length < 40) return ask.kind === "idea" ? "Write a few sentences more: what it does, who it's for, and why. Or bring a doc." : "Write a few sentences more, give a web address, or bring a doc.";
           }
           return null;
         }}
@@ -215,17 +233,18 @@ export function Onboarding({ route }: { route: "welcome" | "setup" }) {
             void readKnown(t);
             return true;
           }
+          const docs = readyDocs(attached);
           if (ask.kind === "dump") {
             lastDump.current = t;
-            void startSetup(isAddress(t) ? { text: "", url: t.trim() } : { text: t, url: "" });
+            void startSetup(isAddress(t) ? { text: "", url: t.trim(), docs } : { text: t, url: "", docs });
             return true;
           }
           if (ask.kind === "problems") {
-            void sendProblems(t);
+            void sendProblems(t, docs);
             return true;
           }
           if (ask.kind === "idea") {
-            void startIdea(t);
+            void startIdea(t, docs);
             return true;
           }
           return false;

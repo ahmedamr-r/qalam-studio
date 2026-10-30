@@ -1,6 +1,7 @@
 import { MAX_DUMP_ROUNDS } from "@/discovery/dump";
 import type { SetupSession } from "@/org/setup";
 import { wordsFor, type OrgShape } from "@/org/words";
+import type { DocRef, SourceFit } from "../chat/attach";
 import type { KnowState } from "../setup/know-state";
 import type { VoiceChoice } from "@/voice/model";
 import type { SetupStep, StepState, WelcomeMode } from "../welcome/steps";
@@ -15,7 +16,7 @@ import type { SetupStep, StepState, WelcomeMode } from "../welcome/steps";
 /** The way in: goals they know or want found, problems they hear about, or an idea to test. */
 export type Door = "know" | "find" | "problems" | "idea";
 
-export type PartName = "engine" | "verify" | "choices" | "outline" | "said" | "took" | "pushback" | "answers" | "you" | "voice" | "yours" | "connect" | "allSet" | "error" | "working" | "problems";
+export type PartName = "engine" | "verify" | "choices" | "outline" | "said" | "took" | "pushback" | "answers" | "you" | "voice" | "yours" | "connect" | "allSet" | "error" | "working" | "problems" | "docs";
 
 /** Small values only: a part's renderer reads the rest from the stores. */
 export type PartData = Record<string, string | number | boolean | null>;
@@ -62,10 +63,10 @@ export interface ThreadInput {
     open: number;
     accepted: number;
   };
-  /** The problems door: what they sent, and what was filed from it (the problem pages it went into, the customers' quotes it held). */
-  problems: { sent: string | null; result: { pages: number; quotes: number } | null; error: string | null };
-  /** The idea door: what they sent (the board takes it from there). */
-  idea: { sent: string | null; error: string | null };
+  /** The problems door: what they sent (their words, and the docs that went with them), and what was filed from it (the problem pages it went into, the customers' quotes it held). */
+  problems: { sent: string | null; docs?: DocRef[]; result: { pages: number; quotes: number } | null; error: string | null };
+  /** The idea door: what they sent, words and docs (the board takes it from there). */
+  idea: { sent: string | null; docs?: DocRef[]; error: string | null };
   /** A Qalam AI call running. */
   busy: { label: string } | null;
   /** Goals picked as theirs, once they moved on from Yours. */
@@ -76,6 +77,8 @@ const text = (t: string): ChatPart => ({ type: "text", text: t });
 const part = (name: PartName, data: PartData = {}): ChatPart => ({ type: "data", name, data });
 const ai = (id: string, ...parts: ChatPart[]): ChatMessage => ({ id, role: "assistant", parts });
 const you = (id: string, ...parts: ChatPart[]): ChatMessage => ({ id, role: "user", parts });
+/** What they sent at a door: their words, then the docs that went with them. */
+const said = (x: { sent: string | null; docs?: DocRef[] }, scope: "problems" | "idea"): ChatPart[] => [...(x.sent ? [text(x.sent)] : []), ...(x.docs?.length ? [part("docs", { scope })] : [])];
 
 export const engineDone = (i: Pick<ThreadInput, "engine">) => i.engine === "ready" || i.engine === "skipped";
 
@@ -179,7 +182,7 @@ export function threadOf(i: ThreadInput): ChatMessage[] {
   if (door === "problems") {
     const p = i.problems;
     out.push(ai("problems:ask", text("Paste what customers tell you: support tickets, reviews, interview notes, or a link to them. I'll file it into problem pages and show which come up most.")));
-    if (p.sent) out.push(you("problems:said", text(p.sent)));
+    if (p.sent !== null) out.push(you("problems:said", ...said(p, "problems")));
     if (p.error && !i.busy) out.push(ai("problems:error", part("error", { text: p.error })));
     if (p.result && !p.result.quotes && !i.busy)
       out.push(ai("problems:none", text("I found nothing customers said in it. If it's your own thinking, start from an idea instead, or paste customers' own words."), part("choices", { set: "door", solo })));
@@ -187,7 +190,7 @@ export function threadOf(i: ThreadInput): ChatMessage[] {
 
   if (door === "idea") {
     out.push(ai("idea:ask", text("Tell me the idea: what it does, who it's for, and why you think they need it. I'll put it on a board as a solution to test, ask a few questions, then work back to the problem it solves.")));
-    if (i.idea.sent) out.push(you("idea:said", text(i.idea.sent)));
+    if (i.idea.sent !== null) out.push(you("idea:said", ...said(i.idea, "idea")));
     if (i.idea.error && !i.busy) out.push(ai("idea:error", part("error", { text: i.idea.error })));
   }
 
@@ -274,6 +277,8 @@ export interface Ask {
   submit: "enter" | "ctrlEnter";
   /** Changes when what it takes changes (the draft is set again). */
   key: string;
+  /** The docs it takes besides words, and which sources fit: their own thinking, or what customers said. */
+  sources?: SourceFit;
 }
 
 const none = (placeholder: string, key: string): Ask => ({ kind: "none", placeholder, submit: "enter", key });
@@ -295,9 +300,9 @@ export function askOf(i: ThreadInput): Ask {
   if (!door) return none("Pick a way in above", "door");
   if (door === "problems") {
     if (i.problems.result?.quotes) return none("", "problems:done");
-    return { kind: "problems", placeholder: "Paste tickets, reviews or interview notes, or a link to them", submit: "ctrlEnter", key: `problems:${i.problems.sent ? "again" : "first"}` };
+    return { kind: "problems", placeholder: "Paste tickets, reviews or interview notes, or a link to them", submit: "ctrlEnter", key: `problems:${i.problems.sent !== null ? "again" : "first"}`, sources: "customers" };
   }
-  if (door === "idea") return i.idea.sent && !i.idea.error ? none("Opening its board…", "idea:sent") : { kind: "idea", placeholder: "A planner that builds the week's meals from what the family already buys, for parents who…", submit: "ctrlEnter", key: "idea" };
+  if (door === "idea") return i.idea.sent !== null && !i.idea.error ? none("Opening its board…", "idea:sent") : { kind: "idea", placeholder: "A planner that builds the week's meals from what the family already buys, for parents who…", submit: "ctrlEnter", key: "idea", sources: "docs" };
   if (door === "know") {
     const k = i.know;
     if (k.phase === "write" && !k.sent) return { kind: "outline", placeholder: "2M dirhams a month in orders by end of Q2\n  More customers reorder every week: 1.2 now, 1.5 by March", submit: "ctrlEnter", key: "outline" };
@@ -306,7 +311,7 @@ export function askOf(i: ThreadInput): Ask {
     return none("", "know:done");
   }
   const s = i.find.session;
-  if (!s) return i.find.pending ? none("Qalam AI is reading…", "find:pending") : { kind: "dump", placeholder: "Paste what you have, or a web address like example.com", submit: "ctrlEnter", key: "dump" };
+  if (!s) return i.find.pending ? none("Qalam AI is reading…", "find:pending") : { kind: "dump", placeholder: "Paste what you have, or a web address like example.com", submit: "ctrlEnter", key: "dump", sources: "docs" };
   if (roundOpen(s)) return { kind: "questions", scope: "find", placeholder: "", submit: "enter", key: `find:questions:${s.buckets.length}` };
   if (s.phase === "review") return none("Accept or discard each line on the right", "find:review");
   return none("", `find:${s.phase}`);

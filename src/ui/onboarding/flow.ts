@@ -15,6 +15,7 @@ import { createProject } from "@/projects/session";
 import { emptyDoc } from "@/doc/schema";
 import { captureIngested } from "@/org/capture";
 import { ingestPaste, ingestUrl } from "../discovery/ingest";
+import { docRef, withDocs, type DocRef, type SentDoc } from "../chat/attach";
 import { handIdea, ideaBoardName } from "../discovery/idea";
 import { isAddress } from "./thread";
 import { openKnow, useKnow } from "../setup/know";
@@ -54,10 +55,10 @@ export interface FirstRun {
   gh: string | null | undefined;
   /** The So far drawer, when the window is too narrow for the panel. */
   soFarOpen: boolean;
-  /** The problems door: what they sent, and what was filed from it (for this tab): the problem pages it went into. */
-  problems: { sent: string | null; result: { pages: number; quotes: number; needs?: { id: string; title: string }[] } | null; error: string | null };
-  /** The idea door: what they sent before its board opens. */
-  idea: { sent: string | null; error: string | null };
+  /** The problems door: what they sent (words and docs), and what was filed from it (for this tab): the problem pages it went into. */
+  problems: { sent: string | null; docs?: DocRef[]; result: { pages: number; quotes: number; needs?: { id: string; title: string }[] } | null; error: string | null };
+  /** The idea door: what they sent (words and docs) before its board opens. */
+  idea: { sent: string | null; docs?: DocRef[]; error: string | null };
   /** What a door is doing while it reads or makes something. */
   working: { label: string } | null;
 }
@@ -201,18 +202,25 @@ export function pickDoor(door: Door) {
 }
 
 /**
- * The problems door: what customers said (pasted, or a page) is kept, read and filed into problem
- * pages like anything added to the organization (server/capture.ts); then what comes up most.
+ * The problems door: what customers said (pasted, or a page, and each doc that came with it) is
+ * kept, read and filed into problem pages like anything added to the organization
+ * (server/capture.ts); then what comes up most.
  */
-export async function sendProblems(text: string) {
+export async function sendProblems(text: string, docs: SentDoc[] = []) {
   const working = (label: string) => useFirstRun.setState({ working: { label } });
-  useFirstRun.setState({ problems: { sent: text.trim(), result: null, error: null } });
+  const words = text.trim();
+  useFirstRun.setState({ problems: { sent: words, ...(docs.length ? { docs: docs.map(docRef) } : {}), result: null, error: null } });
   working("Reading what you sent");
   try {
-    const ing = isAddress(text) ? await ingestUrl(text.trim()) : await ingestPaste(text);
-    const r = await captureIngested(ing, { onActivity: working });
-    const needs = (r.filed?.pages ?? []).filter((p) => p.kind === "need").map(({ id, title }) => ({ id, title }));
-    useFirstRun.setState((s) => ({ problems: { ...s.problems, result: { pages: needs.length, quotes: r.quotes, needs } } }));
+    const all = [...(words ? [isAddress(words) ? await ingestUrl(words) : await ingestPaste(text)] : []), ...docs.map((d) => d.ingested)];
+    let quotes = 0;
+    const needs = new Map<string, { id: string; title: string }>();
+    for (const ing of all) {
+      const r = await captureIngested(ing, { onActivity: working });
+      quotes += r.quotes;
+      for (const p of r.filed?.pages ?? []) if (p.kind === "need") needs.set(p.id, { id: p.id, title: p.title });
+    }
+    useFirstRun.setState((s) => ({ problems: { ...s.problems, result: { pages: needs.size, quotes, needs: [...needs.values()] } } }));
   } catch (e) {
     useFirstRun.setState((s) => ({ problems: { ...s.problems, error: `Qalam couldn't take it in: ${message(e)}` } }));
   } finally {
@@ -222,16 +230,19 @@ export async function sendProblems(text: string) {
 
 /**
  * The idea door: a board for the idea, which reads it as a brain dump there (its questions, then the
- * idea as a solution under the problems it would solve). The words go over for this tab only.
+ * idea as a solution under the problems it would solve). The words go over for this tab only, with
+ * each doc's under a line naming it: they're the person's own thinking too.
  */
-export async function startIdea(text: string) {
-  useFirstRun.setState({ idea: { sent: text.trim(), error: null }, working: { label: "Making its board" } });
+export async function startIdea(text: string, docs: SentDoc[] = []) {
+  const words = text.trim();
+  const sent = { sent: words, ...(docs.length ? { docs: docs.map(docRef) } : {}) };
+  useFirstRun.setState({ idea: { ...sent, error: null }, working: { label: "Making its board" } });
   try {
-    const p = await createProject("discovery", ideaBoardName(text), { discovery: { v: 1, stage: "ready" } }, emptyDoc());
-    handIdea(text.trim());
+    const p = await createProject("discovery", ideaBoardName(words || docs[0]?.title.replace(/\.[a-z0-9]{1,5}$/i, "") || "An idea"), { discovery: { v: 1, stage: "ready" } }, emptyDoc());
+    handIdea(withDocs(words, docs.map((d) => ({ via: d.via, title: d.title, text: d.ingested.text }))));
     window.location.assign(`${projectHref(p)}?idea=1`);
   } catch (e) {
-    useFirstRun.setState({ idea: { sent: text.trim(), error: `Qalam couldn't make its board: ${message(e)}` }, working: null });
+    useFirstRun.setState({ idea: { ...sent, error: `Qalam couldn't make its board: ${message(e)}` }, working: null });
   }
 }
 

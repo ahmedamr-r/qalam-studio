@@ -7,9 +7,9 @@ import { logoFor } from "@/connectors/logos";
  * light in both themes (bg-stage), so a brand reads the same on either; a colour too pale for the
  * tile draws in ink. `decorative` when the connector's name is already beside it.
  */
-export function ConnectorLogo({ id, size = 20, decorative, className }: { id: string; size?: 20 | 28; decorative?: boolean; className?: string }) {
+export function ConnectorLogo({ id, size = 20, decorative, className }: { id: string; size?: 16 | 20 | 28; decorative?: boolean; className?: string }) {
   const logo = logoFor(id);
-  const glyph = size === 20 ? 12 : 16;
+  const glyph = size === 16 ? 10 : size === 20 ? 12 : 16;
   return (
     <span
       role={decorative ? undefined : "img"}
@@ -18,7 +18,7 @@ export function ConnectorLogo({ id, size = 20, decorative, className }: { id: st
       title={decorative ? undefined : logo.title}
       className={clsx(
         "grid shrink-0 place-items-center bg-stage text-stage-fg shadow-[inset_0_0_0_1px_var(--color-line-subtle)]",
-        size === 20 ? "size-[20px] rounded-sm" : "size-[28px] rounded-md",
+        size === 16 ? "size-[16px] rounded-[3px]" : size === 20 ? "size-[20px] rounded-sm" : "size-[28px] rounded-md",
         className,
       )}
     >
@@ -29,7 +29,7 @@ export function ConnectorLogo({ id, size = 20, decorative, className }: { id: st
       ) : logo.kind === "audio" ? (
         <AudioLines size={glyph} absoluteStrokeWidth strokeWidth={1.5} aria-hidden />
       ) : (
-        <span aria-hidden className={clsx("font-semibold", size === 20 ? "text-micro" : "text-caption")}>
+        <span aria-hidden className={clsx("font-semibold", size === 28 ? "text-caption" : "text-micro")}>
           {logo.letter}
         </span>
       )}

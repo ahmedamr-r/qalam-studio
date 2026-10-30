@@ -817,11 +817,11 @@ export function Select<T extends string>({
 }
 
 /** Figma-style checkbox: invert fill (never saffron); the tick draws when the user checks it. */
-export function Checkbox({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: ReactNode }) {
+export function Checkbox({ checked, onChange, label, className }: { checked: boolean; onChange: (v: boolean) => void; label: ReactNode; className?: string }) {
   // Only a user toggle draws the tick; a checkbox that mounts checked (selection change) shows it at once.
   const [drawn, setDrawn] = useState(false);
   return (
-    <label className={clsx(r.checkRow, "min-h-[24px] cursor-pointer select-none")}>
+    <label className={clsx(r.checkRow, "min-h-[24px] cursor-pointer select-none", className)}>
       <button
         type="button"
         role="checkbox"

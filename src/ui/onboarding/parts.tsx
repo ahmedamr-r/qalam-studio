@@ -22,6 +22,7 @@ import { answerOf, summarize, type Answers, type Question } from "../ai/question
 import { ErrorNote, Progress } from "../ai/common";
 import { CopyCommand, EngineSetup, whoLine } from "../connections/EngineCard";
 import { ThisMac } from "../connections/ThisMac";
+import { DocsSent } from "../chat/SourcePicker";
 import { ReplyChips, type PartComponent } from "../chat/ChatThread";
 import type { PartData } from "../chat/types";
 import { r } from "../recipes";
@@ -239,7 +240,9 @@ function OutlinePart() {
 function SaidPart() {
   const pending = useSetup((s) => s.pending);
   const source = useSetup((s) => s.source);
-  const text = pending?.text ?? source?.setup?.said ?? (source?.origin ? "" : (source?.text.slice(0, 1200) ?? ""));
+  const docs = pending ? pending.docs : source?.setup?.docs;
+  // The source's text carries the page and the docs too: it shows only when nothing else says what they sent.
+  const text = pending?.text ?? source?.setup?.said ?? (source?.origin || docs?.length ? "" : (source?.text.slice(0, 1200) ?? ""));
   const url = pending?.url || source?.origin;
   return (
     <div className="flex flex-col gap-[4px]">
@@ -249,8 +252,15 @@ function SaidPart() {
           <Link2 size={12} {...ICON} /> <span className="truncate">{url}</span>
         </span>
       )}
+      {docs?.length ? <DocsSent docs={docs} /> : null}
     </div>
   );
+}
+
+/** The docs that went with their words at the problems or idea door. */
+function DocsPart({ data }: { data: PartData }) {
+  const docs = useFirstRun((s) => (data.scope === "idea" ? s.idea.docs : s.problems.docs));
+  return docs?.length ? <DocsSent docs={docs} /> : null;
 }
 
 function TookPart({ data }: { data: PartData }) {
@@ -677,6 +687,7 @@ export const PARTS: Record<string, PartComponent> = {
   choices: ChoicesPart,
   outline: OutlinePart,
   said: SaidPart,
+  docs: DocsPart,
   took: TookPart,
   pushback: PushbackPart,
   answers: AnswersPart,

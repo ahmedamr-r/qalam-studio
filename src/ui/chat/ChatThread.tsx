@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ComponentType, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentType, type DragEvent, type KeyboardEvent, type ReactNode } from "react";
 import clsx from "clsx";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { AssistantRuntimeProvider, ComposerPrimitive, MessagePrimitive, ThreadPrimitive, useAui, useExternalStoreRuntime, type ThreadMessageLike } from "@assistant-ui/react";
@@ -91,6 +91,8 @@ const STOP = formatKeys({ key: "Escape" });
  * The composer, inside a ChatThread. What it takes is the surface's to say: `check` answers why
  * the text can't go yet (shown under it, nothing is sent); `onSend` false puts the text back.
  * `draftKey` changing sets the text to `draft` (what they wrote comes back after Edit or Stop).
+ * A surface that takes docs puts its row of sources `above` the text and the picked ones in
+ * `attached`, hears files dropped on the box (`onFiles`), and says when docs alone can go (`sendEmpty`).
  */
 export function ChatComposer({
   placeholder,
@@ -105,6 +107,10 @@ export function ChatComposer({
   draftKey,
   onKeyDown,
   hint,
+  above,
+  attached,
+  onFiles,
+  sendEmpty,
 }: {
   placeholder: string;
   label: string;
@@ -118,8 +124,14 @@ export function ChatComposer({
   draftKey: string;
   onKeyDown?: (e: KeyboardEvent<HTMLTextAreaElement>, setText: (t: string) => void) => void;
   hint?: ReactNode;
+  above?: ReactNode;
+  attached?: ReactNode;
+  onFiles?: (files: File[]) => void;
+  sendEmpty?: boolean;
 }) {
   const aui = useAui();
+  const [over, setOver] = useState(false);
+  const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
   const [problem, setProblem] = useState<string | null>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
@@ -130,13 +142,26 @@ export function ChatComposer({
   return (
     <div className="flex flex-col gap-[4px]">
       <ComposerPrimitive.Root
-        className={r.composer}
+        className={clsx(r.composer, over && "shadow-focus-field")}
         data-busy={running || undefined}
+        onDragOver={(e) => {
+          if (!onFiles || disabled || !hasFiles(e)) return;
+          e.preventDefault();
+          setOver(true);
+        }}
+        onDragLeave={() => setOver(false)}
+        onDrop={(e) => {
+          if (!onFiles || disabled || !hasFiles(e)) return;
+          e.preventDefault();
+          setOver(false);
+          const files = Array.from(e.dataTransfer.files);
+          if (files.length) onFiles(files);
+        }}
         onSubmit={(e) => {
           e.preventDefault();
           if (disabled || running) return;
           const text = aui.composer.getState().text;
-          if (!text.trim()) return;
+          if (!text.trim() && !sendEmpty) return;
           const why = check?.(text) ?? null;
           setProblem(why);
           if (why) return;
@@ -146,6 +171,7 @@ export function ChatComposer({
           });
         }}
       >
+        {above}
         <ComposerPrimitive.Input
           ref={input}
           aria-label={label}
@@ -167,6 +193,7 @@ export function ChatComposer({
             onKeyDown?.(e, (t) => aui.composer.setText(t));
           }}
         />
+        {attached}
         <div className={r.composerBar}>
           <span className="flex min-w-0 flex-1 items-center gap-[6px] truncate text-micro text-fg-subtle">{hint}</span>
           {!disabled && !running && <MicButton field={input} onText={speechInto(input, (t) => aui.composer.setText(t))} />}

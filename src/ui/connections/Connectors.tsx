@@ -19,7 +19,7 @@ import { StatusDot } from "../viz";
  * each item is taken in like any source (read, filed, placed on the boards).
  */
 
-type View = Awaited<ReturnType<typeof connectorsDb.list>>;
+export type View = Awaited<ReturnType<typeof connectorsDb.list>>;
 
 export function Connectors() {
   const [view, setView] = useState<View | null>(null);
@@ -79,6 +79,28 @@ export function Connectors() {
 }
 
 function Card({ c, onView, onImport }: { c: ConnectorState; onView: (v: View) => void; onImport: () => void }) {
+  const soon = !c.imports && !c.numbers && !c.screens && !c.status && !c.via && !c.claudeCode && !c.canToken && !c.canSignIn;
+  return (
+    <li className={clsx("flex flex-col gap-[8px] rounded-lg bg-panel px-[12px] py-[10px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]", soon && "opacity-60")}>
+      <div className="flex items-center gap-[10px]">
+        <ConnectorLogo id={c.id} size={28} decorative />
+        <span className="min-w-0 flex-1 truncate text-body font-medium text-fg">{c.label}</span>
+        <span className="inline-flex shrink-0 items-center gap-[6px] text-caption text-fg-muted">
+          <StatusDot tone={c.tone} hollow={c.tone === "off"} />
+          {c.word}
+        </span>
+      </div>
+      <ConnectActions c={c} onView={onView} onImport={onImport} />
+    </li>
+  );
+}
+
+/**
+ * What connects a connector (Claude Code's with one click, Qalam's own sign-in, a token, the
+ * workspace's own app) and, once it's connected, Bring in and Disconnect. The card shows it, and
+ * so does the chat box's picker for one that isn't connected yet (without Bring in).
+ */
+export function ConnectActions({ c, onView, onImport }: { c: ConnectorState; onView: (v: View) => void; onImport?: () => void }) {
   const [tokenOpen, setTokenOpen] = useState(false);
   const [token, setToken] = useState("");
   const [busy, setBusy] = useState(false);
@@ -120,101 +142,92 @@ function Card({ c, onView, onImport }: { c: ConnectorState; onView: (v: View) =>
       setSigning(null);
     }
   };
-  const soon = !c.imports && !c.numbers && !c.screens && !c.status && !c.via && !c.claudeCode && !c.canToken && !c.canSignIn;
   // The service stopped taking Qalam's sign-in.
   const expired = c.via === "oauth" && c.tone === "warn";
   const inClaudeCode = c.claudeCode?.status === "connected";
   // A service that takes only the workspace's own app signs in once that app is kept.
   const canSignIn = c.canSignIn && (!c.via || expired) && (!c.ownApp || c.ownApp.kept);
   return (
-    <li className={clsx("flex flex-col gap-[8px] rounded-lg bg-panel px-[12px] py-[10px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]", soon && "opacity-60")}>
-      <div className="flex items-center gap-[10px]">
-        <ConnectorLogo id={c.id} size={28} decorative />
-        <span className="min-w-0 flex-1 truncate text-body font-medium text-fg">{c.label}</span>
-        <span className="inline-flex shrink-0 items-center gap-[6px] text-caption text-fg-muted">
-          <StatusDot tone={c.tone} hollow={c.tone === "off"} />
-          {c.word}
-        </span>
-      </div>
-      {signing ? (
-        <div className="flex flex-wrap items-center gap-[8px] text-caption text-fg-muted">
-          <span className="inline-flex items-center gap-[6px]">
-            <Spinner size={12} /> Waiting for {c.account ?? c.label}…
-          </span>
-          {signing.page && (
-            <a href={signing.page} target="_blank" rel="noreferrer" className="text-micro text-fg-subtle underline decoration-dotted underline-offset-2 hover:text-fg">
-              Open the page
-            </a>
-          )}
-          <button type="button" className={clsx(r.buttonSm, r.buttonGhost, "ml-auto")} onClick={() => void connectorsDb.stopSignIn(c.id)}>
-            Stop
-          </button>
-        </div>
-      ) : (
-        <div className="flex flex-wrap items-center gap-[6px]">
-          {c.via && c.imports && !expired && (
-            <Button size="sm" onClick={onImport}>
-              Bring in…
-            </Button>
-          )}
-          {!c.via && (c.imports || c.numbers || c.screens) && inClaudeCode && (
-            <Button size="sm" variant="secondary" disabled={busy} onClick={() => void act(() => connectorsDb.viaClaudeCode(c.id, c.claudeCode!.server))}>
-              Use it
-            </Button>
-          )}
-          {c.ownApp && !c.via && (
-            <Button size="sm" variant={c.ownApp.kept || inClaudeCode ? "ghost" : "secondary"} disabled={busy} onClick={() => setSetup(true)}>
-              {c.ownApp.kept ? "Change app" : "Set up…"}
-            </Button>
-          )}
-          {canSignIn && (
-            <Button size="sm" variant={inClaudeCode && !c.via ? "ghost" : "secondary"} disabled={busy} onClick={() => void signIn()}>
-              {c.account ? `Sign in with ${c.account}` : "Sign in"}
-            </Button>
-          )}
-          {canSignIn && c.regions && <Segmented label="Where the workspace is" value={region} onChange={setRegion} className="w-[84px]" options={c.regions.map((x) => ({ value: x.id, label: x.label }))} />}
-          {!c.via && (c.imports || c.status === "token") && c.canToken && !tokenOpen && (
-            <button type="button" className={clsx(r.buttonSm, r.buttonGhost)} onClick={() => setTokenOpen(true)}>
-              Add a token
+    <>
+        {signing ? (
+          <div className="flex flex-wrap items-center gap-[8px] text-caption text-fg-muted">
+            <span className="inline-flex items-center gap-[6px]">
+              <Spinner size={12} /> Waiting for {c.account ?? c.label}…
+            </span>
+            {signing.page && (
+              <a href={signing.page} target="_blank" rel="noreferrer" className="text-micro text-fg-subtle underline decoration-dotted underline-offset-2 hover:text-fg">
+                Open the page
+              </a>
+            )}
+            <button type="button" className={clsx(r.buttonSm, r.buttonGhost, "ml-auto")} onClick={() => void connectorsDb.stopSignIn(c.id)}>
+              Stop
             </button>
-          )}
-          {c.via && (
-            <button type="button" disabled={busy} className={clsx(r.buttonSm, r.buttonGhost, "ml-auto")} onClick={() => void act(() => connectorsDb.forget(c.id))}>
-              Disconnect
-            </button>
-          )}
-          {(c.via || c.status === "public") && !c.imports && <span className="text-micro text-fg-subtle">{c.numbers ? "Outcomes read their number from it" : c.screens ? "A funnel step's picture can come from one of its frames" : "Shows where linked work stands"}</span>}
-          {!c.via && !c.imports && !c.numbers && !c.screens && !c.status && (c.claudeCode || c.canToken) && <span className="text-micro text-fg-subtle">Coming next</span>}
-        </div>
-      )}
-      {tokenOpen && c.tokenHelp && (
-        <form onSubmit={save} className="flex flex-col gap-[6px]">
-          <span className={r.field}>
-            <input type="password" autoComplete="off" spellCheck={false} aria-label={c.tokenHelp.label} placeholder={c.tokenHelp.placeholder} value={token} onChange={(e) => setToken(e.target.value)} className={r.fieldInput} />
-          </span>
-          <span className="flex items-center gap-[6px]">
-            <Button type="submit" size="sm" disabled={busy || token.trim().length < 10}>
-              {busy ? "Checking…" : "Test and keep"}
-            </Button>
-            <a href={c.tokenHelp.href} target="_blank" rel="noreferrer" className="text-micro text-fg-subtle underline decoration-dotted underline-offset-2 hover:text-fg">
-              Make one
-            </a>
-          </span>
-        </form>
-      )}
-      {note && <p className="text-micro text-danger">{note}</p>}
-      {setup && c.ownApp && (
-        <OwnApp
-          c={c}
-          onClose={() => setSetup(false)}
-          onKept={(v) => {
-            onView(v);
-            setSetup(false);
-            void signIn();
-          }}
-        />
-      )}
-    </li>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-[6px]">
+            {c.via && c.imports && !expired && onImport && (
+              <Button size="sm" onClick={onImport}>
+                Bring in…
+              </Button>
+            )}
+            {!c.via && (c.imports || c.numbers || c.screens) && inClaudeCode && (
+              <Button size="sm" variant="secondary" disabled={busy} onClick={() => void act(() => connectorsDb.viaClaudeCode(c.id, c.claudeCode!.server))}>
+                Use it
+              </Button>
+            )}
+            {c.ownApp && !c.via && (
+              <Button size="sm" variant={c.ownApp.kept || inClaudeCode ? "ghost" : "secondary"} disabled={busy} onClick={() => setSetup(true)}>
+                {c.ownApp.kept ? "Change app" : "Set up…"}
+              </Button>
+            )}
+            {canSignIn && (
+              <Button size="sm" variant={inClaudeCode && !c.via ? "ghost" : "secondary"} disabled={busy} onClick={() => void signIn()}>
+                {c.account ? `Sign in with ${c.account}` : "Sign in"}
+              </Button>
+            )}
+            {canSignIn && c.regions && <Segmented label="Where the workspace is" value={region} onChange={setRegion} className="w-[84px]" options={c.regions.map((x) => ({ value: x.id, label: x.label }))} />}
+            {!c.via && (c.imports || c.status === "token") && c.canToken && !tokenOpen && (
+              <button type="button" className={clsx(r.buttonSm, r.buttonGhost)} onClick={() => setTokenOpen(true)}>
+                Add a token
+              </button>
+            )}
+            {c.via && (
+              <button type="button" disabled={busy} className={clsx(r.buttonSm, r.buttonGhost, "ml-auto")} onClick={() => void act(() => connectorsDb.forget(c.id))}>
+                Disconnect
+              </button>
+            )}
+            {(c.via || c.status === "public") && !c.imports && <span className="text-micro text-fg-subtle">{c.numbers ? "Outcomes read their number from it" : c.screens ? "A funnel step's picture can come from one of its frames" : "Shows where linked work stands"}</span>}
+            {!c.via && !c.imports && !c.numbers && !c.screens && !c.status && (c.claudeCode || c.canToken) && <span className="text-micro text-fg-subtle">Coming next</span>}
+          </div>
+        )}
+        {tokenOpen && c.tokenHelp && (
+          <form onSubmit={save} className="flex flex-col gap-[6px]">
+            <span className={r.field}>
+              <input type="password" autoComplete="off" spellCheck={false} aria-label={c.tokenHelp.label} placeholder={c.tokenHelp.placeholder} value={token} onChange={(e) => setToken(e.target.value)} className={r.fieldInput} />
+            </span>
+            <span className="flex items-center gap-[6px]">
+              <Button type="submit" size="sm" disabled={busy || token.trim().length < 10}>
+                {busy ? "Checking…" : "Test and keep"}
+              </Button>
+              <a href={c.tokenHelp.href} target="_blank" rel="noreferrer" className="text-micro text-fg-subtle underline decoration-dotted underline-offset-2 hover:text-fg">
+                Make one
+              </a>
+            </span>
+          </form>
+        )}
+        {note && <p className="text-micro text-danger">{note}</p>}
+        {setup && c.ownApp && (
+          <OwnApp
+            c={c}
+            onClose={() => setSetup(false)}
+            onKept={(v) => {
+              onView(v);
+              setSetup(false);
+              void signIn();
+            }}
+          />
+        )}
+    </>
   );
 }
 

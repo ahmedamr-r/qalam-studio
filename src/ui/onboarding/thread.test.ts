@@ -279,6 +279,23 @@ describe("the other ways in", () => {
     const sent = base({ door: "idea", idea: { sent: "A planner…", error: null }, busy: { label: "Making its board" } });
     expect(ids(threadOf(sent)).slice(-2)).toEqual(["idea:said", "status:idea:said"]);
   });
+
+  it("takes docs besides words where material is asked for: their own for an idea or a dump, customers' for problems", () => {
+    expect(askOf(base({ door: "idea" })).sources).toBe("docs");
+    expect(askOf(base({ door: "find" })).sources).toBe("docs");
+    expect(askOf(base({ door: "problems" })).sources).toBe("customers");
+    expect(askOf(base({ door: "know" })).sources).toBeUndefined();
+    expect(askOf(base({ route: "welcome", shape: "solo" })).sources).toBeUndefined();
+  });
+
+  it("shows the docs that went with what they sent, and a doc alone is enough", () => {
+    const docs = [{ from: "drive", title: "Pitch deck.pdf" }];
+    const alone = threadOf(base({ door: "idea", idea: { sent: "", docs, error: null }, busy: { label: "Making its board" } }));
+    expect(alone.find((x) => x.id === "idea:said")?.parts).toEqual([{ type: "data", name: "docs", data: { scope: "idea" } }]);
+    expect(askOf(base({ door: "idea", idea: { sent: "", docs, error: null } })).kind).toBe("none");
+    const both = threadOf(base({ door: "problems", problems: { sent: "Tickets…", docs, result: null, error: null } }));
+    expect(both.find((x) => x.id === "problems:said")?.parts.map((p) => (p.type === "data" ? p.name : p.text))).toEqual(["Tickets…", "docs"]);
+  });
 });
 
 describe("while Qalam AI works", () => {

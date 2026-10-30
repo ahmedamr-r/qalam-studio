@@ -60,8 +60,10 @@ export interface SetupSession {
   phase: "reading" | "asking" | "analyzing" | "ready" | "placing" | "review" | "done" | "failed";
   /** The step that failed: Try again runs it again with what's kept. */
   failed?: { at: "reading" | "analyzing" | "placing"; error: string };
-  /** Exactly what they typed (the source's text also carries the page they pointed at). */
+  /** Exactly what they typed (the source's text also carries the page they pointed at, and the docs). */
   said?: string;
+  /** The docs that came with it: where each came from ("computer" or a connector's id) and its title. */
+  docs?: { from: string; title: string }[];
   /** What Qalam AI took from it, revised after each round of answers. */
   understanding: string;
   /** Pushback still open. */

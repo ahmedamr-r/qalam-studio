@@ -1,5 +1,6 @@
 import { nanoid } from "nanoid";
 import { create } from "zustand";
+import { docRef, withDocs, type DocRef, type SentDoc } from "../chat/attach";
 import { AIError, aiStatus, callAI } from "@/ai/client";
 import { addCardIn, makeCardNode, newCard } from "@/discovery/ops";
 import { sourcesDb } from "@/discovery/db";
@@ -41,7 +42,7 @@ export interface SetupUI {
   /** Reading the page or the text failed before there was a source. */
   error: string | null;
   /** What they sent, while the page is fetched and before there's a source to keep it on. */
-  pending: { text: string; url: string } | null;
+  pending: { text: string; url: string; docs?: DocRef[] } | null;
 }
 
 export const useSetup = create<SetupUI>(() => ({ source: null, busy: null, error: null, pending: null }));
@@ -133,12 +134,15 @@ const failed = (at: "reading" | "analyzing" | "placing", e: unknown) => setSessi
 // Read
 
 /** What they wrote and the page they pointed at, as one brain dump: kept as a source of the organization's, then read. */
-export async function startSetup(input: { text: string; url: string }) {
+/** What they wrote, a page they pointed at, and the docs that came with them (each joined under a line naming it). */
+export async function startSetup(input: { text: string; url: string; docs?: SentDoc[] }) {
   run?.abort();
   const ctrl = new AbortController();
   run = ctrl;
+  const docs = input.docs ?? [];
+  const refs = docs.map(docRef);
   // What they sent shows at once, with the reading under way (Stop works on the page fetch too).
-  useSetup.setState({ error: null, pending: { text: input.text.trim(), url: input.url.trim() }, busy: { label: input.url.trim() ? "Reading the page" : "Reading what you wrote", started: Date.now(), tokens: 0 } });
+  useSetup.setState({ error: null, pending: { text: input.text.trim(), url: input.url.trim(), ...(refs.length ? { docs: refs } : {}) }, busy: { label: input.url.trim() ? "Reading the page" : "Reading what you wrote", started: Date.now(), tokens: 0 } });
   const fail = (error: string | null) => useSetup.setState({ error, pending: null, busy: null });
   let text = input.text.trim();
   let origin: string | undefined;
@@ -148,7 +152,8 @@ export async function startSetup(input: { text: string; url: string }) {
       const page = await ingestUrl(input.url.trim(), ctrl.signal);
       origin = page.origin;
       text = [text, `From ${page.title}:\n${page.text.trim()}`].filter(Boolean).join("\n\n");
-    } else text = (await ingestPaste(text)).text.trim();
+    } else if (text) text = (await ingestPaste(text)).text.trim();
+    if (docs.length) text = withDocs(text, docs.map((d) => ({ via: d.via, title: d.title, text: d.ingested.text })));
   } catch (e) {
     return fail((e as Error).name === "AbortError" ? null : e instanceof IngestError ? e.message : `Qalam couldn't read that: ${message(e)}`);
   } finally {
@@ -173,7 +178,7 @@ export async function startSetup(input: { text: string; url: string }) {
     read: [],
     quotes: [],
     needs: [],
-    setup: { v: 1, phase: "reading", ...(input.text.trim() ? { said: input.text.trim().slice(0, DUMP_MAX_CHARS) } : {}), understanding: "", challenges: [], buckets: [] },
+    setup: { v: 1, phase: "reading", ...(input.text.trim() ? { said: input.text.trim().slice(0, DUMP_MAX_CHARS) } : {}), ...(refs.length ? { docs: refs } : {}), understanding: "", challenges: [], buckets: [] },
   };
   await sourcesDb.put(rec);
   useSetup.setState({ source: rec, pending: null, busy: null });
