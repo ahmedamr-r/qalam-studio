@@ -126,6 +126,8 @@ export function SourceRow({ fit }: { fit: SourceFit }) {
           aria-label={open ? `Pick from ${open.label}` : undefined}
           // Opening a folder replaces the row that had focus: that isn't leaving the picker. Escape, ×, Cancel or a click outside close it.
           onFocusOutside={(e) => e.preventDefault()}
+          // The picker is the box's child in React's tree (a portal), so its search or token form's submit would reach the box and send the chat.
+          onSubmit={(e) => e.stopPropagation()}
           className={clsx(r.popover, "flex max-h-[min(440px,calc(100vh-120px))] w-[var(--radix-popover-trigger-width)] min-w-[320px] flex-col overflow-hidden p-0")}
         >
           {open && <Picker key={open.id} c={open} onView={setView} onClose={() => setOpenId(null)} />}
