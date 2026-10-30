@@ -36,6 +36,18 @@ pnpm eval:tiers --engine codex --baseline cli
 
 Without `--yes` it only prints the plan and the estimate. With `--yes` it runs Claude's Opus beside the engine's model (`--model` names one) on the read calls and on drafting solutions. A model holds a tier when it keeps at least 90% of what Claude keeps on every call of that tier.
 
+**Codex, October 30, 2026** (`gpt-6-luna`, Codex's own choice, one run beside Opus 5.5 on Claude Code):
+
+| Call | Codex kept | Claude kept | |
+|---|---|---|---|
+| Filing into topic pages | 54 | 54 | holds |
+| Shaping goals | 15 | 14 | holds |
+| Outside numbers | 8 | 8 | holds |
+| Extracting quotes | 44 | 53 | 83% |
+| Drafting solutions | 9 | 16 | 56%: it proposed fewer, and the checks kept all of them |
+
+So Codex keeps its own choice for both tiers: no smaller read model holds where this one doesn't, and drafting on Codex gives fewer solutions, each as well grounded. Run it again when Codex's catalog changes.
+
 ## Sign in with ChatGPT
 
 OpenAI lets a limited set of partner apps offer "Sign in with ChatGPT", so people use their ChatGPT plan inside the app without a CLI. That would let someone with ChatGPT and no Codex use Qalam AI.

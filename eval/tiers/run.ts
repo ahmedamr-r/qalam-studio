@@ -513,7 +513,14 @@ function reportEngine(get: (kind: Kind, id: string) => Tally, out: string, other
   console.log(`\n${lines.join("\n")}`);
   console.log("");
   if (reads.length) console.log(reads.every((h) => h.ok) ? `Reads: ${other.model} holds. Pick it for "Reads" on ${ENGINE_LABEL[other.kind]} in Connections.` : `Reads: ${other.model} didn't hold on every read call; keep reads on the model that decides.`);
-  if (decide.ran) console.log(decide.ok ? `Deciding: ${other.model} holds on drafting solutions.` : `Deciding: ${other.model} kept less than ${HOLDS * 100}% of Claude's drafts; Qalam AI's checks will drop more of what it proposes.`);
+  if (decide.ran)
+    console.log(
+      decide.ok
+        ? `Deciding: ${other.model} holds on drafting solutions.`
+        : decide.it.returned < decide.base.kept * HOLDS
+          ? `Deciding: ${other.model} proposed less than ${HOLDS * 100}% of what Claude's drafts kept (it returned ${decide.it.returned}, and the checks kept ${decide.it.kept}).`
+          : `Deciding: Qalam AI's checks dropped more of what ${other.model} proposed (kept ${decide.it.kept} of its ${decide.it.returned}).`,
+    );
   console.log(`\nOutputs side by side: ${path.join(out, "side-by-side.md")} (each case's raw answers in ${out}/<call>/)`);
 }
 
