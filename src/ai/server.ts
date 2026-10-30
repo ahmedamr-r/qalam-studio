@@ -3,6 +3,7 @@ import { orOnModelError, streamViaCli } from "./cli";
 import { runResearch, type ResearchRequest } from "./research";
 import { researchBlock } from "./research-shared";
 import { deltaBatcher } from "./deltas";
+import { adapterFor, streamAdapter } from "./engines";
 import { apiKey, backend, modelOf, readModelFailed, tierModel, tierNow } from "./engine";
 import { supportsFallback, type CallKind } from "./models";
 import { fromApiUsage, reportUsage } from "./usage";
@@ -92,6 +93,9 @@ export function streamStructured(opts: CallOpts): Response {
       return streamViaCli(opts, decide);
     });
   }
+  // Any engine that isn't Claude: its adapter (src/ai/engines).
+  const adapter = adapterFor(backend());
+  if (adapter) return streamAdapter(adapter, opts, model);
   const anthropic = getClient()!;
   const system = (Array.isArray(opts.system) ? opts.system : [opts.system]).map((text) => ({ type: "text" as const, text, cache_control: { type: "ephemeral" as const } }));
   const encoder = new TextEncoder();

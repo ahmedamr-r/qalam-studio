@@ -2,6 +2,7 @@ import path from "node:path";
 import { atomicWrite, locked, readJson, stableStringify } from "./org/fsx";
 import { localDir } from "./paths";
 import type { VoiceChoice } from "@/voice/model";
+import type { EngineKind } from "@/ai/engine-kinds";
 
 /*
  * This computer's settings (~/Qalam/.qalam/settings.json): which engine Qalam AI runs on and on
@@ -12,7 +13,7 @@ import type { VoiceChoice } from "@/voice/model";
 
 export interface Settings {
   /** The engine chosen in Connections; unset: the environment decides (src/ai/engine.ts). */
-  engine?: "cli" | "api";
+  engine?: EngineKind;
   /** "balanced": Sonnet reads, Opus decides; "best": Opus, and Sonnet for the reads that hold there. Unset: "best" (src/ai/models.ts). */
   models?: "balanced" | "best";
   /** When the first-run welcome was finished on this computer. */

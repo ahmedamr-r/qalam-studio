@@ -158,6 +158,10 @@
     - `QALAM_KEYCHAIN_TEST=1 pnpm vitest run server/secrets.test.ts` runs the round trip on the real Keychain.
 - **Engine and Connections:**
   - Qalam AI's engine is read at every call (`backend()`, `apiKey()` and `bin()` in `src/ai/engine.ts`), so switching it in Connections needs no restart.
+  - **Engines** (`EngineKind`, `src/ai/engine-kinds.ts`, browser-safe): Claude Code (`cli`) and a Claude key (`api`) run through `src/ai/cli.ts` and the Anthropic path in `streamStructured`; every other engine (Codex, an OpenAI, Gemini or OpenRouter key, Ollama, LM Studio) is an adapter (`registerAdapter`, `src/ai/engines/`) that runs one call and answers in the same NDJSON lines, so routes and `structured()` don't change.
+    - What a call sends is Claude's blocks; `src/ai/content.ts` turns them into chat parts (`toChatParts`, a picture as a data address) or an agent's stdin and image files (`splitBlocks`).
+    - An engine that doesn't enforce the schema has its answer read by `checkAnswer` (`src/ai/validate.ts`: thinking and fences taken out, the JSON checked with zod's `fromJSONSchema`), and gets one repair turn listing what's wrong (`repairPrompt`).
+    - Another engine's models are the ones picked for it in Connections, by tier (`modelFor`'s `chosen`); research and Claude Code's MCP servers run on Claude only until each engine has its own way.
   - `server/engine.ts` loads it from the settings and the Keychain before the first answer (`ensureEngine`), switches it, keeps a key only after a live test passes, and announces an `engine` event to every open organization.
   - `claude auth status` says whose account pays (`accountFrom`). Claude Code's own credentials are never read.
   - **Models by job:** each call names its `kind`, and the kind picks the model at call time (`src/ai/models.ts`, `modelOf` in `src/ai/engine.ts`). Reads (extract, filing, setup `shape`, claims, the code reader, research) go to Sonnet 5.5, decisions (everything that proposes, asks or judges, and calls with no kind, the design side) to Opus 5.5, fetches (the connector tool-runner, numbers) to Haiku.

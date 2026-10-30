@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { childEnv, workDir } from "./cli";
-import { bin, readModelFailed } from "./engine";
+import { bin, readModelFailed, type EngineKind } from "./engine";
 import { supportsFallback } from "./models";
 import { fromApiUsage, fromCliResult, reportUsage } from "./usage";
 import { resolveConnectors, type McpServerDef } from "./connectors";
@@ -25,7 +25,7 @@ export interface ResearchRequest {
 }
 
 interface Deps {
-  backend: "api" | "cli";
+  backend: EngineKind;
   client: Anthropic | null;
   model: string;
   /** Claude Code can't use `model` here: look things up on this one instead (once). */
@@ -354,7 +354,7 @@ function viaCli(req: ResearchRequest, deps: Deps, sel: Selection, step: (s: stri
 export async function runResearch(req: ResearchRequest, deps: Deps, emit: (label: string) => void, signal: AbortSignal): Promise<ResearchInfo | null> {
   const sel = resolveConnectors(req.connectors, deps.backend);
   if (!sel.web && !sel.servers.length) return null;
-  if (deps.backend === "api" && !deps.client) return null;
+  if (deps.backend !== "cli" && (deps.backend !== "api" || !deps.client)) return null;
   const labelOf = (server: string) => sel.servers.find((s) => s.name === server)?.label ?? server;
   const steps: string[] = [];
   const step = (s: string) => {

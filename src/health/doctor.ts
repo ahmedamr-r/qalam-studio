@@ -4,6 +4,8 @@
  * doing shows, the worst first, the way OpenClaw's doctor sorts "Fix now" from the rest.
  */
 
+import type { EngineKind } from "@/ai/engine-kinds";
+
 export type Dot = "ok" | "warn" | "bad" | "off";
 
 export interface HealthRow {
@@ -19,7 +21,7 @@ export interface HealthRow {
 }
 
 export interface HealthFacts {
-  engine: { kind: "cli" | "api"; ready: boolean; word: string; detail?: string };
+  engine: { kind: EngineKind; ready: boolean; word: string; detail?: string };
   /** Full-text search works with this Node (Node 24, or the desktop app's). */
   search: { ok: boolean; node: string };
   models: { status: "idle" | "loading" | "ready" | "failed"; error?: string; download?: { done: number; total: number } } | null;

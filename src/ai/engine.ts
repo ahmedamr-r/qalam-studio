@@ -7,12 +7,15 @@
  * Server-only: the key is here.
  */
 
+import type { EngineKind } from "./engine-kinds";
 import { DEFAULT_MIX, modelFor, tierFor, type CallKind, type ModelMix, type Tier } from "./models";
 
-export type EngineKind = "cli" | "api";
+export type { EngineKind } from "./engine-kinds";
 
 interface EngineState {
   kind: EngineKind;
+  /** The models picked for this engine in Connections, by tier (an engine that isn't Claude names its own). */
+  models?: Partial<Record<Tier, string>>;
   /** The API key in use (the Keychain's, else the environment's); null: none. */
   key: string | null;
   /** The `claude` to run. */
@@ -42,7 +45,7 @@ export const modelMix = (): ModelMix => state().mix;
 /** The model a tier runs on now, on this engine. */
 export function tierModel(tier: Tier): string {
   const s = state();
-  const o = { backend: s.kind, env: process.env };
+  const o = { backend: s.kind, env: process.env, chosen: s.models };
   const model = modelFor(tier, o);
   return tier === "read" && s.kind === "cli" && s.readFailed.includes(model) ? modelFor("decide", o) : model;
 }

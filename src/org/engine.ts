@@ -9,7 +9,9 @@ import { resetAIStatus } from "@/ai/client";
  * the server imports them.
  */
 
-export type EngineKind = "cli" | "api";
+import type { EngineKind } from "@/ai/engine-kinds";
+
+export type { EngineKind };
 
 export interface ClaudeAccount {
   email?: string;

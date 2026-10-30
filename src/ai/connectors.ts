@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import type { EngineKind } from "./engine-kinds";
 import type { ConnectorInfo } from "./research-shared";
 
 /**
@@ -73,13 +74,16 @@ function cliServers(): McpServerDef[] {
 }
 
 /** MCP servers usable on this backend. A remote server wins over a Claude Code one with the same id. */
-export function mcpServers(backend: "api" | "cli"): McpServerDef[] {
+export function mcpServers(backend: EngineKind): McpServerDef[] {
+  if (backend !== "api" && backend !== "cli") return [];
   const remote = remoteServers();
   const local = backend === "cli" ? cliServers().filter((s) => !remote.some((r) => r.id === s.id || (r.id === "tavily" && s.name.startsWith("tavily")))) : [];
   return [...remote, ...local];
 }
 
-export function listConnectors(backend: "api" | "cli"): ConnectorInfo[] {
+export function listConnectors(backend: EngineKind): ConnectorInfo[] {
+  // Looking things up runs on Claude only, until each engine has its own way (src/ai/research.ts).
+  if (backend !== "api" && backend !== "cli") return [];
   const list: ConnectorInfo[] = [];
   if (webSearchEnabled()) list.push({ id: "web", label: "Web search", kind: "web", hint: "Built-in search and page reading" });
   for (const s of mcpServers(backend))
@@ -93,7 +97,8 @@ export function listConnectors(backend: "api" | "cli"): ConnectorInfo[] {
 }
 
 /** The requested connectors this backend actually has. */
-export function resolveConnectors(ids: string[], backend: "api" | "cli"): { web: boolean; servers: McpServerDef[] } {
+export function resolveConnectors(ids: string[], backend: EngineKind): { web: boolean; servers: McpServerDef[] } {
+  if (backend !== "api" && backend !== "cli") return { web: false, servers: [] };
   const want = new Set(ids);
   return { web: want.has("web") && webSearchEnabled(), servers: mcpServers(backend).filter((s) => want.has(s.id)) };
 }

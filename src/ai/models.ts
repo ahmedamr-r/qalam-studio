@@ -7,6 +7,8 @@
  * card import it.
  */
 
+import type { EngineKind } from "./engine-kinds";
+
 export type Tier = "decide" | "read" | "fetch";
 export type ModelMix = "balanced" | "best";
 export const DEFAULT_MIX: ModelMix = "best";
@@ -77,11 +79,15 @@ type Env = Record<string, string | undefined>;
  * (QALAM_MODEL_DECIDE/_READ/_FETCH; the older DISCOVERY_MODEL, GENERATE_MODEL and CLAUDE_MODEL
  * still set decide, CONNECTOR_MODEL fetch), then the engine's defaults.
  */
-export function modelFor(tier: Tier, o: { backend: "api" | "cli"; env: Env }): string {
+export function modelFor(tier: Tier, o: { backend: EngineKind; env: Env; chosen?: Partial<Record<Tier, string>> }): string {
   const e = o.env;
-  if (tier === "decide") return e.QALAM_MODEL_DECIDE || e.DISCOVERY_MODEL || e.GENERATE_MODEL || e.CLAUDE_MODEL || DEFAULTS[o.backend].decide;
-  if (tier === "fetch") return e.QALAM_MODEL_FETCH || e.CONNECTOR_MODEL || DEFAULTS[o.backend].fetch;
-  return e.QALAM_MODEL_READ || DEFAULTS[o.backend].read;
+  // Claude's models are named here; another engine's are the ones picked for it in Connections.
+  const base = o.backend === "api" || o.backend === "cli" ? DEFAULTS[o.backend] : null;
+  const fallback = (t: Tier) => o.chosen?.[t] || base?.[t] || o.chosen?.decide || "";
+  if (!base) return fallback(tier);
+  if (tier === "decide") return e.QALAM_MODEL_DECIDE || e.DISCOVERY_MODEL || e.GENERATE_MODEL || e.CLAUDE_MODEL || fallback("decide");
+  if (tier === "fetch") return e.QALAM_MODEL_FETCH || e.CONNECTOR_MODEL || fallback("fetch");
+  return e.QALAM_MODEL_READ || fallback("read");
 }
 
 /** Models the API's server-side fallback on refusals is offered for (the "default" form; never Haiku). */
