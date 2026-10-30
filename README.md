@@ -167,6 +167,7 @@ All settings are optional and go in `.env.local`. `.env.example` lists them with
   - A big decision asks for a one-line why, which you can skip and add later.
   - Undo marks the entry undone instead of deleting it.
   - A card's **History** and the organization's **Decisions** tab show them, and each month is a Markdown file in `decisions/`.
+- **Which need to target:** **Compare the needs under it** (on an outcome's or a need's card, or **⌘K**) puts them side by side. Code counts what backs each: how strong it is, how many people and segments, sources, rows of an export, how recent, what speaks against it, what's under it. You rate what it can't count: how often it happens, how much it hurts, how it fits your strategy. Qalam AI can weigh it all with your goals, strategy and constraints and argue for one; code shows its argument only when every quote and number in it is in what it cites. A draft's recommended target now says why it comes first.
 - **Design this:** carries a solution, the quotes behind it and its riskiest assumptions into a Screens project, where Qalam AI plans the screens with that context.
 
 ### Topic pages and search

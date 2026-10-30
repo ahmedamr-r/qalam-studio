@@ -31,6 +31,8 @@ import { useDecisions } from "../decisions/list";
 import { citation, fromSource, quoteOf, type SourceRecord } from "@/discovery/sources";
 import { STRENGTH_LABEL, type Strength } from "@/hub/strength";
 import { useStrength } from "./strength";
+import { openCompare } from "./CompareView";
+import { canCompare } from "@/discovery/compare";
 import { MetricReadings, type ShipMark } from "./MetricReadings";
 import { movedSince, withReading } from "@/discovery/readings";
 import { goalsFor, statedGoals } from "@/org/goals";
@@ -106,6 +108,7 @@ function OneCard({ id, card }: { id: string; card: OstCard }) {
             />
           </Field>
           {card.kind === "outcome" && !underOutcome && <ServesField id={id} card={card} />}
+          {(card.kind === "outcome" || card.kind === "opportunity") && <CompareButton id={id} />}
           {assumed && <Hint>Qalam AI drafted this need and nothing backs it yet. Add a quote, a source or a note to make it solid.</Hint>}
           {isAIIdea(card) && (
             <Hint tone="info">
@@ -250,6 +253,17 @@ function SinceShipped({ id, card }: { id: string; card: OstCard }) {
         )}
       </p>
     </Section>
+  );
+}
+
+/** The needs under it, side by side, to choose the one to target. */
+function CompareButton({ id }: { id: string }) {
+  const n = useStudio((s) => (canCompare(s.doc, id) ? s.doc.nodes[id].children.filter((c) => cardOf(s.doc, c)?.kind === "opportunity").length : 0));
+  if (!n) return null;
+  return (
+    <Button size="sm" variant="secondary" className="self-start" onClick={() => openCompare(id)}>
+      Compare the {n} needs under it
+    </Button>
   );
 }
 

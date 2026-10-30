@@ -124,6 +124,8 @@ export interface OstCard {
   test?: OstTest;
   /** The outcome: the number it moves. */
   metric?: OstMetric;
+  /** A need: the team's call on what code can't count (src/discovery/compare.ts). */
+  rating?: { often?: 1 | 2 | 3; hurts?: 1 | 2 | 3; fit?: 1 | 2 | 3 };
   /** The outcome: the stated goal it serves, a product's or the organization's (src/org/goals.ts). */
   serves?: { goal: string; product: string | null };
   /** Its child cards are hidden (the branch is folded). */

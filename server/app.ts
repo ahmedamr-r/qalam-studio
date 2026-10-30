@@ -5,6 +5,7 @@ export { openLastOrg } from "./org/home";
 import { orgRoutes } from "./org/routes";
 import { startInbox } from "./inbox";
 import * as audit from "./routes/audit";
+import * as compare from "./routes/compare";
 import * as component from "./routes/component";
 import * as critique from "./routes/critique";
 import * as critiqueFix from "./routes/critique-fix";
@@ -32,6 +33,7 @@ type Handler = (req: Request) => Response | Promise<Response>;
 /** Each route takes a standard Request and answers a standard Response (AI routes stream NDJSON). */
 const ROUTES: Record<string, { GET?: Handler; POST?: Handler }> = {
   audit,
+  compare,
   component,
   critique,
   "critique-fix": critiqueFix,
