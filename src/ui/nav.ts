@@ -10,7 +10,7 @@ import { routeOf, type Route } from "./routes";
  * a board's document and everything module-level still belong to one load.
  */
 
-const IN_PLACE = new Set<Route["kind"]>(["org", "spaces", "place", "topic", "goal"]);
+const IN_PLACE = new Set<Route["kind"]>(["org", "spaces", "place", "topic", "goal", "seen"]);
 
 /** Whether a page can be shown in place in this organization. */
 export const inPlace = (r: Route, org: string) => IN_PLACE.has(r.kind) && "org" in r && r.org === org;

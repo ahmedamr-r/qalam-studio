@@ -15,6 +15,8 @@ const Home = lazy(() => import("./home/Home"));
 const SystemProject = lazy(() => import("./SystemProject"));
 const TopicPage = lazy(() => import("./topics/TopicPage"));
 const GoalPage = lazy(() => import("./goals/GoalPage"));
+const SeenPage = lazy(() => import("./seen/SeenPage"));
+const SeenReading = lazy(() => import("./seen/SeenReading"));
 const SetupPage = lazy(() => import("./setup/SetupPage"));
 const WelcomePage = lazy(() => import("./welcome/WelcomePage"));
 const CapturePage = lazy(() => import("./capture/CapturePage"));
@@ -62,6 +64,11 @@ export function TopicLoader({ id }: { id: string }) {
 /** A goal's page: its number and the problems behind it. */
 export function GoalLoader({ id }: { id: string }) {
   return <GoalPage id={id} />;
+}
+
+/** What people see in a product, or reading a batch of screenshots for it. */
+export function SeenLoader({ seenKey, add }: { seenKey: string; add: boolean }) {
+  return add ? <SeenReading seenKey={seenKey} /> : <SeenPage seenKey={seenKey} />;
 }
 
 /** Setting the organization up from a brain dump about it. */

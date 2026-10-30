@@ -34,6 +34,7 @@ import { Meter, StatusDot } from "../viz";
 import { GoalsUnder, OtherAims } from "./Breakdown";
 import { Funnel } from "./Funnel";
 import { Unknowns } from "./Unknowns";
+import { FlowsToward } from "../seen/SeenSection";
 import { navigate } from "../nav";
 
 /**
@@ -241,6 +242,8 @@ export default function GoalPage({ id }: { id: string }) {
         <NumberBlock goal={g} />
 
         <Funnel goal={g} funnel={page.funnel} numbers={page.work.funnel} steps={page.steps} problems={page.problems} onWork={workOn} onChanged={load} />
+
+        <FlowsToward goal={g.id} />
 
         <section aria-label="The board working on it" className="flex flex-wrap items-center justify-between gap-[12px] rounded-lg bg-panel px-[14px] py-[10px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
           {board ? (

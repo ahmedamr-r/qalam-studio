@@ -67,6 +67,12 @@ export const topicHref = (id: string, org: string | null = linkOrg) => `${org ? 
 /** A goal's page (goals.md, src/goals). */
 export const goalHref = (id: string, org: string | null = linkOrg) => `${org ? `/o/${org}` : ""}/g/${encodeURIComponent(id)}`;
 
+/** What people see in a product (`key`: its id, or "org"), or with `add` reading screenshots for it (src/ui/seen). */
+export const seenHref = (key: string, o: { add?: boolean; org?: string | null } = {}) => {
+  const org = o.org === undefined ? linkOrg : o.org;
+  return `${org ? `/o/${org}` : ""}/seen/${encodeURIComponent(key)}${o.add ? "/add" : ""}`;
+};
+
 /** Setting the organization up from a brain dump about it (src/ui/setup). */
 export const setupHref = (org: string | null = linkOrg) => `${org ? `/o/${org}` : ""}/setup`;
 

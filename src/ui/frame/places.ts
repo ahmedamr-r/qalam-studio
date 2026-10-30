@@ -38,6 +38,7 @@ export function placeOf(route: Route): Place | null {
   if (route.kind === "org") return "home";
   if (route.kind === "place") return route.place;
   if (route.kind === "topic") return "problems";
+  if (route.kind === "seen") return "evidence";
   if (route.kind === "goal" || route.kind === "project") return "goals";
   return null;
 }

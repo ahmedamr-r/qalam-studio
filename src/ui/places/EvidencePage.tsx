@@ -18,13 +18,15 @@ import { useOrgData } from "../org/useOrgData";
 import { useTopics } from "../topics/list";
 import { PlaceHead } from "./PlaceHead";
 import { ProductMaps } from "./ProductMaps";
+import { SeenSection } from "../seen/SeenSection";
 import { navigate } from "../nav";
 
 /**
  * What the organization has heard and read, in the space (all of it in the organization's, one
  * product's in its own): its sources (interviews,
  * tickets, documents, pages, brain dumps) with the boards that use each, the pages on its
- * segments and products, and what the product does today, from its code. The problems themselves
+ * segments and products, what people see in each product (its screens and flows, from screenshots)
+ * and what the product does today, from its code. The problems themselves
  * have a place of their own.
  */
 export default function EvidencePage({ product: productId = null }: { product?: string | null }) {
@@ -74,6 +76,7 @@ export default function EvidencePage({ product: productId = null }: { product?: 
             <TopicsList topics={pages} sources={scopedSources} products={products} onFiled={refresh} banner={false} />
           </section>
         )}
+        <SeenSection product={product} products={products} />
         <ProductMaps product={product} products={products} />
       </div>
     </PageFrame>

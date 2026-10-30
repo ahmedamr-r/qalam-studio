@@ -8,7 +8,7 @@ import { Splash } from "./brand/splash";
 import { r } from "./recipes";
 import { routeOf, type Route } from "./routes";
 import { movedTo } from "./frame/spaces";
-import StudioLoader, { CaptureLoader, GoalLoader, HomeLoader, PageSuspense, PlaceLoader, SetupLoader, SpacesLoader, SystemProjectLoader, TopicLoader, WelcomeLoader } from "./StudioLoader";
+import StudioLoader, { CaptureLoader, GoalLoader, HomeLoader, SeenLoader, PageSuspense, PlaceLoader, SetupLoader, SpacesLoader, SystemProjectLoader, TopicLoader, WelcomeLoader } from "./StudioLoader";
 import { startInPlace } from "./nav";
 import { bootRetryDelay } from "./welcome/steps";
 
@@ -85,6 +85,7 @@ function Page({ route, state, retry }: { route: Route; state: State; retry: () =
   if (route.kind === "spaces") return <SpacesLoader />;
   if (route.kind === "topic") return <TopicLoader id={route.id} />;
   if (route.kind === "goal") return <GoalLoader id={route.id} />;
+  if (route.kind === "seen") return <SeenLoader seenKey={route.key} add={!!route.add} />;
   if (route.kind === "setup") return <SetupLoader />;
   if (route.kind === "place") return <PlaceLoader place={route.place} product={route.product} />;
   if (route.kind === "capture") return <CaptureLoader />;
