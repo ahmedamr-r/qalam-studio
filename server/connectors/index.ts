@@ -1,7 +1,8 @@
 import { CATALOG, connectorDef, signInGroup, type ConnectorDef } from "@/connectors/catalog";
 import { matchClaudeCode, type ListedStatus } from "@/connectors/claude-code";
 import { itemText, RECIPES, type Hit, type Recipe, type ToolCall } from "@/connectors/recipes";
-import type { ConnectorState, ImportResult } from "@/org/connectors";
+import { capText } from "@/discovery/ingest/text";
+import type { ConnectorState, ImportResult, ReadItem } from "@/org/connectors";
 import { captureSource } from "../capture";
 import type { OrgStore } from "../org/store";
 import { secrets } from "../secrets";
@@ -20,7 +21,7 @@ import { linearWhoAmI } from "./work";
  * pages and placed on the boards. An item already taken in with the same words is skipped.
  */
 
-export type { ConnectorState, ImportResult } from "@/org/connectors";
+export type { ConnectorState, ImportResult, ReadItem } from "@/org/connectors";
 
 const tokenName = (id: string) => `connector:${id}`;
 
@@ -110,44 +111,99 @@ async function siteOf(id: string, recipe: Recipe, ask: (call: ToolCall) => Promi
   return site;
 }
 
+type How = Awaited<ReturnType<typeof how>>;
+
+/** Calls on the connector's tools, however it's reached (Qalam's sign-in, or Claude Code: a run per call), the site first when its recipe needs one. */
+async function onTools<T>(id: string, h: Exclude<How, { via: "token" }>, fn: (call: (c: ToolCall) => Promise<string | null>, site: string | undefined) => Promise<T>): Promise<T> {
+  const recipe = RECIPES[id];
+  if (h.via === "mcp") return withSignedIn(id, h.url, async (call) => fn(call, await siteOf(id, recipe, call)));
+  const ask = async (c: ToolCall) => (await runTools(h.server, [c]))[0];
+  return fn(ask, await siteOf(id, recipe, ask));
+}
+
 export async function searchConnector(id: string, query: string): Promise<Hit[]> {
   const h = await how(id);
   if (h.via === "token") return notionSearch(h.token, query);
   const recipe = RECIPES[id];
-  if (h.via === "mcp") {
-    const { site, answer } = await withSignedIn(id, h.url, async (call) => {
-      const site = await siteOf(id, recipe, call);
-      return { site, answer: await call(recipe.search(query, site)) };
-    });
-    if (answer === null) throw new Error(`${connectorDef(id)?.label ?? id} didn't search it.`);
-    return recipe.hits(answer, site);
-  }
-  // Through Claude Code: a run per call, the site's first when the recipe needs one.
-  const ask = async (call: ToolCall) => (await runTools(h.server, [call]))[0];
-  const site = await siteOf(id, recipe, ask);
-  const answer = await ask(recipe.search(query, site));
-  if (answer === null) throw new Error("Claude Code didn't search it. Is it signed in there?");
+  const { site, answer } = await onTools(id, h, async (call, site) => ({ site, answer: await call(recipe.search(query, site)) }));
+  if (answer === null) throw new Error(h.via === "mcp" ? `${connectorDef(id)?.label ?? id} didn't search it.` : "Claude Code didn't search it. Is it signed in there?");
   return recipe.hits(answer, site);
 }
 
-/** Read the picked items and take each in. `emit` hears how it's going. */
-export async function importItems(store: OrgStore, id: string, hits: Hit[], emit: (label: string) => void): Promise<ImportResult> {
+/*
+ * Browsing, for the chat box's picker: what was opened lately, a folder's items, or a search.
+ * Through Claude Code each is a run of its own (Drive's took about 9 s in October 2026), so answers
+ * are kept five minutes per connector and place, and going back is instant.
+ */
+const BROWSE_MS = 5 * 60_000;
+const gb = globalThis as { __qalamBrowse?: Map<string, { at: number; hits: Hit[] }> };
+
+/** Where to look: words to search for, else a folder (null: the top), else what was opened lately. */
+export interface BrowseAt {
+  query?: string;
+  folder?: string | null;
+}
+
+export async function browseConnector(id: string, at: BrowseAt, o: { force?: boolean; now?: number } = {}): Promise<Hit[]> {
+  const now = o.now ?? Date.now();
+  const words = at.query?.trim() ?? "";
+  const key = `${id}\n${words ? `q:${words}` : at.folder !== undefined ? `f:${at.folder ?? ""}` : "recent"}`;
+  const kept = (gb.__qalamBrowse ??= new Map());
+  const hit = kept.get(key);
+  if (!o.force && hit && now - hit.at < BROWSE_MS) return hit.hits;
+  const hits = await browseNow(id, words, at.folder);
+  kept.set(key, { at: now, hits });
+  return hits;
+}
+
+async function browseNow(id: string, words: string, folder: string | null | undefined): Promise<Hit[]> {
+  if (words) return searchConnector(id, words);
+  const h = await how(id);
+  // Notion's API lists the pages shared with the integration, newest first.
+  if (h.via === "token") return folder === undefined ? notionSearch(h.token, "") : [];
+  const recipe = RECIPES[id];
+  const call = folder !== undefined ? recipe.list?.(folder) : recipe.recent?.();
+  if (!call) return [];
+  const { site, answer } = await onTools(id, h, async (ask, site) => ({ site, answer: await ask(call) }));
+  if (answer === null) throw new Error(h.via === "mcp" ? `${connectorDef(id)?.label ?? id} didn't answer.` : "Claude Code didn't answer. Is it signed in there?");
+  return recipe.hits(answer, site);
+}
+
+/** The picked items' words as each tool gave them (null: nothing came back for it). A sign-in the service stopped taking ends it. */
+async function readTexts(id: string, hits: Hit[], emit: (label: string) => void): Promise<(string | null)[]> {
   const h = await how(id);
   const label = connectorDef(id)?.label ?? id;
   const recipe = RECIPES[id];
   const read = recipe.text ?? itemText;
   emit(`Reading ${hits.length === 1 ? `“${hits[0].title}”` : `${hits.length} items`} from ${label}`);
-  const texts: (string | null)[] =
-    h.via === "token"
-      ? await Promise.all(hits.map((x) => notionPageText(h.token, x.id).catch(() => null)))
-      : h.via === "mcp"
-        ? await withSignedIn(id, h.url, async (call) => {
-            const out: (string | null)[] = [];
-            // An item the tool can't give is noted; a sign-in the service stopped taking ends it.
-            for (const x of hits) out.push(await call(recipe.fetch(x)).then((t) => (t === null ? null : read(t)), (e: unknown) => (e instanceof SignInAgain ? Promise.reject(e) : null)));
-            return out;
-          })
-        : (await runTools(h.server, hits.map((x) => recipe.fetch(x)))).map((t) => (t === null ? null : read(t)));
+  if (h.via === "token") return Promise.all(hits.map((x) => notionPageText(h.token, x.id).catch(() => null)));
+  if (h.via === "mcp")
+    return withSignedIn(id, h.url, async (call) => {
+      const out: (string | null)[] = [];
+      // An item the tool can't give is noted; a sign-in the service stopped taking ends it.
+      for (const x of hits) out.push(await call(recipe.fetch(x)).then((t) => (t === null ? null : read(t)), (e: unknown) => (e instanceof SignInAgain ? Promise.reject(e) : null)));
+      return out;
+    });
+  return (await runTools(h.server, hits.map((x) => recipe.fetch(x)))).map((t) => (t === null ? null : read(t)));
+}
+
+/** Where an item came from: its address, else the tool and its id. */
+const originOf = (id: string, hit: Hit) => hit.url ?? `${id}:${hit.id}`;
+
+/** The picked items as material, read and not taken in: the chat box holds them until it sends. */
+export async function readItems(id: string, hits: Hit[], emit: (label: string) => void): Promise<ReadItem[]> {
+  const texts = await readTexts(id, hits, emit);
+  return hits.map((hit, i) => {
+    const text = texts[i]?.trim();
+    if (!text) return { id: hit.id, title: hit.title, why: "Nothing came back for it." };
+    const c = capText(text);
+    return { id: hit.id, title: hit.title, ingested: { kind: "connector", title: hit.title, origin: originOf(id, hit), text: c.text, ...(c.truncated ? { truncated: true } : {}) } };
+  });
+}
+
+/** Read the picked items and take each in. `emit` hears how it's going. */
+export async function importItems(store: OrgStore, id: string, hits: Hit[], emit: (label: string) => void): Promise<ImportResult> {
+  const texts = await readTexts(id, hits, emit);
   const out: ImportResult & { sources: string[]; pages: string[] } = { added: [], skipped: [], failed: [], sources: [], pages: [] };
   const have = await store.listSources();
   for (const [i, hit] of hits.entries()) {
@@ -156,7 +212,7 @@ export async function importItems(store: OrgStore, id: string, hits: Hit[], emit
       out.failed.push({ title: hit.title, why: "Nothing came back for it." });
       continue;
     }
-    const origin = hit.url ?? `${id}:${hit.id}`;
+    const origin = originOf(id, hit);
     if (have.some((s) => s.origin === origin && s.text.trim() === text)) {
       out.skipped.push(hit.title);
       continue;

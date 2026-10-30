@@ -3,6 +3,7 @@ import type { ListedStatus } from "@/connectors/claude-code";
 import type { Hit } from "@/connectors/recipes";
 import type { InsightNumbers } from "@/connectors/numbers";
 import type { WorkStatus } from "@/connectors/work";
+import type { Ingested } from "@/discovery/ingest/core";
 import type { OstWork } from "@/discovery/types";
 import { orgPath } from "./client";
 
@@ -52,6 +53,14 @@ export interface ImportResult {
   pages?: string[];
 }
 
+/** A picked item read and not taken in (the chat box holds it until it sends): its words, or why not. */
+export interface ReadItem {
+  id: string;
+  title: string;
+  ingested?: Ingested;
+  why?: string;
+}
+
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) throw new Error(((await res.json().catch(() => null)) as { message?: string } | null)?.message ?? `Qalam couldn't answer (${res.status})`);
   return (await res.json()) as T;
@@ -97,6 +106,13 @@ export const connectorsDb = {
   /** Keep the ID and secret of the workspace's own app, in the Keychain. */
   keepApp: (id: string, clientId: string, clientSecret?: string) => send(`/api/connectors/${id}/app`, "PUT", { clientId, ...(clientSecret ? { clientSecret } : {}) }).then((r) => json<View>(r)),
   search: async (id: string, query: string) => json<{ hits: Hit[] }>(await send(await orgPath(`/connectors/${id}/search`), "POST", { query })),
+  /** What was opened lately (no place), a folder's items (`folder`, null: the top) or a search (`query`). Through Claude Code, a run each; kept five minutes. */
+  browse: async (id: string, at: { query?: string; folder?: string | null }, force = false) => json<{ hits: Hit[] }>(await send(await orgPath(`/connectors/${id}/browse`), "POST", { ...at, ...(force ? { force } : {}) })),
+  /** The picked items' words, not taken in; `onActivity` hears how it's going. */
+  read: async (id: string, hits: Hit[], onActivity?: (label: string) => void, signal?: AbortSignal): Promise<ReadItem[]> => {
+    const res = await fetch(await orgPath(`/connectors/${id}/read`), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ hits }), signal });
+    return (await streamed<{ items: ReadItem[] }>(res, (m) => m.type === "activity" && m.label && onActivity?.(m.label))).items;
+  },
   /** Takes each picked item in; `onActivity` hears how it's going. */
   bringIn: async (id: string, hits: Hit[], onActivity: (label: string) => void): Promise<ImportResult> => {
     return streamed<ImportResult>(await send(await orgPath(`/connectors/${id}/import`), "POST", { hits }), (m) => m.type === "activity" && m.label && onActivity(m.label));

@@ -1,5 +1,6 @@
 import { captureText, cleanText, htmlText } from "@/discovery/ingest/text";
 import { CONFLUENCE_RECIPE } from "./confluence";
+import { DRIVE_RECIPE } from "./drive";
 import { SLACK_RECIPE } from "./slack";
 
 /*
@@ -17,6 +18,9 @@ export interface ToolCall {
   match?: string[];
 }
 
+/** What a hit is, where a tool says: a folder to open, or a file of a kind Qalam reads ("other": it can't). */
+export type HitType = "folder" | "doc" | "pdf" | "sheet" | "slides" | "text" | "other";
+
 export interface Hit {
   id: string;
   title: string;
@@ -26,6 +30,9 @@ export interface Hit {
   at?: string;
   /** The site it's on, for a tool that serves several (Atlassian's cloudId). */
   site?: string;
+  /** A folder, opened rather than read. */
+  folder?: boolean;
+  type?: HitType;
 }
 
 export interface Recipe {
@@ -36,6 +43,10 @@ export interface Recipe {
   fetch: (hit: Hit) => ToolCall;
   /** A fetched item's words (default `itemText`). */
   text?: (result: string) => string;
+  /** A folder's items (null: the top), for a tool with folders; its answer reads with `hits`. */
+  list?: (folder: string | null) => ToolCall;
+  /** What was opened lately, shown before anything is searched; its answer reads with `hits`. */
+  recent?: () => ToolCall;
 }
 
 const json = (text: string): unknown => {
@@ -129,6 +140,7 @@ export const RECIPES: Record<string, Recipe> = {
   },
   slack: SLACK_RECIPE,
   confluence: CONFLUENCE_RECIPE,
+  drive: DRIVE_RECIPE,
 };
 
 /** The words of a fetched item: a {text} answer's text, else the answer as it came. */

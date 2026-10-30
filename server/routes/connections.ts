@@ -6,7 +6,7 @@ import { fixHealth, healthNow } from "../health";
 import { recentUsage } from "../usage";
 import { connectorDef } from "@/connectors/catalog";
 import type { Hit } from "@/connectors/recipes";
-import { connectorsView, forgetConnector, importItems, listClaudeCode, saveToken, searchConnector, viaClaudeCode } from "../connectors";
+import { browseConnector, connectorsView, forgetConnector, importItems, listClaudeCode, readItems, saveToken, searchConnector, viaClaudeCode } from "../connectors";
 import { storeFor } from "../org/home";
 import type { OstWork } from "@/discovery/types";
 import { readInsight, searchInsights } from "../connectors/numbers";
@@ -166,11 +166,29 @@ export function connectionsRoutes(): Hono {
       return c.json({ error: "search_failed", message: e instanceof Error ? e.message : String(e) }, 400);
     }
   });
+  // The chat box's picker: what was opened lately, a folder's items or a search, and the picked items' words (not taken in).
+  r.post("/api/org/:org/connectors/:id/browse", async (c) => {
+    if (!(await storeFor(c.req.param("org")))) return c.json({ error: "not_found", message: "No such organization." }, 404);
+    const { query, folder, force } = (await c.req.json().catch(() => ({}))) as { query?: unknown; folder?: unknown; force?: unknown };
+    const at = typeof query === "string" && query.trim() ? { query: query.trim().slice(0, 200) } : folder === null || typeof folder === "string" ? { folder: typeof folder === "string" ? folder.slice(0, 200) : null } : {};
+    try {
+      return c.json({ hits: await browseConnector(c.req.param("id"), at, { force: force === true }) });
+    } catch (e) {
+      return c.json({ error: "browse_failed", message: e instanceof Error ? e.message : String(e) }, 400);
+    }
+  });
+  r.post("/api/org/:org/connectors/:id/read", async (c) => {
+    if (!(await storeFor(c.req.param("org")))) return c.json({ error: "not_found", message: "No such organization." }, 404);
+    const { hits } = (await c.req.json().catch(() => ({}))) as { hits?: unknown };
+    const picked = pickedHits(hits);
+    if (!picked.length) return c.json({ error: "bad_request", message: "Pick something to read." }, 400);
+    return ndjson(async (emit) => ({ items: await readItems(c.req.param("id"), picked, emit) }));
+  });
   r.post("/api/org/:org/connectors/:id/import", async (c) => {
     const store = await storeFor(c.req.param("org"));
     if (!store) return c.json({ error: "not_found", message: "No such organization." }, 404);
     const { hits } = (await c.req.json().catch(() => ({}))) as { hits?: unknown };
-    const picked = (Array.isArray(hits) ? hits : []).filter((h): h is Hit => !!h && typeof h.id === "string" && typeof h.title === "string").slice(0, 20);
+    const picked = pickedHits(hits);
     if (!picked.length) return c.json({ error: "bad_request", message: "Pick something to bring in." }, 400);
     // Taken in to the end even if the window goes: each item is kept, read, filed and placed.
     return ndjson((emit) => importItems(store, c.req.param("id"), picked, emit));
@@ -220,6 +238,9 @@ export function connectionsRoutes(): Hono {
   });
   return r;
 }
+
+/** The hits a request picked: an id and a title each, twenty at most, folders left out. */
+const pickedHits = (hits: unknown): Hit[] => (Array.isArray(hits) ? hits : []).filter((h): h is Hit => !!h && typeof h.id === "string" && typeof h.title === "string" && h.folder !== true).slice(0, 20);
 
 /** An engine this version can run Qalam AI on: Claude's own two, or one with an adapter. */
 const runs = (kind: unknown): kind is EngineKind => isEngineKind(kind) && (kind === "cli" || kind === "api" || !!adapterFor(kind));

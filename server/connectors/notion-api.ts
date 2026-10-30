@@ -22,8 +22,10 @@ export async function notionWhoAmI(token: string, f?: typeof fetch): Promise<str
   return me.bot?.workspace_name ?? me.name ?? "Notion";
 }
 
+/** Pages matching the words; with none, the pages shared with the integration, the last edited first. */
 export async function notionSearch(token: string, query: string, f?: typeof fetch): Promise<Hit[]> {
-  return notionApiHits(await call(token, "/search", { method: "POST", body: JSON.stringify({ query, filter: { property: "object", value: "page" }, page_size: 20 }) }, f));
+  const order = query.trim() ? {} : { sort: { direction: "descending", timestamp: "last_edited_time" } };
+  return notionApiHits(await call(token, "/search", { method: "POST", body: JSON.stringify({ query, filter: { property: "object", value: "page" }, ...order, page_size: 20 }) }, f));
 }
 
 /** A page's words (its top-level blocks, up to a thousand). */

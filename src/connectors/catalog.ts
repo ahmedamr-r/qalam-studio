@@ -68,7 +68,7 @@ const ATLASSIAN = {
 
 export const CATALOG: readonly ConnectorDef[] = [
   { id: "notion", label: "Notion", group: "docs", feeds: "material", claudeCode: /\bnotion\b/i, token: { label: "Internal integration secret", href: "https://www.notion.so/profile/integrations", placeholder: "ntn_…" }, mcp: { url: "https://mcp.notion.com/mcp" }, imports: true },
-  { id: "drive", label: "Google Drive", group: "docs", feeds: "material", claudeCode: /google[ _]drive/i, imports: false },
+  { id: "drive", label: "Google Drive", group: "docs", feeds: "material", claudeCode: /google[ _]drive/i, imports: true },
   { id: "confluence", label: "Confluence", group: "docs", feeds: "material", claudeCode: /confluence|atlassian/i, mcp: ATLASSIAN, imports: true },
   {
     id: "slack",
