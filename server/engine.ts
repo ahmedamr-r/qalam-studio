@@ -4,6 +4,8 @@ import { apiKey, backend, keyOf, modelMix, resolveEngine, setEngineState, tierMo
 import { ENGINE_LABEL, isCompat, isKeyed, isLocal, KEYED_KINDS, type KeyedKind } from "@/ai/engine-kinds";
 import { adapterFor, streamAdapter } from "@/ai/engines";
 import { baseFor, listModels } from "@/ai/engines/compat";
+import { codexModels } from "@/ai/engines/codex";
+import { codexState, findCodex } from "./codex";
 import { loopbackBase, PRESETS } from "@/ai/engines/presets";
 import { DEFAULT_MIX, type ModelMix, type Tier } from "@/ai/models";
 export type { EngineTest, EngineView } from "@/org/engine";
@@ -15,12 +17,13 @@ import { NoSecretStore, secrets } from "./secrets";
 import { readSettings, writeSettings, type Settings } from "./settings";
 
 /*
- * This computer's engine for Qalam AI, as Connections shows and changes it: Claude Code on this Mac,
- * a key kept in the Keychain (Claude's, OpenAI's, Gemini's or OpenRouter's; an environment key still
- * works, as before), or a model on this computer (Ollama, LM Studio). Loaded once from the settings
- * and the Keychain, before the first request is answered; a switch takes effect at the next call
- * and is announced to every open organization (their inboxes wake up). Claude Code's own
- * credentials are never read: its sign-in is asked of `claude auth status`.
+ * This computer's engine for Qalam AI, as Connections shows and changes it: Claude Code or Codex on
+ * this computer, a key kept in the Keychain (Claude's, OpenAI's, Gemini's or OpenRouter's; an
+ * environment key still works, as before), or a model on this computer (Ollama, LM Studio). Loaded
+ * once from the settings and the Keychain, before the first request is answered; a switch takes
+ * effect at the next call and is announced to every open organization (their inboxes wake up).
+ * Claude Code's and Codex's own credentials are never read: their sign-in is asked of
+ * `claude auth status` and `codex login status`.
  */
 
 /** Each keyed engine's Keychain item and environment variables. */
@@ -61,7 +64,7 @@ export function ensureEngine(): Promise<Loaded> {
       keyFrom[k] = v ? "keychain" : "environment";
     }
     const kind = resolveEngine(settings.engine, process.env);
-    setEngineState({ kind, key: keys.api ?? null, keys, bin: process.env.CLAUDE_CLI_PATH || findClaude() || "claude", mix: settings.models ?? DEFAULT_MIX, ...fromSettings(settings, kind) });
+    setEngineState({ kind, key: keys.api ?? null, keys, bin: process.env.CLAUDE_CLI_PATH || findClaude() || "claude", codex: findCodex() ?? undefined, mix: settings.models ?? DEFAULT_MIX, ...fromSettings(settings, kind) });
     // An inbox that looked before this was read may have waited for nothing.
     void announce();
     return { keyFrom, tests: {} };
@@ -78,7 +81,7 @@ const announce = () => announceAll({ kind: "engine" });
 export async function chooseEngine(kind: EngineKind) {
   await ensureEngine();
   const settings = await writeSettings({ engine: kind });
-  setEngineState({ kind, ...fromSettings(settings, kind), ...(kind === "cli" ? { bin: process.env.CLAUDE_CLI_PATH || findClaude() || "claude" } : {}) });
+  setEngineState({ kind, ...fromSettings(settings, kind), ...(kind === "cli" ? { bin: process.env.CLAUDE_CLI_PATH || findClaude() || "claude" } : {}), ...(kind === "codex" ? { codex: findCodex() ?? undefined } : {}) });
   await announce();
 }
 
@@ -117,6 +120,7 @@ export async function chooseBase(kind: EngineKind, raw: string | null): Promise<
 /** The models an engine offers, from its own list. */
 export async function engineModels(kind: EngineKind): Promise<string[]> {
   await ensureEngine();
+  if (kind === "codex") return codexModels(findCodex() ?? undefined);
   if (!isCompat(kind)) return [];
   return listModels(kind);
 }
@@ -227,6 +231,23 @@ export async function liveTest(kind: EngineKind = backend(), key?: string, o: Te
       return done(false, "Didn't answer", e instanceof Error ? e.message : String(e));
     }
   }
+  if (kind === "codex") {
+    const bin = findCodex();
+    if (!bin) return done(false, "Not installed", "Install Codex or the ChatGPT app, then sign in with codex login.");
+    const state = await codexState(bin);
+    if (state.signedIn === false) return done(false, "Signed out", "Run codex login in a terminal, then test again.");
+    setEngineState({ codex: bin });
+    // Codex itself, with the model picked (or its own choice).
+    try {
+      const out = await withTimeout(readStructured<{ ok?: boolean }>(streamAdapter(adapterFor("codex")!, { system: "You check that Qalam AI can reach its engine. Answer with ok set to true.", content: [{ type: "text", text: "Are you there?" }], schema: TEST_SCHEMA, effort: "low", maxTokens: 512 }, (await readSettings()).engines?.codex?.models?.decide ?? "")));
+      return out.data.ok === true ? done(true, "Ready", undefined, out.model) : done(false, "Didn't answer", "Codex answered something else.");
+    } catch (e) {
+      const m = e instanceof Error ? e.message : String(e);
+      if (m === "timeout") return done(false, "Didn't answer", "Codex took longer than a minute.");
+      if (/isn't signed in/i.test(m)) return done(false, "Signed out", "Run codex login in a terminal, then test again.");
+      return done(false, "Didn't answer", m);
+    }
+  }
   if (kind !== "cli") return done(false, "Not here yet", `${ENGINE_LABEL[kind]} isn't available in this version.`);
   const found = process.env.CLAUDE_CLI_PATH || findClaude();
   if (!found) return done(false, "Not installed", "Install Claude Code, then sign in with claude auth login.");
@@ -282,16 +303,17 @@ export async function engineView(): Promise<EngineView> {
   const claude = found ? await claudeState(found) : { found: false, signedIn: false };
   const k = isKeyed(kind) ? keyOf(kind) : null;
   const test = loaded.tests[kind] ?? null;
-  const [ollama, lmstudio] = await Promise.all([answers("ollama"), answers("lmstudio")]);
+  const [ollama, lmstudio, codex] = await Promise.all([answers("ollama"), answers("lmstudio"), codexState(findCodex())]);
   const keyInfo = (kk: KeyedKind) => (keyOf(kk) ? { last4: keyOf(kk)!.slice(-4), from: loaded.keyFrom[kk] ?? ("environment" as const) } : null);
   const option = (o: EngineKind): EngineOption => {
     const picked = settings.engines?.[o]?.models;
     if (o === "cli") return { kind: o, label: ENGINE_LABEL[o], state: !claude.found ? "missing" : claude.signedIn === false ? "signed-out" : "ready" };
+    if (o === "codex") return { kind: o, label: ENGINE_LABEL[o], state: !codex.found ? "missing" : codex.signedIn === false ? "signed-out" : "ready", ...(picked ? { models: picked } : {}) };
     if (isKeyed(o)) return { kind: o, label: ENGINE_LABEL[o], state: !keyOf(o) ? "no-key" : o !== "api" && !picked?.decide ? "pick-model" : "ready", key: keyInfo(o), ...(picked ? { models: picked } : {}) };
     if (o === "ollama" || o === "lmstudio") return { kind: o, label: ENGINE_LABEL[o], state: !(o === "ollama" ? ollama : lmstudio) ? "offline" : !picked?.decide ? "pick-model" : "ready", base: baseFor(o), ...(picked ? { models: picked } : {}) };
     return { kind: o, label: ENGINE_LABEL[o], state: "missing" };
   };
-  const options = (["cli", "ollama", "lmstudio", "api", "openai", "gemini", "openrouter"] as EngineKind[]).map(option);
+  const options = (["cli", "codex", "ollama", "lmstudio", "api", "openai", "gemini", "openrouter"] as EngineKind[]).map(option);
   const view: EngineView = {
     kind,
     label: ENGINE_LABEL[kind],
@@ -299,6 +321,7 @@ export async function engineView(): Promise<EngineView> {
     models: modelMix(),
     tiers: { decide: tierModel("decide"), read: tierModel("read"), fetch: tierModel("fetch") },
     claude,
+    codex,
     key: isKeyed(kind) && k ? keyInfo(kind) : null,
     canStore: secrets().available,
     test,
@@ -310,6 +333,9 @@ export async function engineView(): Promise<EngineView> {
   if (kind === "cli") {
     if (!claude.found) return { ...view, word: "Not installed", detail: "Install Claude Code, then sign in with claude auth login." };
     if (claude.signedIn === false) return { ...view, word: "Signed out", detail: "Run claude auth login in a terminal, then test again." };
+  } else if (kind === "codex") {
+    if (!codex.found) return { ...view, word: "Not installed", detail: "Install Codex or the ChatGPT app, then sign in with codex login." };
+    if (codex.signedIn === false) return { ...view, word: "Signed out", detail: "Run codex login in a terminal, then test again." };
   } else if (isKeyed(kind) && !k) return { ...view, word: "No key", detail: kind === "api" ? "Paste a Claude API key, or use Claude Code on this Mac." : `Paste a ${ENGINE_LABEL[kind].replace(/ (API )?key$/, "")} key.` };
   else if (isLocal(kind) && !(kind === "ollama" ? ollama : lmstudio)) return { ...view, word: "Offline", detail: `${ENGINE_LABEL[kind]} isn't answering at ${baseFor(kind as "ollama" | "lmstudio")}. Start it, then test again.` };
   else if (isCompat(kind) && !settings.engines?.[kind]?.models?.decide) return { ...view, word: "Pick a model", detail: "Pick the models Qalam AI runs on, below." };

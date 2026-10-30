@@ -5,6 +5,7 @@ import { researchBlock } from "./research-shared";
 import { deltaBatcher } from "./deltas";
 import { adapterFor, streamAdapter } from "./engines";
 import "./engines/compat";
+import "./engines/codex";
 import { PRESETS } from "./engines/presets";
 import { isCompat } from "./engine-kinds";
 import { apiKey, backend, keyOf, modelOf, readModelFailed, tierModel, tierNow } from "./engine";

@@ -9,7 +9,7 @@ import { readerSchema } from "./code";
 import { askSchema } from "./ask";
 import { setupReadSchema, setupFollowupSchema, setupShapeSchema, setupPlaceSchema } from "./setup";
 import { solutionsSchema } from "./solutions";
-import { checkAnswer, jsonIn, repairPrompt } from "./validate";
+import { checkAnswer, jsonIn, repairPrompt, strictSchema, withoutNulls } from "./validate";
 
 describe("an answer read for an engine that doesn't enforce the schema", () => {
   const schema = { type: "object", additionalProperties: false, properties: { kind: { type: "string", enum: ["need", "idea"] }, cites: { type: "array", items: { type: "string" } } }, required: ["kind", "cites"] };
@@ -27,6 +27,23 @@ describe("an answer read for an engine that doesn't enforce the schema", () => {
     expect(!bad.ok && bad.problems).toEqual([expect.stringContaining("kind:"), expect.stringContaining("cites.0:")]);
     expect(checkAnswer("sorry", schema)).toEqual({ ok: false, problems: ["The answer wasn't a JSON object."] });
     expect(repairPrompt(["kind: wrong"])).toContain("- kind: wrong");
+  });
+
+  it("makes a schema strict (every field required, an optional one nullable) and takes the nulls back out", () => {
+    const loose = { type: "object", properties: { kind: { type: "string", enum: ["need", "idea"] }, note: { type: "string" }, tags: { type: "array", items: { type: "object", properties: { id: { type: "string" }, why: { type: "string" } }, required: ["id"] } } }, required: ["kind"] };
+    expect(strictSchema(loose)).toEqual({
+      type: "object",
+      additionalProperties: false,
+      required: ["kind", "note", "tags"],
+      properties: {
+        kind: { type: "string", enum: ["need", "idea"] },
+        note: { type: ["string", "null"] },
+        tags: { type: ["array", "null"], items: { type: "object", additionalProperties: false, required: ["id", "why"], properties: { id: { type: "string" }, why: { type: ["string", "null"] } } } },
+      },
+    });
+    expect(strictSchema(loose)).toBe(strictSchema(loose));
+    expect(checkAnswer('{"kind":"need","note":null,"tags":[{"id":"t1","why":null}]}', loose)).toEqual({ ok: true, data: { kind: "need", tags: [{ id: "t1" }] } });
+    expect(withoutNulls({ kind: null }, loose)).toEqual({ kind: null });
   });
 
   it("can check every structured call's schema", () => {
@@ -50,7 +67,22 @@ describe("an answer read for an engine that doesn't enforce the schema", () => {
       setupPlaceSchema({ fragments: ["f1"], answers: ["a1"], products: ["p1"] }),
       solutionsSchema({ ideas: ids } as never),
     ];
-    for (const s of schemas) expect(() => checkAnswer("{}", s as Record<string, unknown>)).not.toThrow();
+    for (const s of schemas) {
+      expect(() => checkAnswer("{}", s as Record<string, unknown>)).not.toThrow();
+      // Strict for OpenAI and Codex: every object lists all its fields as required and takes no others.
+      const objects: Record<string, unknown>[] = [];
+      const walk = (x: unknown) => {
+        if (!x || typeof x !== "object") return;
+        const o = x as Record<string, unknown>;
+        if (o.properties) objects.push(o);
+        Object.values(o).forEach(walk);
+      };
+      walk(strictSchema(s as Record<string, unknown>));
+      for (const o of objects) {
+        expect(o.additionalProperties).toBe(false);
+        expect(o.required).toEqual(Object.keys(o.properties as object));
+      }
+    }
   });
 });
 

@@ -1,6 +1,7 @@
 /*
  * The engine Qalam AI runs on, read at every call, so a switch in Connections takes effect at once
- * with no restart: the user's own Claude Code ("cli"), or a Claude API key ("api"). The server sets
+ * with no restart: the user's own Claude Code ("cli"), a Claude API key ("api"), or another engine
+ * (src/ai/engine-kinds.ts: Codex, another key, a model on this computer). The server sets
  * it from this computer's settings and the Keychain (server/engine.ts); until it has, the
  * environment decides, as it always did (AI_BACKEND=cli for Claude Code, else an API key if there
  * is one). The mix of models, also from the settings, is read at every call the same way.
@@ -24,6 +25,8 @@ interface EngineState {
   key: string | null;
   /** The `claude` to run. */
   bin: string;
+  /** The `codex` to run (the person's own, signed in with ChatGPT). */
+  codex?: string;
   /** "balanced": Sonnet reads, Opus decides; "best": Opus, and Sonnet for the reads that hold there. */
   mix: ModelMix;
   /** Read models Claude Code couldn't use here (some plans lack an alias): reads go to decide instead. */
@@ -48,6 +51,7 @@ export const keyOf = (kind: EngineKind): string | null => (kind === "api" ? stat
 /** Where a model on this computer answers, if not the usual address. */
 export const baseOf = (kind: EngineKind): string | null => state().bases?.[kind] ?? null;
 export const bin = (): string => state().bin;
+export const codexBin = (): string => state().codex ?? (process.env.QALAM_CODEX_BIN || "codex");
 export const modelMix = (): ModelMix => state().mix;
 
 /** The model a tier runs on now, on this engine. */

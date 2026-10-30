@@ -2,7 +2,7 @@ import { COMPAT_KINDS, type CompatKind } from "../engine-kinds";
 import { baseOf, keyOf } from "../engine";
 import { toChatParts, needsVision } from "../content";
 import { fromChatUsage, reportUsage } from "../usage";
-import { checkAnswer, repairPrompt } from "../validate";
+import { checkAnswer, repairPrompt, strictSchema } from "../validate";
 import { EngineError, registerAdapter, type EngineAdapter } from "./index";
 import { PRESETS } from "./presets";
 
@@ -70,7 +70,7 @@ async function chat(kind: CompatKind, o: { model: string; messages: Message[]; s
         model: o.model,
         messages,
         ...(preset.completionTokens ? { max_completion_tokens: o.maxTokens } : { max_tokens: o.maxTokens }),
-        ...(schema ? { response_format: { type: "json_schema", json_schema: { name: "answer", schema, strict: preset.strict } } } : {}),
+        ...(schema ? { response_format: { type: "json_schema", json_schema: { name: "answer", schema: preset.strict ? strictSchema(schema) : schema, strict: preset.strict } } } : {}),
         ...preset.extra,
       }),
     }).catch((e: unknown) => {

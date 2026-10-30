@@ -64,6 +64,8 @@ export interface EngineView {
   tiers: Record<Tier, string>;
   /** Claude Code on this Mac: there, signed in, and whose account pays. */
   claude: { found: boolean; signedIn: boolean | null; account?: ClaudeAccount };
+  /** Codex on this computer: there, signed in, and with ChatGPT (the plan pays) or an API key. */
+  codex?: { found: boolean; signedIn: boolean | null; method?: "chatgpt" | "api-key" };
   /** The API key in use: its last four characters, and where it's kept. */
   key: { last4: string; from: "keychain" | "environment" } | null;
   /** A key can be kept on this computer (the Keychain). */

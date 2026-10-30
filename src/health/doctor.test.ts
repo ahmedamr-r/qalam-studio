@@ -17,6 +17,8 @@ describe("This Mac, checked", () => {
     expect(diagnose({ ...fine, engine: { kind: "api", ready: false, word: "Key rejected" } })[0].fix?.id).toBe("engine.test");
     expect(diagnose({ ...fine, engine: { kind: "api", ready: false, word: "No key" } })[0].fix).toBeUndefined();
     expect(diagnose({ ...fine, engine: { kind: "ollama", ready: false, word: "Pick a model" } })[0].fix).toBeUndefined();
+    expect(diagnose({ ...fine, engine: { kind: "codex", ready: false, word: "Signed out" } })[0].fix).toMatchObject({ id: "engine.signin", command: "codex login" });
+    expect(diagnose({ ...fine, engine: { kind: "codex", ready: false, word: "Not installed" } })[0].fix).toMatchObject({ id: "engine.install", label: "Install Codex" });
     expect(diagnose({ ...fine, engine: { kind: "lmstudio", ready: false, word: "Offline" } })[0].fix?.id).toBe("engine.test");
   });
 

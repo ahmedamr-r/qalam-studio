@@ -48,6 +48,19 @@ export function fromChatUsage(u: ChatUsage | null | undefined, engine: EngineKin
   return { at: now, engine, model, ...(kind ? { kind } : {}), input: u.prompt_tokens ?? 0, output: u.completion_tokens ?? 0, cacheRead: u.prompt_tokens_details?.cached_tokens ?? 0, cacheWrite: 0, cost: local ? 0 : typeof u.cost === "number" ? u.cost : null };
 }
 
+/** What Codex's `turn.completed` line reports. */
+export interface CodexUsage {
+  input_tokens?: number | null;
+  cached_input_tokens?: number | null;
+  output_tokens?: number | null;
+}
+
+/** A Codex call's usage: its tokens and what was read from cache. The ChatGPT plan pays, so no cost. */
+export function fromCodexUsage(u: CodexUsage | null | undefined, model: string, kind?: CallKind, now = Date.now()): UsageEntry | null {
+  if (!u) return null;
+  return { at: now, engine: "codex", model, ...(kind ? { kind } : {}), input: u.input_tokens ?? 0, output: u.output_tokens ?? 0, cacheRead: u.cached_input_tokens ?? 0, cacheWrite: 0, cost: null };
+}
+
 /** What Claude Code's result line reports: its usage, and its own estimate of the cost. */
 export function fromCliResult(r: { usage?: unknown; total_cost_usd?: unknown; duration_ms?: unknown } | null | undefined, model: string, kind?: CallKind, now = Date.now()): UsageEntry | null {
   if (!r?.usage || typeof r.usage !== "object") return null;

@@ -74,6 +74,7 @@ export function whoLine(view: EngineView): string {
   const a = view.claude.account;
   if (view.kind === "cli") return ["Claude Code on this computer", a?.plan ? `${PLAN[a.plan] ?? a.plan} plan` : null, a?.email ?? null].filter(Boolean).join(" · ");
   if (isKeyed(view.kind)) return view.key ? `${KEY_WORD[view.kind]} ending ${view.key.last4} · ${view.key.from === "keychain" ? "in the Keychain" : "from the environment"}` : KEY_WORD[view.kind];
+  if (view.kind === "codex") return ["Codex on this computer", view.codex?.method === "chatgpt" ? "your ChatGPT plan" : view.codex?.method === "api-key" ? "signed in with an OpenAI API key" : null].filter(Boolean).join(" · ");
   if (isLocal(view.kind)) return `${view.label ?? ENGINE_LABEL[view.kind]} on this computer · nothing leaves it`;
   return view.label ?? ENGINE_LABEL[view.kind];
 }
@@ -146,6 +147,7 @@ export function EngineCard() {
         </div>
         <div className="flex shrink-0 items-center gap-[6px]">
           {view.kind === "cli" && word === "Signed out" && <CopyCommand command="claude auth login" />}
+          {view.kind === "codex" && word === "Signed out" && <CopyCommand command="codex login" />}
           <Button variant="secondary" size="sm" disabled={testing} onClick={() => void runTest()}>
             {testing ? "Testing…" : "Test"}
           </Button>
@@ -215,6 +217,8 @@ export function EngineSetup({ view, onView, onError, fresh }: { view: EngineView
 }
 
 const SAME = "same";
+/** Codex picks its own model unless one is picked. */
+const ITS_OWN = "its-own";
 
 /** The models an engine that isn't Claude runs on, from its own list: one that decides, and one that reads (the same, unless picked). */
 function TierPicker({ view, picked, onSaved, onError }: { view: EngineView; picked: Partial<Record<Tier, string>>; onSaved: (v: EngineView) => void; onError: (m: string | null) => void }) {
@@ -234,7 +238,7 @@ function TierPicker({ view, picked, onSaved, onError }: { view: EngineView; pick
   }, [kind, view.key?.last4, view.base, onError]);
   const pick = async (tier: Tier, model: string) => {
     const next = { ...picked, [tier]: model };
-    if (model === SAME) delete next[tier];
+    if (model === SAME || model === ITS_OWN) delete next[tier];
     onError(null);
     try {
       onSaved(await engineDb.tiers(kind, next));
@@ -249,7 +253,13 @@ function TierPicker({ view, picked, onSaved, onError }: { view: EngineView; pick
     <div className="flex flex-wrap items-center gap-[12px]">
       <label className="flex items-center gap-[8px]">
         <span className="text-micro font-medium text-fg-subtle">Decides</span>
-        <Select<string> ariaLabel="The model that decides" value={picked.decide ?? ""} onChange={(m) => void pick("decide", m)} className="w-[220px]" options={models} />
+        <Select<string>
+          ariaLabel="The model that decides"
+          value={picked.decide ?? (kind === "codex" ? ITS_OWN : "")}
+          onChange={(m) => void pick("decide", m)}
+          className="w-[220px]"
+          options={kind === "codex" ? [{ value: ITS_OWN, label: "Codex's choice" }, ...models] : models}
+        />
       </label>
       <label className="flex items-center gap-[8px]">
         <span className="text-micro font-medium text-fg-subtle">Reads</span>

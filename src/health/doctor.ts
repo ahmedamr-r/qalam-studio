@@ -37,8 +37,9 @@ const RANK: Record<Dot, number> = { bad: 0, warn: 1, off: 2, ok: 3 };
 export function diagnose(f: HealthFacts): HealthRow[] {
   const rows: HealthRow[] = [];
   if (!f.engine.ready) {
-    const signedOut = f.engine.kind === "cli" && f.engine.word === "Signed out";
-    const missing = f.engine.kind === "cli" && f.engine.word === "Not installed";
+    const agent = f.engine.kind === "cli" || f.engine.kind === "codex";
+    const signedOut = agent && f.engine.word === "Signed out";
+    const missing = agent && f.engine.word === "Not installed";
     // No key or no model picked yet: Connections' card is where they go, so no button here.
     const noKey = f.engine.word === "No key" || f.engine.word === "Pick a model";
     rows.push({
@@ -48,9 +49,9 @@ export function diagnose(f: HealthFacts): HealthRow[] {
       word: f.engine.word,
       ...(f.engine.detail ? { detail: f.engine.detail } : {}),
       ...(signedOut
-        ? { fix: { id: "engine.signin", label: "Copy the command", command: "claude auth login" } }
+        ? { fix: { id: "engine.signin", label: "Copy the command", command: f.engine.kind === "codex" ? "codex login" : "claude auth login" } }
         : missing
-          ? { fix: { id: "engine.install", label: "Install Claude Code", href: "https://code.claude.com/docs/en/quickstart" } }
+          ? { fix: { id: "engine.install", ...(f.engine.kind === "codex" ? { label: "Install Codex", href: "https://github.com/openai/codex" } : { label: "Install Claude Code", href: "https://code.claude.com/docs/en/quickstart" }) } }
           : noKey
             ? {}
             : { fix: { id: "engine.test", label: "Test again" } }),

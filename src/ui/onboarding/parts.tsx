@@ -101,6 +101,7 @@ function EnginePart({ data }: { data: PartData }) {
       {!e.checking && !ok && !e.skipped && (
         <ReplyChips>
           {v?.kind === "cli" && test?.word === "Signed out" && <CopyCommand command="claude auth login" />}
+          {v?.kind === "codex" && test?.word === "Signed out" && <CopyCommand command="codex login" />}
           {v?.kind === "cli" && !v.claude.found && (
             <a href="https://code.claude.com/docs/en/quickstart" target="_blank" rel="noreferrer" className={r.replyChip}>
               Install Claude Code

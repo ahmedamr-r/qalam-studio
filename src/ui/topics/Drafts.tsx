@@ -103,7 +103,7 @@ export function Drafts({ topic, board }: { topic: string; board: { board: string
                   <span className="text-micro text-fg-subtle">First test</span>
                   <span className="font-medium text-fg">{d.test.what}</span>
                   <span className="text-fg-muted">{d.test.how}</span>
-                  {d.test.suggested && <span className="text-fg-subtle">Qalam AI suggests it passes when {d.test.suggested.replace(/^\p{Lu}/u, (c) => c.toLowerCase())}. You set the bar.</span>}
+                  {d.test.suggested && <span className="text-fg-subtle">Qalam AI suggests it passes when {d.test.suggested.replace(/^\p{Lu}/u, (c) => c.toLowerCase()).replace(/[.\s]+$/, "")}. You set the bar.</span>}
                 </div>
               )}
               <div className="flex justify-end">

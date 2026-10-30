@@ -5,7 +5,7 @@ import { loadEnvFiles } from "./env.ts";
 import { checkRequest, factsOf, tokenLanding, type GuardConfig } from "./guard.ts";
 
 /** Modules that read secrets or spawn processes. The browser bundle must never contain them. */
-const SERVER_ONLY = /\/src\/ai\/(cli|research|server|connectors|engine|usage)\.ts$/;
+const SERVER_ONLY = /\/src\/ai\/(cli|research|server|connectors|engine|usage|engines\/\w+)\.ts$/;
 
 /**
  * The core inside the Vite dev server: /api/* goes to the same routes the browser mode and the
