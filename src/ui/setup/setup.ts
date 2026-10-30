@@ -2,13 +2,11 @@ import { nanoid } from "nanoid";
 import { create } from "zustand";
 import { docPart, docRef, joinParts, spansWithin, type DocRef, type Part, type SentDoc } from "../chat/attach";
 import { AIError, aiStatus, callAI } from "@/ai/client";
-import { addCardIn, makeCardNode, newCard } from "@/discovery/ops";
 import { sourcesDb } from "@/discovery/db";
 import { DUMP_MAX_CHARS, MAX_DUMP_ROUNDS, applyDumpFollowup, closeDumpRound, firstRound, fragmentRefs, roundAnswers, sanitizeDumpFollowup, sanitizeRead, withRoles } from "@/discovery/dump";
 import { IngestError } from "@/discovery/ingest/core";
-import { quoteEvidence, type SourceRecord } from "@/discovery/sources";
+import type { SourceRecord } from "@/discovery/sources";
 import { newId } from "@/doc/factory";
-import { emptyDoc } from "@/doc/schema";
 import { currentOrg, orgFetch } from "@/org/client";
 import { changeGoal, createGoal, goalWords, goalsNow, useGoals } from "@/goals/client";
 import { textGoalId } from "@/goals/migrate";
@@ -17,12 +15,13 @@ import { goalById } from "@/goals/tree";
 import { sameTopic } from "@/hub/topics";
 import { saveAbout, saveProduct, useOrgContext } from "@/org/context";
 import { emptyContext } from "@/org/context-md";
+import { boardFromSetup } from "@/org/setup-board";
 import { applyLines, boardGoals, decide, sanitizeSetup, setupSent, type OrgNow, type PlaceSays, type SetupLine, type SetupSession } from "@/org/setup";
 import { projectHref } from "@/projects/model";
 import { NAME_MAX, TITLE_MAX, useYou } from "@/org/you";
 import { createProject } from "@/projects/session";
 import { initialFlow, type FlowState } from "../ai/questionFlow";
-import { handIdea, ideaBoardName } from "../discovery/idea";
+import { ideaBoardName } from "../discovery/idea";
 import { ingestPaste, ingestUrl } from "../discovery/ingest";
 
 /*
@@ -369,7 +368,11 @@ export async function discardLines(lineIds: string[]) {
   settled();
 }
 
-/** A board for a goal they accepted: the goal its outcome, resting on their words, for the goal's product. */
+/**
+ * A board for a goal they accepted, filled from what the setup read (`boardFromSetup`): the goal its
+ * outcome, the problems it rests on under it, and the idea under the problem it answers, each
+ * resting on their words. Nothing is read or asked again.
+ */
 export async function startBoard(lineId: string) {
   const s = source();
   const session = s?.setup;
@@ -377,24 +380,19 @@ export async function startBoard(lineId: string) {
   if (!s || !session || !goal) return;
   const made = session.boards?.[lineId];
   if (made) return window.location.assign(projectHref({ id: made, type: "discovery" }));
-  const quotes = goal.line.pieces.flatMap((id) => s.quotes.find((q) => q.id === id) ?? []);
   // The goal the line made, as it is now (its words and number may have changed since).
   const g = goalById(goalsNow(), lineGoalId(goal.line.text, goal.product)) ?? goalsNow().goals.find((x) => x.product === goal.product && !x.on && sameTopic(x.title, goal.line.text));
-  const doc = emptyDoc();
-  const node = makeCardNode(newCard("outcome", { title: g?.title ?? goal.line.text, ...(g?.metric ? { metric: g.metric } : {}), evidence: quotes.map((q) => quoteEvidence(s, q, "user")) }));
-  addCardIn(doc, node, null);
-  const p = await createProject("discovery", (g?.title ?? goal.line.text).slice(0, 80), goal.product ? { product: goal.product } : {}, doc);
+  const title = g?.title ?? goal.line.text;
+  const { doc, outcome } = boardFromSetup({ source: s, session, goal: { line: goal.line, title, metric: g?.metric ?? null } });
+  const p = await createProject("discovery", title.slice(0, 80), { discovery: { v: 1, stage: "ready" }, ...(goal.product ? { product: goal.product } : {}) }, doc);
   // The board's outcome card is the goal on the canvas.
-  if (g) await changeGoal(g.id, { on: { board: p.id, card: node.id } }).catch(() => {});
+  if (g && outcome) await changeGoal(g.id, { on: { board: p.id, card: outcome } }).catch(() => {});
   await sourcesDb.link(s.id, p.id, true);
-  // An idea's first board reads the idea too, and places it as a solution under the problems it solves.
-  const idea = !!session.idea && !Object.keys(session.boards ?? {}).length;
   await setSession((d) => ({ ...d, boards: { ...d.boards, [lineId]: p.id } }));
-  if (idea) handIdea(s.text);
-  window.location.assign(`${projectHref(p)}${idea ? "?idea=1" : ""}`);
+  window.location.assign(projectHref(p));
 }
 
-/** The idea's board, once they choose: under the first goal they accepted, else on its own, named after the idea. Either way the board reads the idea. */
+/** The idea's board, once they choose: under the first goal they accepted, else on its own, named after the idea, its problems at the top. Either way it's filled from what the setup read. */
 export async function startIdeaBoard() {
   const s = source();
   const session = s?.setup;
@@ -404,11 +402,11 @@ export async function startIdeaBoard() {
   const made = session.boards?.idea;
   if (made) return window.location.assign(projectHref({ id: made, type: "discovery" }));
   const name = ideaBoardName(session.said || session.docs?.[0]?.title.replace(/\.[a-z0-9]{1,5}$/i, "") || s.text);
-  const p = await createProject("discovery", name, { discovery: { v: 1, stage: "ready" } }, emptyDoc());
+  const { doc } = boardFromSetup({ source: s, session, goal: null });
+  const p = await createProject("discovery", name, { discovery: { v: 1, stage: "ready" } }, doc);
   await sourcesDb.link(s.id, p.id, true);
   await setSession((d) => ({ ...d, boards: { ...d.boards, idea: p.id } }));
-  handIdea(s.text);
-  window.location.assign(`${projectHref(p)}?idea=1`);
+  window.location.assign(projectHref(p));
 }
 
 // ---------------------------------------------------------------------------
