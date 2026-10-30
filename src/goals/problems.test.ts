@@ -99,7 +99,7 @@ describe("which problems bear on which goals", () => {
 });
 
 describe("the problems behind a goal", () => {
-  const need = (topic: string, title: string, sources: number, quotes: number, boards: RankedNeed["boards"] = []): RankedNeed => ({ topic, title, products: ["grocery"], quotes, sources, against: 0, segments: [], weeks: [], boards, newest: 1 });
+  const need = (topic: string, title: string, sources: number, quotes: number, boards: RankedNeed["boards"] = []): RankedNeed => ({ topic, title, products: ["grocery"], quotes, sources, against: 0, online: 0, onlineSources: 0, segments: [], weeks: [], boards, newest: 1 });
   const needs = [need("p1", "Rebuilding", 6, 15, [{ board: "b1", card: "n1", kind: "opportunity", shared: 3 }]), need("p2", "Fees", 2, 4), need("p5", "Substitutions", 6, 13)];
   const links = [
     { need: "p2", goal: "r", bears: "some" as const, how: "Fees", cites: [], by: "qalam" as const, at: 1 },

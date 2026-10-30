@@ -13,7 +13,8 @@ import type { SetupSession } from "@/org/setup";
  * the builder's words, never a customer's.
  */
 
-export type SourceKind = "pdf" | "docx" | "markdown" | "text" | "paste" | "url" | "connector" | "interview" | "dump";
+/** `post`: what people said in public (a thread, reviews): people online, not the organization's own customers. */
+export type SourceKind = "pdf" | "docx" | "markdown" | "text" | "paste" | "url" | "connector" | "interview" | "dump" | "post";
 
 export const SOURCE_KIND_LABEL: Record<SourceKind, string> = {
   pdf: "PDF",
@@ -25,6 +26,7 @@ export const SOURCE_KIND_LABEL: Record<SourceKind, string> = {
   connector: "Connected tool",
   interview: "Interview",
   dump: "Brain dump",
+  post: "People online",
 };
 
 /** What a quote shows about the customer. */
@@ -222,6 +224,8 @@ export function quoteEvidence(source: Pick<SourceRecord, "id" | "title"> & { kin
     ...(q.speaker ? { speaker: q.speaker } : {}),
     ...(q.time ? { time: [q.time[0], q.time[1]] as [number, number] } : {}),
     ...(opts.against ? { stance: "against" as const } : {}),
+    // Someone online said it: it backs a card, but never makes it more than Assumed alone.
+    ...(source.kind === "post" ? { online: true } : {}),
     addedBy,
     at: opts.now ?? Date.now(),
   };

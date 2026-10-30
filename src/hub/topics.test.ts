@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { topicFromMarkdown, topicToMarkdown } from "./topic-md";
-import { applyFiling, checkWords, emptyFiling, isEvidence, sameTopic, sanitizeFiling, type Citable, type FilingSent, type Topic } from "./topics";
+import { applyFiling, checkWords, emptyFiling, isEvidence, isOnline, sameTopic, sanitizeFiling, type Citable, type FilingSent, type Topic } from "./topics";
 
 const AT = new Date(2026, 9, 27, 12).getTime();
 
@@ -101,6 +101,9 @@ describe("what code stands behind", () => {
   it("tells customers' words and results from the team's", () => {
     expect(isEvidence({ type: "quote", sub: "pain" })).toBe(true);
     expect(isEvidence({ type: "quote", sub: "dump:assumption" })).toBe(false);
+    // People online back a need, but aren't its customers' evidence.
+    expect(isEvidence({ type: "quote", sub: "online:pain" })).toBe(false);
+    expect([isOnline({ type: "quote", sub: "online:pain" }), isOnline({ type: "quote", sub: "pain" })]).toEqual([true, false]);
     expect(isEvidence({ type: "evidence", sub: "quote" })).toBe(true);
     expect(isEvidence({ type: "evidence", sub: "answer" })).toBe(false);
     expect(isEvidence({ type: "card", sub: "test", stage: "passed" })).toBe(true);

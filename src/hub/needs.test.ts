@@ -48,6 +48,19 @@ describe("what to work on next", () => {
     expect(ranked.map(strengthOf)).toEqual(["strong", "growing", "growing", "thin", "assumed"]);
   });
 
+  it("counts people online apart, below its own customers, and alone leaves it Assumed", () => {
+    const pieces = { "q:own": quote("s1"), "q:r1": quote("reddit", ago(3), "online:pain"), "q:r2": quote("reddit", ago(3), "online:pain"), "q:r3": quote("appstore", ago(3), "online:need") };
+    const online = topic("online-only", { lines: [line("l", "believe", ["q:r1", "q:r2", "q:r3"])] });
+    const e = needEvidence(online, new Map(Object.entries(pieces)));
+    expect([e.quotes.size, e.online.size, e.onlineSources.size]).toEqual([0, 3, 2]);
+    const ranked = rankNeeds(input([topic("nothing"), online, topic("one-customer", { lines: [line("l", "know", ["q:own"])] })], pieces));
+    expect(ranked.map((n) => [n.topic, n.online, strengthOf(n)])).toEqual([
+      ["one-customer", 0, "thin"],
+      ["online-only", 3, "assumed"],
+      ["nothing", 0, "assumed"],
+    ]);
+  });
+
   it("says who raises a need: the segment pages citing the same evidence", () => {
     const need = topic("fees", { lines: [line("l", "know", ["q:a", "q:b"])] });
     const parents = topic("parents", { kind: "segment", title: "Parents", lines: [line("l", "know", ["q:b"])] });

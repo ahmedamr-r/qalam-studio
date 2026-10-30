@@ -25,6 +25,7 @@ Plan at most 6 jobs, the most useful first, at most one per gap. Each job is one
 - numbers: read a number from a saved insight in PostHog: where the goal's number stands, or a step where people drop off. The query is the insight's likely name.
 - talk: 2 to 5 open questions to ask, about what people did rather than what they would do, and who to ask: segments and people from the lists, by their ids, or "team".
 - read-code: one question about what the product does today that its code would answer (the steps of a flow, the events it sends).
+- posts: look online for public posts and reviews where people describe one problem in their own words, for a problem only the team raises so far. Its gap must be about that problem.
 
 Use a connected tool when one could answer; plan for a tool that isn't connected only when none that is could, and name the tool in the title. Fill only the fields a job's kind uses: connector "none", query "", questions [] and who [] otherwise.
 
@@ -36,7 +37,7 @@ export function jobsSchema(m: Pick<JobSent, "gaps" | "tools" | "segments" | "peo
   return obj({
     jobs: arr(
       obj({
-        kind: enm(JOB_KINDS, "search · numbers · talk · read-code"),
+        kind: enm(JOB_KINDS, "search · numbers · talk · read-code · posts"),
         gap: enm([...m.gaps.keys(), "none"], "The gap it closes (x…), or none"),
         title: str("A short instruction, at most 12 words"),
         why: str("One sentence: what the team would learn and how it bears on the goal"),

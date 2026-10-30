@@ -2,13 +2,12 @@ import { nanoid } from "nanoid";
 import { breakdownCall } from "@/ai/breakdown";
 import { claimsCall } from "@/ai/outside";
 import { research, structured } from "@/ai/server";
-import { fetchGuarded } from "@/discovery/fetch-guard";
-import { htmlText } from "@/discovery/ingest/text";
 import { breakdownMaterial, sanitizeBreakdown } from "@/goals/breakdown";
 import { claimsMaterial, outsideTask, sanitizeClaims, OUTSIDE_LIMITS, type OutsidePage } from "@/goals/outside";
 import { chainOf, goalById } from "@/goals/tree";
 import type { Goal, GoalLever } from "@/goals/types";
 import { coreDeps } from "../capture";
+import { readPage } from "./pages";
 import { NotFoundError, type OrgStore } from "./store";
 
 /**
@@ -19,19 +18,6 @@ import { NotFoundError, type OrgStore } from "./store";
  * it from the team's own material, with what others report beside them (src/goals/breakdown.ts).
  * Both are kept in hub/goals/<goal>.json until accepted or looked up again.
  */
-
-/** A page as words: HTML read as its text, plain text as it is; anything else (a PDF) isn't read. */
-async function readPage(link: { url: string; title?: string }, signal: AbortSignal): Promise<OutsidePage | null> {
-  try {
-    const page = await fetchGuarded(link.url, { signal: AbortSignal.any([signal, AbortSignal.timeout(20_000)]) });
-    const raw = new TextDecoder().decode(page.body);
-    const html = /html/i.test(page.contentType) ? htmlText(raw) : /^text\//i.test(page.contentType) ? { text: raw } : null;
-    if (!html || html.text.trim().length < 200) return null;
-    return { ref: "", url: link.url, title: ("title" in html && html.title?.trim()) || link.title || link.url, text: html.text };
-  } catch {
-    return null;
-  }
-}
 
 async function goalOf(store: OrgStore, id: string): Promise<{ goal: Goal; tree: Awaited<ReturnType<OrgStore["getGoals"]>> }> {
   const tree = await store.getGoals();

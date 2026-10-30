@@ -140,7 +140,8 @@ async function fileOne(deps: FilingDeps, items: Item[], product: string | null, 
   const material: TopicsRequest["material"] = items.map((it, i) => {
     const team = it.s.kind === "dump";
     const id = `q${i + 1}`;
-    sent.cites.set(id, { ref: quotePiece(it.q.id), text: it.q.text, label: it.s.title, evidence: !team, product: it.s.product ?? null });
+    // People online's words back a line, but alone never make it "We know" (code moves it to "We believe").
+    sent.cites.set(id, { ref: quotePiece(it.q.id), text: it.q.text, label: it.s.title, evidence: !team && it.s.kind !== "post", product: it.s.product ?? null });
     return { id, text: clip(it.q.text, 1200), source: clip(it.s.title, 300), speaker: it.q.speaker ? clip(it.q.speaker, 80) : null, kind: team ? (it.q.role ?? "note") : it.q.kind, team };
   });
   const quoteIds = new Map(items.map((it, i) => [it.q.id, `q${i + 1}`]));

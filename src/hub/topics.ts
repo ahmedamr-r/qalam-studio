@@ -109,13 +109,19 @@ export interface Citable {
 
 const DONE_TESTS = new Set(["passed", "failed", "inconclusive"]);
 
-/** Customers' own words, or a test's result: what "We know" and "Against" rest on. A brain dump's pieces are the team's. */
+/**
+ * Customers' own words, or a test's result: what "We know" and "Against" rest on. A brain dump's
+ * pieces are the team's; a post's are people online's (they back a need, below its customers').
+ */
 export function isEvidence(p: { type: string; sub?: string | null; stage?: string | null }): boolean {
-  if (p.type === "quote") return !(p.sub ?? "").startsWith("dump:");
+  if (p.type === "quote") return !(p.sub ?? "").startsWith("dump:") && !isOnline(p);
   if (p.type === "evidence") return p.sub === "quote";
   if (p.type === "card") return p.sub === "test" && DONE_TESTS.has(p.stage ?? "");
   return false;
 }
+
+/** What people said in public (a post, a review): it backs a need, but never makes "We know" alone. */
+export const isOnline = (p: { type: string; sub?: string | null }): boolean => p.type === "quote" && (p.sub ?? "").startsWith("online:");
 
 const IDS = /\s*\[(?:[a-z]{1,2}\d{1,4})(?:\s*,\s*[a-z]{0,2}\d{1,4})*\]/gi;
 

@@ -20,7 +20,7 @@ const fees = page("p2", "Surprise delivery fees put me off ordering again", [lin
 const parents = page("s1", "Busy parents", [line("w", "They order on Sunday nights.")], "segment");
 const topics = new Map([basket, fees, parents].map((t) => [t.id, t]));
 
-const problem = (t: Topic, o: Partial<GoalProblem> = {}): GoalProblem => ({ topic: t.id, title: t.title, products: t.products, quotes: 0, sources: 0, against: 0, segments: [], weeks: [], boards: [], newest: 1, bears: "direct", how: "", by: "qalam", via: null, onBoard: false, ...o });
+const problem = (t: Topic, o: Partial<GoalProblem> = {}): GoalProblem => ({ topic: t.id, title: t.title, products: t.products, quotes: 0, sources: 0, against: 0, online: 0, onlineSources: 0, segments: [], weeks: [], boards: [], newest: 1, bears: "direct", how: "", by: "qalam", via: null, onBoard: false, ...o });
 const problems = [problem(basket, { quotes: 12, sources: 4, how: "Planners who rebuild “from scratch” skip reordering." }), problem(fees, { bears: "some" })];
 const tools: JobTool[] = [
   { id: "notion", label: "Notion", kind: "search", what: "searches the team's docs and notes", connected: true },
@@ -148,5 +148,19 @@ describe("jobs", () => {
     const again = sanitizeJobs(raw, material(kept), { goal: "r", now: 10, id });
     expect(again.map((j) => j.kind)).toEqual([]);
     expect(jobLine(kept[0])).not.toHaveProperty("changed");
+  });
+
+  it("looks online only for a problem's gap", () => {
+    const m = material();
+    const raw = {
+      jobs: [
+        { kind: "posts", gap: "x3", title: "Look online for delivery fee complaints", why: "Shows whether people raise fees, not just the team.", connector: "none", query: "", questions: [], who: [] },
+        // The goal's own number isn't a problem to look up online.
+        { kind: "posts", gap: "x1", title: "Look online for reorders", why: "Shows reorders.", connector: "none", query: "", questions: [], who: [] },
+      ],
+    };
+    const dropped: string[] = [];
+    expect(sanitizeJobs(raw, m, { goal: "r", now: 9, id: () => "j" }, (why) => dropped.push(why)).map((j) => [j.kind, j.gap])).toEqual([["posts", "team-only:p2"]]);
+    expect(dropped).toEqual(["looking online needs a problem's gap"]);
   });
 });

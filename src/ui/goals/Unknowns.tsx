@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import clsx from "clsx";
-import { ChartLine, Check, Code, Copy, MessagesSquare, Search, X } from "lucide-react";
+import { ChartLine, Check, Code, Copy, Globe, MessagesSquare, Search, X } from "lucide-react";
 import { feedback } from "@/commands/feedback";
 import type { Hit } from "@/connectors/recipes";
 import type { OstMetric } from "@/discovery/types";
+import { lookedOnlineLine } from "@/discovery/ingest/posts";
 import { changeGoal } from "@/goals/client";
 import type { Gap } from "@/goals/gaps";
 import type { Job } from "@/goals/jobs";
@@ -29,7 +30,7 @@ import { StatusDot } from "../viz";
 
 const ICON = { size: 14, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 const SMALL = { size: 12, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
-const KIND_ICON = { search: Search, numbers: ChartLine, talk: MessagesSquare, "read-code": Code } as const;
+const KIND_ICON = { search: Search, numbers: ChartLine, talk: MessagesSquare, "read-code": Code, posts: Globe } as const;
 const DONE_SHOWN = 5;
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -188,6 +189,7 @@ function JobRow({ job, goal, tools, hasCode, open, onOpen, onChange, onChanged }
           {job.kind === "numbers" && <NumbersRun job={job} goal={goal} onDone={(outcome) => onChange({ status: "done", outcome })} />}
           {job.kind === "talk" && <TalkRun job={job} goal={goal} onDone={() => onChange({ status: "done" })} />}
           {job.kind === "read-code" && <CodeRun job={job} onDone={onChanged} />}
+          {job.kind === "posts" && <PostsRun job={job} onDone={onChanged} />}
         </div>
       )}
       {job.kind === "read-code" && job.questions?.[0] && !open && <p className="ml-[24px] text-caption text-fg-subtle">{hasCode ? "Qalam AI answers it from the product's code" : "Qalam AI answers it from the product's code, once it's connected"}: {job.questions[0]}</p>}
@@ -324,6 +326,36 @@ function CodeRun({ job, onDone }: { job: Job; onDone: () => void }) {
       {answer === null && <p className="text-caption text-fg-muted">Qalam AI couldn&apos;t point to the code that answers it.</p>}
       {answer && <p className="text-caption text-fg-muted">{answer}</p>}
       {error && <p className="text-caption text-danger">{error}</p>}
+    </div>
+  );
+}
+
+/** Looking online for a problem: what people say in public, read by code and filed as people online's. */
+function PostsRun({ job, onDone }: { job: Job; onDone: () => void }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [said, setSaid] = useState<string | null>(null);
+  const run = async () => {
+    setBusy("Looking for where people talk about it");
+    try {
+      const r = await jobsDb.online(job.id, setBusy);
+      setSaid(lookedOnlineLine(r));
+      if (!r.error) onDone();
+    } catch (e) {
+      setSaid(message(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <div className="flex flex-col gap-[6px]">
+      <span className="text-caption text-fg-muted">Reddit threads, reviews and forums where people describe it in their own words. They back the problem below what your own customers say.</span>
+      {!busy && !said && (
+        <Button size="sm" className="self-start" onClick={() => void run()}>
+          Look online
+        </Button>
+      )}
+      {busy && <p className="q-shimmer-text text-caption text-fg-muted">{busy}…</p>}
+      {said && <p className="text-caption text-fg-muted">{said}</p>}
     </div>
   );
 }

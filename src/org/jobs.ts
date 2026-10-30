@@ -1,5 +1,6 @@
 import { callAI } from "@/ai/client";
 import type { Hit } from "@/connectors/recipes";
+import type { LookedOnline } from "@/discovery/ingest/posts";
 import type { Job, JobStatus } from "@/goals/jobs";
 import type { LinkedNow } from "./capture";
 import type { ImportResult } from "./connectors";
@@ -30,6 +31,13 @@ export const jobsDb = {
   takeIn: async (id: string, hits: Hit[], onActivity: (label: string) => void) =>
     (
       await callAI<ImportResult & { linked: LinkedNow | null }>(await orgPath(at(id, "/take")), { hits }, undefined, undefined, (e) => {
+        if (e.type === "activity") onActivity(e.label);
+      })
+    ).data,
+  /** A posts job: what people say online about its problem, taken in as people online's. */
+  online: async (id: string, onActivity: (label: string) => void) =>
+    (
+      await callAI<LookedOnline>(await orgPath(at(id, "/online")), {}, undefined, undefined, (e) => {
         if (e.type === "activity") onActivity(e.label);
       })
     ).data,

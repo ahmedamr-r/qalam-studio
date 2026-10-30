@@ -21,6 +21,7 @@ import { useItemSpace } from "../frame/useSpace";
 import { QalamAIGlyph } from "../brand";
 import { NeedStrip } from "./NeedStrip";
 import { Drafts } from "./Drafts";
+import { LookOnline } from "./LookOnline";
 import { BearsOn } from "./BearsOn";
 import { ago } from "../time";
 import { Dictated } from "../voice/MicButton";
@@ -198,6 +199,7 @@ export default function TopicPage({ id }: { id: string }) {
           </div>
 
           {t.kind === "need" && view.summary && <NeedStrip s={view.summary} shows={view.shows} />}
+          {t.kind === "need" && <LookOnline topic={t.id} />}
           {t.kind === "need" && <Drafts topic={t.id} board={boardOf(view)} />}
 
           {SECTIONS.map((s) => {

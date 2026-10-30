@@ -58,6 +58,8 @@ export interface OstEvidence {
   time?: [number, number];
   /** The words speak against the card (they don't back it). */
   stance?: "against";
+  /** A quote from people online (a public post or review), not the organization's own customers. */
+  online?: boolean;
   addedBy: "user" | "ai";
   at: number;
 }

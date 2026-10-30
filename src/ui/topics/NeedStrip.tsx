@@ -31,6 +31,8 @@ export function NeedStrip({ s, shows }: { s: RankedNeed; shows: ShowsUpOn[] }) {
         </span>
         <span className="flex flex-col gap-[2px] text-caption tnum">
           <span className="text-fg">{s.quotes ? `${plural(s.quotes, "quote")} · ${plural(s.sources, "source")}` : "No customer words yet"}</span>
+          {/* People online back it, below its own customers' words. */}
+          {s.online > 0 && <span className="text-fg-muted">{`${plural(s.online, "quote")} from ${plural(s.onlineSources, "post")} online`}</span>}
           <span className={s.against ? "text-warning" : "text-fg-subtle"}>{s.against ? `${s.against} against` : "Nothing against"}</span>
         </span>
         <span className="flex flex-col gap-[2px]">

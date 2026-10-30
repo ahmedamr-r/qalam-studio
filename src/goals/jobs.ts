@@ -14,7 +14,8 @@ import type { Goal, GoalTree } from "./types";
  * team's own material names). Each job is a line in hub/jobs.jsonl, then a line per change to it.
  */
 
-export const JOB_KINDS = ["search", "numbers", "talk", "read-code"] as const;
+/** `posts`: look online for what people say about one problem in public (it backs it below its own customers). */
+export const JOB_KINDS = ["search", "numbers", "talk", "read-code", "posts"] as const;
 export type JobKind = (typeof JOB_KINDS)[number];
 export type JobStatus = "todo" | "done" | "dropped";
 
@@ -230,6 +231,11 @@ export function sanitizeJobs(raw: unknown, m: JobSent, o: { goal: string; now: n
     }
     let connector: string | undefined;
     let query: string | undefined;
+    // Looking online is about one problem: its gap names the page.
+    if (kind === "posts" && !gap?.page) {
+      drop("looking online needs a problem's gap", x);
+      continue;
+    }
     if (kind === "search" || kind === "numbers") {
       const tool = typeof j.connector === "string" ? m.tools.get(j.connector.trim()) : undefined;
       if (!tool || tool.kind !== kind) {

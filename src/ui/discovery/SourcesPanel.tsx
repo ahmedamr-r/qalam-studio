@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import clsx from "clsx";
-import { ArrowLeft, ClipboardPaste, ExternalLink, FileText, Globe, MessagesSquare, NotebookPen, Plug, Plus, Quote, Trash2, Upload, X } from "lucide-react";
+import { ArrowLeft, ClipboardPaste, ExternalLink, FileText, Globe, MessagesSquare, NotebookPen, Plug, Plus, Quote, Trash2, Upload, Users, X } from "lucide-react";
 import { studio, useStudio } from "@/doc/store";
 import type { Doc } from "@/doc/schema";
 import { newId } from "@/doc/factory";
@@ -41,7 +41,7 @@ import { openBrainDump } from "./dump";
 const ICON = { size: 14, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 const SMALL = { size: 12, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 
-const KIND_ICON: Record<SourceKind, typeof FileText> = { pdf: FileText, docx: FileText, markdown: FileText, text: FileText, paste: ClipboardPaste, url: Globe, connector: Plug, interview: MessagesSquare, dump: NotebookPen };
+const KIND_ICON: Record<SourceKind, typeof FileText> = { pdf: FileText, docx: FileText, markdown: FileText, text: FileText, paste: ClipboardPaste, url: Globe, connector: Plug, interview: MessagesSquare, dump: NotebookPen, post: Users };
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 

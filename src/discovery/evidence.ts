@@ -5,7 +5,8 @@ import type { OstCard, OstEvidence } from "./types";
  * with nothing behind it is Assumed until someone attaches words that back it: a customer quote,
  * the builder's own words (an interview answer, a brain dump), or a note. The builder's words
  * never count as a customer's. Words that speak against a card are kept on it and counted, but
- * never back it.
+ * never back it. What people said online (public posts, reviews) backs a card too, but on its own
+ * leaves it Assumed until someone the team talked to says it.
  */
 
 export type EvidenceTier = "customer" | "answers" | "note" | "none";
@@ -13,12 +14,18 @@ export type EvidenceTier = "customer" | "answers" | "note" | "none";
 /** The evidence that backs a card (not the words against it). */
 export const backing = (card: Pick<OstCard, "evidence">): OstEvidence[] => card.evidence.filter((e) => e.stance !== "against");
 
+/** What backs a card from its own customers and team (not people online). */
+const ownBacking = (card: Pick<OstCard, "evidence">): OstEvidence[] => backing(card).filter((e) => !e.online);
+
+/** How many quotes from people online back a card. */
+export const onlineCount = (card: Pick<OstCard, "evidence">) => backing(card).filter((e) => e.online).length;
+
 /** How many of a card's quotes speak against it. */
 export const againstCount = (card: Pick<OstCard, "evidence">) => card.evidence.filter((e) => e.stance === "against").length;
 
 /** The strongest kind of evidence on a card. */
 export function tierOf(card: Pick<OstCard, "evidence">): EvidenceTier {
-  const kinds = new Set(backing(card).map((e) => e.kind));
+  const kinds = new Set(ownBacking(card).map((e) => e.kind));
   if (kinds.has("quote")) return "customer";
   if (kinds.has("answer") || kinds.has("dump")) return "answers";
   if (kinds.has("note")) return "note";
@@ -32,6 +39,8 @@ export interface EvidenceSummary {
   sources: number;
   /** The team's own words that back it: interview answers, a brain dump, notes. */
   ours: number;
+  /** Quotes from people online (public posts, reviews) that back it. */
+  online: number;
   against: number;
   /** Who said those quotes, as their sources name them, the most quoted first. */
   who: string[];
@@ -54,13 +63,14 @@ function mostFirst(names: (string | undefined)[]): string[] {
 }
 
 export function evidenceSummary(card: Pick<OstCard, "evidence">): EvidenceSummary {
-  const backs = backing(card);
+  const backs = ownBacking(card);
   const quotes = backs.filter((e) => e.kind === "quote");
   return {
     quotes: quotes.length,
     // A quote with no source of its own counts as one.
     sources: new Set(quotes.map((e) => e.sourceId ?? e.sourceTitle ?? e.id)).size,
     ours: backs.length - quotes.length,
+    online: onlineCount(card),
     against: againstCount(card),
     who: mostFirst(quotes.map((e) => e.speaker)),
     from: mostFirst(quotes.map((e) => e.sourceTitle)),
@@ -73,25 +83,28 @@ export function evidenceRows(card: Pick<OstCard, "evidence">): OstEvidence[] {
   return [...card.evidence].sort((a, b) => rank(a) - rank(b));
 }
 
-/** An opportunity Qalam AI drafted that nothing backs yet (dashed on the board). */
-export const isAssumed = (card: Pick<OstCard, "kind" | "createdBy" | "evidence">) => card.kind === "opportunity" && card.createdBy === "ai" && backing(card).length === 0;
+/** An opportunity Qalam AI drafted that nothing of its own backs yet (dashed on the board): people online alone don't. */
+export const isAssumed = (card: Pick<OstCard, "kind" | "createdBy" | "evidence">) => card.kind === "opportunity" && card.createdBy === "ai" && ownBacking(card).length === 0;
 
 /** A solution Qalam AI came up with (not one the builder named). */
 export const isAIIdea = (card: Pick<OstCard, "kind" | "createdBy" | "evidence">) =>
-  card.kind === "solution" && card.createdBy === "ai" && !backing(card).some((e) => e.kind === "answer" || e.kind === "quote" || e.kind === "dump");
+  card.kind === "solution" && card.createdBy === "ai" && !ownBacking(card).some((e) => e.kind === "answer" || e.kind === "quote" || e.kind === "dump");
 
 /** The evidence chip's words on a card ("" when a card has nothing to say about it). */
 export function evidenceLabel(card: Pick<OstCard, "kind" | "createdBy" | "evidence">): string {
   const against = againstCount(card);
   const tail = against ? ` · ${against} against` : "";
-  if (isAssumed(card)) return against ? `Assumed${tail}` : "Assumed · needs evidence";
+  const online = onlineCount(card);
+  const posts = online ? ` · ${online} ${online === 1 ? "post" : "posts"} online` : "";
+  if (isAssumed(card)) return against || online ? `Assumed${posts}${tail}` : "Assumed · needs evidence";
   if (isAIIdea(card)) return `Qalam AI idea${tail}`;
-  const n = (k: OstEvidence["kind"]) => backing(card).filter((e) => e.kind === k).length;
+  const n = (k: OstEvidence["kind"]) => ownBacking(card).filter((e) => e.kind === k).length;
   const quotes = n("quote");
   if (quotes) return `${quotes} ${quotes === 1 ? "quote" : "quotes"}${tail}`;
   if (n("answer")) return `From your answers${tail}`;
   if (n("dump")) return `From your brain dump${tail}`;
   if (n("note")) return `${n("note") === 1 ? "Your note" : `${n("note")} notes`}${tail}`;
+  if (online) return `${online} ${online === 1 ? "post" : "posts"} online${tail}`;
   if (against) return `${against} against`;
   return card.kind === "opportunity" ? "No evidence yet" : "";
 }

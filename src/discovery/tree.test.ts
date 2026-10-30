@@ -337,9 +337,21 @@ describe("evidence", () => {
         quote("e", "notes"),
       ],
     });
-    expect(evidenceSummary(card)).toEqual({ quotes: 4, sources: 3, ours: 2, against: 1, who: ["Omar", "Sara"], from: ["omar interview", "sara interview", "notes interview"] });
+    expect(evidenceSummary(card)).toEqual({ quotes: 4, sources: 3, ours: 2, online: 0, against: 1, who: ["Omar", "Sara"], from: ["omar interview", "sara interview", "notes interview"] });
     // The brain dump's words are the team's, and the quote against isn't counted as backing.
-    expect(evidenceSummary(newCard("opportunity"))).toEqual({ quotes: 0, sources: 0, ours: 0, against: 0, who: [], from: [] });
+    expect(evidenceSummary(newCard("opportunity"))).toEqual({ quotes: 0, sources: 0, ours: 0, online: 0, against: 0, who: [], from: [] });
+  });
+
+  it("counts people online apart, and leaves a drafted problem Assumed until its own customers say it", () => {
+    const posts = [quote("r1", "reddit", "Reddit commenter", { online: true }), quote("r2", "reddit", "Reddit commenter", { online: true })];
+    const drafted = newCard("opportunity", { createdBy: "ai", evidence: posts });
+    expect(evidenceSummary(drafted)).toMatchObject({ quotes: 0, sources: 0, online: 2 });
+    expect(isAssumed(drafted)).toBe(true);
+    expect(evidenceLabel(drafted)).toBe("Assumed · 2 posts online");
+    const heard = newCard("opportunity", { createdBy: "ai", evidence: [...posts, quote("a", "sara", "Sara")] });
+    expect(isAssumed(heard)).toBe(false);
+    expect(evidenceLabel(heard)).toBe("1 quote");
+    expect(evidenceLabel(newCard("opportunity", { evidence: posts }))).toBe("2 posts online");
   });
 
   it("reads a card's evidence as customers' quotes, then the team's words, then what's against", () => {

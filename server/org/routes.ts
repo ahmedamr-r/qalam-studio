@@ -32,9 +32,10 @@ import { findProblems, goalPage, linkByHand } from "./goals";
 import { pictureFromFigma, pinByHand, placeQuotes } from "./steps";
 import { answerReading, dropReading, editSeen, seenEditShape, seenMaps, seenView, settleReading, startReading } from "./seen";
 import type { SeenAnswer, Shot } from "@/seen/types";
-import { changeJob, noteForJob, openJobs, planJobs, searchForJob, takeInForJob } from "./jobs";
+import { changeJob, noteForJob, onlineForJob, openJobs, planJobs, searchForJob, takeInForJob } from "./jobs";
 import { breakDown, decidePart, lookOutside } from "./outside";
 import { decideSolution, draftSolutions, solutionsView, type SolutionsCard } from "./solutions";
+import { lookOnline } from "./posts";
 import { addRepo, answerFromCode, codeView, readRepo, removeRepo, type NewRepo } from "../code";
 import { GOAL_LEVERS, type GoalLever } from "@/goals/types";
 import { meShape } from "@/org/you";
@@ -206,6 +207,13 @@ export function orgRoutes(): Hono<Env> {
     const store = c.get("store");
     return streamed(c.req.raw.signal, (emit) => draftSolutions(store, { topic, ...(card ? { card } : {}) }, emit, { tab: tabOf(c.req.raw.headers) }));
   });
+  // What people say online about a problem (server/org/posts.ts), taken in as people online's.
+  r.post("/api/org/:org/topics/:id/online", async (c) => {
+    if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't look online." }, 503);
+    if (!ID.test(c.req.param("id"))) return bad("No such problem");
+    const store = c.get("store");
+    return streamed(c.req.raw.signal, (emit, signal) => lookOnline(store, c.req.param("id"), emit, signal));
+  });
   r.get("/api/org/:org/topics/:id/solutions", async (c) => {
     if (!ID.test(c.req.param("id"))) return bad("No such problem");
     return c.json(await solutionsView(c.get("store"), c.req.param("id")));
@@ -366,6 +374,11 @@ export function orgRoutes(): Hono<Env> {
     const store = c.get("store");
     // Taken in to the end even if the window goes: each item is kept, read, filed and placed.
     return streamed(c.req.raw.signal, (emit) => takeInForJob(store, c.req.param("id"), picked, emit));
+  });
+  r.post("/api/org/:org/jobs/:id/online", async (c) => {
+    if (!aiConfigured()) return c.json({ error: "no_key", message: "Qalam AI isn't set up here." }, 501);
+    const store = c.get("store");
+    return streamed(c.req.raw.signal, (emit, signal) => onlineForJob(store, c.req.param("id"), emit, signal));
   });
   r.put("/api/org/:org/goals-north", async (c) => {
     const { id } = ((await c.req.json().catch(() => ({}))) ?? {}) as { id?: unknown };
