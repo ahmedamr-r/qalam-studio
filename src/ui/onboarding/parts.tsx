@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import clsx from "clsx";
 import { Check, ChevronRight, Link2, RotateCcw, Star, Target } from "lucide-react";
 import { CHALLENGE_LABEL } from "@/discovery/dump";
@@ -9,7 +9,9 @@ import type { VoiceChoice } from "@/voice/model";
 import { childrenOf } from "@/goals/tree";
 import { useOrgContext } from "@/org/context";
 import { boardGoals, pendingLines } from "@/org/setup";
-import { goalHref, orgHref, placeHref } from "@/projects/model";
+import { goalHref, orgHref, placeHref, topicHref } from "@/projects/model";
+import type { RankedNeed } from "@/hub/needs";
+import { needsDb } from "@/org/needs";
 import { feedback } from "@/commands/feedback";
 import { QalamAIGlyph } from "../brand/ai-glyph";
 import { ConnectorLogo } from "../brand/ConnectorLogo";
@@ -159,18 +161,24 @@ function ChoicesPart({ data }: { data: PartData }) {
           {chip("Just me, on my own idea", () => pickShape("solo"))}
         </ReplyChips>
       );
-    case "door":
+    case "door": {
+      // On your own, an idea is the likeliest start: it comes first.
+      const idea = chip("An idea to test", () => pickDoor("idea"));
       return (
         <ReplyChips>
-          {chip("I know them", () => pickDoor("know"))}
+          {data.solo && idea}
+          {chip("I know our goals", () => pickDoor("know"))}
           {chip(
             <>
-              <QalamAIGlyph size={12} /> Help me find them
+              <QalamAIGlyph size={12} /> Help me find our goals
             </>,
             () => pickDoor("find"),
           )}
+          {chip("Problems we hear about", () => pickDoor("problems"))}
+          {!data.solo && idea}
         </ReplyChips>
       );
+    }
     case "skip":
       return <ReplyChips>{chip("Skip the questions and propose now", () => skipSetupRest())}</ReplyChips>;
     case "know-skip":
@@ -634,7 +642,36 @@ function WorkingPart({ data }: { data: PartData }) {
   );
 }
 
+/** The problems door's end: the problem pages what they sent went into, the best-backed first, each opening its page (where solutions are drafted). */
+function ProblemsPart() {
+  const filed = useFirstRun((s) => s.problems.result?.needs);
+  const [ranked, setRanked] = useState<RankedNeed[] | null>(null);
+  useEffect(() => {
+    void needsDb.list().then((n) => setRanked(n.needs), () => setRanked([]));
+  }, []);
+  if (!filed?.length) return null;
+  // Ranked as the home ranks them, once the index has them; as filed until then.
+  const order = (id: string) => ranked?.findIndex((n) => n.topic === id) ?? -1;
+  const rows = [...filed].sort((a, b) => (order(a.id) < 0 ? 1e9 : order(a.id)) - (order(b.id) < 0 ? 1e9 : order(b.id))).map((p) => ({ ...p, need: ranked?.find((n) => n.topic === p.id) }));
+  return (
+    <ul className="flex flex-col gap-[6px]">
+      {rows.map((n) => (
+        <li key={n.id}>
+          <a href={topicHref(n.id)} className={clsx(qr.inset, "flex items-center gap-[10px] px-[12px] py-[8px] hover:bg-hover")}>
+            <span className="min-w-0 flex-1 truncate text-body text-fg" dir="auto">
+              {n.title}
+            </span>
+            {n.need && <span className="shrink-0 text-micro text-fg-subtle tnum">{n.need.quotes ? `${n.need.quotes} ${n.need.quotes === 1 ? "quote" : "quotes"} · ${n.need.sources} ${n.need.sources === 1 ? "source" : "sources"}` : "Assumed"}</span>}
+            <ChevronRight size={14} {...ICON} className="shrink-0 text-fg-subtle" />
+          </a>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export const PARTS: Record<string, PartComponent> = {
+  problems: ProblemsPart,
   engine: EnginePart,
   verify: VerifyPart,
   choices: ChoicesPart,

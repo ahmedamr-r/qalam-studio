@@ -21,7 +21,7 @@ import { r } from "../recipes";
 import Toasts from "../toast";
 import { answerKnown, readKnown, saveKnownForm, useKnow } from "../setup/know";
 import { answerSetupRound, saveSetupRound, startSetup, stopSetup, useSetup } from "../setup/setup";
-import { nameOrg, openSoFar, startSetupPage, startWelcome, useFirstRun, type FirstRun } from "./flow";
+import { nameOrg, openSoFar, sendProblems, startIdea, startSetupPage, startWelcome, useFirstRun, type FirstRun } from "./flow";
 import { PARTS } from "./parts";
 import { SoFar } from "./SoFarPanel";
 import { askOf, isAddress, stepsOf, threadOf, type EngineState, type ThreadInput } from "./thread";
@@ -76,7 +76,9 @@ function useThreadInput(): ThreadInput {
       open: session?.proposal ? pendingLines(session).length : 0,
       accepted: Object.values(session?.decided ?? {}).filter((d) => d === "accepted").length,
     },
-    busy: setup.busy ? { label: setup.busy.label } : null,
+    problems: fr.problems,
+    idea: fr.idea,
+    busy: setup.busy ? { label: setup.busy.label } : fr.working,
     picked: (fr.picked ?? mine).length,
   };
 }
@@ -186,7 +188,9 @@ export function Onboarding({ route }: { route: "welcome" | "setup" }) {
       )
     ) : (
       <ChatComposer
-        label={ask.kind === "name" ? (fr.shape === "solo" ? "The project's name" : "The organization's name") : ask.kind === "outline" ? "Your goals" : ask.kind === "dump" ? (fr.shape === "solo" ? "About the idea" : "About the company") : "Message"}
+        label={
+          ask.kind === "name" ? (fr.shape === "solo" ? "The project's name" : "The organization's name") : ask.kind === "outline" ? "Your goals" : ask.kind === "dump" ? (fr.shape === "solo" ? "About the idea" : "About the company") : ask.kind === "problems" ? "What customers said" : ask.kind === "idea" ? "The idea" : "Message"
+        }
         placeholder={ask.placeholder}
         submit={ask.submit}
         disabled={ask.kind === "none"}
@@ -195,13 +199,13 @@ export function Onboarding({ route }: { route: "welcome" | "setup" }) {
         draftKey={ask.key}
         draft={ask.kind === "outline" ? knowText : ask.kind === "dump" ? lastDump.current : ""}
         onKeyDown={ask.kind === "outline" ? indent : undefined}
-        hint={ask.kind === "outline" ? "Tab puts a goal under the one above · ⌘↵ sends" : ask.kind === "dump" ? "A web address alone reads the page · ⌘↵ sends" : null}
+        hint={ask.kind === "outline" ? "Tab puts a goal under the one above · ⌘↵ sends" : ask.kind === "dump" || ask.kind === "problems" ? "A web address alone reads the page · ⌘↵ sends" : ask.kind === "idea" ? "⌘↵ sends" : null}
         check={(t) => {
           if (ask.kind === "name") return t.trim().length > 80 ? "Keep it under 80 characters." : null;
           if (ask.kind === "outline") return readOutline(t).length ? null : "Write a goal first.";
-          if (ask.kind === "dump") {
+          if (ask.kind === "dump" || ask.kind === "problems" || ask.kind === "idea") {
             if (t.length > DUMP_MAX_CHARS) return `That's over ${DUMP_MAX_CHARS.toLocaleString()} characters: paste the most useful part.`;
-            if (!isAddress(t) && t.trim().length < 40) return "Write a few sentences more, or give a web address.";
+            if (ask.kind === "idea" ? t.trim().length < 40 : !isAddress(t) && t.trim().length < 40) return ask.kind === "idea" ? "Write a few sentences more: what it does, who it's for, and why." : "Write a few sentences more, or give a web address.";
           }
           return null;
         }}
@@ -214,6 +218,14 @@ export function Onboarding({ route }: { route: "welcome" | "setup" }) {
           if (ask.kind === "dump") {
             lastDump.current = t;
             void startSetup(isAddress(t) ? { text: "", url: t.trim() } : { text: t, url: "" });
+            return true;
+          }
+          if (ask.kind === "problems") {
+            void sendProblems(t);
+            return true;
+          }
+          if (ask.kind === "idea") {
+            void startIdea(t);
             return true;
           }
           return false;

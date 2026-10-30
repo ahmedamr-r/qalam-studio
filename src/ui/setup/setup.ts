@@ -267,6 +267,8 @@ export async function placeSetup() {
     });
     const proposal = sanitizeSetup(raw, sent);
     await setSession((d) => ({ ...d, phase: proposal.lines.length ? "review" : "done", proposal, decided: {}, ...(model ? { model } : {}) }));
+    // Nothing to set up from it: what they said still goes on the topic pages.
+    if (!proposal.lines.length) settled();
   } catch (e) {
     await failed("placing", e);
   }

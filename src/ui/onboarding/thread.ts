@@ -12,9 +12,10 @@ import type { SetupStep, StepState, WelcomeMode } from "../welcome/steps";
  * says one or two short sentences; anything to act on is a part (`data`) the page draws.
  */
 
-export type Door = "know" | "find";
+/** The way in: goals they know or want found, problems they hear about, or an idea to test. */
+export type Door = "know" | "find" | "problems" | "idea";
 
-export type PartName = "engine" | "verify" | "choices" | "outline" | "said" | "took" | "pushback" | "answers" | "you" | "voice" | "yours" | "connect" | "allSet" | "error" | "working";
+export type PartName = "engine" | "verify" | "choices" | "outline" | "said" | "took" | "pushback" | "answers" | "you" | "voice" | "yours" | "connect" | "allSet" | "error" | "working" | "problems";
 
 /** Small values only: a part's renderer reads the rest from the stores. */
 export type PartData = Record<string, string | number | boolean | null>;
@@ -61,6 +62,10 @@ export interface ThreadInput {
     open: number;
     accepted: number;
   };
+  /** The problems door: what they sent, and what was filed from it (the problem pages it went into, the customers' quotes it held). */
+  problems: { sent: string | null; result: { pages: number; quotes: number } | null; error: string | null };
+  /** The idea door: what they sent (the board takes it from there). */
+  idea: { sent: string | null; error: string | null };
   /** A Qalam AI call running. */
   busy: { label: string } | null;
   /** Goals picked as theirs, once they moved on from Yours. */
@@ -75,13 +80,15 @@ const you = (id: string, ...parts: ChatPart[]): ChatMessage => ({ id, role: "use
 export const engineDone = (i: Pick<ThreadInput, "engine">) => i.engine === "ready" || i.engine === "skipped";
 
 /** The way in, as chosen or as the setup on the page says. */
-export const doorOf = (i: Pick<ThreadInput, "door" | "find">): Door | null => (i.find.session || i.find.pending ? "find" : i.door);
+export const doorOf = (i: Pick<ThreadInput, "door" | "find">): Door | null => (i.door === "problems" || i.door === "idea" ? i.door : i.find.session || i.find.pending ? "find" : i.door);
 
-/** The goals are in: added in their words, or every proposed line settled. */
-export function goalsSettled(i: Pick<ThreadInput, "door" | "find" | "know">): boolean {
+/** The way in is done: goals added in their words, every proposed line settled, or problems filed from what customers said. */
+export function goalsSettled(i: Pick<ThreadInput, "door" | "find" | "know" | "problems">): boolean {
   const door = doorOf(i);
-  return door === "know" ? i.know.phase === "added" : door === "find" ? i.find.session?.phase === "done" : false;
+  return door === "know" ? i.know.phase === "added" : door === "find" ? i.find.session?.phase === "done" : door === "problems" ? !!i.problems.result?.quotes : false;
 }
+
+const DOOR_SAID: Record<Door, string> = { know: "I know our goals", find: "Help me find our goals", problems: "Problems we hear about", idea: "An idea to test" };
 
 const ENGINE_LINE: Record<EngineState, string> = {
   looking: "Looking for Claude on this Mac…",
@@ -163,9 +170,25 @@ export function threadOf(i: ThreadInput): ChatMessage[] {
   const door = doorOf(i);
   if (i.first && i.step !== "goals" && !door) out.push(ai("goals:had", text(i.goals ? `${org} has ${i.goals === 1 ? "a goal" : `${i.goals} goals`} already.` : "There are no goals yet: add them on the Goals page any time.")));
   else {
-    const goalsOf = solo ? `your goals for ${org}` : `${org}'s goals`;
-    out.push(ai("goals:ask", text(i.first ? `Let's start with ${goalsOf}. Do you know them, or shall I help find them?` : `Do you know ${goalsOf}, or shall I help find them?`), ...(door ? [] : [part("choices", { set: "door" })])));
-    if (door) out.push(you("goals:door", text(door === "know" ? "I know them" : "Help me find them")));
+    // Three ways in: goals (known, or found in what they write), problems customers raise, or an idea to test.
+    const ask = solo ? `How do you want to start with ${org}? An idea on its own is enough.` : `How do you want to start with ${org}? From its goals, from problems customers raise, or from an idea to test.`;
+    out.push(ai("goals:ask", text(ask), ...(door ? [] : [part("choices", { set: "door", solo })])));
+    if (door) out.push(you("goals:door", text(DOOR_SAID[door])));
+  }
+
+  if (door === "problems") {
+    const p = i.problems;
+    out.push(ai("problems:ask", text("Paste what customers tell you: support tickets, reviews, interview notes, or a link to them. I'll file it into problem pages and show which come up most.")));
+    if (p.sent) out.push(you("problems:said", text(p.sent)));
+    if (p.error && !i.busy) out.push(ai("problems:error", part("error", { text: p.error })));
+    if (p.result && !p.result.quotes && !i.busy)
+      out.push(ai("problems:none", text("I found nothing customers said in it. If it's your own thinking, start from an idea instead, or paste customers' own words."), part("choices", { set: "door", solo })));
+  }
+
+  if (door === "idea") {
+    out.push(ai("idea:ask", text("Tell me the idea: what it does, who it's for, and why you think they need it. I'll put it on a board as a solution to test, ask a few questions, then work back to the problem it solves.")));
+    if (i.idea.sent) out.push(you("idea:said", text(i.idea.sent)));
+    if (i.idea.error && !i.busy) out.push(ai("idea:error", part("error", { text: i.idea.error })));
   }
 
   if (door === "know") {
@@ -211,7 +234,13 @@ export function threadOf(i: ThreadInput): ChatMessage[] {
   }
 
   // The goals are in: on to which are theirs (the first run), or all set.
-  if (goalsSettled(i)) {
+  if (goalsSettled(i) && door === "problems") {
+    // Problems in, no goals yet: on to what to connect (there are no goals to pick as theirs).
+    const r = i.problems.result!;
+    const said = `Filed ${r.quotes === 1 ? "1 thing customers said" : `${r.quotes} things customers said`} into ${r.pages === 1 ? "1 problem page" : `${r.pages} problem pages`}. Each page shows how strong it is and drafts solutions for it.`;
+    out.push(ai("goals:in", text(said), part("problems"), ...(i.first && i.step === "goals" ? [part("choices", { set: "goals-in", solo: true })] : [])));
+    if (!i.first) out.push(ai("all-set", text("All set."), part("allSet")));
+  } else if (goalsSettled(i)) {
     const written = door === "find" ? i.find.accepted : i.know.added;
     const said = !written ? null : door === "know" ? (written === 1 ? "Your goal is in." : `Your ${written} goals are in.`) : `${written === 1 ? "1 line" : `${written} lines`} written to ${org}.`;
     if (i.first) {
@@ -222,7 +251,7 @@ export function threadOf(i: ThreadInput): ChatMessage[] {
   }
 
   // Which are theirs (on your own every goal is), then what to connect.
-  if (i.first && i.step !== "goals" && !solo) {
+  if (i.first && i.step !== "goals" && !solo && door !== "problems") {
     out.push(ai("yours:ask", text("Which goals are yours? Your home leads with them, each with the problems behind it."), part("yours", { open: i.step === "yours" })));
     if (i.step === "connect") out.push(you("yours:you", text(i.picked ? `${i.picked === 1 ? "1 goal" : `${i.picked} goals`} picked` : "None for now")));
   }
@@ -236,7 +265,8 @@ export function threadOf(i: ThreadInput): ChatMessage[] {
 // What the composer takes
 
 export interface Ask {
-  kind: "name" | "dump" | "outline" | "questions" | "none";
+  /** `problems`: what customers said, to file · `idea`: the idea, for a board. */
+  kind: "name" | "dump" | "outline" | "questions" | "problems" | "idea" | "none";
   /** Whose questions take the composer's place. */
   scope?: "know" | "find";
   placeholder: string;
@@ -263,6 +293,11 @@ export function askOf(i: ThreadInput): Ask {
   if (i.step === "connect") return none("Connect what you need, then Finish", "connect");
   const door = doorOf(i);
   if (!door) return none("Pick a way in above", "door");
+  if (door === "problems") {
+    if (i.problems.result?.quotes) return none("", "problems:done");
+    return { kind: "problems", placeholder: "Paste tickets, reviews or interview notes, or a link to them", submit: "ctrlEnter", key: `problems:${i.problems.sent ? "again" : "first"}` };
+  }
+  if (door === "idea") return i.idea.sent && !i.idea.error ? none("Opening its board…", "idea:sent") : { kind: "idea", placeholder: "A planner that builds the week's meals from what the family already buys, for parents who…", submit: "ctrlEnter", key: "idea" };
   if (door === "know") {
     const k = i.know;
     if (k.phase === "write" && !k.sent) return { kind: "outline", placeholder: "2M dirhams a month in orders by end of Q2\n  More customers reorder every week: 1.2 now, 1.5 by March", submit: "ctrlEnter", key: "outline" };
@@ -303,11 +338,15 @@ function goalSubs(i: ThreadInput): { label: string; state: StepState }[] {
     const placing = s && (s.phase === "placing" || s.phase === "review" || s.phase === "done" || (s.phase === "failed" && s.failed?.at === "placing"));
     questions = placing ? "done" : "now";
     review = !placing ? "next" : s!.phase === "done" ? "done" : "now";
-  }
+  } else if (door === "problems") {
+    const filed = !!i.problems.result?.quotes;
+    questions = filed ? "done" : "now";
+    review = filed ? "done" : "next";
+  } else if (door === "idea") questions = "now";
   return [
     { label: "Way in", state: door ? "done" : "now" },
-    { label: door === "know" ? "Write them" : "Read and ask", state: questions },
-    { label: "Review", state: review },
+    { label: door === "know" ? "Write them" : door === "problems" ? "File them" : door === "idea" ? "Describe it" : "Read and ask", state: questions },
+    { label: door === "problems" ? "What comes up" : door === "idea" ? "Its board" : "Review", state: review },
   ];
 }
 
@@ -327,7 +366,7 @@ export function stepsOf(i: ThreadInput): StepItem[] {
     { id: "name", label: "Name it", state: state("name") },
     { id: "you", label: "You", state: state("you") },
     { id: "voice", label: "Voice", state: state("voice") },
-    { id: "goals", label: "Goals", state: state("goals"), ...(at === "goals" ? { sub: goalSubs(i) } : {}) },
+    { id: "goals", label: "Start", state: state("goals"), ...(at === "goals" ? { sub: goalSubs(i) } : {}) },
     { id: "yours", label: "Yours", state: state("yours") },
     { id: "connect", label: "Connect", state: state("connect") },
   ].filter((s) => order.includes(s.id));

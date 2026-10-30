@@ -15,7 +15,7 @@ export const WELCOME_STEPS: readonly { id: WelcomeStep; label: string }[] = [
   { id: "name", label: "Name it" },
   { id: "you", label: "You" },
   { id: "voice", label: "Voice" },
-  { id: "goals", label: "Goals" },
+  { id: "goals", label: "Start" },
   { id: "yours", label: "Yours" },
   { id: "connect", label: "Connect" },
 ];

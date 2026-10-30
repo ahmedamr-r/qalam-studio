@@ -22,7 +22,8 @@ import { ensureHandlers } from "./draft";
 import { loadSources, openSource, reloadSources, sourceOf, useSources } from "./sources";
 import { evidenceToLink, linkEvidenceIn } from "@/hub/migrate";
 import { onOrgChange } from "@/org/live";
-import { ensureDumpHandlers, resumeDumps } from "./dump";
+import { ensureDumpHandlers, resumeDumps, startDump } from "./dump";
+import { takeIdea } from "./idea";
 import { loadPlacements, reviewPlacements } from "./placements";
 import { startRecorder } from "../decisions/recorder";
 import { startGoalSync } from "./goals";
@@ -81,6 +82,7 @@ export function startDiscoveryStudio(p: Project): (doc: Doc) => void {
   focusCardFromUrl();
   // A problem put on the board from its page first, then the solutions drafted there under it.
   void addProblemFromUrl(p.id).then(draftsFromUrl);
+  ideaFromUrl();
 
   afterSave = (doc: Doc) => {
     scheduleBoardThumbnail(doc);
@@ -89,6 +91,19 @@ export function startDiscoveryStudio(p: Project): (doc: Doc) => void {
     void updateProject((pr) => ({ discovery: { ...(pr.discovery ?? cur ?? { v: 1, stage: "ready" }), counts } }), { touch: false });
   };
   return afterSave;
+}
+
+/**
+ * Opened from the first run's idea door (?idea=1): the idea, handed over for this tab, is read as a
+ * brain dump here (its questions first, then the idea as a solution under the problems it solves).
+ */
+function ideaFromUrl() {
+  const u = new URL(window.location.href);
+  if (u.searchParams.get("idea") !== "1") return;
+  u.searchParams.delete("idea");
+  history.replaceState(null, "", u);
+  const text = takeIdea();
+  if (text) void startDump(text);
 }
 
 /** Opened from "Needs a look" (?review=placed): what Qalam AI found for the board opens as a review. */

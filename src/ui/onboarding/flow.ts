@@ -9,7 +9,13 @@ import { chooseVoice, loadVoice } from "@/org/voice";
 import { loadYou, setYourName, type Me } from "@/org/you";
 import { voiceSettled, type VoiceChoice } from "@/voice/model";
 import { firstRunDb } from "@/org/first-run";
-import { setupHref } from "@/projects/model";
+import { projectHref, setupHref } from "@/projects/model";
+import { createProject } from "@/projects/session";
+import { emptyDoc } from "@/doc/schema";
+import { captureIngested } from "@/org/capture";
+import { ingestPaste, ingestUrl } from "../discovery/ingest";
+import { handIdea, ideaBoardName } from "../discovery/idea";
+import { isAddress } from "./thread";
 import { openKnow, useKnow } from "../setup/know";
 import { openSetup, useSetup } from "../setup/setup";
 import { changesThings, setupStep, welcomeMode, type SetupStep, type WelcomeMode } from "../welcome/steps";
@@ -22,7 +28,8 @@ import { changesThings, setupStep, welcomeMode, type SetupStep, type WelcomeMode
  * and Back come back to them.
  */
 
-export type Door = "know" | "find";
+export type Door = "know" | "find" | "problems" | "idea";
+const DOORS: readonly Door[] = ["know", "find", "problems", "idea"];
 
 export interface FirstRun {
   route: "welcome" | "setup";
@@ -46,6 +53,12 @@ export interface FirstRun {
   gh: string | null | undefined;
   /** The So far drawer, when the window is too narrow for the panel. */
   soFarOpen: boolean;
+  /** The problems door: what they sent, and what was filed from it (for this tab): the problem pages it went into. */
+  problems: { sent: string | null; result: { pages: number; quotes: number; needs?: { id: string; title: string }[] } | null; error: string | null };
+  /** The idea door: what they sent before its board opens. */
+  idea: { sent: string | null; error: string | null };
+  /** What a door is doing while it reads or makes something. */
+  working: { label: string } | null;
 }
 
 export const useFirstRun = create<FirstRun>(() => ({
@@ -63,6 +76,9 @@ export const useFirstRun = create<FirstRun>(() => ({
   tools: null,
   gh: undefined,
   soFarOpen: false,
+  problems: { sent: null, result: null, error: null },
+  idea: { sent: null, error: null },
+  working: null,
 }));
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -134,7 +150,7 @@ export async function nameOrg(name: string): Promise<boolean> {
 function fromAddress(search: string) {
   const q = new URLSearchParams(search);
   const door = q.get("door");
-  return { step: setupStep(search), door: door === "know" || door === "find" ? (door as Door) : null, source: q.get("source") };
+  return { step: setupStep(search), door: DOORS.includes(door as Door) ? (door as Door) : null, source: q.get("source") };
 }
 
 export async function startSetupPage(search: string) {
@@ -150,8 +166,8 @@ export async function startSetupPage(search: string) {
   void engineDb.view().then((view) => setEngine({ view, test: view.test }), () => {});
   // A setup named in the address wins; then the know door; then the latest one not finished.
   if (at.source) await openSetup(at.source);
-  else if (at.door !== "know") await openSetup(null);
-  const door = useSetup.getState().source ? "find" : (at.door ?? (useKnow.getState().sent ? "know" : null));
+  else if (!at.door || at.door === "find") await openSetup(null);
+  const door = at.door === "problems" || at.door === "idea" ? at.door : useSetup.getState().source ? "find" : (at.door ?? (useKnow.getState().sent ? "know" : null));
   useFirstRun.setState({ door, opened: true });
   if (at.step === "connect") void loadConnect();
   window.addEventListener("popstate", () => {
@@ -171,7 +187,42 @@ export const openSoFar = (soFarOpen: boolean) => useFirstRun.setState({ soFarOpe
 
 export function pickDoor(door: Door) {
   push({ door });
-  useFirstRun.setState({ door });
+  useFirstRun.setState({ door, problems: { sent: null, result: null, error: null }, idea: { sent: null, error: null } });
+}
+
+/**
+ * The problems door: what customers said (pasted, or a page) is kept, read and filed into problem
+ * pages like anything added to the organization (server/capture.ts); then what comes up most.
+ */
+export async function sendProblems(text: string) {
+  const working = (label: string) => useFirstRun.setState({ working: { label } });
+  useFirstRun.setState({ problems: { sent: text.trim(), result: null, error: null } });
+  working("Reading what you sent");
+  try {
+    const ing = isAddress(text) ? await ingestUrl(text.trim()) : await ingestPaste(text);
+    const r = await captureIngested(ing, { onActivity: working });
+    const needs = (r.filed?.pages ?? []).filter((p) => p.kind === "need").map(({ id, title }) => ({ id, title }));
+    useFirstRun.setState((s) => ({ problems: { ...s.problems, result: { pages: needs.length, quotes: r.quotes, needs } } }));
+  } catch (e) {
+    useFirstRun.setState((s) => ({ problems: { ...s.problems, error: `Qalam couldn't take it in: ${message(e)}` } }));
+  } finally {
+    useFirstRun.setState({ working: null });
+  }
+}
+
+/**
+ * The idea door: a board for the idea, which reads it as a brain dump there (its questions, then the
+ * idea as a solution under the problems it would solve). The words go over for this tab only.
+ */
+export async function startIdea(text: string) {
+  useFirstRun.setState({ idea: { sent: text.trim(), error: null }, working: { label: "Making its board" } });
+  try {
+    const p = await createProject("discovery", ideaBoardName(text), { discovery: { v: 1, stage: "ready" } }, emptyDoc());
+    handIdea(text.trim());
+    window.location.assign(`${projectHref(p)}?idea=1`);
+  } catch (e) {
+    useFirstRun.setState({ idea: { sent: text.trim(), error: `Qalam couldn't make its board: ${message(e)}` }, working: null });
+  }
 }
 
 export function goStep(step: SetupStep) {

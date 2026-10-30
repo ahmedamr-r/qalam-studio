@@ -19,6 +19,8 @@ const base = (over: Partial<ThreadInput> = {}): ThreadInput => ({
   opened: true,
   know: { phase: "write", sent: false, answered: null, added: 0, error: null, goals: 0, questions: 0 },
   find: { session: null, pending: false, error: null, open: 0, accepted: 0 },
+  problems: { sent: null, result: null, error: null },
+  idea: { sent: null, error: null },
   busy: null,
   picked: 0,
   ...over,
@@ -224,7 +226,9 @@ describe("on your own", () => {
   it("asks for their goals for the project, and skips which are theirs", () => {
     const s = session({ phase: "done", proposal: { summary: "s", products: [], lines: [line("g1")] }, decided: { g1: "accepted" } });
     const at = (step: ThreadInput["step"]) => threadOf(solo({ step, find: { session: s, pending: false, error: null, open: 0, accepted: 1 } }));
-    expect(threadOf(solo()).find((x) => x.id === "goals:ask")?.parts[0]).toEqual({ type: "text", text: "Let's start with your goals for Meal planner. Do you know them, or shall I help find them?" });
+    const ask = threadOf(solo()).find((x) => x.id === "goals:ask")!;
+    expect(ask.parts[0]).toEqual({ type: "text", text: "How do you want to start with Meal planner? An idea on its own is enough." });
+    expect(ask.parts.find((p) => p.type === "data")).toMatchObject({ data: { set: "door", solo: true } });
     const done = at("goals").find((x) => x.id === "goals:in")!;
     expect(done.parts[0]).toEqual({ type: "text", text: "1 line written to Meal planner. Next: what to connect." });
     expect(done.parts.find((p) => p.type === "data")).toMatchObject({ data: { set: "goals-in", solo: true } });
@@ -238,6 +242,42 @@ describe("on your own", () => {
       ["goals", "done"],
       ["connect", "now"],
     ]);
+  });
+});
+
+describe("the other ways in", () => {
+  it("files what customers said through the problems door, then shows what comes up most and moves on to connecting", () => {
+    const asking = base({ door: "problems" });
+    expect(ids(threadOf(asking)).slice(-2)).toEqual(["goals:door", "problems:ask"]);
+    expect(threadOf(asking).find((x) => x.id === "goals:door")?.parts).toEqual([{ type: "text", text: "Problems we hear about" }]);
+    expect(askOf(asking)).toMatchObject({ kind: "problems", submit: "ctrlEnter" });
+    const filed = base({ door: "problems", problems: { sent: "Tickets…", result: { pages: 3, quotes: 12 }, error: null } });
+    const m = threadOf(filed);
+    expect(ids(m).slice(-3)).toEqual(["problems:ask", "problems:said", "goals:in"]);
+    expect(m.at(-1)?.parts.map((p) => (p.type === "data" ? p.name : "text"))).toEqual(["text", "problems", "choices"]);
+    expect(m.at(-1)?.parts.find((p) => p.type === "data" && p.name === "choices")).toMatchObject({ data: { set: "goals-in", solo: true } });
+    expect(askOf(filed).kind).toBe("none");
+    expect(stepsOf(filed).find((s) => s.id === "goals")?.sub?.map((s) => [s.label, s.state])).toEqual([
+      ["Way in", "done"],
+      ["File them", "done"],
+      ["What comes up", "done"],
+    ]);
+    // On to connecting: no "which goals are yours" with no goals to pick.
+    expect(ids(threadOf(base({ door: "problems", step: "connect", problems: filed.problems }))).some((x) => x.startsWith("yours:"))).toBe(false);
+  });
+
+  it("says when nothing customers said was in it, and offers the ways in again", () => {
+    const m = threadOf(base({ door: "problems", problems: { sent: "My plan…", result: { pages: 0, quotes: 0 }, error: null } }));
+    expect(m.at(-1)?.id).toBe("problems:none");
+    expect(choices(m.at(-1))).toEqual(["door"]);
+  });
+
+  it("takes an idea for its board", () => {
+    const i = base({ door: "idea", shape: "solo" });
+    expect(ids(threadOf(i)).slice(-2)).toEqual(["goals:door", "idea:ask"]);
+    expect(askOf(i)).toMatchObject({ kind: "idea", submit: "ctrlEnter" });
+    const sent = base({ door: "idea", idea: { sent: "A planner…", error: null }, busy: { label: "Making its board" } });
+    expect(ids(threadOf(sent)).slice(-2)).toEqual(["idea:said", "status:idea:said"]);
   });
 });
 
