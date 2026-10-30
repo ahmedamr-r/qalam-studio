@@ -27,6 +27,7 @@ import { ContextCard, ContextEditorHost, editContext } from "../org/ContextEdito
 import { editPerson, PersonEditorHost } from "../org/PersonEditor";
 import { PeopleList } from "../org/PeopleList";
 import { LearnNext } from "../org/LearnNext";
+import { Feeds } from "../org/Feeds";
 import { usePeople } from "@/org/people";
 import { GoalsList, type Goal } from "../org/Goals";
 import { OrgSwitcher } from "../org/OrgSwitcher";
@@ -278,7 +279,10 @@ export default function Home() {
             ) : tab === "decisions" ? (
               <DecisionsList decisions={scopedDecisions} projects={projects ?? []} />
             ) : tab === "sources" ? (
-              <SourcesList sources={scopedSources} projects={projects ?? []} products={products} onChanged={refresh} />
+              <div className="flex flex-col gap-[16px]">
+                <Feeds products={products} product={product?.id ?? null} />
+                <SourcesList sources={scopedSources} projects={projects ?? []} products={products} onChanged={refresh} />
+              </div>
             ) : projects === null ? (
               <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-[16px]" aria-hidden>
                 {[0, 1, 2].map((i) => (

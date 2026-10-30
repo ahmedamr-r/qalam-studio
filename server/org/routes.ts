@@ -17,6 +17,8 @@ import { noticesNow } from "./notices";
 import { reviewOrg } from "./review";
 import { proposeOutcomes } from "./outcomes";
 import { learnNext } from "./learn";
+import { pullFeed } from "../feeds";
+import { feedShape } from "@/org/feeds";
 import { askOrg } from "../ask";
 import { captureSource, fileSources } from "../capture";
 import type { Ingested } from "@/discovery/ingest/core";
@@ -296,6 +298,24 @@ export function orgRoutes(): Hono<Env> {
     } catch (e) {
       return c.json({ error: "failed", message: e instanceof Error ? e.message : String(e) }, 502);
     }
+  });
+  // Feeds: what's pulled in every day or week (hub/feeds.json).
+  r.get("/api/org/:org/feeds", async (c) => c.json(await c.get("store").listFeeds()));
+  r.put("/api/org/:org/feeds/:id", async (c) => {
+    const f = feedShape(await c.req.json().catch(() => null), c.req.param("id"));
+    if (!f) return bad("Not a feed: name it, say what to pull and how often");
+    const list = await c.get("store").changeFeeds((l) => (l.some((x) => x.id === f.id) ? l.map((x) => (x.id === f.id ? { ...x, ...f, ...(f.paused ? {} : { paused: undefined }), ...(x.url !== f.url || x.request !== f.request ? { error: undefined } : {}) } : x)) : [...l, f]), { tab: tabOf(c.req.raw.headers) });
+    return c.json(list.find((x) => x.id === f.id));
+  });
+  r.delete("/api/org/:org/feeds/:id", async (c) => {
+    const id = c.req.param("id");
+    await c.get("store").changeFeeds((l) => l.filter((x) => x.id !== id), { tab: tabOf(c.req.raw.headers) });
+    return c.json({ ok: true });
+  });
+  /** Pull a feed now (it answers when the pull is done: what it brought is then a source). */
+  r.post("/api/org/:org/feeds/:id/pull", async (c) => {
+    if (!aiConfigured()) return c.json({ error: "no_key", message: "Qalam AI isn't set up here, so feeds wait." }, 501);
+    return c.json(await pullFeed(c.get("store"), c.req.param("id")));
   });
   /** Keep a plan as a page in research/. */
   r.post("/api/org/:org/research", async (c) => {

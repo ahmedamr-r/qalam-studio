@@ -132,6 +132,7 @@ All settings are optional and go in `.env.local`. `.env.example` lists them with
   - A file Qalam can't read moves to `inbox/not-read`, with a note saying why. Nothing is deleted.
 - **People.** Say who said what: on a source, map each speaker to a person (or say all of it is from one person, or one segment) and when it was said. People are files in `people/`, each with the segments they're in. Qalam then counts the people behind a need, not the quotes, and tells segments apart; the home's **People** tab shows who you hear from and when you last did.
 - **What to learn next.** The home lists what the organization is betting on without knowing, found by code at no AI cost: targets on thin evidence, risky assumptions nothing tests, needs drafted with nothing behind them, open questions on the topic pages, and kinds of customer no one has heard from lately. **Plan it with Qalam AI** drafts who to talk to, an interview guide (open questions about what they did, never leading) and quick tests with a pass mark, each closing the gaps it names; keep it as a page in `research/`. **Needs a look** says when a team working on a product hasn't heard from a customer in two weeks.
+- **Feeds.** Material that keeps coming in without anyone adding it: an export or page at an address (a public sheet of survey answers, app reviews), or what you ask a connected tool for ("this week's tickets tagged delivery"), pulled every day or week while Qalam runs. Only what's new comes in, and it's read, filed and placed like anything you add. Set them up in the home's **Sources** tab.
 - **Ask the organization** in plain words, at the top of its home.
   - **How it looks:** with Claude Code, Qalam AI looks through the organization's folder on its own, using its search (words, meaning and links), its topic pages, sources, boards and decisions. It only reads, and only that folder; nothing runs code and nothing goes to the web. With an API key it answers from one call, with what search finds for the question.
   - **What you get back:** each claim comes with the exact words that show it, found word for word by code where Qalam AI says they are, with a link there. What it can't back is marked as such, and what nobody knows yet can go on a topic page as an open question.
@@ -346,7 +347,7 @@ Rules and checks must work across products, not just one app: name things by rol
 
 - **First releases:** the first signed macOS release (the pipeline is ready: [docs/releasing.md](docs/releasing.md)), and the npm package, so `npx qalam-studio` opens the desktop app.
 - **Interview recordings on Discovery boards:** drop in audio or video and get an Arabic or English transcript to quote from. Today, transcripts come in as VTT or SRT.
-- **Every organization's inbox:** watched while Qalam runs, not only the inbox of the organization you opened.
+- **Every organization's inbox and feeds:** watched and pulled while Qalam runs, not only the organization you opened.
 - **The design tools, once they're off hold:** more ways to bring in an existing design system, and more of Figma's editing features (the shortcuts panel lists what's missing).
 
 ## License

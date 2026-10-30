@@ -16,6 +16,7 @@ import { factHash } from "@/knowledge/refs";
 import { aboutFromMarkdown, aboutToMarkdown, emptyContext, productFromMarkdown, productToMarkdown, type ContextFields, type Product } from "@/org/context-md";
 import { personFromMarkdown, personToMarkdown } from "@/org/people-md";
 import type { Person } from "@/hub/people";
+import type { Feed } from "@/org/feeds";
 import type { Project, ProjectType } from "@/projects/model";
 import { assetExt, assetType, decodeProject, decodeSource, docVersion, encodeProject, encodeSource, isLocalField, recordVersion, splitLocal, type LocalFields } from "./codecs";
 import { assetHash, atomicWrite, contentHash, inside, locked, readJson, slugify, stableStringify, uniqueName } from "./fsx";
@@ -52,6 +53,8 @@ export type OrgEvent = { tab?: string } & (
   | { kind: "inbox" }
   /** What waits on a board from material added to the organization changed. */
   | { kind: "placement"; board: string }
+  /** The feeds, or what one of them pulled, changed. */
+  | { kind: "feeds" }
 );
 
 
@@ -751,6 +754,27 @@ export class OrgStore {
   }
 
   // -------------------------------------------------------------------------
+  // Feeds (hub/feeds.json): what's pulled in every day or week, with what each has seen.
+
+  private feedsFile = () => this.abs("hub/feeds.json");
+
+  async listFeeds(): Promise<Feed[]> {
+    return (await readJson<{ feeds?: Feed[] }>(this.feedsFile()))?.feeds ?? [];
+  }
+
+  /** Change the feeds in one write (under the file's lock, so a pull and a window's edit don't undo each other). */
+  async changeFeeds(fn: (list: Feed[]) => Feed[], opts: { tab?: string } = {}): Promise<Feed[]> {
+    const file = this.feedsFile();
+    const next = await locked(file, async () => {
+      const list = fn(await this.listFeeds());
+      await this.write(file, stableStringify({ qalam: "feeds/1", feeds: list }));
+      return list;
+    });
+    this.emit({ kind: "feeds", tab: opts.tab });
+    return next;
+  }
+
+  // -------------------------------------------------------------------------
   // Research plans (research/<date>-<slug>.md): what to learn next, kept as pages people edit.
 
   /** Save a page in research/, named by its day and title; its path in the organization's folder. */
@@ -1230,6 +1254,8 @@ export class OrgStore {
       this.emit({ kind: "inbox" });
     } else if (parts[0] === "hub" && parts[1] === "placements" && parts.length === 3 && rel.endsWith(".json")) {
       this.emit({ kind: "placement", board: path.basename(rel, ".json") });
+    } else if (rel === "hub/feeds.json") {
+      this.emit({ kind: "feeds" });
     } else if (rel === "hub/notices.jsonl") {
       this.emit({ kind: "notice" });
     } else if (rel === "hub/relations.jsonl") {
