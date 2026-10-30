@@ -160,12 +160,13 @@ function separateTrees(prev: Doc, d: Doc, grown: Set<string>) {
     if (!pushed.has(a) && !wasTree(a)) continue;
     const A = boxes.get(a)!;
     const room = grow(A, TREE_GAP);
-    const before = pushed.has(a) ? null : grow(withLane(boxOf(prev, a)), TREE_GAP);
+    // Whether two trees were already that close is judged on the trees themselves: room for a lane never stops a push.
+    const before = pushed.has(a) ? null : grow(boxOf(prev, a), TREE_GAP);
     for (const b of trees) {
       if (settled.has(b)) continue;
       const B = boxes.get(b)!;
       if (!boxesIntersect(room, B)) continue;
-      if (before && wasTree(b) && boxesIntersect(before, withLane(boxOf(prev, b)))) continue;
+      if (before && wasTree(b) && boxesIntersect(before, boxOf(prev, b))) continue;
       const right = B.x + B.w / 2 >= A.x + A.w / 2;
       const dx = right ? A.x + A.w + TREE_GAP - B.x : A.x - TREE_GAP - (B.x + B.w);
       d.nodes[b].x += dx;
