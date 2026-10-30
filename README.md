@@ -118,6 +118,9 @@ All settings are optional and go in `.env.local`. `.env.example` lists them with
 ### Your organization
 
 - **The home** starts with the Ask bar and what needs a look. Then come what the organization (or the product in view) is, every board's goals, and four tabs: **Boards**, **Topics**, **Sources** and **Decisions**. Products are chips at the top; a board or a source is for one product or for the whole organization.
+- **Goals, and what serves them:** each outcome on a board says which stated goal it serves. The home's **Goals** shows every goal the organization and its products state, the one that leads first, with the outcomes working on it and how their numbers are doing; a goal nothing works on offers **Start a board**. **Needs a look** says when a goal has no board working on it, or when a board's outcome serves none of the goals you've stated.
+- **Which outcome would move a goal:** a goal is often a business number. **Which outcomes?** beside it asks Qalam AI for the changes in what customers do that would move it, from the needs the organization knows and how many people raise each, fitting your strategy and constraints. Each says why, how it moves the goal and whether the team controls it, and code keeps it only when its quotes and numbers are in what it cites. **Start a board from it** gives you the outcome, serving the goal, with the needs it rests on under it, each with its customers' words.
+- **What the organization and each product are:** who it's for, its goals (the one that leads first, each with how it's measured, by when and who owns it), its strategy, what customers use instead, its constraints, its context and its segments. Qalam AI reads them with every call, and they're Markdown files you can edit anywhere.
 - **Start from a brain dump about the company.** A new organization opens on a page that asks what the company does, its products, who they're for and the goals you're moving, written as it comes. It can also read the company's website.
   - Qalam AI says what it took from it, pushes back where it won't hold up, and asks up to three rounds of questions.
   - Then it proposes the organization's About and a page for each product (who it's for, its context, goals and segments), line by line, each with the words it rests on.
@@ -127,15 +130,21 @@ All settings are optional and go in `.env.local`. `.env.example` lists them with
   - Qalam AI picks out what customers said, files it into the topic pages, and proposes where it fits on your boards.
   - Each board finds its proposals waiting, and you accept or discard them there as with any other.
   - A file Qalam can't read moves to `inbox/not-read`, with a note saying why. Nothing is deleted.
+- **People.** Say who said what: on a source, map each speaker to a person (or say all of it is from one person, or one segment) and when it was said. People are files in `people/`, each with the segments they're in. Qalam then counts the people behind a need, not the quotes, and tells segments apart; the home's **People** tab shows who you hear from and when you last did.
+- **What to learn next.** The home lists what the organization is betting on without knowing, found by code at no AI cost: targets on thin evidence, risky assumptions nothing tests, needs drafted with nothing behind them, open questions on the topic pages, and kinds of customer no one has heard from lately. **Plan it with Qalam AI** drafts who to talk to, an interview guide (open questions about what they did, never leading) and quick tests with a pass mark, each closing the gaps it names; keep it as a page in `research/`. **Needs a look** says when a team working on a product hasn't heard from a customer in two weeks.
+- **Feeds.** Material that keeps coming in without anyone adding it: an export or page at an address (a public sheet of survey answers, app reviews), or what you ask a connected tool for ("this week's tickets tagged delivery"), pulled every day or week while Qalam runs. Only what's new comes in, and it's read, filed and placed like anything you add. Set them up in the home's **Sources** tab.
 - **Ask the organization** in plain words, at the top of its home.
   - **How it looks:** with Claude Code, Qalam AI looks through the organization's folder on its own, using its search (words, meaning and links), its topic pages, sources, boards and decisions. It only reads, and only that folder; nothing runs code and nothing goes to the web. With an API key it answers from one call, with what search finds for the question.
   - **What you get back:** each claim comes with the exact words that show it, found word for word by code where Qalam AI says they are, with a link there. What it can't back is marked as such, and what nobody knows yet can go on a topic page as an open question.
 - **Needs a look.** The home starts with what needs your attention, newest first, marking what's new since your last visit. Code checks your boards, decisions and topic pages as they change, at no AI cost:
   - something customers said against what the team believes;
+  - a target need resting on thin evidence (one voice, stale words, or only the team's belief);
   - a need customers keep raising that no board has;
   - the same need on two boards (link them);
   - a parked or dropped card that new evidence backs;
-  - a test that's run too long, a solution built on a risky assumption nothing tests, or an outcome whose number nobody updates.
+  - a test that's run too long, a solution built on a risky assumption nothing tests, or an outcome whose number nobody updates;
+  - a solution shipped a month ago whose outcome's number hasn't moved the right way since (or has no reading since), and an outcome that reached its target;
+  - a goal no board works on, and an outcome that serves none of the goals you've stated.
 
   **Review now** asks Qalam AI to read everything for what counting can't find, such as a target the evidence speaks against, or a decision whose reason no longer holds. Each finding must rest on what it read. A card that needs a look is marked on its board, and its panel says why. A notice you dismiss doesn't come back.
 
@@ -151,14 +160,18 @@ All settings are optional and go in `.env.local`. `.env.example` lists them with
   - Qalam AI picks out what customers said. Code keeps a quote only if it finds it word for word in the source.
   - In an interview's transcript, only the participants are quoted, never the interviewer.
 - **Assumed:** an opportunity that Qalam AI drafted with no evidence behind it is marked **Assumed** until someone attaches a quote, an answer or a note.
+- **How strong it is:** each need and solution says how strong what it rests on is (nothing yet, the team's belief, thin, some or strong), counted by code from how many people said it, in how many segments and sources, how recently, and what speaks against it, with what would make it stronger. A target resting on thin evidence shows in **Needs a look**.
 - **Boards build on what the organization knows.** Drafting a tree, picking out quotes, mapping them and placing a brain dump each send Qalam AI the pieces of the organization's knowledge that bear on the work, within a token budget.
   - A new board's needs can rest on what customers said in sources added to other boards. A quote from elsewhere brings its source onto the board when you accept it.
   - Qalam AI says which pieces shaped each answer. Code keeps only pieces it was sent, and the board keeps that trace.
+- **Numbers, read by code:** an outcome's number keeps its readings over time: type the number in as it moves, or import a CSV from your analytics tool, and code finds the dates and the numbers and says what it read. A sparkline shows the trend, with a tick where a solution under it shipped. A CSV of tickets, survey answers or reviews is read as a table: code counts how many rows a need shows up in ("in 12 of 340 rows"), and a customer column makes one customer's rows one voice.
 - **Decision memory:** what you decide on a board is recorded as you go, by code and without the AI: a new target, a dropped solution, a parked opportunity, a merge, a deleted branch, a move, an outcome's new number.
   - Each entry keeps what the card rested on that day: its quotes, what spoke against it, its tests.
   - A big decision asks for a one-line why, which you can skip and add later.
   - Undo marks the entry undone instead of deleting it.
   - A card's **History** and the organization's **Decisions** tab show them, and each month is a Markdown file in `decisions/`.
+- **Which need to target:** **Compare the needs under it** (on an outcome's or a need's card, or **⌘K**) puts them side by side. Code counts what backs each: how strong it is, how many people and segments, sources, rows of an export, how recent, what speaks against it, what's under it. You rate what it can't count: how often it happens, how much it hurts, how it fits your strategy. Qalam AI can weigh it all with your goals, strategy and constraints and argue for one; code shows its argument only when every quote and number in it is in what it cites. A draft's recommended target now says why it comes first.
+- **A team on one folder:** say who you are (top right of the home); the decisions you make and the comments you write carry your name, so a team sharing the organization's folder through Git sees who decided. Cards have an owner, and a **Comments** thread for questions to each other (never counted as evidence). **Copy where the board stands** puts a status update on the clipboard as Markdown: each outcome with its goal and number, the target with what backs it, the solutions and tests and how the number moved since they shipped, the other needs, and the latest decisions with their whys.
 - **Design this:** carries a solution, the quotes behind it and its riskiest assumptions into a Screens project, where Qalam AI plans the screens with that context.
 
 ### Topic pages and search
@@ -253,7 +266,7 @@ The design tools work, and their projects are saved in the organization's folder
 
 - **Your work stays on your computer, as files.** Each organization is a folder in `~/Qalam` (set `QALAM_HOME` to move it), or any folder you open as one.
   - **What's in it:** projects are readable JSON (a Discovery board lists its cards at the top). A source's text is Markdown, and so is what the organization and each product are (`about.md`, `products/`). Decisions are a Markdown log per month (`decisions/`), and images are kept once, by their content.
-  - **Git:** the folder is ready for it. `.gitattributes` keeps both people's entries when two people add to the same month's log. Its `.gitignore` leaves out `.qalam/` (this computer's state: when a project was last opened, thumbnails, the Knowledge hub's layout) and `chats/` (chats and AI traces).
+  - **Git:** the folder is ready for it. `.gitattributes` keeps both people's entries when two people add to the same month's log, or comment on cards at once. Its `.gitignore` leaves out `.qalam/` (this computer's state: when a project was last opened, thumbnails, the Knowledge hub's layout, who works on it) and `chats/` (chats and AI traces).
   - **No upload:** nothing is uploaded to a Qalam server, because there isn't one. Qalam's own server runs on your machine and only answers this computer.
 - **What goes to the AI.** When you use an AI tool, the local server sends Anthropic what that request needs. Depending on the tool, that can be:
   - your prompt and earlier turns in the chat;
@@ -335,7 +348,7 @@ Rules and checks must work across products, not just one app: name things by rol
 
 - **First releases:** the first signed macOS release (the pipeline is ready: [docs/releasing.md](docs/releasing.md)), and the npm package, so `npx qalam-studio` opens the desktop app.
 - **Interview recordings on Discovery boards:** drop in audio or video and get an Arabic or English transcript to quote from. Today, transcripts come in as VTT or SRT.
-- **Every organization's inbox:** watched while Qalam runs, not only the inbox of the organization you opened.
+- **Every organization's inbox and feeds:** watched and pulled while Qalam runs, not only the organization you opened.
 - **The design tools, once they're off hold:** more ways to bring in an existing design system, and more of Figma's editing features (the shortcuts panel lists what's missing).
 
 ## License

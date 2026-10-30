@@ -3,7 +3,7 @@ import { fragmentRefs, roundAnswers, type DumpChallenge } from "@/discovery/dump
 import type { SourceQuote } from "@/discovery/sources";
 import { checkWords } from "@/hub/topics";
 import type { PlanBucket } from "@/ui/ai/plan";
-import { emptyContext, type ContextFields, type Product } from "./context-md";
+import { emptyContext, newGoal, type ContextFields, type Product } from "./context-md";
 
 /*
  * An organization set up from a brain dump (pure): someone pastes what they know about the company
@@ -15,8 +15,13 @@ import { emptyContext, type ContextFields, type Product } from "./context-md";
  * it to about.md or the product's file (src/org/context-md.ts); nothing is written before.
  */
 
-export type SetupField = "audience" | "context" | "goals" | "segments";
-export const SETUP_FIELDS: SetupField[] = ["audience", "context", "goals", "segments"];
+export type SetupField = "audience" | "context" | "strategy" | "goals" | "segments" | "alternatives" | "constraints";
+export const SETUP_FIELDS: SetupField[] = ["audience", "context", "strategy", "goals", "segments", "alternatives", "constraints"];
+type TextField = "audience" | "context" | "strategy";
+type ListField = "goals" | "segments" | "alternatives" | "constraints";
+const TEXT_FIELDS: TextField[] = ["audience", "context", "strategy"];
+const LIST_FIELDS: ListField[] = ["goals", "segments", "alternatives", "constraints"];
+const isTextField = (f: SetupField): f is TextField => (TEXT_FIELDS as SetupField[]).includes(f);
 
 /** One line Qalam AI proposes for the organization's pages. */
 export interface SetupLine {
@@ -71,7 +76,7 @@ export interface SetupSession {
   model?: string;
 }
 
-export const SETUP_LIMITS = { products: 6, goals: 6, segments: 8, line: 160, text: 420, name: 60, why: 200, summary: 600 } as const;
+export const SETUP_LIMITS = { products: 6, goals: 6, segments: 8, alternatives: 6, constraints: 6, line: 160, text: 420, name: 60, why: 200, summary: 600 } as const;
 const L = SETUP_LIMITS;
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
@@ -79,6 +84,14 @@ const items = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? v :
 const clip = (v: unknown, max: number) => (typeof v === "string" ? v.trim().replace(/\s+/g, " ").slice(0, max) : "");
 const ids = (v: unknown) => [...new Set((Array.isArray(v) ? v : []).filter((x): x is string => typeof x === "string"))];
 const key = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+
+/** A list field's lines in words (a goal's words). */
+const textsOf = (c: ContextFields, f: ListField): string[] => (f === "goals" ? c.goals.map((g) => g.text) : (c[f] ?? []));
+/** A list field with a line added, unless it's there already. */
+function withListLine<T extends ContextFields>(c: T, f: ListField, text: string): T {
+  if (textsOf(c, f).some((x) => key(x) === key(text))) return c;
+  return f === "goals" ? { ...c, goals: [...c.goals, newGoal(text)] } : { ...c, [f]: [...(c[f] ?? []), text] };
+}
 
 // ---------------------------------------------------------------------------
 // What a call is sent, and its answer as code keeps it
@@ -135,7 +148,8 @@ export function nameHolds(name: string, said: string): boolean {
  * What Qalam AI proposes, kept only where it holds: each line cites pieces or answers that were
  * sent, and its quotes and numbers are in them (an option they picked is their answer: the line
  * shows it as such), a text field is filled only where it's empty, a goal or segment is never
- * there twice, and a new product is named in their words and has a line to stand on. Lines for a
+ * there twice, a new product (and what customers use instead) is named in their words, and a new
+ * product has a line to stand on. Lines for a
  * product there already go to it, whether the answer names it by its id or by its name.
  */
 export function sanitizeSetup(raw: unknown, sent: SetupSent): SetupProposal {
@@ -153,22 +167,23 @@ export function sanitizeSetup(raw: unknown, sent: SetupSent): SetupProposal {
     const pieces = ids(v.fragmentIds).flatMap((ref) => pieceOf.get(ref) ?? []);
     const answers = ids(v.answerIds).flatMap((ref) => answerOf.get(ref) ?? []);
     if (!pieces.length && !answers.length) return;
-    const isText = field === "audience" || field === "context";
-    const text = checkWords(v.text, [...pieces, ...answers.map((a) => ({ text: a.answer }))], "", isText ? L.text : L.line);
+    const text = checkWords(v.text, [...pieces, ...answers.map((a) => ({ text: a.answer }))], "", isTextField(field) ? L.text : L.line);
     if (!text) return;
+    // What customers use instead is named in their words, as a product is: never a competitor they didn't name.
+    if (field === "alternatives" && !nameHolds(text, sent.said)) return;
     const c = says.get(to) ?? emptyContext();
-    if (isText) {
-      if (c[field].trim()) return;
+    if (isTextField(field)) {
+      if ((c[field] ?? "").trim()) return;
       says.set(to, { ...c, [field]: text });
     } else {
-      if (c[field].some((x) => key(x) === key(text)) || lines.filter((l) => l.to === to && l.field === field).length >= L[field]) return;
-      says.set(to, { ...c, [field]: [...c[field], text] });
+      if (textsOf(c, field).some((x) => key(x) === key(text)) || lines.filter((l) => l.to === to && l.field === field).length >= L[field]) return;
+      says.set(to, withListLine(c, field, text));
     }
     lines.push({ id: newId(), to, field, text, pieces: pieces.map((q) => q.id), answers: answers.map(({ question, answer }) => ({ question, answer })), why: clip(v.why, L.why) });
   };
   const fieldsOf = (to: string, x: Record<string, unknown>) => {
-    for (const f of ["audience", "context"] as const) if (x[f]) take(to, f, x[f]);
-    for (const f of ["goals", "segments"] as const) for (const g of items(x[f])) take(to, f, g);
+    for (const f of TEXT_FIELDS) if (x[f]) take(to, f, x[f]);
+    for (const f of LIST_FIELDS) for (const g of items(x[f])) take(to, f, g);
   };
 
   fieldsOf("org", rec(r.about));
@@ -206,8 +221,8 @@ export function decide(s: SetupSession, lineIds: string[], how: "accepted" | "di
 
 /** A line on what a place says: a goal or segment added once, a text field filled (or added to, when someone filled it meanwhile). */
 function withLine<T extends ContextFields>(c: T, l: SetupLine): T {
-  if (l.field === "goals" || l.field === "segments") return c[l.field].some((x) => key(x) === key(l.text)) ? c : { ...c, [l.field]: [...c[l.field], l.text] };
-  const was = c[l.field].trim();
+  if (!isTextField(l.field)) return withListLine(c, l.field, l.text);
+  const was = (c[l.field] ?? "").trim();
   if (key(was).includes(key(l.text))) return c;
   return { ...c, [l.field]: was ? `${was}\n\n${l.text}` : l.text };
 }

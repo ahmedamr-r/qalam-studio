@@ -74,7 +74,7 @@ export function knewThen(cards: Map<string, CardAt>, id: string): KnewThen | und
       .map((e) => ({ text: e.text.slice(0, 240), from: from(e), ...(e.piece ? { ref: e.piece } : e.answerId ? { ref: `answer:${e.answerId}` } : {}) })),
     against: againstCount(c),
     ...(tests.length ? { tests } : {}),
-    ...(c.metric ? { metric: c.metric } : {}),
+    ...(c.metric ? { metric: metricOf(c.metric) as OstMetric } : {}),
     ...(under.length ? { children: under.length } : {}),
   };
 }

@@ -18,6 +18,9 @@ import { mapQuotes } from "./import";
 import { acceptAll, discardAll, reviewing } from "./review";
 import { placeFor } from "./draft";
 import { openBrainDump } from "./dump";
+import { openCompare } from "./CompareView";
+import { copyBoardSummary } from "./summary";
+import { canCompare } from "@/discovery/compare";
 
 /*
  * Discovery's commands, registered when a Discovery board boots (a page holds one project, so
@@ -409,6 +412,27 @@ export function registerDiscoveryCommands() {
       keywords: ["paste", "notes", "thinking", "goals", "ideas", "distribute", "qalam ai"],
       enabled: () => (useDiscovery.getState().drafting ? "Qalam AI is drafting the tree" : true),
       run: () => openBrainDump(),
+    },
+    {
+      id: "discovery.compare",
+      label: "Compare the needs under it…",
+      category: "discovery",
+      keywords: ["compare", "target", "choose", "prioritize", "prioritise", "rank", "needs", "opportunities"],
+      enabled: () => {
+        const id = oneCard();
+        return id && canCompare(s().doc, id) ? true : "Select a card with two needs or more under it";
+      },
+      run: () => {
+        const id = oneCard();
+        if (id) openCompare(id);
+      },
+    },
+    {
+      id: "discovery.summary",
+      label: "Copy where the board stands",
+      category: "discovery",
+      keywords: ["share", "status", "summary", "report", "stakeholders", "update", "markdown", "copy"],
+      run: () => void copyBoardSummary(),
     },
     {
       id: "discovery.new-tree",

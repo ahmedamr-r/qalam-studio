@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import clsx from "clsx";
 import * as Tooltip from "@radix-ui/react-tooltip";
-import { ChevronRight, Frame, MoreHorizontal, Network, Palette, Plus } from "lucide-react";
+import { ChevronRight, Frame, MoreHorizontal, Network, Palette, Plus, UserRound } from "lucide-react";
 import { nanoid } from "nanoid";
 import type { AIStatus } from "@/ai/client";
 import type { SourceRecord } from "@/discovery/sources";
@@ -9,7 +9,8 @@ import type { Topic } from "@/hub/topics";
 import { topicsDb } from "@/org/topics";
 import { currentOrg, orgJson, type OrgRef } from "@/org/client";
 import { newProduct, saveProduct, useOrgContext } from "@/org/context";
-import type { Product } from "@/org/context-md";
+import { contextEmpty, type Product } from "@/org/context-md";
+import { statedGoals } from "@/org/goals";
 import { projectsDb } from "@/projects/db";
 import { browserProjectsToMove, moveBrowserProjects } from "@/org/import-browser";
 import { onOrgChange } from "@/org/live";
@@ -23,6 +24,12 @@ import { Menu, MenuItem, MenuSeparator, SubMenu } from "../menu";
 import { r } from "../recipes";
 import { confirmDialog, DialogHost, promptDialog } from "../surfaces/dialog";
 import { ContextCard, ContextEditorHost, editContext } from "../org/ContextEditor";
+import { editPerson, PersonEditorHost } from "../org/PersonEditor";
+import { PeopleList } from "../org/PeopleList";
+import { LearnNext } from "../org/LearnNext";
+import { Feeds } from "../org/Feeds";
+import { usePeople } from "@/org/people";
+import { setYou, useYou } from "@/org/you";
 import { GoalsList, type Goal } from "../org/Goals";
 import { OrgSwitcher } from "../org/OrgSwitcher";
 import { SourcesList } from "../org/SourcesList";
@@ -38,7 +45,8 @@ import { ago } from "../time";
 /**
  * An organization's home: asking what it knows, what needs a look (since the last visit), what it and its products are,
  * every board's goals, the boards, the topic pages (what the organization knows about each need,
- * segment and product), the sources and the decisions made on the boards, by product. Design work
+ * segment and product), the sources, the decisions made on the boards and the people it hears
+ * from, by product. Design work
  * (screens, design systems) waits below, on hold. Everything is saved in the organization's folder
  * on disk.
  */
@@ -60,6 +68,7 @@ export default function Home() {
   const topics = useTopics();
   const notices = useNotices();
   const { products, about, loaded } = useOrgContext();
+  const people = usePeople((s) => s.people);
 
   const refresh = useCallback(() => {
     void listProjects()
@@ -146,6 +155,7 @@ export default function Home() {
   const boards = (projects ?? []).filter((p) => p.type === "discovery" && inScope(p.product, scope));
   const design = (projects ?? []).filter((p) => p.type !== "discovery");
   const scopedGoals = goals.filter((g) => inScope(g.product, scope));
+  const stated = statedGoals(about, products).filter((g) => inScope(g.product, scope));
   const scopedSources = sources.filter((s) => inScope(s.product, scope));
   const scopedTopics = topics?.filter((t) => (scope === "all" ? true : scope === "org" ? !t.products.length : t.products.includes(scope))) ?? null;
   // A decision is for its board's product as it is now (it records the one it had then, for a board since deleted).
@@ -162,6 +172,8 @@ export default function Home() {
             /
           </span>
           {org && <OrgSwitcher org={org} onRenamed={setOrg} />}
+          <span className="flex-1" />
+          <YouChip />
         </header>
         <main className="mx-auto flex w-full max-w-[1080px] flex-col gap-[28px] px-[16px] py-[28px]">
           <ClaudeNotice />
@@ -202,11 +214,13 @@ export default function Home() {
             </button>
           </nav>
 
-          <SetupNotice org={org} sources={sources} empty={loaded && !products.length && !about.audience.trim() && !about.context.trim() && !about.goals.length && !about.segments.length} />
+          <SetupNotice org={org} sources={sources} empty={loaded && !products.length && contextEmpty(about)} />
 
           <AskBar product={product?.id ?? null} topics={topics} />
 
           <NeedsALook now={notices} scope={(n) => scope === "all" || (scope === "org" ? !n.products.length : n.products.includes(scope))} projects={projects ?? []} topics={topics} />
+
+          <LearnNext product={product?.id ?? null} />
 
           {product ? (
             <ContextCard title={product.name} context={product} onEdit={() => editContext({ kind: "product", product })} empty={`Tell Qalam AI what ${product.name} is: who it's for and what you're trying to move. Every board for it starts from this.`} />
@@ -218,7 +232,7 @@ export default function Home() {
             <h2 id="goals" className="text-title font-medium">
               Goals
             </h2>
-            {scopedGoals.length ? <GoalsList goals={scopedGoals} /> : <p className="text-body text-fg-muted">No outcomes yet. Every outcome on a board shows here, with the board it's on.</p>}
+            <GoalsList goals={scopedGoals} stated={stated} products={products} />
           </section>
 
           <section aria-label="Boards, topics, sources and decisions" className="flex flex-col gap-[12px]">
@@ -232,11 +246,17 @@ export default function Home() {
                   { value: "topics", label: <span className="whitespace-nowrap px-[4px]">Topics{scopedTopics?.length ? ` · ${scopedTopics.length}` : ""}</span> },
                   { value: "sources", label: <span className="whitespace-nowrap px-[4px]">Sources{scopedSources.length ? ` · ${scopedSources.length}` : ""}</span> },
                   { value: "decisions", label: <span className="whitespace-nowrap px-[4px]">Decisions{scopedDecisions.length ? ` · ${scopedDecisions.length}` : ""}</span> },
+                  { value: "people", label: <span className="whitespace-nowrap px-[4px]">People{people.length ? ` · ${people.length}` : ""}</span> },
                 ]}
               />
               {tab === "boards" && (
                 <Button size="sm" onClick={() => void start("discovery")}>
                   New board
+                </Button>
+              )}
+              {tab === "people" && (
+                <Button size="sm" variant="secondary" onClick={() => void editPerson(null, { product: product?.id ?? null })}>
+                  New person
                 </Button>
               )}
               {tab === "topics" && (
@@ -257,10 +277,15 @@ export default function Home() {
             </div>
             {tab === "topics" ? (
               <TopicsList topics={scopedTopics} sources={scopedSources} products={products} onFiled={refresh} />
+            ) : tab === "people" ? (
+              <PeopleList people={people} sources={sources} product={product?.id ?? null} />
             ) : tab === "decisions" ? (
               <DecisionsList decisions={scopedDecisions} projects={projects ?? []} />
             ) : tab === "sources" ? (
-              <SourcesList sources={scopedSources} projects={projects ?? []} products={products} onChanged={refresh} />
+              <div className="flex flex-col gap-[16px]">
+                <Feeds products={products} product={product?.id ?? null} />
+                <SourcesList sources={scopedSources} projects={projects ?? []} products={products} onChanged={refresh} />
+              </div>
             ) : projects === null ? (
               <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-[16px]" aria-hidden>
                 {[0, 1, 2].map((i) => (
@@ -318,13 +343,14 @@ export default function Home() {
         </main>
       </div>
       <ContextEditorHost />
+      <PersonEditorHost />
       <DialogHost />
     </Tooltip.Provider>
   );
 }
 
-type Tab = "boards" | "topics" | "sources" | "decisions";
-const TABS: Tab[] = ["boards", "topics", "sources", "decisions"];
+type Tab = "boards" | "topics" | "sources" | "decisions" | "people";
+const TABS: Tab[] = ["boards", "topics", "sources", "decisions", "people"];
 const readTab = (): Tab => {
   const t = new URLSearchParams(window.location.search).get("tab");
   return TABS.includes(t as Tab) ? (t as Tab) : "boards";
@@ -345,6 +371,29 @@ function ScopeChip({ on, onClick, title, children }: { on: boolean; onClick: () 
       className={clsx("q-item h-[28px] rounded-md px-[10px] text-caption font-medium", on ? "bg-raised text-fg shadow-button" : "text-fg-muted hover:bg-hover hover:text-fg")}
     >
       {children}
+    </button>
+  );
+}
+
+/** Who works on this computer: decisions and comments carry it, so the team sees who decided and who asked. */
+function YouChip() {
+  const { name, loaded } = useYou();
+  if (!loaded) return null;
+  const change = async () => {
+    const next = await promptDialog({
+      title: "Who are you?",
+      body: "Your name on this computer. Decisions you make and comments you write carry it, so a team sharing the organization's folder sees who decided. It stays on this computer.",
+      label: "Name",
+      defaultValue: name ?? "",
+      placeholder: "Sara",
+      confirmLabel: "Save",
+    });
+    if (next !== null) await setYou(next.trim() || null);
+  };
+  return (
+    <button type="button" onClick={() => void change()} title="Who you are on this computer" className={clsx(r.button, r.buttonGhost, "h-[28px] gap-[6px] px-[8px] text-caption")}>
+      <UserRound size={14} absoluteStrokeWidth strokeWidth={1.25} />
+      {name ?? "Say who you are"}
     </button>
   );
 }

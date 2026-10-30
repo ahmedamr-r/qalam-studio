@@ -26,7 +26,8 @@ export function decisionToMarkdown(d: Decision): string {
   // A quote can hold "-->", which would end the comment early: JSON reads \u003e back as ">".
   const json = JSON.stringify(record).replace(/>/g, "\\u003e");
   const lines: string[] = [`## ${dayOf(d.at)} · ${oneLine(d.what)}${d.undone ? " (undone)" : ""} · ${oneLine(d.boardName)}`, `<!-- ${MARK} ${json} -->`, ""];
-  if (d.by === "qalam") lines.push("*Proposed by Qalam AI, accepted by you.*", "");
+  if (d.by === "qalam") lines.push(`*Proposed by Qalam AI, accepted by ${d.who ? oneLine(d.who) : "you"}.*`, "");
+  else if (d.who) lines.push(`*By ${oneLine(d.who)}.*`, "");
   lines.push(`**Why:** ${why?.trim() ? oneLine(why) : "—"}`);
   const k = d.knew;
   if (k) {

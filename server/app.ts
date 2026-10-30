@@ -4,7 +4,9 @@ import { onStoreOpen } from "./org/home";
 export { openLastOrg } from "./org/home";
 import { orgRoutes } from "./org/routes";
 import { startInbox } from "./inbox";
+import { startFeeds } from "./feeds";
 import * as audit from "./routes/audit";
+import * as compare from "./routes/compare";
 import * as component from "./routes/component";
 import * as critique from "./routes/critique";
 import * as critiqueFix from "./routes/critique-fix";
@@ -32,6 +34,7 @@ type Handler = (req: Request) => Response | Promise<Response>;
 /** Each route takes a standard Request and answers a standard Response (AI routes stream NDJSON). */
 const ROUTES: Record<string, { GET?: Handler; POST?: Handler }> = {
   audit,
+  compare,
   component,
   critique,
   "critique-fix": critiqueFix,
@@ -62,6 +65,8 @@ const ROUTES: Record<string, { GET?: Handler; POST?: Handler }> = {
 export function createApi(): Hono {
   // Each organization's inbox folder is read while its store is open, window or not.
   onStoreOpen(startInbox);
+  // And its feeds are pulled when they're due.
+  onStoreOpen(startFeeds);
   const api = new Hono();
   for (const [name, route] of Object.entries(ROUTES)) {
     if (route.GET) api.get(`/api/${name}`, (c) => route.GET!(c.req.raw));

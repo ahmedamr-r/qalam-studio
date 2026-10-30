@@ -3,7 +3,7 @@ import { closeDumpRound, firstRound, sanitizeRead } from "@/discovery/dump";
 import type { PlanQuestion } from "@/ai/plan";
 import { initialFlow } from "@/ui/ai/questionFlow";
 import { toQuestion } from "@/ui/ai/plan";
-import { emptyContext, type Product } from "./context-md";
+import { emptyContext, newGoal, type Product } from "./context-md";
 import { applyLines, boardGoals, decide, nameHolds, pendingLines, sanitizeSetup, setupSent, type SetupSession } from "./setup";
 
 const DUMP = `Basket is a grocery delivery app in Dubai and Abu Dhabi, 40 dark stores, orders in under an hour. Mostly parents with young kids who do a big weekly shop.
@@ -98,7 +98,7 @@ describe("what Qalam AI proposes", () => {
   });
 
   it("fills a text field only where it's empty and never repeats a goal or a segment", () => {
-    const grocery: Product = { id: "pg", name: "Basket", ...emptyContext(), audience: "Parents.", goals: ["More customers reorder every week"] };
+    const grocery: Product = { id: "pg", name: "Basket", ...emptyContext(), audience: "Parents.", goals: [newGoal("More customers reorder every week")] };
     const { sent } = setup({ about: { ...emptyContext(), context: "Groceries, fast." }, products: [grocery] });
     const p = sanitizeSetup(
       {
@@ -121,6 +121,33 @@ describe("what Qalam AI proposes", () => {
       ["pg", "goals", "People come back every week"],
     ]);
     expect(p.products).toEqual([]);
+  });
+
+  it("proposes a strategy, what customers use instead and constraints, on what they wrote, and writes them where they go", () => {
+    const { sent } = setup();
+    const p = sanitizeSetup(
+      {
+        about: {
+          audience: null,
+          context: null,
+          goals: [],
+          segments: [],
+          strategy: line("Orders in under an hour, from 40 dark stores.", ["f1"]),
+          alternatives: [line("The big weekly shop", ["f2"]), line("Carrefour", ["f2"])],
+          constraints: [line("Offices churn after the first month", ["f6"])],
+        },
+        products: [],
+      },
+      sent,
+    );
+    // "Carrefour" isn't in what they wrote: it's dropped.
+    expect(p.lines.map((l) => [l.field, l.text])).toEqual([
+      ["strategy", "Orders in under an hour, from 40 dark stores."],
+      ["alternatives", "The big weekly shop"],
+      ["constraints", "Offices churn after the first month"],
+    ]);
+    const w = applyLines({ about: emptyContext(), products: [] }, p, p.lines);
+    expect(w.about).toEqual({ ...emptyContext(), strategy: "Orders in under an hour, from 40 dark stores.", alternatives: ["The big weekly shop"], constraints: ["Offices churn after the first month"] });
   });
 
   it("adds a product only under a name they used, with a line to stand on; one there already takes its lines by id or by name", () => {
@@ -183,17 +210,17 @@ describe("accepting lines", () => {
     const { proposal } = placed();
     let n = 0;
     const w = applyLines({ about: emptyContext(), products: [] }, proposal, proposal.lines, {}, () => `id${++n}`);
-    expect(w.about).toEqual({ ...emptyContext(), audience: "Families in Dubai and Abu Dhabi.", goals: ["2M dirhams a month in orders"] });
-    expect(w.products).toEqual([{ id: "id1", name: "Basket for Business", ...emptyContext(), audience: "Offices that restock their pantry.", goals: ["Offices stay past their first month"] }]);
+    expect(w.about).toEqual({ ...emptyContext(), audience: "Families in Dubai and Abu Dhabi.", goals: [newGoal("2M dirhams a month in orders")] });
+    expect(w.products).toEqual([{ id: "id1", name: "Basket for Business", ...emptyContext(), audience: "Offices that restock their pantry.", goals: [newGoal("Offices stay past their first month")] }]);
     expect(w.made).toEqual({ n1: "id1" });
     // Accepting more later goes to the product made, as it is now.
     const later = applyLines({ about: emptyContext(), products: [{ ...w.products[0], goals: [] }] }, proposal, [proposal.lines[3]], w.made, () => "never");
-    expect(later.products.map((p) => [p.id, p.goals])).toEqual([["id1", ["Offices stay past their first month"]]]);
+    expect(later.products.map((p) => [p.id, p.goals])).toEqual([["id1", [newGoal("Offices stay past their first month")]]]);
   });
 
   it("makes a product again when it was deleted since, adds to a field filled meanwhile, and never adds a line twice", () => {
     const { proposal } = placed();
-    const filled = { ...emptyContext(), audience: "Busy parents.", goals: ["2M dirhams a month in orders"] };
+    const filled = { ...emptyContext(), audience: "Busy parents.", goals: [newGoal("2M dirhams a month in orders")] };
     const w = applyLines({ about: filled, products: [] }, proposal, proposal.lines, { n1: "gone" }, () => "fresh");
     expect(w.about).toEqual({ ...filled, audience: "Busy parents.\n\nFamilies in Dubai and Abu Dhabi." });
     expect(w.products.map((p) => p.id)).toEqual(["fresh"]);

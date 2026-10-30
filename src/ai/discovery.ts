@@ -143,7 +143,7 @@ export function draftSchema(answerIds: string[], quoteIds: string[] = []) {
   const ids = answerIds.length ? answerIds : ["product"];
   const pieces = quoteIds.length ? { pieces: arr(enm(quoteIds, "A customer's quote in the organization's knowledge (k…)"), "Customers' quotes from the organization's knowledge that show this need; [] when none do") } : {};
   return obj({
-    summary: str("Two plain sentences back to the builder: the product and who it's for, and the outcome you propose to move"),
+    summary: str("Three plain sentences back to the builder: the product and who it's for, the outcome you propose to move, and why the need you recommend targeting comes first, from what they said"),
     outcome: obj({
       title: str("The outcome as a change in what customers do, at most 9 words (\"More customers reorder every week\"). Not revenue, not a feature"),
       rationale: str("One sentence: how it serves what the business needs"),

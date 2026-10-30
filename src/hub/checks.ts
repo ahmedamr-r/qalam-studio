@@ -5,18 +5,23 @@ import type { OstCard } from "@/discovery/types";
 import { factHash } from "@/knowledge/refs";
 import { cardRef } from "./pieces";
 import { isEvidence, sameTopic, type Topic } from "./topics";
+import { tally, tallyText, type Voice } from "./people";
+import { STRENGTH_LABEL, strengthOf } from "./strength";
+import type { OrgGoal } from "@/org/context-md";
+import { mergeReadings, movedSince } from "@/discovery/readings";
 
 /**
  * What needs a look (pure): checks code runs over the organization's boards, decisions and topic
  * pages at no token cost. Each finds something a product team should hear about: what customers
  * said against what the team believes (Qalam AI's disputes on the topic pages), needs customers
  * keep raising that no board has, the same need on two boards, a parked or dropped card that new
- * evidence now backs, a test that's run too long, a solution being built on a risky assumption
- * nothing tests, an outcome whose number nobody has updated. Every notice has a stable key, made
+ * evidence now backs, a target need resting on thin evidence, a test that's run too long, a
+ * solution being built on a risky assumption nothing tests, an outcome whose number nobody has
+ * updated. Every notice has a stable key, made
  * of what it's about and how strong it is: dismissed, it stays dismissed until it grows.
  */
 
-export type NoticeKind = "disputed" | "pattern" | "same-need" | "revisit" | "stale-test" | "untested" | "metric" | "orphan" | "review" | "placed";
+export type NoticeKind = "disputed" | "pattern" | "same-need" | "revisit" | "stale-test" | "untested" | "metric" | "orphan" | "review" | "placed" | "thin-target" | "unworked-goal" | "unanchored" | "shipped" | "reached" | "cadence";
 
 export interface Notice {
   /** Stable: the same finding keeps its key, so a dismissed one never comes back. */
@@ -50,11 +55,21 @@ export const NOTICE_LABEL: Record<NoticeKind, string> = {
   orphan: "Page",
   review: "Qalam AI review",
   placed: "To review",
+  "thin-target": "Target",
+  "unworked-goal": "Goal",
+  unanchored: "Outcome",
+  shipped: "Shipped",
+  reached: "Outcome",
+  cadence: "Customers",
 };
 
 /** How long before a running test, or an outcome's number, needs a look. */
 export const STALE_TEST_DAYS = 14;
 export const STALE_METRIC_DAYS = 21;
+/** How long a team working on a product can go without hearing from a customer. */
+export const CADENCE_DAYS = 14;
+/** How long after a solution ships its outcome's number should say whether it helped. */
+export const SHIPPED_DAYS = 28;
 const DAY = 86_400_000;
 
 export interface CheckBoard {
@@ -88,6 +103,14 @@ export interface CheckInput {
   linked: Set<string>;
   /** Proposals waiting on a board from material added to the organization (a capture, the inbox). */
   placed?: { board: string; sourceId: string; title: string; count: number; at: number }[];
+  /** Who said each quote (by its piece ref): people and segments, so voices are counted, not quotes. */
+  voices?: ReadonlyMap<string, Voice>;
+  /** When customers were heard, by product (each source of theirs: its product, when it was said). */
+  heard?: { product: string | null; at: number }[];
+  /** Product names, for what notices say. */
+  productName?: (id: string) => string | undefined;
+  /** The goals the organization and its products state, each with whose it is and when it was last written. */
+  goals?: { goal: OrgGoal; product: string | null; lead: boolean; owner: string; at: number }[];
 }
 
 type Node = { parentId?: string | null; meta?: { ost?: OstCard } };
@@ -150,11 +173,13 @@ export function runChecks(x: CheckInput): Notice[] {
   if (x.indexed) {
     for (const t of x.topics) {
       const shown = x.shows.get(t.id) ?? [];
-      // A need customers keep raising, on no board: its known lines rest on two sources or more.
+      // A need customers keep raising, on no board: its known lines rest on two voices or more
+      // (people, or unnamed voices of different sources).
       if (t.kind === "need" && !shown.length) {
         const known = t.lines.filter((l) => l.section === "know");
         const quotes = new Set<string>();
         const sources = new Set<string>();
+        const voices: Voice[] = [];
         let newest = 0;
         for (const l of known)
           for (const ref of l.cites) {
@@ -163,13 +188,17 @@ export function runChecks(x: CheckInput): Notice[] {
             quotes.add(ref);
             sources.add(p.source ?? ref);
             newest = Math.max(newest, l.at, p.at);
+            const v = x.voices?.get(ref);
+            voices.push(v ?? { key: `source:${p.source ?? ref}`, segments: [], source: p.source ?? ref, at: p.at });
           }
-        if (sources.size >= 2)
+        const who = tally(voices);
+        const strength = Math.max(sources.size, who.voices);
+        if (strength >= 2)
           out.push({
-            key: `pattern:${t.id}:${tier(sources.size)}`,
+            key: `pattern:${t.id}:${tier(strength)}`,
             kind: "pattern",
             title: `Customers keep raising ${q(t.title)}, and no board has it`,
-            why: `${plural(quotes.size, "quote")} from ${plural(sources.size, "source")} on its topic page; no card on a board rests on them.`,
+            why: `${plural(quotes.size, "quote")} from ${x.voices ? tallyText(who) : plural(sources.size, "source")} on its topic page; no card on a board rests on them.`,
             at: newest || t.updatedAt,
             topic: t.id,
             refs: [...quotes],
@@ -266,6 +295,81 @@ export function runChecks(x: CheckInput): Notice[] {
     });
   }
 
+  // Goals and the outcomes that serve them: a stated goal no board works on, and an outcome (a
+  // tree's top) that serves no stated goal, or one that's no longer stated.
+  if (x.goals) {
+    const goals = x.goals;
+    const outcomes = cards.filter((c) => c.card.kind === "outcome");
+    const serves = (c: CardAt, g: (typeof goals)[number]) => c.card.serves?.goal === g.goal.id && (c.card.serves.product ?? null) === g.product;
+    for (const g of goals) {
+      const serving = outcomes.filter((c) => serves(c, g));
+      if (serving.some((c) => c.card.stage === "active" || c.card.stage === "achieved")) continue;
+      const paused = serving[0];
+      out.push({
+        key: `unworked-goal:${g.product ?? "org"}:${g.goal.id}:${paused ? "paused" : "none"}`,
+        kind: "unworked-goal",
+        title: g.lead ? `Nothing moves ${q(g.goal.text)}, the goal that leads for ${g.owner}` : `No board works on ${q(g.goal.text)}, a goal of ${g.owner}`,
+        why: paused
+          ? `The only outcome serving it, ${q(paused.card.title)} on ${paused.board.name}, is paused.`
+          : "No outcome on a board says it serves it. Start a board for it, or say on an outcome's card which goal it serves.",
+        at: g.at,
+        products: g.product ? [g.product] : [],
+      });
+    }
+    for (const c of outcomes) {
+      if (c.parent || c.card.stage !== "active") continue;
+      const product = c.board.product;
+      const inScope = goals.filter((g) => g.product === null || g.product === product);
+      const ref = cardRef(c.board.id, c.id);
+      if (!c.card.serves) {
+        if (!inScope.length) continue;
+        out.push({
+          key: `unanchored:${ref}`,
+          kind: "unanchored",
+          title: `${q(c.card.title)} serves none of the goals you've stated`,
+          why: `On ${c.board.name}. The goals it could serve: ${inScope.slice(0, 4).map((g) => q(g.goal.text)).join(", ")}. Say which on its card, or write down the goal it does serve.`,
+          at: c.card.stageAt ?? c.board.createdAt,
+          board: c.board.id,
+          card: c.id,
+          products: productsOf(c.board),
+        });
+      } else if (!goals.some((g) => serves(c, g)))
+        out.push({
+          key: `unanchored:${ref}:gone:${c.card.serves.goal}`,
+          kind: "unanchored",
+          title: `${q(c.card.title)} serves a goal that's no longer stated`,
+          why: `On ${c.board.name}. The goal it served was renamed outside Qalam or taken off its list. Say which goal it serves now.`,
+          at: Math.max(c.card.stageAt ?? 0, ...goals.map((g) => g.at)) || c.board.createdAt,
+          board: c.board.id,
+          card: c.id,
+          products: productsOf(c.board),
+        });
+    }
+  }
+
+  // A team working on a product (an active outcome) that hasn't heard from a customer in weeks.
+  if (x.heard) {
+    const working = new Map<string, number>();
+    for (const c of cards) if (c.card.kind === "outcome" && c.card.stage === "active") working.set(c.board.product ?? "", Math.min(working.get(c.board.product ?? "") ?? Infinity, c.board.createdAt));
+    for (const [p, since] of working) {
+      const product = p || null;
+      // What the whole organization hears counts for every product.
+      const last = Math.max(0, ...x.heard.filter((h) => h.product === product || h.product === null).map((h) => h.at));
+      const from = last || since;
+      if (x.now - from <= CADENCE_DAYS * DAY) continue;
+      const weeks = Math.floor((x.now - from) / (7 * DAY));
+      const name = product ? (x.productName?.(product) ?? "a product") : "the organization";
+      out.push({
+        key: `cadence:${product ?? "org"}:${from}`,
+        kind: "cadence",
+        title: last ? `No one has heard from a customer of ${name} in ${plural(weeks, "week")}` : `No customer of ${name} has been heard yet`,
+        why: `Its boards are working on an outcome. Talk to a customer this week, and add what they said: what to learn next can say who and what to ask.`,
+        at: from + CADENCE_DAYS * DAY,
+        products: product ? [product] : [],
+      });
+    }
+  }
+
   // What Qalam AI found for a board in material added to the organization, waiting for review there.
   for (const p of x.placed ?? []) {
     const b = x.boards.find((y) => y.id === p.board);
@@ -297,6 +401,21 @@ export function runChecks(x: CheckInput): Notice[] {
         products: productsOf(c.board),
       });
     }
+    // The need the team targets, resting on thin evidence: one voice, stale words, more against than for, or only the team's belief.
+    if (c.card.kind === "opportunity" && c.card.stage === "target") {
+      const s = strengthOf(c.card, { now: x.now, voices: x.voices });
+      if (s.level === "none" || s.level === "team" || s.level === "thin")
+        out.push({
+          key: `thin-target:${ref}:${s.level}:${s.tally.voices}`,
+          kind: "thin-target",
+          title: `The target ${q(c.card.title)} rests on ${s.level === "thin" ? "thin evidence" : s.level === "team" ? "the team's belief alone" : "nothing yet"}`,
+          why: `${STRENGTH_LABEL[s.level]}${s.why ? `: ${s.why}` : ""}. ${s.next ?? ""}`.trim(),
+          at: Math.max(c.card.stageAt ?? 0, s.tally.newest) || c.board.createdAt,
+          board: c.board.id,
+          card: c.id,
+          products: productsOf(c.board),
+        });
+    }
     // A solution being built, or tested, on a risky assumption no test checks.
     if (c.card.kind === "solution" && (c.card.stage === "building" || c.card.stage === "shipped" || c.card.stage === "testing")) {
       const tested = new Set(cards.filter((t) => t.board === c.board && t.parent === c.id && t.card.kind === "test").flatMap((t) => t.card.test?.assumptionIds ?? []));
@@ -314,11 +433,53 @@ export function runChecks(x: CheckInput): Notice[] {
         });
       }
     }
+    // A solution shipped weeks ago: did the number of the outcome above it move the right way?
+    if (c.card.kind === "solution" && c.card.stage === "shipped" && c.card.stageAt && x.now - c.card.stageAt > SHIPPED_DAYS * DAY) {
+      let up = c.parent ? byRef.get(cardRef(c.board.id, c.parent)) : undefined;
+      while (up && up.card.kind !== "outcome") up = up.parent ? byRef.get(cardRef(c.board.id, up.parent)) : undefined;
+      const m = up?.card.metric;
+      if (up && m && up.card.stage === "active") {
+        const moved = movedSince(m, c.card.stageAt);
+        const weeks = Math.floor((x.now - c.card.stageAt) / (7 * DAY));
+        const n = (v: number) => `${v}${m.unit ? ` ${m.unit}` : ""}`;
+        if (!moved || moved.better !== true)
+          out.push({
+            key: `shipped:${ref}:${c.card.stageAt}:${moved ? "flat" : "unread"}`,
+            kind: "shipped",
+            title: moved ? `${q(up.card.title)} hasn't moved the right way since ${q(c.card.title)} shipped` : `${q(c.card.title)} shipped ${plural(weeks, "week")} ago: did it move ${q(up.card.title)}?`,
+            why: moved
+              ? `${m.name || "Its number"} went from ${n(moved.before)} to ${n(moved.after)} in the ${plural(moved.days, "day")} since. Look at whether it reached the customers it was for, or try another way to meet the need.`
+              : `${m.name || "Its number"} has no reading since it shipped. Add this week's number, or import the export, to see.`,
+            at: c.card.stageAt + SHIPPED_DAYS * DAY,
+            board: c.board.id,
+            card: c.id,
+            products: productsOf(c.board),
+          });
+      }
+    }
+    // An outcome that reached its target, still marked active.
+    if (c.card.kind === "outcome" && c.card.stage === "active" && c.card.metric && c.card.metric.current !== null && c.card.metric.target !== null) {
+      const mm = c.card.metric;
+      const reached = mm.direction === "increase" ? mm.current! >= mm.target! : mm.current! <= mm.target!;
+      const last = mergeReadings(mm.readings).at(-1)?.at;
+      if (reached && (mm.baseline === null || mm.baseline !== mm.target))
+        out.push({
+          key: `reached:${ref}:${mm.target}`,
+          kind: "reached",
+          title: `${q(c.card.title)} reached its target`,
+          why: `${mm.name || "Its number"} is at ${mm.current}${mm.unit ? ` ${mm.unit}` : ""}, its target ${mm.target}. Mark it achieved, or set the next target.`,
+          at: last ?? c.card.stageAt ?? c.board.createdAt,
+          board: c.board.id,
+          card: c.id,
+          products: productsOf(c.board),
+        });
+    }
     // An outcome whose number nobody has updated in weeks.
     const m = c.card.metric;
     if (c.card.kind === "outcome" && c.card.stage === "active" && m && m.current !== null && m.target !== null) {
       const updates = x.decisions.filter((d) => !d.undone && d.kind === "metric" && d.board === c.board.id && d.card === c.id && (d.detail as { field?: unknown } | undefined)?.field === "current");
-      const last = Math.max(c.card.stageAt ?? c.board.createdAt, ...updates.map((d) => d.at));
+      // A reading (typed in, or read from an export) is an update too.
+      const last = Math.max(c.card.stageAt ?? c.board.createdAt, ...updates.map((d) => d.at), ...(m.readings ?? []).map((r) => r.at));
       if (x.now - last > STALE_METRIC_DAYS * DAY) {
         const weeks = Math.floor((x.now - last) / (7 * DAY));
         const flat = m.baseline !== null && m.current === m.baseline;
@@ -341,7 +502,7 @@ export function runChecks(x: CheckInput): Notice[] {
 /** Notices about a card (as the card, or as the other card of a pair). */
 export const aboutCard = (n: Pick<Notice, "board" | "card" | "other">, board: string, card: string) => (n.board === board && n.card === card) || (n.other?.board === board && n.other.card === card);
 
-const KINDS: readonly NoticeKind[] = ["disputed", "pattern", "same-need", "revisit", "stale-test", "untested", "metric", "orphan", "review", "placed"];
+const KINDS: readonly NoticeKind[] = ["disputed", "pattern", "same-need", "revisit", "stale-test", "untested", "metric", "orphan", "review", "placed", "thin-target", "unworked-goal", "unanchored", "shipped", "reached", "cadence"];
 const isStr = (v: unknown, max: number): v is string => typeof v === "string" && v.length <= max;
 const ID = /^[A-Za-z0-9_~-]{1,64}$/;
 

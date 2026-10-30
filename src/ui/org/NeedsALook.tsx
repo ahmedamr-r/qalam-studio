@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import clsx from "clsx";
-import { CircleAlert, FileX, FlaskConical, Gauge, History, Inbox, Link2, TriangleAlert, Users, X } from "lucide-react";
+import { Anchor, CircleAlert, CircleCheck, Ear, Crosshair, FileX, FlaskConical, Flag, Gauge, History, Inbox, Link2, PackageCheck, TriangleAlert, Users, X } from "lucide-react";
 import { NOTICE_LABEL, type Notice, type NoticeKind } from "@/hub/checks";
 import { cardRef } from "@/hub/pieces";
 import type { TopicInfo } from "@/hub/topics";
@@ -30,6 +30,12 @@ const KIND_ICON: Record<Exclude<NoticeKind, "review">, typeof X> = {
   metric: Gauge,
   orphan: FileX,
   placed: Inbox,
+  "thin-target": Crosshair,
+  "unworked-goal": Flag,
+  unanchored: Anchor,
+  shipped: PackageCheck,
+  reached: CircleCheck,
+  cadence: Ear,
 };
 const SHOWN = 5;
 

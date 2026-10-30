@@ -1,4 +1,5 @@
 import type { SourceKind } from "../sources";
+import type { SourceTable } from "../table";
 import type { TranscriptMeta, TranscriptSegment } from "../transcript";
 
 /*
@@ -21,6 +22,8 @@ export interface Ingested {
   /** Interviews. */
   segments?: TranscriptSegment[];
   transcript?: TranscriptMeta;
+  /** A CSV or TSV export, read as a table by code. */
+  table?: SourceTable;
 }
 
 /** Something the builder can fix (a scan, a format Qalam can't read): its message is for them. */
@@ -111,7 +114,14 @@ export async function fromBytes(bytes: ArrayBuffer, type: string, name: string, 
   }
   if (type.startsWith("text/") || type === "application/json" || ["txt", "text", "csv", "tsv", "log", "json"].includes(ext) || !type) {
     const { cleanText } = await import("./text");
-    return capped("text", stem(name), origin, cleanText(text));
+    const r = await capped("text", stem(name), origin, cleanText(text));
+    // An export (tickets, survey answers, reviews): code reads its rows, to count what shows up in how many.
+    if (ext === "csv" || ext === "tsv" || type === "text/csv" || type === "text/tab-separated-values") {
+      const { tableOf } = await import("../table");
+      const table = tableOf(r.text, ext === "tsv" || type === "text/tab-separated-values" ? "\t" : undefined);
+      if (table) return { ...r, table };
+    }
+    return r;
   }
   throw new IngestError(`${name}: Qalam reads PDF, Word (.docx), Markdown, web pages and text files.`);
 }

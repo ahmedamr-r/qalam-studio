@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { newGoal } from "@/org/context-md";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -152,8 +153,53 @@ describe("sources shared by boards", () => {
   });
 });
 
+describe("people", () => {
+  it("keeps each person as a Markdown file, and a source's who with it", async () => {
+    await store.putPerson({ id: "pSara", name: "Sara Ahmed", segments: ["Parents"], role: "Mother of two" });
+    expect(await readdir(path.join(dir, "people"))).toEqual(["sara-ahmed.md"]);
+    expect(events.at(-1)).toMatchObject({ kind: "person", id: "pSara" });
+    await store.putProject(board);
+    await store.putSource({ ...source("s1abcdefgh", board.id), who: { person: "pSara", saidAt: Date.UTC(2026, 9, 1) } });
+    const again = await OrgStore.open(dir);
+    expect(await again.listPeople()).toEqual([{ id: "pSara", name: "Sara Ahmed", segments: ["Parents"], role: "Mother of two" }]);
+    expect((await again.getSource("s1abcdefgh"))?.who).toEqual({ person: "pSara", saidAt: Date.UTC(2026, 9, 1) });
+    await again.removePerson("pSara");
+    expect(await again.listPeople()).toEqual([]);
+    expect(await readdir(path.join(dir, "people"))).toEqual([]);
+    again.dispose();
+  });
+
+  it("picks up a person written by hand", async () => {
+    await mkdir(path.join(dir, "people"), { recursive: true });
+    await writeFile(path.join(dir, "people", "omar.md"), "---\nid: pOmar\nname: Omar\nsegments: [\"Offices\"]\n---\n");
+    await store.reload("people/omar.md");
+    expect(events.at(-1)).toMatchObject({ kind: "person", id: "pOmar" });
+    expect((await store.listPeople()).map((p) => p.name)).toEqual(["Omar"]);
+  });
+});
+
+describe("the team", () => {
+  it("keeps who works on this computer out of the shared files, and comments in an append-only log", async () => {
+    expect(store.you).toBeNull();
+    await store.setYou("  Sara  ");
+    expect(store.you).toBe("Sara");
+    expect((await OrgStore.open(dir)).you).toBe("Sara");
+    expect(await readFile(path.join(dir, ".gitignore"), "utf8")).toContain(".qalam/");
+    const card = "hub:card:b1:n1";
+    await store.addComment({ id: "c1", card, text: "Is this one parent or several?", who: "Sara", at: 1 });
+    await store.addComment({ id: "c2", card: "hub:card:b1:n2", text: "Ask offices.", at: 2 });
+    await store.resolveComment("c1", true, "Omar");
+    expect(await store.listComments(card)).toEqual([{ id: "c1", card, text: "Is this one parent or several?", who: "Sara", at: 1, resolved: { at: expect.any(Number), who: "Omar" } }]);
+    expect(events.filter((e) => e.kind === "comment")).toHaveLength(3);
+    // A line a merge broke doesn't lose the rest.
+    await writeFile(path.join(dir, "hub", "comments.jsonl"), `${await readFile(path.join(dir, "hub", "comments.jsonl"), "utf8")}{broken\n`);
+    expect(await store.listComments()).toHaveLength(2);
+    expect(await readFile(path.join(dir, ".gitattributes"), "utf8")).toContain("hub/*.jsonl merge=union");
+  });
+});
+
 describe("products and the organization", () => {
-  const grocery = { id: "pGrocery1", name: "Grocery app", audience: "Weekly shoppers.", goals: ["2M AED a month"], context: "", segments: [] };
+  const grocery = { id: "pGrocery1", name: "Grocery app", audience: "Weekly shoppers.", goals: [newGoal("2M AED a month")], context: "", segments: [] };
 
   it("keeps products as Markdown files, and about.md", async () => {
     await store.putProduct(grocery);

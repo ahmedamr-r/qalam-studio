@@ -29,6 +29,19 @@ import { useProject } from "@/projects/session";
 import DecisionRow from "../decisions/DecisionRow";
 import { useDecisions } from "../decisions/list";
 import { citation, fromSource, quoteOf, type SourceRecord } from "@/discovery/sources";
+import { STRENGTH_LABEL, type Strength } from "@/hub/strength";
+import { useStrength } from "./strength";
+import { openCompare } from "./CompareView";
+import { canCompare } from "@/discovery/compare";
+import { MetricReadings, type ShipMark } from "./MetricReadings";
+import { movedSince, withReading } from "@/discovery/readings";
+import { goalsFor, statedGoals } from "@/org/goals";
+import { newGoal } from "@/org/context-md";
+import { saveAbout, saveProduct, useOrgContext } from "@/org/context";
+import { promptDialog } from "../surfaces/dialog";
+import type { CardComment } from "@/org/comments";
+import { orgFetch } from "@/org/client";
+import { ago } from "../time";
 
 const ICON = { size: 12, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 
@@ -97,6 +110,11 @@ function OneCard({ id, card }: { id: string; card: OstCard }) {
               }}
             />
           </Field>
+          <Field label="Owner">
+            <CommitInput ariaLabel="Owner" value={card.owner ?? ""} placeholder="Who answers for it" onCommit={(v) => edit(id, (c) => (v.trim() ? (c.owner = v.replace(/\s+/g, " ").trim().slice(0, 80)) : delete c.owner))} />
+          </Field>
+          {card.kind === "outcome" && !underOutcome && <ServesField id={id} card={card} />}
+          {(card.kind === "outcome" || card.kind === "opportunity") && <CompareButton id={id} />}
           {assumed && <Hint>Qalam AI drafted this need and nothing backs it yet. Add a quote, a source or a note to make it solid.</Hint>}
           {isAIIdea(card) && (
             <Hint tone="info">
@@ -111,11 +129,90 @@ function OneCard({ id, card }: { id: string; card: OstCard }) {
       </Section>
       {card.kind === "outcome" && <MetricSection id={id} card={card} />}
       {(card.kind === "opportunity" || card.kind === "solution" || (card.kind === "outcome" && card.evidence.length > 0)) && <EvidenceSection id={id} card={card} />}
+      {card.kind === "solution" && card.stage === "shipped" && <SinceShipped id={id} card={card} />}
       {card.kind === "solution" && <AssumptionsSection id={id} card={card} />}
       {card.kind === "solution" && <DesignsSection id={id} card={card} />}
       {card.kind === "test" && <TestSection id={id} card={card} />}
+      <CommentsSection id={id} />
       <HistorySection id={id} />
     </>
+  );
+}
+
+/** The team's talk about the card: questions and notes to each other, with who wrote them. Never evidence. */
+function CommentsSection({ id }: { id: string }) {
+  const board = useProject((s) => s.project?.id);
+  const ref = board ? cardRef(board, id) : null;
+  const [list, setList] = useState<CardComment[]>([]);
+  const [text, setText] = useState("");
+  const [showResolved, setShowResolved] = useState(false);
+  useEffect(() => {
+    if (!ref) return;
+    let alive = true;
+    const load = () => void orgJson<CardComment[]>(`/comments?card=${encodeURIComponent(ref)}`).then((l) => alive && setList(l), () => {});
+    load();
+    const off = onOrgChange((c) => c.kind === "comment" && (!c.cards.length || c.cards.includes(ref)) && load());
+    return () => {
+      alive = false;
+      off();
+    };
+  }, [ref]);
+  if (!ref) return null;
+  const add = async () => {
+    const t = text.trim();
+    if (!t) return;
+    const c = await orgJson<CardComment>("/comments", { method: "POST", json: { card: ref, text: t } });
+    setList((l) => [...l, c]);
+    setText("");
+  };
+  const resolve = async (c: CardComment, on: boolean) => {
+    await orgFetch(`/comments/${c.id}/resolve`, { method: "POST", json: { on } });
+    setList((l) => l.map((x) => (x.id === c.id ? { ...x, ...(on ? { resolved: { at: Date.now() } } : { resolved: undefined }) } : x)));
+  };
+  const open = list.filter((c) => !c.resolved);
+  const done = list.filter((c) => c.resolved);
+  const row = (c: CardComment) => (
+    <div key={c.id} className={clsx("flex flex-col gap-[2px] rounded-lg px-[10px] py-[6px]", c.resolved ? "bg-muted opacity-70" : "bg-muted")}>
+      <p className="flex items-baseline justify-between gap-[8px] text-micro text-fg-subtle">
+        <span>
+          {c.who ?? "Someone"} · {ago(c.at)}
+        </span>
+        <button type="button" className="hover:text-fg" onClick={() => void resolve(c, !c.resolved)}>
+          {c.resolved ? "Open again" : "Resolve"}
+        </button>
+      </p>
+      <p className="whitespace-pre-wrap text-caption text-fg" dir="auto">
+        {c.text}
+      </p>
+    </div>
+  );
+  return (
+    <Section title={`Comments${open.length ? ` · ${open.length}` : ""}`}>
+      {open.map(row)}
+      {done.length > 0 && (
+        <button type="button" className="self-start text-caption text-fg-subtle hover:text-fg" onClick={() => setShowResolved(!showResolved)}>
+          {showResolved ? "Hide" : "Show"} {done.length} resolved
+        </button>
+      )}
+      {showResolved && done.map(row)}
+      <div className="flex flex-col gap-[6px]">
+        <textarea
+          aria-label="Write a comment"
+          className={clsx(r.textarea, "text-body")}
+          rows={2}
+          value={text}
+          placeholder="A question or a note for the team"
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void add();
+          }}
+        />
+        <Button size="sm" variant="secondary" className="self-start" disabled={!text.trim()} onClick={() => void add()}>
+          Comment
+        </Button>
+      </div>
+    </Section>
   );
 }
 
@@ -213,9 +310,111 @@ function HistorySection({ id }: { id: string }) {
   );
 }
 
+/** A shipped solution: how the number of the outcome above it moved since. */
+function SinceShipped({ id, card }: { id: string; card: OstCard }) {
+  const outcome = useStudio((s) => {
+    for (let p = s.doc.nodes[id]?.parentId; p; p = s.doc.nodes[p]?.parentId) {
+      const c = cardOf(s.doc, p);
+      if (c?.kind === "outcome") return c;
+    }
+    return null;
+  });
+  const m = outcome?.metric;
+  if (!outcome || !m || !card.stageAt) return null;
+  const moved = movedSince(m, card.stageAt);
+  const n = (v: number) => `${v}${m.unit ? ` ${m.unit}` : ""}`;
+  const when = new Date(card.stageAt).toLocaleDateString("en", { month: "short", day: "numeric" });
+  return (
+    <Section title="Since it shipped">
+      <p className={clsx("rounded-lg px-[10px] py-[8px] text-caption", moved?.better ? "bg-success-subtle" : "bg-muted")}>
+        {moved ? (
+          <>
+            {m.name || "The number"} of “{outcome.title}” went from <span className="font-semibold">{n(moved.before)}</span> to <span className="font-semibold">{n(moved.after)}</span> since {when}
+            {moved.better === true ? ", the right way." : moved.better === false ? ", the wrong way." : ", no change."}
+          </>
+        ) : (
+          <>Shipped {when}. “{outcome.title}” has no reading since: add the number on its card to see whether this moved it.</>
+        )}
+      </p>
+    </Section>
+  );
+}
+
+/** The needs under it, side by side, to choose the one to target. */
+function CompareButton({ id }: { id: string }) {
+  const n = useStudio((s) => (canCompare(s.doc, id) ? s.doc.nodes[id].children.filter((c) => cardOf(s.doc, c)?.kind === "opportunity").length : 0));
+  if (!n) return null;
+  return (
+    <Button size="sm" variant="secondary" className="self-start" onClick={() => openCompare(id)}>
+      Compare the {n} needs under it
+    </Button>
+  );
+}
+
+const NO_GOAL = "_none";
+const NEW_GOAL = "_new";
+
+/** Which stated goal an outcome serves: its board's product's, or the organization's; or a new one, written down here. */
+function ServesField({ id, card }: { id: string; card: OstCard }) {
+  const product = useProject((s) => s.project?.product ?? null);
+  const { about, products } = useOrgContext();
+  const stated = goalsFor(product, statedGoals(about, products));
+  const owner = (p: string | null) => (p ? (products.find((x) => x.id === p)?.name ?? "A product") : "The organization");
+  const valueOf = (s: { goal: string; product: string | null }) => `${s.product ?? "org"}:${s.goal}`;
+  const value = card.serves ? valueOf(card.serves) : NO_GOAL;
+  const known = stated.some((g) => valueOf({ goal: g.goal.id, product: g.product }) === value);
+  const options = [
+    { value: NO_GOAL, label: "No stated goal" },
+    ...(card.serves && !known ? [{ value, label: "A goal no longer stated" }] : []),
+    ...stated.map((g) => ({ value: valueOf({ goal: g.goal.id, product: g.product }), label: `${g.goal.text}${g.lead ? " (leads)" : ""}`, group: owner(g.product) })),
+    { value: NEW_GOAL, label: "Write down a new goal…" },
+  ];
+  const pick = async (v: string) => {
+    if (v === NO_GOAL) return edit(id, (c) => void delete c.serves);
+    if (v === NEW_GOAL) {
+      const p = product ? products.find((x) => x.id === product) : undefined;
+      const text = await promptDialog({ title: `A goal of ${p?.name ?? "the organization"}`, body: "What the team is trying to move, as you'd say it. It's added to the goals in its About.", label: "Goal", defaultValue: card.title, confirmLabel: "Add goal", validate: (t) => (t.trim() ? null : "Write the goal") });
+      if (!text) return;
+      const g = newGoal(text);
+      if (p) await saveProduct({ ...p, goals: [...p.goals, g] });
+      else await saveAbout({ ...about, goals: [...about.goals, g] });
+      return edit(id, (c) => void (c.serves = { goal: g.id, product: p ? p.id : null }));
+    }
+    const g = stated.find((x) => valueOf({ goal: x.goal.id, product: x.product }) === v);
+    if (g) edit(id, (c) => void (c.serves = { goal: g.goal.id, product: g.product }));
+  };
+  return (
+    <Field label="Serves the goal">
+      <Select ariaLabel="The goal it serves" value={value} options={options} onChange={(v) => void pick(v)} />
+    </Field>
+  );
+}
+
+/** When the solutions under an outcome shipped (from the decision recorder's stamp on each). */
+function useShipMarks(id: string): ShipMark[] {
+  const marks = useStudio(
+    useShallow((s) => {
+      const out: string[] = [];
+      const walk = (nid: string) => {
+        const n = s.doc.nodes[nid];
+        if (!n) return;
+        for (const k of n.children) {
+          const c = cardOf(s.doc, k);
+          if (c?.kind === "solution" && c.stage === "shipped" && c.stageAt) out.push(`${c.stageAt}\u0000${c.title}`);
+          walk(k);
+        }
+      };
+      walk(id);
+      return out;
+    }),
+  );
+  return marks.map((m) => ({ at: Number(m.split("\u0000")[0]), label: `Shipped “${m.split("\u0000")[1]}”` }));
+}
+
 function MetricSection({ id, card }: { id: string; card: OstCard }) {
   const m = card.metric ?? { name: "", direction: "increase" as const, baseline: null, current: null, target: null };
   const set = (patch: Partial<typeof m>) => edit(id, (c) => void (c.metric = { ...m, ...patch }));
+  const marks = useShipMarks(id);
   return (
     <Section title="Metric">
       <Field label="Customer behaviour it measures">
@@ -234,7 +433,8 @@ function MetricSection({ id, card }: { id: string; card: OstCard }) {
           <CommitNumber ariaLabel="Baseline" value={m.baseline} onCommit={(baseline) => set({ baseline })} />
         </Field>
         <Field label="Now">
-          <CommitNumber ariaLabel="Current" value={m.current} onCommit={(current) => set({ current })} />
+          {/* A number typed here is today's reading too. */}
+          <CommitNumber ariaLabel="Current" value={m.current} onCommit={(current) => (current === null ? set({ current }) : edit(id, (c) => void (c.metric = withReading(m, current, Date.now()))))} />
         </Field>
         <Field label="Target">
           <CommitNumber ariaLabel="Target" value={m.target} onCommit={(target) => set({ target })} />
@@ -243,11 +443,35 @@ function MetricSection({ id, card }: { id: string; card: OstCard }) {
       <Field label="By when">
         <CommitInput ariaLabel="Timeframe" value={m.timeframe ?? ""} placeholder="End of Q1" onCommit={(t) => set({ timeframe: t.trim() || undefined })} />
       </Field>
+      <MetricReadings metric={m} marks={marks} onChange={(next) => edit(id, (c) => void (c.metric = next))} />
     </Section>
   );
 }
 
 const SOURCE: Record<OstEvidence["kind"], string> = { answer: "From your answers", note: "Your note", quote: "Quote", dump: "From your brain dump" };
+
+const STRENGTH_TONE: Record<Strength["level"], string> = {
+  none: "bg-warning-subtle text-fg",
+  team: "bg-warning-subtle text-fg",
+  thin: "bg-warning-subtle text-fg",
+  some: "bg-muted text-fg",
+  strong: "bg-success-subtle text-fg",
+};
+
+/** How strong what the card rests on is: how many people, segments and sources, how recent, what's against it. */
+function StrengthLine({ id, card }: { id: string; card: OstCard }) {
+  const s = useStrength(id, card);
+  if (s.level === "none" && card.kind !== "opportunity") return null;
+  return (
+    <div className={clsx("flex flex-col gap-[2px] rounded-lg px-[10px] py-[8px]", STRENGTH_TONE[s.level])} aria-label="How strong its evidence is">
+      <p className="text-caption">
+        <span className="font-semibold">{STRENGTH_LABEL[s.level]}</span>
+        {s.why && <span className="text-fg-muted"> · {s.why}</span>}
+      </p>
+      {s.next && <p className="text-micro text-fg-muted">{s.next}</p>}
+    </div>
+  );
+}
 
 function EvidenceSection({ id, card }: { id: string; card: OstCard }) {
   const [note, setNote] = useState("");
@@ -259,6 +483,7 @@ function EvidenceSection({ id, card }: { id: string; card: OstCard }) {
   };
   return (
     <Section title={`Evidence${card.evidence.length ? ` · ${card.evidence.length}` : ""}`}>
+      <StrengthLine id={id} card={card} />
       {card.evidence.length === 0 && (
         <p className="text-caption text-fg-muted">
           {evidenceLabel(card) || "Nothing yet"}. Quotes from customers make a card solid: drag one here from{" "}

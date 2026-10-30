@@ -4,21 +4,29 @@ import { Hono } from "hono";
 import { sanitizeDecision, type Decision } from "@/decisions/model";
 import type { Doc } from "@/doc/schema";
 import type { Project } from "@/projects/model";
-import type { ContextFields, Product } from "@/org/context-md";
+import { contextShape } from "@/org/context-md";
 import { IndexUnavailable } from "../index/db";
 import { topicsOf, type OrgIndex, type PieceRow } from "../index/indexer";
 import { indexFor } from "../index/registry";
 import { packedPieces, packFor, search, showsUp, type Hit } from "../index/search";
 import { orgGraph } from "@/hub/graph";
 import { filingShape, topicShape, type Topic } from "@/hub/topics";
+import { personShape, whoShape } from "@/hub/people";
 import { chooseFolder, createOrg, currentOrg, listOrgs, openFolder, qalamHome, rememberOrg, storeFor } from "./home";
 import { noticesNow } from "./notices";
 import { reviewOrg } from "./review";
+import { proposeOutcomes } from "./outcomes";
+import { learnNext } from "./learn";
+import { pullFeed } from "../feeds";
+import { feedShape } from "@/org/feeds";
+import { COMMENT_MAX, isCardRef as isCommentCard } from "@/org/comments";
+import { nanoid } from "nanoid";
 import { askOrg } from "../ask";
 import { captureSource, fileSources } from "../capture";
 import type { Ingested } from "@/discovery/ingest/core";
 import type { Proposal } from "@/discovery/proposals";
 import { MAX_SOURCE_TEXT, SOURCE_KIND_LABEL, type SourceRecord } from "@/discovery/sources";
+import { tableOf } from "@/discovery/table";
 import { aiConfigured, rateLimited } from "@/ai/server";
 import { ConflictError, NotFoundError, type OrgEvent, type OrgStore } from "./store";
 
@@ -104,16 +112,17 @@ export function orgRoutes(): Hono<Env> {
   // What the organization and its products are (about.md, products/*.md), and their goals.
   r.get("/api/org/:org/about", async (c) => c.json(await c.get("store").getAbout()));
   r.put("/api/org/:org/about", async (c) => {
-    const a = (await c.req.json()) as ContextFields;
-    if (!isContext(a)) return bad("Not an organization's context");
+    const a = contextShape(await c.req.json().catch(() => null));
+    if (!a) return bad("Not an organization's context");
     await c.get("store").putAbout(a, { tab: tabOf(c.req.raw.headers) });
     return c.json({ ok: true });
   });
   r.get("/api/org/:org/products", async (c) => c.json(await c.get("store").listProducts()));
   r.put("/api/org/:org/products/:id", async (c) => {
-    const p = (await c.req.json()) as Product;
-    if (!p || p.id !== c.req.param("id") || !ID.test(p.id) || typeof p.name !== "string" || !p.name.trim() || !isContext(p)) return bad("Not a product");
-    await c.get("store").putProduct({ ...p, name: p.name.trim().slice(0, 80) }, { tab: tabOf(c.req.raw.headers) });
+    const p = (await c.req.json().catch(() => null)) as { id?: unknown; name?: unknown } | null;
+    const fields = contextShape(p);
+    if (!p || !fields || p.id !== c.req.param("id") || typeof p.id !== "string" || !ID.test(p.id) || typeof p.name !== "string" || !p.name.trim()) return bad("Not a product");
+    await c.get("store").putProduct({ ...fields, id: p.id, name: p.name.trim().slice(0, 80) }, { tab: tabOf(c.req.raw.headers) });
     return c.json({ ok: true });
   });
   r.delete("/api/org/:org/products/:id", async (c) => {
@@ -121,6 +130,29 @@ export function orgRoutes(): Hono<Env> {
     return c.json({ ok: true });
   });
   r.get("/api/org/:org/goals", async (c) => c.json(await c.get("store").listGoals()));
+
+  // People the organization hears from (people/*.md).
+  r.get("/api/org/:org/people", async (c) => c.json(await c.get("store").listPeople()));
+  r.put("/api/org/:org/people/:id", async (c) => {
+    const id = c.req.param("id");
+    const p = ID.test(id) ? personShape(await c.req.json().catch(() => null), id) : null;
+    if (!p) return bad("Not a person");
+    await c.get("store").putPerson(p, { tab: tabOf(c.req.raw.headers) });
+    return c.json({ ok: true });
+  });
+  r.delete("/api/org/:org/people/:id", async (c) => {
+    await c.get("store").removePerson(c.req.param("id"), { tab: tabOf(c.req.raw.headers) });
+    return c.json({ ok: true });
+  });
+
+  // Who works on this computer (kept with its local state, out of Git).
+  r.get("/api/org/:org/you", (c) => c.json({ name: c.get("store").you }));
+  r.put("/api/org/:org/you", async (c) => {
+    const b = (await c.req.json().catch(() => null)) as { name?: unknown } | null;
+    if (b?.name !== null && typeof b?.name !== "string") return bad("Say your name");
+    await c.get("store").setYou(b.name as string | null);
+    return c.json({ name: c.get("store").you });
+  });
 
   // Decisions: the log, newest first (a board's or a card's), added to as boards change.
   r.get("/api/org/:org/decisions", (c) => {
@@ -132,7 +164,9 @@ export function orgRoutes(): Hono<Env> {
     const body = (await c.req.json().catch(() => null)) as { decisions?: unknown[] } | null;
     const list = Array.isArray(body?.decisions) && body.decisions.length <= 200 ? body.decisions.map(sanitizeDecision) : [];
     if (!list.length || list.some((d) => !d)) return bad("Not decisions");
-    await c.get("store").appendDecisions(list as Decision[], { tab: tabOf(c.req.raw.headers) });
+    // Who decided: the person on this computer, when they've said who they are.
+    const you = c.get("store").you;
+    await c.get("store").appendDecisions((list as Decision[]).map((d) => (d.who || !you ? d : { ...d, who: you })), { tab: tabOf(c.req.raw.headers) });
     return c.json({ ok: true });
   });
   r.patch("/api/org/:org/decisions/:id", async (c) => {
@@ -252,6 +286,56 @@ export function orgRoutes(): Hono<Env> {
       return c.json({ error: "failed", message: e instanceof Error ? e.message : String(e) }, 502);
     }
   });
+  /** Which outcomes would move a stated goal: Qalam AI's candidates, each resting on need pages, checked by code. */
+  r.post("/api/org/:org/outcomes", async (c) => {
+    if (!aiConfigured()) return c.json({ error: "no_key", message: "Qalam AI isn't set up here." }, 501);
+    if (rateLimited(c.req.raw)) return c.json({ error: "rate_limited", message: "Too many requests, try again in a few minutes." }, 429);
+    const b = (await c.req.json().catch(() => null)) as { product?: unknown; goal?: unknown } | null;
+    if (typeof b?.goal !== "string" || !ID.test(b.goal) || (b.product !== null && (typeof b.product !== "string" || !ID.test(b.product)))) return bad("Say which goal");
+    try {
+      return c.json(await proposeOutcomes(c.get("store"), { product: b.product as string | null, goal: b.goal }));
+    } catch (e) {
+      if (e instanceof NotFoundError) return failure(e);
+      return c.json({ error: "failed", message: e instanceof Error ? e.message : String(e) }, 502);
+    }
+  });
+  /** What to learn next: the gaps code finds, and Qalam AI's plan to close them (who to talk to, what to ask, what to test). */
+  r.post("/api/org/:org/learn", async (c) => {
+    const b = (await c.req.json().catch(() => null)) as { product?: unknown; plan?: unknown } | null;
+    const plan = b?.plan === true;
+    if (plan && !aiConfigured()) return c.json({ error: "no_key", message: "Qalam AI isn't set up here." }, 501);
+    if (plan && rateLimited(c.req.raw)) return c.json({ error: "rate_limited", message: "Too many requests, try again in a few minutes." }, 429);
+    const product = typeof b?.product === "string" && ID.test(b.product) ? b.product : null;
+    try {
+      return c.json(await learnNext(c.get("store"), { product, plan }));
+    } catch (e) {
+      return c.json({ error: "failed", message: e instanceof Error ? e.message : String(e) }, 502);
+    }
+  });
+  // Feeds: what's pulled in every day or week (hub/feeds.json).
+  r.get("/api/org/:org/feeds", async (c) => c.json(await c.get("store").listFeeds()));
+  r.put("/api/org/:org/feeds/:id", async (c) => {
+    const f = feedShape(await c.req.json().catch(() => null), c.req.param("id"));
+    if (!f) return bad("Not a feed: name it, say what to pull and how often");
+    const list = await c.get("store").changeFeeds((l) => (l.some((x) => x.id === f.id) ? l.map((x) => (x.id === f.id ? { ...x, ...f, ...(f.paused ? {} : { paused: undefined }), ...(x.url !== f.url || x.request !== f.request ? { error: undefined } : {}) } : x)) : [...l, f]), { tab: tabOf(c.req.raw.headers) });
+    return c.json(list.find((x) => x.id === f.id));
+  });
+  r.delete("/api/org/:org/feeds/:id", async (c) => {
+    const id = c.req.param("id");
+    await c.get("store").changeFeeds((l) => l.filter((x) => x.id !== id), { tab: tabOf(c.req.raw.headers) });
+    return c.json({ ok: true });
+  });
+  /** Pull a feed now (it answers when the pull is done: what it brought is then a source). */
+  r.post("/api/org/:org/feeds/:id/pull", async (c) => {
+    if (!aiConfigured()) return c.json({ error: "no_key", message: "Qalam AI isn't set up here, so feeds wait." }, 501);
+    return c.json(await pullFeed(c.get("store"), c.req.param("id")));
+  });
+  /** Keep a plan as a page in research/. */
+  r.post("/api/org/:org/research", async (c) => {
+    const b = (await c.req.json().catch(() => null)) as { title?: unknown; markdown?: unknown } | null;
+    if (typeof b?.title !== "string" || !b.title.trim() || typeof b.markdown !== "string" || !b.markdown.trim() || b.markdown.length > 100_000) return bad("Say what to save");
+    return c.json({ file: await c.get("store").saveResearch(b.title.slice(0, 120), b.markdown) });
+  });
   /** Ask the organization: Qalam AI's answer, checked by code, streamed (NDJSON) with what it's doing meanwhile. */
   r.post("/api/org/:org/ask", async (c) => {
     if (!aiConfigured()) return c.json({ error: "no_key", message: "Qalam AI isn't set up here." }, 501);
@@ -308,6 +392,30 @@ export function orgRoutes(): Hono<Env> {
     await c.get("store").setPlacements(b.board, b.sourceId, b.proposals as Proposal[], { tab: tabOf(c.req.raw.headers) });
     return c.json({ ok: true });
   });
+  // Comments on cards: the team's talk about a card (hub/comments.jsonl).
+  r.get("/api/org/:org/comments", async (c) => {
+    const card = c.req.query("card");
+    return c.json(await c.get("store").listComments(card && isCommentCard(card) ? card : undefined));
+  });
+  r.post("/api/org/:org/comments", async (c) => {
+    const b = (await c.req.json().catch(() => null)) as { card?: unknown; text?: unknown } | null;
+    const text = typeof b?.text === "string" ? b.text.trim() : "";
+    if (!isCommentCard(b?.card) || !text || text.length > COMMENT_MAX) return bad("Say which card, and what to say");
+    const store = c.get("store");
+    const comment = { id: nanoid(10), card: b.card, text, at: Date.now(), ...(store.you ? { who: store.you } : {}) };
+    await store.addComment(comment, { tab: tabOf(c.req.raw.headers) });
+    return c.json(comment);
+  });
+  r.post("/api/org/:org/comments/:id/resolve", async (c) => {
+    const b = (await c.req.json().catch(() => ({}))) as { on?: unknown };
+    try {
+      await c.get("store").resolveComment(c.req.param("id"), b.on !== false, c.get("store").you, { tab: tabOf(c.req.raw.headers) });
+      return c.json({ ok: true });
+    } catch (e) {
+      return failure(e);
+    }
+  });
+
   // Cards on two boards linked as the same need.
   /** All links, or one card's: the cards it's linked to, with their titles and boards. */
   r.get("/api/org/:org/relations", async (c) => {
@@ -397,7 +505,10 @@ export function orgRoutes(): Hono<Env> {
   r.put("/api/org/:org/sources/:id", async (c) => {
     const s = (await c.req.json()) as SourceRecord;
     if (!s || s.id !== c.req.param("id") || !ID.test(s.id) || typeof s.text !== "string") return bad("Not a source");
-    await c.get("store").putSource(s, { tab: tabOf(c.req.raw.headers) });
+    const who = whoShape(s.who);
+    // A table's rows and columns are code's reading of the text, read again here.
+    const table = s.table ? (tableOf(s.text, s.table.delimiter === "\t" || s.table.delimiter === ";" ? s.table.delimiter : ",") ?? undefined) : undefined;
+    await c.get("store").putSource({ ...s, who, table }, { tab: tabOf(c.req.raw.headers) });
     return c.json({ ok: true });
   });
   r.delete("/api/org/:org/sources/:id", async (c) => {
@@ -594,6 +705,8 @@ function ingestedShape(raw: unknown): Ingested | null {
   if (!i || !KINDS.has(i.kind as string) || i.kind === "dump" || typeof i.title !== "string" || !i.title.trim() || typeof i.text !== "string" || !i.text.trim() || i.text.length > MAX_SOURCE_TEXT) return null;
   const pages = Array.isArray(i.pages) && i.pages.every((n) => typeof n === "number") ? (i.pages as number[]) : undefined;
   const talk = Array.isArray(i.segments) && i.transcript && typeof i.transcript === "object" ? { segments: i.segments as Ingested["segments"], transcript: i.transcript as Ingested["transcript"] } : {};
+  // A table is read again from the text here: what a window says about it isn't taken on trust.
+  const table = i.table && typeof i.table === "object" ? tableOf(i.text, (i.table as { delimiter?: unknown }).delimiter === "\t" ? "\t" : (i.table as { delimiter?: unknown }).delimiter === ";" ? ";" : ",") : null;
   return {
     kind: i.kind as Ingested["kind"],
     title: i.title.replace(/\s+/g, " ").trim().slice(0, 160),
@@ -602,6 +715,7 @@ function ingestedShape(raw: unknown): Ingested | null {
     ...(pages ? { pages } : {}),
     ...(i.truncated === true ? { truncated: true } : {}),
     ...talk,
+    ...(table ? { table } : {}),
   };
 }
 
@@ -621,7 +735,3 @@ function publicPiece(p: PieceRow | Hit) {
   return { ...rest, topics: topicsOf(p) };
 }
 
-const isContext = (c: unknown): c is ContextFields => {
-  const x = c as ContextFields;
-  return !!x && typeof x.audience === "string" && typeof x.context === "string" && Array.isArray(x.goals) && x.goals.every((g) => typeof g === "string") && Array.isArray(x.segments) && x.segments.every((g) => typeof g === "string");
-};

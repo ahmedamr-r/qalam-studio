@@ -4,6 +4,7 @@ import CommandPalette from "./CommandPalette";
 import ShortcutsPanel from "./ShortcutsPanel";
 import ContextMenu from "./ContextMenu";
 import { DialogHost, confirmDialog, promptDialog } from "./dialog";
+import { PersonEditorHost } from "../org/PersonEditor";
 
 /*
  * Command surfaces over the studio: the ⌘K Actions palette, the ⌃⇧? shortcuts panel, the right-click
@@ -19,6 +20,7 @@ export function CommandSurfaces() {
       <ShortcutsPanel />
       <ContextMenu />
       <DialogHost />
+      <PersonEditorHost />
     </>
   );
 }

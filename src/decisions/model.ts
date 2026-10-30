@@ -58,6 +58,8 @@ export interface Decision {
   detail?: Record<string, unknown>;
   /** You, or Qalam AI (its proposals, once you accepted them). */
   by: "you" | "qalam";
+  /** The person who made it (or accepted Qalam AI's proposal), as this computer names them. */
+  who?: string;
   /** Big enough to ask why. */
   big: boolean;
   why?: string;
@@ -110,6 +112,8 @@ export function sanitizeDecision(raw: unknown): Decision | null {
   if (isObject(d.detail) && JSON.stringify(d.detail).length <= 12_000) out.detail = d.detail;
   const why = line(d.why, 500);
   if (why) out.why = why;
+  const who = line(d.who, 80);
+  if (who) out.who = who;
   if (d.undone === true) out.undone = true;
   if (isObject(d.knew)) {
     const k = d.knew as Partial<KnewThen>;

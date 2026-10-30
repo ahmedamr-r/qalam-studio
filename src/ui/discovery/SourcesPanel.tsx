@@ -25,6 +25,9 @@ import { dragQuote, dragSource } from "./drop";
 import { addFromOrganization, openSource, removeSource, updateSource, useSources } from "./sources";
 import { sourcesDb } from "@/discovery/db";
 import { SpeakersLine, SpeakersStep } from "./SpeakersStep";
+import { WhoSection } from "./WhoSection";
+import { voiceOf } from "@/hub/people";
+import { usePeople } from "@/org/people";
 import { openBrainDump } from "./dump";
 
 /*
@@ -115,7 +118,7 @@ function metaOf(s: SourceRecord): string {
   const t = s.transcript;
   const talk = t ? [`${Math.max(1, Math.round(t.durationSec / 60))} min`, plural(t.speakers.length, "speaker")] : [];
   const pieces = s.kind === "dump" ? plural(s.quotes.length, "piece") : plural(s.quotes.length, "quote");
-  return [SOURCE_KIND_LABEL[s.kind], ...talk, s.pages ? plural(s.pages.length, "page") : "", awaitingRoles(s) ? "Say who is who" : pieces, left && s.read.length ? `${left} unread` : ""].filter(Boolean).join(" · ");
+  return [s.table ? "Table" : SOURCE_KIND_LABEL[s.kind], ...talk, s.pages ? plural(s.pages.length, "page") : "", s.table ? plural(s.table.rows, "row") : "", awaitingRoles(s) ? "Say who is who" : pieces, left && s.read.length ? `${left} unread` : ""].filter(Boolean).join(" · ");
 }
 
 function SourceRow({ source, quoting }: { source: SourceRecord; quoting: boolean }) {
@@ -483,6 +486,7 @@ function SourceView({ source, focus }: { source: SourceRecord; focus?: string })
         </Button>
       )}
       {source.transcript && (roles ? <SpeakersStep source={source} onDone={changing ? () => setChanging(false) : undefined} /> : <SpeakersLine t={source.transcript} onChange={() => setChanging(true)} />)}
+      {!dump && !roles && <WhoSection source={source} onChange={(who) => void updateSource(source.id, (s) => ({ ...s, who }))} />}
       <Segmented
         label="Show"
         value={tab}
@@ -521,7 +525,11 @@ function SourceView({ source, focus }: { source: SourceRecord; focus?: string })
 }
 
 function QuoteCard({ source, q, cards, onShow }: { source: SourceRecord; q: SourceQuote; cards: { id: string; title: string; against: boolean }[]; onShow: () => void }) {
-  const meta: ReactNode[] = [q.time ? clock(q.time[0]) : null, q.speaker, q.page ? `p. ${q.page}` : null, q.addedBy === "user" ? "Picked by you" : null].filter(Boolean);
+  const people = usePeople((s) => s.people);
+  // Who said it, as the organization knows them: their name and segment.
+  const voice = source.kind === "dump" ? null : voiceOf(source, q, new Map(people.map((p) => [p.id, p])));
+  const who = voice?.name ? `${voice.name}${voice.segments.length ? ` (${voice.segments.join(", ")})` : ""}` : voice?.segments.length ? voice.segments.join(", ") : q.speaker;
+  const meta: ReactNode[] = [q.time ? clock(q.time[0]) : null, who, q.page ? `p. ${q.page}` : null, q.addedBy === "user" ? "Picked by you" : null].filter(Boolean);
   return (
     <figure
       draggable

@@ -255,6 +255,11 @@ export async function structured<T>(opts: CallOpts): Promise<{ data: T; model?: 
   throw new Error("The response ended early.");
 }
 
+/** Items brought in from connected tools, word for word (a feed's pull, in the core): null when none of them is here. */
+export function importFromTools(task: string, connectors: string[], signal: AbortSignal) {
+  return runResearch({ purpose: "import", task, connectors }, { backend: BACKEND, client: getClient(), model: RESEARCH_MODEL }, () => {}, signal);
+}
+
 export function streamResearch(research: ResearchRequest): Response {
   const encoder = new TextEncoder();
   const abort = new AbortController();

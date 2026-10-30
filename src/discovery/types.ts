@@ -75,6 +75,14 @@ export interface OstAssumption {
   at?: number;
 }
 
+/** The number on a day: typed in, or read by code from an export. */
+export interface MetricReading {
+  at: number;
+  value: number;
+  /** The file it was read from; none: typed in. */
+  from?: string;
+}
+
 export interface OstMetric {
   name: string;
   unit?: string;
@@ -84,6 +92,8 @@ export interface OstMetric {
   target: number | null;
   /** By when, in the builder's words ("by March"). */
   timeframe?: string;
+  /** The number over time, oldest first (src/discovery/readings.ts). */
+  readings?: MetricReading[];
 }
 
 export interface OstTest {
@@ -114,6 +124,12 @@ export interface OstCard {
   test?: OstTest;
   /** The outcome: the number it moves. */
   metric?: OstMetric;
+  /** Who answers for it, as the team names them. */
+  owner?: string;
+  /** A need: the team's call on what code can't count (src/discovery/compare.ts). */
+  rating?: { often?: 1 | 2 | 3; hurts?: 1 | 2 | 3; fit?: 1 | 2 | 3 };
+  /** The outcome: the stated goal it serves, a product's or the organization's (src/org/goals.ts). */
+  serves?: { goal: string; product: string | null };
   /** Its child cards are hidden (the branch is folded). */
   collapsed?: boolean;
   /** The tree's root: top-down (the default) or left-to-right. */

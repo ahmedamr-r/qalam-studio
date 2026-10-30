@@ -6,6 +6,7 @@ import DesignThis from "./DesignThis";
 import ReviewLayer from "./ReviewLayer";
 import BrainDump from "./BrainDump";
 import WhyPrompt from "../decisions/WhyPrompt";
+import CompareView from "./CompareView";
 import { noticesStale, useNotices } from "../notices/useNotices";
 import { useStudio } from "@/doc/store";
 import { useProject } from "@/projects/session";
@@ -14,7 +15,8 @@ import { useDiscovery } from "./store";
 /**
  * The Discovery board's DOM over the canvas: the title being typed, the bar over the selected
  * card, the start sheet (interview, sample, import, blank), the Design this card, Qalam AI's
- * proposals under review, the brain dump card, and the why a big decision asks for. Only in Discovery.
+ * proposals under review, the brain dump card, the needs compared side by side, and the why a big
+ * decision asks for. Only in Discovery.
  * It also keeps what needs a look about the board's cards current (the canvas marks them).
  */
 export default function DiscoveryLayer() {
@@ -42,6 +44,7 @@ export default function DiscoveryLayer() {
           <BrainDump vp={vp} />
           <WhyPrompt />
           <StartSheet />
+          <CompareView />
         </>
       )}
     </div>

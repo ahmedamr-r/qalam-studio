@@ -55,6 +55,9 @@ const TYPES: Record<string, string> = { pdf: "application/pdf", docx: DOCX, md: 
 /** Whether a file is one Qalam reads (by its name). */
 export const readable = (name: string) => !!TYPES[name.split(".").pop()?.toLowerCase() ?? ""];
 
+/** Bytes fetched or exported (a feed's page) as a source's text, read by their type. */
+export const ingestBytes = (bytes: ArrayBuffer, type: string, name: string, origin: string) => fromBytes(bytes, type, name, origin, node);
+
 /** A file in the organization's folder as a source's text, named by `name` (its name as it was dropped in, when it has moved since). */
 export async function ingestPath(file: string, name = path.basename(file)): Promise<Ingested> {
   const type = TYPES[name.split(".").pop()?.toLowerCase() ?? ""];

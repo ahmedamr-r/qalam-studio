@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { watch, type FSWatcher } from "node:fs";
-import { readdir, readFile, rm } from "node:fs/promises";
+import { readdir, readFile, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { nanoid } from "nanoid";
 import { appendEntries, decisionsFromMarkdown, replaceEntry } from "@/decisions/format";
@@ -14,6 +14,10 @@ import { pairKey, type Notice } from "@/hub/checks";
 import { applyFiling, type Applied, type Filing, type Topic, type TopicInfo } from "@/hub/topics";
 import { factHash } from "@/knowledge/refs";
 import { aboutFromMarkdown, aboutToMarkdown, emptyContext, productFromMarkdown, productToMarkdown, type ContextFields, type Product } from "@/org/context-md";
+import { personFromMarkdown, personToMarkdown } from "@/org/people-md";
+import type { Person } from "@/hub/people";
+import type { Feed } from "@/org/feeds";
+import { commentsFromLog, type CardComment } from "@/org/comments";
 import type { Project, ProjectType } from "@/projects/model";
 import { assetExt, assetType, decodeProject, decodeSource, docVersion, encodeProject, encodeSource, isLocalField, recordVersion, splitLocal, type LocalFields } from "./codecs";
 import { assetHash, atomicWrite, contentHash, inside, locked, readJson, slugify, stableStringify, uniqueName } from "./fsx";
@@ -39,6 +43,7 @@ export type OrgEvent = { tab?: string } & (
   | { kind: "chat"; id: string; removed?: boolean }
   | { kind: "naming" }
   | { kind: "product"; id: string; removed?: boolean }
+  | { kind: "person"; id: string; removed?: boolean }
   | { kind: "about" }
   | { kind: "org" }
   | { kind: "decision"; ids: string[]; boards: string[] }
@@ -49,6 +54,10 @@ export type OrgEvent = { tab?: string } & (
   | { kind: "inbox" }
   /** What waits on a board from material added to the organization changed. */
   | { kind: "placement"; board: string }
+  /** The feeds, or what one of them pulled, changed. */
+  | { kind: "feeds" }
+  /** A comment on a card was written or resolved. */
+  | { kind: "comment"; cards: string[] }
 );
 
 
@@ -63,6 +72,10 @@ export interface Goal {
   metric?: OstCard["metric"];
   /** The outcome it sits under on its board (a sub-outcome), if any. */
   parent: string | null;
+  /** The stated goal it serves. */
+  serves?: OstCard["serves"];
+  stage?: OstCard["stage"];
+  owner?: string;
 }
 
 export class ConflictError extends Error {
@@ -101,6 +114,8 @@ interface LocalState {
   projects: Record<string, LocalFields>;
   /** When this computer last opened the organization's home ("since your last visit"). */
   visit?: number;
+  /** Who works on this computer, as the team names them (decisions and comments carry it). */
+  you?: string;
 }
 
 /** A line of hub/notices.jsonl: a notice dismissed or brought back, a review's finding, a review ran. */
@@ -131,6 +146,8 @@ export class OrgStore {
   private chats = new Map<string, string>();
   private assets = new Map<string, string>();
   private products = new Map<string, string>();
+  /** People the organization hears from (people/*.md), by id. */
+  private people = new Map<string, string>();
   /** The decision log: each month file's decisions. */
   private decisions = new Map<string, Decision[]>();
   /** Topic pages (hub/topics/*.md), by id. */
@@ -215,6 +232,7 @@ export class OrgStore {
     for (const md of await this.files("sources", ".md")) await this.indexSource(md);
     for (const file of await this.files("design-systems", ".json")) await this.indexSystem(file);
     for (const file of await this.files("products", ".md")) await this.indexProduct(file);
+    for (const file of await this.files("people", ".md")) await this.indexPerson(file);
     for (const file of await this.files("decisions", ".md")) await this.indexDecisions(file);
     for (const file of await this.files("hub/topics", ".md")) await this.indexTopic(file);
     for (const file of await this.files("assets", "")) this.assets.set(path.basename(file).replace(/\.[^.]+$/, ""), file);
@@ -269,6 +287,17 @@ export class OrgStore {
     try {
       const p = productFromMarkdown(await readFile(file, "utf8"));
       if (p) this.products.set(p.id, file);
+      return p;
+    } catch {
+      return null;
+    }
+  }
+
+  private async indexPerson(file: string): Promise<Person | null> {
+    try {
+      const p = personFromMarkdown(await readFile(file, "utf8"));
+      // Two files with the same id (a copied file): the first one keeps it.
+      if (p && (!this.people.has(p.id) || this.people.get(p.id) === file)) this.people.set(p.id, file);
       return p;
     } catch {
       return null;
@@ -680,6 +709,13 @@ export class OrgStore {
     this.emit({ kind: "about", tab: opts.tab });
   }
 
+  /** When about.md (null) or a product's file was last written: 0 when there's none. */
+  async contextWrittenAt(product: string | null): Promise<number> {
+    const file = product ? this.products.get(product) : this.abs("about.md");
+    if (!file) return 0;
+    return (await stat(file).catch(() => null))?.mtimeMs ?? 0;
+  }
+
   async listProducts(): Promise<Product[]> {
     const out: Product[] = [];
     for (const file of this.products.values()) {
@@ -721,6 +757,80 @@ export class OrgStore {
       if (rec) await this.putSource({ ...rec, product: null }, opts);
     }
     this.emit({ kind: "product", id, removed: true, tab: opts.tab });
+  }
+
+  // -------------------------------------------------------------------------
+  // Feeds (hub/feeds.json): what's pulled in every day or week, with what each has seen.
+
+  private feedsFile = () => this.abs("hub/feeds.json");
+
+  async listFeeds(): Promise<Feed[]> {
+    return (await readJson<{ feeds?: Feed[] }>(this.feedsFile()))?.feeds ?? [];
+  }
+
+  /** Change the feeds in one write (under the file's lock, so a pull and a window's edit don't undo each other). */
+  async changeFeeds(fn: (list: Feed[]) => Feed[], opts: { tab?: string } = {}): Promise<Feed[]> {
+    const file = this.feedsFile();
+    const next = await locked(file, async () => {
+      const list = fn(await this.listFeeds());
+      await this.write(file, stableStringify({ qalam: "feeds/1", feeds: list }));
+      return list;
+    });
+    this.emit({ kind: "feeds", tab: opts.tab });
+    return next;
+  }
+
+  // -------------------------------------------------------------------------
+  // Research plans (research/<date>-<slug>.md): what to learn next, kept as pages people edit.
+
+  /** Save a page in research/, named by its day and title; its path in the organization's folder. */
+  async saveResearch(title: string, markdown: string): Promise<string> {
+    const dir = this.abs("research");
+    const day = new Date().toISOString().slice(0, 10);
+    const names = new Set((await this.files("research", ".md")).map((f) => path.basename(f)));
+    const file = path.join(dir, uniqueName(`${day}-${slugify(title, "plan")}`, ".md", (n) => names.has(n)));
+    await this.write(file, markdown);
+    return path.relative(this.dir, file);
+  }
+
+  // -------------------------------------------------------------------------
+  // People the organization hears from (people/<slug>.md): who is behind what customers said.
+
+  async listPeople(): Promise<Person[]> {
+    const out: Person[] = [];
+    for (const [id, file] of this.people) {
+      try {
+        const p = personFromMarkdown(await readFile(file, "utf8"));
+        if (p?.id === id) out.push(p);
+      } catch {
+        // removed meanwhile
+      }
+    }
+    return out.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  putPerson(p: Person, opts: { tab?: string } = {}): Promise<void> {
+    return locked(`person:${p.id}`, async () => {
+      let file = this.people.get(p.id);
+      if (!file) {
+        const dir = this.abs("people");
+        const used = new Set(this.people.values());
+        file = path.join(dir, uniqueName(slugify(p.name, "person"), ".md", (n) => used.has(path.join(dir, n))));
+      }
+      await this.write(file, personToMarkdown(p));
+      this.people.set(p.id, file);
+      this.emit({ kind: "person", id: p.id, tab: opts.tab });
+    });
+  }
+
+  /** Forget a person: sources that named them keep their words, as an unnamed voice. */
+  async removePerson(id: string, opts: { tab?: string } = {}): Promise<void> {
+    await locked(`person:${id}`, async () => {
+      const file = this.people.get(id);
+      if (file) await rm(file, { force: true });
+      this.people.delete(id);
+    });
+    this.emit({ kind: "person", id, removed: true, tab: opts.tab });
   }
 
   /** Every board's outcomes (and sub-outcomes), for the organization's goals. */
@@ -876,6 +986,25 @@ export class OrgStore {
     this.emit({ kind: "notice", tab: opts.tab });
   }
 
+  /** Comments on cards, as they are now: all of them, or one card's. */
+  async listComments(card?: string): Promise<CardComment[]> {
+    const all = commentsFromLog(await this.readLog<unknown>("hub/comments.jsonl"));
+    return card ? all.filter((c) => c.card === card) : all;
+  }
+
+  async addComment(c: CardComment, opts: { tab?: string } = {}): Promise<void> {
+    await this.appendLog("hub/comments.jsonl", [{ comment: c }]);
+    this.emit({ kind: "comment", cards: [c.card], tab: opts.tab });
+  }
+
+  /** Resolve a comment, or open it again. */
+  async resolveComment(id: string, on: boolean, who: string | null, opts: { tab?: string } = {}): Promise<void> {
+    const c = (await this.listComments()).find((x) => x.id === id);
+    if (!c) throw new NotFoundError(id);
+    await this.appendLog("hub/comments.jsonl", [{ resolve: id, at: Date.now(), ...(who ? { who } : {}), ...(on ? {} : { open: true }) }]);
+    this.emit({ kind: "comment", cards: [c.card], tab: opts.tab });
+  }
+
   /** Cards linked as the same need, as they are now. */
   async listRelations(): Promise<Relation[]> {
     const now = new Map<string, Relation>();
@@ -904,6 +1033,18 @@ export class OrgStore {
   /** When this computer last opened the organization's home. */
   get lastVisit(): number | null {
     return this.local.visit ?? null;
+  }
+
+  /** Who works on this computer (null: they haven't said). */
+  get you(): string | null {
+    return this.local.you ?? null;
+  }
+
+  async setYou(name: string | null): Promise<void> {
+    const n = name?.replace(/\s+/g, " ").trim().slice(0, 80);
+    if (n) this.local.you = n;
+    else delete this.local.you;
+    await locked(this.abs(".qalam/local/state.json"), () => atomicWrite(this.abs(".qalam/local/state.json"), stableStringify(this.local)));
   }
 
   // -------------------------------------------------------------------------
@@ -1117,6 +1258,16 @@ export class OrgStore {
           this.emit({ kind: "product", id: gone[0], removed: true });
         }
       }
+    } else if (parts[0] === "people" && parts.length === 2 && rel.endsWith(".md")) {
+      const p = bytes ? await this.indexPerson(file) : null;
+      if (p) this.emit({ kind: "person", id: p.id });
+      else {
+        const gone = [...this.people].find(([, f]) => f === file);
+        if (gone) {
+          this.people.delete(gone[0]);
+          this.emit({ kind: "person", id: gone[0], removed: true });
+        }
+      }
     } else if (parts[0] === "decisions" && parts.length === 2 && rel.endsWith(".md")) {
       const before = new Map((this.decisions.get(file) ?? []).map((d) => [d.id, JSON.stringify(d)]));
       const after = bytes ? await this.indexDecisions(file) : [];
@@ -1140,8 +1291,12 @@ export class OrgStore {
       this.emit({ kind: "inbox" });
     } else if (parts[0] === "hub" && parts[1] === "placements" && parts.length === 3 && rel.endsWith(".json")) {
       this.emit({ kind: "placement", board: path.basename(rel, ".json") });
+    } else if (rel === "hub/feeds.json") {
+      this.emit({ kind: "feeds" });
     } else if (rel === "hub/notices.jsonl") {
       this.emit({ kind: "notice" });
+    } else if (rel === "hub/comments.jsonl") {
+      this.emit({ kind: "comment", cards: [] });
     } else if (rel === "hub/relations.jsonl") {
       this.emit({ kind: "relation" });
     } else if (rel === "about.md") {
@@ -1177,7 +1332,7 @@ function goalsOf(record: Project, doc: Doc | null): Omit<Goal, "boardName" | "pr
   for (const [id, n] of Object.entries(nodes)) {
     const c = n.meta?.ost;
     if (c?.kind !== "outcome") continue;
-    out.push({ board: record.id, id, title: c.title, ...(c.metric ? { metric: c.metric } : {}), parent: parentOutcome(id) });
+    out.push({ board: record.id, id, title: c.title, ...(c.metric ? { metric: c.metric } : {}), parent: parentOutcome(id), ...(c.serves ? { serves: c.serves } : {}), stage: c.stage, ...(c.owner ? { owner: c.owner } : {}) });
   }
   return out;
 }

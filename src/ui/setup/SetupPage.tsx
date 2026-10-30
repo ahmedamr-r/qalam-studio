@@ -29,9 +29,9 @@ import { acceptLines, answerSetupRound, discardLines, openSetup, placeSetup, ret
 
 const ICON = { absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 
-const ORG_FIELD: Record<SetupField, string> = { audience: "Who we serve", context: "What we do", goals: "Goals", segments: "Segments" };
-const PRODUCT_FIELD: Record<SetupField, string> = { audience: "Who it's for", context: "Context", goals: "Goals", segments: "Segments" };
-const ORDER: SetupField[] = ["context", "audience", "goals", "segments"];
+const PRODUCT_FIELD: Record<SetupField, string> = { audience: "Who it's for", context: "Context", strategy: "Strategy", goals: "Goals", segments: "Segments", alternatives: "What customers use instead", constraints: "Constraints" };
+const ORG_FIELD: Record<SetupField, string> = { ...PRODUCT_FIELD, audience: "Who we serve", context: "What we do" };
+const ORDER: SetupField[] = ["context", "audience", "goals", "strategy", "segments", "alternatives", "constraints"];
 
 export default function SetupPage() {
   const [org, setOrg] = useState<OrgRef | null>(null);

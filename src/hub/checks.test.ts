@@ -71,6 +71,22 @@ describe("what needs a look", () => {
     expect(runChecks(input({ topics: [t], pieces, indexed: false }))).toEqual([]);
   });
 
+  it("counts the people who raise a need, not the sources: two people in one survey are two voices", () => {
+    const line = { id: "l1", section: "know" as const, text: "l1", by: "qalam" as const, cites: ["hub:quote:a", "hub:quote:b", "hub:quote:c"], from: [], at: ago(3) };
+    const t = topic({ lines: [line] });
+    const pieces = new Map(["a", "b", "c"].map((id) => [`hub:quote:${id}`, { type: "quote", sub: "pain", source: "s1", stage: null, at: ago(5) }]));
+    // One source, no one named: not yet a pattern.
+    expect(runChecks(input({ topics: [t], pieces }))).toEqual([]);
+    const voice = (key: string, name: string, segments: string[]) => ({ key, name, segments, source: "s1", at: ago(5) });
+    const voices = new Map([
+      ["hub:quote:a", voice("person:p1", "Sara", ["Parents"])],
+      ["hub:quote:b", voice("person:p1", "Sara", ["Parents"])],
+      ["hub:quote:c", voice("source:s1:s3", "S3", ["Offices"])],
+    ]);
+    const [n] = runChecks(input({ topics: [t], pieces, voices }));
+    expect(n).toMatchObject({ key: "pattern:tp1:2", kind: "pattern", why: "3 quotes from 2 voices in 2 segments (1 source) on its topic page; no card on a board rests on them." });
+  });
+
   it("finds the same need on two boards, unless the team linked them", () => {
     const a = board("b1", "Weekly reorders", { id: "o1", kind: "outcome", title: "More reorders", stage: "active", children: [{ id: "n1", kind: "opportunity", title: "Rebuilding my basket takes too long" }] });
     const b = board("b2", "Office pantry", { id: "o2", kind: "outcome", title: "Offices reorder", stage: "active", children: [{ id: "n8", kind: "opportunity", title: "Copying old orders by hand" }] }, "business");
@@ -165,5 +181,74 @@ describe("what needs a look", () => {
     expect(noticeShape({ ...n, kind: "nope" })).toBeNull();
     expect(noticeShape({ ...n, board: "../x" })).toMatchObject({ key: "review:abc" });
     expect(noticeShape({ ...n, board: "../x" })?.board).toBeUndefined();
+  });
+});
+
+describe("a target on thin evidence", () => {
+  it("says so, and says what would make it stronger, until three voices in two sources back it", () => {
+    const tree = (evidence: OstEvidence[]) => board("b1", "Reorders", { id: "o1", kind: "outcome", title: "More reorders", stage: "active", children: [{ id: "n1", kind: "opportunity", title: "I wait at home for the courier", stage: "target", stageAt: ago(3), evidence }] });
+    const one = runChecks(input({ boards: [tree([{ ...quote("a", ago(4)), sourceId: "s1", speaker: "Sara" }])] }));
+    expect(one).toEqual([
+      expect.objectContaining({ key: "thin-target:hub:card:b1:n1:thin:1", kind: "thin-target", title: "The target “I wait at home for the courier” rests on thin evidence", board: "b1", card: "n1" }),
+    ]);
+    expect(one[0].why).toBe("Thin: 1 voice (1 source) · newest 4 days ago. Hear it from more people (three or more, in two sources) before betting on it.");
+    const team = runChecks(input({ boards: [tree([{ id: "d", kind: "dump", text: "We think so", addedBy: "user", at: ago(2) }])] }));
+    expect(team[0].title).toBe("The target “I wait at home for the courier” rests on the team's belief alone");
+    const strong = runChecks(input({ boards: [tree([{ ...quote("a", ago(4)), sourceId: "s1" }, { ...quote("b", ago(4)), sourceId: "s2" }, { ...quote("c", ago(4)), sourceId: "s3" }])] }));
+    expect(strong).toEqual([]);
+  });
+});
+
+describe("goals and the outcomes that serve them", () => {
+  const g = (id: string, text: string, product: string | null, lead = false) => ({ goal: { id, text }, product, lead, owner: product ? "Grocery" : "Basket", at: ago(10) });
+  const goals = [g("gOrders", "2M dirhams a month in orders", null, true), g("gReorders", "More families reorder every week", "grocery", true), g("gSecond", "New customers order a second time", "grocery")];
+
+  it("says when a stated goal has no board working on it, and when its only outcome is paused", () => {
+    const b1 = board("b1", "Reorders", { id: "o1", kind: "outcome", title: "More weekly reorders", stage: "active", serves: { goal: "gReorders", product: "grocery" } });
+    const b2 = board("b2", "Second orders", { id: "o2", kind: "outcome", title: "Second orders", stage: "paused", serves: { goal: "gSecond", product: "grocery" } });
+    const b3 = board("b3", "Orders", { id: "o3", kind: "outcome", title: "Grow orders", stage: "active", serves: { goal: "gOrders", product: null } }, null);
+    const n = runChecks(input({ boards: [b1, b2, b3], goals }));
+    expect(n.filter((x) => x.kind === "unworked-goal")).toEqual([
+      { key: "unworked-goal:grocery:gSecond:paused", kind: "unworked-goal", title: "No board works on “New customers order a second time”, a goal of Grocery", why: "The only outcome serving it, “Second orders” on Second orders, is paused.", at: ago(10), products: ["grocery"] },
+    ]);
+    const none = runChecks(input({ boards: [], goals: [goals[0]] }));
+    expect(none[0]).toMatchObject({ key: "unworked-goal:org:gOrders:none", title: "Nothing moves “2M dirhams a month in orders”, the goal that leads for Basket", products: [] });
+  });
+
+  it("says when a tree's outcome serves no stated goal, or one no longer stated; never a sub-outcome's", () => {
+    const b = board("b1", "Reorders", { id: "o1", kind: "outcome", title: "More weekly reorders", stage: "active", children: [{ id: "o2", kind: "outcome", title: "Faster checkout", stage: "active" }] });
+    const n = runChecks(input({ boards: [b], goals })).filter((x) => x.kind === "unanchored");
+    expect(n).toEqual([
+      expect.objectContaining({ key: "unanchored:hub:card:b1:o1", title: "“More weekly reorders” serves none of the goals you've stated", board: "b1", card: "o1" }),
+    ]);
+    expect(n[0].why).toBe("On Reorders. The goals it could serve: “2M dirhams a month in orders”, “More families reorder every week”, “New customers order a second time”. Say which on its card, or write down the goal it does serve.");
+    const gone = board("b1", "Reorders", { id: "o1", kind: "outcome", title: "More weekly reorders", stage: "active", serves: { goal: "gOld", product: "grocery" } });
+    expect(runChecks(input({ boards: [gone], goals })).filter((x) => x.kind === "unanchored")[0].title).toBe("“More weekly reorders” serves a goal that's no longer stated");
+    // No goals stated: nothing to say about outcomes.
+    expect(runChecks(input({ boards: [b], goals: [] }))).toEqual([]);
+  });
+});
+
+describe("after a solution ships", () => {
+  const metric = (readings: { at: number; value: number }[]) => ({ name: "Weekly reorders", direction: "increase" as const, baseline: 1.2, current: readings.at(-1)?.value ?? 1.2, target: 1.5, readings });
+  const tree = (readings: { at: number; value: number }[], shippedAt = ago(35)) =>
+    board("b1", "Reorders", { id: "o1", kind: "outcome", title: "More reorders", stage: "active", stageAt: ago(1), metric: metric(readings), children: [{ id: "n1", kind: "opportunity", title: "I rebuild my basket", children: [{ id: "s1", kind: "solution", title: "Order again", stage: "shipped", stageAt: shippedAt }] }] });
+
+  it("asks whether it moved the outcome when there's no reading since", () => {
+    const [n] = runChecks(input({ boards: [tree([{ at: ago(40), value: 1.2 }])] })).filter((x) => x.kind === "shipped");
+    expect(n).toMatchObject({ key: `shipped:hub:card:b1:s1:${ago(35)}:unread`, title: "“Order again” shipped 5 weeks ago: did it move “More reorders”?", why: "Weekly reorders has no reading since it shipped. Add this week's number, or import the export, to see.", board: "b1", card: "s1" });
+  });
+
+  it("says when the number hasn't moved the right way since, and nothing when it has", () => {
+    const flat = runChecks(input({ boards: [tree([{ at: ago(40), value: 1.2 }, { at: ago(2), value: 1.18 }])] })).filter((x) => x.kind === "shipped");
+    expect(flat[0]).toMatchObject({ title: "“More reorders” hasn't moved the right way since “Order again” shipped", why: "Weekly reorders went from 1.2 to 1.18 in the 33 days since. Look at whether it reached the customers it was for, or try another way to meet the need." });
+    expect(runChecks(input({ boards: [tree([{ at: ago(40), value: 1.2 }, { at: ago(2), value: 1.3 }])] })).filter((x) => x.kind === "shipped")).toEqual([]);
+    // Too soon to say.
+    expect(runChecks(input({ boards: [tree([{ at: ago(40), value: 1.2 }], ago(10))] })).filter((x) => x.kind === "shipped")).toEqual([]);
+  });
+
+  it("says when an outcome reached its target", () => {
+    const n = runChecks(input({ boards: [tree([{ at: ago(40), value: 1.2 }, { at: ago(2), value: 1.52 }])] })).filter((x) => x.kind === "reached");
+    expect(n).toEqual([expect.objectContaining({ key: "reached:hub:card:b1:o1:1.5", title: "“More reorders” reached its target", why: "Weekly reorders is at 1.52, its target 1.5. Mark it achieved, or set the next target.", at: ago(2) })]);
   });
 });

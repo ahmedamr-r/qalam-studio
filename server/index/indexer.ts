@@ -148,8 +148,8 @@ export class OrgIndex {
     else if (e.kind === "topic") this.queue.add(`topic:${e.id}`);
     else if (e.kind === "relation") this.queue.add("relations");
     else if (e.kind === "about" || e.kind === "org") this.queue.add("context:org");
-    // A product's name is in the lines of everything for it: look at everything again.
-    else if (e.kind === "product") this.queue.add("*");
+    // A product's name is in the lines of everything for it, a person's in what they said: look at everything again.
+    else if (e.kind === "product" || e.kind === "person") this.queue.add("*");
     else return;
     if (this.timer) clearTimeout(this.timer);
     this.timer = setTimeout(() => this.flush(), 300);
@@ -168,7 +168,8 @@ export class OrgIndex {
 
   private async names(): Promise<Names> {
     const products = new Map((await this.store.listProducts()).map((p) => [p.id, p.name]));
-    return { product: (id) => products.get(id) };
+    const people = new Map((await this.store.listPeople()).map((p) => [p.id, p]));
+    return { product: (id) => products.get(id), people };
   }
 
   private async keys(): Promise<Set<string>> {

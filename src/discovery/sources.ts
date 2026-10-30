@@ -3,6 +3,8 @@ import type { OstCard, OstEvidence } from "./types";
 import { clock, type TranscriptMeta, type TranscriptSegment } from "./transcript";
 import type { DumpRole, DumpSession } from "./dump";
 import type { SetupSession } from "@/org/setup";
+import type { SourceWho } from "@/hub/people";
+import type { SourceTable } from "./table";
 
 /*
  * A Discovery board's sources (pure): documents, web pages, pasted text, interviews and items from
@@ -75,6 +77,8 @@ export interface SourceRecord {
   boards?: string[];
   /** The organization's product it's about; none: the whole organization. */
   product?: string | null;
+  /** Who is in it (people, or a segment) and when it was said (src/hub/people.ts). */
+  who?: SourceWho;
   kind: SourceKind;
   title: string;
   /** Where it came from: a file's name, a page's address, the tool and what was asked of it. */
@@ -85,6 +89,8 @@ export interface SourceRecord {
   pages?: number[];
   /** Only the start of a longer text was kept. */
   truncated?: boolean;
+  /** A CSV or TSV export: its columns and rows, read by code (src/discovery/table.ts). */
+  table?: SourceTable;
   /** Interviews: where each stretch of speech sits in `text` and when it was said, and who spoke. */
   segments?: TranscriptSegment[];
   transcript?: TranscriptMeta;

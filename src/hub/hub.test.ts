@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { newGoal } from "@/org/context-md";
 import type { Decision } from "@/decisions/model";
 import type { Doc } from "@/doc/schema";
 import type { SourceRecord } from "@/discovery/sources";
@@ -95,18 +96,18 @@ describe("pieces of the organization's files", () => {
   });
 
   it("makes each line of what a product is a piece, named by its words; its segments are one piece", () => {
-    const b = contextPieces({ product: "grocery", name: "Grocery", at }, { audience: "Parents with young kids", goals: ["Weekly reorders", "Second orders"], context: "", segments: ["Busy parents", "New customers"] });
+    const b = contextPieces({ product: "grocery", name: "Grocery", at }, { audience: "Parents with young kids", goals: ["Weekly reorders", "Second orders"].map(newGoal), context: "", segments: ["Busy parents", "New customers"] });
     expect(b.pieces.map((p) => [p.sub, p.line, p.text])).toEqual([
       ["audience", "Who Grocery is for", "Parents with young kids"],
-      ["goal", "A goal of Grocery", "Weekly reorders"],
+      ["goal", "A goal of Grocery, the one that leads", "Weekly reorders"],
       ["goal", "A goal of Grocery", "Second orders"],
       ["segments", "The kinds of customer Grocery tells apart", "Busy parents; New customers"],
     ]);
     expect(contextPieces({ product: "grocery", name: "Grocery", at }, { audience: "Parents with young kids", goals: [], context: "", segments: [] }).pieces[0].ref).toBe(b.pieces[0].ref);
-    expect(searchText(b.pieces[1], ["More weekly reorders"])).toBe("A goal of Grocery · about “More weekly reorders”\nWeekly reorders");
+    expect(searchText(b.pieces[1], ["More weekly reorders"])).toBe("A goal of Grocery, the one that leads · about “More weekly reorders”\nWeekly reorders");
     // Meaning search reads what a piece is, the cards it's about and its words (not where it's from).
     expect(meaningText({ type: "quote", sub: "pain", line: "Pain Sara said in “Sara interview”", text: "It takes forever" }, ["Reordering is slow"])).toBe("A customer pain. About “Reordering is slow”. It takes forever");
-    expect(meaningText(b.pieces[1])).toBe("A goal of Grocery: Weekly reorders");
+    expect(meaningText(b.pieces[1])).toBe("A goal of Grocery, the one that leads: Weekly reorders");
   });
 });
 
