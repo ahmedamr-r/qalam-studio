@@ -598,6 +598,11 @@ const readBlock = (b: Extract<DumpRequest, { understanding: string }>) => [
 
 export const dumpReadContent = (b: Extract<DiscoveryRequest, { stage: "dump-read" }>) => [...dumpMaterial(b), "", "Read the brain dump."].join("\n");
 
+/** Reading a brain dump, as the route streams it and the core's structured() runs it (a person's own notes taken in). */
+export function dumpReadCall(b: Extract<DiscoveryRequest, { stage: "dump-read" }>) {
+  return { kind: "dump-read" as const, system: DUMP_READ_SYSTEM, schema: dumpReadSchema(b.tree.map((c) => c.id)), effort: "high" as const, maxTokens: 16000, content: [{ type: "text" as const, text: dumpReadContent(b) }] };
+}
+
 export function dumpFollowupContent(b: Extract<DiscoveryRequest, { stage: "dump-followup" }>) {
   return [
     ...dumpMaterial(b),

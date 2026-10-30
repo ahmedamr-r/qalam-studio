@@ -16,6 +16,10 @@ vi.mock("@/ai/server", () => ({
   aiConfigured: () => true,
   structured: async (opts: { system: string; content: { text: string }[] }) => {
     const text = opts.content[0].text;
+    if (opts.system.includes("read the brain dump against the board")) {
+      calls.list.push("dump-read");
+      return { data: { understanding: "A founder's plan.", fragments: [{ id: "f1", role: "idea", quote: "a button to copy last week's basket" }, { id: "f2", role: "need", quote: "parents rebuild the basket every Sunday" }, { id: "f3", role: "need", quote: "Words that aren't in the notes." }], challenges: [], questions: [] } };
+    }
     if (opts.system.includes("pick out what customers said")) {
       calls.list.push("extract");
       return { data: { quotes: [{ id: "q1", chunkId: "c1", text: "I can't plan bath time around a four-hour window.", speaker: "Sara", kind: "pain" }, { id: "q2", chunkId: "c1", text: "Words that aren't in the material.", speaker: null, kind: "pain" }], needs: [{ title: "Delivery windows are too wide", quoteIds: ["q1"] }] } };
@@ -23,6 +27,9 @@ vi.mock("@/ai/server", () => ({
     if (opts.system.includes("keep an organization's topic pages")) {
       calls.list.push("topics");
       calls.texts.push(text);
+      // A founder's own notes: the model says "We know", code knows better.
+      if (text.includes("rebuild the basket every Sunday"))
+        return { data: { dispute: [], revise: [], retire: [], newTopics: [{ id: "n1", kind: "need", title: "Rebuilding the basket takes too long", why: "new" }], add: [{ topic: "n1", section: "know", text: "Parents “rebuild the basket every Sunday”.", cites: ["q1"] }] } };
       return { data: { dispute: [], revise: [], retire: [], newTopics: [{ id: "n1", kind: "need", title: "Delivery windows are too wide", why: "new" }], add: [{ topic: "n1", section: "know", text: "Parents can't plan their day around a “four-hour window”.", cites: ["q1"] }] } };
     }
     calls.list.push("place");
@@ -32,7 +39,7 @@ vi.mock("@/ai/server", () => ({
   },
 }));
 process.env.QALAM_NO_MODELS = "1";
-const { captureSource, fileSources } = await import("./capture");
+const { captureSource, fileSources, readAsOwn } = await import("./capture");
 const { startInbox } = await import("./inbox");
 
 const fts5 = (() => {
@@ -112,6 +119,27 @@ describe.skipIf(!fts5)("capture, in the core", () => {
     expect(steps).toEqual(["Keeping “Sara interview” in the organization", "Picking out what customers said", "Filing it into the topic pages", "Finding where it fits on 2 boards"]);
   });
 
+  it("reads a person's own notes as what they believe, never as what customers said", async () => {
+    const notes = "My plan: parents rebuild the basket every Sunday, so a button to copy last week's basket should help.";
+    const r = await captureSource(store, { kind: "paste", title: "My notes", text: notes }, { own: true });
+    expect(calls.list).toEqual(["dump-read", "topics"]);
+    expect(r.own).toBe(2);
+    const s = (await store.getSource(r.sourceId))!;
+    // The team's words, each found in the notes; the made-up piece is gone.
+    expect(s.kind).toBe("dump");
+    expect(s.quotes.map((q) => [q.role, q.text])).toEqual([
+      ["need", "parents rebuild the basket every Sunday"],
+      ["idea", "a button to copy last week's basket"],
+    ]);
+    const page = (await store.listTopics()).find((t) => t.title === "Rebuilding the basket takes too long")!;
+    expect(page.lines.map((l) => l.section)).toEqual(["believe"]);
+  });
+
+  it("reads material with no customers' words in it as their own thinking after, but never what customers said", async () => {
+    const r = await captureSource(store, { kind: "paste", title: "Sara interview", text: "Sara: I can't plan bath time around a four-hour window." });
+    await expect(readAsOwn(store, r.sourceId)).rejects.toThrow("Customers' words were taken from it already.");
+  });
+
   it("takes in what's dropped in the inbox, and sets aside what it can't read", async () => {
     startInbox(store);
     await mkdir(path.join(store.dir, "inbox"), { recursive: true });
@@ -124,7 +152,7 @@ describe.skipIf(!fts5)("capture, in the core", () => {
     expect((await left()).sort()).toEqual(["added", "not-read"]);
     expect(await readdir(path.join(store.dir, "inbox", "added"))).toEqual(["Sara call.md"]);
     expect((await readdir(path.join(store.dir, "inbox", "not-read"))).sort()).toEqual(["photo.heic", "photo.heic.why.txt"]);
-    expect(await readFile(path.join(store.dir, "inbox", "not-read", "photo.heic.why.txt"), "utf8")).toContain("Qalam reads PDF, Word (.docx), Markdown");
+    expect(await readFile(path.join(store.dir, "inbox", "not-read", "photo.heic.why.txt"), "utf8")).toContain("Qalam reads PDF, Word (.docx), spreadsheets");
     expect((await store.listSources()).map((s) => [s.title, s.kind, s.quotes.length])).toEqual([["Sara call", "markdown", 1]]);
   }, 20_000);
 

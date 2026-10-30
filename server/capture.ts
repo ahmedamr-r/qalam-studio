@@ -1,5 +1,6 @@
 import { nanoid } from "nanoid";
-import { extractCall, synthesizeCall } from "@/ai/discovery";
+import { dumpReadCall, extractCall, synthesizeCall } from "@/ai/discovery";
+import { DUMP_MAX_CHARS, sanitizeRead } from "@/discovery/dump";
 import { structured } from "@/ai/server";
 import { topicsCall } from "@/ai/topics";
 import type { CaptureResult } from "@/discovery/capture";
@@ -18,7 +19,7 @@ import { wordsFor } from "@/org/words";
 import { contextOf, type OrgContext, type PackRequest } from "@/org/pack";
 import { indexFor } from "./index/registry";
 import { packedPieces, packFor } from "./index/search";
-import type { OrgStore } from "./org/store";
+import { NotFoundError, type OrgStore } from "./org/store";
 
 /**
  * Capture: material added to the organization rather than to a board (pasted on its home, dropped
@@ -36,6 +37,30 @@ export interface CaptureOpts {
   product?: string | null;
   emit?: (label: string) => void;
   signal?: AbortSignal;
+  /** The person's own thinking (their notes), read as what they believe rather than as what customers said. */
+  own?: boolean;
+}
+
+/**
+ * Material that holds no customers' words (a founder's own notes) read as the person's own thinking:
+ * a brain dump's read picks out its pieces in their words (each found in the text), and they're filed
+ * into the topic pages as what the team believes, never as what customers said. Only a source nothing
+ * was taken from yet.
+ */
+export async function readAsOwn(store: OrgStore, sourceId: string, emit: (label: string) => void = () => {}): Promise<{ own: number; filed?: FilingTotals }> {
+  const s = await store.getSource(sourceId);
+  if (!s) throw new NotFoundError("No such source");
+  if (s.quotes.length && s.kind !== "dump") throw new Error("Customers' words were taken from it already.");
+  const text = s.text.slice(0, DUMP_MAX_CHARS);
+  emit("Qalam AI is reading it as your own thinking");
+  const deps = await coreDeps(store);
+  const { data } = await structured<unknown>(dumpReadCall({ stage: "dump-read", product: deps.productLine(s.product ?? null).slice(0, 2000), dump: text, tree: [] }));
+  const r = sanitizeRead(data, text, []);
+  if (!r.fragments.length) return { own: 0 };
+  await store.putSource({ ...s, kind: "dump", text, quotes: r.fragments, read: [], needs: [] });
+  emit("Filing it into the topic pages");
+  const filed = await fileSources(store, [s.id], s.product ?? null);
+  return { own: r.fragments.length, ...(filed ? { filed } : {}) };
 }
 
 function indexOf(store: OrgStore) {
@@ -219,6 +244,8 @@ export async function captureSource(store: OrgStore, ing: Ingested, o: CaptureOp
   emit(`Keeping “${s.title}” in the ${wordsFor(store.info.shape).org}`);
   await store.putSource(s);
   const result = (filed?: FilingTotals, placed: CaptureResult["placed"] = []): CaptureResult => ({ sourceId: s.id, title: s.title, quotes: s.quotes.length, needs: s.needs.length, ...(filed ? { filed } : {}), placed });
+  // Their own thinking: read as what they believe, never as what customers said.
+  if (o.own) return { ...result(), ...(await readAsOwn(store, s.id, emit)) };
   if (awaitingRoles(s)) return { ...result(), waiting: "roles" };
   const deps = await coreDeps(store);
   s = await readIn(store, deps, s, o);

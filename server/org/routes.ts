@@ -18,7 +18,7 @@ import { needSummary } from "@/hub/needs";
 import { quickCapture } from "../quick";
 import { reviewOrg } from "./review";
 import { askOrg } from "../ask";
-import { captureSource, fileSources } from "../capture";
+import { captureSource, fileSources, readAsOwn } from "../capture";
 import type { Ingested } from "@/discovery/ingest/core";
 import type { Proposal } from "@/discovery/proposals";
 import { MAX_SOURCE_TEXT, SOURCE_KIND_LABEL, type SourceRecord } from "@/discovery/sources";
@@ -557,7 +557,7 @@ export function orgRoutes(): Hono<Env> {
   r.post("/api/org/:org/capture", async (c) => {
     if (!aiConfigured()) return c.json({ error: "no_key", message: "Qalam AI isn't set up here." }, 501);
     if (rateLimited(c.req.raw)) return c.json({ error: "rate_limited", message: "Too many requests, try again in a few minutes." }, 429);
-    const b = (await c.req.json().catch(() => null)) as { ingested?: unknown; product?: unknown; job?: unknown } | null;
+    const b = (await c.req.json().catch(() => null)) as { ingested?: unknown; product?: unknown; job?: unknown; own?: unknown } | null;
     const ing = ingestedShape(b?.ingested);
     if (!ing) return bad("Not something to add");
     const product = typeof b?.product === "string" && ID.test(b.product) ? b.product : null;
@@ -565,9 +565,16 @@ export function orgRoutes(): Hono<Env> {
     const job = typeof b?.job === "string" && ID.test(b.job) ? b.job : null;
     const store = c.get("store");
     return streamed(c.req.raw.signal, async (emit, signal) => {
-      const r = await captureSource(store, ing, { product, emit, signal });
+      const r = await captureSource(store, ing, { product, emit, signal, own: b?.own === true });
       return job ? { ...r, linked: await noteForJob(store, job, r, emit) } : r;
     });
+  });
+  /** A source that held no customers' words, read again as the person's own thinking (filed as what they believe). */
+  r.post("/api/org/:org/sources/:id/own", async (c) => {
+    if (!aiConfigured()) return c.json({ error: "no_key", message: "Qalam AI isn't set up here." }, 501);
+    if (!ID.test(c.req.param("id"))) return bad("No such source");
+    const store = c.get("store");
+    return streamed(c.req.raw.signal, (emit) => readAsOwn(store, c.req.param("id"), emit));
   });
   /** Quick capture (the menu bar, the capture page): into the inbox folder, which takes it from there. */
   r.post("/api/org/:org/quick", async (c) => {

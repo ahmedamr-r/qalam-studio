@@ -20,6 +20,9 @@ importers:
       electron:
         specifier: ^45.0.0
         version: 45.0.0
+      jszip:
+        specifier: 3.10.2
+        version: 3.10.2
     optionalDependencies:
       node-llama-cpp:
         specifier: 3.22.2

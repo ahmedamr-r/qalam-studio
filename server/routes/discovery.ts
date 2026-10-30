@@ -4,7 +4,6 @@ import {
   DUMP_FOLLOWUP_SYSTEM,
   DUMP_PLACE_KNOWLEDGE,
   DUMP_PLACE_SYSTEM,
-  DUMP_READ_SYSTEM,
   DiscoveryBody,
   FOLLOWUPS_SCHEMA,
   FOLLOWUPS_SYSTEM,
@@ -14,8 +13,7 @@ import {
   dumpFollowupSchema,
   dumpPlaceContent,
   dumpPlaceSchema,
-  dumpReadContent,
-  dumpReadSchema,
+  dumpReadCall,
   extractCall,
   followupsContent,
   importTask,
@@ -56,7 +54,7 @@ export async function POST(req: Request) {
     case "synthesize":
       return streamStructured(synthesizeCall(b));
     case "dump-read":
-      return streamStructured({ kind: "dump-read", system: DUMP_READ_SYSTEM, schema: dumpReadSchema(b.tree.map((c) => c.id)), effort: "high", maxTokens: 16000, content: [{ type: "text", text: dumpReadContent(b) }] });
+      return streamStructured(dumpReadCall(b));
     case "dump-followup":
       return streamStructured({ kind: "dump-followup", system: DUMP_FOLLOWUP_SYSTEM, schema: dumpFollowupSchema(b.tree.map((c) => c.id), b.fragments.map((f) => f.id)), effort: "medium", maxTokens: 8000, content: [{ type: "text", text: dumpFollowupContent(b) }] });
     case "dump-place":

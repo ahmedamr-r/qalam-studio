@@ -30,7 +30,9 @@ export const DOCX = "application/vnd.openxmlformats-officedocument.wordprocessin
 export const MAX_FILE = 40 * 1024 * 1024;
 
 /** What files the pickers offer (and the inbox reads). */
-export const ACCEPT = ".pdf,.docx,.md,.markdown,.txt,.text,.csv,.tsv,.vtt,.srt,.html,.htm,application/pdf,text/plain,text/markdown,text/csv,text/html,text/vtt," + DOCX;
+export const XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+export const ACCEPT = ".pdf,.docx,.xlsx,.md,.markdown,.txt,.text,.csv,.tsv,.vtt,.srt,.html,.htm,application/pdf,text/plain,text/markdown,text/csv,text/html,text/vtt," + DOCX + "," + XLSX;
 
 /** How a place reads what isn't plain text. */
 export interface Readers {
@@ -98,7 +100,21 @@ export async function fromBytes(bytes: ArrayBuffer, type: string, name: string, 
     return capped("docx", stem(name), origin, r.text);
   }
   if (ext === "doc") throw new IngestError(`${name} is an old Word file (.doc). Save it as .docx, then add it.`);
+  // A spreadsheet of people's answers: each row one voice (./rows.ts).
+  if (type === XLSX || ext === "xlsx") {
+    const rows = await xlsxRows(bytes).catch(() => {
+      throw new IngestError(`${name} couldn't be read as a spreadsheet.`);
+    });
+    const { rowsText } = await import("./rows");
+    const said = rowsText(rows);
+    return capped("text", stem(name), origin, said ?? rows.map((r) => r.join(" · ")).join("\n"));
+  }
   const text = decodeText(bytes, type);
+  if (type === "text/csv" || type === "text/tab-separated-values" || ext === "csv" || ext === "tsv") {
+    const { parseDelimited, rowsText } = await import("./rows");
+    const said = rowsText(parseDelimited(text, ext === "tsv" || type === "text/tab-separated-values" ? "\t" : ","));
+    if (said) return capped("text", stem(name), origin, said);
+  }
   if (type === "text/vtt" || ext === "vtt" || /^﻿?WEBVTT/.test(text)) return fromCaptions(text, name, origin, "vtt");
   if (ext === "srt" || type === "application/x-subrip") return fromCaptions(text, name, origin, "srt");
   if (type === "text/html" || type === "application/xhtml+xml" || ext === "html" || ext === "htm" || (!type && /^\s*<(!doctype|html)/i.test(text))) {
@@ -113,7 +129,17 @@ export async function fromBytes(bytes: ArrayBuffer, type: string, name: string, 
     const { cleanText } = await import("./text");
     return capped("text", stem(name), origin, cleanText(text));
   }
-  throw new IngestError(`${name}: Qalam reads PDF, Word (.docx), Markdown, web pages and text files.`);
+  throw new IngestError(`${name}: Qalam reads PDF, Word (.docx), spreadsheets (.xlsx, .csv), Markdown, web pages and text files.`);
+}
+
+/** An XLSX's first sheet as rows (the workbook is a zip of XML). */
+async function xlsxRows(bytes: ArrayBuffer): Promise<string[][]> {
+  const { default: JSZip } = await import("jszip");
+  const zip = await JSZip.loadAsync(bytes);
+  const sheet = zip.file("xl/worksheets/sheet1.xml") ?? zip.file(/^xl\/worksheets\/sheet\d+\.xml$/)[0];
+  if (!sheet) throw new Error("no sheet");
+  const { xlsxSheetRows } = await import("./rows");
+  return xlsxSheetRows(await sheet.async("string"), (await zip.file("xl/sharedStrings.xml")?.async("string")) ?? null);
 }
 
 /** Pasted text: its first line names it. */

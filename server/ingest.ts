@@ -1,6 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import { DOCX, fromBytes, IngestError, MAX_FILE, type Ingested, type Readers } from "@/discovery/ingest/core";
+import { DOCX, fromBytes, IngestError, MAX_FILE, XLSX, type Ingested, type Readers } from "@/discovery/ingest/core";
 import { pdfText } from "@/discovery/ingest/pdf";
 import { cleanText, htmlText } from "@/discovery/ingest/text";
 
@@ -28,7 +28,7 @@ const node: Readers = {
   html: async (text) => htmlText(text),
 };
 
-const TYPES: Record<string, string> = { pdf: "application/pdf", docx: DOCX, md: "text/markdown", markdown: "text/markdown", txt: "text/plain", text: "text/plain", csv: "text/csv", tsv: "text/tab-separated-values", vtt: "text/vtt", srt: "application/x-subrip", html: "text/html", htm: "text/html", json: "application/json" };
+const TYPES: Record<string, string> = { pdf: "application/pdf", docx: DOCX, xlsx: XLSX, md: "text/markdown", markdown: "text/markdown", txt: "text/plain", text: "text/plain", csv: "text/csv", tsv: "text/tab-separated-values", vtt: "text/vtt", srt: "application/x-subrip", html: "text/html", htm: "text/html", json: "application/json" };
 
 /** Whether a file is one Qalam reads (by its name). */
 export const readable = (name: string) => !!TYPES[name.split(".").pop()?.toLowerCase() ?? ""];
@@ -37,7 +37,7 @@ export const readable = (name: string) => !!TYPES[name.split(".").pop()?.toLower
 export async function ingestPath(file: string, name = path.basename(file)): Promise<Ingested> {
   const type = TYPES[name.split(".").pop()?.toLowerCase() ?? ""];
   // Only what Qalam reads: anything else in the folder is left alone.
-  if (!type) throw new IngestError(`${name}: Qalam reads PDF, Word (.docx), Markdown, web pages, captions and text files.`);
+  if (!type) throw new IngestError(`${name}: Qalam reads PDF, Word (.docx), spreadsheets (.xlsx, .csv), Markdown, web pages, captions and text files.`);
   const st = await stat(file);
   if (st.size > MAX_FILE) throw new IngestError(`${name} is over 40 MB.`);
   const buf = await readFile(file);

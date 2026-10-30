@@ -8,6 +8,8 @@ export interface CaptureResult {
   needs: number;
   /** An interview waits until someone says who is who in it (on a board). */
   waiting?: "roles";
+  /** Read as the person's own thinking: how many pieces of it, in their words. */
+  own?: number;
   filed?: FilingTotals;
   /** Proposals waiting on each board. */
   placed: { board: string; name: string; count: number }[];
