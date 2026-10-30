@@ -26,6 +26,7 @@ import { confirmDialog, DialogHost, promptDialog } from "../surfaces/dialog";
 import { ContextCard, ContextEditorHost, editContext } from "../org/ContextEditor";
 import { editPerson, PersonEditorHost } from "../org/PersonEditor";
 import { PeopleList } from "../org/PeopleList";
+import { LearnNext } from "../org/LearnNext";
 import { usePeople } from "@/org/people";
 import { GoalsList, type Goal } from "../org/Goals";
 import { OrgSwitcher } from "../org/OrgSwitcher";
@@ -214,6 +215,8 @@ export default function Home() {
           <AskBar product={product?.id ?? null} topics={topics} />
 
           <NeedsALook now={notices} scope={(n) => scope === "all" || (scope === "org" ? !n.products.length : n.products.includes(scope))} projects={projects ?? []} topics={topics} />
+
+          <LearnNext product={product?.id ?? null} />
 
           {product ? (
             <ContextCard title={product.name} context={product} onEdit={() => editContext({ kind: "product", product })} empty={`Tell Qalam AI what ${product.name} is: who it's for and what you're trying to move. Every board for it starts from this.`} />

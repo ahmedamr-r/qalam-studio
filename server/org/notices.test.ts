@@ -82,17 +82,18 @@ describe.skipIf(!fts5)("what needs a look, in an organization's folder", () => {
       { from: "“Sara interview”" },
     );
     const first = await noticesNow(store, now);
-    expect(first.notices.map((n) => n.kind)).toEqual(["same-need", "stale-test", "thin-target"]);
+    expect(first.notices.map((n) => n.kind)).toEqual(["same-need", "stale-test", "cadence", "cadence", "thin-target"]);
     const pair = first.notices[0];
     expect([`${pair.board}:${pair.card}`, `${pair.other?.board}:${pair.other?.card}`].sort()).toEqual(["pantry:n8", "reorders:n1"]);
+    // Both products' boards are working, and their interviews are a month old.
+    expect(first.notices.filter((n) => n.kind === "cadence").map((n) => n.products)).toEqual([["grocery"], ["business"]]);
     // The target rests on one interview: one voice, as the organization counts them.
-    expect(first.notices[2]).toMatchObject({ board: "reorders", card: "n1", why: "Thin: 1 voice (1 source) · newest 4 weeks ago. Hear it from more people (three or more, in two sources) before betting on it." });
+    expect(first.notices[4]).toMatchObject({ board: "reorders", card: "n1", why: "Thin: 1 voice (1 source) · newest 4 weeks ago. Hear it from more people (three or more, in two sources) before betting on it." });
 
-    await store.dismissNotice(first.notices[1].key, true);
-    await store.dismissNotice(first.notices[2].key, true);
+    for (const n of first.notices.slice(1)) await store.dismissNotice(n.key, true);
     await store.linkCards("hub:card:reorders:n1", "hub:card:pantry:n8", true);
     const after = await noticesNow(store, now);
     expect(after.notices).toEqual([]);
-    expect(after.dismissed).toBe(2);
+    expect(after.dismissed).toBe(4);
   });
 });

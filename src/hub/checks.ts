@@ -21,7 +21,7 @@ import { mergeReadings, movedSince } from "@/discovery/readings";
  * of what it's about and how strong it is: dismissed, it stays dismissed until it grows.
  */
 
-export type NoticeKind = "disputed" | "pattern" | "same-need" | "revisit" | "stale-test" | "untested" | "metric" | "orphan" | "review" | "placed" | "thin-target" | "unworked-goal" | "unanchored" | "shipped" | "reached";
+export type NoticeKind = "disputed" | "pattern" | "same-need" | "revisit" | "stale-test" | "untested" | "metric" | "orphan" | "review" | "placed" | "thin-target" | "unworked-goal" | "unanchored" | "shipped" | "reached" | "cadence";
 
 export interface Notice {
   /** Stable: the same finding keeps its key, so a dismissed one never comes back. */
@@ -60,11 +60,14 @@ export const NOTICE_LABEL: Record<NoticeKind, string> = {
   unanchored: "Outcome",
   shipped: "Shipped",
   reached: "Outcome",
+  cadence: "Customers",
 };
 
 /** How long before a running test, or an outcome's number, needs a look. */
 export const STALE_TEST_DAYS = 14;
 export const STALE_METRIC_DAYS = 21;
+/** How long a team working on a product can go without hearing from a customer. */
+export const CADENCE_DAYS = 14;
 /** How long after a solution ships its outcome's number should say whether it helped. */
 export const SHIPPED_DAYS = 28;
 const DAY = 86_400_000;
@@ -102,6 +105,10 @@ export interface CheckInput {
   placed?: { board: string; sourceId: string; title: string; count: number; at: number }[];
   /** Who said each quote (by its piece ref): people and segments, so voices are counted, not quotes. */
   voices?: ReadonlyMap<string, Voice>;
+  /** When customers were heard, by product (each source of theirs: its product, when it was said). */
+  heard?: { product: string | null; at: number }[];
+  /** Product names, for what notices say. */
+  productName?: (id: string) => string | undefined;
   /** The goals the organization and its products state, each with whose it is and when it was last written. */
   goals?: { goal: OrgGoal; product: string | null; lead: boolean; owner: string; at: number }[];
 }
@@ -340,6 +347,29 @@ export function runChecks(x: CheckInput): Notice[] {
     }
   }
 
+  // A team working on a product (an active outcome) that hasn't heard from a customer in weeks.
+  if (x.heard) {
+    const working = new Map<string, number>();
+    for (const c of cards) if (c.card.kind === "outcome" && c.card.stage === "active") working.set(c.board.product ?? "", Math.min(working.get(c.board.product ?? "") ?? Infinity, c.board.createdAt));
+    for (const [p, since] of working) {
+      const product = p || null;
+      // What the whole organization hears counts for every product.
+      const last = Math.max(0, ...x.heard.filter((h) => h.product === product || h.product === null).map((h) => h.at));
+      const from = last || since;
+      if (x.now - from <= CADENCE_DAYS * DAY) continue;
+      const weeks = Math.floor((x.now - from) / (7 * DAY));
+      const name = product ? (x.productName?.(product) ?? "a product") : "the organization";
+      out.push({
+        key: `cadence:${product ?? "org"}:${from}`,
+        kind: "cadence",
+        title: last ? `No one has heard from a customer of ${name} in ${plural(weeks, "week")}` : `No customer of ${name} has been heard yet`,
+        why: `Its boards are working on an outcome. Talk to a customer this week, and add what they said: what to learn next can say who and what to ask.`,
+        at: from + CADENCE_DAYS * DAY,
+        products: product ? [product] : [],
+      });
+    }
+  }
+
   // What Qalam AI found for a board in material added to the organization, waiting for review there.
   for (const p of x.placed ?? []) {
     const b = x.boards.find((y) => y.id === p.board);
@@ -472,7 +502,7 @@ export function runChecks(x: CheckInput): Notice[] {
 /** Notices about a card (as the card, or as the other card of a pair). */
 export const aboutCard = (n: Pick<Notice, "board" | "card" | "other">, board: string, card: string) => (n.board === board && n.card === card) || (n.other?.board === board && n.other.card === card);
 
-const KINDS: readonly NoticeKind[] = ["disputed", "pattern", "same-need", "revisit", "stale-test", "untested", "metric", "orphan", "review", "placed", "thin-target", "unworked-goal", "unanchored", "shipped", "reached"];
+const KINDS: readonly NoticeKind[] = ["disputed", "pattern", "same-need", "revisit", "stale-test", "untested", "metric", "orphan", "review", "placed", "thin-target", "unworked-goal", "unanchored", "shipped", "reached", "cadence"];
 const isStr = (v: unknown, max: number): v is string => typeof v === "string" && v.length <= max;
 const ID = /^[A-Za-z0-9_~-]{1,64}$/;
 

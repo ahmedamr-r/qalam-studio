@@ -37,11 +37,13 @@ export async function noticesNow(store: OrgStore, now = Date.now()): Promise<Not
     return s ? [{ board: p.board, sourceId: s.id, title: s.title, count: p.proposals.length, at: s.addedAt }] : [];
   });
   const voices = voicesByQuote(sources, await store.listPeople());
+  // When customers were heard: each source with their words (never a brain dump, the team's own).
+  const heard = sources.filter((s) => s.kind !== "dump" && s.quotes.length).map((s) => ({ product: s.product ?? null, at: s.who?.saidAt ?? s.addedAt }));
   // The stated goals, each dated by when its file was last written (when it became true, near enough).
   const products = await store.listProducts();
   const owner = (id: string | null) => (id ? (products.find((p) => p.id === id)?.name ?? "a product") : store.info.name);
   const goals = await Promise.all(statedGoals(await store.getAbout(), products).map(async (g) => ({ ...g, owner: owner(g.product), at: await store.contextWrittenAt(g.product) })));
-  const input: CheckInput = { now, boards, decisions: store.listDecisions(), topics, indexed: false, shows: new Map(), pieces: new Map(), linked: new Set(relations.map((r) => pairKey(r.a, r.b))), placed, voices, goals };
+  const input: CheckInput = { now, boards, decisions: store.listDecisions(), topics, indexed: false, shows: new Map(), pieces: new Map(), linked: new Set(relations.map((r) => pairKey(r.a, r.b))), placed, voices, goals, heard, productName: (id) => products.find((p) => p.id === id)?.name };
   try {
     const ix = indexFor(store);
     // Caught up with the folder first: a page's pieces not indexed yet would look gone.

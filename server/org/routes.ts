@@ -16,6 +16,7 @@ import { chooseFolder, createOrg, currentOrg, listOrgs, openFolder, qalamHome, r
 import { noticesNow } from "./notices";
 import { reviewOrg } from "./review";
 import { proposeOutcomes } from "./outcomes";
+import { learnNext } from "./learn";
 import { askOrg } from "../ask";
 import { captureSource, fileSources } from "../capture";
 import type { Ingested } from "@/discovery/ingest/core";
@@ -282,6 +283,25 @@ export function orgRoutes(): Hono<Env> {
       if (e instanceof NotFoundError) return failure(e);
       return c.json({ error: "failed", message: e instanceof Error ? e.message : String(e) }, 502);
     }
+  });
+  /** What to learn next: the gaps code finds, and Qalam AI's plan to close them (who to talk to, what to ask, what to test). */
+  r.post("/api/org/:org/learn", async (c) => {
+    const b = (await c.req.json().catch(() => null)) as { product?: unknown; plan?: unknown } | null;
+    const plan = b?.plan === true;
+    if (plan && !aiConfigured()) return c.json({ error: "no_key", message: "Qalam AI isn't set up here." }, 501);
+    if (plan && rateLimited(c.req.raw)) return c.json({ error: "rate_limited", message: "Too many requests, try again in a few minutes." }, 429);
+    const product = typeof b?.product === "string" && ID.test(b.product) ? b.product : null;
+    try {
+      return c.json(await learnNext(c.get("store"), { product, plan }));
+    } catch (e) {
+      return c.json({ error: "failed", message: e instanceof Error ? e.message : String(e) }, 502);
+    }
+  });
+  /** Keep a plan as a page in research/. */
+  r.post("/api/org/:org/research", async (c) => {
+    const b = (await c.req.json().catch(() => null)) as { title?: unknown; markdown?: unknown } | null;
+    if (typeof b?.title !== "string" || !b.title.trim() || typeof b.markdown !== "string" || !b.markdown.trim() || b.markdown.length > 100_000) return bad("Say what to save");
+    return c.json({ file: await c.get("store").saveResearch(b.title.slice(0, 120), b.markdown) });
   });
   /** Ask the organization: Qalam AI's answer, checked by code, streamed (NDJSON) with what it's doing meanwhile. */
   r.post("/api/org/:org/ask", async (c) => {

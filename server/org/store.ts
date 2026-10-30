@@ -751,6 +751,19 @@ export class OrgStore {
   }
 
   // -------------------------------------------------------------------------
+  // Research plans (research/<date>-<slug>.md): what to learn next, kept as pages people edit.
+
+  /** Save a page in research/, named by its day and title; its path in the organization's folder. */
+  async saveResearch(title: string, markdown: string): Promise<string> {
+    const dir = this.abs("research");
+    const day = new Date().toISOString().slice(0, 10);
+    const names = new Set((await this.files("research", ".md")).map((f) => path.basename(f)));
+    const file = path.join(dir, uniqueName(`${day}-${slugify(title, "plan")}`, ".md", (n) => names.has(n)));
+    await this.write(file, markdown);
+    return path.relative(this.dir, file);
+  }
+
+  // -------------------------------------------------------------------------
   // People the organization hears from (people/<slug>.md): who is behind what customers said.
 
   async listPeople(): Promise<Person[]> {
