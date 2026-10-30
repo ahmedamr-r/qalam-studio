@@ -10,6 +10,7 @@ import { topicsDb } from "@/org/topics";
 import { currentOrg, orgJson, type OrgRef } from "@/org/client";
 import { newProduct, saveProduct, useOrgContext } from "@/org/context";
 import { contextEmpty, type Product } from "@/org/context-md";
+import { statedGoals } from "@/org/goals";
 import { projectsDb } from "@/projects/db";
 import { browserProjectsToMove, moveBrowserProjects } from "@/org/import-browser";
 import { onOrgChange } from "@/org/live";
@@ -151,6 +152,7 @@ export default function Home() {
   const boards = (projects ?? []).filter((p) => p.type === "discovery" && inScope(p.product, scope));
   const design = (projects ?? []).filter((p) => p.type !== "discovery");
   const scopedGoals = goals.filter((g) => inScope(g.product, scope));
+  const stated = statedGoals(about, products).filter((g) => inScope(g.product, scope));
   const scopedSources = sources.filter((s) => inScope(s.product, scope));
   const scopedTopics = topics?.filter((t) => (scope === "all" ? true : scope === "org" ? !t.products.length : t.products.includes(scope))) ?? null;
   // A decision is for its board's product as it is now (it records the one it had then, for a board since deleted).
@@ -223,7 +225,7 @@ export default function Home() {
             <h2 id="goals" className="text-title font-medium">
               Goals
             </h2>
-            {scopedGoals.length ? <GoalsList goals={scopedGoals} /> : <p className="text-body text-fg-muted">No outcomes yet. Every outcome on a board shows here, with the board it's on.</p>}
+            <GoalsList goals={scopedGoals} stated={stated} products={products} />
           </section>
 
           <section aria-label="Boards, topics, sources and decisions" className="flex flex-col gap-[12px]">

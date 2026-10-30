@@ -198,3 +198,33 @@ describe("a target on thin evidence", () => {
     expect(strong).toEqual([]);
   });
 });
+
+describe("goals and the outcomes that serve them", () => {
+  const g = (id: string, text: string, product: string | null, lead = false) => ({ goal: { id, text }, product, lead, owner: product ? "Grocery" : "Basket", at: ago(10) });
+  const goals = [g("gOrders", "2M dirhams a month in orders", null, true), g("gReorders", "More families reorder every week", "grocery", true), g("gSecond", "New customers order a second time", "grocery")];
+
+  it("says when a stated goal has no board working on it, and when its only outcome is paused", () => {
+    const b1 = board("b1", "Reorders", { id: "o1", kind: "outcome", title: "More weekly reorders", stage: "active", serves: { goal: "gReorders", product: "grocery" } });
+    const b2 = board("b2", "Second orders", { id: "o2", kind: "outcome", title: "Second orders", stage: "paused", serves: { goal: "gSecond", product: "grocery" } });
+    const b3 = board("b3", "Orders", { id: "o3", kind: "outcome", title: "Grow orders", stage: "active", serves: { goal: "gOrders", product: null } }, null);
+    const n = runChecks(input({ boards: [b1, b2, b3], goals }));
+    expect(n.filter((x) => x.kind === "unworked-goal")).toEqual([
+      { key: "unworked-goal:grocery:gSecond:paused", kind: "unworked-goal", title: "No board works on “New customers order a second time”, a goal of Grocery", why: "The only outcome serving it, “Second orders” on Second orders, is paused.", at: ago(10), products: ["grocery"] },
+    ]);
+    const none = runChecks(input({ boards: [], goals: [goals[0]] }));
+    expect(none[0]).toMatchObject({ key: "unworked-goal:org:gOrders:none", title: "Nothing moves “2M dirhams a month in orders”, the goal that leads for Basket", products: [] });
+  });
+
+  it("says when a tree's outcome serves no stated goal, or one no longer stated; never a sub-outcome's", () => {
+    const b = board("b1", "Reorders", { id: "o1", kind: "outcome", title: "More weekly reorders", stage: "active", children: [{ id: "o2", kind: "outcome", title: "Faster checkout", stage: "active" }] });
+    const n = runChecks(input({ boards: [b], goals })).filter((x) => x.kind === "unanchored");
+    expect(n).toEqual([
+      expect.objectContaining({ key: "unanchored:hub:card:b1:o1", title: "“More weekly reorders” serves none of the goals you've stated", board: "b1", card: "o1" }),
+    ]);
+    expect(n[0].why).toBe("On Reorders. The goals it could serve: “2M dirhams a month in orders”, “More families reorder every week”, “New customers order a second time”. Say which on its card, or write down the goal it does serve.");
+    const gone = board("b1", "Reorders", { id: "o1", kind: "outcome", title: "More weekly reorders", stage: "active", serves: { goal: "gOld", product: "grocery" } });
+    expect(runChecks(input({ boards: [gone], goals })).filter((x) => x.kind === "unanchored")[0].title).toBe("“More weekly reorders” serves a goal that's no longer stated");
+    // No goals stated: nothing to say about outcomes.
+    expect(runChecks(input({ boards: [b], goals: [] }))).toEqual([]);
+  });
+});

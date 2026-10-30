@@ -118,6 +118,7 @@ All settings are optional and go in `.env.local`. `.env.example` lists them with
 ### Your organization
 
 - **The home** starts with the Ask bar and what needs a look. Then come what the organization (or the product in view) is, every board's goals, and four tabs: **Boards**, **Topics**, **Sources** and **Decisions**. Products are chips at the top; a board or a source is for one product or for the whole organization.
+- **Goals, and what serves them:** each outcome on a board says which stated goal it serves. The home's **Goals** shows every goal the organization and its products state, the one that leads first, with the outcomes working on it and how their numbers are doing; a goal nothing works on offers **Start a board**. **Needs a look** says when a goal has no board working on it, or when a board's outcome serves none of the goals you've stated.
 - **What the organization and each product are:** who it's for, its goals (the one that leads first, each with how it's measured, by when and who owns it), its strategy, what customers use instead, its constraints, its context and its segments. Qalam AI reads them with every call, and they're Markdown files you can edit anywhere.
 - **Start from a brain dump about the company.** A new organization opens on a page that asks what the company does, its products, who they're for and the goals you're moving, written as it comes. It can also read the company's website.
   - Qalam AI says what it took from it, pushes back where it won't hold up, and asks up to three rounds of questions.

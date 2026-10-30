@@ -1,5 +1,6 @@
 import { pairKey, runChecks, type CheckBoard, type CheckInput, type Notice, type ShownOn } from "@/hub/checks";
 import { voicesByQuote } from "@/hub/people";
+import { statedGoals } from "@/org/goals";
 import { indexFor } from "../index/registry";
 import { showsUp } from "../index/search";
 import type { OrgStore } from "./store";
@@ -36,7 +37,11 @@ export async function noticesNow(store: OrgStore, now = Date.now()): Promise<Not
     return s ? [{ board: p.board, sourceId: s.id, title: s.title, count: p.proposals.length, at: s.addedAt }] : [];
   });
   const voices = voicesByQuote(sources, await store.listPeople());
-  const input: CheckInput = { now, boards, decisions: store.listDecisions(), topics, indexed: false, shows: new Map(), pieces: new Map(), linked: new Set(relations.map((r) => pairKey(r.a, r.b))), placed, voices };
+  // The stated goals, each dated by when its file was last written (when it became true, near enough).
+  const products = await store.listProducts();
+  const owner = (id: string | null) => (id ? (products.find((p) => p.id === id)?.name ?? "a product") : store.info.name);
+  const goals = await Promise.all(statedGoals(await store.getAbout(), products).map(async (g) => ({ ...g, owner: owner(g.product), at: await store.contextWrittenAt(g.product) })));
+  const input: CheckInput = { now, boards, decisions: store.listDecisions(), topics, indexed: false, shows: new Map(), pieces: new Map(), linked: new Set(relations.map((r) => pairKey(r.a, r.b))), placed, voices, goals };
   try {
     const ix = indexFor(store);
     // Caught up with the folder first: a page's pieces not indexed yet would look gone.

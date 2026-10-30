@@ -10,7 +10,7 @@ import { newId } from "@/doc/factory";
 import { emptyDoc } from "@/doc/schema";
 import { currentOrg, orgFetch } from "@/org/client";
 import { saveAbout, saveProduct, useOrgContext } from "@/org/context";
-import type { ContextFields, Product } from "@/org/context-md";
+import { goalId, type ContextFields, type Product } from "@/org/context-md";
 import { applyLines, boardGoals, decide, sanitizeSetup, setupSent, type SetupSession } from "@/org/setup";
 import { projectHref } from "@/projects/model";
 import { createProject } from "@/projects/session";
@@ -281,7 +281,8 @@ export async function startBoard(lineId: string) {
   if (made) return window.location.assign(projectHref({ id: made, type: "discovery" }));
   const quotes = goal.line.pieces.flatMap((id) => s.quotes.find((q) => q.id === id) ?? []);
   const doc = emptyDoc();
-  addCardIn(doc, makeCardNode(newCard("outcome", { title: goal.line.text, evidence: quotes.map((q) => quoteEvidence(s, q, "user")) })), null);
+  // The outcome serves the goal it came from (accepted as a goal named by its words).
+  addCardIn(doc, makeCardNode(newCard("outcome", { title: goal.line.text, serves: { goal: goalId(goal.line.text), product: goal.product }, evidence: quotes.map((q) => quoteEvidence(s, q, "user")) })), null);
   const p = await createProject("discovery", goal.line.text.slice(0, 80), goal.product ? { product: goal.product } : {}, doc);
   await sourcesDb.link(s.id, p.id, true);
   await setSession((d) => ({ ...d, boards: { ...d.boards, [lineId]: p.id } }));

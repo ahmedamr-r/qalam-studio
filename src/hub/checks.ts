@@ -7,6 +7,7 @@ import { cardRef } from "./pieces";
 import { isEvidence, sameTopic, type Topic } from "./topics";
 import { tally, tallyText, type Voice } from "./people";
 import { STRENGTH_LABEL, strengthOf } from "./strength";
+import type { OrgGoal } from "@/org/context-md";
 
 /**
  * What needs a look (pure): checks code runs over the organization's boards, decisions and topic
@@ -19,7 +20,7 @@ import { STRENGTH_LABEL, strengthOf } from "./strength";
  * of what it's about and how strong it is: dismissed, it stays dismissed until it grows.
  */
 
-export type NoticeKind = "disputed" | "pattern" | "same-need" | "revisit" | "stale-test" | "untested" | "metric" | "orphan" | "review" | "placed" | "thin-target";
+export type NoticeKind = "disputed" | "pattern" | "same-need" | "revisit" | "stale-test" | "untested" | "metric" | "orphan" | "review" | "placed" | "thin-target" | "unworked-goal" | "unanchored";
 
 export interface Notice {
   /** Stable: the same finding keeps its key, so a dismissed one never comes back. */
@@ -54,6 +55,8 @@ export const NOTICE_LABEL: Record<NoticeKind, string> = {
   review: "Qalam AI review",
   placed: "To review",
   "thin-target": "Target",
+  "unworked-goal": "Goal",
+  unanchored: "Outcome",
 };
 
 /** How long before a running test, or an outcome's number, needs a look. */
@@ -94,6 +97,8 @@ export interface CheckInput {
   placed?: { board: string; sourceId: string; title: string; count: number; at: number }[];
   /** Who said each quote (by its piece ref): people and segments, so voices are counted, not quotes. */
   voices?: ReadonlyMap<string, Voice>;
+  /** The goals the organization and its products state, each with whose it is and when it was last written. */
+  goals?: { goal: OrgGoal; product: string | null; lead: boolean; owner: string; at: number }[];
 }
 
 type Node = { parentId?: string | null; meta?: { ost?: OstCard } };
@@ -278,6 +283,58 @@ export function runChecks(x: CheckInput): Notice[] {
     });
   }
 
+  // Goals and the outcomes that serve them: a stated goal no board works on, and an outcome (a
+  // tree's top) that serves no stated goal, or one that's no longer stated.
+  if (x.goals) {
+    const goals = x.goals;
+    const outcomes = cards.filter((c) => c.card.kind === "outcome");
+    const serves = (c: CardAt, g: (typeof goals)[number]) => c.card.serves?.goal === g.goal.id && (c.card.serves.product ?? null) === g.product;
+    for (const g of goals) {
+      const serving = outcomes.filter((c) => serves(c, g));
+      if (serving.some((c) => c.card.stage === "active" || c.card.stage === "achieved")) continue;
+      const paused = serving[0];
+      out.push({
+        key: `unworked-goal:${g.product ?? "org"}:${g.goal.id}:${paused ? "paused" : "none"}`,
+        kind: "unworked-goal",
+        title: g.lead ? `Nothing moves ${q(g.goal.text)}, the goal that leads for ${g.owner}` : `No board works on ${q(g.goal.text)}, a goal of ${g.owner}`,
+        why: paused
+          ? `The only outcome serving it, ${q(paused.card.title)} on ${paused.board.name}, is paused.`
+          : "No outcome on a board says it serves it. Start a board for it, or say on an outcome's card which goal it serves.",
+        at: g.at,
+        products: g.product ? [g.product] : [],
+      });
+    }
+    for (const c of outcomes) {
+      if (c.parent || c.card.stage !== "active") continue;
+      const product = c.board.product;
+      const inScope = goals.filter((g) => g.product === null || g.product === product);
+      const ref = cardRef(c.board.id, c.id);
+      if (!c.card.serves) {
+        if (!inScope.length) continue;
+        out.push({
+          key: `unanchored:${ref}`,
+          kind: "unanchored",
+          title: `${q(c.card.title)} serves none of the goals you've stated`,
+          why: `On ${c.board.name}. The goals it could serve: ${inScope.slice(0, 4).map((g) => q(g.goal.text)).join(", ")}. Say which on its card, or write down the goal it does serve.`,
+          at: c.card.stageAt ?? c.board.createdAt,
+          board: c.board.id,
+          card: c.id,
+          products: productsOf(c.board),
+        });
+      } else if (!goals.some((g) => serves(c, g)))
+        out.push({
+          key: `unanchored:${ref}:gone:${c.card.serves.goal}`,
+          kind: "unanchored",
+          title: `${q(c.card.title)} serves a goal that's no longer stated`,
+          why: `On ${c.board.name}. The goal it served was renamed outside Qalam or taken off its list. Say which goal it serves now.`,
+          at: Math.max(c.card.stageAt ?? 0, ...goals.map((g) => g.at)) || c.board.createdAt,
+          board: c.board.id,
+          card: c.id,
+          products: productsOf(c.board),
+        });
+    }
+  }
+
   // What Qalam AI found for a board in material added to the organization, waiting for review there.
   for (const p of x.placed ?? []) {
     const b = x.boards.find((y) => y.id === p.board);
@@ -369,7 +426,7 @@ export function runChecks(x: CheckInput): Notice[] {
 /** Notices about a card (as the card, or as the other card of a pair). */
 export const aboutCard = (n: Pick<Notice, "board" | "card" | "other">, board: string, card: string) => (n.board === board && n.card === card) || (n.other?.board === board && n.other.card === card);
 
-const KINDS: readonly NoticeKind[] = ["disputed", "pattern", "same-need", "revisit", "stale-test", "untested", "metric", "orphan", "review", "placed", "thin-target"];
+const KINDS: readonly NoticeKind[] = ["disputed", "pattern", "same-need", "revisit", "stale-test", "untested", "metric", "orphan", "review", "placed", "thin-target", "unworked-goal", "unanchored"];
 const isStr = (v: unknown, max: number): v is string => typeof v === "string" && v.length <= max;
 const ID = /^[A-Za-z0-9_~-]{1,64}$/;
 

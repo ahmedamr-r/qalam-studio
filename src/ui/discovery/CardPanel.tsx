@@ -33,6 +33,10 @@ import { STRENGTH_LABEL, type Strength } from "@/hub/strength";
 import { useStrength } from "./strength";
 import { MetricReadings, type ShipMark } from "./MetricReadings";
 import { withReading } from "@/discovery/readings";
+import { goalsFor, statedGoals } from "@/org/goals";
+import { newGoal } from "@/org/context-md";
+import { saveAbout, saveProduct, useOrgContext } from "@/org/context";
+import { promptDialog } from "../surfaces/dialog";
 
 const ICON = { size: 12, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 
@@ -101,6 +105,7 @@ function OneCard({ id, card }: { id: string; card: OstCard }) {
               }}
             />
           </Field>
+          {card.kind === "outcome" && !underOutcome && <ServesField id={id} card={card} />}
           {assumed && <Hint>Qalam AI drafted this need and nothing backs it yet. Add a quote, a source or a note to make it solid.</Hint>}
           {isAIIdea(card) && (
             <Hint tone="info">
@@ -214,6 +219,45 @@ function HistorySection({ id }: { id: string }) {
         ))}
       </div>
     </Section>
+  );
+}
+
+const NO_GOAL = "_none";
+const NEW_GOAL = "_new";
+
+/** Which stated goal an outcome serves: its board's product's, or the organization's; or a new one, written down here. */
+function ServesField({ id, card }: { id: string; card: OstCard }) {
+  const product = useProject((s) => s.project?.product ?? null);
+  const { about, products } = useOrgContext();
+  const stated = goalsFor(product, statedGoals(about, products));
+  const owner = (p: string | null) => (p ? (products.find((x) => x.id === p)?.name ?? "A product") : "The organization");
+  const valueOf = (s: { goal: string; product: string | null }) => `${s.product ?? "org"}:${s.goal}`;
+  const value = card.serves ? valueOf(card.serves) : NO_GOAL;
+  const known = stated.some((g) => valueOf({ goal: g.goal.id, product: g.product }) === value);
+  const options = [
+    { value: NO_GOAL, label: "No stated goal" },
+    ...(card.serves && !known ? [{ value, label: "A goal no longer stated" }] : []),
+    ...stated.map((g) => ({ value: valueOf({ goal: g.goal.id, product: g.product }), label: `${g.goal.text}${g.lead ? " (leads)" : ""}`, group: owner(g.product) })),
+    { value: NEW_GOAL, label: "Write down a new goal…" },
+  ];
+  const pick = async (v: string) => {
+    if (v === NO_GOAL) return edit(id, (c) => void delete c.serves);
+    if (v === NEW_GOAL) {
+      const p = product ? products.find((x) => x.id === product) : undefined;
+      const text = await promptDialog({ title: `A goal of ${p?.name ?? "the organization"}`, body: "What the team is trying to move, as you'd say it. It's added to the goals in its About.", label: "Goal", defaultValue: card.title, confirmLabel: "Add goal", validate: (t) => (t.trim() ? null : "Write the goal") });
+      if (!text) return;
+      const g = newGoal(text);
+      if (p) await saveProduct({ ...p, goals: [...p.goals, g] });
+      else await saveAbout({ ...about, goals: [...about.goals, g] });
+      return edit(id, (c) => void (c.serves = { goal: g.id, product: p ? p.id : null }));
+    }
+    const g = stated.find((x) => valueOf({ goal: x.goal.id, product: x.product }) === v);
+    if (g) edit(id, (c) => void (c.serves = { goal: g.goal.id, product: g.product }));
+  };
+  return (
+    <Field label="Serves the goal">
+      <Select ariaLabel="The goal it serves" value={value} options={options} onChange={(v) => void pick(v)} />
+    </Field>
   );
 }
 

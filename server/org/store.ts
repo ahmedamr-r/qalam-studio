@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { watch, type FSWatcher } from "node:fs";
-import { readdir, readFile, rm } from "node:fs/promises";
+import { readdir, readFile, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { nanoid } from "nanoid";
 import { appendEntries, decisionsFromMarkdown, replaceEntry } from "@/decisions/format";
@@ -66,6 +66,9 @@ export interface Goal {
   metric?: OstCard["metric"];
   /** The outcome it sits under on its board (a sub-outcome), if any. */
   parent: string | null;
+  /** The stated goal it serves. */
+  serves?: OstCard["serves"];
+  stage?: OstCard["stage"];
 }
 
 export class ConflictError extends Error {
@@ -697,6 +700,13 @@ export class OrgStore {
     this.emit({ kind: "about", tab: opts.tab });
   }
 
+  /** When about.md (null) or a product's file was last written: 0 when there's none. */
+  async contextWrittenAt(product: string | null): Promise<number> {
+    const file = product ? this.products.get(product) : this.abs("about.md");
+    if (!file) return 0;
+    return (await stat(file).catch(() => null))?.mtimeMs ?? 0;
+  }
+
   async listProducts(): Promise<Product[]> {
     const out: Product[] = [];
     for (const file of this.products.values()) {
@@ -1244,7 +1254,7 @@ function goalsOf(record: Project, doc: Doc | null): Omit<Goal, "boardName" | "pr
   for (const [id, n] of Object.entries(nodes)) {
     const c = n.meta?.ost;
     if (c?.kind !== "outcome") continue;
-    out.push({ board: record.id, id, title: c.title, ...(c.metric ? { metric: c.metric } : {}), parent: parentOutcome(id) });
+    out.push({ board: record.id, id, title: c.title, ...(c.metric ? { metric: c.metric } : {}), parent: parentOutcome(id), ...(c.serves ? { serves: c.serves } : {}), stage: c.stage });
   }
   return out;
 }

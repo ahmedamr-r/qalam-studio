@@ -124,6 +124,8 @@ export interface OstCard {
   test?: OstTest;
   /** The outcome: the number it moves. */
   metric?: OstMetric;
+  /** The outcome: the stated goal it serves, a product's or the organization's (src/org/goals.ts). */
+  serves?: { goal: string; product: string | null };
   /** Its child cards are hidden (the branch is folded). */
   collapsed?: boolean;
   /** The tree's root: top-down (the default) or left-to-right. */
