@@ -108,7 +108,7 @@ const SHAPE_SAID: Record<OrgShape, string> = { team: "A company or team", solo: 
 
 /** What to call it, once they said who it's for. */
 const nameAsk = (i: Pick<ThreadInput, "mode" | "shape">, live: boolean) =>
-  i.shape === "solo" ? "What's your project called? A working name is fine." : i.mode === "new" ? "What's the new organization called?" : live ? "What should I call your organization? A company, a client or a side project." : "What should I call your organization?";
+  i.shape === "solo" ? "What's the project you have in mind? Just name it, or tell me what you'd like to call it." : i.mode === "new" ? "What's the new organization called?" : live ? "What should I call your organization? A company, a client or a side project." : "What should I call your organization?";
 
 const VOICE_SAID: Record<VoiceChoice, string> ={ apple: "Talk with Apple's engine", parakeet: "Talk with Parakeet", own: "I use my own dictation app", off: "Not now" };
 

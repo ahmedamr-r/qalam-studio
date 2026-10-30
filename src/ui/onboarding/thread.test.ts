@@ -58,7 +58,7 @@ describe("the welcome", () => {
     expect(team.find((x) => x.id === "shape:you")?.parts).toEqual([{ type: "text", text: "A company or team" }]);
     expect(team.at(-1)?.parts[0]).toEqual({ type: "text", text: "What should I call your organization? A company, a client or a side project." });
     const solo = base({ route: "welcome", shape: "solo" });
-    expect(threadOf(solo).at(-1)?.parts[0]).toEqual({ type: "text", text: "What's your project called? A working name is fine." });
+    expect(threadOf(solo).at(-1)?.parts[0]).toEqual({ type: "text", text: "What's the project you have in mind? Just name it, or tell me what you'd like to call it." });
     expect(askOf(solo)).toMatchObject({ kind: "name", submit: "enter" });
     expect(stepsOf(solo).map((s) => s.id)).toEqual(["engine", "name", "you", "voice", "goals", "connect"]);
   });
@@ -213,7 +213,7 @@ describe("on your own", () => {
     const i = solo({ step: "you", person: null });
     const m = threadOf(i);
     expect(ids(m)).toEqual(["engine", "shape:ask", "shape:you", "name:ask", "name:you", "you:ask"]);
-    expect(m.find((x) => x.id === "name:ask")?.parts[0]).toEqual({ type: "text", text: "What's your project called? A working name is fine." });
+    expect(m.find((x) => x.id === "name:ask")?.parts[0]).toEqual({ type: "text", text: "What's the project you have in mind? Just name it, or tell me what you'd like to call it." });
     expect(m.at(-1)?.parts[0]).toEqual({ type: "text", text: "What's your name?" });
     expect(m.at(-1)?.parts.find((p) => p.type === "data")).toMatchObject({ name: "you", data: { open: true, solo: true } });
     expect(askOf(i)).toMatchObject({ kind: "none", placeholder: "Fill in your name above" });
