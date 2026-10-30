@@ -7,7 +7,7 @@
 export type Dot = "ok" | "warn" | "bad" | "off";
 
 export interface HealthRow {
-  id: "engine" | "search" | "models" | "inbox" | "voice" | "all";
+  id: "engine" | "search" | "models" | "inbox" | "voice" | "see" | "all";
   dot: Dot;
   /** What it is: "Qalam AI", "Search"… */
   label: string;
@@ -26,6 +26,8 @@ export interface HealthFacts {
   inbox: { waiting: number; notRead: number; lastReason?: string; paused: boolean } | null;
   /** Talking instead of typing: whether a mic is on here, and whether macOS lets Qalam use the microphone. */
   voice?: { on: boolean; mic: "granted" | "denied" | "undetermined" } | null;
+  /** Reading the words on screenshots: whether this Mac has the reader (qalam-see) and it runs. */
+  see?: { here: boolean } | null;
 }
 
 const RANK: Record<Dot, number> = { bad: 0, warn: 1, off: 2, ok: 3 };
@@ -60,6 +62,8 @@ export function diagnose(f: HealthFacts): HealthRow[] {
   if (f.inbox?.paused && f.inbox.waiting) rows.push({ id: "inbox", dot: "warn", label: "Inbox", word: `${f.inbox.waiting} waiting`, detail: "Files wait until Qalam AI is set up." });
   else if (f.inbox?.notRead) rows.push({ id: "inbox", dot: "warn", label: "Inbox", word: `${f.inbox.notRead} not read`, ...(f.inbox.lastReason ? { detail: f.inbox.lastReason } : {}) });
   if (f.voice?.on && f.voice.mic === "denied") rows.push({ id: "voice", dot: "warn", label: "Voice", word: "Microphone off", detail: "Allow Qalam in System Settings → Privacy & Security → Microphone, or choose your own dictation app in Connections." });
+  if (f.see && !f.see.here)
+    rows.push({ id: "see", dot: "off", label: "Reading words on screenshots", word: "Not on this Mac", detail: "This Mac has no reader for the words on screenshots, so they aren't checked: screens are kept without their labels or quotes." });
   if (!rows.length) return [{ id: "all", dot: "ok", label: "This Mac", word: "All good" }];
   return rows.sort((a, b) => RANK[a.dot] - RANK[b.dot]);
 }

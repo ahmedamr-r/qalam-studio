@@ -7,20 +7,8 @@
  * a person says which. Kept in hub/seen/<key>.md (src/seen/seen-md.ts), one per product (or "org").
  */
 
-/** A screenshot's words, as this Mac read them: each line with its box (0..1, from the top left). */
-export interface SeenLine {
-  text: string;
-  box: [number, number, number, number];
-  conf: number;
-}
-
-/** What this Mac read off a screenshot: its size, a difference hash (16 hex) and its lines. */
-export interface SeenText {
-  w: number;
-  h: number;
-  dhash: string;
-  lines: SeenLine[];
-}
+/** What this Mac read off a screenshot (qalam-see): its size, a difference hash (16 hex) and its lines, each with its box (0..1, from the top left). */
+export type { ShotLine as SeenLine, ShotRead as SeenText } from "./shot";
 
 /** A screenshot added to a reading. */
 export interface Shot {

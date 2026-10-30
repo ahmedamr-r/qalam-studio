@@ -25,8 +25,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "build:desktop": "vite build -c vite.desktop.config.ts && node scripts/build-voice.mjs",
+    "build:desktop": "vite build -c vite.desktop.config.ts && node scripts/build-voice.mjs && node scripts/build-see.mjs",
     "build:voice": "node scripts/build-voice.mjs",
+    "build:see": "node scripts/build-see.mjs",
     "start": "NODE_ENV=production tsx server/serve.ts",
     "desktop": "pnpm build && pnpm build:desktop && electron .",
     "desktop:dev": "pnpm build:desktop && node scripts/desktop-dev.mjs",

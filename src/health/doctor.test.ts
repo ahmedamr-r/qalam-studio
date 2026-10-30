@@ -40,6 +40,16 @@ describe("This Mac, checked", () => {
     expect(diagnose({ ...fine, voice: { on: true, mic: "undetermined" } })[0].id).toBe("all");
   });
 
+  it("says when this Mac can't read the words on screenshots, after what needs fixing", () => {
+    expect(diagnose({ ...fine, see: { here: true } })[0].id).toBe("all");
+    const rows = diagnose({ ...fine, see: { here: false }, search: { ok: false, node: "22.13.0" } });
+    expect(rows.map((r) => [r.id, r.dot])).toEqual([
+      ["search", "warn"],
+      ["see", "off"],
+    ]);
+    expect(rows[1]).toMatchObject({ label: "Reading words on screenshots", word: "Not on this Mac", detail: expect.stringContaining("aren't checked") });
+  });
+
   it("puts what blocks Qalam AI first, and says files wait for it", () => {
     const rows = diagnose({ ...fine, search: { ok: false, node: "22.13.0" }, engine: { kind: "cli", ready: false, word: "Signed out" }, inbox: { waiting: 3, notRead: 0, paused: true } });
     expect(rows.map((r) => r.id)).toEqual(["engine", "search", "inbox"]);

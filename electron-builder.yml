@@ -15,12 +15,16 @@ files:
   - "!package-lock.json"
   # llama.cpp's source, for building it where no prebuilt binary fits: never done in the app.
   - "!node_modules/node-llama-cpp/llama/gitRelease.bundle"
-  # The voice helper runs from Resources (extraResources), not from inside the archive.
+  # The voice helper and the screenshot reader run from Resources (extraResources), not from inside the archive.
   - "!out/qalam-voice"
+  - "!out/qalam-see"
 # The voice helper (native/voice, scripts/build-voice.mjs): Contents/Resources/qalam-voice.
+# The screenshot reader (native/see, scripts/build-see.mjs): Contents/Resources/qalam-see.
 extraResources:
   - from: out/qalam-voice
     to: qalam-voice
+  - from: out/qalam-see
+    to: qalam-see
 # Native code is loaded from real files, outside the archive.
 asarUnpack:
   - node_modules/node-llama-cpp/**
