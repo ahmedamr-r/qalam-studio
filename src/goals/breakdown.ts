@@ -1,6 +1,7 @@
 import type { OstMetric } from "@/discovery/types";
 import { checkWords, sameTopic } from "@/hub/topics";
 import type { PackedPiece } from "@/org/pack";
+import type { DraftedProblems } from "./drafted";
 import { metricLine } from "./goals-md";
 import type { Relation } from "./math";
 import type { Benchmark, Outside } from "./outside";
@@ -49,11 +50,12 @@ export interface FunnelNumbers {
   steps: { label: string; count: number }[];
 }
 
-/** A goal's work in progress (hub/goals/<goal>.json): what others report for it, the goals proposed under it, its funnel's numbers. */
+/** A goal's work in progress (hub/goals/<goal>.json): what others report for it, the goals proposed under it, its funnel's numbers, the problems drafted for it. */
 export interface GoalWork {
   outside?: Outside;
   breakdown?: Breakdown;
   funnel?: FunnelNumbers;
+  problems?: DraftedProblems;
 }
 
 export const BREAKDOWN_LIMITS = { parts: 5, title: 100, why: 240 } as const;

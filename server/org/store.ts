@@ -939,7 +939,7 @@ export class OrgStore {
   }
 
   // A goal's work in progress (hub/goals/<goal>.json): what others report for it, and the goals
-  // Qalam AI proposed under it until each is accepted or discarded.
+  // Qalam AI proposed under it and the problems it drafted for it, until each is accepted or discarded.
 
   private goalWorkFile(goal: string) {
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(goal)) throw new NotFoundError("No such goal");
@@ -948,7 +948,7 @@ export class OrgStore {
 
   async getGoalWork(goal: string): Promise<GoalWork> {
     const j = await readJson<GoalWork & { qalam?: string }>(this.goalWorkFile(goal));
-    return j?.qalam === "goal-work/1" ? { ...(j.outside ? { outside: j.outside } : {}), ...(j.breakdown ? { breakdown: j.breakdown } : {}), ...(j.funnel ? { funnel: j.funnel } : {}) } : {};
+    return j?.qalam === "goal-work/1" ? { ...(j.outside ? { outside: j.outside } : {}), ...(j.breakdown ? { breakdown: j.breakdown } : {}), ...(j.funnel ? { funnel: j.funnel } : {}), ...(j.problems ? { problems: j.problems } : {}) } : {};
   }
 
   async changeGoalWork(goal: string, fn: (w: GoalWork) => GoalWork, opts: { tab?: string } = {}): Promise<GoalWork> {
@@ -956,7 +956,7 @@ export class OrgStore {
     let next: GoalWork = {};
     await locked(file, async () => {
       next = fn(await this.getGoalWork(goal));
-      if (next.outside || next.breakdown || next.funnel) await this.write(file, stableStringify({ qalam: "goal-work/1", goal, ...next }));
+      if (next.outside || next.breakdown || next.funnel || next.problems) await this.write(file, stableStringify({ qalam: "goal-work/1", goal, ...next }));
       else await rm(file, { force: true });
     });
     this.emit({ kind: "goalwork", goal, tab: opts.tab });

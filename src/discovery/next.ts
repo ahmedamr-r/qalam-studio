@@ -8,7 +8,7 @@ import type { Strength } from "@/hub/needs";
  * a step is picked (src/ui/discovery/next.ts).
  */
 
-export type StepId = "draft-solutions" | "draft-tests" | "design-this" | "page" | "pass-line" | "next-job" | "find-problems" | "break-down" | "review-parts" | "others" | "find-backing" | "watch" | "connect" | "add-file" | "questions" | "draft-problems";
+export type StepId = "draft-solutions" | "draft-tests" | "design-this" | "page" | "pass-line" | "next-job" | "find-problems" | "break-down" | "review-parts" | "others" | "find-backing" | "watch" | "connect" | "add-file" | "questions" | "draft-problems" | "review-problems";
 
 export interface NextStep {
   id: StepId;
@@ -31,8 +31,8 @@ export interface CardFacts {
   page: { topic: string; strength: Strength; quotes: number; sources: number } | null;
   /** What's under it already. */
   under: { solutions: number; tests: number };
-  /** A goal's number in a line (null: none yet), the problems behind it, its next job, and the goals proposed under it not decided yet. */
-  goal?: { id: string; number: string | null; behind: number; job: string | null; pending: number };
+  /** A goal's number in a line (null: none yet), the problems behind it, its next job, and what was proposed for it not decided yet: goals under it, problems behind it. */
+  goal?: { id: string; number: string | null; behind: number; job: string | null; pending: number; drafted: number };
   /** Problem pages there are (what Find its problems reads). */
   pages: number;
   /** The organization's search answers here, and it has material to search. */
@@ -113,12 +113,15 @@ export function nextSteps(f: CardFacts): NextStep[] {
       const g = f.goal;
       if (!g) break;
       const find: NextStep | null = f.pages ? { id: "find-problems", label: "Find its problems", hint: g.behind ? "More of your problem pages that bear on it" : "Links your problem pages that bear on it", ai: true } : null;
-      // Goals proposed under it before wait to be decided before it's broken down again.
+      // What was proposed for it before waits to be decided before it's asked for again.
       const asks = thin(f) || !!f.asking;
-      const parts: NextStep = g.pending ? { id: "review-parts", label: `Review the ${plural(g.pending, "goal")} proposed under it`, hint: "From breaking it down" } : { id: "break-down", label: "Break it down", hint: f.asking ? "Picks up your answers where you left them" : asks ? "Asks a few questions first" : "Goals under it that make its number", ai: true, ...(asks ? { asks } : {}) };
-      // Nothing behind it yet: its problems first.
-      const lead = !g.pending && !g.behind && find ? [find, parts] : [parts, find];
-      push(...lead, { id: "others", label: "What others aim for", hint: "Numbers others report · a minute or two", ai: true }, ground.watch, ground.file);
+      const asking = f.asking ? "Picks up your answers where you left them" : asks ? "Asks a few questions first" : null;
+      const parts: NextStep = g.pending ? { id: "review-parts", label: `Review the ${plural(g.pending, "goal")} proposed under it`, hint: "From breaking it down" } : { id: "break-down", label: "Break it down", hint: asking ?? "Goals under it that make its number", ai: true, ...(asks ? { asks } : {}) };
+      const drafted: NextStep = g.drafted ? { id: "review-problems", label: `Review the ${plural(g.drafted, "problem")} drafted for it`, hint: "From drafting its problems" } : { id: "draft-problems", label: "Draft its problems", hint: asking ?? (g.behind ? "More problems that would move it" : "Problems that would move it, from your material"), ai: true, ...(asks ? { asks } : {}) };
+      // What waits to be decided first; then, while nothing is behind it, its problems (found among the pages when there are some, else drafted).
+      const waiting = [g.pending ? parts : null, g.drafted ? drafted : null];
+      const rest = [g.pending ? null : parts, find, g.drafted ? null : drafted];
+      push(...waiting, ...(g.behind ? rest : [rest[1], rest[2], rest[0]]), { id: "others", label: "What others aim for", hint: "Numbers others report · a minute or two", ai: true }, ground.watch, ground.file);
       if (g.job) push({ id: "next-job", label: `Next: ${g.job}`, hint: "What we don't know yet" });
       break;
     }

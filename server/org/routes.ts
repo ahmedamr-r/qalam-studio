@@ -37,6 +37,7 @@ import { changeJob, noteForJob, onlineForJob, openJobs, planJobs, searchForJob, 
 import { addFeed, changeFeed, checkFeed, feedsView, refreshFeed } from "./feeds";
 import { feedTarget, type FeedTarget } from "@/feeds/feeds";
 import { breakDown, decidePart, lookOutside } from "./outside";
+import { decideProblem, draftProblems } from "./problems";
 import { decideSolution, draftSolutions, solutionsView, type SolutionsCard } from "./solutions";
 import { draftTests, type TestsRequest } from "./tests";
 import { aboutTopic, lookOnline } from "./posts";
@@ -361,6 +362,27 @@ export function orgRoutes(): Hono<Env> {
     if (typeof accept !== "boolean" || !ID.test(c.req.param("part"))) return bad("Accept it or discard it");
     try {
       return c.json(await decidePart(c.get("store"), c.req.param("id"), c.req.param("part"), accept, { tab: tabOf(c.req.raw.headers) }));
+    } catch (e) {
+      return failure(e);
+    }
+  });
+  // Drafting a goal's problems (server/org/problems.ts): reviewed on the canvas under the goal's card, each decided in its work file.
+  r.post("/api/org/:org/goals/:id/draft-problems", async (c) => {
+    if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't draft problems." }, 503);
+    if (rateLimited(c.req.raw)) return c.json({ error: "rate_limited", message: "Too many requests, try again in a few minutes." }, 429);
+    const b = ((await c.req.json().catch(() => ({}))) ?? {}) as { cards?: unknown; answers?: unknown; found?: unknown };
+    const cards = (Array.isArray(b.cards) ? b.cards : []).filter((t): t is string => typeof t === "string" && !!t.trim()).map((t) => t.trim().slice(0, 200)).slice(0, 20);
+    const store = c.get("store");
+    const id = c.req.param("id");
+    if (!goalById(await store.getGoals(), id)) return c.json({ error: "not_found", message: "No such goal" }, 404);
+    return streamed(c.req.raw.signal, (emit, signal) => draftProblems(store, id, { cards, ...wordsShape(b) }, emit, { tab: tabOf(c.req.raw.headers), signal }));
+  });
+  r.put("/api/org/:org/goals/:id/problems/:draft", async (c) => {
+    const { decision } = ((await c.req.json().catch(() => ({}))) ?? {}) as { decision?: unknown };
+    if ((decision !== "accepted" && decision !== "discarded") || !ID.test(c.req.param("id")) || !ID.test(c.req.param("draft"))) return bad("Accept it or discard it");
+    try {
+      await decideProblem(c.get("store"), c.req.param("id"), c.req.param("draft"), decision, { tab: tabOf(c.req.raw.headers) });
+      return c.json({ ok: true });
     } catch (e) {
       return failure(e);
     }

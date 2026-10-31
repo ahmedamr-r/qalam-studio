@@ -1,13 +1,15 @@
 import { callAI } from "@/ai/client";
 import type { Breakdown, GoalWork } from "@/goals/breakdown";
+import type { ProblemsDrafted } from "@/goals/drafted";
 import type { Goal, GoalLever } from "@/goals/types";
 import { orgJson, orgPath } from "./client";
 import type { DraftWords } from "./solutions";
 
 /*
- * A goal's work, from the window (server/org/goals.ts, server/org/outside.ts): the problems behind
- * it linked, the goals under it proposed and each one decided, what others aim for looked up, and
- * the goal's work file as it's kept. Its page and the canvas's next steps both ask through here.
+ * A goal's work, from the window (server/org/goals.ts, server/org/outside.ts, server/org/problems.ts):
+ * the problems behind it linked or drafted, the goals under it proposed and each one decided, what
+ * others aim for looked up, and the goal's work file as it's kept. Its page and the canvas's next
+ * steps both ask through here.
  */
 
 /** What linking problems to a goal came to. */
@@ -38,6 +40,12 @@ export const breakDown = (goal: string, o: { levers: GoalLever[] } & DraftWords,
 
 /** A proposed goal under it taken (it goes in goals.md under the goal) or left. */
 export const decidePart = (goal: string, part: string, accept: boolean) => orgJson<{ goal: Goal | null }>(at(goal, `/breakdown/${encodeURIComponent(part)}`), { method: "POST", json: { accept } });
+
+/** Draft its problems: the customer problems Qalam AI proposes behind it (`cards`: the problems under its card already), kept on the goal until each is decided. */
+export const draftProblems = (goal: string, o: { cards: string[] } & DraftWords, onActivity?: (label: string) => void, signal?: AbortSignal) => run<ProblemsDrafted>(at(goal, "/draft-problems"), o, onActivity, signal);
+
+/** A drafted problem taken (it's under the goal's card now) or left. */
+export const decideProblem = (goal: string, draft: string, decision: "accepted" | "discarded") => orgJson<{ ok: true }>(at(goal, `/problems/${encodeURIComponent(draft)}`), { method: "PUT", json: { decision } });
 
 /** What others aim for, looked up on the web and checked on each page. */
 export const lookOutside = (goal: string, onActivity?: (label: string) => void, signal?: AbortSignal) => run<{ kept: number; read: number; error?: string }>(at(goal, "/outside"), {}, onActivity, signal);

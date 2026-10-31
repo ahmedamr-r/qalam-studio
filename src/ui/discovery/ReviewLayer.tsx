@@ -11,7 +11,7 @@ import { useGhosts } from "@/doc/ghosts";
 import { worldBounds } from "@/doc/geometry";
 import { cardOf } from "@/discovery/ops";
 import { metricText } from "@/discovery/dump";
-import { ASSUMPTION_LABEL } from "@/discovery/kinds";
+import { ASSUMPTION_LABEL, KIND_LABEL, SUB_OUTCOME_LABEL } from "@/discovery/kinds";
 import type { Proposal } from "@/discovery/proposals";
 import { Button, IconBtn, Spinner } from "../controls";
 import { QalamAIGlyph } from "../brand/ai-glyph";
@@ -85,10 +85,10 @@ export default function ReviewLayer({ vp }: { vp: { w: number; h: number } }) {
       bars.push({ id, box, list: proposals.filter((p) => p.cardId === id) });
     }
   }
-  const from = origin?.kind === "dump" ? "your brain dump" : origin?.kind === "placed" ? "what was added to the organization" : origin?.kind === "solutions" ? "drafted solutions" : origin?.kind === "tests" ? "drafted tests" : "your sources";
+  const from = origin?.kind === "dump" ? "your brain dump" : origin?.kind === "placed" ? "what was added to the organization" : origin?.kind === "solutions" ? "drafted solutions" : origin?.kind === "tests" ? "drafted tests" : origin?.kind === "problems" ? "drafted problems" : "your sources";
   // Goals proposed under a goal: whether, with the goals under it already, they make its number (code's arithmetic).
   const parts = origin?.kind === "breakdown" ? partsCheck(origin.goal, origin.relation, proposals) : null;
-  const said = origin?.kind === "breakdown" ? `${plural(proposals.length, "goal")} proposed under it` : `${plural(proposals.length, "change")} from ${from}`;
+  const said = origin?.kind === "breakdown" ? `${plural(proposals.length, "goal")} proposed under it` : origin?.kind === "problems" ? `${plural(proposals.length, "problem")} drafted for it` : `${plural(proposals.length, "change")} from ${from}`;
   return (
     <>
       <Pill>
@@ -151,10 +151,10 @@ function label(p: Proposal, all: Proposal[]): string {
       if (k === "outcome") {
         if (!p.parentId) return "New goal tree";
         const parent = cardOf(studio().doc, p.parentId)?.kind ?? all.find((x): x is Extract<Proposal, { kind: "card" }> => x.kind === "card" && x.cardId === p.parentId)?.card.kind;
-        return parent === "outcome" ? "New sub-outcome" : "New outcome";
+        return parent === "outcome" ? `New ${SUB_OUTCOME_LABEL.toLowerCase()}` : "New goal";
       }
       if (k === "opportunity" && !p.backing.quotes.length && !p.backing.words.length) return "New problem · Assumed";
-      return `New ${k}`;
+      return `New ${KIND_LABEL[k].toLowerCase()}`;
     }
     case "attach":
       return evidenceOf(p.quote, false)?.kind === "dump" ? "Your words" : "Quote";
@@ -177,7 +177,7 @@ function label(p: Proposal, all: Proposal[]): string {
   }
 }
 
-/** What a card's proposals amount to: "New opportunity · +2 pieces of yours", "+2 quotes · 1 against". */
+/** What a card's proposals amount to: "New problem · +2 pieces of yours", "+2 quotes · 1 against". */
 function summary(list: Proposal[], all: Proposal[]): string {
   const words = list.filter((p) => p.kind === "attach" && evidenceOf(p.quote, false)?.kind === "dump").length;
   const quotes = list.filter((p) => p.kind === "attach").length - words;

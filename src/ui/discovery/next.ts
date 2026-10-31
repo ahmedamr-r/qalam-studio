@@ -7,7 +7,7 @@ import type { GoalLever } from "@/goals/types";
 import { goalHref, placeHref, topicHref } from "@/projects/model";
 import { navigate } from "../nav";
 import { findBackingFor } from "./backing";
-import { breakDownFor, findProblemsFor, lookOutsideFor, reviewPartsFor } from "./goal-steps";
+import { breakDownFor, draftProblemsFor, findProblemsFor, lookOutsideFor, reviewPartsFor, reviewProblemsFor } from "./goal-steps";
 import { draftSolutionsFor } from "./solutions";
 import { useDiscovery } from "./store";
 import { draftTestsFor } from "./tests";
@@ -51,6 +51,12 @@ export async function runStep(card: string, step: NextStep, f: CardFacts, o: { l
       return;
     case "review-parts":
       if (f.goal) await reviewPartsFor(card, f.goal.id);
+      return;
+    case "draft-problems":
+      if (f.goal) await draftProblemsFor(card, f.goal.id);
+      return;
+    case "review-problems":
+      if (f.goal) await reviewProblemsFor(card, f.goal.id);
       return;
     case "others":
       if (f.goal) await lookOutsideFor(card, f.goal.id);

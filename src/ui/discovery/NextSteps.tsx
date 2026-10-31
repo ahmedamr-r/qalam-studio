@@ -52,23 +52,24 @@ const FOLDED_W = 76;
 const BAR = 46;
 const ICON = { size: 14, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 
-/** How many goals proposed under a goal wait to be decided (its work file, asked again when a review or a step ends). */
-function usePending(goal: string | null): number {
-  const [n, setN] = useState<{ goal: string; n: number } | null>(null);
+/** What was proposed for a goal and waits to be decided: goals under it, problems behind it (its work file, asked again when a review or a step ends). */
+function usePending(goal: string | null): { parts: number; problems: number } {
+  const [n, setN] = useState<{ goal: string; parts: number; problems: number } | null>(null);
   const reviewing = useReview((s) => s.proposals.length > 0);
   const busy = useBusy((s) => !!s.busy);
   useEffect(() => {
     if (!goal || reviewing || busy) return;
     let alive = true;
+    const open = (x: { decided: Record<string, unknown> } | undefined, ids: { id: string }[] = []) => (x ? ids.filter((p) => !x.decided[p.id]).length : 0);
     void goalWork(goal).then(
-      (w) => alive && setN({ goal, n: w.breakdown ? w.breakdown.parts.filter((p) => !w.breakdown!.decided[p.id]).length : 0 }),
+      (w) => alive && setN({ goal, parts: open(w.breakdown, w.breakdown?.parts), problems: open(w.problems, w.problems?.drafts) }),
       () => {},
     );
     return () => {
       alive = false;
     };
   }, [goal, reviewing, busy]);
-  return n?.goal === goal ? n.n : 0;
+  return n?.goal === goal ? n : { parts: 0, problems: 0 };
 }
 
 /** What's known about the picked card, from what the canvas has loaded. */
@@ -107,7 +108,8 @@ export function useCardFacts(id: string | null): CardFacts | null {
               // The problems on its board under it, and the pages linked to it that no board has.
               behind: node.children.filter((k) => !isProblemPage(k) && isOstCard(doc.nodes[k]) && doc.nodes[k].meta.ost.kind === "opportunity").length + rankForGoal(goal.id, { tree: inputs.tree, links: [...inputs.links], needs: [...needs] }).filter((p) => !p.onBoard).length,
               job: jobs?.find((j) => j.goal === goal.id)?.title ?? null,
-              pending,
+              pending: pending.parts,
+              drafted: pending.problems,
             },
           }
         : {}),
@@ -172,6 +174,7 @@ export default function NextSteps({ vp }: { vp: { w: number; h: number } }) {
     if (s.id === "add-file") return files.current?.click();
     // Nothing behind it yet: a few questions, then the draft.
     if (s.id === "questions" || (s.asks && s.id === "draft-solutions")) return startAsk(sel, "draft-solutions");
+    if (s.asks && s.id === "draft-problems") return startAsk(sel, "draft-problems");
     void runStep(sel, s, facts);
   };
   // ⌘↵ runs the step drawn first.

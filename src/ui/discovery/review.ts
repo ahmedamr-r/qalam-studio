@@ -15,7 +15,7 @@ import { applyProposal, carryOut, proposalDoc, proposalKey, touchedRoots, withDe
 import type { DumpCounts } from "@/discovery/dump";
 import { recordAccepted, recordDiscarded } from "../decisions/recorder";
 import { orgFetch } from "@/org/client";
-import { decidePart } from "@/org/goal-work";
+import { decidePart, decideProblem } from "@/org/goal-work";
 import { goalsNow, loadGoals } from "@/goals/client";
 import type { Relation } from "@/goals/math";
 import { childrenOf } from "@/goals/tree";
@@ -44,7 +44,9 @@ export type ReviewOrigin =
   /** A solution's riskiest assumptions and a test of the riskiest, drafted on its card. */
   | { kind: "tests" }
   /** The goals under a goal Qalam AI proposed (Break it down, kept in the goal's work file), and how their numbers make its. */
-  | { kind: "breakdown"; goal: string; relation: Relation | null };
+  | { kind: "breakdown"; goal: string; relation: Relation | null }
+  /** The problems behind a goal Qalam AI drafted (kept in the goal's work file), as problems under its card. */
+  | { kind: "problems"; goal: string };
 
 export interface ReviewUI {
   origin: ReviewOrigin | null;
@@ -218,6 +220,7 @@ const WAITS: Record<ReviewOrigin["kind"], string> = {
   solutions: "Accept or discard the drafted solutions first",
   tests: "Accept or discard the drafted tests first",
   breakdown: "Accept or discard the goals proposed under it first",
+  problems: "Accept or discard the drafted problems first",
 };
 
 /** What the review that's open waits for, in words (null: none is open). A draft asks before it calls Qalam AI. */
@@ -251,14 +254,16 @@ function fromOf(origin: ReviewOrigin | null, list: Proposal[]): string {
   if (origin?.kind === "solutions") return "the drafted solutions";
   if (origin?.kind === "tests") return "the drafted tests";
   if (origin?.kind === "breakdown") return "the goals proposed under it";
+  if (origin?.kind === "problems") return "the drafted problems";
   const ids = new Set(list.flatMap((p) => (p.kind === "attach" || p.kind === "against" ? [p.quote.sourceId] : p.kind === "card" ? p.backing.quotes.map((q) => q.sourceId) : [])));
   const titles = [...ids].map((id) => sourceOf(id)?.title).filter((t): t is string => !!t);
   if (!titles.length) return "your sources";
   return titles.length > 2 ? `${titles.slice(0, 2).join(", ")} and ${titles.length - 2} more` : titles.join(" and ");
 }
 
-/** Drafted solutions taken or left: their problem's page remembers which (a draft's solution is `sol:<draft>`). */
+/** Drafts taken or left: a problem's page remembers its solutions' (`sol:<draft>`), a goal's work file its problems' (`prob:<draft>`). */
 function decided(origin: ReviewOrigin | null, list: Proposal[], decision: "accepted" | "discarded") {
+  if (origin?.kind === "problems") for (const p of list) if (p.id.startsWith("prob:")) void decideProblem(origin.goal, p.id.slice(5), decision).catch(() => {});
   if (origin?.kind !== "solutions" || !origin.topic) return;
   for (const p of list) if (p.id.startsWith("sol:")) void orgFetch(`/topics/${encodeURIComponent(origin.topic)}/solutions/${encodeURIComponent(p.id.slice(4))}`, { method: "PUT", json: { decision } }).catch(() => {});
 }

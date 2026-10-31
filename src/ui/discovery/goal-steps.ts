@@ -2,21 +2,25 @@ import { feedback } from "@/commands/feedback";
 import { newId } from "@/doc/factory";
 import { boundsOf, worldBounds } from "@/doc/geometry";
 import { useGhosts } from "@/doc/ghosts";
-import { newCard } from "@/discovery/ops";
+import { studio } from "@/doc/store";
+import { cardOf, newCard } from "@/discovery/ops";
 import type { Proposal } from "@/discovery/proposals";
 import type { Breakdown } from "@/goals/breakdown";
+import type { DraftedProblems } from "@/goals/drafted";
 import type { GoalLever } from "@/goals/types";
-import { breakDown, findProblems, goalWork, lookOutside } from "@/org/goal-work";
+import { breakDown, draftProblems, findProblems, goalWork, lookOutside } from "@/org/goal-work";
 import type { DraftWords } from "@/org/solutions";
 import { begin, end, relabel, stopped, type Done } from "./busy";
 import { onCanvasReady } from "./canvas";
-import { REVIEW_TURN, reviewWaits, startReview } from "./review";
+import { REVIEW_TURN, reviewWaits, startReview, type ReviewOrigin } from "./review";
+import { visitSources } from "./sources";
 import { useDiscovery } from "./store";
 
 /*
- * A goal's next steps on the canvas (server/org/goals.ts, server/org/outside.ts): its problems
- * found among the problem pages (they show faint under it), the goals under it proposed and
- * reviewed as ghosts under its card (accepting puts one in goals.md), and what others aim for.
+ * A goal's next steps on the canvas (server/org/goals.ts, server/org/outside.ts, server/org/problems.ts):
+ * its problems found among the problem pages (they show faint under it) or drafted (reviewed as
+ * problems under its card), the goals under it proposed and reviewed as ghosts under its card
+ * (accepting puts one in goals.md), and what others aim for.
  */
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -29,11 +33,34 @@ export function partProposals(cardId: string, goal: string, b: Breakdown): Propo
     .map((p) => ({ id: `part:${p.id}`, kind: "goal" as const, cardId: newId(), parentId: cardId, goal, part: p, card: newCard("outcome", { title: p.title, createdBy: "ai", ...(p.metric ? { metric: p.metric } : {}) }), why: p.why }));
 }
 
-/** The proposals under review, as ghosts under the goal's card, in view: false when there's nothing to show or another review is open. */
-function reviewParts(cardId: string, goal: string, b: Breakdown): boolean {
-  const proposals = partProposals(cardId, goal, b);
-  if (!proposals.length || !startReview({ kind: "breakdown", goal, relation: b.relation }, proposals)) return false;
-  // The goal's card and the goals drawn under it, framed clear of a panel lying over the canvas.
+/** Drafted problems not decided yet, as problems under the goal's card resting on the words they cite. */
+export function problemProposals(cardId: string, p: Pick<DraftedProblems, "drafts" | "quotes" | "decided">): Proposal[] {
+  return p.drafts
+    .filter((d) => !p.decided[d.id])
+    .map((d) => ({
+      id: `prob:${d.id}`,
+      kind: "card" as const,
+      cardId: newId(),
+      parentId: cardId,
+      card: newCard("opportunity", { title: d.title, ...(d.description ? { description: d.description } : {}), createdBy: "ai" }),
+      backing: { quotes: d.cites.flatMap((ref) => (p.quotes[ref] ? [p.quotes[ref]] : [])), words: [] },
+      why: d.why || d.description,
+    }));
+}
+
+/** The breakdown's proposals under review, as ghosts under the goal's card, in view: false when there's nothing to show or another review is open. */
+const reviewParts = (cardId: string, goal: string, b: Breakdown) => reviewUnder(cardId, { kind: "breakdown", goal, relation: b.relation }, partProposals(cardId, goal, b));
+
+/** Drafted problems under review, their words' sources shown here until accepted. */
+async function reviewProblems(cardId: string, goal: string, p: Pick<DraftedProblems, "drafts" | "quotes" | "decided">): Promise<boolean> {
+  await visitSources([...new Set(Object.values(p.quotes).map((q) => q.sourceId))]);
+  return reviewUnder(cardId, { kind: "problems", goal }, problemProposals(cardId, p));
+}
+
+/** Proposals under a goal's card under review, in view: false when there's nothing to show or another review is open. */
+function reviewUnder(cardId: string, origin: ReviewOrigin, proposals: Proposal[]): boolean {
+  if (!proposals.length || !startReview(origin, proposals)) return false;
+  // The goal's card and what's drawn under it, framed clear of a panel lying over the canvas.
   const ids = [cardId, ...proposals.map((p) => p.cardId)];
   onCanvasReady((c) => {
     const ghost = useGhosts.getState().list.find((g) => g.turnId === REVIEW_TURN && ids.slice(1).some((id) => g.doc.nodes[id]));
@@ -48,8 +75,9 @@ function reviewParts(cardId: string, goal: string, b: Breakdown): boolean {
 }
 
 /** Run a goal's step as one thing Qalam AI does for its card, saying how it went. */
-async function step(card: string, id: "find-problems" | "break-down" | "others", label: string, run: (ctrl: AbortController) => Promise<Done | null>, failed: string) {
-  const waits = id === "break-down" ? reviewWaits() : null;
+async function step(card: string, id: "find-problems" | "break-down" | "draft-problems" | "others", label: string, run: (ctrl: AbortController) => Promise<Done | null>, failed: string) {
+  // What comes back as a review waits for the one that's open, before Qalam AI is asked.
+  const waits = id === "break-down" || id === "draft-problems" ? reviewWaits() : null;
   if (waits) return void feedback(waits, { id: "discovery.goal" });
   const ctrl = begin(card, id, label);
   if (!ctrl) return void feedback("Qalam AI is still on another card", { id: "discovery.goal" });
@@ -97,6 +125,36 @@ export async function reviewPartsFor(card: string, goal: string) {
   if (waits) return void feedback(waits, { id: "discovery.goal" });
   const b = (await goalWork(goal).catch(() => null))?.breakdown;
   if (!b || !reviewParts(card, goal, b)) feedback("Nothing proposed under it waits now", { id: "discovery.goal" });
+}
+
+/** Draft its problems: the customer problems behind it Qalam AI proposes (with the person's words, when they were asked), reviewed as problems under its card. */
+export const draftProblemsFor = (card: string, goal: string, said: DraftWords = {}) =>
+  step(
+    card,
+    "draft-problems",
+    "Reading what bears on the goal",
+    async (ctrl) => {
+      // The problems under its card already aren't drafted again.
+      const doc = studio().doc;
+      const cards = (doc.nodes[card]?.children ?? []).flatMap((id) => {
+        const c = cardOf(doc, id);
+        return c?.kind === "opportunity" ? [c.title] : [];
+      });
+      const r = await draftProblems(goal, { cards, ...said }, (label) => relabel(ctrl, label), ctrl.signal);
+      if (!r.drafts.length) return { card, text: r.note || "Qalam AI found no problem it could stand behind." };
+      if (!(await reviewProblems(card, goal, { drafts: r.drafts, quotes: r.quotes, decided: {} }))) return { card, text: `${plural(r.drafts.length, "problem")} drafted for it: review them once the review that's open is done.` };
+      if (r.note) feedback(r.note, { id: "discovery.goal" });
+      return null;
+    },
+    "Qalam AI couldn't draft its problems",
+  );
+
+/** The problems drafted for it before and not decided yet, reviewed under its card. */
+export async function reviewProblemsFor(card: string, goal: string) {
+  const waits = reviewWaits();
+  if (waits) return void feedback(waits, { id: "discovery.goal" });
+  const p = (await goalWork(goal).catch(() => null))?.problems;
+  if (!p || !(await reviewProblems(card, goal, p))) feedback("No drafted problem waits now", { id: "discovery.goal" });
 }
 
 /** What others aim for: looked up on the web, each number checked on its page; the first few said beside the goal. */

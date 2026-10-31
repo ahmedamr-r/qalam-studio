@@ -19,7 +19,7 @@ import { fileAfterReading } from "../topics/filing";
 import { backingFor } from "./backing";
 import { begin, end, relabel, stopped } from "./busy";
 import { attachQuoteRefs } from "./drop";
-import { breakDownFor } from "./goal-steps";
+import { breakDownFor, draftProblemsFor } from "./goal-steps";
 import { recordCall } from "./knowledge";
 import { draftSolutionsFor } from "./solutions";
 import { addSourceRecord, sourceOf, updateSource, useSources, visitSources } from "./sources";
@@ -223,14 +223,14 @@ async function runDraft() {
   if (!a) return;
   useAsk.setState({ ask: null });
   const source = await keep(a, true);
-  if (source) {
-    // The card rests on their answers (a goal with no board yet is linked through the source instead).
-    const s = sourceOf(source);
-    if (s && !useSpaceView.getState().virtual.has(a.card)) attachQuoteRefs(a.card, s.quotes.map((q) => ({ sourceId: s.id, quoteId: q.id })), { quiet: true });
-    void fileAfterReading([source], productOfCard(a.card));
-  }
+  // The card rests on their answers (a goal with no board yet is linked through the source instead).
+  const s = source ? sourceOf(source) : undefined;
+  if (s && !useSpaceView.getState().virtual.has(a.card)) attachQuoteRefs(a.card, s.quotes.map((q) => ({ sourceId: s.id, quoteId: q.id })), { quiet: true });
   const said = { ...(source ? { answers: source } : {}), found: [...a.found, ...(a.online?.quotes ?? [])].slice(0, 20) };
-  if (a.step === "draft-solutions") return draftSolutionsFor(a.card, said);
   const t = useSpaceView.getState().things.get(a.card);
-  if (a.step === "break-down" && t?.type === "goal") return breakDownFor(a.card, t.goal, a.levers, said);
+  if (a.step === "draft-solutions") await draftSolutionsFor(a.card, said);
+  else if (a.step === "break-down" && t?.type === "goal") await breakDownFor(a.card, t.goal, a.levers, said);
+  else if (a.step === "draft-problems" && t?.type === "goal") await draftProblemsFor(a.card, t.goal, said);
+  // Filed once the draft has read what was there: a page made from their words never races the draft drawn from them.
+  if (source) void fileAfterReading([source], productOfCard(a.card));
 }

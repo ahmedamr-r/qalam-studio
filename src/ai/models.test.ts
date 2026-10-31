@@ -6,6 +6,7 @@ import { setupCall } from "./setup";
 import { claimsCall } from "./outside";
 import { breakdownCall } from "./breakdown";
 import { jobsCall } from "./jobs";
+import { problemsCall } from "./problems";
 import { solutionsCall } from "./solutions";
 import { bearingsCall } from "./goals";
 import { readerCall } from "./code";
@@ -54,7 +55,7 @@ describe("the model each call runs on", () => {
     const by = (t: Tier) => (Object.keys(TIER_OF) as CallKind[]).filter((k) => TIER_OF[k] === t).sort();
     expect(by("read")).toEqual(["claims", "extract", "reader", "research", "seen-read", "setup-shape", "topics"]);
     expect(by("fetch")).toEqual(["connector", "numbers"]);
-    expect(by("decide")).toEqual(["ask", "bearings", "breakdown", "card-questions", "draft", "dump-followup", "dump-place", "dump-read", "followups", "jobs", "review", "seen-place", "setup-followup", "setup-place", "setup-read", "solutions", "steps", "synthesize", "tests"]);
+    expect(by("decide")).toEqual(["ask", "bearings", "breakdown", "card-questions", "draft", "draft-problems", "dump-followup", "dump-place", "dump-read", "followups", "jobs", "review", "seen-place", "setup-followup", "setup-place", "setup-read", "solutions", "steps", "synthesize", "tests"]);
     expect(tierOf(undefined)).toBe("decide");
     expect([isCallKind("extract"), isCallKind("toString"), isCallKind(3)]).toEqual([true, false, false]);
   });
@@ -79,6 +80,7 @@ describe("each shared call says what it's for", () => {
     expectTypeOf<ReturnType<typeof breakdownCall>["kind"]>().toEqualTypeOf<"breakdown">();
     expectTypeOf<ReturnType<typeof jobsCall>["kind"]>().toEqualTypeOf<"jobs">();
     expectTypeOf<ReturnType<typeof solutionsCall>["kind"]>().toEqualTypeOf<"solutions">();
+    expectTypeOf<ReturnType<typeof problemsCall>["kind"]>().toEqualTypeOf<"draft-problems">();
     expectTypeOf<ReturnType<typeof bearingsCall>["kind"]>().toEqualTypeOf<"bearings">();
     expectTypeOf<ReturnType<typeof stepsCall>["kind"]>().toEqualTypeOf<"steps">();
     expectTypeOf<ReturnType<typeof readCall>["kind"]>().toEqualTypeOf<"seen-read">();
