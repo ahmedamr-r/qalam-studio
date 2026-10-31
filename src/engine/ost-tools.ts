@@ -339,7 +339,10 @@ export function createOstTools(): CanvasDelegate {
         s.select(sel);
       }
       // Drag the selected cards (except outcomes), each with its branch.
-      const ids = topLevelOf(doc, sel).filter((x) => isOstCard(doc.nodes[x]) && !doc.nodes[x].locked && !(cardOf(doc, x)?.kind === "outcome" && !doc.nodes[x].parentId));
+      // On a space's canvas, goals hang where goals.md has them and problems' pages aren't cards yet: neither moves.
+      const space = useSpaceView.getState();
+      const fixed = (x: string) => space.active && (space.faint.has(x) || space.things.get(x)?.type === "goal");
+      const ids = topLevelOf(doc, sel).filter((x) => isOstCard(doc.nodes[x]) && !doc.nodes[x].locked && !fixed(x) && !(cardOf(doc, x)?.kind === "outcome" && !doc.nodes[x].parentId));
       drag = ids.length ? { ids, start: p.world, startScreen: p.screen, active: false, dx: 0, dy: 0, drop: null } : null;
       return true;
     },
@@ -409,7 +412,8 @@ export function createOstTools(): CanvasDelegate {
       const id = cardAt(s.doc, p.world);
       if (!id) return false;
       s.select([id]);
-      startTitleEdit(id, false);
+      // A problem's page isn't a card yet: "Work on it" makes it one.
+      if (!useSpaceView.getState().faint.has(id)) startTitleEdit(id, false);
       return true;
     },
 

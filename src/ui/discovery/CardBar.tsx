@@ -16,6 +16,8 @@ import { useDiscovery } from "./store";
 import { addChildCard, addSiblingCard } from "./commands";
 import { draftSolutionsFor, useDrafting } from "./solutions";
 import { draftTestsFor, useTesting } from "./tests";
+import { useSpaceView } from "@/space/view";
+import { workOnProblem } from "../space/SpacePanel";
 
 const ICON = { size: 14, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 const BAR_H = 36;
@@ -34,6 +36,10 @@ export default function CardBar({ vp }: { vp: { w: number; h: number } }) {
   const designFor = useDiscovery((s) => s.designFor);
   const drafting = useDrafting((s) => s.card);
   const testing = useTesting((s) => s.card);
+  const faint = useSpaceView((s) => {
+    const t = sel && s.faint.has(sel) ? s.things.get(sel) : undefined;
+    return t?.type === "problem" ? t : null;
+  });
   if (!sel || !isOstCard(node) || editing || dragging || designFor || tool !== "select") return null;
   const card = node.meta.ost;
   const doc = studio().doc;
@@ -44,6 +50,15 @@ export default function CardBar({ vp }: { vp: { w: number; h: number } }) {
   const above = box.y - BAR_H - 10;
   const top = above >= 8 ? above : Math.min(vp.h - BAR_H - 8, box.y + box.h + 22);
   if (box.x + box.w < 0 || box.x > vp.w || box.y + box.h < 0 || box.y > vp.h) return null;
+  // A problem's page on a space's canvas: not a card yet, so the one thing to do is put it on the board.
+  if (faint)
+    return (
+      <div role="toolbar" aria-label="Problem" className="pointer-events-auto absolute flex items-center gap-[2px] rounded-lg bg-elevated p-[4px] shadow-popover q-fade" style={{ left: Math.max(8, box.x + box.w / 2 - 60), top, height: BAR_H }} onPointerDown={(e) => e.stopPropagation()}>
+        <Button size="sm" onClick={() => void workOnProblem(faint.topic, sel)}>
+          Work on it
+        </Button>
+      </div>
+    );
 
   return (
     <div

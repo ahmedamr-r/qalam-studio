@@ -32,7 +32,7 @@ import { EvidenceStrip } from "./EvidenceStrip";
 import { saveThenGo } from "./links";
 import { addFromOrganization, openSource, useSources } from "./sources";
 import { orgJson } from "@/org/client";
-import { useProject } from "@/projects/session";
+import { useCardBoard, useSpaceView } from "@/space/view";
 import DecisionRow from "../decisions/DecisionRow";
 import { useDecisions } from "../decisions/list";
 import { citation, fromSource, quoteOf, type SourceRecord } from "@/discovery/sources";
@@ -76,6 +76,8 @@ function OneCard({ id, card }: { id: string; card: OstCard }) {
   const label = useStudio((s) => kindLabel(s.doc, id));
   // Under an outcome, an outcome is a sub-outcome.
   const underOutcome = useStudio((s) => cardOf(s.doc, s.doc.nodes[id]?.parentId)?.kind === "outcome");
+  // On a space's canvas a goal's card is the goal (goals.md): it stays one.
+  const goalCard = useSpaceView((s) => s.active && s.things.get(id)?.type === "goal");
   return (
     <>
       <section className={r.section}>
@@ -87,7 +89,7 @@ function OneCard({ id, card }: { id: string; card: OstCard }) {
         </div>
         <div className="flex flex-col gap-[8px]">
           <CommitArea ariaLabel="Title" value={card.title} placeholder="Name it" onCommit={(v) => edit(id, (c) => void (c.title = v.replace(/\s*\n\s*/g, " ").trim()))} />
-          {kinds.length > 1 && (
+          {kinds.length > 1 && !goalCard && (
             <Field label="Kind">
               <Segmented value={card.kind} options={kinds.map((k) => ({ value: k, label: k === "outcome" && underOutcome ? SUB_OUTCOME_LABEL : KIND_LABEL[k] }))} onChange={(k) => studio().mutate((d) => setKindIn(d, id, k))} />
             </Field>
@@ -136,7 +138,7 @@ const linkCls = "font-medium text-fg underline decoration-fg/30 underline-offset
  * cards on other boards it's linked to as the same need.
  */
 function NoticedSection({ id }: { id: string }) {
-  const board = useProject((s) => s.project?.id);
+  const board = useCardBoard(id);
   const notices = useDiscovery(useShallow((s) => (board ? s.notices.filter((n) => aboutCard(n, board, id)) : [])));
   const [links, setLinks] = useState<LinkedCard[]>([]);
   useEffect(() => {
@@ -208,7 +210,7 @@ function NoticedSection({ id }: { id: string }) {
 
 /** What was decided about this card, newest first, with what it rested on each time (the organization's decision log). */
 function HistorySection({ id }: { id: string }) {
-  const board = useProject((s) => s.project?.id);
+  const board = useCardBoard(id);
   const list = useDecisions(board ? { board, card: id, limit: 30 } : null);
   if (!list?.length) return null;
   return (

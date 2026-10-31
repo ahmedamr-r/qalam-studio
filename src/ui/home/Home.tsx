@@ -1,13 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { PanelRight, X } from "lucide-react";
-import type { LaneItem } from "@/discovery/lane";
 import type { Bearing } from "@/goals/bearings";
-import type { MapThing } from "@/goals/map";
 import type { Notice } from "@/hub/checks";
 import clsx from "clsx";
 import type { SourceRecord } from "@/discovery/sources";
 import { studio, useStudio } from "@/doc/store";
-import { boardLane } from "@/engine/ost-tools";
+import { isOstCard } from "@/doc/board";
 import { useGoals } from "@/goals/client";
 import type { OrgRef } from "@/org/client";
 import { useOrgContext } from "@/org/context";
@@ -17,9 +15,11 @@ import { importLegacy } from "@/projects/library";
 import type { SpaceInputs } from "@/space/session";
 import { useSpaceView } from "@/space/view";
 import { Button, IconBtn } from "../controls";
-import { PickedPanel } from "../map/MapPanel";
-import { MapReader } from "../map/MapReader";
-import { readerWidth } from "../sources/Reader";
+import LaneReader, { useReaderWidth } from "../discovery/LaneReader";
+import CordPicker from "../discovery/CordPicker";
+import { useDiscovery } from "../discovery/store";
+import { SpaceCardPanel } from "../space/SpacePanel";
+import { SpaceConflictBanner } from "../space/ConflictBanner";
 import { r } from "../recipes";
 import { NeedsALook } from "../org/NeedsALook";
 import { AskBar } from "../org/AskBar";
@@ -74,25 +74,19 @@ export default function Home({ product: productId = null }: { product?: string |
   const inputs = useMemo<SpaceInputs | null>(() => (goalTree.loaded && needs !== undefined ? { tree: goalTree, links, needs: needs?.needs ?? null, notices: scoped, products } : null), [goalTree, links, needs, scoped, products]);
 
   const things = useSpaceView((s) => s.things);
-  const boards = useSpaceView((s) => s.boards);
   const selection = useStudio((s) => s.selection);
-  const doc = useStudio((s) => s.doc);
-  const picked = selection.length === 1 && things.has(selection[0]) ? selection[0] : null;
-  const [reading, setReading] = useState<LaneItem | null>(null);
+  const empty = useStudio((s) => !s.doc.roots.length);
+  // Cards picked on the canvas (all of them cards on it) take the panel over; a source read, or a cord's quotes picked, take it over too.
+  const allCards = useStudio((s) => s.selection.length > 0 && s.selection.every((id) => isOstCard(s.doc.nodes[id])));
+  const picked = allCards ? selection : null;
+  const reading = useDiscovery((s) => s.reading);
+  const cordPick = useDiscovery((s) => !!s.cordPick);
+  const readerW = useReaderWidth();
   const [drawer, setDrawer] = useState(false);
-  const thing = picked ? mapThing(picked, things.get(picked)!) : undefined;
 
   useEffect(() => {
-    if (picked) setDrawer(true);
-  }, [picked]);
-  useEffect(() => {
-    const key = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || (e.target as HTMLElement | null)?.closest("input, textarea, [contenteditable=true], [role=dialog]")) return;
-      if (reading) setReading(null);
-    };
-    window.addEventListener("keydown", key);
-    return () => window.removeEventListener("keydown", key);
-  }, [reading]);
+    if (picked || reading || cordPick) setDrawer(true);
+  }, [picked, reading, cordPick]);
 
   const show = (id: string | undefined) => {
     if (!id || !studio().doc.nodes[id]) return;
@@ -106,14 +100,13 @@ export default function Home({ product: productId = null }: { product?: string |
     const topic = n.topic ? [...v.things].find(([, t]) => t.type === "problem" && t.topic === n.topic)?.[0] : undefined;
     show(card(n.board, n.card) ?? card(n.other?.board, n.other?.card) ?? goal ?? topic);
   };
-  const boardName = (id: string) => projects?.find((p) => p.id === id)?.name ?? boards.get(id)?.name;
-
   return (
     <PageFrame place="home" space={space} fill>
       <div className="relative flex h-full min-h-0">
         <div className="relative min-w-0 flex-1">
           <SpaceCanvas org={org?.id ?? null} space={space} inputs={inputs} sources={sources} />
-          {inputs && !doc.roots.length && <EmptyMap space={space} />}
+          {inputs && empty && <EmptyMap space={space} />}
+          <SpaceConflictBanner />
           {!drawer && (
             <button type="button" onClick={() => setDrawer(true)} className={clsx(r.buttonSm, r.buttonSecondary, "absolute top-[12px] right-[12px] shadow-floating min-[1180px]:hidden")}>
               <PanelRight size={14} absoluteStrokeWidth strokeWidth={1.25} className="mr-[6px]" />
@@ -123,29 +116,21 @@ export default function Home({ product: productId = null }: { product?: string |
         </div>
 
         <aside
-          aria-label={reading ? `Reading ${reading.title}` : thing ? "The picked card" : "This space"}
+          aria-label={reading ? "Reading a source" : picked ? "The picked card" : "This space"}
           className={clsx(
             "flex shrink-0 flex-col overflow-y-auto border-l border-line-subtle bg-app",
             "max-[1179px]:absolute max-[1179px]:inset-y-0 max-[1179px]:right-0 max-[1179px]:z-30 max-[1179px]:max-w-full max-[1179px]:shadow-floating",
             !drawer && !reading && "max-[1179px]:hidden",
           )}
           // A source being read takes the panel over, wider for a document than a conversation.
-          style={{ width: reading ? readerWidth(reading.part?.from ?? reading.mark) : 380 }}
+          style={{ width: reading && readerW ? readerW : 380 }}
         >
-          {reading ? (
-            <MapReader
-              item={reading}
-              lane={boardLane()}
-              doc={doc}
-              sources={sources}
-              onClose={() => setReading(null)}
-              onPick={(id) => {
-                setReading(null);
-                show(id);
-              }}
-            />
-          ) : thing && picked ? (
-            <PickedPanel id={picked} thing={thing} doc={doc} tree={goalTree} jobs={jobs} needs={needs?.needs ?? null} lane={boardLane()} boardName={boardName} onClose={() => studio().select([])} onRead={setReading} />
+          {cordPick ? (
+            <CordPicker />
+          ) : reading ? (
+            <LaneReader />
+          ) : picked ? (
+            <SpaceCardPanel ids={picked} things={things} tree={goalTree} jobs={jobs} needs={needs?.needs ?? null} />
           ) : (
             <div className="flex flex-col gap-[20px] px-[16px] py-[14px]">
               <div className="flex items-center justify-end min-[1180px]:hidden">
@@ -199,13 +184,6 @@ export default function Home({ product: productId = null }: { product?: string |
       </div>
     </PageFrame>
   );
-}
-
-/** A card on the canvas as the panel reads it. */
-function mapThing(id: string, t: import("@/space/compose").SpaceThing): MapThing {
-  if (t.type === "goal") return { type: "goal", goal: t.goal, ...(t.board ? { board: t.board, card: id } : {}) };
-  if (t.type === "card") return { type: "card", board: t.board, card: id, goal: t.goal };
-  return t;
 }
 
 /** Nothing on the canvas yet: where to begin. */

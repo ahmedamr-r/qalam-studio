@@ -25,6 +25,11 @@ export interface DiffContext {
    * to either is recorded where the goal is changed (src/goals/decisions.ts), not here.
    */
   linked?: ReadonlySet<string>;
+  /**
+   * A space's canvas holds many boards: each decision is about its card's board (null: a card on
+   * no board, a goal's or a problem's page, whose decisions are recorded where those change).
+   */
+  boardOf?: (card: string) => { board: string; boardName: string; product: string | null } | null;
 }
 
 interface CardAt {
@@ -135,11 +140,17 @@ function bigStage(card: OstCard, to: string): boolean {
 export const num = (v: number | null | undefined, unit?: string) => (v === null || v === undefined ? "none" : `${v}${unit ? ` ${unit}` : ""}`);
 
 export function decisionsFromDiff(prev: Doc, next: Doc, ctx: DiffContext): Decision[] {
+  const all = diffDecisions(prev, next, ctx);
+  // On a space's canvas, what's about a card on no board isn't a board's decision.
+  return ctx.boardOf ? all.filter((d) => !d.card || !!ctx.boardOf!(d.card)) : all;
+}
+
+function diffDecisions(prev: Doc, next: Doc, ctx: DiffContext): Decision[] {
   if (prev === next || prev.nodes === next.nodes) return [];
   const before = cardsOf(prev);
   const after = cardsOf(next);
   const base = { at: ctx.now, board: ctx.board, boardName: ctx.boardName, ...(ctx.product !== undefined ? { product: ctx.product } : {}), by: ctx.by ?? "you" } as const;
-  const make = (d: Omit<Decision, "id" | keyof typeof base>): Decision => ({ id: ctx.newId(), ...base, ...d });
+  const make = (d: Omit<Decision, "id" | keyof typeof base>): Decision => ({ id: ctx.newId(), ...base, ...(ctx.boardOf && d.card ? ctx.boardOf(d.card) : {}), ...d });
   const out: Decision[] = [];
 
   // --- Deleted cards: folded into another (merge), or dropped with whatever was under them.

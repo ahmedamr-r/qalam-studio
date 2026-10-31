@@ -6,6 +6,7 @@ import type { Decision } from "@/decisions/model";
 import { changeGoal, createGoal, goalsNow, useGoals } from "@/goals/client";
 import { applyCopy, copyOfCard, goalSide, reconcile, sameCopy, type GoalCopy } from "@/goals/mirror";
 import { currentProject } from "@/projects/session";
+import { onSpaceCanvas, useSpaceView } from "@/space/view";
 import { useWhy } from "../decisions/recorder";
 
 /*
@@ -28,6 +29,8 @@ let nextBy: Decision["by"] = "you";
 
 /** The outcome cards on this board that work on a goal. */
 export function linkedCards(): Set<string> {
+  // A space's canvas: every goal's card (its words, number and stage are goals.md's).
+  if (onSpaceCanvas()) return new Set([...useSpaceView.getState().things].flatMap(([id, t]) => (t.type === "goal" ? [id] : [])));
   const p = currentProject();
   if (!p) return new Set();
   return new Set(useGoals.getState().goals.flatMap((g) => (g.on?.board === p.id ? [g.on.card] : [])));
@@ -35,6 +38,7 @@ export function linkedCards(): Set<string> {
 
 /** The goals this board works on. */
 export function boardGoalIds(): string[] {
+  if (onSpaceCanvas()) return [...useSpaceView.getState().things.values()].flatMap((t) => (t.type === "goal" ? [t.goal] : []));
   const p = currentProject();
   return p ? useGoals.getState().goals.filter((g) => g.on?.board === p.id).map((g) => g.id) : [];
 }

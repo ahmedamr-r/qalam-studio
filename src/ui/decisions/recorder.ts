@@ -5,10 +5,11 @@ import type { Doc } from "@/doc/schema";
 import { cardOf } from "@/discovery/ops";
 import type { Proposal } from "@/discovery/proposals";
 import type { OstCard } from "@/discovery/types";
-import { cardsBack, decisionsFromDiff, reverses, sameDecision, stampsOf } from "@/decisions/diff";
+import { cardsBack, decisionsFromDiff, reverses, sameDecision, stampsOf, type DiffContext } from "@/decisions/diff";
 import type { Decision, DecisionKind } from "@/decisions/model";
 import { orgFetch } from "@/org/client";
 import { currentProject, onDocFromElsewhere } from "@/projects/session";
+import { boardOfCard, onSpaceCanvas, useSpaceView } from "@/space/view";
 import { editsByQalam, linkedCards } from "../discovery/goals";
 import { decisionsChanged } from "./list";
 
@@ -79,8 +80,8 @@ interface RecordOpts {
 /** Record what changed since last time, now. Returns the decisions it found. */
 function record(opts: RecordOpts = {}): Decision[] {
   clearTimeout(timer);
-  const p = currentProject();
-  if (!p || p.type !== "discovery" || !base) return [];
+  const ctx = boardContext();
+  if (!ctx || !base) return [];
   // Mid-gesture (a drag): wait for it to end.
   if (studio().txBase && !opts.upTo) {
     timer = setTimeout(() => record(), SETTLE);
@@ -91,7 +92,7 @@ function record(opts: RecordOpts = {}): Decision[] {
   if (prev === next) return [];
   base = next;
   const now = Date.now();
-  const found = decisionsFromDiff(prev, next, { board: p.id, boardName: p.name, product: p.product ?? null, now, by: opts.by, newId: () => nanoid(10), linked: linkedCards() });
+  const found = decisionsFromDiff(prev, next, { ...ctx, now, by: opts.by, newId: () => nanoid(10), linked: linkedCards() });
   recent = recent.filter((d) => now - d.at < UNDO_WINDOW);
 
   const fresh: Decision[] = [];
@@ -151,11 +152,32 @@ function stamp(prev: Doc, next: Doc, now: number) {
   base = studio().doc;
 }
 
-/** A decision about the open board that isn't a change to it (accepting or discarding Qalam AI's proposals). */
-function decision(kind: DecisionKind, what: string, detail: Record<string, unknown>, extra: Partial<Decision> = {}): Decision | null {
+/**
+ * Whose decisions these are: the open board's, or on a space's canvas each card's own board
+ * (what's about a card on no board is recorded where it changes: goals.md, a problem's page).
+ */
+function boardContext(): Pick<DiffContext, "board" | "boardName" | "product" | "boardOf"> | null {
+  if (onSpaceCanvas()) {
+    const v = useSpaceView.getState();
+    const of = (card: string) => {
+      const board = v.boardOf.get(card) ?? boardOfCard(card);
+      return board ? { board, boardName: v.boards.get(board)?.name ?? "", product: v.boards.get(board)?.product ?? null } : null;
+    };
+    return { board: "", boardName: "", product: v.space, boardOf: of };
+  }
   const p = currentProject();
   if (!p || p.type !== "discovery") return null;
-  return { id: nanoid(10), at: Date.now(), kind, board: p.id, boardName: p.name, product: p.product ?? null, card: null, cardTitle: "", what, detail, by: "you", big: false, ...extra };
+  return { board: p.id, boardName: p.name, product: p.product ?? null };
+}
+
+/** A decision about the open board that isn't a change to it (accepting or discarding Qalam AI's proposals); on a space's canvas, the board of the cards it's about. */
+function decision(kind: DecisionKind, what: string, detail: Record<string, unknown>, extra: Partial<Decision> = {}): Decision | null {
+  const ctx = boardContext();
+  if (!ctx) return null;
+  const cards = (detail.cards as string[] | undefined) ?? [];
+  const at = ctx.boardOf ? cards.map(ctx.boardOf).find(Boolean) : { board: ctx.board, boardName: ctx.boardName, product: ctx.product ?? null };
+  if (!at) return null;
+  return { id: nanoid(10), at: Date.now(), kind, ...at, card: null, cardTitle: "", what, detail, by: "you", big: false, ...extra };
 }
 
 /** Write a decision (or a correction to one): its why, or that it was undone. */

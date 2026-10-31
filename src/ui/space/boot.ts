@@ -12,6 +12,10 @@ import { dropStaleEdit } from "../discovery/editing";
 import { useDiscovery } from "../discovery/store";
 import { useSources } from "../discovery/sources";
 import { startWork } from "../discovery/work";
+import { loadFeeds, SPACE, useFeeds } from "../discovery/feeds";
+import { onOrgChange } from "@/org/live";
+import { startRecorder } from "../decisions/recorder";
+import { startSpaceGoalSync } from "./goals";
 
 /*
  * A space's canvas in this window: the board's gestures and commands, installed once (the canvas
@@ -40,4 +44,12 @@ export function startSpaceCanvas() {
   });
   // Where solutions' linked issues and pull requests stand (their chips).
   startWork();
+  // Goals' cards and goals.md agree; what's decided on the canvas goes to the decision log, each on its card's board.
+  startSpaceGoalSync();
+  startRecorder();
+  // The feeds watching for the canvas's cards, in the lane.
+  useFeeds.setState({ board: SPACE, list: [], news: {} });
+  void loadFeeds(SPACE);
+  useFeeds.subscribe(() => studio().invalidate());
+  onOrgChange((c) => c.kind === "feed" && void loadFeeds(SPACE, false));
 }

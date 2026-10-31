@@ -10,6 +10,7 @@ import { ordered } from "@/goals/tree";
 import type { Goal, GoalTree } from "@/goals/types";
 import type { Notice } from "@/hub/checks";
 import type { RankedNeed } from "@/hub/needs";
+import { sameTopic } from "@/hub/topics";
 import { inSpace, type Space } from "@/ui/frame/spaces";
 
 /*
@@ -169,7 +170,9 @@ export function composeSpace(o: SpaceInput, makeId: () => string = newId): Space
     }
     // The problems linked to it right here (not through a goal under it) that no board of its has yet.
     if (o.needs?.length && o.links?.length) {
-      const behind = rankForGoal(g.id, { tree, links: [...o.links], needs: [...o.needs] }).filter((p) => !p.via && !p.onBoard);
+      // Not one its board has under the same words (put there before the problems were ranked again).
+      const own = group.map((c) => doc.nodes[c]?.meta.ost?.title ?? "");
+      const behind = rankForGoal(g.id, { tree, links: [...o.links], needs: [...o.needs] }).filter((p) => !p.via && !p.onBoard && !own.some((t) => sameTopic(t, p.title)));
       for (const p of behind.slice(0, SPACE_LIMITS.behind)) {
         const pid = `topic:${g.id}:${p.topic}`;
         addProblem(pid, p, p.by, id, g.id, p.boards.length ? "Other board" : "No board");

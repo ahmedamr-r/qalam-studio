@@ -188,6 +188,11 @@ export function onDocFromElsewhere(fn: (doc: Doc, before: Doc) => void): () => v
   return () => fromElsewhere.delete(fn);
 }
 
+/** Tell what listens that the studio's document was replaced from elsewhere (a space's canvas composed again). */
+export function announceFromElsewhere(doc: Doc, before: Doc) {
+  for (const fn of fromElsewhere) fn(doc, before);
+}
+
 /** Show a document that came from elsewhere (another window, the folder) without saving it back. */
 export function showDocFromElsewhere(doc: Doc) {
   skipNext = true;

@@ -12,7 +12,10 @@ import type { RankedNeed } from "@/hub/needs";
 import { ConflictError, orgJson } from "@/org/client";
 import { onOrgChange } from "@/org/live";
 import { newProject, type Project } from "@/projects/model";
+import { announceFromElsewhere } from "@/projects/session";
 import { useSources } from "@/ui/discovery/sources";
+import { sourcesDb } from "@/discovery/db";
+import { allCards } from "@/discovery/tree";
 import type { Space } from "@/ui/frame/spaces";
 import { keepOtherBoards } from "./arrange";
 import { assignBoards, isNewBoard, type Known } from "./assign";
@@ -166,8 +169,11 @@ function compose(o: { fresh: boolean }) {
   const doc = laidOut(s.doc);
   open.base = doc;
   quiet = doc;
+  const was = studio().doc;
   if (o.fresh) {
     studio().openDoc(doc);
+    announceFromElsewhere(studio().doc, was);
+    for (const fn of composed) fn(s);
     return;
   }
   // What came from elsewhere goes into each step back too, when the cards are the same ones;
@@ -176,6 +182,15 @@ function compose(o: { fresh: boolean }) {
   const same = sameCards(before, doc);
   const keep = (d: Doc) => (same ? withContent(d, doc) : d);
   useStudio.setState({ doc, past: same ? past.map(keep) : [], future: same ? future.map(keep) : [], selection: selection.filter((id) => !!doc.nodes[id]) });
+  announceFromElsewhere(doc, was);
+  for (const fn of composed) fn(s);
+}
+
+const composed = new Set<(s: SpaceDoc) => void>();
+/** Hear each time the canvas is composed (opened, or what came from elsewhere put in). */
+export function onSpaceComposed(fn: (s: SpaceDoc) => void): () => void {
+  composed.add(fn);
+  return () => composed.delete(fn);
 }
 
 /** Whether two canvases hold the same cards in the same places (problems' pages aside: they're never saved). */
@@ -273,21 +288,23 @@ function install() {
 // Saving
 
 /** Save the canvas's changes now (before leaving, or once edits settle). */
-export function flushSpace(o: { force?: boolean } = {}): Promise<void> {
+export function flushSpace(o: { force?: boolean; skip?: ReadonlySet<string> } = {}): Promise<void> {
   clearTimeout(timer);
   saving = saving.then(() => saveOnce(o)).catch(() => {});
   return saving;
 }
 
-async function saveOnce(o: { force?: boolean }) {
+async function saveOnce(o: { force?: boolean; skip?: ReadonlySet<string> }) {
   if (!open || !unsaved) return;
-  if (useSpaceConflict.getState().boards.length && !o.force) return;
+  if (useSpaceConflict.getState().boards.length && !o.force && !o.skip) return;
   const s = open;
   const now = studio().doc;
   const before = assignBoards(s.base, s.known);
   const after = assignBoards(now, s.known);
   const stored = new Map([...s.stored].flatMap(([id, b]) => (b.doc ? [[id, b.doc] as const] : [])));
   const r = splitSpace({ base: s.base, now, before, after, stored, anchors: s.known.anchors, virtual: s.known.virtual });
+  // Boards whose edits here are being given up for another window's.
+  for (const id of o.skip ?? []) r.writes.delete(id);
   unsaved = false;
   if (!r.writes.size && !r.create.length) {
     s.base = now;
@@ -330,11 +347,24 @@ async function saveOnce(o: { force?: boolean }) {
     }
     // A goal whose board just started works on it: its card is the board's outcome.
     for (const c of r.create) if (c.goal) await changeGoal(c.goal, { on: { board: made.get(c.key)!.id, card: c.goal } }).catch(() => {});
+    // The sources its cards rest on list the board (src/discovery/sources.ts: a source lists the boards that use it).
+    await linkSources([...r.writes, ...r.create.map((c) => [made.get(c.key)!.id, c.doc] as const)]);
   } catch (e) {
     unsaved = true;
     if (e instanceof ConflictError && Array.isArray(e.current)) {
       const list = e.current as { id: string; version: string; doc: Doc | null }[];
       useSpaceConflict.setState({ boards: list.map((c) => ({ ...c, name: s.stored.get(c.id)?.name ?? "A board" })) });
+    }
+  }
+}
+
+async function linkSources(boards: Iterable<readonly [string, Doc]>) {
+  const list = useSources.getState().list;
+  for (const [board, doc] of boards) {
+    const cited = new Set(allCards(doc).flatMap(({ card }) => card.evidence.flatMap((e) => (e.sourceId ? [e.sourceId] : []))));
+    for (const id of cited) {
+      const src = list.find((x) => x.id === id);
+      if (src && !(src.boards ?? []).includes(board)) await sourcesDb.link(id, board, true).catch(() => {});
     }
   }
 }
@@ -350,6 +380,9 @@ export async function resolveSpaceConflict(take: "mine" | "theirs") {
   if (!open) return;
   if (take === "mine") return flushSpace({ force: true });
   const { boards } = useSpaceConflict.getState();
+  // This window's edits to the other boards go in first; then the other window's boards come in.
+  await flushSpace({ skip: new Set(boards.map((b) => b.id)) });
+  if (!open) return;
   for (const c of boards) open.stored.set(c.id, { ...open.stored.get(c.id)!, doc: c.doc, version: c.version });
   useSpaceConflict.setState({ boards: [] });
   unsaved = false;
@@ -396,5 +429,5 @@ export function pendingSpaceSave() {
 }
 
 if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
-  (window as unknown as { __space: unknown }).__space = { pending: pendingSpaceSave, unsaved: hasUnsavedSpace, open: spaceOpen, flush: flushSpace };
+  (window as unknown as { __space: unknown }).__space = { pending: pendingSpaceSave, unsaved: hasUnsavedSpace, open: spaceOpen, flush: flushSpace, view: () => useSpaceView.getState() };
 }

@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { Box } from "@/doc/geometry";
 import { studio } from "@/doc/store";
-import { currentProject } from "@/projects/session";
+import { currentProject, useProject } from "@/projects/session";
 import type { SpaceTag, SpaceThing } from "./compose";
 
 /*
@@ -72,4 +72,11 @@ export function canvasBoards(): string[] {
     return p ? [p.id] : [];
   }
   return [...v.boards.keys()];
+}
+
+/** The board a card is on, as a hook (a board's page: that board). */
+export function useCardBoard(id: string | null | undefined): string | null {
+  const space = useSpaceView((s) => (s.active ? (id ? (s.boardOf.get(id) ?? null) : null) : undefined));
+  const project = useProject((s) => s.project?.id ?? null);
+  return space === undefined ? project : space;
 }

@@ -297,3 +297,52 @@ describe("the canvas's order", () => {
     expect(goalsLast(s.doc, (id) => goals.has(id))).toBe(s.doc);
   });
 });
+
+describe("composed as the map was", () => {
+  const m = composeSpace({ tree, boards: [b1, b2], space: null, links, needs, products });
+
+  it("names a no-goal board's tree by its board, and says no goal covers what's in the column", () => {
+    expect(m.tags.get("q1")?.label).toBe("Pantry ideas");
+    expect(m.things.get("y1")).toEqual({ type: "card", board: "b2", goal: null });
+    expect(m.tags.get("topic:none:late")?.label).toBe("No goal yet");
+  });
+
+  it("gives each goal its own cards for its lane, not its sub-goals'", () => {
+    expect(m.groups.find((g) => g.head === "o1")?.cards).toEqual(["o1", "p1", "x1", "t1", "topic:r:fees"]);
+    expect(m.groups.find((g) => g.head === "o2")?.cards).toEqual(["o2", "p2"]);
+  });
+
+  it("marks what needs a look on its card, a goal or a page", () => {
+    const notices = [{ board: "b1", card: "x1" }, { goal: "o" }, { topic: "fees" }, { board: "b1", card: "o2" }] as Notice[];
+    const n = composeSpace({ tree, boards: [b1, b2], space: null, links, needs, notices });
+    expect([...n.noticed].sort()).toEqual(["o", "o2", "topic:r:fees", "x1"]);
+  });
+
+  it("shows only a product's goals in its space, those whose goal is elsewhere at the top", () => {
+    const g = composeSpace({ tree, boards: [b1, b2], space: "grocery", links, needs });
+    expect(g.doc.roots).toEqual(["o1", "q1", "topic:none:late"]);
+    expect(g.doc.nodes.ns).toBeUndefined();
+    expect(g.tags.get("o1")).toBeUndefined();
+  });
+
+  it("lays the trees side by side, none over another, the column on the right, and a goal's lane at the left of its own cards", async () => {
+    const { boxesIntersect, worldBounds } = await import("@/doc/geometry");
+    const { doc, slots } = layoutSpace(m.doc, { column: (id) => id.startsWith("topic:none:"), isGoal: (id) => m.things.get(id)?.type === "goal", lanes: new Map([["o1", 2]]) });
+    const treeOf = (root: string) =>
+      Object.keys(doc.nodes)
+        .filter((n) => {
+          let p: string | null = n;
+          while (doc.nodes[p!]?.parentId) p = doc.nodes[p!].parentId;
+          return p === root;
+        })
+        .map((n) => worldBounds(doc, n));
+    const [a, b, c] = ["ns", "o", "q1"].map(treeOf);
+    for (const x of a) for (const y of b) expect(boxesIntersect(x, y)).toBe(false);
+    for (const x of b) for (const y of c) expect(boxesIntersect(x, y)).toBe(false);
+    const column = worldBounds(doc, "topic:none:late");
+    for (const t of [a, b, c]) for (const x of t) expect(column.x).toBeGreaterThan(x.x + x.w);
+    const slot = slots.get("o1")!;
+    expect(slot.x + slot.w).toBeLessThan(worldBounds(doc, "p1").x);
+    for (const id of Object.keys(doc.nodes)) expect(boxesIntersect(worldBounds(doc, id), slot)).toBe(false);
+  });
+});
