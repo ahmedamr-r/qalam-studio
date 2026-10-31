@@ -37,11 +37,11 @@ const save = (t: DecisionTrace) => {
   tracesDb.put(t).catch(() => {});
 };
 
-export type NewTrace = Omit<DecisionTrace, "v" | "id" | "projectId" | "updatedAt"> & { id?: string };
+export type NewTrace = Omit<DecisionTrace, "v" | "id" | "projectId" | "updatedAt"> & { id?: string; /** The board it's kept with, when not the open one (a space's canvas). */ projectId?: string };
 
 /** Record a decision; returns its id. Old traces past the limit are dropped. */
 export function recordDecision(t: NewTrace): string {
-  const projectId = get().projectId ?? "";
+  const projectId = t.projectId ?? get().projectId ?? "";
   const trace: DecisionTrace = { ...t, v: 1, id: t.id ?? nanoid(10), projectId, updatedAt: Date.now() };
   const list = [...get().traces.filter((x) => x.id !== trace.id), trace].sort((a, b) => a.at - b.at);
   const drop = list.length > MAX_TRACES ? list.slice(0, list.length - MAX_TRACES) : [];

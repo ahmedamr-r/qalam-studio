@@ -11,7 +11,7 @@ import { SOURCE_KIND_LABEL, hasQuote, packCalls, quotePiece, unread, type Source
 import { orgContext } from "@/org/pack";
 import { sanitizeExtract, sanitizeSynthesis, synthCardsOf, type CallChunk, type SynthContext, type SynthQuote } from "@/discovery/synthesis";
 import { awaitingRoles, finishExtracted, finishInterviewQuotes, speakerNote, type SpeakerRole } from "@/discovery/transcript";
-import { currentProject } from "@/projects/session";
+import { canvasBoard, canvasProduct } from "@/space/view";
 import { offline } from "./ai";
 import { hasOutcome, treeFor } from "./draft";
 import { IngestError, ingestFile, ingestPaste, ingestUrl, type Ingested } from "./ingest";
@@ -67,7 +67,7 @@ export function stopSources() {
 
 /** Add sources, have Qalam AI pick out their quotes, then map those to the tree (unless `map` is false). */
 export async function addSources(inputs: AddInput[], opts: { map?: boolean } = {}) {
-  const projectId = currentProject()?.id;
+  const projectId = canvasBoard();
   if (!projectId || !inputs.length) return;
   const ctrl = begin();
   useSources.setState({ notice: null });
@@ -136,7 +136,7 @@ export function productLine(doc: Doc): string {
   // Outcomes the goal tree doesn't hold yet (before goals.md had them).
   const outcomes = goals.length ? [] : outcomeLines(doc);
   // What the board's product (or the organization) is, from its own file, its goals and the goals above them, then the board's own notes.
-  return [contextFor(currentProject()?.product, goals), doc.brief?.summary ?? "", outcomes.length ? `The outcomes the team wants to move (sub-outcomes under theirs):\n${outcomes.join("\n")}` : ""]
+  return [contextFor(canvasProduct() ?? undefined, goals), doc.brief?.summary ?? "", outcomes.length ? `The outcomes the team wants to move (sub-outcomes under theirs):\n${outcomes.join("\n")}` : ""]
     .filter(Boolean)
     .join("\n")
     .slice(0, 3000);
@@ -205,7 +205,7 @@ export async function readSources(ids: string[], given?: AbortController): Promi
     if (!given) end(ctrl);
   }
   // What customers said goes on the organization's topic pages too (in the background).
-  if (found > 0 && !ctrl.signal.aborted) void fileAfterReading([...touched], currentProject()?.product ?? null);
+  if (found > 0 && !ctrl.signal.aborted) void fileAfterReading([...touched], canvasProduct());
   const left = ids.map(sourceOf).filter((s): s is SourceRecord => !!s && !awaitingRoles(s)).reduce((n, s) => n + unread(s).length, 0);
   if (failure) useSources.setState({ notice: { text: `Qalam AI couldn't read everything: ${failure}`, action: "read" } });
   else if (left && !ctrl.signal.aborted) useSources.setState({ notice: { text: `Qalam AI read what one go allows; ${left} ${left === 1 ? "part is" : "parts are"} still unread.`, action: "read" } });

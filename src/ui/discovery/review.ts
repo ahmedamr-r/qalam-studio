@@ -2,6 +2,8 @@ import { create } from "zustand";
 import { studio, useStudio } from "@/doc/store";
 import type { Doc } from "@/doc/schema";
 import { isOstCard } from "@/doc/board";
+import { boardOfCard, onSpaceCanvas } from "@/space/view";
+import { boardsPlacedFor } from "./placements";
 import { useGhosts, type Ghost } from "@/doc/ghosts";
 import { feedback } from "@/commands/feedback";
 import { cardOf } from "@/discovery/ops";
@@ -160,6 +162,15 @@ const sourceOfProposal = (p: Proposal) => (p.kind === "attach" || p.kind === "ag
 async function keep(origin: ReviewOrigin | null, done?: Partial<DumpCounts>) {
   const { proposals } = useReview.getState();
   if (origin?.kind === "placed") {
+    // On a space's canvas, each board keeps what's left of its own (by the card each proposal is for).
+    if (onSpaceCanvas()) {
+      for (const sourceId of origin.sourceIds)
+        for (const board of boardsPlacedFor(sourceId)) {
+          const left = proposals.filter((p) => sourceOfProposal(p) === sourceId && boardOfCard(p.kind === "card" ? (p.parentId ?? p.cardId) : p.cardId) === board);
+          await orgFetch("/placements", { method: "POST", json: { board, sourceId, proposals: left } }).catch(() => {});
+        }
+      return;
+    }
     const board = useSources.getState().projectId;
     if (!board) return;
     for (const sourceId of origin.sourceIds) await orgFetch("/placements", { method: "POST", json: { board, sourceId, proposals: proposals.filter((p) => sourceOfProposal(p) === sourceId) } }).catch(() => {});

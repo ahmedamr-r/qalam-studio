@@ -37,7 +37,7 @@ import { initialFlow, type FlowState } from "../ai/questionFlow";
 import { openTurn, patchTurn } from "../ai/chats";
 import { appendThought, endAgent, narrate, startAgent, updateAgent } from "../ai/agents";
 import { getController } from "../CanvasView";
-import { currentProject } from "@/projects/session";
+import { canvasBoard, canvasProduct } from "@/space/view";
 import { offline, runDump } from "./ai";
 import { placeFor, placeSample, routeTurns, treeFor } from "./draft";
 import { REVIEW_TURN, evidenceOf, ghostsFor, startReview, useReview } from "./review";
@@ -69,7 +69,7 @@ export const useDump = create<DumpUI>(() => ({ open: null, minimised: false, bus
 const runs = new Map<string, AbortController>();
 
 /** What the board's product (or the organization) is, then the board's own notes. */
-const product = () => [contextFor(currentProject()?.product, boardGoalIds()), studio().doc.brief?.summary ?? ""].filter(Boolean).join("\n").slice(0, 3000);
+const product = () => [contextFor(canvasProduct() ?? undefined, boardGoalIds()), studio().doc.brief?.summary ?? ""].filter(Boolean).join("\n").slice(0, 3000);
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /** A dump's session (null when the source isn't a dump). */
@@ -162,7 +162,7 @@ function readFields(s: SourceRecord, cards: PlaceCard[]) {
 
 /** A new dump: kept as a source, then read. */
 export async function startDump(text: string, opts: { sample?: boolean } = {}) {
-  const projectId = currentProject()?.id;
+  const projectId = canvasBoard();
   const body = (opts.sample ? SAMPLE_DUMP_TEXT : text).trim();
   if (!projectId || body.length < 40) return;
   if (body.length > DUMP_MAX_CHARS) return feedback(`That's more than one brain dump takes (${DUMP_MAX_CHARS.toLocaleString()} characters): add the rest as a source`, { kind: "error", id: "discovery.dump" });
@@ -374,7 +374,7 @@ export async function placeDump(sourceId: string) {
     await review(list);
     turnDone(sourceId, { model, sample });
     // The dump's pieces are what the team believes: on the topic pages too (in the background).
-    if (!sample) void fileAfterReading([sourceId], currentProject()?.product ?? null);
+    if (!sample) void fileAfterReading([sourceId], canvasProduct());
   } catch (e) {
     clearTimeout(timer);
     clearGhosts(preview);

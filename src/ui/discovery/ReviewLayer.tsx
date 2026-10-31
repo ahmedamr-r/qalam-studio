@@ -16,6 +16,7 @@ import { stopSources } from "./import";
 import { sourceOf, useSources } from "./sources";
 import { stopDump, useDump } from "./dump";
 import { reviewPlacements, usePlacements } from "./placements";
+import { useSpaceView } from "@/space/view";
 
 const SMALL = { size: 12, absoluteStrokeWidth: true, strokeWidth: 1.5 } as const;
 /** A card narrower than this on screen gets no bar of its own (the pill covers it until you zoom in). */
@@ -39,13 +40,14 @@ export default function ReviewLayer({ vp }: { vp: { w: number; h: number } }) {
   const ghosts = useGhosts((s) => s.list);
   const cam = useStudio((s) => s.camera);
   const waiting = usePlacements((s) => s.list);
+  const space = useSpaceView((s) => s.active);
   if (!proposals.length && !(mapping || quoting || placing) && waiting.length)
     // What Qalam AI found for this board in material added to the organization, waiting.
     return (
       <Pill>
         <QalamAIGlyph size={14} />
         <span className="min-w-0 truncate" title={waiting.map((w) => w.title).join(", ")}>
-          {plural(waiting.reduce((n, w) => n + w.proposals.length, 0), "change")} for this board from {waiting.length === 1 ? `“${waiting[0].title}”` : `${waiting.length} new sources`}
+          {plural(waiting.reduce((n, w) => n + w.proposals.length, 0), "change")} {space ? "for these trees" : "for this board"} from {waiting.length === 1 ? `“${waiting[0].title}”` : `${waiting.length} new sources`}
         </span>
         <Button size="sm" onClick={() => void reviewPlacements()}>
           Review

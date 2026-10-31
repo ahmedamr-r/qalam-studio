@@ -4,8 +4,9 @@ import { onFontsChanged } from "@/engine/fonts";
 import { setCanvasDelegate } from "@/engine/canvas-delegate";
 import { createOstTools } from "@/engine/ost-tools";
 import { useGoals } from "@/goals/client";
-import { relayoutSpace } from "@/space/session";
-import { useSpaceView } from "@/space/view";
+import { onSpaceComposed, relayoutSpace } from "@/space/session";
+import { glideToLayer, onCanvasReady } from "../discovery/canvas";
+import { canvasBoards, useSpaceView } from "@/space/view";
 import { registerDiscoveryCommands } from "../discovery/commands";
 import { ensureHandlers } from "../discovery/draft";
 import { dropStaleEdit } from "../discovery/editing";
@@ -14,6 +15,7 @@ import { useSources } from "../discovery/sources";
 import { startWork } from "../discovery/work";
 import { loadFeeds, SPACE, useFeeds } from "../discovery/feeds";
 import { onOrgChange } from "@/org/live";
+import { loadPlacements, usePlacements } from "../discovery/placements";
 import { startRecorder } from "../decisions/recorder";
 import { startSpaceGoalSync } from "./goals";
 
@@ -52,4 +54,24 @@ export function startSpaceCanvas() {
   void loadFeeds(SPACE);
   useFeeds.subscribe(() => studio().invalidate());
   onOrgChange((c) => c.kind === "feed" && void loadFeeds(SPACE, false));
+  // What Qalam AI found for the canvas's boards in material added to the organization, waiting for review.
+  let boards = "";
+  onSpaceComposed(() => {
+    const now = canvasBoards();
+    if (now.join() === boards) return;
+    boards = now.join();
+    usePlacements.setState({ board: null, list: [] });
+    for (const b of now) void loadPlacements(b);
+  });
+  onOrgChange((c) => c.kind === "placement" && canvasBoards().includes(c.board) && void loadPlacements(c.board));
+}
+
+if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
+  (window as unknown as { __spaceUi: unknown }).__spaceUi = {
+    show: (id: string) => {
+      studio().select([id]);
+      onCanvasReady((c) => glideToLayer(c, id));
+    },
+    studio,
+  };
 }

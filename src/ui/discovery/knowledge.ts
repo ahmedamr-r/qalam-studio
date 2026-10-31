@@ -9,6 +9,8 @@ import { givenOf, sanitizeReliance } from "@/knowledge/trace";
 import type { DecisionTrace, ReliedOn } from "@/knowledge/types";
 import { quoteIdOf, type OrgContext } from "@/org/pack";
 import { currentProject } from "@/projects/session";
+import { boardOfCard, onSpaceCanvas, productOfCard } from "@/space/view";
+import { studio } from "@/doc/store";
 import { sourceOf, visitSources } from "./sources";
 
 /**
@@ -18,13 +20,14 @@ import { sourceOf, visitSources } from "./sources";
  */
 
 /** The product a board's packs rank by: its own; none for a board of the whole organization. */
-export const packProduct = (): string | undefined => currentProject()?.product ?? undefined;
+export const packProduct = (): string | undefined => (onSpaceCanvas() ? (productOfCard(studio().selection[0]) ?? undefined) : (currentProject()?.product ?? undefined));
 
-/** The board's cards as the index names them: a call that sends the tree leaves them out of its pack. */
-export const boardCardRefs = (doc: Doc): string[] => {
-  const board = currentProject()?.id;
-  return board ? allCards(doc).map((c) => cardRef(board, c.id)) : [];
-};
+/** The board's cards as the index names them (a space's canvas: each on its own board): a call that sends the tree leaves them out of its pack. */
+export const boardCardRefs = (doc: Doc): string[] =>
+  allCards(doc).flatMap((c) => {
+    const board = boardOfCard(c.id);
+    return board ? [cardRef(board, c.id)] : [];
+  });
 
 /** A packed customer quote, ready to attach: where it lives, and its words as evidence. */
 export interface HubQuote {
@@ -56,6 +59,8 @@ export function recordCall(o: { title: string; summary?: string; org: OrgContext
   const reliedOn = o.org ? sanitizeReliance((o.raw as { reliedOn?: unknown } | null)?.reliedOn, o.org.manifest) : [];
   const given = [...(o.org ? givenOf(o.org.manifest) : []), ...(o.also ? givenOf(o.also.manifest) : [])];
   recordDecision({
+    // On a space's canvas, kept with the board of the card the call was about.
+    ...(onSpaceCanvas() ? { projectId: boardOfCard(studio().selection[0]) ?? undefined } : {}),
     kind: "discovery",
     at: Date.now(),
     title: o.title,

@@ -80,3 +80,15 @@ export function useCardBoard(id: string | null | undefined): string | null {
   const project = useProject((s) => s.project?.id ?? null);
   return space === undefined ? project : space;
 }
+
+/** The board a whole-canvas action goes to (a brain dump, sources added): the open board, or the selected card's, else the space's first. */
+export function canvasBoard(): string | null {
+  if (!useSpaceView.getState().active) return currentProject()?.id ?? null;
+  return boardOfCard(studio().selection[0]) ?? canvasBoards()[0] ?? null;
+}
+
+/** The product a whole-canvas action is for: the open board's, or the selected card's, else the space's. */
+export function canvasProduct(): string | null {
+  if (!useSpaceView.getState().active) return currentProject()?.product ?? null;
+  return productOfCard(studio().selection[0]);
+}
