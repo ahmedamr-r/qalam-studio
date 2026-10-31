@@ -7,8 +7,9 @@ import type { SetupDoc } from "./setup";
  * (pure). The setup reads everything sent as one brain dump, so its questions and proposal see it
  * together; but a brain dump's pieces are the team's words, and what customers said counts by the
  * sources it came from. So each doc marked as customers' words becomes a source of its kind with its
- * words and the quotes read in it (their ids kept, so what cites them still finds them, each with
- * who said it where the text names them), and only the person's own words stay in the dump. The
+ * words and what customers said in it (their ids kept, so what cites them still finds them, each
+ * with who said it where the text names them), and only the person's own words stay in the dump
+ * (a doc's heading, a number about it). The
  * setup's screens see the quotes together again through `setupQuotes`.
  */
 
@@ -23,6 +24,9 @@ export function kindOfDoc(doc: Pick<SetupDoc, "from" | "type">): SourceKind {
 }
 
 const inSpan = (q: Pick<SourceQuote, "span">, [a, b]: readonly [number, number]) => q.span[0] >= a && q.span[1] <= b;
+/** Pieces that are what customers said (a need, something they saw, an idea they asked for, a question): a doc's heading or a number about it stays the team's. */
+const SAID = new Set(["need", "evidence", "idea", "question"]);
+const theirs = (q: Pick<SourceQuote, "role">) => !q.role || SAID.has(q.role);
 const shifted = (q: SourceQuote, by: number): SourceQuote => ({
   ...q,
   span: [q.span[0] + by, q.span[1] + by],
@@ -48,7 +52,7 @@ export function splitSetup(dump: SourceRecord, newId: () => string): { dump: Sou
     const text = dump.text.slice(span[0], span[1]);
     if (!text.trim()) continue;
     const quotes = dump.quotes
-      .filter((q) => inSpan(q, span))
+      .filter((q) => inSpan(q, span) && theirs(q))
       .map((q) => {
         const own = shifted(q, -span[0]);
         const speaker = q.speaker ?? speakerAt(text, own.span);

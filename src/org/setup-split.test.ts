@@ -62,6 +62,16 @@ describe("splitSetup", () => {
     expect(d.text).toBe(text);
   });
 
+  it("leaves a customers' doc's heading or number in the dump: only what they said moves", () => {
+    ids = 0;
+    const d = dump();
+    const at = text.indexOf("Mariam, 29:");
+    d.quotes.push({ id: "head", text: "Mariam, 29:", span: [at, at + 11], kind: "need", role: "context", addedBy: "ai", at: 1 });
+    const { dump: after, made } = splitSetup(d, newId);
+    expect(made[0].quotes.map((q) => q.id)).toEqual(["q2", "q3"]);
+    expect(after.quotes.map((q) => q.id)).toContain("head");
+  });
+
   it("names who said it where the text does", () => {
     ids = 0;
     const { made } = splitSetup(dump(), newId);
