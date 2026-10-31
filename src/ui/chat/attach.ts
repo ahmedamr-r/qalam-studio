@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { Ingested } from "@/discovery/ingest/core";
+import type { TextBlock } from "@/discovery/sources";
 import type { Hit } from "@/connectors/recipes";
 import type { SetupDoc } from "@/org/setup";
 import { connectorsDb, type ConnectorState } from "@/org/connectors";
@@ -51,24 +52,33 @@ export function sourcesFor(fit: SourceFit, connectors: readonly ConnectorState[]
 export interface Part {
   header?: string;
   body: string;
+  /** A PDF's shape, in the body's own positions. */
+  blocks?: readonly TextBlock[];
 }
 
-/** The parts as one text, read as their own thinking, and where each part's words sit in it ([start, end), its header left out). */
-export function joinParts(parts: readonly Part[]): { text: string; spans: [number, number][] } {
+/** The parts as one text, read as their own thinking, where each part's words sit in it ([start, end), its header left out), and their shapes in the text's positions. */
+export function joinParts(parts: readonly Part[]): { text: string; spans: [number, number][]; blocks: TextBlock[] } {
   let text = "";
   const spans: [number, number][] = [];
+  const blocks: TextBlock[] = [];
   for (const p of parts) {
     const body = p.body.trim();
     if (text) text += "\n\n";
     if (p.header) text += `${p.header}\n\n`;
     spans.push([text.length, text.length + body.length]);
+    // Positions in the body as it came, before its ends were trimmed.
+    const shift = text.length - (p.body.length - p.body.trimStart().length);
+    for (const b of p.blocks ?? []) {
+      const span: [number, number] = [b.span[0] + shift, b.span[1] + shift];
+      if (span[0] >= text.length && span[1] <= text.length + body.length) blocks.push({ ...b, span });
+    }
     text += body;
   }
-  return { text, spans };
+  return { text, spans, blocks };
 }
 
 /** A doc's part: its words under "From <tool>: <title>". */
-export const docPart = (d: { via: string; title: string; text: string }): Part => ({ header: `From ${d.via}: ${d.title}`, body: d.text });
+export const docPart = (d: { via: string; title: string; text: string; blocks?: readonly TextBlock[] }): Part => ({ header: `From ${d.via}: ${d.title}`, body: d.text, ...(d.blocks?.length ? { blocks: d.blocks } : {}) });
 
 /** Each part's span once the text is cut at `max`: shortened (`cut`) where the cut falls in it, left out where it falls before it. */
 export function spansWithin<T>(parts: readonly T[], spans: readonly [number, number][], max: number): (T & { span: [number, number]; cut?: true })[] {

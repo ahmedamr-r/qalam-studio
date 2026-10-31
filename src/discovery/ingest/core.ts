@@ -1,4 +1,4 @@
-import type { SourceKind } from "../sources";
+import type { SourceKind, TextBlock } from "../sources";
 import type { TranscriptMeta, TranscriptSegment } from "../transcript";
 
 /*
@@ -17,6 +17,8 @@ export interface Ingested {
   origin?: string;
   text: string;
   pages?: number[];
+  /** A PDF's shape: its headings and list items. */
+  blocks?: TextBlock[];
   truncated?: boolean;
   /** Interviews. */
   segments?: TranscriptSegment[];
@@ -36,14 +38,14 @@ export const ACCEPT = ".pdf,.docx,.xlsx,.md,.markdown,.txt,.text,.csv,.tsv,.vtt,
 
 /** How a place reads what isn't plain text. */
 export interface Readers {
-  pdf: (bytes: ArrayBuffer) => Promise<{ text: string; pages: number[]; title?: string }>;
+  pdf: (bytes: ArrayBuffer) => Promise<{ text: string; pages: number[]; blocks?: TextBlock[]; title?: string }>;
   docx: (bytes: ArrayBuffer) => Promise<{ text: string }>;
   html: (text: string) => Promise<{ title?: string; text: string }>;
 }
 
 export const stem = (name: string) => name.replace(/\.[^.]+$/, "").trim() || name;
 
-async function capped(kind: SourceKind, title: string, origin: string | undefined, text: string, pages?: number[], spoken?: Pick<Ingested, "segments" | "transcript">): Promise<Ingested> {
+async function capped(kind: SourceKind, title: string, origin: string | undefined, text: string, pages?: number[], spoken?: Pick<Ingested, "segments" | "transcript">, blocks?: TextBlock[]): Promise<Ingested> {
   const { capText } = await import("./text");
   const c = capText(text);
   if (!c.text.trim()) throw new IngestError(`${title} has no text in it.`);
@@ -52,7 +54,7 @@ async function capped(kind: SourceKind, title: string, origin: string | undefine
     const { trimTranscript } = await import("../transcript");
     talk = trimTranscript(talk, c.text.length);
   }
-  return { kind, title: title.slice(0, 160), ...(origin ? { origin } : {}), text: c.text, ...(pages ? { pages: c.truncated ? pages.filter((p) => p < c.text.length) : pages } : {}), ...(c.truncated ? { truncated: true } : {}), ...talk };
+  return { kind, title: title.slice(0, 160), ...(origin ? { origin } : {}), text: c.text, ...(pages ? { pages: c.truncated ? pages.filter((p) => p < c.text.length) : pages } : {}), ...(blocks?.length ? { blocks: blocks.filter((b) => b.span[1] <= c.text.length) } : {}), ...(c.truncated ? { truncated: true } : {}), ...talk };
 }
 
 /** A caption file: an interview when two or more people speak in it, else its words as plain text. */
@@ -91,7 +93,7 @@ export async function fromBytes(bytes: ArrayBuffer, type: string, name: string, 
       throw new IngestError(e instanceof Error && /no text/.test(e.message) ? e.message : `${name} couldn't be read as a PDF.`);
     });
     // A file goes by its name; a PDF at an address by its own title, when it has one.
-    return capped("pdf", (web && r.title) || stem(name), origin, r.text, r.pages);
+    return capped("pdf", (web && r.title) || stem(name), origin, r.text, r.pages, undefined, r.blocks);
   }
   if (type === DOCX || ext === "docx") {
     const r = await readers.docx(bytes).catch(() => {

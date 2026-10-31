@@ -68,6 +68,12 @@ export interface SourceNeed {
   quoteIds: string[];
 }
 
+/** A heading (by size, h1 the largest) or a list item in a source's text: the reader draws it as one. */
+export interface TextBlock {
+  span: [number, number];
+  kind: "h1" | "h2" | "h3" | "li";
+}
+
 export interface SourceRecord {
   v: 1;
   id: string;
@@ -85,6 +91,8 @@ export interface SourceRecord {
   text: string;
   /** PDF: where each page starts in `text` (page n starts at pages[n - 1]). */
   pages?: number[];
+  /** Its shape, read from a PDF's layout: where its headings and list items are (the rest is paragraphs, a blank line apart). The reader draws it; the words stay as they are. */
+  blocks?: TextBlock[];
   /** Only the start of a longer text was kept. */
   truncated?: boolean;
   /** Interviews: where each stretch of speech sits in `text` and when it was said, and who spoke. */

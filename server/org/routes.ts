@@ -22,7 +22,7 @@ import { askOrg } from "../ask";
 import { captureSource, fileSources, readAsOwn } from "../capture";
 import type { Ingested } from "@/discovery/ingest/core";
 import type { Proposal } from "@/discovery/proposals";
-import { MAX_SOURCE_TEXT, SOURCE_KIND_LABEL, type SourceRecord } from "@/discovery/sources";
+import { MAX_SOURCE_TEXT, SOURCE_KIND_LABEL, type SourceRecord, type TextBlock } from "@/discovery/sources";
 import { aiConfigured, rateLimited } from "@/ai/server";
 import { foldBearings } from "@/goals/bearings";
 import { isStepRef, pinShape } from "@/code/steps";
@@ -982,6 +982,7 @@ function ingestedShape(raw: unknown): Ingested | null {
   const i = raw as Record<string, unknown> | null;
   if (!i || !KINDS.has(i.kind as string) || i.kind === "dump" || typeof i.title !== "string" || !i.title.trim() || typeof i.text !== "string" || !i.text.trim() || i.text.length > MAX_SOURCE_TEXT) return null;
   const pages = Array.isArray(i.pages) && i.pages.every((n) => typeof n === "number") ? (i.pages as number[]) : undefined;
+  const blocks = Array.isArray(i.blocks) ? textBlocks(i.blocks, i.text.length) : undefined;
   const talk = Array.isArray(i.segments) && i.transcript && typeof i.transcript === "object" ? { segments: i.segments as Ingested["segments"], transcript: i.transcript as Ingested["transcript"] } : {};
   return {
     kind: i.kind as Ingested["kind"],
@@ -989,9 +990,20 @@ function ingestedShape(raw: unknown): Ingested | null {
     ...(typeof i.origin === "string" ? { origin: i.origin.slice(0, 2000) } : {}),
     text: i.text,
     ...(pages ? { pages } : {}),
+    ...(blocks?.length ? { blocks } : {}),
     ...(i.truncated === true ? { truncated: true } : {}),
     ...talk,
   };
+}
+
+/** A shape a window read: headings and list items inside the text, nothing else. */
+function textBlocks(raw: unknown[], length: number): TextBlock[] {
+  return raw.flatMap((b): TextBlock[] => {
+    const x = b as { span?: unknown; kind?: unknown } | null;
+    const [a, z] = Array.isArray(x?.span) ? (x!.span as unknown[]) : [];
+    if (typeof a !== "number" || typeof z !== "number" || !(0 <= a && a < z && z <= length)) return [];
+    return x!.kind === "h1" || x!.kind === "h2" || x!.kind === "h3" || x!.kind === "li" ? [{ span: [a, z], kind: x!.kind }] : [];
+  });
 }
 
 const isCardRef = (v: unknown): v is string => typeof v === "string" && /^hub:card:[A-Za-z0-9_-]{1,64}:[A-Za-z0-9_-]{1,64}$/.test(v);

@@ -580,7 +580,7 @@ function offsetIn(node: Node | null, offset: number): number | null {
 
 const SourceText = memo(function SourceText({ source, focus }: { source: SourceRecord; focus?: string }) {
   const ref = useRef<HTMLDivElement>(null);
-  const segments = useMemo(() => segmentsOf(source.text, source.quotes, { pages: source.pages }), [source]);
+  const segments = useMemo(() => segmentsOf(source.text, source.quotes, { pages: source.pages, ...(source.blocks?.length ? { blocks: source.blocks } : {}) }), [source]);
   const [pick, setPick] = useState<{ start: number; end: number; x: number; y: number } | null>(null);
   useEffect(() => {
     if (focus) ref.current?.querySelector(`[data-quote="${focus}"]`)?.scrollIntoView({ block: "center" });
@@ -616,7 +616,7 @@ const SourceText = memo(function SourceText({ source, focus }: { source: SourceR
 
   return (
     <div className="relative">
-      <MarkedText ref={ref} text={source.text} segments={segments} focus={focus} onMouseUp={onSelect} onKeyUp={onSelect} />
+      <MarkedText ref={ref} text={source.text} segments={segments} focus={focus} onMouseUp={onSelect} onKeyUp={onSelect} blocks={source.blocks} />
       {pick && (
         <button
           type="button"

@@ -42,6 +42,15 @@ describe("docs sent with the words", () => {
     expect(alone.text.slice(...alone.spans[0])).toBe("Words.");
   });
 
+  it("moves a PDF's headings and list items to where its words sit in the joined text", () => {
+    const pdf = "  What it promised\n\nWhere each payout is";
+    const { text, blocks } = joinParts([{ body: "My idea." }, docPart({ via: "This computer", title: "Promise.pdf", text: pdf, blocks: [{ span: [2, 18], kind: "h1" }, { span: [20, 40], kind: "li" }] })]);
+    expect(blocks.map((b) => [b.kind, text.slice(...b.span)])).toEqual([
+      ["h1", "What it promised"],
+      ["li", "Where each payout is"],
+    ]);
+  });
+
   it("shortens the part the length cut falls in, and leaves out the ones after it", () => {
     const { text, spans } = joinParts([{ body: "x".repeat(10) }, docPart({ via: "Drive", title: "A", text: "y".repeat(10) }), docPart({ via: "Drive", title: "B", text: "z".repeat(10) })]);
     expect(text.length).toBeGreaterThan(40);

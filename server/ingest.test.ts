@@ -7,8 +7,7 @@ import { htmlText } from "@/discovery/ingest/text";
 import { ingestPath } from "./ingest";
 
 /** A one-page PDF with a line of text (Helvetica), with a correct cross-reference table. */
-function tinyPdf(text: string): Buffer {
-  const content = `BT /F1 12 Tf 72 720 Td (${text}) Tj ET`;
+function tinyPdf(text: string, content = `BT /F1 12 Tf 72 720 Td (${text}) Tj ET`): Buffer {
   const objs = [
     "<< /Type /Catalog /Pages 2 0 R >>",
     "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
@@ -41,6 +40,25 @@ describe("reading files in the core", () => {
     const r = await ingestPath(path.join(dir, "Call notes.pdf"));
     expect(r).toMatchObject({ kind: "pdf", title: "Call notes", origin: "Call notes.pdf", pages: [0] });
     expect(r.text).toBe("Customers wait two hours for evening slots.");
+  });
+
+  it("reads a PDF's shape as a converter to Markdown would: headings by size, list items, wrapped lines joined", async () => {
+    const run = (size: number, y: number, words: string) => `BT /F1 ${size} Tf 72 ${y} Td (${words}) Tj ET`;
+    const content = [
+      run(22, 740, "What it promised"),
+      run(11, 712, "Payouts in 190 countries, most of them settling in real time by bank, card or"),
+      run(11, 698, "crypto, the same day."),
+      run(11, 660, "- Where each payout is"),
+      run(11, 646, "- When it lands"),
+    ].join("\n");
+    await writeFile(path.join(dir, "Promise.pdf"), tinyPdf("", content));
+    const r = await ingestPath(path.join(dir, "Promise.pdf"));
+    expect(r.text).toBe("What it promised\n\nPayouts in 190 countries, most of them settling in real time by bank, card or crypto, the same day.\n\nWhere each payout is\n\nWhen it lands");
+    expect(r.blocks?.map((b) => [b.kind, r.text.slice(...b.span)])).toEqual([
+      ["h1", "What it promised"],
+      ["li", "Where each payout is"],
+      ["li", "When it lands"],
+    ]);
   });
 
   it("reads Markdown and text files as they are, and refuses what it can't read", async () => {

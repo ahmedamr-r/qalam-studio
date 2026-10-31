@@ -234,6 +234,7 @@ export async function captureSource(store: OrgStore, ing: Ingested, o: CaptureOp
     ...(ing.origin ? { origin: ing.origin } : {}),
     text: ing.text,
     ...(ing.pages ? { pages: ing.pages } : {}),
+    ...(ing.blocks?.length ? { blocks: ing.blocks } : {}),
     ...(ing.truncated ? { truncated: true } : {}),
     ...(ing.segments && ing.transcript ? { segments: ing.segments, transcript: ing.transcript } : {}),
     addedAt: Date.now(),

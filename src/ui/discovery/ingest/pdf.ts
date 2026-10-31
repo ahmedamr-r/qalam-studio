@@ -1,4 +1,5 @@
 import { pdfText } from "@/discovery/ingest/pdf";
+import type { TextBlock } from "@/discovery/sources";
 
 /* A PDF's text in the browser: pdf.js loaded only when a PDF comes in, its parsing in a worker. */
 
@@ -12,6 +13,6 @@ function pdfjs(): Promise<PdfJs> {
   }));
 }
 
-export async function readPdf(data: ArrayBuffer): Promise<{ text: string; pages: number[]; title?: string }> {
+export async function readPdf(data: ArrayBuffer): Promise<{ text: string; pages: number[]; blocks?: TextBlock[]; title?: string }> {
   return pdfText(await pdfjs(), data);
 }

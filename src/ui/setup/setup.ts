@@ -5,7 +5,7 @@ import { AIError, aiStatus, callAI } from "@/ai/client";
 import { sourcesDb } from "@/discovery/db";
 import { DUMP_MAX_CHARS, MAX_DUMP_ROUNDS, applyDumpFollowup, closeDumpRound, firstRound, fragmentRefs, roundAnswers, sanitizeDumpFollowup, sanitizeRead, withRoles } from "@/discovery/dump";
 import { IngestError } from "@/discovery/ingest/core";
-import type { SourceRecord } from "@/discovery/sources";
+import type { SourceRecord, TextBlock } from "@/discovery/sources";
 import { newId } from "@/doc/factory";
 import { currentOrg, orgFetch } from "@/org/client";
 import { changeGoal, createGoal, goalWords, goalsNow, useGoals } from "@/goals/client";
@@ -153,6 +153,7 @@ export async function startSetup(input: { text: string; url: string; docs?: Sent
   const parts: Part[] = [];
   const from: DocRef[] = [];
   let spans: [number, number][] = [];
+  let blocks: TextBlock[] = [];
   try {
     if (!(await aiStatus()).ai) return fail("Qalam AI isn't set up here, so it can't read what you wrote. Fill in the organization by hand from its home.");
     if (input.text.trim()) {
@@ -166,10 +167,10 @@ export async function startSetup(input: { text: string; url: string; docs?: Sent
       from.push({ from: "page", title: page.title, ...(page.origin ? { origin: page.origin } : {}) });
     }
     for (const d of docs) {
-      parts.push(docPart({ via: d.via, title: d.title, text: d.ingested.text }));
+      parts.push(docPart({ via: d.via, title: d.title, text: d.ingested.text, blocks: d.ingested.blocks }));
       from.push(docRef(d));
     }
-    ({ text, spans } = joinParts(parts));
+    ({ text, spans, blocks } = joinParts(parts));
   } catch (e) {
     return fail((e as Error).name === "AbortError" ? null : e instanceof IngestError ? e.message : `Qalam couldn't read that: ${message(e)}`);
   } finally {
@@ -190,6 +191,7 @@ export async function startSetup(input: { text: string; url: string; docs?: Sent
     title: `About ${org.name}`,
     ...(origin ? { origin } : {}),
     text: text.slice(0, DUMP_MAX_CHARS),
+    ...(blocks.some((b) => b.span[1] <= DUMP_MAX_CHARS) ? { blocks: blocks.filter((b) => b.span[1] <= DUMP_MAX_CHARS) } : {}),
     addedAt: Date.now(),
     read: [],
     quotes: [],
