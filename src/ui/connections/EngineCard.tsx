@@ -48,6 +48,7 @@ const JOB: Record<CallKind | "other", string> = {
   solutions: "Drafting solutions",
   tests: "Drafting tests",
   breakdown: "Breaking goals down",
+  "card-questions": "Asking before a draft",
   ask: "Ask",
   steps: "Placing quotes at funnel steps",
   "seen-place": "Placing screens in flows",

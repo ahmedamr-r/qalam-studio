@@ -55,12 +55,12 @@ export async function hubQuotes(org: OrgContext | null): Promise<Map<string, Hub
  * Record a call's trace with the board's others; returns what it relied on (checked against `org`,
  * the pieces it was given under ids). `also`: pieces it was given another way (quotes in its list).
  */
-export function recordCall(o: { title: string; summary?: string; org: OrgContext | null; also?: OrgContext | null; raw: unknown; model?: string; sample?: boolean; status?: DecisionTrace["status"]; produced?: DecisionTrace["produced"] }): ReliedOn[] {
+export function recordCall(o: { title: string; summary?: string; org: OrgContext | null; also?: OrgContext | null; raw: unknown; model?: string; sample?: boolean; status?: DecisionTrace["status"]; produced?: DecisionTrace["produced"]; /** The card it was about (else the one picked). */ card?: string }): ReliedOn[] {
   const reliedOn = o.org ? sanitizeReliance((o.raw as { reliedOn?: unknown } | null)?.reliedOn, o.org.manifest) : [];
   const given = [...(o.org ? givenOf(o.org.manifest) : []), ...(o.also ? givenOf(o.also.manifest) : [])];
   recordDecision({
     // On a space's canvas, kept with the board of the card the call was about.
-    ...(onSpaceCanvas() ? { projectId: boardOfCard(studio().selection[0]) ?? undefined } : {}),
+    ...(onSpaceCanvas() ? { projectId: boardOfCard(o.card ?? studio().selection[0]) ?? undefined } : {}),
     kind: "discovery",
     at: Date.now(),
     title: o.title,

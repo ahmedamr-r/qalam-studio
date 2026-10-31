@@ -1,6 +1,6 @@
 import { fetchGuarded } from "@/discovery/fetch-guard";
 import { appStoreText, postAddress, redditText, withoutHandles } from "@/discovery/ingest/posts";
-import { htmlText } from "@/discovery/ingest/text";
+import { htmlText, isWall } from "@/discovery/ingest/text";
 import type { OutsidePage } from "@/goals/outside";
 
 /**
@@ -11,13 +11,13 @@ import type { OutsidePage } from "@/goals/outside";
 
 const limit = (signal: AbortSignal) => AbortSignal.any([signal, AbortSignal.timeout(20_000)]);
 
-/** A page as words: HTML read as its text, plain text as it is; anything else (a PDF) isn't read. */
+/** A page as words: HTML read as its text, plain text as it is; anything else (a PDF), or a page that turns readers away, isn't read. */
 export async function readPage(link: { url: string; title?: string }, signal: AbortSignal): Promise<OutsidePage | null> {
   try {
     const page = await fetchGuarded(link.url, { signal: limit(signal) });
     const raw = new TextDecoder().decode(page.body);
     const html = /html/i.test(page.contentType) ? htmlText(raw) : /^text\//i.test(page.contentType) ? { text: raw } : null;
-    if (!html || html.text.trim().length < 200) return null;
+    if (!html || html.text.trim().length < 200 || isWall(html)) return null;
     return { ref: "", url: link.url, title: ("title" in html && html.title?.trim()) || link.title || link.url, text: html.text };
   } catch {
     return null;

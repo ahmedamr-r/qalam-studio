@@ -1,7 +1,7 @@
 import { connectorDef } from "@/connectors/catalog";
 import { connectorOfOrigin } from "@/connectors/logos";
 import type { SetupDoc } from "@/org/setup";
-import { SOURCE_KIND_LABEL, type SourceRecord } from "./sources";
+import { sourceLabel, type SourceRecord } from "./sources";
 
 /*
  * Where a source's words came from, said the same way everywhere it's drawn (pure): the setup's
@@ -35,8 +35,8 @@ export function partLine(doc: Pick<SetupDoc, "from" | "type" | "pages"> | undefi
 }
 
 /** A whole source in words: its connector's name, else its kind ("Interview", "PDF · 12 pages"). */
-export function sourceLine(source: Pick<SourceRecord, "kind" | "origin" | "pages">): string {
+export function sourceLine(source: Pick<SourceRecord, "kind" | "origin" | "pages" | "answers">): string {
   const via = connectorOfOrigin(source.origin);
   const pages = source.pages && source.pages.length > 1 ? `${source.pages.length} pages` : "";
-  return [via ? (connectorDef(via)?.label ?? via) : SOURCE_KIND_LABEL[source.kind], pages].filter(Boolean).join(" · ");
+  return [via ? (connectorDef(via)?.label ?? via) : sourceLabel(source), pages].filter(Boolean).join(" · ");
 }

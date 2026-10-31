@@ -3,6 +3,7 @@ import type { OstCard, OstEvidence } from "./types";
 import { clock, type TranscriptMeta, type TranscriptSegment } from "./transcript";
 import type { DumpRole, DumpSession } from "./dump";
 import type { SetupSession } from "@/org/setup";
+import type { CardAnswers } from "./questions";
 
 /*
  * A Discovery board's sources (pure): documents, web pages, pasted text, interviews and items from
@@ -109,7 +110,12 @@ export interface SourceRecord {
   dump?: DumpSession;
   /** A brain dump about the organization, setting it up: its About and products, line by line (src/org/setup.ts). */
   setup?: SetupSession;
+  /** The person's answers about one card, asked before its draft (src/discovery/questions.ts): a `dump`, never a brain dump to continue. */
+  answers?: CardAnswers;
 }
+
+/** What a source is, for a person: its kind, or "Your answers" for the answers to a card's questions. */
+export const sourceLabel = (s: Pick<SourceRecord, "kind" | "answers">) => (s.answers ? "Your answers" : SOURCE_KIND_LABEL[s.kind]);
 
 /** The most text a source keeps (characters). */
 export const MAX_SOURCE_TEXT = 1_000_000;
@@ -219,10 +225,12 @@ export function quoteOf(source: Pick<SourceRecord, "quotes">, e: Pick<OstEvidenc
   return e.span ? source.quotes.find((x) => x.span[0] === e.span![0] && x.span[1] === e.span![1]) : undefined;
 }
 
-export function quoteEvidence(source: Pick<SourceRecord, "id" | "title"> & { kind?: SourceKind }, q: SourceQuote, addedBy: "user" | "ai", opts: { against?: boolean; now?: number } = {}): OstEvidence {
+export function quoteEvidence(source: Pick<SourceRecord, "id" | "title"> & { kind?: SourceKind; answers?: unknown }, q: SourceQuote, addedBy: "user" | "ai", opts: { against?: boolean; now?: number } = {}): OstEvidence {
   return {
     id: newId(),
     kind: source.kind === "dump" ? "dump" : "quote",
+    // The answer to a question asked about a card (its source's quote is the answer).
+    ...(source.answers ? { answerId: `ask:${source.id}:${q.id}` } : {}),
     text: q.text,
     sourceId: source.id,
     piece: quotePiece(q.id),

@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import { FileText, MoreHorizontal } from "lucide-react";
-import { SOURCE_KIND_LABEL, type SourceRecord } from "@/discovery/sources";
+import { sourceLabel, type SourceRecord } from "@/discovery/sources";
 import type { Product } from "@/org/context-md";
 import { orgFetch } from "@/org/client";
 import { projectHref, type Project } from "@/projects/model";
@@ -44,7 +44,7 @@ export function SourcesList({ sources, projects, products, onChanged }: { source
               <div className="flex min-w-0 flex-1 flex-col gap-[2px]">
                 <span className="truncate text-body text-fg">{s.title}</span>
                 <span className="text-caption text-fg-muted">
-                  {[SOURCE_KIND_LABEL[s.kind], `${s.quotes.length} ${s.quotes.length === 1 ? "quote" : "quotes"}`, product ?? "Whole organization"].join(" · ")}
+                  {[sourceLabel(s), `${s.quotes.length} ${s.quotes.length === 1 ? "quote" : "quotes"}`, product ?? "Whole organization"].join(" · ")}
                 </span>
                 <span className="text-caption text-fg-subtle">
                   {boards.length ? (

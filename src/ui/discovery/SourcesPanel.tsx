@@ -7,7 +7,7 @@ import { newId } from "@/doc/factory";
 import { aiStatus, type AIStatus } from "@/ai/client";
 import { revealCard } from "@/discovery/ops";
 import { allCards } from "@/discovery/tree";
-import { QUOTE_KIND_LABEL, SOURCE_KIND_LABEL, fromSource, pageAt, unread, type SourceKind, type SourceQuote, type SourceRecord } from "@/discovery/sources";
+import { QUOTE_KIND_LABEL, fromSource, pageAt, sourceLabel, unread, type SourceKind, type SourceQuote, type SourceRecord } from "@/discovery/sources";
 import { ROLE_LABEL } from "@/discovery/dump";
 import { awaitingRoles, clock, finishInterviewQuotes } from "@/discovery/transcript";
 import { feedback } from "@/commands/feedback";
@@ -122,7 +122,7 @@ function metaOf(s: SourceRecord): string {
   const t = s.transcript;
   const talk = t ? [`${Math.max(1, Math.round(t.durationSec / 60))} min`, plural(t.speakers.length, "speaker")] : [];
   const pieces = s.kind === "dump" ? plural(s.quotes.length, "piece") : plural(s.quotes.length, "quote");
-  return [SOURCE_KIND_LABEL[s.kind], ...talk, s.pages ? plural(s.pages.length, "page") : "", awaitingRoles(s) ? "Say who is who" : pieces, left && s.read.length ? `${left} unread` : ""].filter(Boolean).join(" · ");
+  return [sourceLabel(s), ...talk, s.pages ? plural(s.pages.length, "page") : "", awaitingRoles(s) ? "Say who is who" : pieces, left && s.read.length ? `${left} unread` : ""].filter(Boolean).join(" · ");
 }
 
 function SourceRow({ source, quoting }: { source: SourceRecord; quoting: boolean }) {
@@ -189,7 +189,7 @@ function FromOrganization() {
           <span className="flex min-w-0 flex-1 flex-col">
             <span className="truncate text-caption text-fg">{x.title}</span>
             <span className="truncate text-micro text-fg-subtle">
-              {SOURCE_KIND_LABEL[x.kind]} · {x.quotes.length} {x.quotes.length === 1 ? "quote" : "quotes"}
+              {sourceLabel(x)} · {x.quotes.length} {x.quotes.length === 1 ? "quote" : "quotes"}
             </span>
           </span>
           <Button
@@ -553,7 +553,7 @@ function SourceView({ source, focus }: { source: SourceRecord; focus?: string })
           <Trash2 {...SMALL} />
         </IconBtn>
       </div>
-      {dump && (
+      {dump && !source.answers && (
         source.setup ? (
           // A setup's reading: its problems go on the board as they were found, nothing read again.
           <Button size="sm" variant="secondary" className="self-start" onClick={() => void placeSetup(source.id)}>

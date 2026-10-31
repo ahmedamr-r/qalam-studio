@@ -7,6 +7,7 @@ import type { Proposal } from "@/discovery/proposals";
 import type { Breakdown } from "@/goals/breakdown";
 import type { GoalLever } from "@/goals/types";
 import { breakDown, findProblems, goalWork, lookOutside } from "@/org/goal-work";
+import type { DraftWords } from "@/org/solutions";
 import { begin, end, relabel, stopped, type Done } from "./busy";
 import { onCanvasReady } from "./canvas";
 import { REVIEW_TURN, reviewWaits, startReview } from "./review";
@@ -76,14 +77,14 @@ export const findProblemsFor = (card: string, goal: string) =>
     "Qalam AI couldn't find its problems",
   );
 
-/** Break it down: the goals under it proposed with the levers picked (none: Qalam AI's choice), reviewed as ghosts under its card. */
-export const breakDownFor = (card: string, goal: string, levers: GoalLever[]) =>
+/** Break it down: the goals under it proposed with the levers picked (none: Qalam AI's choice) and the person's words when asked, reviewed as ghosts under its card. */
+export const breakDownFor = (card: string, goal: string, levers: GoalLever[], said: DraftWords = {}) =>
   step(
     card,
     "break-down",
     "Gathering what your material says about it",
     async (ctrl) => {
-      const r = await breakDown(goal, { levers }, (label) => relabel(ctrl, label), ctrl.signal);
+      const r = await breakDown(goal, { levers, ...said }, (label) => relabel(ctrl, label), ctrl.signal);
       if (!r.parts) return { card, text: r.none || "Qalam AI found nothing it could stand behind to propose." };
       return reviewParts(card, goal, r.breakdown) ? null : { card, text: `${plural(r.parts, "goal")} proposed under it: review them once the review that's open is done.` };
     },

@@ -39,6 +39,7 @@ export const TIER_OF = {
   solutions: "decide",
   tests: "decide",
   breakdown: "decide",
+  "card-questions": "decide",
   ask: "decide",
   steps: "decide",
   "seen-place": "decide",

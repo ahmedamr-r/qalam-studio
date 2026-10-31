@@ -106,6 +106,8 @@ export interface LookedOnline {
   skipped: number;
   why?: { before: number; articles: number; unreadable: number; reddit: number };
   error?: string;
+  /** The sources kept (people online's pages). */
+  sources?: string[];
 }
 
 const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;

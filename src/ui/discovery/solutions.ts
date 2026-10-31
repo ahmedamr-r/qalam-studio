@@ -7,7 +7,7 @@ import type { Proposal } from "@/discovery/proposals";
 import { draftBacking, draftCards, type Drafted, type SolutionDraft } from "@/discovery/solutions";
 import type { OstEvidence } from "@/discovery/types";
 import { sameTopic } from "@/hub/topics";
-import { draftSolutions, solutionsOf } from "@/org/solutions";
+import { draftSolutions, solutionsOf, type DraftWords } from "@/org/solutions";
 import { topicsDb } from "@/org/topics";
 import { begin, end, relabel, stopped } from "./busy";
 import { glideToLayer, onCanvasReady } from "./canvas";
@@ -54,8 +54,8 @@ async function review(drafts: SolutionDraft[], quotes: Drafted["quotes"], topic:
   return startReview({ kind: "solutions", topic }, proposals) && proposals.length;
 }
 
-/** Qalam AI drafts solutions for a problem's card; they come back as proposals under it. */
-export async function draftSolutionsFor(cardId: string): Promise<void> {
+/** Qalam AI drafts solutions for a problem's card (with the person's words, when they were asked); they come back as proposals under it. */
+export async function draftSolutionsFor(cardId: string, said: DraftWords = {}): Promise<void> {
   const doc = studio().doc;
   const node = doc.nodes[cardId];
   const card = cardOf(doc, cardId);
@@ -71,7 +71,7 @@ export async function draftSolutionsFor(cardId: string): Promise<void> {
       const c = cardOf(doc, id);
       return c && (c.kind === "solution" || c.kind === "test") ? [{ title: c.title, kind: c.kind }] : [];
     });
-    const d = await draftSolutions({ topic, card: { title: card.title, evidence: sentEvidence(card.evidence), children } }, (label) => relabel(ctrl, label), ctrl.signal);
+    const d = await draftSolutions({ topic, card: { title: card.title, evidence: sentEvidence(card.evidence), children }, ...said }, (label) => relabel(ctrl, label), ctrl.signal);
     const opened = await review(d.drafts, d.quotes, d.topic, cardId);
     if (opened === 0) return void feedback(d.note || "Qalam AI found no way it could stand behind.", { id: "discovery.solutions" });
     if (opened && d.note) feedback(d.note, { id: "discovery.solutions" });

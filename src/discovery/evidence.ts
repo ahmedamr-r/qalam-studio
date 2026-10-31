@@ -101,7 +101,8 @@ export function evidenceLabel(card: Pick<OstCard, "kind" | "createdBy" | "eviden
   const n = (k: OstEvidence["kind"]) => ownBacking(card).filter((e) => e.kind === k).length;
   const quotes = n("quote");
   if (quotes) return `${quotes} ${quotes === 1 ? "quote" : "quotes"}${tail}`;
-  if (n("answer")) return `From your answers${tail}`;
+  // The answers to a card's questions are a source of the person's words too (src/discovery/questions.ts).
+  if (n("answer") || ownBacking(card).some((e) => e.answerId?.startsWith("ask:"))) return `From your answers${tail}`;
   if (n("dump")) return `From your brain dump${tail}`;
   if (n("note")) return `${n("note") === 1 ? "Your note" : `${n("note")} notes`}${tail}`;
   if (online) return `${online} ${online === 1 ? "post" : "posts"} online${tail}`;

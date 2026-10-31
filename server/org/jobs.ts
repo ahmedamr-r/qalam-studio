@@ -12,7 +12,7 @@ import type { CaptureResult } from "../capture";
 import { connectorsView, importItems, searchConnector, type ImportResult } from "../connectors";
 import { flushBearings, type Linked } from "./goals";
 import { knowledgeInputs } from "./needs";
-import { lookOnline, type LookedOnline } from "./posts";
+import { aboutTopic, lookOnline, type LookedOnline } from "./posts";
 import { NotFoundError, type OrgStore } from "./store";
 
 /**
@@ -145,7 +145,7 @@ export async function onlineForJob(store: OrgStore, id: string, emit: (label: st
   // Its gap names the problem's page: "<kind>:<page>[:<line>]".
   const topic = job.kind === "posts" ? job.gap?.split(":")[1] : undefined;
   if (!topic) throw new Error("This job doesn't look online for a problem.");
-  const r = await lookOnline(store, topic, emit, signal);
+  const r = await lookOnline(store, await aboutTopic(store, topic), emit, signal);
   if (!r.error) await store.addJobs([{ id, status: "done", outcome: r.added ? `${plural(r.read, "page")} read · ${plural(r.quotes, "quote")} from people online` : "Nothing new online", at: Date.now() }]);
   return r;
 }

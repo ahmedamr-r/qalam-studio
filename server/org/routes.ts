@@ -39,7 +39,7 @@ import { feedTarget, type FeedTarget } from "@/feeds/feeds";
 import { breakDown, decidePart, lookOutside } from "./outside";
 import { decideSolution, draftSolutions, solutionsView, type SolutionsCard } from "./solutions";
 import { draftTests, type TestsRequest } from "./tests";
-import { lookOnline } from "./posts";
+import { aboutTopic, lookOnline } from "./posts";
 import { addRepo, answerFromCode, codeView, readRepo, removeRepo, type NewRepo } from "../code";
 import { GOAL_LEVERS, type GoalLever } from "@/goals/types";
 import { meShape } from "@/org/you";
@@ -204,12 +204,12 @@ export function orgRoutes(): Hono<Env> {
   // Drafting solutions for a problem (server/org/solutions.ts): a page's, or a card's on a board.
   r.post("/api/org/:org/solutions", async (c) => {
     if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't draft solutions." }, 503);
-    const b = (await c.req.json().catch(() => null)) as { topic?: unknown; card?: unknown } | null;
+    const b = (await c.req.json().catch(() => null)) as { topic?: unknown; card?: unknown; answers?: unknown; found?: unknown } | null;
     const topic = typeof b?.topic === "string" && ID.test(b.topic) ? b.topic : undefined;
     const card = solutionsCardShape(b?.card);
     if (!topic && !card) return bad("Name a problem: its page, or its card");
     const store = c.get("store");
-    return streamed(c.req.raw.signal, (emit, signal) => draftSolutions(store, { topic, ...(card ? { card } : {}) }, emit, { tab: tabOf(c.req.raw.headers), signal }));
+    return streamed(c.req.raw.signal, (emit, signal) => draftSolutions(store, { topic, ...(card ? { card } : {}), ...wordsShape(b) }, emit, { tab: tabOf(c.req.raw.headers), signal }));
   });
   // Drafting a solution card's tests (server/org/tests.ts): its riskiest assumptions and a test of the riskiest.
   r.post("/api/org/:org/tests", async (c) => {
@@ -219,12 +219,24 @@ export function orgRoutes(): Hono<Env> {
     const store = c.get("store");
     return streamed(c.req.raw.signal, (emit, signal) => draftTests(store, req, emit, signal));
   });
-  // What people say online about a problem (server/org/posts.ts), taken in as people online's.
+  // What people say online about a problem (server/org/posts.ts), taken in as people online's: a page's,
+  // or a card's and what the person said about it. `place`: proposed only under that card.
   r.post("/api/org/:org/topics/:id/online", async (c) => {
     if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't look online." }, 503);
     if (!ID.test(c.req.param("id"))) return bad("No such problem");
+    const place = placeShape(((await c.req.json().catch(() => null)) as { place?: unknown } | null)?.place);
     const store = c.get("store");
-    return streamed(c.req.raw.signal, (emit, signal) => lookOnline(store, c.req.param("id"), emit, signal));
+    return streamed(c.req.raw.signal, async (emit, signal) => lookOnline(store, await aboutTopic(store, c.req.param("id")), emit, signal, place));
+  });
+  r.post("/api/org/:org/online", async (c) => {
+    if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't look online." }, 503);
+    const b = (await c.req.json().catch(() => null)) as { title?: unknown; words?: unknown; product?: unknown; place?: unknown } | null;
+    const title = clipped(b?.title, 300);
+    if (!title) return bad("Name the problem to look for");
+    const words = clipped(b?.words, 2000);
+    const product = typeof b?.product === "string" && ID.test(b.product) ? b.product : null;
+    const store = c.get("store");
+    return streamed(c.req.raw.signal, (emit, signal) => lookOnline(store, { title, lines: words ? [`What they know about it: ${words}`] : [], products: product ? [product] : [] }, emit, signal, placeShape(b?.place)));
   });
   r.get("/api/org/:org/topics/:id/solutions", async (c) => {
     if (!ID.test(c.req.param("id"))) return bad("No such problem");
@@ -337,12 +349,12 @@ export function orgRoutes(): Hono<Env> {
   r.post("/api/org/:org/goals/:id/breakdown", async (c) => {
     if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't break the goal down." }, 503);
     if (rateLimited(c.req.raw)) return c.json({ error: "rate_limited", message: "Too many requests, try again in a few minutes." }, 429);
-    const { levers } = ((await c.req.json().catch(() => ({}))) ?? {}) as { levers?: unknown };
-    const picked = (Array.isArray(levers) ? levers : []).filter((l): l is GoalLever => GOAL_LEVERS.includes(l as GoalLever));
+    const b = ((await c.req.json().catch(() => ({}))) ?? {}) as { levers?: unknown; answers?: unknown; found?: unknown };
+    const picked = (Array.isArray(b.levers) ? b.levers : []).filter((l): l is GoalLever => GOAL_LEVERS.includes(l as GoalLever));
     const store = c.get("store");
     const id = c.req.param("id");
     if (!goalById(await store.getGoals(), id)) return c.json({ error: "not_found", message: "No such goal" }, 404);
-    return streamed(c.req.raw.signal, (emit, signal) => breakDown(store, id, { levers: [...new Set(picked)] }, emit, signal));
+    return streamed(c.req.raw.signal, (emit, signal) => breakDown(store, id, { levers: [...new Set(picked)], ...wordsShape(b) }, emit, signal));
   });
   r.post("/api/org/:org/goals/:id/breakdown/:part", async (c) => {
     const { accept } = ((await c.req.json().catch(() => ({}))) ?? {}) as { accept?: unknown };
@@ -1103,6 +1115,27 @@ const clipped = (v: unknown, max: number) => (typeof v === "string" ? v.replace(
 
 /** A card asking for solutions, as a board sends it: its title, its words, what's under it. */
 /** A solution card's tests asked for, as a board sends it (clipped; null: no solution in it). */
+/**
+ * The person's words a draft may rest on, by id (the core reads them itself, so nothing the window
+ * sends can pass as something someone said): their answers' source, and quotes found on their words.
+ */
+function wordsShape(b: { answers?: unknown; found?: unknown } | null): { answers?: string; found?: string[] } {
+  const answers = typeof b?.answers === "string" && ID.test(b.answers) ? b.answers : undefined;
+  const found = (Array.isArray(b?.found) ? b.found : []).filter((r): r is string => typeof r === "string" && /^hub:quote:[A-Za-z0-9_-]{1,64}$/.test(r)).slice(0, 20);
+  return { ...(answers ? { answers } : {}), ...(found.length ? { found } : {}) };
+}
+
+/**
+ * Where what a lookup brings in is placed: under one card on its board (`{board, card}`), nowhere
+ * (`{board: null}`: the card's board isn't made yet), or, said nothing, where captures place things.
+ */
+function placeShape(x: unknown): { scope?: Record<string, string[]> } {
+  const p = x as { board?: unknown; card?: unknown } | null | undefined;
+  if (!p || typeof p !== "object") return {};
+  if (p.board === null) return { scope: {} };
+  return typeof p.board === "string" && ID.test(p.board) && typeof p.card === "string" && ID.test(p.card) ? { scope: { [p.board]: [p.card] } } : {};
+}
+
 function testsShape(x: unknown): TestsRequest | null {
   const b = x as { solution?: unknown; problem?: unknown; goal?: unknown } | null;
   const words = (c: unknown) => {

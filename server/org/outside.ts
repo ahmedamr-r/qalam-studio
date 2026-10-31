@@ -8,7 +8,9 @@ import { claimsMaterial, outsideTask, sanitizeClaims, OUTSIDE_LIMITS, type Outsi
 import { chainOf, goalById } from "@/goals/tree";
 import type { Goal, GoalLever } from "@/goals/types";
 import { coreDeps } from "../capture";
+import type { PackedPiece } from "@/org/pack";
 import { readPage } from "./pages";
+import { wordsPieces, type DraftWords } from "./solutions";
 import { NotFoundError, type OrgStore } from "./store";
 
 /**
@@ -54,15 +56,18 @@ export async function lookOutside(store: OrgStore, goalId: string, emit: (label:
 }
 
 /** Break it down: the goals under it Qalam AI would propose, from the team's own material, with what others report beside them. */
-export async function breakDown(store: OrgStore, goalId: string, o: { levers: GoalLever[] }, emit: (label: string) => void, signal?: AbortSignal): Promise<{ parts: number; none: string; breakdown: Breakdown }> {
+export async function breakDown(store: OrgStore, goalId: string, o: { levers: GoalLever[] } & DraftWords, emit: (label: string) => void, signal?: AbortSignal): Promise<{ parts: number; none: string; breakdown: Breakdown }> {
   const { goal, tree } = await goalOf(store, goalId);
   const deps = await coreDeps(store);
   const product = goal.product ? deps.products.find((p) => p.id === goal.product) : undefined;
   emit("Gathering what your material says about it");
-  const pack = await deps.pack({ query: [goal.title, goal.metric?.name].filter(Boolean).join(" · "), product: goal.product ?? undefined, budget: 1800, types: ["page", "need", "quote", "context", "decision", "card"] });
+  // What they told us when asked, and customers' words found on it (people online aren't the team's material).
+  const said = (await wordsPieces(store, { answers: o.answers, found: o.found })).filter((p) => !p.online);
+  const answers = said.filter((p) => p.label === "Their answers");
+  const pack = await deps.pack({ query: [goal.title, goal.metric?.name, ...answers.map((a) => a.text)].filter(Boolean).join(" · ").slice(0, 2000), product: goal.product ?? undefined, budget: 1800, types: ["page", "need", "quote", "context", "decision", "card"] });
   // What others report for it, and for the goals above it.
   const benchmarks = (await Promise.all(chainOf(tree, goalId).map((g) => store.getGoalWork(g.id)))).flatMap((w) => w.outside?.claims ?? []).slice(0, 12);
-  const m = breakdownMaterial({ tree, goal, productName: product?.name, context: deps.productLine(goal.product ?? null).slice(0, 2500), pack: pack ? { block: pack.context.block, pieces: pack.pieces } : null, benchmarks, levers: o.levers });
+  const m = breakdownMaterial({ tree, goal, productName: product?.name, context: deps.productLine(goal.product ?? null).slice(0, 2500), pack: withWords(pack ? { block: pack.context.block, pieces: pack.pieces } : null, said, goal.product ?? null), benchmarks, levers: o.levers });
   emit("Qalam AI is breaking it down");
   const { data, model } = await structured<unknown>(breakdownCall(m), signal);
   const now = Date.now();
@@ -74,6 +79,17 @@ export async function breakDown(store: OrgStore, goalId: string, o: { levers: Go
   const breakdown: Breakdown = { at: now, levers: o.levers, ...r, decided: {} };
   await store.changeGoalWork(goalId, (w) => ({ ...w, breakdown }));
   return { parts: r.parts.length, none: r.none, breakdown };
+}
+
+/** Their words, after the material the pack found, under the next ids: what a part may cite and rest on. */
+function withWords(pack: { block: string; pieces: PackedPiece[] } | null, said: Awaited<ReturnType<typeof wordsPieces>>, product: string | null): { block: string; pieces: PackedPiece[] } | null {
+  const base = pack?.pieces ?? [];
+  const more = said
+    .filter((p) => !base.some((b) => b.ref === p.ref))
+    .map((p, i): PackedPiece => ({ k: `k${base.length + i + 1}`, ref: p.ref, whole: true, type: "quote", sub: p.label === "Their answers" ? "dump:answer" : null, text: p.text, title: p.label, product, source: p.source, speaker: null, board: null, card: null, stage: null }));
+  if (!base.length && !more.length) return null;
+  const lines = more.map((p) => `[${p.k}] ${p.sub ? "Their answer, when asked" : `Customers' words, ${p.title}`}: ${p.text.replace(/\s+/g, " ").trim()}`);
+  return { block: [pack?.block ?? "", ...lines].filter(Boolean).join("\n"), pieces: [...base, ...more] };
 }
 
 /** Accept a proposed goal under it (it goes in goals.md, under the goal, on its lever), or discard it. */

@@ -17,8 +17,14 @@ export interface DraftCard {
 
 export type SolutionsView = SolutionsFile & { quotes: Drafted["quotes"] };
 
-export async function draftSolutions(req: { topic?: string | null; card?: DraftCard }, onActivity?: (label: string) => void, signal?: AbortSignal): Promise<Drafted> {
-  const body = { ...(req.topic ? { topic: req.topic } : {}), ...(req.card ? { card: req.card } : {}) };
+/** The person's words a draft rests on, by id: their answers' source, and quotes found on their words. */
+export interface DraftWords {
+  answers?: string;
+  found?: string[];
+}
+
+export async function draftSolutions(req: { topic?: string | null; card?: DraftCard } & DraftWords, onActivity?: (label: string) => void, signal?: AbortSignal): Promise<Drafted> {
+  const body = { ...(req.topic ? { topic: req.topic } : {}), ...(req.card ? { card: req.card } : {}), ...(req.answers ? { answers: req.answers } : {}), ...(req.found?.length ? { found: req.found } : {}) };
   const { data } = await callAI<Drafted>(await orgPath("/solutions"), body, undefined, signal, (e) => e.type === "activity" && onActivity?.(e.label));
   return data;
 }

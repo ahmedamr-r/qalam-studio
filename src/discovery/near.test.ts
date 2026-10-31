@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SourceQuote } from "./sources";
-import { rankQuotes, wordOverlap } from "./near";
+import { rankQuotes, sharedWords, wordOverlap } from "./near";
 
 const q = (id: string, text: string, dismissed?: string[]): SourceQuote => ({ id, text, span: [0, text.length], kind: "pain", addedBy: "ai", at: 0, ...(dismissed ? { dismissed } : {}) });
 const QUOTES = [q("cash", "The driver never has change for 200"), q("gate", "The driver went to gate 1, I was at gate 13"), q("pin", "The pin jumps around inside the compound gate"), q("air", "Airport pickups are chaos", ["c1"])];
@@ -8,6 +8,13 @@ const QUOTES = [q("cash", "The driver never has change for 200"), q("gate", "The
 describe("quotes nearest a card", () => {
   it("counts the words two texts share, past the small ones", () => {
     expect(wordOverlap("Riders can't find the gate at the compound", "The pin jumps around inside the compound gate")).toBe(2);
+  });
+
+  it("counts only telling words as shared: never the generic ones, a plural the same as one", () => {
+    const about = "Checkout fails when I pay with a gift card. People paying with a gift card see an error and the order never goes through.";
+    expect(sharedWords(about, "Every week something gets swapped for a brand I never buy, so I stopped trusting the order")).toBe(1);
+    expect(sharedWords(about, "My gift cards never work at checkout")).toBe(3);
+    expect(sharedWords("Late orders", "My order came late")).toBe(2);
   });
 
   it("puts what shares the card's words first, then its parent's, dismissed ones last, and leaves out what's on it", () => {

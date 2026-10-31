@@ -2,6 +2,7 @@ import { callAI } from "@/ai/client";
 import type { Breakdown, GoalWork } from "@/goals/breakdown";
 import type { Goal, GoalLever } from "@/goals/types";
 import { orgJson, orgPath } from "./client";
+import type { DraftWords } from "./solutions";
 
 /*
  * A goal's work, from the window (server/org/goals.ts, server/org/outside.ts): the problems behind
@@ -32,8 +33,8 @@ async function run<T>(path: string, body: unknown, onActivity?: (label: string) 
 /** Find problems: the problem pages that bear on the goal and the goals under it, linked. */
 export const findProblems = (goal: string, onActivity?: (label: string) => void, signal?: AbortSignal) => run<Linked>(at(goal, "/problems"), {}, onActivity, signal);
 
-/** Break it down: the goals under it Qalam AI proposes, kept on the goal until each is decided. */
-export const breakDown = (goal: string, o: { levers: GoalLever[] }, onActivity?: (label: string) => void, signal?: AbortSignal) => run<{ parts: number; none: string; breakdown: Breakdown }>(at(goal, "/breakdown"), o, onActivity, signal);
+/** Break it down: the goals under it Qalam AI proposes (with the person's answers, when they were asked), kept on the goal until each is decided. */
+export const breakDown = (goal: string, o: { levers: GoalLever[] } & DraftWords, onActivity?: (label: string) => void, signal?: AbortSignal) => run<{ parts: number; none: string; breakdown: Breakdown }>(at(goal, "/breakdown"), o, onActivity, signal);
 
 /** A proposed goal under it taken (it goes in goals.md under the goal) or left. */
 export const decidePart = (goal: string, part: string, accept: boolean) => orgJson<{ goal: Goal | null }>(at(goal, `/breakdown/${encodeURIComponent(part)}`), { method: "POST", json: { accept } });

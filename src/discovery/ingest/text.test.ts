@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MAX_SOURCE_TEXT } from "@/discovery/sources";
-import { capText, captureText, captureTitle, cleanText } from "./text";
+import { capText, captureText, captureTitle, cleanText, isWall } from "./text";
 import { markdownToText } from "./markdown";
 
 describe("cleanText", () => {
@@ -17,6 +17,16 @@ describe("cleanText", () => {
     expect(c.text.length).toBeLessThanOrEqual(MAX_SOURCE_TEXT);
     expect(c.text.endsWith("a")).toBe(true);
     expect(capText("short")).toEqual({ text: "short" });
+  });
+});
+
+describe("isWall", () => {
+  it("knows a page that turns readers away from one that says something", () => {
+    expect(isWall({ title: "Security Verification", text: "Security verification in progress. Please wait while we verify your browser.\n\nVerifying connection..." })).toBe(true);
+    expect(isWall({ title: "Just a moment...", text: "Enable JavaScript and cookies to continue" })).toBe(true);
+    expect(isWall({ title: "Apple Pay not working with gift cards", text: "I tried three times at checkout and the gift card was refused every time." })).toBe(false);
+    // A long thread that mentions a bot check somewhere is still a thread.
+    expect(isWall({ title: "Checkout keeps asking if I'm a robot", text: `Are you a robot? it asks me every time. ${"I just want to pay. ".repeat(200)}` })).toBe(false);
   });
 });
 

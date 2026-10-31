@@ -38,6 +38,13 @@ export function htmlText(html: string): { title?: string; text: string } {
   return { ...(title ? { title: decode(title).replace(/\s+/g, " ").trim() } : {}), text: cleanText(decode(body).replace(/[ \t]+/g, " ")) };
 }
 
+const WALL = /security verification|verifying (your )?connection|checking (if the site connection is secure|your browser)|verify (that )?you are (a )?human|are you a robot|just a moment\.\.\.|attention required|enable javascript and cookies to continue|pardon our interruption|unusual traffic from your (computer )?network|press (&|and) hold to confirm/i;
+
+/** A page that turns readers away (a bot check, "Just a moment...") in place of what's on it: short, and saying so near its top. */
+export function isWall(page: { title?: string; text: string }): boolean {
+  return page.text.length < 3000 && (WALL.test(page.title ?? "") || WALL.test(page.text.slice(0, 600)));
+}
+
 /** A text no longer than a source keeps, and whether it was cut. */
 export function capText(text: string): { text: string; truncated?: boolean } {
   if (text.length <= MAX_SOURCE_TEXT) return { text };

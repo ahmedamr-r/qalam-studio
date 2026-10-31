@@ -23,6 +23,10 @@ import { Button, CommandKbd, IconBtn, Select, Spinner } from "../controls";
 import { useHealth } from "../frame/useHealth";
 import { useJobs } from "../goals/useJobs";
 import { r } from "../recipes";
+import { OPEN_ID } from "@/discovery/questions";
+import { toQuestion } from "../ai/plan";
+import { Questionnaire } from "../ai/Questionnaire";
+import { answerRound, cancelAsk, changeRound, draftNow, skipQuestions, startAsk, useAsk, type Ask } from "./ask";
 import { stopBusy, useBusy, type Busy, type Done } from "./busy";
 import { useDump } from "./dump";
 import { SPACE, addFeed, checkFeed, refreshFeed, useFeeds, wiredCards, type FeedNews } from "./feeds";
@@ -42,6 +46,7 @@ import { useDiscovery } from "./store";
  */
 
 const W = 300;
+const ASK_W = 360;
 const FOLDED_W = 76;
 /** The card bar's height and gap over a card (./CardBar.tsx). */
 const BAR = 46;
@@ -79,6 +84,8 @@ export function useCardFacts(id: string | null): CardFacts | null {
   const pending = usePending(thing?.type === "goal" ? thing.goal : null);
   const tools = useTools();
   const material = useSources((s) => s.list.some((x) => x.quotes.length > 0));
+  // Answers drafted with count as what it rests on; answers left half-way are picked up by its draft.
+  const asked = useSources((s) => (!id ? null : s.list.some((x) => x.answers?.card === id && x.answers.done) ? "done" : s.list.some((x) => x.answers?.card === id) ? "half" : null));
   const feeds = useFeeds((s) => s.list);
   return useMemo(() => {
     if (!id || !isOstCard(node)) return null;
@@ -109,12 +116,14 @@ export function useCardFacts(id: string | null): CardFacts | null {
       material,
       tools: tools?.map((t) => t.label) ?? null,
       feeds: [...new Set(watching(feeds, id).map((f) => f.label))],
+      answered: asked === "done" || card.evidence.some((e) => e.answerId?.startsWith("ask:")),
+      asking: asked === "half",
       suggested: card.kind === "test" && !!card.test?.suggested && !card.test.criterion,
       ai: !rows?.some((r) => r.id === "engine"),
       reviewing,
       busyElsewhere: !!busy && busy.card !== id,
     };
-  }, [id, node, doc, inputs, thing, busy, reviewing, rows, jobs, pending, tools, material, feeds]);
+  }, [id, node, doc, inputs, thing, busy, reviewing, rows, jobs, pending, tools, material, feeds, asked]);
 }
 
 /** The feeds watching for a card, on. */
@@ -155,15 +164,18 @@ export default function NextSteps({ vp }: { vp: { w: number; h: number } }) {
   const mine = sel && busy?.card === sel ? busy : null;
   const steps = show && facts ? nextSteps(facts) : [];
   const asked = asking?.card === sel ? asking.what : null;
+  const ask = useAsk((s) => (sel && s.ask?.card === sel ? s.ask : null));
   const pick = (s: NextStep) => {
     if (!sel || !facts) return;
     if (s.id === "break-down") return setAsking({ card: sel, what: "levers" });
     if (s.id === "watch") return setAsking({ card: sel, what: "watch" });
     if (s.id === "add-file") return files.current?.click();
+    // Nothing behind it yet: a few questions, then the draft.
+    if (s.id === "questions" || (s.asks && s.id === "draft-solutions")) return startAsk(sel, "draft-solutions");
     void runStep(sel, s, facts);
   };
   // ⌘↵ runs the step drawn first.
-  const first = onScreen && !folded && !mine && !asked && steps[0] && !steps[0].blocked ? steps[0] : null;
+  const first = onScreen && !folded && !mine && !asked && !ask && steps[0] && !steps[0].blocked ? steps[0] : null;
   useEffect(() => {
     useNextSteps.setState({ first: first && sel ? { card: sel, run: () => pick(first) } : null });
   });
@@ -177,7 +189,9 @@ export default function NextSteps({ vp }: { vp: { w: number; h: number } }) {
   if (!sel || !facts || !world || !onScreen) return null;
   const line = backingLine(facts);
   if (!steps.length && !line && !mine) return null;
-  const at = beside(box, world, cam, room, { w: folded ? FOLDED_W : W, h: folded ? 28 : h });
+  // Wider while it asks (the questions' options sit two to a row).
+  const width = ask ? ASK_W : W;
+  const at = beside(box, world, cam, room, { w: folded ? FOLDED_W : width, h: folded ? 28 : h });
   const stop = (e: React.PointerEvent) => e.stopPropagation();
   if (folded)
     return (
@@ -189,7 +203,7 @@ export default function NextSteps({ vp }: { vp: { w: number; h: number } }) {
   const shown = more ? steps : steps.slice(0, SHOWN);
   const rest = steps.length - SHOWN;
   return (
-    <div ref={ref} role="group" aria-label="Next steps" className="pointer-events-auto absolute flex flex-col gap-[2px] rounded-lg bg-elevated p-[4px] shadow-popover q-fade" style={{ left: at.left, top: at.top, width: W }} onPointerDown={stop}>
+    <div ref={ref} role="group" aria-label="Next steps" className="pointer-events-auto absolute flex flex-col gap-[2px] rounded-lg bg-elevated p-[4px] shadow-popover q-fade" style={{ left: at.left, top: at.top, width }} onPointerDown={stop}>
       <div className="flex min-h-[28px] items-center gap-[6px] pr-[2px] pl-[8px]">
         <span className="min-w-0 flex-1 text-caption text-fg-muted" dir="auto">
           {line || "Next"}
@@ -201,13 +215,17 @@ export default function NextSteps({ vp }: { vp: { w: number; h: number } }) {
       {done && !mine && <DoneLine done={done} />}
       {mine ? (
         <Running busy={mine} />
+      ) : ask ? (
+        <Asking ask={ask} />
       ) : asked === "levers" && facts.goal ? (
         <Levers
           onCancel={() => setAsking(null)}
           onGo={(levers) => {
             setAsking(null);
             const s = steps.find((x) => x.id === "break-down");
-            if (s) void runStep(sel, s, facts, { levers });
+            // Nothing behind it yet: a few questions, then it's broken down with the levers picked.
+            if (s?.asks) startAsk(sel, "break-down", levers);
+            else if (s) void runStep(sel, s, facts, { levers });
           }}
         />
       ) : asked === "watch" && tools?.length ? (
@@ -335,6 +353,41 @@ function StepRow({ step, main, onRun }: { step: NextStep; main: boolean; onRun: 
       </span>
       {main && !step.blocked && <CommandKbd command="discovery.next-step" size="sm" />}
     </button>
+  );
+}
+
+/** The questions before the card's draft: theirs, then Qalam AI's, with what was found on their words. */
+function Asking({ ask }: { ask: Ask }) {
+  const round = ask.rounds[ask.rounds.length - 1];
+  const found = [ask.found.length ? `Found ${ask.found.length === 1 ? "1 quote" : `${ask.found.length} quotes`} on it` : ask.phase !== "open" ? "Nothing in your organization on it yet" : "", ask.online?.running ? "looking online…" : (ask.online?.note ?? "")].filter(Boolean).join(" · ");
+  return (
+    <div className="flex flex-col gap-[6px] pb-[2px]">
+      {found && <span className="px-[8px] text-caption text-fg-muted">{found}</span>}
+      {ask.phase === "waiting" ? (
+        <div role="status" className="flex items-center gap-[8px] py-[4px] pr-[4px] pl-[8px]">
+          <Spinner size={12} />
+          <span className="q-shimmer-text min-w-0 flex-1 text-caption text-fg">Looking online for what people say about it</span>
+          <Button size="sm" variant="secondary" onClick={draftNow}>
+            Draft now
+          </Button>
+          <Button size="sm" variant="ghost" onClick={cancelAsk}>
+            Cancel
+          </Button>
+        </div>
+      ) : (
+        <>
+          <Questionnaire questions={round.questions.map(toQuestion).map((q) => (q.id === OPEN_ID ? { ...q, source: "studio" as const } : q))} state={round.form} onChange={changeRound} onSubmit={(s) => void answerRound(s)} title={ask.rounds.length === 1 ? "Before Qalam AI drafts" : "A few more"} />
+          <div className="flex items-center justify-between px-[4px]">
+            <button type="button" className={r.buttonGhost + " h-[24px] rounded-md px-[6px] text-caption"} onClick={() => void skipQuestions()}>
+              Skip the questions
+            </button>
+            <button type="button" className={r.buttonGhost + " h-[24px] rounded-md px-[6px] text-caption"} onClick={cancelAsk}>
+              Cancel
+            </button>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 

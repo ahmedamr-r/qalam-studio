@@ -8,7 +8,7 @@ import type { Strength } from "@/hub/needs";
  * a step is picked (src/ui/discovery/next.ts).
  */
 
-export type StepId = "draft-solutions" | "draft-tests" | "design-this" | "page" | "pass-line" | "next-job" | "find-problems" | "break-down" | "review-parts" | "others" | "find-backing" | "watch" | "connect" | "add-file";
+export type StepId = "draft-solutions" | "draft-tests" | "design-this" | "page" | "pass-line" | "next-job" | "find-problems" | "break-down" | "review-parts" | "others" | "find-backing" | "watch" | "connect" | "add-file" | "questions" | "draft-problems";
 
 export interface NextStep {
   id: StepId;
@@ -17,6 +17,8 @@ export interface NextStep {
   hint?: string;
   /** Qalam AI runs it. */
   ai?: boolean;
+  /** It asks a few questions first (nothing backs the card yet; src/discovery/questions.ts). */
+  asks?: boolean;
   /** Why it can't run now. */
   blocked?: string;
 }
@@ -40,6 +42,10 @@ export interface CardFacts {
   tools: string[] | null;
   /** The tools watching for it already, by name. */
   feeds: string[];
+  /** The person answered questions about it already (the card rests on their answers, or they're kept for it, drafted with). */
+  answered: boolean;
+  /** Questions about it were left half-way: its draft picks them up. */
+  asking?: boolean;
   /** A test whose pass line Qalam AI suggested and nobody has set. */
   suggested?: boolean;
   /** Qalam AI can run here. */
@@ -55,12 +61,16 @@ export const SHOWN = 4;
 
 const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
 
-/** Nothing from customers behind the card yet: a problem with no quotes on it or its page, a goal with no problems behind it. */
+/** Nothing behind the card yet: a problem with no quotes on it or its page, a goal with no problems behind it, and no answers from the person. */
 export function thin(f: CardFacts): boolean {
+  if (f.answered) return false;
   if (f.kind === "outcome") return !f.goal?.behind;
   if (f.kind === "opportunity") return !f.evidence.quotes && !f.page?.quotes;
   return false;
 }
+
+/** A few questions first, on any card a draft is for: in More where it doesn't ask on its own. */
+const QUESTIONS: NextStep = { id: "questions", label: "Answer a few questions first", hint: "Then draft with your answers", ai: true };
 
 /** Ways to ground a card: the organization's words, a tool watched for it, a file read for it. */
 function grounding(f: CardFacts): { find: NextStep | null; watch: NextStep | null; file: NextStep } {
@@ -84,11 +94,12 @@ export function nextSteps(f: CardFacts): NextStep[] {
   };
   switch (f.kind) {
     case "opportunity": {
-      const draft: NextStep = { id: "draft-solutions", label: "Draft solutions", hint: f.under.solutions ? "More ways to solve it, each with a test" : "Ways to solve it, each with a test", ai: true };
+      const asks = thin(f) || !!f.asking;
+      const draft: NextStep = { id: "draft-solutions", label: "Draft solutions", hint: f.asking ? "Picks up your answers where you left them" : asks ? "Asks a few questions first" : f.under.solutions ? "More ways to solve it, each with a test" : "Ways to solve it, each with a test", ai: true, ...(asks ? { asks } : {}) };
       const page: NextStep | null = f.page ? { id: "page", label: "Its page", hint: "Everything known about it" } : null;
       // Nothing behind it yet: what the organization has first, when it has something.
-      if (thin(f) && ground.find) push(ground.find, draft, ground.watch, ground.file, page);
-      else push(draft, ground.find, ground.watch, ground.file, page);
+      if (asks && ground.find) push(ground.find, draft, ground.watch, ground.file, page);
+      else push(draft, ground.find, ground.watch, ground.file, page, asks ? null : QUESTIONS);
       break;
     }
     case "solution":
@@ -103,7 +114,8 @@ export function nextSteps(f: CardFacts): NextStep[] {
       if (!g) break;
       const find: NextStep | null = f.pages ? { id: "find-problems", label: "Find its problems", hint: g.behind ? "More of your problem pages that bear on it" : "Links your problem pages that bear on it", ai: true } : null;
       // Goals proposed under it before wait to be decided before it's broken down again.
-      const parts: NextStep = g.pending ? { id: "review-parts", label: `Review the ${plural(g.pending, "goal")} proposed under it`, hint: "From breaking it down" } : { id: "break-down", label: "Break it down", hint: "Goals under it that make its number", ai: true };
+      const asks = thin(f) || !!f.asking;
+      const parts: NextStep = g.pending ? { id: "review-parts", label: `Review the ${plural(g.pending, "goal")} proposed under it`, hint: "From breaking it down" } : { id: "break-down", label: "Break it down", hint: f.asking ? "Picks up your answers where you left them" : asks ? "Asks a few questions first" : "Goals under it that make its number", ai: true, ...(asks ? { asks } : {}) };
       // Nothing behind it yet: its problems first.
       const lead = !g.pending && !g.behind && find ? [find, parts] : [parts, find];
       push(...lead, { id: "others", label: "What others aim for", hint: "Numbers others report · a minute or two", ai: true }, ground.watch, ground.file);

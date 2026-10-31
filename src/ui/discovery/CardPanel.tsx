@@ -400,7 +400,7 @@ function EvidenceSection({ id, card }: { id: string; card: OstCard }) {
 function EvidenceRow({ id, e }: { id: string; e: OstEvidence }) {
   const [open, setOpen] = useState(false);
   const against = e.stance === "against";
-  const who = e.kind === "quote" ? (e.speaker ?? (e.sourceTitle ? shortTitle(e.sourceTitle) : SHORT.quote)) : SHORT[e.kind];
+  const who = e.kind === "quote" ? (e.speaker ?? (e.sourceTitle ? shortTitle(e.sourceTitle) : SHORT.quote)) : e.answerId?.startsWith("ask:") ? SHORT.answer : SHORT[e.kind];
   const Mark = e.kind === "quote" ? Quote : PenLine;
   return (
     <li className="flex flex-col">

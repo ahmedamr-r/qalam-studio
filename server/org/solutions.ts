@@ -33,10 +33,45 @@ const words = (s: string) => new Set(sameWords(s).split(" ").filter((w) => w.len
 /** How many of the problem's words a text shares. */
 const overlap = (near: Set<string>, text: string) => [...words(text)].filter((w) => near.has(w)).length;
 
-/** The material for a problem: its page when it has one, else the card's own words. */
-async function solutionsInput(store: OrgStore, topic: Topic | null, card: SolutionsCard | null): Promise<SolutionsInput> {
+/** The person's words a draft rests on: their answers to the questions asked before it, and quotes found on their words (by ref). */
+export interface DraftWords {
+  answers?: string;
+  found?: string[];
+}
+
+/**
+ * Their answers (the team's words, "Their answers") and the quotes found on their words (customers'
+ * as evidence, people online's marked), as a draft's pieces; none twice, none the page already sends.
+ */
+export async function wordsPieces(store: OrgStore, w: DraftWords, have: ReadonlySet<string> = new Set()): Promise<SolutionsInput["pieces"]> {
+  const out: SolutionsInput["pieces"] = [];
+  const seen = new Set(have);
+  const s = w.answers ? await store.getSource(w.answers) : null;
+  if (s?.kind === "dump" && s.answers)
+    for (const q of s.quotes)
+      if (!seen.has(quotePiece(q.id))) {
+        seen.add(quotePiece(q.id));
+        out.push({ ref: quotePiece(q.id), text: q.text, label: "Their answers", source: s.id, evidence: false });
+      }
+  if (w.found?.length)
+    try {
+      const ix = indexFor(store);
+      await ix.settled();
+      for (const [ref, row] of ix.piecesByRef(w.found)) {
+        if (row.type !== "quote" || seen.has(ref)) continue;
+        seen.add(ref);
+        const src = row.source ? await store.getSource(row.source) : null;
+        out.push({ ref, text: row.text, label: src?.title ?? row.title ?? "", source: row.source, evidence: isEvidence(row), ...(isOnline(row) ? { online: true } : {}) });
+      }
+    } catch {
+      // No index here: their answers alone.
+    }
+  return out;
+}
+
+/** The material for a problem: its page when it has one, else the card's own words; and the person's words, when they were asked. */
+async function solutionsInput(store: OrgStore, topic: Topic | null, card: SolutionsCard | null, w: DraftWords = {}): Promise<SolutionsInput> {
   const title = topic?.title ?? card?.title ?? "";
-  const near = words([title, ...(topic?.lines.map((l) => l.text) ?? [])].join(" "));
   const lines = (topic?.lines ?? []).map((l) => ({ id: l.id, section: l.section, text: l.text, cites: l.cites }));
   const pieces: SolutionsInput["pieces"] = [];
   const cards: SolutionsInput["cards"] = [...(card?.children ?? [])];
@@ -67,6 +102,10 @@ async function solutionsInput(store: OrgStore, topic: Topic | null, card: Soluti
   } else
     for (const [i, e] of (card?.evidence ?? []).entries())
       pieces.push({ ref: e.piece ?? `card:${i}`, text: e.text, label: e.sourceTitle ?? (e.kind === "quote" ? "A source" : "The team's words"), source: e.sourceId ?? null, evidence: e.kind === "quote" && !e.online, ...(e.online ? { online: true } : {}) });
+  // What they told us when asked, and what was found on their words: page or no page.
+  const said = await wordsPieces(store, w, new Set(pieces.map((p) => p.ref)));
+  pieces.push(...said);
+  const near = words([title, ...(topic?.lines.map((l) => l.text) ?? []), ...said.filter((p) => p.label === "Their answers").map((p) => p.text)].join(" "));
 
   // The goals it bears on, and what others report for them.
   const tree = await store.getGoals();
@@ -98,16 +137,18 @@ async function solutionsInput(store: OrgStore, topic: Topic | null, card: Soluti
     }
   ideas.sort((a, b) => b.score - a.score);
 
-  return { problem: { title, topic: topic?.id ?? null }, lines, pieces, goals, claims, steps, cards, ideas: ideas.map(({ score: _s, ...i }) => i) };
+  // An idea already among the pieces (their answers) is sent once, as their answer.
+  const sent = new Set(pieces.map((p) => p.ref));
+  return { problem: { title, topic: topic?.id ?? null }, lines, pieces, goals, claims, steps, cards, ideas: ideas.filter((i) => !sent.has(i.ref)).map(({ score: _s, ...i }) => i) };
 }
 
 /** One call drafting solutions for a problem (a page, or a card on a board); code keeps what it can stand behind. */
-export async function draftSolutions(store: OrgStore, req: { topic?: string; card?: SolutionsCard }, emit?: (label: string) => void, opts: { tab?: string; signal?: AbortSignal } = {}): Promise<Drafted> {
+export async function draftSolutions(store: OrgStore, req: { topic?: string; card?: SolutionsCard } & DraftWords, emit?: (label: string) => void, opts: { tab?: string; signal?: AbortSignal } = {}): Promise<Drafted> {
   const topic = req.topic ? await store.getTopic(req.topic) : null;
   if (req.topic && !topic) throw new NotFoundError("No such problem");
   if (!topic && !req.card?.title.trim()) throw new NotFoundError("No problem to draft for");
   emit?.("Reading what the problem rests on");
-  const input = await solutionsInput(store, topic, req.card ?? null);
+  const input = await solutionsInput(store, topic, req.card ?? null, { answers: req.answers, found: req.found });
   const m = solutionsMaterial(input);
   emit?.("Qalam AI is drafting ways to solve it");
   const { data, model } = await structured<unknown>(solutionsCall(m), opts.signal);

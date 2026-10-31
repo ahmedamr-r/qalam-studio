@@ -2,7 +2,7 @@ import { NO_WEB } from "@/ai/abilities";
 import { research } from "@/ai/server";
 import { isDiscussion, postAddress, type LookedOnline } from "@/discovery/ingest/posts";
 import { SECTION_HEADING } from "@/hub/topics";
-import { captureSource } from "../capture";
+import { captureSource, type CaptureOpts } from "../capture";
 import { flushBearings } from "./goals";
 import { readPosts } from "./pages";
 import { NotFoundError, type OrgStore } from "./store";
@@ -21,17 +21,30 @@ export type { LookedOnline } from "@/discovery/ingest/posts";
 
 const one = (s: string) => s.replace(/\s+/g, " ").trim();
 
-export async function lookOnline(store: OrgStore, topicId: string, emit: (label: string) => void, signal: AbortSignal): Promise<LookedOnline> {
+/** What a lookup is about: a problem's words, from its page, or from a card and what the person said about it. */
+export interface OnlineAbout {
+  title: string;
+  lines: string[];
+  products: string[];
+}
+
+/** A problem's page as a lookup reads it: its title and what it says (what speaks against it left out). */
+export async function aboutTopic(store: OrgStore, topicId: string): Promise<OnlineAbout> {
   const topic = await store.getTopic(topicId);
   if (!topic || topic.kind !== "need") throw new NotFoundError("No such problem");
-  const about = await store.getAbout();
-  const products = (await store.listProducts()).filter((p) => topic.products.includes(p.id));
   const lines = topic.lines.filter((l) => l.section !== "against").slice(0, ONLINE_LIMITS.lines);
+  return { title: topic.title, lines: lines.map((l) => `${SECTION_HEADING[l.section]}: ${one(l.text)}`), products: topic.products };
+}
+
+/** Look online for a problem; what comes in is placed only where `scope` says (`{}`: nowhere), else where captures place things. */
+export async function lookOnline(store: OrgStore, about: OnlineAbout, emit: (label: string) => void, signal: AbortSignal, o: { scope?: CaptureOpts["scope"] } = {}): Promise<LookedOnline> {
+  const org = await store.getAbout();
+  const products = (await store.listProducts()).filter((p) => about.products.includes(p.id));
   const task = [
-    `The problem: “${one(topic.title)}”`,
-    ...(lines.length ? ["What the team's page says about it:", ...lines.map((l) => `- ${SECTION_HEADING[l.section]}: ${one(l.text)}`)] : []),
+    `The problem: “${one(about.title)}”`,
+    ...(about.lines.length ? ["What the team says about it:", ...about.lines.map((l) => `- ${one(l)}`)] : []),
     ...(products.length ? [`The product it's about: ${products.map((p) => `${p.name}${p.audience ? ` (for ${one(p.audience).slice(0, 200)})` : ""}`).join("; ")}`] : []),
-    ...(about.context.trim() ? [`The organization: ${one(about.context).slice(0, 400)}`] : []),
+    ...(org.context.trim() ? [`The organization: ${one(org.context).slice(0, 400)}`] : []),
     "Find public pages where people describe this problem in their own words.",
   ].join("\n");
   const info = await research({ purpose: "posts", task, connectors: ["web"] }, emit, signal);
@@ -61,9 +74,10 @@ export async function lookOnline(store: OrgStore, topicId: string, emit: (label:
       continue;
     }
     out.read++;
-    const r = await captureSource(store, { kind: "post", title: page.title.slice(0, 200), origin: link.url, text: page.text }, { product: topic.products[0] ?? null, emit, signal });
+    const r = await captureSource(store, { kind: "post", title: page.title.slice(0, 200), origin: link.url, text: page.text }, { product: about.products[0] ?? null, emit, signal, ...(o.scope ? { scope: o.scope } : {}) });
     out.added++;
     out.quotes += r.quotes;
+    out.sources = [...(out.sources ?? []), r.sourceId];
     for (const p of r.filed?.pages ?? []) filed.add(p.id);
   }
   // What was filed bears on the goals now.

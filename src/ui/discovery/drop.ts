@@ -94,7 +94,7 @@ export function attachQuotes(cardId: string, sourceId: string, quoteIds: readonl
 }
 
 /** Attach quotes from any of the sources to a card at once, as the builder's choice (one undo step). The number attached. */
-export function attachQuoteRefs(cardId: string, refs: readonly { sourceId: string; quoteId: string }[]): number {
+export function attachQuoteRefs(cardId: string, refs: readonly { sourceId: string; quoteId: string }[], o: { quiet?: boolean } = {}): number {
   const card = cardOf(studio().doc, cardId);
   if (!card) return 0;
   const seen = new Set<string>();
@@ -108,7 +108,8 @@ export function attachQuoteRefs(cardId: string, refs: readonly { sourceId: strin
   });
   if (!evidence.length) return 0;
   studio().mutate((d) => updateCardIn(d, cardId, (c) => void c.evidence.push(...evidence)));
-  feedback(`${evidence.length === 1 ? "A quote" : `${evidence.length} quotes`} attached to “${card.title.length > 48 ? `${card.title.slice(0, 47)}…` : card.title}”`, { kind: "success", id: "discovery.quote" });
+  if (!o.quiet)
+    feedback(`${evidence.length === 1 ? "A quote" : `${evidence.length} quotes`} attached to “${card.title.length > 48 ? `${card.title.slice(0, 47)}…` : card.title}”`, { kind: "success", id: "discovery.quote" });
   return evidence.length;
 }
 
