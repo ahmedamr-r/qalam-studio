@@ -17,7 +17,6 @@ import { attachFiles, clearAttachments, docsCheck, readyDocs, useAttach } from "
 import { AttachmentChips, SourceRow } from "../chat/SourcePicker";
 import { ChatComposer, ChatThread } from "../chat/ChatThread";
 import { PageFrame } from "../frame/PageFrame";
-import { useFrame } from "../frame/store";
 import { r } from "../recipes";
 import Toasts from "../toast";
 import { answerKnown, readKnown, saveKnownForm, useKnow } from "../setup/know";
@@ -179,11 +178,6 @@ export function Onboarding({ route }: { route: "welcome" | "setup" }) {
   useEffect(() => {
     document.title = `${title} · Qalam`;
   }, [title]);
-
-  // Not the first run: the sidebar folds to its rail here, so the three panels fit.
-  useEffect(() => {
-    if (route === "setup" && fr.opened && !fr.first) useFrame.setState({ sidebar: "rail" });
-  }, [route, fr.opened, fr.first]);
 
   const footer: ReactNode =
     ask.kind === "questions" ? (

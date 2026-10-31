@@ -33,6 +33,7 @@ import { findProblems, goalPage, linkByHand } from "./goals";
 import { pictureFromFigma, pinByHand, placeQuotes } from "./steps";
 import { answerReading, dropReading, editSeen, seenEditShape, seenMaps, seenView, settleReading, startReading } from "./seen";
 import type { SeenAnswer, Shot } from "@/seen/types";
+import { CHAT_KEY, chatOf } from "@/space/chat";
 import { changeJob, noteForJob, onlineForJob, openJobs, planJobs, searchForJob, takeInForJob } from "./jobs";
 import { addFeed, changeFeed, checkFeed, feedsView, refreshFeed } from "./feeds";
 import { feedTarget, type FeedTarget } from "@/feeds/feeds";
@@ -638,12 +639,13 @@ export function orgRoutes(): Hono<Env> {
   r.post("/api/org/:org/ask", async (c) => {
     if (!aiConfigured()) return c.json({ error: "no_key", message: "Qalam AI isn't set up here." }, 501);
     if (rateLimited(c.req.raw)) return c.json({ error: "rate_limited", message: "Too many requests, try again in a few minutes." }, 429);
-    const b = (await c.req.json().catch(() => null)) as { question?: unknown; product?: unknown } | null;
+    const b = (await c.req.json().catch(() => null)) as { question?: unknown; product?: unknown; about?: unknown } | null;
     const question = typeof b?.question === "string" ? b.question.replace(/\s+/g, " ").trim().slice(0, 1000) : "";
     if (question.length < 3) return bad("Ask a question");
     const product = typeof b?.product === "string" && ID.test(b.product) ? b.product : null;
+    const about = typeof b?.about === "string" ? b.about.replace(/\s+/g, " ").trim().slice(0, 300) || null : null;
     const store = c.get("store");
-    return streamed(c.req.raw.signal, (emit, signal) => askOrg(store, { question, product }, { emit, signal }));
+    return streamed(c.req.raw.signal, (emit, signal) => askOrg(store, { question, product, about }, { emit, signal }));
   });
   /**
    * Capture: material added to the organization (read in the window: a paste, a file, a page). The
@@ -842,6 +844,18 @@ export function orgRoutes(): Hono<Env> {
     const chat = (await c.req.json()) as { id: string; projectId?: string };
     if (!chat || chat.id !== c.req.param("id") || !ID.test(chat.id) || (chat.projectId !== undefined && !ID.test(chat.projectId))) return bad("Not a chat");
     await c.get("store").putChat(chat, { tab: tabOf(c.req.raw.headers) });
+    return c.json({ ok: true });
+  });
+  // Qalam AI's chat beside a canvas: `org` or a product's id.
+  r.get("/api/org/:org/canvas-chat/:key", async (c) => {
+    const key = c.req.param("key");
+    return CHAT_KEY.test(key) ? c.json(await c.get("store").getCanvasChat(key)) : bad("Not a canvas");
+  });
+  r.put("/api/org/:org/canvas-chat/:key", async (c) => {
+    const key = c.req.param("key");
+    const raw = await c.req.json().catch(() => null);
+    if (!CHAT_KEY.test(key) || (raw as { v?: unknown } | null)?.v !== 1) return bad("Not a chat");
+    await c.get("store").putCanvasChat(key, chatOf(raw));
     return c.json({ ok: true });
   });
   r.delete("/api/org/:org/chats/:id", async (c) => {

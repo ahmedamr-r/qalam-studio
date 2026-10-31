@@ -17,7 +17,7 @@ import { askNext } from "../org/ask-next";
 import { SpaceTile } from "./OrgPlaces";
 import { PLACES, placeShown, type Place } from "./places";
 import type { Space } from "./spaces";
-import { useCurrentOrg } from "./store";
+import { useCurrentOrg, useFrame } from "./store";
 import { navigate } from "../nav";
 
 /*
@@ -81,7 +81,7 @@ function Palette({ space }: { space: Space }) {
     for (const b of boards.slice(0, q ? boards.length : 4)) add("Boards", `board:${b.id}`, b.name, <Network {...ICON} />, () => navigate(projectHref(b)), "Board");
     if (q) for (const t of topics ?? []) add("Problems and pages", `topic:${t.id}`, t.title, <NotebookText {...ICON} />, () => navigate(topicHref(t.id)), TOPIC_KIND_LABEL[t.kind]);
     add("Actions", "theme", "Toggle dark and light", <Moon {...ICON} />, () => runCommand("view.theme-toggle", "palette"), undefined, ["theme", "appearance"]);
-    add("Actions", "sidebar", "Fold the sidebar", <PanelLeft {...ICON} />, () => runCommand("frame.sidebar", "palette"), undefined, ["rail", "collapse"]);
+    add("Actions", "chat", useFrame.getState().chat ? "Hide Qalam AI" : "Show Qalam AI", <PanelLeft {...ICON} />, () => runCommand("frame.chat", "palette"), undefined, ["chat", "sidebar", "fold", "panel"]);
     // Grouped as listed; within a group, the best match first, and a few per group.
     const groups = [...new Set(out.map((x) => x.group))];
     const ranked = groups.flatMap((g) =>

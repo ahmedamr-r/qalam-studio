@@ -27,14 +27,14 @@ import { useMoves } from "../nav";
 import { SpaceConflictBanner } from "../space/ConflictBanner";
 import { r } from "../recipes";
 import { NeedsALook } from "../org/NeedsALook";
-import { AskBar, useAskAdd } from "../org/AskBar";
 import { LabSections, SpacePages, SpaceProblems, UnplacedGoals } from "./SpaceSections";
-import { newGoal } from "../space/new";
+import { addMaterial, newGoal } from "../space/new";
+import { CanvasChat, ChatPill } from "../space/chat/CanvasChat";
 import { useOrgData } from "../org/useOrgData";
 import { useNotices } from "../notices/useNotices";
 import { useTopics } from "../topics/list";
 import { PageFrame } from "../frame/PageFrame";
-import { useCurrentOrg } from "../frame/store";
+import { useCurrentOrg, useFrame } from "../frame/store";
 import { useHealth } from "../frame/useHealth";
 import { StatusDot } from "../viz";
 import { useBearings } from "../goals/useBearings";
@@ -52,12 +52,13 @@ import { ContinueSetup, useFirstRunLeft } from "./ContinueSetup";
 /**
  * A space's home (the organization's, or with `product` that product's): its canvas, every goal
  * in the space with its board's problems, solutions and tests under it (src/space), as the biggest
- * thing on the page, where the trees are worked on in place, and a panel beside it. With nothing
- * picked the panel picks up the first run while it isn't finished here (./ContinueSetup.tsx), asks
- * what the space knows, and says what needs a look, under the goal it bears on; the organization's
- * A card picked on the canvas takes the panel over, and a goal's or a problem's page opens in it
- * (?goal=, ?page=; picking a card lies over it, and letting the card go shows it again).
- * Everything is saved in the organization's folder, each card on its own board.
+ * thing on the page, where the trees are worked on in place; Qalam AI's chat on its left
+ * (../space/chat/), and a panel on its right. With nothing picked the panel picks up the first run
+ * while it isn't finished here (./ContinueSetup.tsx) and shows what the space holds: its problems,
+ * what needs a look under the goal it bears on, its pages. A card picked on the canvas takes the
+ * panel over, and a goal's or a problem's page opens in it (?goal=, ?page=; picking a card lies
+ * over it, and letting the card go shows it again). Everything is saved in the organization's
+ * folder, each card on its own board.
  */
 
 const NONE: Bearing[] = [];
@@ -67,6 +68,8 @@ const GoalView = lazy(() => import("../goals/GoalPage"));
 const TopicView = lazy(() => import("../topics/TopicPage"));
 /** How wide the panel is for a page. */
 const PAGE_W = 480;
+/** Below this the chat lies over the canvas instead of beside it. */
+const CHAT_DOCKS = 900;
 
 export default function Home({ product: productId = null }: { product?: string | null }) {
   const { projects, legacy, sources, refresh } = useOrgData();
@@ -120,12 +123,13 @@ export default function Home({ product: productId = null }: { product?: string |
   }, [openKey]);
   const showsPage = !!open && !cordPick && !quotePick && !reading && !picked;
 
-  const askAdding = useAskAdd((s) => s.open);
   useEffect(() => {
-    if (picked || reading || cordPick || quotePick || askAdding) setDrawer(true);
-  }, [picked, reading, cordPick, quotePick, askAdding]);
+    if (picked || reading || cordPick || quotePick) setDrawer(true);
+  }, [picked, reading, cordPick, quotePick]);
   // A narrow window's panel lies over the canvas: what's drawn beside a card keeps out of it.
   const wide = useWide(WIDE);
+  const chatOpen = useFrame((s) => s.chat);
+  const chatDocks = useWide(CHAT_DOCKS);
   const panelW = reading && readerW ? readerW : showsPage ? PAGE_W : 380;
   const over = !wide && (drawer || !!reading) ? panelW : 0;
   useEffect(() => useDiscovery.setState({ inset: over }), [over]);
@@ -146,14 +150,16 @@ export default function Home({ product: productId = null }: { product?: string |
   return (
     <PageFrame place="home" space={space} fill>
       <div className="relative flex h-full min-h-0">
+        {chatOpen && <CanvasChat space={space} over={!chatDocks} />}
         <div className="relative min-w-0 flex-1">
           <SpaceCanvas org={org?.id ?? null} space={space} inputs={inputs} sources={sources} />
           {inputs && empty && <EmptyMap space={space} />}
+          {!chatOpen && <ChatPill />}
           <SpaceConflictBanner />
           {!drawer && (
             <button type="button" onClick={() => setDrawer(true)} className={clsx(r.buttonSm, r.buttonSecondary, "absolute top-[12px] right-[12px] shadow-floating min-[1180px]:hidden")}>
               <PanelRight size={14} absoluteStrokeWidth strokeWidth={1.25} className="mr-[6px]" />
-              {notices?.notices.length ? `Needs a look · ${notices.notices.filter((n) => inSpace(n.products, space)).length}` : "Ask and more"}
+              {notices?.notices.length ? `Needs a look · ${notices.notices.filter((n) => inSpace(n.products, space)).length}` : "More"}
             </button>
           )}
         </div>
@@ -220,8 +226,6 @@ export default function Home({ product: productId = null }: { product?: string |
                 left === null && <SetupNotice org={org} sources={sources} empty={loaded && !products.length && !about.audience.trim() && !about.context.trim() && !goalCount && !about.segments.length} />
               )}
 
-              <AskBar product={space} topics={topics} />
-
               <UnplacedGoals tree={goalTree} space={space} />
 
               <SpaceProblems space={space} needs={needs} links={links} tree={goalTree} sources={sources} onFiled={refresh} />
@@ -267,7 +271,7 @@ function EmptyMap({ space }: { space: string | null }) {
               </a>
             )
           ) : (
-            <button type="button" onClick={() => useAskAdd.setState({ open: true })} className={clsx(r.buttonSm, r.buttonSecondary)}>
+            <button type="button" onClick={addMaterial} className={clsx(r.buttonSm, r.buttonSecondary)}>
               Add what customers said
             </button>
           )}

@@ -4,6 +4,8 @@ import { orgsHref } from "@/projects/model";
 import { QalamMark } from "../brand";
 import { r } from "../recipes";
 import { OrgSwitcher } from "../org/OrgSwitcher";
+import { CanvasMenu, FrameTools } from "./CanvasMenu";
+import type { Space } from "./spaces";
 import { setCurrentOrg, useCurrentOrg } from "./store";
 
 export interface Crumb {
@@ -12,11 +14,12 @@ export interface Crumb {
 }
 
 /**
- * A page's top bar, aligned with Studio's: the mark in the rail's column (every organization),
- * the organization (its menu switches, makes or renames one), where you are in it, and the page's
- * own actions on the right.
+ * A page's top bar, aligned with Studio's: the mark (every organization), the organization (its
+ * menu switches, makes or renames one), the canvas the page is in (its menu goes to another, when
+ * there are products), where you are, and the page's own actions on the right, then Connections
+ * and the theme. `space` undefined: the page isn't in a space.
  */
-export function FrameTopBar({ crumbs = [], right }: { crumbs?: Crumb[]; right?: ReactNode }) {
+export function FrameTopBar({ crumbs = [], right, space }: { crumbs?: Crumb[]; right?: ReactNode; space?: Space }) {
   const org = useCurrentOrg();
   return (
     <header className={clsx(r.topBar, "min-w-0")} data-region="topbar">
@@ -25,6 +28,7 @@ export function FrameTopBar({ crumbs = [], right }: { crumbs?: Crumb[]; right?: 
       </a>
       <nav aria-label="Location" className="flex min-w-0 items-center gap-[2px] text-body text-fg-subtle">
         {org ? <OrgSwitcher org={org} onRenamed={setCurrentOrg} /> : <span className="px-[8px] font-medium text-fg">Organization</span>}
+        {space !== undefined && <CanvasMenu space={space} />}
         {crumbs.map((c, i) => (
           <Fragment key={i}>
             <span aria-hidden className={r.crumbSep}>
@@ -42,7 +46,11 @@ export function FrameTopBar({ crumbs = [], right }: { crumbs?: Crumb[]; right?: 
           </Fragment>
         ))}
       </nav>
-      <div className={r.topRight}>{right}</div>
+      <div className={r.topRight}>
+        {right}
+        <FrameTools space={space ?? null} />
+      </div>
     </header>
   );
 }
+

@@ -1,10 +1,11 @@
+import { toggleChat } from "../frame/store";
 import { hereHref } from "../frame/useSpace";
 import { navigate } from "../nav";
 
 /*
- * A question for Ask the org from anywhere (⌘K on any page): handed to the home's Ask bar at once
- * when the home is showing, else kept for this tab until the home of the space it's in opens and
- * takes it.
+ * A question for the organization from anywhere (⌘K on any page): handed to Qalam AI's chat beside
+ * the canvas at once when it's showing, else kept for this tab until the canvas of the space it's
+ * in opens and its chat takes it.
  */
 
 const KEY = "qalam/ask-next";
@@ -18,12 +19,14 @@ export function askNext(question: string) {
   try {
     window.sessionStorage.setItem(KEY, question);
   } catch {
-    /* no storage: the home opens without it */
+    /* no storage: the canvas opens without it */
   }
+  // Folded, the chat opens to take it.
+  toggleChat(true);
   navigate(hereHref("home"));
 }
 
-/** The question waiting for the Ask bar, once (null when there's none). */
+/** The question waiting for the chat, once (null when there's none). */
 export function takeAskNext(): string | null {
   try {
     const q = window.sessionStorage.getItem(KEY);

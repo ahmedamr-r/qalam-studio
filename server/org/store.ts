@@ -21,6 +21,7 @@ import type { GoalWork } from "@/goals/breakdown";
 import { mapFromMarkdown, mapToMarkdown, type CodeRepo, type ProductMap } from "@/code/map";
 import { seenFromMarkdown, seenToMarkdown } from "@/seen/seen-md";
 import { SEEN_KEY, type SeenMap, type SeenReading } from "@/seen/types";
+import { CHAT_KEY, chatOf, type CanvasChat } from "@/space/chat";
 import type { FeedLog } from "@/feeds/feeds";
 import type { JobLog } from "@/goals/jobs";
 import { sameTopic } from "@/hub/topics";
@@ -921,6 +922,22 @@ export class OrgStore {
     });
     this.emit({ kind: "seen", key, reading: true, tab: opts.tab });
     return next;
+  }
+
+  // Qalam AI's chat beside each canvas (src/space/chat.ts): this computer's, out of Git.
+
+  private canvasChatFile(key: string) {
+    if (!CHAT_KEY.test(key)) throw new NotFoundError("No such canvas");
+    return this.abs(`chats/canvas/${key}.json`);
+  }
+
+  async getCanvasChat(key: string): Promise<CanvasChat> {
+    return chatOf(await readJson(this.canvasChatFile(key)));
+  }
+
+  putCanvasChat(key: string, chat: CanvasChat): Promise<void> {
+    const file = this.canvasChatFile(key);
+    return locked(file, () => atomicWrite(file, stableStringify(chat)));
   }
 
   get codeRepos(): CodeRepo[] {

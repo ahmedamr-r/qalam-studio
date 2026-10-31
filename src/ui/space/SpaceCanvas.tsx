@@ -18,7 +18,7 @@ import { startSpaceCanvas } from "./boot";
 import { consumeHomeParams } from "./links";
 import { useAddress } from "../nav";
 import { SourcesDock } from "./SourcesDock";
-import { dockKept, keepDock } from "./dock";
+import { showDock, useDock } from "./dock";
 import { newGoal } from "./new";
 
 /*
@@ -70,11 +70,7 @@ export function SpaceCanvas({ org, space, inputs, sources }: { org: string | nul
   const status = useSpaceStatus();
   const lanes = useStudio((s) => s.view.sources);
   const key = `qalam.space.view.${org ?? ""}:${space ?? "org"}`;
-  const [dock, setDock] = useState(dockKept);
-  const showDock = (on: boolean) => {
-    setDock(on);
-    keepDock(on);
-  };
+  const dock = useDock((s) => s.open);
 
   // The organization's sources (a product's space: its own and the whole organization's); the lane draws the ones a card rests on.
   useEffect(() => useSources.setState({ projectId: null, loaded: true, list: sources.filter((s) => !s.product || !space || s.product === space).sort((a, b) => a.addedAt - b.addedAt) }), [sources, space]);

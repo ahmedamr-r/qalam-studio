@@ -18,7 +18,7 @@ export const PLACES: readonly { id: Place; label: string }[] = [
   { id: "connections", label: "Connections" },
 ];
 
-/** Whether a place shows in the sidebar: Decisions is hidden in v0.1 (src/lab.ts), though its address still opens. */
+/** Whether a place is offered (the organization's menu, ⌘K): Decisions is hidden in v0.1 (src/lab.ts), though its address still opens. */
 export const placeShown = (p: Place) => p !== "decisions" || lab("decisions");
 
 /** Above a board's panels only these: the space's canvas, and Connections. */

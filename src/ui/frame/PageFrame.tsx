@@ -6,27 +6,24 @@ import { DialogHost } from "../surfaces/dialog";
 import { ContextEditorHost } from "../org/ContextEditor";
 import { spaceHref } from "@/projects/model";
 import { FrameTopBar, type Crumb } from "./FrameTopBar";
-import { OrgSidebar } from "./OrgPlaces";
 import { PagePalette } from "./PagePalette";
 import type { Place } from "./places";
 import type { Space } from "./spaces";
-import { keepSpace, lastSpace, useSpaceName } from "./useSpace";
+import { keepSpace, lastSpace } from "./useSpace";
 
 /**
- * The frame every page sits in, the canvas too: the top bar (the organization, where you are,
- * the page's actions), the sidebar (the organization's canvases; ⌘\ folds it to the rail), and the
- * page, which scrolls under them. What every page needs is mounted here once: toasts, the dialogs,
- * the About and product editor, ⌘K and the page keys. `space` is the space the page is in (kept
- * for the tab, and named in the top bar when it's a product's); a page outside the spaces leaves
- * it out and links into the tab's last one. `focus` leaves the sidebar out (the first run);
- * `fill` lets a page of panels scroll inside itself.
+ * The frame every page sits in, the canvas too: the top bar (the organization, the canvas, where
+ * you are, the page's actions, Connections) and the page, which scrolls under it. The canvas puts
+ * Qalam AI's chat at its own left (../space/chat/). What every page needs is mounted here once:
+ * toasts, the dialogs, the About and product editor, ⌘K and the page keys. `space` is the space the
+ * page is in (kept for the tab, and its canvas named in the top bar); a page outside the spaces
+ * leaves it out and links into the tab's last one. `fill` lets a page of panels scroll inside itself.
  */
 export function PageFrame({
   place,
   crumbs,
   right,
   space,
-  focus,
   fill,
   children,
 }: {
@@ -34,7 +31,6 @@ export function PageFrame({
   crumbs?: Crumb[];
   right?: ReactNode;
   space?: Space;
-  focus?: boolean;
   /** The page fills the space and scrolls inside itself (panels), instead of the page scrolling. */
   fill?: boolean;
   children: ReactNode;
@@ -48,20 +44,16 @@ export function PageFrame({
     if (space !== undefined) keepSpace(space);
   }, [space]);
   const here = space !== undefined ? space : (lastSpace() ?? null);
-  const named = useSpaceName(space ?? null);
-  // A product's space is named after the organization: Basket / Grocery app / Goals.
-  const trail = space && named ? [{ label: named, href: crumbs?.length ? spaceHref(space) : undefined }, ...(crumbs ?? [])] : crumbs;
+  // A page beside the canvas leads back to it (the canvas menu goes to another).
+  const trail = place !== "home" && crumbs?.length ? [{ label: "Canvas", href: spaceHref(here) }, ...crumbs] : crumbs;
   return (
     <Tooltip.Provider delayDuration={500} skipDelayDuration={300}>
       <div className="grid h-screen grid-rows-[var(--topbar-h)_minmax(0,1fr)] overflow-hidden bg-app text-fg">
-        <FrameTopBar crumbs={trail} right={right} />
-        <div className="flex min-h-0">
-          {!focus && <OrgSidebar place={place} space={here} />}
-          {/* Toasts sit over the page, bottom-centre (no toolbar here to clear). */}
-          <div className="relative min-h-0 min-w-0 flex-1" style={{ "--toolbar-h": "0px" } as CSSProperties}>
-            <main className={fill ? "h-full overflow-hidden" : "h-full overflow-y-auto"}>{children}</main>
-            <Toasts />
-          </div>
+        <FrameTopBar crumbs={trail} right={right} space={space} />
+        {/* Toasts sit over the page, bottom-centre (no toolbar here to clear). */}
+        <div className="relative min-h-0 min-w-0" style={{ "--toolbar-h": "0px" } as CSSProperties}>
+          <main className={fill ? "h-full overflow-hidden" : "h-full overflow-y-auto"}>{children}</main>
+          <Toasts />
         </div>
       </div>
       <DialogHost />

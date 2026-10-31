@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { toggleSidebar } from "@/ui/frame/store";
+import { toggleChat, useFrame } from "@/ui/frame/store";
 import { commandState, commandsFor, kb, registerCommands, runCommand, type Command } from "./registry";
 import { commandCanvas } from "./canvas";
 import "./theme";
@@ -27,14 +27,16 @@ export const PAGE_COMMANDS: Command[] = [
     keywords: ["find", "jump", "go to", "ask"],
   },
   {
-    id: "frame.sidebar",
-    label: "Fold the sidebar",
+    id: "frame.chat",
+    get label() {
+      return useFrame.getState().chat ? "Hide Qalam AI" : "Show Qalam AI";
+    },
     category: "view",
     keys: [kb("⌘\\")],
     context: "global",
     priority: 10,
-    run: toggleSidebar,
-    keywords: ["sidebar", "rail", "collapse", "expand"],
+    run: () => toggleChat(),
+    keywords: ["chat", "sidebar", "ai", "fold", "collapse", "expand", "panel"],
   },
 ];
 

@@ -35,7 +35,12 @@ export interface AskRequest {
   question: string;
   /** The product in view on the home (none: the whole organization). */
   product?: string | null;
+  /** What they're looking at on the canvas as they ask (the card picked, the page open), in its own words. */
+  about?: string | null;
 }
+
+/** What they're looking at, said before the question (nothing when nothing is). */
+const aboutLines = (q: AskRequest) => (q.about ? ["", `What they're looking at on the canvas as they ask: ${q.about}`] : []);
 
 const one = (s: string) => s.replace(/\s+/g, " ").trim();
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
@@ -247,7 +252,7 @@ function viaAgent(store: OrgStore, ix: OrgIndex | null, q: AskRequest, g: Guide,
     const mcp = await serveMcp("qalam", orgTools(store, ix, q.product), (tool, args) => emit(TOOL_LABEL[tool]?.(args) ?? tool));
     try {
       const first = ix ? (await search(ix, { query: q.question, product: q.product, limit: 12 })).hits : [];
-      const content = [g.text, ...(first.length ? ["", "What the organization's search finds for the question first:", ...first.map(pieceText)] : []), "", `The question: ${q.question}`].join("\n");
+      const content = [g.text, ...(first.length ? ["", "What the organization's search finds for the question first:", ...first.map(pieceText)] : []), ...aboutLines(q), "", `The question: ${q.question}`].join("\n");
       const asked = modelOf("ask");
       return await new Promise<{ raw: unknown; model?: string }>((resolve, reject) => {
         const prompt = promptArgs(ASK_SYSTEM);
@@ -339,7 +344,7 @@ async function viaPacked(ix: OrgIndex, q: AskRequest, g: Guide): Promise<{ raw: 
     schema: askSchema({ sources: p.items.map((i) => i.k), topics: g.topicFiles }),
     effort: "high",
     maxTokens: 12_000,
-    content: [{ type: "text", text: [g.text, "", "The organization's knowledge for the question (each piece under its id):", `<organization>\n${p.block}\n</organization>`, "", `The question: ${q.question}`].join("\n") }],
+    content: [{ type: "text", text: [g.text, "", "The organization's knowledge for the question (each piece under its id):", `<organization>\n${p.block}\n</organization>`, ...aboutLines(q), "", `The question: ${q.question}`].join("\n") }],
   });
   // Ids back to the pieces they stand for, so the answer is checked like the agent's.
   const refOf = new Map(p.items.map((i) => [i.k, i.ref]));

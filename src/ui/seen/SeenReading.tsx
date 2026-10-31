@@ -6,7 +6,6 @@ import { QalamAIGlyph } from "../brand";
 import { ChatComposer, ChatThread } from "../chat/ChatThread";
 import { Panel, PanelLayout, StepList, useWide, WIDE } from "../chat/Panels";
 import { PageFrame } from "../frame/PageFrame";
-import { useFrame } from "../frame/store";
 import { useSpaceName } from "../frame/useSpace";
 import { r } from "../recipes";
 import { answer, closeSeen, dropReading, openSeen, sendAnswers, useSeen } from "./client";
@@ -34,10 +33,6 @@ export default function SeenReading({ seenKey }: { seenKey: string }) {
     void openSeen(seenKey);
     return () => closeSeen();
   }, [seenKey]);
-  // The sidebar folds to its rail here, so the three panels fit.
-  useEffect(() => {
-    useFrame.setState({ sidebar: "rail" });
-  }, []);
   useEffect(() => {
     const was = document.title;
     document.title = `Add screenshots · ${productName} · Qalam`;

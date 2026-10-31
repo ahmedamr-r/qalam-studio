@@ -1,5 +1,6 @@
 import { nanoid } from "nanoid";
 import { feedback } from "@/commands/feedback";
+import { studio } from "@/doc/store";
 import { createGoal, goalsNow } from "@/goals/client";
 import type { Topic } from "@/hub/topics";
 import { topicsDb } from "@/org/topics";
@@ -7,6 +8,8 @@ import { goalHref, topicHref } from "@/projects/model";
 import type { Space } from "../frame/spaces";
 import { promptDialog } from "../surfaces/dialog";
 import { navigate } from "../nav";
+import { useSources } from "../discovery/sources";
+import { showDock } from "./dock";
 
 /*
  * Making a goal, a problem or a segment from a space's canvas: named in a dialog, then its page
@@ -47,4 +50,11 @@ export async function newTopic(kind: "need" | "segment", space: Space) {
     () => navigate(topicHref(t.id)),
     (e) => feedback(`Couldn't add it: ${message(e)}`, { kind: "error", id: "topics.new" }),
   );
+}
+
+/** Adding what customers said: the canvas's sources open on adding to the organization (whose words they are first). */
+export function addMaterial() {
+  studio().select([]);
+  useSources.setState({ adding: true, open: null });
+  showDock(true);
 }

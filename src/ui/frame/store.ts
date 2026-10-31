@@ -4,29 +4,29 @@ import { onOrgChange } from "@/org/live";
 import { wordsFor, type OrgWords } from "@/org/words";
 
 /*
- * The frame's own state, apart from Studio's doc store: whether the sidebar is open or folded to
- * the rail (⌘\, remembered on this computer), and the organization the window works in, which the
- * top bar, the sidebar and the page share (a rename in the top bar shows everywhere at once).
+ * The frame's own state, apart from Studio's doc store: whether Qalam AI's chat beside the canvas
+ * is open or folded (⌘\, remembered on this computer), and the organization the window works in,
+ * which the top bar, the chat and the page share (a rename in the top bar shows everywhere at once).
  */
 
-const KEY = "qalam/frame/v1";
-type Sidebar = "open" | "rail";
+const KEY = "qalam/frame/v2";
 
-function readSidebar(): Sidebar {
+function readChat(): boolean {
   try {
-    return (JSON.parse(window.localStorage.getItem(KEY) ?? "{}") as { sidebar?: Sidebar }).sidebar === "rail" ? "rail" : "open";
+    return (JSON.parse(window.localStorage.getItem(KEY) ?? "{}") as { chat?: boolean }).chat !== false;
   } catch {
-    return "open";
+    return true;
   }
 }
 
-export const useFrame = create<{ sidebar: Sidebar }>(() => ({ sidebar: typeof window === "undefined" ? "open" : readSidebar() }));
+export const useFrame = create<{ chat: boolean }>(() => ({ chat: typeof window === "undefined" ? true : readChat() }));
 
-export function toggleSidebar() {
-  const sidebar: Sidebar = useFrame.getState().sidebar === "open" ? "rail" : "open";
-  useFrame.setState({ sidebar });
+/** Open or fold the chat (no argument: the other way). */
+export function toggleChat(open?: boolean) {
+  const chat = open ?? !useFrame.getState().chat;
+  useFrame.setState({ chat });
   try {
-    window.localStorage.setItem(KEY, JSON.stringify({ sidebar }));
+    window.localStorage.setItem(KEY, JSON.stringify({ chat }));
   } catch {
     /* storage unavailable: it lasts for this page */
   }

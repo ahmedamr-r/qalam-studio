@@ -3,7 +3,14 @@ import clsx from "clsx";
 import { ChevronDown } from "lucide-react";
 import { feedback } from "@/commands/feedback";
 import { listOrgs, openOrgFolder, OrgRequestError, renameOrg, type OrgRef } from "@/org/client";
-import { openOrgHref, orgsHref, welcomeHref } from "@/projects/model";
+import { openOrgHref, orgsHref, spaceHref, welcomeHref } from "@/projects/model";
+import { useOrgContext } from "@/org/context";
+import { wordsFor } from "@/org/words";
+import { addProduct } from "../frame/OrgPlaces";
+import { placeShown } from "../frame/places";
+import { lastSpace } from "../frame/useSpace";
+import { navigate } from "../nav";
+import { editContext } from "./ContextEditor";
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from "../menu";
 import { r } from "../recipes";
 import { promptDialog } from "../surfaces/dialog";
@@ -32,10 +39,12 @@ export async function openFolderAsOrg() {
 
 /**
  * Which organization this window works in, and the others on this computer: switch to one, see
- * them all, make a new one (a folder in ~/Qalam), use any folder as one, or rename this one.
+ * them all, make a new one (a folder in ~/Qalam), use any folder as one, or rename this one; say
+ * what it is (its About), make a product, and go to its Decisions where they're on (src/lab.ts).
  */
 export function OrgSwitcher({ org, onRenamed }: { org: OrgRef; onRenamed: (o: OrgRef) => void }) {
   const [orgs, setOrgs] = useState<OrgRef[]>([]);
+  const about = useOrgContext((c) => c.about);
   useEffect(() => void listOrgs().then((j) => setOrgs(j.orgs), () => {}), []);
 
   // A new organization goes through the welcome: Qalam AI checked, the name, then telling Qalam AI about it.
@@ -70,6 +79,14 @@ export function OrgSwitcher({ org, onRenamed }: { org: OrgRef; onRenamed: (o: Or
       <MenuItem onSelect={() => void openFolderAsOrg()}>Open a folder as an organization…</MenuItem>
       <MenuSeparator />
       <MenuItem onSelect={() => void rename()}>Rename “{org.name}”…</MenuItem>
+      <MenuItem onSelect={() => void editContext({ kind: "org", name: org.name, about })}>About “{org.name}”…</MenuItem>
+      <MenuItem onSelect={() => void addProduct(wordsFor(org.shape).org)}>New product…</MenuItem>
+      {placeShown("decisions") && (
+        <>
+          <MenuSeparator />
+          <MenuItem onSelect={() => navigate(spaceHref(lastSpace() ?? null, "decisions"))}>Decisions</MenuItem>
+        </>
+      )}
     </Menu>
   );
 }

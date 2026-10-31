@@ -12,7 +12,7 @@ import { draftSolutionsFor, draftsFromUrl } from "../discovery/solutions";
 import { draftTestsFor } from "../discovery/tests";
 import { useDiscovery } from "../discovery/store";
 import { problemCard } from "../topics/start-board";
-import { useAskAdd } from "../org/AskBar";
+import { addMaterial } from "./new";
 
 /*
  * What an address asks of a space's canvas once it's open, as a board's page used to take it
@@ -25,7 +25,7 @@ import { useAskAdd } from "../org/AskBar";
  *   ?review=placed        what Qalam AI found for the space's boards, reviewed
  *   ?source=<id>          that source read
  *   ?idea=1               the first run's idea, read as a brain dump
- *   ?add=1                Ask's + open, to add what customers said (Evidence's old address)
+ *   ?add=1                the sources open on adding what customers said (Evidence's old address)
  */
 
 const KEYS = ["card", "board", "then", "problem", "under", "review", "source", "idea", "add"];
@@ -43,7 +43,7 @@ export async function consumeHomeParams() {
   const review = get("review");
   const source = get("source");
   const idea = get("idea");
-  if (get("add") === "1") useAskAdd.setState({ open: true });
+  if (get("add") === "1") addMaterial();
   for (const k of KEYS) p.delete(k);
   // The kept drafts read the address themselves (src/ui/discovery/solutions.ts).
   const drafts = p.has("solutions");
