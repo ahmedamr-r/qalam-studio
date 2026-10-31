@@ -4,7 +4,7 @@ import { routeOf } from "./routes";
 
 describe("moving in place", () => {
   it("shows the frame's pages in place, in the organization that's open", () => {
-    for (const path of ["/o/R02vmeVH", "/o/R02vmeVH/goals", "/o/R02vmeVH/connections", "/o/R02vmeVH/products/grocery/problems"])
+    for (const path of ["/o/R02vmeVH", "/o/R02vmeVH/decisions", "/o/R02vmeVH/connections", "/o/R02vmeVH/products/grocery/decisions"])
       expect(inPlace(routeOf(path), "R02vmeVH")).toBe(true);
     expect(inPlace(routeOf("/o/R02vmeVH/goals"), "other1")).toBe(false);
   });

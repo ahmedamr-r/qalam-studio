@@ -29,31 +29,24 @@ describe("spaces", () => {
   });
 
   it("moves ?product= to the product's space, keeping the rest of the query", () => {
-    expect(movedTo(routeOf("/o/R02vmeVH/goals"), "?product=grocery")).toEqual({ place: "goals", product: "grocery", search: "" });
-    expect(movedTo(routeOf("/o/R02vmeVH/problems"), "?product=grocery&card=a1")).toEqual({ place: "problems", product: "grocery", search: "?card=a1" });
-    expect(movedTo(routeOf("/o/R02vmeVH"), "?product=grocery")).toEqual({ place: "home", product: "grocery", search: "" });
+    expect(movedTo(routeOf("/o/R02vmeVH/decisions"), "?product=grocery")).toEqual({ place: "decisions", product: "grocery", search: "" });
+    expect(movedTo(routeOf("/o/R02vmeVH"), "?product=grocery&card=a1")).toEqual({ place: "home", product: "grocery", search: "?card=a1" });
     // The old whole-organization filter is the organization's space now.
-    expect(movedTo(routeOf("/o/R02vmeVH/evidence"), "?product=org")).toEqual({ place: "evidence", product: null, search: "" });
+    expect(movedTo(routeOf("/o/R02vmeVH/decisions"), "?product=org")).toEqual({ place: "decisions", product: null, search: "" });
     // Connections is the organization's.
     expect(movedTo(routeOf("/o/R02vmeVH/connections"), "?product=grocery")).toEqual({ place: "connections", product: null, search: "" });
     // Already in a product's space, the filter goes.
-    expect(movedTo(routeOf("/o/R02vmeVH/products/grocery/goals"), "?product=rider")).toEqual({ place: "goals", product: "grocery", search: "" });
+    expect(movedTo(routeOf("/o/R02vmeVH/products/grocery/decisions"), "?product=rider")).toEqual({ place: "decisions", product: "grocery", search: "" });
   });
 
-  it("moves the home's old tabs and the places from before the job order, with their product", () => {
-    expect(movedTo(routeOf("/o/R02vmeVH"), "?tab=topics&product=grocery")).toEqual({ place: "problems", product: "grocery", search: "" });
+  it("lands the home's old tabs and the places that had pages of their own on the space's canvas, with their product", () => {
+    expect(movedTo(routeOf("/o/R02vmeVH"), "?tab=topics&product=grocery")).toEqual({ place: "home", product: "grocery", search: "" });
     expect(movedTo(routeOf("/o/R02vmeVH"), "?tab=decisions")).toEqual({ place: "decisions", product: null, search: "" });
-    expect(movedTo(routeOf("/o/R02vmeVH/boards"), "?product=grocery")).toEqual({ place: "goals", product: "grocery", search: "" });
-    expect(movedTo(routeOf("/o/R02vmeVH/sources"), "")).toEqual({ place: "evidence", product: null, search: "" });
-    expect(movedTo(routeOf("/o/R02vmeVH/products/grocery/topics"), "")).toEqual({ place: "problems", product: "grocery", search: "" });
-  });
-
-  it("leaves addresses that are where they should be", () => {
-    expect(movedTo(routeOf("/o/R02vmeVH"), "")).toBeNull();
-    expect(movedTo(routeOf("/o/R02vmeVH/goals"), "?card=a1")).toBeNull();
-    expect(movedTo(routeOf("/o/R02vmeVH/products/grocery"), "")).toBeNull();
-    expect(movedTo(routeOf("/o/R02vmeVH/products"), "?product=grocery")).toBeNull();
-    expect(movedTo(routeOf("/o/R02vmeVH/g/g-1"), "?product=grocery")).toBeNull();
+    expect(movedTo(routeOf("/o/R02vmeVH/goals"), "")).toEqual({ place: "home", product: null, search: "" });
+    expect(movedTo(routeOf("/o/R02vmeVH/boards"), "?product=grocery")).toEqual({ place: "home", product: "grocery", search: "" });
+    // Evidence's ?add=1 opens adding on the canvas.
+    expect(movedTo(routeOf("/o/R02vmeVH/evidence"), "?add=1")).toEqual({ place: "home", product: null, search: "?add=1" });
+    expect(movedTo(routeOf("/o/R02vmeVH/products/grocery/problems"), "")).toEqual({ place: "home", product: "grocery", search: "" });
   });
 
   it("moves a goal's or a topic page's own address to its page on a canvas, keeping an old section anchor", () => {

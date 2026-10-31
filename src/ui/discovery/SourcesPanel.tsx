@@ -34,6 +34,8 @@ import { SpeakersLine, SpeakersStep } from "./SpeakersStep";
 import { openBrainDump } from "./dump";
 import { lab } from "@/lab";
 import { MarkedText } from "./MarkedText";
+import { orgFetch } from "@/org/client";
+import { AddToOrg } from "../org/AddToOrg";
 
 /*
  * The Sources tab of a Discovery board: the material customers' words come from (documents, web
@@ -78,6 +80,10 @@ function SourceList() {
   const adding = useSources((s) => s.adding);
   const pending = Object.entries(jobs).filter(([id, j]) => j.phase === "reading" && !list.some((x) => x.id === id));
   const empty = loaded && !list.length && !pending.length;
+  // On a space's canvas with no card picked, what's added is the organization's (filed into its problem pages), as Ask's + adds it.
+  const space = useSpaceView((s) => (s.active ? s.space : undefined));
+  const picked = useStudio((s) => s.selection.length > 0);
+  const toOrg = space !== undefined && !picked;
   return (
     <div className="flex flex-col gap-[12px] px-[12px] pt-[4px] pb-[16px]">
       {empty && (
@@ -85,7 +91,7 @@ function SourceList() {
           Bring in what customers said: interview notes, transcripts, support tickets, survey answers, a web page. Qalam AI picks out their words, code checks each quote against the source, and Qalam AI maps them to your tree for you to accept.
         </p>
       )}
-      {(adding || empty) && <AddSource />}
+      {(adding || empty) && (toOrg ? <AddToOrg product={space ?? null} /> : <AddSource />)}
       <Notice />
       {failed.map((f) => (
         <div key={f.id} role="alert" className="q-fade flex items-start gap-[8px] rounded-lg bg-danger-subtle py-[8px] pr-[4px] pl-[10px] text-caption text-danger">
@@ -149,15 +155,28 @@ function SourceRow({ source, quoting }: { source: SourceRecord; quoting: boolean
         </span>
         <span className={clsx("truncate text-micro", quoting ? "q-shimmer-text text-fg-muted" : "text-fg-subtle")}>{quoting ? "Qalam AI is picking out quotes…" : metaOf(source)}</span>
       </span>
-      {/* A space's canvas holds the organization's sources: none is on it to take off. */}
-      {!space && (
-        <span className={r.layerTail} onClick={(e) => e.stopPropagation()}>
-          <IconBtn size="sm" label="Remove it from this board" onClick={() => void confirmRemove(source)}>
-            <Trash2 {...SMALL} />
-          </IconBtn>
-        </span>
-      )}
+      {/* A space's canvas holds the organization's sources: one goes from the organization, not from a board. */}
+      <span className={r.layerTail} onClick={(e) => e.stopPropagation()}>
+        <IconBtn size="sm" label={space ? "Delete the source" : "Remove it from this board"} onClick={() => void (space ? confirmDelete(source) : confirmRemove(source))}>
+          <Trash2 {...SMALL} />
+        </IconBtn>
+      </span>
     </div>
+  );
+}
+
+/** A source deleted from the organization (on a space's canvas, where sources are the organization's). */
+async function confirmDelete(s: SourceRecord) {
+  const ok = await confirmDialog({
+    title: `Delete “${s.title}”?`,
+    body: `It's removed from the organization${s.boards?.length ? ` and from ${s.boards.length === 1 ? "the board" : `the ${s.boards.length} boards`} that use it` : ""}. Quotes already on cards stay, without the link back to it.`,
+    confirmLabel: "Delete source",
+    danger: true,
+  });
+  if (!ok) return;
+  await orgFetch(`/sources/${s.id}`, { method: "DELETE" }).then(
+    () => useSources.setState((st) => ({ list: st.list.filter((x) => x.id !== s.id) })),
+    (e) => feedback(`Couldn't delete it: ${e instanceof Error ? e.message : String(e)}`, { kind: "error", id: "sources.delete" }),
   );
 }
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import clsx from "clsx";
-import { Cable, Files, House, MessageSquareWarning, Milestone, Moon, Network, NotebookText, PanelLeft, Search, Target, type LucideIcon } from "lucide-react";
+import { Cable, Milestone, Moon, Network, NotebookText, PanelLeft, Search, Target, Workflow, type LucideIcon } from "lucide-react";
 import { useGoals } from "@/goals/client";
 import { runCommand } from "@/commands/registry";
 import { usePagePalette } from "@/commands/pages";
@@ -38,7 +38,7 @@ interface Row {
   run: () => void;
 }
 
-const ICONS: Record<Place, LucideIcon> = { home: House, goals: Target, problems: MessageSquareWarning, evidence: Files, decisions: Milestone, connections: Cable };
+const ICONS: Record<Place, LucideIcon> = { home: Workflow, decisions: Milestone, connections: Cable };
 const ICON = { size: 16, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 const MAX = 8;
 

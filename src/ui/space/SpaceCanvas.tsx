@@ -18,6 +18,8 @@ import { startSpaceCanvas } from "./boot";
 import { consumeHomeParams } from "./links";
 import { useAddress } from "../nav";
 import { SourcesDock } from "./SourcesDock";
+import { dockKept, keepDock } from "./dock";
+import { newGoal } from "./new";
 
 /*
  * A space's canvas on its home: the board's own canvas (its painter, gestures, card bar and
@@ -68,20 +70,10 @@ export function SpaceCanvas({ org, space, inputs, sources }: { org: string | nul
   const status = useSpaceStatus();
   const lanes = useStudio((s) => s.view.sources);
   const key = `qalam.space.view.${org ?? ""}:${space ?? "org"}`;
-  const [dock, setDock] = useState(() => {
-    try {
-      return sessionStorage.getItem("qalam.space.sources") === "1";
-    } catch {
-      return false;
-    }
-  });
+  const [dock, setDock] = useState(dockKept);
   const showDock = (on: boolean) => {
     setDock(on);
-    try {
-      sessionStorage.setItem("qalam.space.sources", on ? "1" : "0");
-    } catch {
-      // Only this tab's view.
-    }
+    keepDock(on);
   };
 
   // The organization's sources (a product's space: its own and the whole organization's); the lane draws the ones a card rests on.
@@ -150,6 +142,10 @@ export function SpaceCanvas({ org, space, inputs, sources }: { org: string | nul
           >
             <FileText size={13} {...ICON} />
             Sources
+          </button>
+          <button type="button" onClick={() => void newGoal(space)} className="q-item flex h-[24px] items-center gap-[6px] rounded-md px-[8px] text-caption text-fg-muted hover:bg-hover hover:text-fg">
+            <Plus size={13} {...ICON} />
+            Goal
           </button>
           <span aria-hidden className="mx-[2px] h-[16px] w-px bg-line-subtle" />
           <IconBtn size="sm" label="Zoom out" onClick={() => zoomBy(0.8)}>

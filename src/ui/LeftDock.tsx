@@ -231,7 +231,7 @@ function NavRail() {
         style={{ top: "calc(var(--h, 0px) / 2)" } as CSSProperties}
         onAnimationEnd={(e) => delete e.currentTarget.dataset.landed}
       />
-      <RailPlaces current="goals" product={product} leave={(href) => void leaveTo(href)} />
+      <RailPlaces current={null} product={product} leave={(href) => void leaveTo(href)} />
       {items.map((i) => {
         const ai = i.tab === "ai";
         const active = ai ? chatOpen : marked === i.tab;

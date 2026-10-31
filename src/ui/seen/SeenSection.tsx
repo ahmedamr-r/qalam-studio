@@ -12,7 +12,7 @@ import { seenMaps } from "./client";
 import { Shot } from "./Shot";
 
 /**
- * What people see, on Evidence: each product's screens and flows from its screenshots, a few of its
+ * What people see, in a space's canvas panel: each product's screens and flows from its screenshots, a few of its
  * screens and counts, opening its page; "Add screenshots" for a product with none yet. In a
  * product's space only that product; in the organization's every product (and the organization's
  * own, when it has one).

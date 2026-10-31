@@ -4,7 +4,8 @@ import { X } from "lucide-react";
 import { GROUPS } from "@/connectors/catalog";
 import type { Hit } from "@/connectors/recipes";
 import { connectorsDb, type ConnectorState, type ImportResult } from "@/org/connectors";
-import { placeHref } from "@/projects/model";
+import { hereHref } from "../frame/useSpace";
+import { keepDock } from "../space/dock";
 import { ConnectorLogo } from "../brand/ConnectorLogo";
 import { Button, Checkbox, IconBtn, Segmented, Spinner } from "../controls";
 import { r } from "../recipes";
@@ -371,7 +372,7 @@ function BringIn({ c, onClose }: { c: ConnectorState; onClose: () => void }) {
               </p>
             ))}
             <span className="flex gap-[8px]">
-              <a href={placeHref("evidence")} className={clsx(r.buttonSm, r.buttonSecondary)}>
+              <a href={hereHref("home")} onClick={() => keepDock(true)} className={clsx(r.buttonSm, r.buttonSecondary)}>
                 See the sources
               </a>
               <Button size="sm" variant="ghost" onClick={onClose}>

@@ -175,7 +175,7 @@ export function threadOf(i: ThreadInput): ChatMessage[] {
 
   // Goals: a way in, then either door. Picked up past them (from the home, or another window), the goals are the tree's.
   const door = doorOf(i);
-  if (i.first && i.step !== "goals" && !door) out.push(ai("goals:had", text(i.goals ? `${org} has ${i.goals === 1 ? "a goal" : `${i.goals} goals`} already.` : "There are no goals yet: add them on the Goals page any time.")));
+  if (i.first && i.step !== "goals" && !door) out.push(ai("goals:had", text(i.goals ? `${org} has ${i.goals === 1 ? "a goal" : `${i.goals} goals`} already.` : "There are no goals yet: add them on the canvas any time.")));
   else {
     // Three ways in: goals (known, or found in what they write), problems customers raise, or an idea to test.
     // v0.1 (src/lab.ts) offers two ways in: the problems customers raise, and goals they know.
@@ -266,7 +266,7 @@ export function threadOf(i: ThreadInput): ChatMessage[] {
       const moved = i.step !== "goals";
       const after = stepAfter("goals", i.shape);
       const next = after === "connect" ? "Next: what to connect." : after === "yours" ? "Next: which goals are yours." : "That's the setup: Finish takes you to it.";
-      out.push(ai("goals:in", text(said ? `${said} ${next}` : "Nothing was written. You can add goals on the Goals page any time."), ...(moved ? [] : [part("choices", { set: "goals-in", solo })])));
+      out.push(ai("goals:in", text(said ? `${said} ${next}` : "Nothing was written. You can add goals on the canvas any time."), ...(moved ? [] : [part("choices", { set: "goals-in", solo })])));
     } else out.push(ai("all-set", text(said ? `${said} All set.` : `Nothing was written to ${org}.`), part("allSet")));
   }
 

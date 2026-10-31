@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import { ORG_SEEN } from "@/seen/types";
-import { seenHref, spaceHref } from "@/projects/model";
+import { seenHref } from "@/projects/model";
 import { QalamAIGlyph } from "../brand";
 import { ChatComposer, ChatThread } from "../chat/ChatThread";
 import { Panel, PanelLayout, StepList, useWide, WIDE } from "../chat/Panels";
@@ -56,12 +56,11 @@ export default function SeenReading({ seenKey }: { seenKey: string }) {
   }, [phase]);
 
   const crumbs = [
-    { label: "Evidence", href: spaceHref(space, "evidence") },
     { label: "What people see", href: seenHref(seenKey) },
     { label: "Add screenshots" },
   ];
   return (
-    <PageFrame place="evidence" crumbs={crumbs} space={space} fill>
+    <PageFrame place={null} crumbs={crumbs} space={space} fill>
       <PanelLayout
         left={
           <Panel title="Screenshots" body={false}>

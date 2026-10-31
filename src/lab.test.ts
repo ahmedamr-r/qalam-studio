@@ -49,7 +49,7 @@ describe("with everything hidden (v0.1)", () => {
 
   it("leaves Decisions out of the sidebar", () => {
     setLab([]);
-    expect(PLACES.filter((p) => placeShown(p.id)).map((p) => p.id)).toEqual(["home", "goals", "problems", "evidence", "connections"]);
+    expect(PLACES.filter((p) => placeShown(p.id)).map((p) => p.id)).toEqual(["home", "connections"]);
   });
 
   it("brings material in from this computer only", () => {

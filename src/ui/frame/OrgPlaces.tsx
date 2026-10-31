@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { Cable, Files, Info, Milestone, MessageSquareWarning, Moon, PanelLeft, PanelLeftClose, Plus, Sun, Target, Workflow, type LucideIcon } from "lucide-react";
+import { Cable, Info, Milestone, Moon, PanelLeft, PanelLeftClose, Plus, Sun, Workflow, type LucideIcon } from "lucide-react";
 import { newProduct, productOf, saveProduct, useOrgContext } from "@/org/context";
 import { wordsFor } from "@/org/words";
 import { spaceHref } from "@/projects/model";
@@ -25,7 +25,7 @@ import { StatusDot } from "../viz";
  * page load.
  */
 
-const ICONS: Record<Place, LucideIcon> = { home: Workflow, goals: Target, problems: MessageSquareWarning, evidence: Files, decisions: Milestone, connections: Cable };
+const ICONS: Record<Place, LucideIcon> = { home: Workflow, decisions: Milestone, connections: Cable };
 const ICON = { size: 16, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 
 /** Below the canvases: Decisions (hidden in v0.1, src/lab.ts) and Connections. */

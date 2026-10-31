@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import clsx from "clsx";
 import { ArrowUp, Check, Plus, Quote, X } from "lucide-react";
 import { nanoid } from "nanoid";
+import { create } from "zustand";
 import { aiStatus } from "@/ai/client";
 import type { AskAnswer, AskClaim, AskUnknown } from "@/hub/ask";
 import type { TopicInfo } from "@/hub/topics";
@@ -28,12 +29,16 @@ import { MicButton, speechInto } from "../voice/MicButton";
 const ICON = { size: 14, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
+/** Whether Ask's + is open on adding material (the empty canvas's "Add what customers said" opens it too). */
+export const useAskAdd = create<{ open: boolean }>(() => ({ open: false }));
+
 type State = { kind: "idle" } | { kind: "asking"; question: string; steps: string[]; started: number } | { kind: "answered"; answer: AskAnswer; secs: number } | { kind: "failed"; question: string; error: string };
 
 export function AskBar({ product, topics }: { product: string | null; topics: TopicInfo[] | null }) {
   const [question, setQuestion] = useState("");
   const [state, setState] = useState<State>({ kind: "idle" });
-  const [adding, setAdding] = useState(false);
+  const adding = useAskAdd((s) => s.open);
+  const setAdding = (open: boolean) => useAskAdd.setState({ open });
   const ctrl = useRef<AbortController | null>(null);
   const field = useRef<HTMLInputElement>(null);
   const { org } = useWords();

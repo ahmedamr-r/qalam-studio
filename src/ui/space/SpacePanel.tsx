@@ -12,11 +12,14 @@ import type { RankedNeed } from "@/hub/needs";
 import { sameTopic } from "@/hub/topics";
 import { goalHref, topicHref } from "@/projects/model";
 import type { SpaceThing } from "@/space/compose";
+import { cardForPage } from "@/space/pages";
+import { useSpaceView } from "@/space/view";
 import { Button, IconBtn } from "../controls";
 import CardPanel from "../discovery/CardPanel";
 import { glideToLayer, onCanvasReady } from "../discovery/canvas";
 import { r } from "../recipes";
 import { problemCard } from "../topics/start-board";
+import { addProblem } from "./links";
 import { Meter } from "../viz";
 
 /*
@@ -155,4 +158,10 @@ export async function workOnProblem(topic: string, faint: string): Promise<strin
   studio().select([id]);
   onCanvasReady((cv) => glideToLayer(cv, id!));
   return id;
+}
+
+/** A problem's page put on the canvas from a list or its page: where it's drawn faint, else on its own (a new tree, its board made on save). */
+export function workOnNeed(topic: string): Promise<unknown> {
+  const faint = cardForPage({ page: topic }, useSpaceView.getState().things);
+  return faint ? workOnProblem(topic, faint) : addProblem(topic, null);
 }

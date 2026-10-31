@@ -160,8 +160,8 @@ function ChoicesPart({ data }: { data: PartData }) {
     const next = stepAfter("goals", solo ? "solo" : null);
     if (next === "yours") return chip("Next: which are yours", () => goStep("yours"), primary);
     if (next === "connect") return chip("Next: what to connect", () => goStep("connect"), primary);
-    // In through the problems they hear about: Finish opens Problems, ranked by what customers said.
-    return chip("Finish", () => finishFirstRun(useFirstRun.getState().door === "problems" ? placeHref("problems") : firstGoalHref()), primary);
+    // In through the problems they hear about: Finish opens the canvas, its panel ranking them by what customers said.
+    return chip("Finish", () => finishFirstRun(useFirstRun.getState().door === "problems" ? orgHref() : firstGoalHref()), primary);
   };
   const n = Number(data.n ?? 0);
   switch (data.set) {
@@ -537,7 +537,7 @@ function YoursPart({ data }: { data: PartData }) {
           ))}
         </ul>
       ) : (
-        <p className="text-body text-fg-muted">There are no goals yet: add them on the Goals page any time.</p>
+        <p className="text-body text-fg-muted">There are no goals yet: add them on the canvas any time.</p>
       )}
       <ReplyChips>
         <button

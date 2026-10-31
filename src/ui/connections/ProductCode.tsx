@@ -5,7 +5,7 @@ import { feedback } from "@/commands/feedback";
 import { codeDb, type CodeView } from "@/org/code";
 import { useOrgContext } from "@/org/context";
 import { onOrgChange } from "@/org/live";
-import { placeHref } from "@/projects/model";
+import { hereHref } from "../frame/useSpace";
 import { Button, IconBtn, Segmented, Select } from "../controls";
 import { useWords } from "../frame/store";
 import { r } from "../recipes";
@@ -90,7 +90,7 @@ export function ProductCode() {
     <section aria-label="Product code" className="flex flex-col gap-[10px] rounded-lg bg-panel px-[14px] py-[12px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
       <p className="text-caption text-fg-muted">
         Read-only. Qalam copies the code onto this computer and reads it: what each product does today, the events it sends, and the funnel behind each goal. It never writes to the repository.{" "}
-        <a href={placeHref("evidence")} className="text-fg hover:underline">
+        <a href={hereHref("home")} className="text-fg hover:underline">
           See what it found
         </a>
       </p>

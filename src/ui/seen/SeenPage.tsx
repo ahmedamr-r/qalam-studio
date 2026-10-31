@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import { ImagePlus, MoreHorizontal, X } from "lucide-react";
 import { useGoals } from "@/goals/client";
-import { goalHref, seenHref, spaceHref } from "@/projects/model";
+import { goalHref, seenHref } from "@/projects/model";
 import { ORG_SEEN, type SeenFlow, type SeenScreen } from "@/seen/types";
 import { Button, IconBtn } from "../controls";
 import { PageFrame } from "../frame/PageFrame";
@@ -237,7 +237,7 @@ export default function SeenPage({ seenKey }: { seenKey: string }) {
   const waiting = reading && reading.phase !== "done";
 
   return (
-    <PageFrame place="evidence" crumbs={[{ label: "Evidence", href: spaceHref(space, "evidence") }, { label: "What people see" }]} space={space}>
+    <PageFrame place={null} crumbs={[{ label: "What people see" }]} space={space}>
       <div className={clsx(r.pageMain, "max-w-[1100px]")}>
         <div className="flex flex-wrap items-end justify-between gap-[12px]">
           <div className="flex flex-col gap-[2px]">

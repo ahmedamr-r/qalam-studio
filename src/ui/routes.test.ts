@@ -36,7 +36,7 @@ describe("routeOf", () => {
   });
 
   it("reads the organization's places, and round-trips placeHref", () => {
-    for (const place of ["goals", "problems", "evidence", "decisions", "connections"] as const) {
+    for (const place of ["decisions", "connections"] as const) {
       expect(routeOf(placeHref(place, "R02vmeVH"))).toEqual({ kind: "place", org: "R02vmeVH", place });
       expect(routeOf(`${placeHref(place, "R02vmeVH")}/`)).toEqual({ kind: "place", org: "R02vmeVH", place });
     }
@@ -46,11 +46,18 @@ describe("routeOf", () => {
     expect(routeOf("/o/R02vmeVH/home")).toEqual({ kind: "missing" });
   });
 
+  it("lands the places that had pages of their own on the space's canvas", () => {
+    for (const place of ["goals", "problems", "evidence", "boards", "topics", "sources"]) {
+      expect(routeOf(`/o/R02vmeVH/${place}`)).toEqual({ kind: "org", org: "R02vmeVH", moved: true });
+      expect(routeOf(`/o/R02vmeVH/products/grocery/${place}`)).toEqual({ kind: "org", org: "R02vmeVH", product: "grocery", moved: true });
+    }
+  });
+
   it("reads a product's space and the picker, and round-trips spaceHref", () => {
     expect(routeOf(spacesHref("R02vmeVH"))).toEqual({ kind: "spaces", org: "R02vmeVH" });
     expect(openOrgHref("R02vmeVH")).toBe("/o/R02vmeVH/products");
     expect(routeOf(spaceHref("grocery", "home", "R02vmeVH"))).toEqual({ kind: "org", org: "R02vmeVH", product: "grocery" });
-    for (const place of ["goals", "problems", "evidence", "decisions"] as const) {
+    for (const place of ["decisions"] as const) {
       expect(spaceHref("grocery", place, "R02vmeVH")).toBe(`/o/R02vmeVH/products/grocery/${place}`);
       expect(routeOf(spaceHref("grocery", place, "R02vmeVH"))).toEqual({ kind: "place", org: "R02vmeVH", place, product: "grocery" });
       // The organization's own space is where its places always were.
@@ -60,7 +67,6 @@ describe("routeOf", () => {
     // Connections is the organization's in every space.
     expect(spaceHref("grocery", "connections", "R02vmeVH")).toBe("/o/R02vmeVH/connections");
     expect(routeOf("/o/R02vmeVH/products/grocery/connections")).toEqual({ kind: "missing" });
-    expect(routeOf("/o/R02vmeVH/products/grocery/boards")).toEqual({ kind: "place", org: "R02vmeVH", place: "goals", product: "grocery", moved: true });
     expect(routeOf("/o/R02vmeVH/products/grocery/goals/x")).toEqual({ kind: "missing" });
     expect(routeOf("/o/R02vmeVH/products/a%2Fb")).toEqual({ kind: "missing" });
     expect(routeOf("/products/grocery")).toEqual({ kind: "missing" });
@@ -68,10 +74,7 @@ describe("routeOf", () => {
     expect(routeOf("/o/R02vmeVH/p/abc123def0")).toEqual({ kind: "project", org: "R02vmeVH", type: "screens", id: "abc123def0" });
   });
 
-  it("sends the places from before the job order where they went", () => {
-    expect(routeOf("/o/R02vmeVH/boards")).toEqual({ kind: "place", org: "R02vmeVH", place: "goals", moved: true });
-    expect(routeOf("/o/R02vmeVH/topics")).toEqual({ kind: "place", org: "R02vmeVH", place: "problems", moved: true });
-    expect(routeOf("/o/R02vmeVH/sources")).toEqual({ kind: "place", org: "R02vmeVH", place: "evidence", moved: true });
+  it("still reads a goal's own address (it moves to the canvas)", () => {
     expect(routeOf("/o/R02vmeVH/g/g-reorders")).toEqual({ kind: "goal", org: "R02vmeVH", id: "g-reorders" });
   });
 

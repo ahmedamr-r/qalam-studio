@@ -22,9 +22,6 @@ const OrgsPage = lazy(() => import("./org/OrgsPage"));
 const ConnectionsPage = lazy(() => import("./connections/ConnectionsPage"));
 /** The places a space has its own of (src/ui/frame/spaces.ts); Connections is the organization's. */
 const SPACE_PAGES = {
-  goals: lazy(() => import("./places/GoalsPage")),
-  problems: lazy(() => import("./places/ProblemsPage")),
-  evidence: lazy(() => import("./places/EvidencePage")),
   decisions: lazy(() => import("./places/DecisionsPage")),
 } satisfies Record<Exclude<PagePlace, "connections">, unknown>;
 
@@ -64,7 +61,7 @@ export function SetupLoader() {
   return <SetupPage />;
 }
 
-/** One of the organization's places: its goals, problems, evidence or decisions (in a product's space with `product`), or its connections. */
+/** One of the organization's places: its decisions (in a product's space with `product`), or its connections. */
 export function PlaceLoader({ place, product = null }: { place: PagePlace; product?: string | null }) {
   if (place === "connections")
     return <ConnectionsPage />;

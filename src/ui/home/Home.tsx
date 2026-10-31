@@ -27,7 +27,9 @@ import { useMoves } from "../nav";
 import { SpaceConflictBanner } from "../space/ConflictBanner";
 import { r } from "../recipes";
 import { NeedsALook } from "../org/NeedsALook";
-import { AskBar } from "../org/AskBar";
+import { AskBar, useAskAdd } from "../org/AskBar";
+import { LabSections, SpacePages, SpaceProblems, UnplacedGoals } from "./SpaceSections";
+import { newGoal } from "../space/new";
 import { useOrgData } from "../org/useOrgData";
 import { useNotices } from "../notices/useNotices";
 import { useTopics } from "../topics/list";
@@ -44,7 +46,7 @@ import { SpaceCanvas } from "../space/SpaceCanvas";
 import { useWide, WIDE } from "../chat/Panels";
 import { useNeeds } from "./useNeeds";
 import { lab } from "@/lab";
-import { homeGoals } from "./YourGoals";
+import { homeGoals } from "./goals";
 import { ContinueSetup, useFirstRunLeft } from "./ContinueSetup";
 
 /**
@@ -118,9 +120,10 @@ export default function Home({ product: productId = null }: { product?: string |
   }, [openKey]);
   const showsPage = !!open && !cordPick && !quotePick && !reading && !picked;
 
+  const askAdding = useAskAdd((s) => s.open);
   useEffect(() => {
-    if (picked || reading || cordPick || quotePick) setDrawer(true);
-  }, [picked, reading, cordPick, quotePick]);
+    if (picked || reading || cordPick || quotePick || askAdding) setDrawer(true);
+  }, [picked, reading, cordPick, quotePick, askAdding]);
   // A narrow window's panel lies over the canvas: what's drawn beside a card keeps out of it.
   const wide = useWide(WIDE);
   const panelW = reading && readerW ? readerW : showsPage ? PAGE_W : 380;
@@ -219,6 +222,10 @@ export default function Home({ product: productId = null }: { product?: string |
 
               <AskBar product={space} topics={topics} />
 
+              <UnplacedGoals tree={goalTree} space={space} />
+
+              <SpaceProblems space={space} needs={needs} links={links} tree={goalTree} sources={sources} onFiled={refresh} />
+
               <NeedsALook
                 now={notices}
                 scope={(n) => inSpace(n.products, space)}
@@ -227,6 +234,10 @@ export default function Home({ product: productId = null }: { product?: string |
                 groups={yours.goals.map((g) => ({ id: g.id, title: g.title, href: goalHref(g.id) }))}
                 onShow={showNotice}
               />
+
+              <SpacePages space={space} topics={topics} sources={sources} products={products} onFiled={refresh} />
+
+              <LabSections space={space} products={products} projects={projects ?? []} onChanged={refresh} />
 
               <p className="text-caption text-fg-subtle">{org ? `Saved in ${org.name}, at ${org.dir}.` : "Saved in your organization's folder."}</p>
             </div>
@@ -245,9 +256,9 @@ function EmptyMap({ space }: { space: string | null }) {
         <p className="text-body font-medium text-fg">Nothing on the map yet</p>
         <p className="text-caption text-fg-muted">{space ? "Give this product a goal, and its problems, solutions and tests show here as its board grows." : "Start with what you're trying to move: each goal shows here, with its problems, solutions and tests under it."}</p>
         <div className="flex flex-wrap justify-center gap-[6px]">
-          <a href={spaceHref(space, "goals")} className={clsx(r.buttonSm, r.buttonPrimary)}>
-            Set the goals
-          </a>
+          <button type="button" onClick={() => void newGoal(space)} className={clsx(r.buttonSm, r.buttonPrimary)}>
+            Set a goal
+          </button>
           {/* v0.1 (src/lab.ts) starts from what customers said; the brain dump is one of the hidden doors. */}
           {lab("doors") ? (
             !space && (
@@ -256,9 +267,9 @@ function EmptyMap({ space }: { space: string | null }) {
               </a>
             )
           ) : (
-            <a href={`${spaceHref(space, "evidence")}?add=1`} className={clsx(r.buttonSm, r.buttonSecondary)}>
+            <button type="button" onClick={() => useAskAdd.setState({ open: true })} className={clsx(r.buttonSm, r.buttonSecondary)}>
               Add what customers said
-            </a>
+            </button>
           )}
         </div>
       </div>

@@ -2,11 +2,8 @@ import { useState } from "react";
 import clsx from "clsx";
 import { strengthFill, strengthOf, type RankedNeed } from "@/hub/needs";
 import { topicHref } from "@/projects/model";
-import { useSpaceView } from "@/space/view";
-import { cardForPage } from "@/space/pages";
 import { cardHref } from "../space/href";
-import { addProblem } from "../space/links";
-import { workOnProblem } from "../space/SpacePanel";
+import { workOnNeed } from "../space/SpacePanel";
 import type { ShowsUpOn } from "@/org/topics";
 import { r } from "../recipes";
 import { Meter, Sparkline, StatusDot } from "../viz";
@@ -61,8 +58,7 @@ export function NeedStrip({ s, shows }: { s: RankedNeed; shows: ShowsUpOn[] }) {
                 disabled={starting}
                 onClick={() => {
                   setStarting(true);
-                  const faint = cardForPage({ page: s.topic }, useSpaceView.getState().things);
-                  void (faint ? workOnProblem(s.topic, faint) : addProblem(s.topic, null)).finally(() => setStarting(false));
+                  void workOnNeed(s.topic).finally(() => setStarting(false));
                 }}
                 className={clsx(r.buttonSm, r.buttonSecondary)}
               >

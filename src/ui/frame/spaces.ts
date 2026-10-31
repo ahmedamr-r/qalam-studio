@@ -13,7 +13,7 @@ import { legacyTab, type Place } from "./places";
 export type Space = string | null;
 
 /** The places a space has: all but Connections. */
-const SPACED = new Set<string>(["home", "goals", "problems", "evidence", "decisions"]);
+const SPACED = new Set<string>(["home", "decisions"]);
 export const isSpacePlace = (s: string): s is Exclude<Place, "connections"> => SPACED.has(s);
 
 /** Whether something for these products (one, none, or a page's several) shows in this space: everything shows in the organization's. */
@@ -33,15 +33,16 @@ export function itemSpace(products: readonly string[], last: Space | undefined):
 }
 
 /**
- * Where an address from before spaces goes: the sidebar's ?product= becomes the product's space
- * ("org", the old whole-organization filter, the organization's), the home's ?tab= its place, an
- * old place's name its new one. The rest of the query stays. Null when it's where it should be.
+ * Where an address from before goes: the sidebar's ?product= becomes the product's space ("org",
+ * the old whole-organization filter, the organization's), the home's ?tab= its place, a place that
+ * had a page of its own (goals, problems, evidence) the space's canvas. The rest of the query stays
+ * (evidence?add=1 opens adding there). Null when it's where it should be.
  */
 export function movedTo(route: Route, search: string): { place: Place; product: Space; search: string } | null {
   if (route.kind !== "org" && route.kind !== "place") return null;
   let place: Place = route.kind === "org" ? "home" : route.place;
   let product: Space = route.product ?? null;
-  let moved = route.kind === "place" && !!route.moved;
+  let moved = route.kind === "org" && !!route.moved;
   const tab = route.kind === "org" ? legacyTab(search) : null;
   if (tab) {
     place = tab.place;
