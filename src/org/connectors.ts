@@ -32,6 +32,8 @@ export interface ConnectorState {
   tokenHelp: { label: string; href: string; placeholder: string } | null;
   /** Qalam can sign in to the service itself, in the browser. */
   canSignIn: boolean;
+  /** Its sign-in is Qalam's own (Google's), and this copy has no client for it yet. */
+  needsClient: boolean;
   /** The account a sign-in shares with other cards ("Atlassian", for Jira and Confluence): one sign-in connects them all. */
   account: string | null;
   /** The regions whose server it can sign in to, when there are several (the first by default). */

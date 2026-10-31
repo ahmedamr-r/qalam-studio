@@ -23,8 +23,8 @@ export interface ConnectorDef {
   label: string;
   group: ConnectorGroup;
   feeds: "material" | "work" | "numbers";
-  /** How Claude Code names it (a claude.ai connector, a plugin, a server added by hand). */
-  claudeCode: RegExp;
+  /** How Claude Code names it (a claude.ai connector, a plugin, a server added by hand). None: never reached through Claude Code. */
+  claudeCode?: RegExp;
   /** A token Qalam can keep for it in the Keychain, and where one is made. */
   token?: { label: string; href: string; placeholder: string };
   /**
@@ -70,7 +70,8 @@ const ATLASSIAN = {
 
 export const CATALOG: readonly ConnectorDef[] = [
   { id: "notion", label: "Notion", group: "docs", feeds: "material", claudeCode: /\bnotion\b/i, token: { label: "Internal integration secret", href: "https://www.notion.so/profile/integrations", placeholder: "ntn_…" }, mcp: { url: "https://mcp.notion.com/mcp" }, imports: true },
-  { id: "drive", label: "Google Drive", group: "docs", feeds: "material", claudeCode: /google[ _]drive/i, google: true, imports: true },
+  // Drive is Google's own API through Qalam's sign-in, never Claude Code: browsing and reading cost no tokens.
+  { id: "drive", label: "Google Drive", group: "docs", feeds: "material", google: true, imports: true },
   { id: "confluence", label: "Confluence", group: "docs", feeds: "material", claudeCode: /confluence|atlassian/i, mcp: ATLASSIAN, imports: true },
   {
     id: "slack",

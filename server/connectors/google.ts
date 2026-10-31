@@ -231,9 +231,9 @@ export function browseDrive(at: { query?: string; folder?: string | null }, f: F
   }, f);
 }
 
-/** How Drive gives a Google file as words: Docs and Slides as plain text, Sheets as CSV (its first sheet). */
+/** How Drive gives a Google file as words: Docs as Markdown (read with its headings and lists), Slides as plain text, Sheets as CSV (its first sheet). */
 const EXPORT: Record<string, { mime: string; ext: string }> = {
-  "application/vnd.google-apps.document": { mime: "text/plain", ext: "txt" },
+  "application/vnd.google-apps.document": { mime: "text/markdown", ext: "md" },
   "application/vnd.google-apps.presentation": { mime: "text/plain", ext: "txt" },
   "application/vnd.google-apps.spreadsheet": { mime: "text/csv", ext: "csv" },
 };

@@ -1,6 +1,7 @@
 import { CATALOG, connectorDef, signInGroup, type ConnectorDef } from "@/connectors/catalog";
 import { matchClaudeCode, type ListedStatus } from "@/connectors/claude-code";
 import { itemText, RECIPES, type Hit, type Recipe, type ToolCall } from "@/connectors/recipes";
+import type { Ingested } from "@/discovery/ingest/core";
 import { capText } from "@/discovery/ingest/text";
 import type { ConnectorState, ImportResult, ReadItem } from "@/org/connectors";
 import { captureSource } from "../capture";
@@ -32,16 +33,17 @@ export async function connectorsView(): Promise<{ checkedAt: number | null; conn
   const connectors = await Promise.all(
     CATALOG.map(async (def): Promise<ConnectorState> => {
       const listed = known ? matchClaudeCode(def, known.list) : null;
-      const how = chosen[def.id];
+      // Drive is reached through Google only: a choice of Claude Code's from before is set aside.
+      const how = def.google && chosen[def.id]?.via === "claude-code" ? undefined : chosen[def.id];
       const token = def.token ? await secrets().get(tokenName(def.id)).catch(() => null) : null;
       const regions = def.mcp?.regions?.map(({ id, label }) => ({ id, label })) ?? null;
       const own = def.mcp?.ownApp;
       const ownApp = own ? { kept: await appKept(def.id), create: own.create, where: own.where, callback: own.callback } : null;
       // Qalam's own Google sign-in, only in a copy that has a Google client.
       const google = !!def.google && !!googleClient();
-      const base = { id: def.id, label: def.label, group: def.group, feeds: def.feeds, imports: def.imports, status: def.status ?? null, numbers: !!def.numbers, screens: !!def.screens, claudeCode: listed ? { server: listed.name, status: listed.status } : null, token: token ? { last4: token.slice(-4) } : null, canToken: !!def.token, tokenHelp: def.token ?? null, canSignIn: !!def.mcp || google, account: def.mcp?.account?.label ?? (google ? "Google" : null), regions, ownApp };
+      const base = { id: def.id, label: def.label, group: def.group, feeds: def.feeds, imports: def.imports, status: def.status ?? null, numbers: !!def.numbers, screens: !!def.screens, claudeCode: listed ? { server: listed.name, status: listed.status } : null, token: token ? { last4: token.slice(-4) } : null, canToken: !!def.token, tokenHelp: def.token ?? null, canSignIn: !!def.mcp || google, needsClient: !!def.google && !google, account: def.mcp?.account?.label ?? (google ? "Google" : null), regions, ownApp };
       const kept = how?.via === "oauth" ? await signedIn(def.id) : how?.via === "google" ? await googleSignedIn() : !!token;
-      const state = stateOf(def, how?.via === "claude-code" ? (listed?.name === how.server ? listed.status : "unknown") : null, how?.via ?? null, kept, listed?.status ?? null);
+      const state = def.google && !google && how?.via !== "google" ? { via: null, word: "Needs setup", tone: "off" as const } : stateOf(def, how?.via === "claude-code" ? (listed?.name === how.server ? listed.status : "unknown") : null, how?.via ?? null, kept, listed?.status ?? null);
       // Which region's server it signed in to, where there are several.
       const region = how?.via === "oauth" && state.tone === "ok" ? def.mcp?.regions?.find((r) => r.url === how.url)?.label : undefined;
       return { ...base, ...state, ...(region ? { word: `${state.word} · ${region}` } : {}) };
@@ -105,6 +107,7 @@ async function how(id: string) {
   }
   if (via.via === "oauth") return { via: "mcp" as const, url: via.url };
   if (via.via === "google") return { via: "google" as const };
+  if (def.google) throw new Error("Sign in with Google first.");
   return { via: "claude-code" as const, server: via.server };
 }
 
@@ -229,7 +232,12 @@ export async function readItems(id: string, hits: Hit[], emit: (label: string) =
 
 /** Read the picked items and take each in. `emit` hears how it's going. */
 export async function importItems(store: OrgStore, id: string, hits: Hit[], emit: (label: string) => void): Promise<ImportResult> {
-  const texts = await readTexts(id, hits, emit);
+  // Drive's files read here as files are, so a PDF keeps its pages and a Doc its headings; the rest as words.
+  const google = (await how(id)).via === "google";
+  const reads: (Omit<Ingested, "kind" | "title" | "origin"> | null)[] = google
+    ? (emit(readingLabel(connectorDef(id)?.label ?? id, hits)), await Promise.all(hits.map((x) => readDriveFile(x).catch((e: unknown) => (e instanceof SignInAgain ? Promise.reject(e) : null)))))
+    : (await readTexts(id, hits, emit)).map((t) => (t?.trim() ? { text: t.trim() } : null));
+  const texts = reads.map((r) => r?.text ?? null);
   const out: ImportResult & { sources: string[]; pages: string[] } = { added: [], skipped: [], failed: [], sources: [], pages: [] };
   const have = await store.listSources();
   for (const [i, hit] of hits.entries()) {
@@ -245,7 +253,7 @@ export async function importItems(store: OrgStore, id: string, hits: Hit[], emit
     }
     try {
       emit(`Taking in “${hit.title}”`);
-      const r = await captureSource(store, { kind: "connector", title: hit.title, origin, text }, { emit });
+      const r = await captureSource(store, { ...reads[i]!, kind: "connector", title: hit.title, origin }, { emit });
       out.added.push(hit.title);
       out.sources.push(r.sourceId);
       for (const p of r.filed?.pages ?? []) if (!out.pages.includes(p.id)) out.pages.push(p.id);

@@ -19,6 +19,9 @@ import { StatusDot } from "../viz";
  * each item is taken in like any source (read, filed, placed on the boards).
  */
 
+/** How a copy of Qalam gets its Google client (docs/google-drive.md). */
+const GOOGLE_SETUP = "https://github.com/ahmedamr-r/qalam-studio/blob/main/docs/google-drive.md";
+
 export type View = Awaited<ReturnType<typeof connectorsDb.list>>;
 
 export function Connectors() {
@@ -198,6 +201,14 @@ export function ConnectActions({ c, onView, onImport }: { c: ConnectorState; onV
             )}
             {(c.via || c.status === "public") && !c.imports && <span className="text-micro text-fg-subtle">{c.numbers ? "Outcomes read their number from it" : c.screens ? "A funnel step's picture can come from one of its frames" : "Shows where linked work stands"}</span>}
             {!c.via && !c.imports && !c.numbers && !c.screens && !c.status && (c.claudeCode || c.canToken) && <span className="text-micro text-fg-subtle">Coming next</span>}
+            {c.needsClient && !c.via && (
+              <span className="text-micro text-fg-subtle">
+                Qalam reaches it straight through Google, and this copy has no Google client yet:{" "}
+                <a href={GOOGLE_SETUP} target="_blank" rel="noreferrer" className="underline decoration-dotted underline-offset-2 hover:text-fg">
+                  how to add one
+                </a>
+              </span>
+            )}
           </div>
         )}
         {tokenOpen && c.tokenHelp && (

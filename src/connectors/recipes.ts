@@ -1,6 +1,5 @@
 import { captureText, cleanText, htmlText } from "@/discovery/ingest/text";
 import { CONFLUENCE_RECIPE } from "./confluence";
-import { DRIVE_RECIPE } from "./drive";
 import { SLACK_RECIPE } from "./slack";
 
 /*
@@ -140,7 +139,6 @@ export const RECIPES: Record<string, Recipe> = {
   },
   slack: SLACK_RECIPE,
   confluence: CONFLUENCE_RECIPE,
-  drive: DRIVE_RECIPE,
 };
 
 /** The words of a fetched item: a {text} answer's text, else the answer as it came. */

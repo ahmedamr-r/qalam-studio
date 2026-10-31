@@ -1,14 +1,12 @@
-import { cleanText } from "@/discovery/ingest/text";
-import type { Hit, HitType, Recipe } from "./recipes";
+import type { Hit, HitType } from "./recipes";
 
 /*
- * Google Drive through Google's own Drive server, which claude.ai's Google Drive connector is (used
- * through Claude Code), pure. `search_files` takes Drive's structured query, never loose words: each
- * word is a `fullText contains '…'` clause of letters and digits only, so nothing can add to the
- * query, and a folder is `parentId = '<id>'` ('root' is My Drive). It answers
- * {files:[{id,title,mimeType,parentId,viewUrl,modifiedTime}]}; `read_file_content` answers
- * {fileContent,title,viewUrl}, with Docs, Slides, Sheets, PDFs and Office files as text. Checked
- * against a real Drive (October 2026).
+ * Google Drive, reached through Drive's own API with Qalam's Google sign-in
+ * (server/connectors/google.ts), never through Claude Code: browsing and reading cost no tokens,
+ * and the files are read here by code (src/discovery/ingest). Pure: what Qalam reads of a file by
+ * its type, a person's words as Drive's structured query (each word a `fullText contains '…'`
+ * clause of letters and digits only, so nothing can add to the query), a folder only as an id Drive
+ * could have given ('root' is My Drive), and Drive's files as hits.
  */
 
 const FOLDER = "application/vnd.google-apps.folder";
@@ -33,9 +31,7 @@ export function driveWords(words: string): string | null {
 /** A folder Drive gave: its id, or My Drive. Anything else isn't a folder id, so it isn't put in a query. */
 export const driveFolder = (folder: string | null) => (folder && /^[A-Za-z0-9_-]{1,128}$/.test(folder) ? folder : "root");
 
-const LIST = { pageSize: 50, excludeContentSnippets: true };
-
-/** Drive's files as hits, folders first: Google's Drive server names them `title` and `viewUrl`, Drive's API `name` and `webViewLink`. */
+/** Drive's files as hits, folders first (Drive's API names them `name` and `webViewLink`). */
 export function driveFileHits(files: readonly unknown[]): Hit[] {
   const word = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
   const hits = files.flatMap((x): Hit[] => {
@@ -43,42 +39,11 @@ export function driveFileHits(files: readonly unknown[]): Hit[] {
     const id = word(f.id);
     if (!id) return [];
     const type = driveType(word(f.mimeType) ?? "");
-    const title = word(f.title) ?? word(f.name) ?? "Untitled";
-    const link = word(f.viewUrl) ?? word(f.webViewLink);
+    const title = word(f.name) ?? "Untitled";
+    const link = word(f.webViewLink);
     const url = link && /^https:\/\/(docs|drive)\.google\.com\//.test(link) ? link : undefined;
     const at = word(f.modifiedTime);
     return [{ id, title, type, ...(type === "folder" ? { folder: true } : {}), ...(url ? { url } : {}), ...(at ? { at } : {}) }];
   });
   return [...hits.filter((h) => h.folder), ...hits.filter((h) => !h.folder)];
 }
-
-/** search_files' and list_recent_files' answer as hits. */
-export function driveHits(result: string): Hit[] {
-  try {
-    const files = (JSON.parse(result.slice(result.indexOf("{"))) as { files?: unknown } | null)?.files;
-    return driveFileHits(Array.isArray(files) ? files : []);
-  } catch {
-    return [];
-  }
-}
-
-/** A read file's words as Drive gave them. */
-export function driveText(result: string): string {
-  try {
-    const j = JSON.parse(result.slice(result.indexOf("{"))) as { fileContent?: unknown };
-    if (typeof j.fileContent === "string") return cleanText(j.fileContent);
-  } catch {
-    // Not the shape it was checked with: the answer as it came.
-  }
-  return cleanText(result);
-}
-
-export const DRIVE_RECIPE: Recipe = {
-  // No word to look for finds nothing (an empty query would list the whole Drive).
-  search: (words) => ({ tool: "search_files", args: { query: driveWords(words) ?? "title = ''", ...LIST } }),
-  list: (folder) => ({ tool: "search_files", args: { query: `parentId = '${driveFolder(folder)}'`, ...LIST } }),
-  recent: () => ({ tool: "list_recent_files", args: { pageSize: 25, excludeContentSnippets: true } }),
-  hits: driveHits,
-  fetch: (hit) => ({ tool: "read_file_content", args: { fileId: hit.id } }),
-  text: driveText,
-};

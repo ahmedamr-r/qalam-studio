@@ -196,8 +196,9 @@ const TYPE_ICON: Record<HitType, typeof File> = { folder: Folder, doc: FileText,
 
 function Browse({ c, onClose }: { c: ConnectorState; onClose: () => void }) {
   const recipe = RECIPES[c.id];
-  const folders = !!recipe?.list && c.via !== "token";
-  const recent = !!recipe?.recent || c.via === "token";
+  // Drive through Google's own API has its folders and what was opened lately.
+  const folders = c.via === "google" || (!!recipe?.list && c.via !== "token");
+  const recent = c.via === "google" || !!recipe?.recent || c.via === "token";
   const top: Place = folders ? { kind: "folder", trail: [{ id: null, title: TOP[c.id] ?? "Top" }] } : { kind: "none" };
   const [place, setPlace] = useState<Place>(recent ? { kind: "recent" } : top);
   const [words, setWords] = useState("");

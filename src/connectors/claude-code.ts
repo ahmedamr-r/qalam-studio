@@ -38,6 +38,6 @@ export const toolPrefix = (server: string) => `mcp__${server.replace(/[^A-Za-z0-
 
 /** The listed server that is this connector: a connected one first. */
 export function matchClaudeCode(def: Pick<ConnectorDef, "claudeCode">, listed: ListedServer[]): ListedServer | null {
-  const all = listed.filter((s) => def.claudeCode.test(s.name));
+  const all = def.claudeCode ? listed.filter((s) => def.claudeCode!.test(s.name)) : [];
   return all.find((s) => s.status === "connected") ?? all[0] ?? null;
 }

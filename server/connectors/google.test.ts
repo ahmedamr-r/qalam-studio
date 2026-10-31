@@ -63,7 +63,7 @@ const google: typeof fetch = async (input, init) => {
     if (!f) return Response.json({ error: { code: 404 } }, { status: 404 });
     if (exported === "export") {
       const mime = url.searchParams.get("mimeType");
-      if (f.id === "doc1" && mime === "text/plain") return new Response("Families plan meals on Sunday.\n\nThey rebuild the list by hand.");
+      if (f.id === "doc1" && mime === "text/markdown") return new Response("# The pitch\n\nFamilies plan meals on **Sunday**\.\n\n* They rebuild the list by hand.\n");
       if (f.id === "sheet1" && mime === "text/csv") return new Response("Name,What is hardest?\nSara,I rebuild the same list every week.\nOmar,I buy things twice.\n");
       return Response.json({ error: { code: 400 } }, { status: 400 });
     }
@@ -156,7 +156,13 @@ describe("Drive's API with the kept tokens", () => {
   });
 
   it("reads a Doc and a Sheet as Google exports them, a file as it is, and says which it can't", async () => {
-    expect((await readDriveFile({ id: "doc1", title: "Pitch" }, google)).text).toBe("Families plan meals on Sunday.\n\nThey rebuild the list by hand.");
+    // A Doc comes as Markdown and is read with its shape: its heading and its list item.
+    const doc = await readDriveFile({ id: "doc1", title: "Pitch" }, google);
+    expect(doc.text).toBe("The pitch\n\nFamilies plan meals on Sunday.\n\nThey rebuild the list by hand.");
+    expect(doc.blocks?.map((b) => [b.kind, doc.text.slice(...b.span)])).toEqual([
+      ["h1", "The pitch"],
+      ["li", "They rebuild the list by hand."],
+    ]);
     expect((await readDriveFile({ id: "sheet1", title: "Survey" }, google)).text).toContain("Sara: I rebuild the same list every week.");
     expect((await readDriveFile({ id: "txt1", title: "notes.txt" }, google)).text).toBe("Notes from the Thursday calls.");
     await expect(readDriveFile({ id: "vid1", title: "Walkthrough.mp4" }, google)).rejects.toThrow(/can't read Walkthrough\.mp4/);
@@ -196,7 +202,7 @@ describe("Drive's API with the kept tokens", () => {
     globalThis.fetch = google;
     try {
       const items = await readItems("drive", [{ id: "doc1", title: "Pitch", url: "https://docs.google.com/document/d/doc1/edit" }, { id: "vid1", title: "Walkthrough.mp4" }], () => {});
-      expect(items[0]).toEqual({ id: "doc1", title: "Pitch", ingested: expect.objectContaining({ kind: "connector", title: "Pitch", origin: "https://docs.google.com/document/d/doc1/edit", text: "Families plan meals on Sunday.\n\nThey rebuild the list by hand." }) });
+      expect(items[0]).toEqual({ id: "doc1", title: "Pitch", ingested: expect.objectContaining({ kind: "connector", title: "Pitch", origin: "https://docs.google.com/document/d/doc1/edit", text: "The pitch\n\nFamilies plan meals on Sunday.\n\nThey rebuild the list by hand." }) });
       expect(items[1]).toMatchObject({ id: "vid1", why: expect.stringMatching(/can't read/) });
     } finally {
       globalThis.fetch = real;

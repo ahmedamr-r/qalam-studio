@@ -1,9 +1,8 @@
 # Google Drive: Qalam's own sign-in
 
-Qalam reaches Google Drive in two ways:
+Qalam reaches Google Drive one way: **its own Google sign-in, straight to Drive's API.** Browsing (what was opened lately, folders, a search) and reading a file are calls to Google, and the file is read by Qalam's own code: a PDF by its layout (headings, lists, paragraphs), a Google Doc exported as Markdown and read with its headings and lists, a Sheet as CSV, Slides as text, Word files as a dropped file is. No step runs through Claude Code or spends Qalam AI's tokens.
 
-- **Through Claude Code.** Anyone who has added Google Drive to claude.ai (**Settings ▸ Connectors**) can pick Drive files in Qalam with no setup. Each step runs through Claude Code and takes a few seconds.
-- **Qalam's own Google sign-in**, to Drive's API, for instant browsing without Claude Code. It needs a Google OAuth client that belongs to Qalam. A copy of Qalam without one doesn't offer it. This page is about setting that client up.
+It needs a Google OAuth client that belongs to Qalam. A copy of Qalam without one says so on the Google Drive card ("Needs setup"). This page is about setting that client up.
 
 The sign-in asks only for `drive.readonly`: Qalam can see and read the person's files, and never change them. The tokens stay in this computer's Keychain (`connector:drive:oauth`), and Disconnect revokes them at Google.
 

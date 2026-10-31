@@ -97,5 +97,5 @@ export function connectorOfOrigin(origin: string | undefined): string | null {
   }
   const prefix = /^([a-z]+):/.exec(o)?.[1];
   if (prefix && connectorDef(prefix)) return prefix;
-  return CATALOG.find((c) => c.claudeCode.test(o))?.id ?? null;
+  return CATALOG.find((c) => c.claudeCode?.test(o) || c.label === o)?.id ?? null;
 }
