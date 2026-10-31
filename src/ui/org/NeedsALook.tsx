@@ -48,7 +48,7 @@ export interface NoticeGroup {
 /** How many of a group's notices show before "Show all". */
 const PER_GROUP = 3;
 
-export function NeedsALook({ now, scope, projects, topics, groups }: { now: NoticesNow | null; scope: (n: Notice) => boolean; projects: Project[]; topics: TopicInfo[] | null; groups?: NoticeGroup[] }) {
+export function NeedsALook({ now, scope, projects, topics, groups, onShow }: { now: NoticesNow | null; scope: (n: Notice) => boolean; projects: Project[]; topics: TopicInfo[] | null; groups?: NoticeGroup[]; /** Show what it's about (the space's map glides to its card). */ onShow?: (n: Notice) => void }) {
   const [all, setAll] = useState(false);
   const [open, setOpen] = useState<Set<string>>(() => new Set());
   const toggle = (key: string) =>
@@ -152,7 +152,15 @@ export function NeedsALook({ now, scope, projects, topics, groups }: { now: Noti
                 <span className={clsx("mt-[3px] shrink-0", n.kind === "disputed" || n.kind === "untested" ? "text-warning" : "text-fg-subtle")}>{Icon ? <Icon {...ICON} /> : <QalamAIGlyph size={14} />}</span>
                 <div className="flex min-w-0 flex-1 flex-col gap-[4px]">
                   {/* One line; why it needs a look, and where, open on a click. */}
-                  <button type="button" aria-expanded={open.has(n.key)} onClick={() => toggle(n.key)} className="flex min-w-0 items-center gap-[8px] text-left">
+                  <button
+                    type="button"
+                    aria-expanded={open.has(n.key)}
+                    onClick={() => {
+                      toggle(n.key);
+                      onShow?.(n);
+                    }}
+                    className="flex min-w-0 items-center gap-[8px] text-left"
+                  >
                     <span className={clsx("min-w-0 text-body text-fg", !open.has(n.key) && "truncate")}>{n.title}</span>
                     {isNew && <span aria-label="New since your last visit" className="size-[6px] shrink-0 rounded-full bg-fg" />}
                     <span className="ml-auto shrink-0 text-caption text-fg-subtle">{NOTICE_LABEL[n.kind]}</span>

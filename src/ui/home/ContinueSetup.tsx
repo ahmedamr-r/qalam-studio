@@ -62,15 +62,16 @@ function nextLine(step: SetupStep, org: string, waiting: boolean, solo: boolean)
   }
 }
 
-export function ContinueSetup({ org, left, sources }: { org: OrgRef; left: Left; sources: SourceRecord[] }) {
+/** `stacked`: in a narrow panel (the map's), the picture over the words. */
+export function ContinueSetup({ org, left, sources, stacked }: { org: OrgRef; left: Left; sources: SourceRecord[]; stacked?: boolean }) {
   const waiting = settingUp(sources);
   const href = `${setupHref()}?first=1&step=${left.step}${left.step === "goals" && waiting ? `&source=${waiting.id}` : ""}`;
   return (
-    <section aria-labelledby="continue-setup" className="q-rise flex flex-col gap-[16px] rounded-lg bg-panel p-[10px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)] sm:flex-row sm:items-center">
-      <a href={href} tabIndex={-1} aria-hidden className="flex h-[140px] shrink-0 justify-center overflow-hidden rounded-md bg-app shadow-[inset_0_0_0_1px_var(--color-line-subtle)] sm:w-[248px]">
+    <section aria-labelledby="continue-setup" className={clsx("q-rise flex flex-col gap-[16px] rounded-lg bg-panel p-[10px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]", !stacked && "sm:flex-row sm:items-center")}>
+      <a href={href} tabIndex={-1} aria-hidden className={clsx("flex h-[140px] shrink-0 justify-center overflow-hidden rounded-md bg-app shadow-[inset_0_0_0_1px_var(--color-line-subtle)]", !stacked && "sm:w-[248px]")}>
         <SetupPicture done={left.done} of={left.of} />
       </a>
-      <div className="flex min-w-0 flex-col items-start gap-[6px] px-[6px] pb-[6px] sm:py-[6px] sm:pr-[16px]">
+      <div className={clsx("flex min-w-0 flex-col items-start gap-[6px] px-[6px] pb-[6px]", !stacked && "sm:py-[6px] sm:pr-[16px]")}>
         <span className="text-caption text-fg-subtle tnum">
           Setup · {left.done} of {left.of} done
         </span>

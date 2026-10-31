@@ -138,7 +138,7 @@ export function mapOf(o: MapInput): SpaceMap {
       const behind = rankForGoal(g.id, { tree, links: [...o.links], needs: [...o.needs] }).filter((p) => !p.via && !p.onBoard);
       for (const p of behind.slice(0, MAP_LIMITS.behind)) {
         const pid = `topic:${g.id}:${p.topic}`;
-        addProblem(pid, p, p.by, id, g.id, "Not on its board");
+        addProblem(pid, p, p.by, id, g.id, p.boards.length ? "Other board" : "No board");
         group.push(pid);
       }
     }

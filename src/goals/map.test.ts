@@ -73,7 +73,7 @@ describe("the space's map", () => {
 
   it("shows the problems behind a goal that its board hasn't, faint, and the ones it has once", () => {
     expect(m.faint.has("topic:r:fees")).toBe(true);
-    expect(m.tags.get("topic:r:fees")?.label).toBe("Not on its board");
+    expect(m.tags.get("topic:r:fees")?.label).toBe("No board");
     expect(m.doc.nodes["topic:r:basket"]).toBeUndefined();
     expect(m.things.get("topic:r:fees")).toEqual({ type: "problem", topic: "fees", goal: "r" });
   });

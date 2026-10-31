@@ -14,8 +14,7 @@ import { runCommand } from "@/commands/registry";
 import { cardOf, kindsFor, setKindIn, setStage, setTargetIn, updateCardIn } from "@/discovery/ops";
 import { ASSUMPTION_CATEGORIES, ASSUMPTION_HINT, ASSUMPTION_LABEL, KIND_LABEL, STAGES, SUB_OUTCOME_LABEL } from "@/discovery/kinds";
 import { kindLabel } from "@/discovery/tree";
-import { evidenceRows, evidenceSummary, isAIIdea, isAssumed, type EvidenceSummary } from "@/discovery/evidence";
-import { strengthFill, strengthOf, type Strength } from "@/hub/needs";
+import { evidenceRows, evidenceSummary, isAIIdea, isAssumed } from "@/discovery/evidence";
 import { feedback } from "@/commands/feedback";
 import type { AssumptionCategory, OstCard, OstEvidence, OstMetric, OstStage } from "@/discovery/types";
 import { parseWorkUrl, workKey } from "@/connectors/work";
@@ -29,6 +28,7 @@ import { Meter } from "../viz";
 import { CommitArea, CommitInput, CommitNumber } from "./fields";
 import { useDiscovery } from "./store";
 import KindMark from "./KindMark";
+import { EvidenceStrip } from "./EvidenceStrip";
 import { saveThenGo } from "./links";
 import { addFromOrganization, openSource, useSources } from "./sources";
 import { orgJson } from "@/org/client";
@@ -339,7 +339,6 @@ const SOURCE: Record<OstEvidence["kind"], string> = { answer: "From your answers
 const SHORT: Record<OstEvidence["kind"], string> = { answer: "Your answer", note: "Your note", quote: "Quote", dump: "Brain dump" };
 /** A source's title up to its first comma or bracket ("Support tickets, week of Oct 6": "Support tickets"), for a row's narrow label. */
 const shortTitle = (title: string) => title.split(/\s*[,(]/)[0].trim() || title;
-const STRENGTH: Record<Strength, string> = { strong: "Strong", growing: "Growing", thin: "Thin", assumed: "Assumed" };
 const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
 
 /**
@@ -395,49 +394,6 @@ function EvidenceSection({ id, card }: { id: string; card: OstCard }) {
 }
 
 /** The card's evidence at a glance: how strong (by the sources of its customers' quotes), how many quotes and sources, what's against it, who said it. */
-function EvidenceStrip({ s }: { s: EvidenceSummary }) {
-  const word = s.quotes ? STRENGTH[strengthOf(s)] : s.ours ? "Your words only" : "Nothing backs it";
-  return (
-    <div role="group" aria-label="What backs this card" className="flex flex-col gap-[8px] rounded-lg bg-muted px-[10px] py-[8px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
-      <div className="flex items-center gap-[12px]">
-        <span className="flex w-[104px] shrink-0 flex-col gap-[6px]">
-          <span className="text-caption font-medium text-fg">{word}</span>
-          <Meter value={strengthFill(s)} label={s.quotes ? `${word}, from ${plural(s.sources, "source")}` : word} />
-        </span>
-        <span className="flex min-w-0 flex-col gap-[2px] text-caption tnum">
-          {s.quotes ? (
-            <Tip label={s.from.length ? s.from.join(" · ") : plural(s.sources, "source")}>
-              <span tabIndex={0} className="truncate text-fg">
-                {plural(s.quotes, "quote")} · {plural(s.sources, "source")}
-              </span>
-            </Tip>
-          ) : (
-            <span className="text-fg-muted">No customer words yet</span>
-          )}
-          <span className={s.against ? "text-warning" : "text-fg-subtle"}>{s.against ? `${s.against} against` : "Nothing against"}</span>
-        </span>
-      </div>
-      {s.who.length > 0 && (
-        <div className="flex flex-wrap items-center gap-[4px]">
-          <span className="mr-[2px] text-micro text-fg-subtle">Who</span>
-          {s.who.slice(0, 4).map((w) => (
-            <span key={w} className={clsx(r.chip, "max-w-[120px]")}>
-              <span className="truncate">{w}</span>
-            </span>
-          ))}
-          {s.who.length > 4 && (
-            <Tip label={s.who.slice(4).join(", ")}>
-              <span tabIndex={0} className="text-micro text-fg-subtle tnum">
-                +{s.who.length - 4}
-              </span>
-            </Tip>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
 /** One piece of evidence in a line: how its words start and whose they are. A click shows them whole, where they're from, and Remove. */
 function EvidenceRow({ id, e }: { id: string; e: OstEvidence }) {
   const [open, setOpen] = useState(false);
