@@ -124,8 +124,9 @@ export async function fromBytes(bytes: ArrayBuffer, type: string, name: string, 
     return capped(web ? "url" : "text", r.title || stem(name), origin, r.text);
   }
   if (type === "text/markdown" || ext === "md" || ext === "markdown" || ext === "mdx") {
-    const { markdownToText } = await import("./markdown");
-    return capped("markdown", stem(name), origin, markdownToText(text));
+    const { markdownShape } = await import("./markdown");
+    const md = markdownShape(text);
+    return capped("markdown", stem(name), origin, md.text, undefined, undefined, md.blocks);
   }
   if (type.startsWith("text/") || type === "application/json" || ["txt", "text", "csv", "tsv", "log", "json"].includes(ext) || !type) {
     const { cleanText } = await import("./text");
