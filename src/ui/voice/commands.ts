@@ -1,4 +1,5 @@
 import { kb, registerCommands } from "@/commands/registry";
+import { lab } from "@/lab";
 import { toggleDictationHere } from "./MicButton";
 
 /*
@@ -16,5 +17,10 @@ registerCommands([
     context: "global",
     run: () => void toggleDictationHere(),
     keywords: ["dictate", "dictation", "voice", "speak", "mic", "microphone"],
+    // Hidden in v0.1 (src/lab.ts), read when asked: this registers as its module loads.
+    get hidden() {
+      return !lab("voice");
+    },
+    enabled: () => lab("voice") || "Voice is off in this version",
   },
 ]);

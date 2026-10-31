@@ -32,6 +32,7 @@
     "desktop": "pnpm build && pnpm build:desktop && electron .",
     "desktop:dev": "pnpm build:desktop && node scripts/desktop-dev.mjs",
     "dist:mac": "pnpm build && pnpm build:desktop && node scripts/stage-app.mjs && electron-builder --mac --projectDir release/app --config ../../electron-builder.yml",
+    "dist:mac:adhoc": "pnpm dist:mac -c.mac.identity=- -c.dmg.background=dmg-open-anyway.tiff",
     "dist:win": "pnpm build && pnpm build:desktop && node scripts/stage-app.mjs && electron-builder --win --projectDir release/app --config ../../electron-builder.yml",
     "prepack": "pnpm build && pnpm build:desktop",
     "typecheck": "tsc --noEmit",

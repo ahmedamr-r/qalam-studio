@@ -22,6 +22,7 @@ import { mapQuotes } from "./import";
 import { acceptAll, discardAll, reviewing } from "./review";
 import { placeFor } from "./draft";
 import { openBrainDump } from "./dump";
+import { lab } from "@/lab";
 
 /*
  * Discovery's commands, registered when a Discovery board boots (a page holds one project, so
@@ -370,6 +371,7 @@ export function registerDiscoveryCommands() {
       label: "Draft its tests",
       category: "discovery",
       keywords: ["assumptions", "riskiest", "test", "experiment", "validate", "qalam ai"],
+      hidden: !lab("tests"),
       enabled: ofKind("solution"),
       run: () => {
         const id = oneCard();
@@ -381,6 +383,7 @@ export function registerDiscoveryCommands() {
       label: "Design this…",
       category: "discovery",
       keywords: ["screens", "generate", "handoff", "design"],
+      hidden: !lab("design"),
       enabled: ofKind("solution"),
       run: () => useDiscovery.setState({ designFor: oneCard() }),
     },
@@ -424,6 +427,7 @@ export function registerDiscoveryCommands() {
       label: "Bring in what's new for the feeds",
       category: "discovery",
       keywords: ["feeds", "watch", "refresh", "connectors", "intercom", "slack", "notion"],
+      hidden: !lab("feeds"),
       enabled: () => {
         const { list, news } = useFeeds.getState();
         if (!list.some((f) => f.status === "on")) return "No feed watches for this board";

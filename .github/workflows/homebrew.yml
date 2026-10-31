@@ -1,7 +1,8 @@
 # Keeps the Homebrew cask (brew install --cask ahmedamr-r/tap/qalam-studio) on the newest release:
 # when a release is published, it writes the cask for its .dmg (packaging/homebrew/qalam-studio.rb)
 # into the tap repository, ahmedamr-r/homebrew-tap. It needs HOMEBREW_TAP_TOKEN, a token that may
-# push there (docs/releasing.md); without it, it says so and stops.
+# push there (docs/releasing.md); without it, it says so and stops. It also stops while the Apple
+# secrets aren't set: the release is then signed ad hoc, and Homebrew refuses an app like that.
 name: Homebrew
 
 on:
@@ -22,7 +23,13 @@ jobs:
           TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.event.release.tag_name }}
+          # What the release workflow signs and notarizes with (release.yml).
+          NOTARIZED: ${{ secrets.MAC_CERTIFICATE != '' && secrets.APPLE_API_KEY_P8 != '' }}
         run: |
+          if [ "$NOTARIZED" != true ]; then
+            echo "::notice::The Mac app is signed ad hoc, not notarized, and Homebrew refuses it: no cask (docs/releasing.md)."
+            exit 0
+          fi
           if [ -z "$TAP_TOKEN" ]; then
             echo "::notice::No HOMEBREW_TAP_TOKEN: the cask wasn't updated (docs/releasing.md)."
             exit 0

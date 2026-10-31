@@ -18,8 +18,9 @@ import { emptyContext } from "@/org/context-md";
 import { boardFromSetup } from "@/org/setup-board";
 import { setupQuotes, splitIds } from "@/org/setup-split";
 import { sanitizeGroups } from "@/org/setup-groups";
-import { applyLines, boardGoals, decide, lineGoalId, namedNorth, sanitizeSetup, setupSent, type OrgNow, type PlaceSays, type SetupLine, type SetupSession } from "@/org/setup";
+import { applyLines, boardGoals, decide, lineGoalId, namedNorth, sanitizeSetup, setupSent, withoutProducts, type OrgNow, type PlaceSays, type SetupLine, type SetupSession } from "@/org/setup";
 import { boardHomeHref } from "../space/href";
+import { lab } from "@/lab";
 import { NAME_MAX, TITLE_MAX, useYou } from "@/org/you";
 import { createProject } from "@/projects/session";
 import { initialFlow, type FlowState } from "../ai/questionFlow";
@@ -313,7 +314,8 @@ export async function placeSetup() {
       ...fields,
       answers: sent.answers.map((a) => ({ id: a.ref, question: a.question.slice(0, 400), answer: a.answer.slice(0, 2000) })),
     });
-    const proposal = sanitizeSetup(raw, sent);
+    const kept = sanitizeSetup(raw, sent);
+    const proposal = lab("products") ? kept : withoutProducts(kept);
     await setSession((d) => ({ ...d, phase: proposal.lines.length ? "review" : "done", proposal, decided: {}, ...(model ? { model } : {}) }));
     // Nothing to set up from it: what they said still goes on the topic pages.
     if (!proposal.lines.length) void settled();

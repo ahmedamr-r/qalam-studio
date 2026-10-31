@@ -11,6 +11,7 @@ import { Button, IconBtn } from "../controls";
 import { StatusDot } from "../viz";
 import { r } from "../recipes";
 import { ago } from "../time";
+import { lab } from "@/lab";
 import { reviewNow, useReview } from "../notices/review";
 
 /**
@@ -93,9 +94,11 @@ export function NeedsALook({ now, scope, projects, topics, groups, onShow }: { n
           {list.length > 0 && <span className="ml-[6px] text-caption font-normal text-fg-subtle">{list.length}</span>}
           {fresh > 0 && <span className="ml-[6px] text-caption font-normal text-fg-muted">· {fresh} new since your last visit</span>}
         </h2>
-        <Button variant="secondary" size="sm" disabled={review.running} onClick={() => void reviewNow()}>
-          {review.running ? "Reviewing…" : "Review now"}
-        </Button>
+        {lab("review") && (
+          <Button variant="secondary" size="sm" disabled={review.running} onClick={() => void reviewNow()}>
+            {review.running ? "Reviewing…" : "Review now"}
+          </Button>
+        )}
       </div>
       {review.note && <p className="text-caption text-fg-muted">{review.note}</p>}
       {now === null ? (

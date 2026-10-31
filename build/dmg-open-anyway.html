@@ -1,0 +1,37 @@
+<!doctype html>
+<!--
+  The ad-hoc build's .dmg window (`pnpm dist:mac:adhoc`): how to open the app the first time
+  (docs/install-mac.md), around where Finder puts the icons (80 px, centred at 130,220 and 410,220,
+  labels under them). Finder keeps a window with a background picture light in Dark Mode too.
+  Rendered to dmg-open-anyway.tiff with `pnpm exec electron scripts/render-dmg.mjs`.
+-->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      @font-face { font-family: Inter; font-weight: 400; src: url(../public/fonts/Inter-400.ttf); }
+      @font-face { font-family: Inter; font-weight: 600; src: url(../public/fonts/Inter-600.ttf); }
+      :root { --paper: #f4f3f1; --ink: #1c1a18; --ink-muted: #66625c; }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body { width: 540px; height: 380px; overflow: hidden; }
+      body { position: relative; background: var(--paper); color: var(--ink); font: 400 12.5px/18px Inter, sans-serif; -webkit-font-smoothing: antialiased; }
+      h1 { position: absolute; left: 40px; top: 30px; font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.01em; }
+      ol { position: absolute; left: 40px; right: 40px; top: 62px; display: grid; gap: 7px; list-style: none; }
+      li { display: grid; grid-template-columns: 24px 1fr; }
+      .n { width: 16px; height: 16px; margin-top: 1px; border: 1px solid rgb(28 26 24 / 0.3); border-radius: 50%; font-size: 10px; line-height: 14px; font-weight: 600; text-align: center; }
+      b { font-weight: 600; }
+      svg { position: absolute; left: 190px; top: 210px; }
+      p { position: absolute; left: 40px; right: 40px; top: 306px; color: var(--ink-muted); font-size: 11px; line-height: 16px; text-align: center; }
+    </style>
+  </head>
+  <body>
+    <h1>Install Qalam Studio</h1>
+    <ol>
+      <li><span class="n">1</span><span>Drag <b>Qalam Studio</b> into <b>Applications</b>.</span></li>
+      <li><span class="n">2</span><span>Open it. The first time, macOS stops it: click <b>Done</b>.</span></li>
+      <li><span class="n">3</span><span>In <b>System Settings ▸ Privacy &amp; Security</b>, scroll down, click <b>Open Anyway</b> and confirm.</span></li>
+    </ol>
+    <svg width="160" height="20" viewBox="0 0 160 20" fill="none" stroke="rgb(28 26 24 / 0.38)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10h150M147 3l7 7-7 7" /></svg>
+    <p>On macOS 13 or 14, Control-click Qalam Studio in Applications and choose Open.<br />The full guide: docs/install-mac.md on github.com/ahmedamr-r/qalam-studio</p>
+  </body>
+</html>

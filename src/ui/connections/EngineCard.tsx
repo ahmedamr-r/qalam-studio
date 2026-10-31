@@ -6,6 +6,7 @@ import { modelFamily, type CallKind, type ModelMix, type Tier } from "@/ai/model
 import { shortCount, type UsageSummary } from "@/ai/usage-shared";
 import { engineDb, type EngineKind, type EngineOption, type EngineTest, type EngineView } from "@/org/engine";
 import { ENGINE_LABEL, isKeyed, isLocal, type KeyedKind } from "@/ai/engine-kinds";
+import { engineShown } from "@/lab";
 import { QalamAIGlyph } from "../brand";
 import { Button, Segmented, Select, Tip } from "../controls";
 import { r } from "../recipes";
@@ -188,10 +189,13 @@ export function EngineCard() {
  * welcome shows the same. `fresh`: a key field even when a key is kept (the welcome, after a test failed).
  */
 export function EngineSetup({ view, onView, onError, fresh }: { view: EngineView; onView: (v: EngineView) => void; onError: (m: string | null) => void; fresh?: boolean }) {
-  const options: EngineOption[] = view.options ?? [
-    { kind: "cli", label: ENGINE_LABEL.cli, state: "ready" },
-    { kind: "api", label: ENGINE_LABEL.api, state: "ready" },
-  ];
+  // v0.1 offers Claude Code, Codex and an Anthropic key (src/lab.ts); the engine in use always shows.
+  const options: EngineOption[] = (
+    view.options ?? [
+      { kind: "cli", label: ENGINE_LABEL.cli, state: "ready" },
+      { kind: "api", label: ENGINE_LABEL.api, state: "ready" },
+    ]
+  ).filter((o) => engineShown(o.kind) || o.kind === view.kind);
   const choose = async (kind: EngineKind) => {
     if (kind === view.kind) return;
     onError(null);

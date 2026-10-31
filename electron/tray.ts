@@ -29,7 +29,8 @@ function glyph(): NativeImage {
 
 export interface TrayDeps {
   open: () => void;
-  capture: () => void;
+  /** Quick capture; null while it's hidden (v0.1, src/lab.ts). */
+  capture: (() => void) | null;
   /** The core's answer to an /api path (null while it starts). */
   api: (path: string) => Promise<Response | null>;
   shortcut: () => string | null;
@@ -42,12 +43,12 @@ export function startTray(deps: TrayDeps): Tray {
 
   const rebuild = () => {
     const login = app.getLoginItemSettings();
-    const status: TrayStatus = { engine, shortcut: deps.shortcut(), openAtLogin: login.openAtLogin, canOpenAtLogin: app.isPackaged, keepInMenuBar: readDesktopSettings().keepInMenuBar };
+    const status: TrayStatus = { engine, capture: !!deps.capture, shortcut: deps.shortcut(), openAtLogin: login.openAtLogin, canOpenAtLogin: app.isPackaged, keepInMenuBar: readDesktopSettings().keepInMenuBar };
     tray.setContextMenu(
       Menu.buildFromTemplate(
         trayMenuTemplate(status, {
           open: deps.open,
-          capture: deps.capture,
+          capture: () => deps.capture?.(),
           setOpenAtLogin: (on) => {
             app.setLoginItemSettings({ openAtLogin: on });
             rebuild();

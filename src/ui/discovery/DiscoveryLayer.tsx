@@ -7,6 +7,7 @@ import DesignThis from "./DesignThis";
 import ReviewLayer from "./ReviewLayer";
 import BrainDump from "./BrainDump";
 import WhyPrompt from "../decisions/WhyPrompt";
+import { lab } from "@/lab";
 import { noticesStale, useNotices } from "../notices/useNotices";
 import { useStudio } from "@/doc/store";
 import { useProject } from "@/projects/session";
@@ -40,10 +41,10 @@ export default function DiscoveryLayer() {
         <>
           <CardBar vp={vp} />
           <NextSteps vp={vp} />
-          <DesignThis vp={vp} />
+          {lab("design") && <DesignThis vp={vp} />}
           <ReviewLayer vp={vp} />
           <BrainDump vp={vp} />
-          <WhyPrompt />
+          {lab("decisions") && <WhyPrompt />}
           <StartSheet />
         </>
       )}

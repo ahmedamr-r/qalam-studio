@@ -25,6 +25,7 @@ import { LookOnline } from "./LookOnline";
 import { BearsOn } from "./BearsOn";
 import { ago } from "../time";
 import { Dictated } from "../voice/MicButton";
+import { lab } from "@/lab";
 import { navigate } from "../nav";
 
 /**
@@ -199,7 +200,7 @@ export default function TopicPage({ id }: { id: string }) {
           </div>
 
           {t.kind === "need" && view.summary && <NeedStrip s={view.summary} shows={view.shows} />}
-          {t.kind === "need" && <LookOnline topic={t.id} />}
+          {t.kind === "need" && lab("online") && <LookOnline topic={t.id} />}
           {t.kind === "need" && <Drafts topic={t.id} board={boardOf(view)} />}
 
           {SECTIONS.map((s) => {

@@ -37,6 +37,7 @@ import DecisionRow from "../decisions/DecisionRow";
 import { useDecisions } from "../decisions/list";
 import { citation, fromSource, quoteOf, type SourceRecord } from "@/discovery/sources";
 import { Dictated } from "../voice/MicButton";
+import { lab } from "@/lab";
 
 const ICON = { size: 12, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 
@@ -122,8 +123,8 @@ function OneCard({ id, card }: { id: string; card: OstCard }) {
       {card.kind === "outcome" && <MetricSection id={id} card={card} />}
       {(card.kind === "opportunity" || card.kind === "solution" || (card.kind === "outcome" && card.evidence.length > 0)) && <EvidenceSection id={id} card={card} />}
       {card.kind === "solution" && <AssumptionsSection id={id} card={card} />}
-      {card.kind === "solution" && <DesignsSection id={id} card={card} />}
-      {card.kind === "solution" && <WorkSection id={id} card={card} />}
+      {card.kind === "solution" && lab("design") && <DesignsSection id={id} card={card} />}
+      {card.kind === "solution" && lab("connectors") && <WorkSection id={id} card={card} />}
       {card.kind === "test" && <TestSection id={id} card={card} />}
       <HistorySection id={id} />
     </>
@@ -254,7 +255,7 @@ function MetricSection({ id, card }: { id: string; card: OstCard }) {
       <Field label="By when">
         <CommitInput ariaLabel="Timeframe" value={m.timeframe ?? ""} placeholder="End of Q1" onCommit={(t) => set({ timeframe: t.trim() || undefined })} />
       </Field>
-      <MetricSource m={m} onChange={(next) => edit(id, (c) => void (c.metric = next))} onLeave={saveThenGo} />
+      {lab("connectors") && <MetricSource m={m} onChange={(next) => edit(id, (c) => void (c.metric = next))} onLeave={saveThenGo} />}
     </Section>
   );
 }

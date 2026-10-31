@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { findClaude, joinPaths, loginShellPath } from "../server/claude";
+import { labOn } from "../server/lab";
 import { requester, type FromCore } from "../server/rpc";
 import { assetPath, contentSecurityPolicy, inlineScriptHashes, mimeOf } from "./assets";
 import { watchForUpdates } from "./updates";
@@ -218,8 +219,10 @@ else {
     }
     // Opened at login: the menu bar only, until they open the app.
     if (!app.getLoginItemSettings().wasOpenedAtLogin) createWindow();
-    shortcut = globalShortcut.register(CAPTURE_KEYS, openCapture) ? CAPTURE_KEYS : null;
-    startTray({ open: showMain, capture: openCapture, api, shortcut: () => shortcut });
-    watchForUpdates();
+    // Quick capture is hidden in v0.1 (src/lab.ts): no shortcut, nothing in the menu bar.
+    const capture = await labOn().then((on) => on === true || on.includes("capture"), () => false);
+    shortcut = capture && globalShortcut.register(CAPTURE_KEYS, openCapture) ? CAPTURE_KEYS : null;
+    startTray({ open: showMain, capture: capture ? openCapture : null, api, shortcut: () => shortcut });
+    void watchForUpdates();
   });
 }

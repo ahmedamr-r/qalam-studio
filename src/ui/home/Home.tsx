@@ -40,6 +40,7 @@ import { SpaceCanvas } from "../space/SpaceCanvas";
 import { useWide, WIDE } from "../chat/Panels";
 import { useNeeds } from "./useNeeds";
 import { ProductsRow } from "./ProductsRow";
+import { lab } from "@/lab";
 import { homeGoals } from "./YourGoals";
 import { ContinueSetup, useFirstRunLeft } from "./ContinueSetup";
 
@@ -68,7 +69,9 @@ export default function Home({ product: productId = null }: { product?: string |
   const left = useFirstRunLeft(sources, org?.shape);
 
   const links = useBearings() ?? NONE;
-  const jobs = useJobs() ?? [];
+  // A goal's next job is hidden in v0.1 (src/lab.ts) with the rest of its jobs.
+  const allJobs = useJobs() ?? [];
+  const jobs = lab("goals") ? allJobs : [];
   const yours = homeGoals(goalTree, space);
 
   const scoped = useMemo(() => (notices?.notices ?? []).filter((n) => inSpace(n.products, space)), [notices, space]);
@@ -186,7 +189,7 @@ export default function Home({ product: productId = null }: { product?: string |
                 onShow={showNotice}
               />
 
-              {space === null && !!products.length && <ProductsRow products={products} tree={goalTree} topics={topics} sources={sources} />}
+              {space === null && !!products.length && lab("products") && <ProductsRow products={products} tree={goalTree} topics={topics} sources={sources} />}
 
               <p className="text-caption text-fg-subtle">{org ? `Saved in ${org.name}, at ${org.dir}.` : "Saved in your organization's folder."}</p>
             </div>
@@ -208,9 +211,16 @@ function EmptyMap({ space }: { space: string | null }) {
           <a href={spaceHref(space, "goals")} className={clsx(r.buttonSm, r.buttonPrimary)}>
             Set the goals
           </a>
-          {!space && (
-            <a href={setupHref()} className={clsx(r.buttonSm, r.buttonSecondary)}>
-              Start from a brain dump
+          {/* v0.1 (src/lab.ts) starts from what customers said; the brain dump is one of the hidden doors. */}
+          {lab("doors") ? (
+            !space && (
+              <a href={setupHref()} className={clsx(r.buttonSm, r.buttonSecondary)}>
+                Start from a brain dump
+              </a>
+            )
+          ) : (
+            <a href={`${spaceHref(space, "evidence")}?add=1`} className={clsx(r.buttonSm, r.buttonSecondary)}>
+              Add what customers said
             </a>
           )}
         </div>
@@ -244,7 +254,8 @@ function EngineNotice() {
 /** An organization with nothing about it yet can start from a brain dump about the company; one half set up picks up where it was. */
 function SetupNotice({ org, sources, empty }: { org: OrgRef | null; sources: SourceRecord[]; empty: boolean }) {
   const pending = sources.filter((s) => s.setup && s.setup.phase !== "done").sort((a, b) => b.addedAt - a.addedAt)[0];
-  if (!org || (!pending && !empty)) return null;
+  // Starting from a brain dump is one of the doors v0.1 hides (src/lab.ts); one half done still picks up.
+  if (!org || (!pending && (!empty || !lab("doors")))) return null;
   return (
     <div role="status" className="flex flex-wrap items-center justify-between gap-[12px] rounded-lg bg-raised px-[12px] py-[10px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
       <p className="text-body text-fg-muted">

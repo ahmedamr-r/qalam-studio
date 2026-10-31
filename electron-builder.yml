@@ -2,7 +2,9 @@
 # for Windows (an installer, which also updates it) (docs/releasing.md). scripts/stage-app.mjs puts
 # what the installed app needs in release/app, and electron-builder runs with that folder as its
 # project, so paths here are relative to it. `pnpm dist:mac` and `pnpm dist:win` do both. The Mac
-# app is signed and notarized when the Apple credentials are set; the Windows one isn't signed yet.
+# app is signed and notarized when the Apple credentials are set, else signed ad hoc with
+# `pnpm dist:mac:adhoc`, whose .dmg window says how to open it (docs/install-mac.md); the Windows
+# one isn't signed yet.
 appId: io.github.ahmedamr-r.qalam-studio
 productName: Qalam Studio
 copyright: Copyright © 2026 Ahmed Amr
@@ -33,9 +35,9 @@ mac:
       arch: arm64
   category: public.app-category.productivity
   hardenedRuntime: true
-  # electron-builder's own entitlements, and the microphone, for talking instead of typing.
-  entitlements: ../../build/entitlements.mac.plist
-  entitlementsInherit: ../../build/entitlements.mac.inherit.plist
+  # Entitlements: electron-builder's own, and the microphone, for talking instead of typing. They're
+  # build/entitlements.mac.plist and .inherit.plist, found in the build resources by those names: a
+  # path set here would reach codesign as written, relative to where it runs, and fail to sign.
   extendInfo:
     NSMicrophoneUsageDescription: Qalam listens only while the mic is on, to type what you say.
     NSSpeechRecognitionUsageDescription: Qalam turns what you say into text on this Mac.
@@ -52,6 +54,9 @@ mac:
   artifactName: Qalam-Studio-${version}-${arch}-mac.${ext}
 dmg:
   artifactName: Qalam-Studio-${version}-${arch}.${ext}
+  # electron-builder's window (540 × 380, the app at 130,220 and Applications at 410,220). The
+  # ad-hoc build's background (build/dmg-open-anyway.tiff) writes how to open it around them.
+  iconSize: 80
 win:
   target:
     - target: nsis
@@ -62,7 +67,9 @@ nsis:
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
-# Releases go up as drafts, published by hand once checked.
+# Releases go up as drafts, published by hand once checked. A draft starts with how to install it.
+releaseInfo:
+  releaseNotesFile: ../../build/release-notes.md
 publish:
   provider: github
   owner: ahmedamr-r

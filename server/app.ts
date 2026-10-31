@@ -23,6 +23,7 @@ import * as fonts from "./routes/fonts";
 import * as generate from "./routes/generate";
 import * as generateSection from "./routes/generate-section";
 import * as interview from "./routes/interview";
+import * as lab from "./routes/lab";
 import * as plan from "./routes/plan";
 import * as prototype from "./routes/prototype";
 import * as repair from "./routes/repair";
@@ -50,6 +51,7 @@ const ROUTES: Record<string, { GET?: Handler; POST?: Handler }> = {
   generate,
   "generate-section": generateSection,
   interview,
+  lab,
   plan,
   prototype,
   repair,

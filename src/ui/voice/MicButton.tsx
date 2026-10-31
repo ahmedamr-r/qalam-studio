@@ -5,6 +5,7 @@ import { Mic } from "lucide-react";
 import { create } from "zustand";
 import { listenVoice, loadVoice, stopVoice, useVoice } from "@/org/voice";
 import { r } from "../recipes";
+import { lab } from "@/lab";
 import { insertAtCursor, selectionOf } from "./insert";
 
 /*
@@ -114,7 +115,8 @@ function startingWords(loading: boolean) {
 }
 
 export function MicButton({ onText, field, size = "sm", className }: { onText: (said: string) => void; field?: RefObject<HTMLElement | null>; size?: "sm" | "md"; className?: string }) {
-  const use = useVoice((v) => v.view?.use ?? null);
+  // Voice is hidden in v0.1 (src/lab.ts): no mic shows.
+  const use = useVoice((v) => (lab("voice") ? (v.view?.use ?? null) : null));
   const me = useRef(Symbol("mic")).current;
   const d = useDictation();
   const [hover, setHover] = useState(false);
@@ -198,7 +200,8 @@ export function MicButton({ onText, field, size = "sm", className }: { onText: (
  * edge for one line); the box makes room for it only when this Mac has a mic on.
  */
 export function Dictated({ field, set, children, className, max }: { field: RefObject<HTMLInputElement | HTMLTextAreaElement | null>; set: (value: string) => void; children: ReactNode; className?: string; max?: number }) {
-  const use = useVoice((v) => v.view?.use ?? null);
+  // Voice is hidden in v0.1 (src/lab.ts): no mic shows.
+  const use = useVoice((v) => (lab("voice") ? (v.view?.use ?? null) : null));
   const [line, setLine] = useState(false);
   useEffect(() => setLine(field.current?.tagName === "INPUT"), [field]);
   return (

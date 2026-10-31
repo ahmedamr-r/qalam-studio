@@ -1,4 +1,5 @@
 import type { Route } from "../routes";
+import { lab } from "@/lab";
 
 /*
  * The organization's places, in the order of the job: what to move (Goals), what customers need
@@ -21,6 +22,9 @@ export const PLACES: readonly { id: Place; label: string }[] = [
   { id: "decisions", label: "Decisions" },
   { id: "connections", label: "Connections" },
 ];
+
+/** Whether a place shows in the sidebar: Decisions is hidden in v0.1 (src/lab.ts), though its address still opens. */
+export const placeShown = (p: Place) => p !== "decisions" || lab("decisions");
 
 /** Above a board's panels only these: the organization's Evidence would read as the board's own Sources panel. */
 export const RAIL_PLACES: readonly Place[] = ["home", "goals", "problems", "connections"];

@@ -15,7 +15,8 @@ import { highlightRuns, scoreItem } from "../surfaces/fuzzy";
 import { useTopics } from "../topics/list";
 import { askNext } from "../org/ask-next";
 import { SpaceTile } from "./OrgPlaces";
-import { PLACES, type Place } from "./places";
+import { PLACES, placeShown, type Place } from "./places";
+import { lab } from "@/lab";
 import type { Space } from "./spaces";
 import { useCurrentOrg } from "./store";
 import { navigate } from "../nav";
@@ -71,11 +72,11 @@ function Palette({ space }: { space: Space }) {
       const m = scoreItem(q, { label, keywords, extra: sub });
       if (m) out.push({ key, group, label, hits: m.hits, icon, sub, score: m.score, run });
     };
-    for (const p of PLACES) {
+    for (const p of PLACES.filter((p) => placeShown(p.id))) {
       const Icon = ICONS[p.id];
       add("Go to", `place:${p.id}`, p.label, <Icon {...ICON} />, () => navigate(spaceHref(space, p.id)));
     }
-    if (q) for (const s of [{ id: null, name: org?.name ?? "Organization" }, ...products]) add("Spaces", `space:${s.id ?? ""}`, s.name, <SpaceTile name={s.name} size="sm" />, () => navigate(spaceHref(s.id)), s.id ? "Product" : wordsFor(org?.shape).whole);
+    if (q && lab("products")) for (const s of [{ id: null, name: org?.name ?? "Organization" }, ...products]) add("Spaces", `space:${s.id ?? ""}`, s.name, <SpaceTile name={s.name} size="sm" />, () => navigate(spaceHref(s.id)), s.id ? "Product" : wordsFor(org?.shape).whole);
     if (q) for (const g of goals) add("Goals", `goal:${g.id}`, g.title, <Target {...ICON} />, () => navigate(goalHref(g.id)), "Goal");
     for (const b of boards.slice(0, q ? boards.length : 4)) add("Boards", `board:${b.id}`, b.name, <Network {...ICON} />, () => navigate(projectHref(b)), "Board");
     if (q) for (const t of topics ?? []) add("Problems and pages", `topic:${t.id}`, t.title, <NotebookText {...ICON} />, () => navigate(topicHref(t.id)), TOPIC_KIND_LABEL[t.kind]);

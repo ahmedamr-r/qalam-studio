@@ -1,4 +1,5 @@
 import type { OrgShape } from "@/org/words";
+import { lab } from "@/lab";
 
 /*
  * The welcome's steps (pure): Qalam AI found and tested, the organization named, who they are
@@ -20,8 +21,23 @@ export const WELCOME_STEPS: readonly { id: WelcomeStep; label: string }[] = [
   { id: "connect", label: "Connect" },
 ];
 
-/** The steps for a team, or for one person on their own (no "Yours"). */
-export const stepsFor = (shape?: OrgShape | null) => (shape === "solo" ? WELCOME_STEPS.filter((s) => s.id !== "yours") : WELCOME_STEPS);
+/** Whether a step is asked: v0.1 hides You, Voice, Yours and Connect (src/lab.ts), and on your own there's no Yours. */
+export function stepShown(id: WelcomeStep, shape?: OrgShape | null): boolean {
+  if (id === "you") return lab("you");
+  if (id === "voice") return lab("voice");
+  if (id === "yours") return shape !== "solo" && lab("yours");
+  if (id === "connect") return lab("connectors");
+  return true;
+}
+
+/** The steps for a team, or for one person on their own. */
+export const stepsFor = (shape?: OrgShape | null) => WELCOME_STEPS.filter((s) => stepShown(s.id, shape));
+
+/** The setup page's next step after `step` that's asked; null: Finish. */
+export function stepAfter(step: WelcomeStep, shape?: OrgShape | null): SetupStep | null {
+  const after = WELCOME_STEPS.slice(WELCOME_STEPS.findIndex((s) => s.id === step) + 1);
+  return (after.find((s) => s.id !== "engine" && s.id !== "name" && stepShown(s.id, shape))?.id as SetupStep | undefined) ?? null;
+}
 
 export type StepState = "done" | "now" | "next";
 
@@ -59,8 +75,8 @@ export interface FirstRunKept {
 /** Where the first run picks up again (the home's card), and how many steps are behind it; null: it's finished. */
 export function firstRunLeft(k: FirstRunKept): { step: SetupStep; done: number; of: number } | null {
   if (k.finished) return null;
-  const solo = k.shape === "solo";
-  const step: SetupStep = !k.you ? "you" : !k.voice ? "voice" : k.settingUp || !k.goals ? "goals" : !k.picked && !solo ? "yours" : "connect";
+  const shown = (s: WelcomeStep) => stepShown(s, k.shape);
+  const step: SetupStep = !k.you && shown("you") ? "you" : !k.voice && shown("voice") ? "voice" : k.settingUp || !k.goals ? "goals" : !k.picked && shown("yours") ? "yours" : shown("connect") ? "connect" : "goals";
   const steps = stepsFor(k.shape);
   return { step, done: steps.findIndex((s) => s.id === step), of: steps.length };
 }

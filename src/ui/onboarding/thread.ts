@@ -4,7 +4,8 @@ import { wordsFor, type OrgShape } from "@/org/words";
 import type { DocRef, SourceFit } from "../chat/attach";
 import type { KnowState } from "../setup/know-state";
 import type { VoiceChoice } from "@/voice/model";
-import type { SetupStep, StepState, WelcomeMode } from "../welcome/steps";
+import { stepAfter, stepShown, type SetupStep, type StepState, type WelcomeMode } from "../welcome/steps";
+import { lab } from "@/lab";
 
 /*
  * The first run as a conversation (pure): every message is read from state that's already kept
@@ -157,12 +158,14 @@ export function threadOf(i: ThreadInput): ChatMessage[] {
     out.push(ai("name:ask", text(nameAsk(i, false))));
     if (i.orgName) out.push(you("name:you", text(i.orgName)));
     // Who they are, before the goals: it tells Qalam AI which goals are theirs to set and how to ask. On your own, only the name.
-    out.push(ai("you:ask", text(solo ? "What's your name?" : `What's your name, and your position at ${org}?`), part("you", { open: i.step === "you", solo })));
-    if (i.step === "you") return out;
-    if (i.person) out.push(you("you:you", text(i.person)));
+    if (stepShown("you")) {
+      out.push(ai("you:ask", text(solo ? "What's your name?" : `What's your name, and your position at ${org}?`), part("you", { open: i.step === "you", solo })));
+      if (i.step === "you") return out;
+      if (i.person) out.push(you("you:you", text(i.person)));
+    }
     // Talking instead of typing, once per Mac: shown while it's asked, and what was chosen after.
     const v = i.voice;
-    if (v && v.offer !== "none" && (i.step === "voice" || v.chosen)) {
+    if (v && v.offer !== "none" && stepShown("voice") && (i.step === "voice" || v.chosen)) {
       out.push(ai("voice:ask", text(VOICE_ASK[v.offer]), part("voice", { open: i.step === "voice", offer: v.offer })));
       if (i.step === "voice") return out;
       if (v.chosen) out.push(you("voice:you", text(VOICE_SAID[v.chosen])));
@@ -175,7 +178,12 @@ export function threadOf(i: ThreadInput): ChatMessage[] {
   if (i.first && i.step !== "goals" && !door) out.push(ai("goals:had", text(i.goals ? `${org} has ${i.goals === 1 ? "a goal" : `${i.goals} goals`} already.` : "There are no goals yet: add them on the Goals page any time.")));
   else {
     // Three ways in: goals (known, or found in what they write), problems customers raise, or an idea to test.
-    const ask = solo ? `How do you want to start with ${org}? An idea on its own is enough.` : `How do you want to start with ${org}? From its goals, from problems customers raise, or from an idea to test.`;
+    // v0.1 (src/lab.ts) offers two ways in: the problems customers raise, and goals they know.
+    const ask = !lab("doors")
+      ? `How do you want to start with ${org}? From the problems customers raise, or from goals you know.`
+      : solo
+        ? `How do you want to start with ${org}? An idea on its own is enough.`
+        : `How do you want to start with ${org}? From its goals, from problems customers raise, or from an idea to test.`;
     out.push(ai("goals:ask", text(ask), ...(door ? [] : [part("choices", { set: "door", solo })])));
     if (door) out.push(you("goals:door", text(DOOR_SAID[door])));
   }
@@ -256,13 +264,14 @@ export function threadOf(i: ThreadInput): ChatMessage[] {
     const said = !written ? null : door === "know" ? (written === 1 ? "Your goal is in." : `Your ${written} goals are in.`) : `${written === 1 ? "1 line" : `${written} lines`} written to ${org}.`;
     if (i.first) {
       const moved = i.step !== "goals";
-      const next = solo ? "Next: what to connect." : "Next: which goals are yours.";
+      const after = stepAfter("goals", i.shape);
+      const next = after === "connect" ? "Next: what to connect." : after === "yours" ? "Next: which goals are yours." : "That's the setup: Finish takes you to it.";
       out.push(ai("goals:in", text(said ? `${said} ${next}` : "Nothing was written. You can add goals on the Goals page any time."), ...(moved ? [] : [part("choices", { set: "goals-in", solo })])));
     } else out.push(ai("all-set", text(said ? `${said} All set.` : `Nothing was written to ${org}.`), part("allSet")));
   }
 
   // Which are theirs (on your own every goal is), then what to connect.
-  if (i.first && i.step !== "goals" && !solo && door !== "problems") {
+  if (i.first && i.step !== "goals" && stepShown("yours", i.shape) && door !== "problems") {
     out.push(ai("yours:ask", text("Which goals are yours? Your home leads with them, each with the problems behind it."), part("yours", { open: i.step === "yours" })));
     if (i.step === "connect") out.push(you("yours:you", text(i.picked ? `${i.picked === 1 ? "1 goal" : `${i.picked} goals`} picked` : "None for now")));
   }
@@ -377,8 +386,8 @@ export function stepsOf(i: ThreadInput): StepItem[] {
   }
   const welcome = i.route === "welcome";
   const at = welcome ? (engineDone(i) ? "name" : "engine") : i.step;
-  // On your own there's no "Yours": every goal is.
-  const order = ["engine", "name", "you", "voice", "goals", "yours", "connect"].filter((s) => s !== "yours" || i.shape !== "solo");
+  // On your own there's no "Yours": every goal is. v0.1 asks only for Qalam AI, a name and a start (src/lab.ts).
+  const order = (["engine", "name", "you", "voice", "goals", "yours", "connect"] as const).filter((s) => stepShown(s, i.shape)) as readonly string[];
   const k = order.indexOf(at);
   const state = (id: string): StepState => (order.indexOf(id) < k ? "done" : order.indexOf(id) === k ? "now" : "next");
   return [

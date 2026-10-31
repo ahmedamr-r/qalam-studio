@@ -13,6 +13,7 @@ import { goalHref } from "@/projects/model";
 import { QalamAIGlyph } from "../brand";
 import { Button } from "../controls";
 import { r } from "../recipes";
+import { lab } from "@/lab";
 import { ago } from "../time";
 
 /*
@@ -65,7 +66,7 @@ export function GoalsUnder({ goal, children, breakdown, onChanged }: { goal: Goa
           </h2>
           <p className="text-caption text-fg-subtle">The parts its number is made of, each a change in what customers do.</p>
         </div>
-        {!asking && !busy && (
+        {!asking && !busy && lab("goals") && (
           <Button variant="secondary" size="sm" onClick={() => setAsking(true)}>
             <QalamAIGlyph size={12} /> Break it down
           </Button>
