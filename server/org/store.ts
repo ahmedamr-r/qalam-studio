@@ -21,6 +21,7 @@ import type { GoalWork } from "@/goals/breakdown";
 import { mapFromMarkdown, mapToMarkdown, type CodeRepo, type ProductMap } from "@/code/map";
 import { seenFromMarkdown, seenToMarkdown } from "@/seen/seen-md";
 import { SEEN_KEY, type SeenMap, type SeenReading } from "@/seen/types";
+import type { FeedLog } from "@/feeds/feeds";
 import type { JobLog } from "@/goals/jobs";
 import { sameTopic } from "@/hub/topics";
 import type { SourceRecord } from "@/discovery/sources";
@@ -71,6 +72,8 @@ export type OrgEvent = { tab?: string } & (
   | { kind: "bearing" }
   /** The jobs planned for goals, or what came of them, changed (hub/jobs.jsonl). */
   | { kind: "job" }
+  /** A feed was added, wired, refreshed or stopped (hub/feeds.jsonl). */
+  | { kind: "feed" }
   /** What's pinned at a funnel's steps changed (hub/steps.jsonl). */
   | { kind: "step" }
   /** What others report for a goal, or the goals proposed under it, changed (hub/goals/<goal>.json). */
@@ -769,6 +772,19 @@ export class OrgStore {
     if (!entries.length) return;
     await this.appendLog("hub/jobs.jsonl", entries);
     this.emit({ kind: "job", tab: opts.tab });
+  }
+
+  // Feeds (hub/feeds.jsonl): a connector's saved search wired to goals and cards, then a line per
+  // change to it, never rewritten, so two people's merge in Git. src/feeds/feeds.ts folds them.
+
+  async listFeedLog(): Promise<FeedLog[]> {
+    return this.readLog<FeedLog>("hub/feeds.jsonl");
+  }
+
+  async addFeeds(entries: FeedLog[], opts: { tab?: string } = {}): Promise<void> {
+    if (!entries.length) return;
+    await this.appendLog("hub/feeds.jsonl", entries);
+    this.emit({ kind: "feed", tab: opts.tab });
   }
 
   // What each product does today, from its code (hub/maps/<key>.md), and the repositories this
@@ -1615,6 +1631,8 @@ export class OrgStore {
       this.emit({ kind: "bearing" });
     } else if (rel === "hub/jobs.jsonl") {
       this.emit({ kind: "job" });
+    } else if (rel === "hub/feeds.jsonl") {
+      this.emit({ kind: "feed" });
     } else if (rel === "hub/steps.jsonl") {
       this.emit({ kind: "step" });
     } else if (parts[0] === "hub" && parts[1] === "goals" && parts.length === 3 && rel.endsWith(".json")) {

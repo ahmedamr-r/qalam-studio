@@ -4,7 +4,8 @@ import { itemText, RECIPES, type Hit, type Recipe, type ToolCall } from "@/conne
 import type { Ingested } from "@/discovery/ingest/core";
 import { capText } from "@/discovery/ingest/text";
 import type { ConnectorState, ImportResult, ReadItem } from "@/org/connectors";
-import { captureSource } from "../capture";
+import { captureSource, type CaptureOpts } from "../capture";
+import { hitOrigin } from "@/feeds/feeds";
 import type { OrgStore } from "../org/store";
 import { secrets } from "../secrets";
 import { readSettings, writeSettings } from "../settings";
@@ -201,8 +202,8 @@ async function readTexts(id: string, hits: Hit[], emit: (label: string) => void)
 
 const readingLabel = (label: string, hits: Hit[]) => `Reading ${hits.length === 1 ? `“${hits[0].title}”` : `${hits.length} items`} from ${label}`;
 
-/** Where an item came from: its address, else the tool and its id. */
-const originOf = (id: string, hit: Hit) => hit.url ?? `${id}:${hit.id}`;
+/** Where an item came from: its address, else the tool and its id (as a feed keeps it too). */
+const originOf = hitOrigin;
 
 /** The picked items as material, read and not taken in: the chat box holds them until it sends. */
 export async function readItems(id: string, hits: Hit[], emit: (label: string) => void): Promise<ReadItem[]> {
@@ -230,8 +231,8 @@ export async function readItems(id: string, hits: Hit[], emit: (label: string) =
   });
 }
 
-/** Read the picked items and take each in. `emit` hears how it's going. */
-export async function importItems(store: OrgStore, id: string, hits: Hit[], emit: (label: string) => void): Promise<ImportResult> {
+/** Read the picked items and take each in. `emit` hears how it's going; `scope` limits where they're placed (a feed's wiring). */
+export async function importItems(store: OrgStore, id: string, hits: Hit[], emit: (label: string) => void, opts: Pick<CaptureOpts, "scope"> = {}): Promise<ImportResult> {
   // Drive's files read here as files are, so a PDF keeps its pages and a Doc its headings; the rest as words.
   const google = (await how(id)).via === "google";
   const reads: (Omit<Ingested, "kind" | "title" | "origin"> | null)[] = google
@@ -253,7 +254,7 @@ export async function importItems(store: OrgStore, id: string, hits: Hit[], emit
     }
     try {
       emit(`Taking in “${hit.title}”`);
-      const r = await captureSource(store, { ...reads[i]!, kind: "connector", title: hit.title, origin }, { emit });
+      const r = await captureSource(store, { ...reads[i]!, kind: "connector", title: hit.title, origin }, { emit, ...opts });
       out.added.push(hit.title);
       out.sources.push(r.sourceId);
       for (const p of r.filed?.pages ?? []) if (!out.pages.includes(p.id)) out.pages.push(p.id);

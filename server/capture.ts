@@ -40,6 +40,11 @@ export interface CaptureOpts {
   signal?: AbortSignal;
   /** The person's own thinking (their notes), read as what they believe rather than as what customers said. */
   own?: boolean;
+  /**
+   * Where it's placed: only these boards, each only under these cards (a feed's wiring), or nowhere
+   * (`{}`). Left out: every board of its product.
+   */
+  scope?: Record<string, string[]>;
 }
 
 /**
@@ -175,6 +180,15 @@ interface BoardTree {
   cards: SynthCard[];
 }
 
+/** Whether a card is somewhere under another. */
+function isUnder(doc: Doc, id: string, above: string): boolean {
+  for (let at = doc.nodes[id]?.parentId; at; at = doc.nodes[at]?.parentId) if (at === above) return true;
+  return false;
+}
+
+/** A card a scoped placement sends: one it's wired to, under one, or above one (so the call reads where they sit). */
+const inScope = (doc: Doc, id: string, wired: readonly string[]) => wired.some((w) => w === id || isUnder(doc, id, w) || isUnder(doc, w, id));
+
 /** Only what's about one board's cards: a mapping, a word against, a new need under one of them. */
 function forBoard(raw: unknown, refs: Set<string>): Record<string, unknown> {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
@@ -183,15 +197,17 @@ function forBoard(raw: unknown, refs: Set<string>): Record<string, unknown> {
 }
 
 /** Where the source's quotes fit on the boards of its product (every board, for the whole organization's): proposals for each. */
-async function placeIn(store: OrgStore, deps: FilingDeps, s: SourceRecord, o: CaptureOpts): Promise<Record<string, Proposal[]>> {
+export async function placeIn(store: OrgStore, deps: FilingDeps, s: SourceRecord, o: CaptureOpts): Promise<Record<string, Proposal[]>> {
   if (s.kind === "dump" || !s.quotes.length) return {};
   const boards: BoardTree[] = [];
   let next = 1;
   for (const p of store.listProjects()) {
-    if (p.type !== "discovery" || (s.product && p.product && p.product !== s.product)) continue;
+    if (p.type !== "discovery" || (o.scope ? !o.scope[p.id] : s.product && p.product && p.product !== s.product)) continue;
     const doc = (await store.getDoc(p.id).catch(() => null))?.doc;
     if (!doc || next > 400) continue;
-    const cards = synthCardsOf(doc, next, 401 - next);
+    // A feed's board: only the cards it's wired to and what's under them, with what's above for the call to read.
+    const under = o.scope?.[p.id];
+    const cards = synthCardsOf(doc, next, 401 - next).filter((c) => !under || inScope(doc, c.id, under));
     if (!cards.some((c) => c.kind === "outcome")) continue;
     next += cards.length;
     boards.push({ id: p.id, name: p.name, product: p.product ?? null, doc, cards });
@@ -219,7 +235,10 @@ async function placeIn(store: OrgStore, deps: FilingDeps, s: SourceRecord, o: Ca
   const out: Record<string, Proposal[]> = {};
   for (const b of boards) {
     const outcome = b.cards.find((c) => c.kind === "outcome" && !c.parentRef);
-    const proposals = sanitizeSynthesis(forBoard(data, new Set(b.cards.map((c) => c.ref))), {
+    // Proposals only for the cards a feed is wired to and those under them (what's above was for reading).
+    const under = o.scope?.[b.id];
+    const mine = new Set(b.cards.filter((c) => !under || under.some((w) => w === c.id || isUnder(b.doc, c.id, w))).map((c) => c.ref));
+    const proposals = sanitizeSynthesis(forBoard(data, mine), {
       cards: b.cards,
       quotes,
       outcomeRef: outcome?.ref ?? null,

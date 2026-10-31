@@ -298,6 +298,19 @@ describe("goals", () => {
     expect(await store.listJobLog()).toHaveLength(3);
   });
 
+  it("keeps feeds a line per change, and hears the file edited elsewhere", async () => {
+    await store.addFeeds([{ id: "f1", connector: "intercom", query: "fare", title: "Fare chats", targets: [{ goal: "g1" }], status: "on", seen: [], results: [], at: 1 }]);
+    await store.addFeeds([{ id: "f1", read: 2, seen: ["https://x/1"], results: ["s1"], at: 2 }]);
+    expect(await store.listFeedLog()).toHaveLength(2);
+    expect(events.filter((e) => e.kind === "feed")).toHaveLength(2);
+    const file = path.join(dir, "hub", "feeds.jsonl");
+    await writeFile(file, `${await readFile(file, "utf8")}${JSON.stringify({ id: "f1", status: "off", at: 3 })}\n`);
+    events = [];
+    await store.reload("hub/feeds.jsonl");
+    expect(events).toEqual([{ kind: "feed" }]);
+    expect(await store.listFeedLog()).toHaveLength(3);
+  });
+
   it("keeps a goal's work in its own file, and takes the file away once there's nothing in it", async () => {
     const outside = { at: 1, claims: [], notes: "Nothing held.", pages: [{ title: "A report", url: "https://example.com" }] };
     await store.changeGoalWork("g1", (w) => ({ ...w, outside }));

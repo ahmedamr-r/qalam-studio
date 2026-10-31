@@ -119,6 +119,20 @@ describe.skipIf(!fts5)("capture, in the core", () => {
     expect(steps).toEqual(["Keeping “Sara interview” in the organization", "Picking out what customers said", "Filing it into the topic pages", "Finding where it fits on 2 boards"]);
   });
 
+  it("places a feed's material only on the boards it's wired to, under their cards, and nowhere when it's wired to none", async () => {
+    const steps: string[] = [];
+    const text = "Sara: I can't plan bath time around a four-hour window. Then I order anyway.";
+    const r = await captureSource(store, { kind: "paste", title: "Sara interview", text }, { emit: (x) => steps.push(x), scope: { delivery: ["n"] } });
+    expect(steps).toContain("Finding where it fits on “Delivery experience”");
+    expect(r.placed).toEqual([{ board: "delivery", name: "Delivery experience", count: 1 }]);
+    // Only the board it's wired to was read and proposed for.
+    expect((await store.listPlacements()).map((p) => p.board)).toEqual(["delivery"]);
+    calls.list = [];
+    const none = await captureSource(store, { kind: "paste", title: "Sara again", text: `${text} More.` }, { scope: {} });
+    expect(calls.list).toEqual(["extract", "topics"]);
+    expect(none.placed).toEqual([]);
+  });
+
   it("reads a person's own notes as what they believe, never as what customers said", async () => {
     const notes = "My plan: parents rebuild the basket every Sunday, so a button to copy last week's basket should help.";
     const r = await captureSource(store, { kind: "paste", title: "My notes", text: notes }, { own: true });
