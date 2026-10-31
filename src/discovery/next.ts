@@ -8,7 +8,7 @@ import type { Strength } from "@/hub/needs";
  * a step is picked (src/ui/discovery/next.ts).
  */
 
-export type StepId = "draft-solutions" | "draft-tests" | "design-this" | "page" | "pass-line" | "next-job";
+export type StepId = "draft-solutions" | "draft-tests" | "design-this" | "page" | "pass-line" | "next-job" | "find-problems" | "break-down" | "review-parts" | "others";
 
 export interface NextStep {
   id: StepId;
@@ -29,8 +29,10 @@ export interface CardFacts {
   page: { topic: string; strength: Strength; quotes: number; sources: number } | null;
   /** What's under it already. */
   under: { solutions: number; tests: number };
-  /** A goal's number in a line (null: none yet), the problems behind it and its next job. */
-  goal?: { id: string; number: string | null; behind: number; job: string | null };
+  /** A goal's number in a line (null: none yet), the problems behind it, its next job, and the goals proposed under it not decided yet. */
+  goal?: { id: string; number: string | null; behind: number; job: string | null; pending: number };
+  /** Problem pages there are (what Find its problems reads). */
+  pages: number;
   /** A test whose pass line Qalam AI suggested and nobody has set. */
   suggested?: boolean;
   /** Qalam AI can run here. */
@@ -61,9 +63,19 @@ export function nextSteps(f: CardFacts): NextStep[] {
     case "test":
       if (f.suggested) out.push({ id: "pass-line", label: "Use the suggested pass line" });
       break;
-    case "outcome":
-      if (f.goal?.job) out.push({ id: "next-job", label: `Next: ${f.goal.job}`, hint: "What we don't know yet" });
+    case "outcome": {
+      const g = f.goal;
+      if (!g) break;
+      const find: NextStep | null = f.pages ? { id: "find-problems", label: "Find its problems", hint: g.behind ? "More of your problem pages that bear on it" : "Links your problem pages that bear on it", ai: true } : null;
+      // Goals proposed under it before wait to be decided before it's broken down again.
+      const parts: NextStep = g.pending ? { id: "review-parts", label: `Review the ${plural(g.pending, "goal")} proposed under it`, hint: "From breaking it down" } : { id: "break-down", label: "Break it down", hint: "Goals under it that make its number", ai: true };
+      // Nothing behind it yet: its problems first.
+      const lead = !g.pending && !g.behind && find ? [find, parts] : [parts, find];
+      for (const s of lead) if (s) out.push(s);
+      out.push({ id: "others", label: "What others aim for", hint: "Numbers others report · a minute or two", ai: true });
+      if (g.job) out.push({ id: "next-job", label: `Next: ${g.job}`, hint: "What we don't know yet" });
       break;
+    }
   }
   return out.map((s) => {
     const why = s.ai ? blockedFor(f) : null;

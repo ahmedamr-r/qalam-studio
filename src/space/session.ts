@@ -1,7 +1,6 @@
 import { create } from "zustand";
 import type { Doc } from "@/doc/schema";
 import { registerDocPass, studio, useStudio } from "@/doc/store";
-import { isOstCard } from "@/doc/board";
 import { laneOf } from "@/discovery/lane";
 import { ostPass } from "@/discovery/pass";
 import type { Bearing } from "@/goals/bearings";
@@ -23,7 +22,8 @@ import { keepOtherBoards } from "./arrange";
 import { assignBoards, isNewBoard, type Known } from "./assign";
 import { composeSpace, isProblemPage, type SpaceDoc } from "./compose";
 import { goalsLast, groupsOf, laneRows, layoutSpace } from "./layout";
-import { splitSpace, sameCard } from "./split";
+import { splitSpace } from "./split";
+import { addedGoals, sameCards, withContent, withGoals } from "./history";
 import { resetSpaceView, useSpaceView } from "./view";
 
 /*
@@ -201,12 +201,15 @@ function compose(o: { fresh: boolean }) {
     for (const fn of composed) fn(s);
     return;
   }
-  // What came from elsewhere goes into each step back too, when the cards are the same ones;
-  // when cards came or went elsewhere, the steps back would undo that, so they go.
+  // What came from elsewhere goes into each step back too, when the cards are the same ones, or
+  // when all that came is goals with no board yet (a goal accepted under another); when cards
+  // came or went elsewhere otherwise, the steps back would undo that, so they go.
   const { past, future, selection } = useStudio.getState();
   const same = sameCards(before, doc);
-  const keep = (d: Doc) => (same ? withContent(d, doc) : d);
-  useStudio.setState({ doc, past: same ? past.map(keep) : [], future: same ? future.map(keep) : [], selection: selection.filter((id) => !!doc.nodes[id]) });
+  const goals = same ? null : addedGoals(before, doc, s);
+  const keep = (d: Doc) => (same ? withContent(d, doc, before) : goals ? unlaidStep(withGoals(d, doc, goals, before)) : d);
+  const kept = same || !!goals;
+  useStudio.setState({ doc, past: kept ? past.map(keep) : [], future: kept ? future.map(keep) : [], selection: selection.filter((id) => !!doc.nodes[id]) });
   announceFromElsewhere(doc, was);
   for (const fn of composed) fn(s);
 }
@@ -218,25 +221,9 @@ export function onSpaceComposed(fn: (s: SpaceDoc) => void): () => void {
   return () => composed.delete(fn);
 }
 
-/** Whether two canvases hold the same cards in the same places (problems' pages aside: they're never saved). */
-function sameCards(a: Doc, b: Doc): boolean {
-  const ids = Object.keys(b.nodes).filter((id) => isOstCard(b.nodes[id]) && !isProblemPage(id));
-  if (ids.length !== Object.keys(a.nodes).filter((id) => isOstCard(a.nodes[id]) && !isProblemPage(id)).length) return false;
-  const kids = (d: Doc, id: string) => d.nodes[id].children.filter((c) => !isProblemPage(c)).join();
-  return ids.every((id) => !!a.nodes[id] && a.nodes[id].parentId === b.nodes[id].parentId && kids(a, id) === kids(b, id));
-}
-
-/** A step back with each card's content as it is now. */
-function withContent(d: Doc, now: Doc): Doc {
-  let nodes: Doc["nodes"] | null = null;
-  for (const [id, n] of Object.entries(d.nodes)) {
-    const m = now.nodes[id];
-    if (!isOstCard(n) || !isOstCard(m) || sameCard(n.meta.ost, m.meta.ost)) continue;
-    nodes ??= { ...d.nodes };
-    nodes[id] = { ...n, name: m.name, meta: { ...n.meta, ost: m.meta.ost } };
-  }
-  return nodes ? { ...d, nodes } : d;
-}
+/** Steps back given a goal from elsewhere (by their nodes, which undo keeps): laid out when undo or redo brings one back. */
+const unlaid = new WeakSet<object>();
+const unlaidStep = (d: Doc) => (unlaid.add(d.nodes), d);
 
 // ---------------------------------------------------------------------------
 // Layout: worked out after every edit, never saved.
@@ -266,11 +253,13 @@ function laidOut(doc: Doc): Doc {
  * The canvas laid out as an edit would lay it out, telling nothing (a review's ghost: drawn where
  * accepting puts it, lanes and all).
  */
-export function previewLayout(doc: Doc): Doc {
-  const next = goalsLast(doc, isGoalCard);
+export function previewLayout(doc: Doc, goals: ReadonlySet<string> = new Set()): Doc {
+  // A goal proposed under a goal is laid out as the goal it would be.
+  const isGoal = (id: string) => isGoalCard(id) || goals.has(id);
+  const next = goalsLast(doc, isGoal);
   // Its own lane rows (the canvas's are remembered for the canvas as it is).
-  const rows = useStudio.getState().view.sources ? laneRows(laneOf(next, useSources.getState().list, groupsOf(next, isGoalCard)).items) : undefined;
-  return layoutSpace(next, { column: inColumn, isGoal: isGoalCard, lanes: rows }).doc;
+  const rows = useStudio.getState().view.sources ? laneRows(laneOf(next, useSources.getState().list, groupsOf(next, isGoal)).items) : undefined;
+  return layoutSpace(next, { column: inColumn, isGoal, lanes: rows }).doc;
 }
 
 /** After every edit on the canvas, in the same undo step: another board's cards kept, everything laid out. */
@@ -310,6 +299,8 @@ function install() {
     unsaved = true;
     clearTimeout(timer);
     timer = setTimeout(() => void flushSpace(), 400);
+    // A step back that was given a goal from elsewhere, brought back: laid out as the canvas is.
+    if (unlaid.has(s.doc.nodes)) queueMicrotask(relayoutSpace);
   });
   useStudio.subscribe((s, prev) => s.view.sources !== prev.view.sources && relayoutSpace());
   useSources.subscribe((s, prev) => s.list !== prev.list && relayoutSpace());

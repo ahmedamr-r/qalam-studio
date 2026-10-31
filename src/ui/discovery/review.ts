@@ -15,6 +15,12 @@ import { applyProposal, carryOut, proposalDoc, proposalKey, touchedRoots, withDe
 import type { DumpCounts } from "@/discovery/dump";
 import { recordAccepted, recordDiscarded } from "../decisions/recorder";
 import { orgFetch } from "@/org/client";
+import { decidePart } from "@/org/goal-work";
+import { goalsNow, loadGoals } from "@/goals/client";
+import type { Relation } from "@/goals/math";
+import { childrenOf } from "@/goals/tree";
+import { sameTopic } from "@/hub/topics";
+import { useSpaceView } from "@/space/view";
 import { adoptSources, sourceOf, updateSource, useSources } from "./sources";
 
 /*
@@ -36,7 +42,9 @@ export type ReviewOrigin =
   /** Solutions Qalam AI drafted for a problem (kept on its page's drafts when it has one). */
   | { kind: "solutions"; topic: string | null }
   /** A solution's riskiest assumptions and a test of the riskiest, drafted on its card. */
-  | { kind: "tests" };
+  | { kind: "tests" }
+  /** The goals under a goal Qalam AI proposed (Break it down, kept in the goal's work file), and how their numbers make its. */
+  | { kind: "breakdown"; goal: string; relation: Relation | null };
 
 export interface ReviewUI {
   origin: ReviewOrigin | null;
@@ -91,6 +99,11 @@ function fits(p: Proposal, all: Proposal[]): boolean {
       return here(p.cardId) && here(p.dropId) && cardOf(doc, p.cardId)?.kind === cardOf(doc, p.dropId)?.kind;
     case "note":
       return !doc.nodes[p.cardId] && (!p.anchorId || here(p.anchorId) || pending(p.anchorId));
+    case "goal": {
+      // The goal's card is on the canvas, and no goal under it has the same name (taken here or elsewhere).
+      const t = useSpaceView.getState().things.get(p.parentId);
+      return here(p.parentId) && !doc.nodes[p.cardId] && t?.type === "goal" && t.goal === p.goal && !childrenOf(goalsNow(), p.goal).some((c) => sameTopic(c.title, p.card.title));
+    }
   }
 }
 
@@ -99,7 +112,8 @@ function fits(p: Proposal, all: Proposal[]): boolean {
  * out (each goal's lane column too), so the ghost is where accepting puts it, not a board's layout.
  */
 export function spaceGhost(doc: Doc, roots: string[], proposals: Proposal[], evidence: EvidenceOf): Doc | null {
-  const laid = previewLayout(produce(doc, (d) => carryOut(d, proposals, evidence)));
+  const goals = new Set(proposals.flatMap((p) => (p.kind === "goal" ? [p.cardId] : [])));
+  const laid = previewLayout(produce(doc, (d) => carryOut(d, proposals, evidence)), goals);
   const kept = roots.filter((r) => laid.nodes[r]);
   return kept.length ? { ...laid, roots: kept } : null;
 }
@@ -203,6 +217,7 @@ const WAITS: Record<ReviewOrigin["kind"], string> = {
   placed: "Accept or discard what Qalam AI found for these cards first",
   solutions: "Accept or discard the drafted solutions first",
   tests: "Accept or discard the drafted tests first",
+  breakdown: "Accept or discard the goals proposed under it first",
 };
 
 /** What the review that's open waits for, in words (null: none is open). A draft asks before it calls Qalam AI. */
@@ -235,6 +250,7 @@ function fromOf(origin: ReviewOrigin | null, list: Proposal[]): string {
   if (origin?.kind === "dump") return "your brain dump";
   if (origin?.kind === "solutions") return "the drafted solutions";
   if (origin?.kind === "tests") return "the drafted tests";
+  if (origin?.kind === "breakdown") return "the goals proposed under it";
   const ids = new Set(list.flatMap((p) => (p.kind === "attach" || p.kind === "against" ? [p.quote.sourceId] : p.kind === "card" ? p.backing.quotes.map((q) => q.sourceId) : [])));
   const titles = [...ids].map((id) => sourceOf(id)?.title).filter((t): t is string => !!t);
   if (!titles.length) return "your sources";
@@ -247,9 +263,31 @@ function decided(origin: ReviewOrigin | null, list: Proposal[], decision: "accep
   for (const p of list) if (p.id.startsWith("sol:")) void orgFetch(`/topics/${encodeURIComponent(origin.topic)}/solutions/${encodeURIComponent(p.id.slice(4))}`, { method: "PUT", json: { decision } }).catch(() => {});
 }
 
+/**
+ * Goals proposed under a goal, taken or left: each goes to the goal's work file (taken: into
+ * goals.md, under the goal, on its lever), never onto the canvas's document. The goals are loaded
+ * again and the canvas draws what was taken under the goal; goals.md's write records the decision.
+ */
+function decideParts(ids: string[], accept: boolean) {
+  const { proposals: all } = useReview.getState();
+  const list = all.filter((p): p is Extract<Proposal, { kind: "goal" }> => ids.includes(p.id) && p.kind === "goal");
+  if (!list.length) return;
+  useReview.setState({ proposals: all.filter((p) => !list.includes(p as (typeof list)[number])) });
+  show();
+  void (async () => {
+    let failed = 0;
+    for (const p of list) await decidePart(p.goal, p.part.id, accept).catch(() => failed++);
+    if (accept) await loadGoals().catch(() => {});
+    const n = list.length - failed;
+    if (failed) feedback(`Couldn't ${accept ? "add" : "leave out"} ${failed === 1 ? "one of them" : `${failed} of them`}`, { kind: "error", id: "discovery.breakdown" });
+    else feedback(accept ? `${n} ${n === 1 ? "goal" : "goals"} added under it` : `${n === 1 ? "It's" : "They're"} left out`, { kind: accept ? "success" : "info", id: "discovery.breakdown" });
+  })();
+}
+
 /** Carry out these proposals, and any they wait on (one undo step together). */
 export function acceptProposals(ids: string[]) {
   const { proposals: all, origin } = useReview.getState();
+  if (origin?.kind === "breakdown") return decideParts(ids, true);
   // A drafted solution comes with its test, and a drafted test with the assumptions it tests: they're one draft.
   const tests =
     origin?.kind === "solutions"
@@ -290,6 +328,7 @@ export function acceptProposals(ids: string[]) {
 /** Leave these proposals, and any that wait on them. They aren't proposed again. */
 export function discardProposals(ids: string[]) {
   const { proposals: all, origin } = useReview.getState();
+  if (origin?.kind === "breakdown") return decideParts(ids, false);
   const dropped = new Set(withDependents(ids, all));
   const gone = all.filter((p) => dropped.has(p.id));
   recordDiscarded(gone, fromOf(origin, gone));

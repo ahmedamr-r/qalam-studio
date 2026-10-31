@@ -216,6 +216,8 @@ export function proposalLine(p: Proposal, doc: Doc): string {
       return `Merge ${t(p.dropId)} into ${t(p.cardId)}`;
     case "note":
       return "A note beside the tree";
+    case "goal":
+      return `Add “${p.card.title}” under ${t(p.parentId)}`;
   }
 }
 

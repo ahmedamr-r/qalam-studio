@@ -1,7 +1,6 @@
 import { useState } from "react";
 import clsx from "clsx";
 import { ExternalLink, Target } from "lucide-react";
-import { callAI } from "@/ai/client";
 import { feedback } from "@/commands/feedback";
 import { loadGoals } from "@/goals/client";
 import type { Breakdown as BreakdownData, BreakdownPart } from "@/goals/breakdown";
@@ -9,7 +8,7 @@ import { metricLine } from "@/goals/goals-md";
 import { checkParts } from "@/goals/math";
 import type { Benchmark, Outside as OutsideData } from "@/goals/outside";
 import { GOAL_LEVERS, LEVER_LABEL, type Goal, type GoalLever } from "@/goals/types";
-import { orgFetch, orgPath } from "@/org/client";
+import { breakDown, decidePart, lookOutside } from "@/org/goal-work";
 import { goalHref } from "@/projects/model";
 import { QalamAIGlyph } from "../brand";
 import { Button } from "../controls";
@@ -29,14 +28,6 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
 const value = (b: Pick<Benchmark, "value" | "unit">) => (b.unit === "%" ? `${b.value}%` : `${b.value.toLocaleString("en-US")}${b.unit ? ` ${b.unit}` : ""}`);
 
-/** A long piece of work in the core, with what it's doing as it goes. */
-async function run<T>(path: string, body: unknown, onActivity: (label: string) => void): Promise<T> {
-  const { data } = await callAI<T>(await orgPath(path), body, undefined, undefined, (e) => {
-    if (e.type === "activity") onActivity(e.label);
-  });
-  return data;
-}
-
 export function GoalsUnder({ goal, children, breakdown, onChanged }: { goal: Goal; children: Goal[]; breakdown?: BreakdownData; onChanged: () => void }) {
   const [asking, setAsking] = useState(false);
   const [levers, setLevers] = useState<GoalLever[]>([]);
@@ -47,7 +38,7 @@ export function GoalsUnder({ goal, children, breakdown, onChanged }: { goal: Goa
     setBusy("Qalam AI is breaking it down");
     setNote(null);
     try {
-      const r = await run<{ parts: number; none: string }>(`/goals/${encodeURIComponent(goal.id)}/breakdown`, { levers }, setBusy);
+      const r = await breakDown(goal.id, { levers }, setBusy);
       setAsking(false);
       if (!r.parts) setNote(r.none || "Qalam AI found nothing it could stand behind to propose.");
       onChanged();
@@ -58,7 +49,7 @@ export function GoalsUnder({ goal, children, breakdown, onChanged }: { goal: Goa
     }
   };
   const decide = async (p: BreakdownPart, accept: boolean) => {
-    await orgFetch(`/goals/${encodeURIComponent(goal.id)}/breakdown/${encodeURIComponent(p.id)}`, { method: "POST", json: { accept } }).catch((e) => feedback(`Couldn't change it: ${message(e)}`, { kind: "error", id: "goal.part" }));
+    await decidePart(goal.id, p.id, accept).catch((e) => feedback(`Couldn't change it: ${message(e)}`, { kind: "error", id: "goal.part" }));
     if (accept) await loadGoals().catch(() => {});
     onChanged();
   };
@@ -175,7 +166,7 @@ export function OtherAims({ goal, outside, onChanged }: { goal: Goal; outside?: 
     setBusy("Looking up what companies like yours aim for");
     setNote(null);
     try {
-      const r = await run<{ kept: number; read: number; error?: string }>(`/goals/${encodeURIComponent(goal.id)}/outside`, {}, setBusy);
+      const r = await lookOutside(goal.id, setBusy);
       setNote(r.error ?? (r.kept ? null : `Read ${plural(r.read, "page")}; no number on them held up.`));
       onChanged();
     } catch (e) {

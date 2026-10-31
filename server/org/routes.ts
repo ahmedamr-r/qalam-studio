@@ -199,7 +199,7 @@ export function orgRoutes(): Hono<Env> {
     const store = c.get("store");
     const id = c.req.param("id");
     if (!goalById(await store.getGoals(), id)) return c.json({ error: "not_found", message: "No such goal" }, 404);
-    return streamed(c.req.raw.signal, (emit) => findProblems(store, id, emit));
+    return streamed(c.req.raw.signal, (emit, signal) => findProblems(store, id, emit, signal));
   });
   // Drafting solutions for a problem (server/org/solutions.ts): a page's, or a card's on a board.
   r.post("/api/org/:org/solutions", async (c) => {
@@ -322,6 +322,10 @@ export function orgRoutes(): Hono<Env> {
     return c.json({ ok: true });
   });
   // What others aim for, and breaking a goal down (server/org/outside.ts).
+  r.get("/api/org/:org/goals/:id/work", async (c) => {
+    if (!ID.test(c.req.param("id"))) return bad("No such goal");
+    return c.json(await c.get("store").getGoalWork(c.req.param("id")));
+  });
   r.post("/api/org/:org/goals/:id/outside", async (c) => {
     if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't look this up." }, 503);
     if (rateLimited(c.req.raw)) return c.json({ error: "rate_limited", message: "Too many requests, try again in a few minutes." }, 429);
@@ -338,7 +342,7 @@ export function orgRoutes(): Hono<Env> {
     const store = c.get("store");
     const id = c.req.param("id");
     if (!goalById(await store.getGoals(), id)) return c.json({ error: "not_found", message: "No such goal" }, 404);
-    return streamed(c.req.raw.signal, (emit) => breakDown(store, id, { levers: [...new Set(picked)] }, emit));
+    return streamed(c.req.raw.signal, (emit, signal) => breakDown(store, id, { levers: [...new Set(picked)] }, emit, signal));
   });
   r.post("/api/org/:org/goals/:id/breakdown/:part", async (c) => {
     const { accept } = ((await c.req.json().catch(() => ({}))) ?? {}) as { accept?: unknown };

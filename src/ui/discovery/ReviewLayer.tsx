@@ -1,7 +1,12 @@
 import { useState, type ReactNode } from "react";
 import clsx from "clsx";
-import { ArrowRight, Check, ChevronDown, Quote, X } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, ExternalLink, Quote, X } from "lucide-react";
 import { studio, useStudio } from "@/doc/store";
+import { goalsNow } from "@/goals/client";
+import { metricLine } from "@/goals/goals-md";
+import { checkParts, type PartsCheck } from "@/goals/math";
+import { childrenOf, goalById } from "@/goals/tree";
+import { LEVER_LABEL } from "@/goals/types";
 import { useGhosts } from "@/doc/ghosts";
 import { worldBounds } from "@/doc/geometry";
 import { cardOf } from "@/discovery/ops";
@@ -81,12 +86,16 @@ export default function ReviewLayer({ vp }: { vp: { w: number; h: number } }) {
     }
   }
   const from = origin?.kind === "dump" ? "your brain dump" : origin?.kind === "placed" ? "what was added to the organization" : origin?.kind === "solutions" ? "drafted solutions" : origin?.kind === "tests" ? "drafted tests" : "your sources";
+  // Goals proposed under a goal: whether, with the goals under it already, they make its number (code's arithmetic).
+  const parts = origin?.kind === "breakdown" ? partsCheck(origin.goal, origin.relation, proposals) : null;
+  const said = origin?.kind === "breakdown" ? `${plural(proposals.length, "goal")} proposed under it` : `${plural(proposals.length, "change")} from ${from}`;
   return (
     <>
       <Pill>
         <QalamAIGlyph size={14} />
-        <span className="min-w-0 truncate" title={`Qalam AI proposes ${plural(proposals.length, "change")} from ${from}`}>
-          {plural(proposals.length, "change")} from {from}
+        <span className="min-w-0 truncate" title={parts ? parts.line : `Qalam AI proposes ${plural(proposals.length, "change")} from ${from}`}>
+          {said}
+          {parts && <span className={clsx(parts.now?.holds === false || parts.target?.reaches === false ? "text-warning" : "text-fg-muted")}> · {partsWord(parts)}</span>}
         </span>
         <Button size="sm" onClick={acceptAll}>
           Accept all
@@ -100,6 +109,22 @@ export default function ReviewLayer({ vp }: { vp: { w: number; h: number } }) {
       ))}
     </>
   );
+}
+
+/** The goals under a goal already and those proposed: whether their numbers make its (null: nothing to check). */
+function partsCheck(goalId: string, relation: "product" | "sum" | null, proposals: Proposal[]): PartsCheck | null {
+  const tree = goalsNow();
+  const goal = goalById(tree, goalId);
+  if (!goal || !relation) return null;
+  const proposed = proposals.flatMap((p) => (p.kind === "goal" ? [p.part.metric] : []));
+  return checkParts(goal.metric, [...childrenOf(tree, goalId).map((c) => c.metric), ...proposed], relation);
+}
+
+/** The arithmetic in a few words, for the pill (the whole line in its title). */
+function partsWord(c: PartsCheck): string {
+  if (c.target) return c.target.reaches ? "together they reach its target" : "short of its target";
+  if (c.now) return c.now.holds ? "together they make its number" : "they don't make its number";
+  return "each needs its number";
 }
 
 /** A node of a ghost under one of its roots (a ghost holds its group's other trees too). */
@@ -147,6 +172,8 @@ function label(p: Proposal, all: Proposal[]): string {
       return `Merge “${title(p.dropId)}” into this`;
     case "note":
       return p.color === "pink" ? "Pushback" : "Open question";
+    case "goal":
+      return `New sub-goal · ${LEVER_LABEL[p.part.lever]}`;
   }
 }
 
@@ -237,6 +264,21 @@ function Detail({ p }: { p: Proposal }) {
     }
     case "note":
       return <Words text={p.text} />;
+    case "goal":
+      return (
+        <div className="flex flex-col gap-[4px]">
+          <span className="text-caption text-fg tnum">{p.part.metric ? [p.part.metric.name !== p.part.title ? p.part.metric.name : null, metricLine(p.part.metric)].filter(Boolean).join(": ") : "No number yet"}</span>
+          {p.part.benchmarks.map((b) => (
+            <a key={b.id + b.url} href={b.url} target="_blank" rel="noreferrer" className="flex items-start gap-[6px] text-caption text-fg-subtle hover:text-fg">
+              <ExternalLink {...SMALL} className="mt-[2px] shrink-0" />
+              <span>
+                Others report {b.unit === "%" ? `${b.value}%` : `${b.value.toLocaleString("en-US")}${b.unit ? ` ${b.unit}` : ""}`}, {b.what} ({b.who}): “{b.quote}”
+              </span>
+            </a>
+          ))}
+          {!p.part.cites.length && <span className="text-micro text-fg-subtle">Rests on the goals above it; nothing in your material yet.</span>}
+        </div>
+      );
   }
 }
 

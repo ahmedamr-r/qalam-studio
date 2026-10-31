@@ -3,7 +3,7 @@ import { nanoid } from "nanoid";
 import { breakdownCall } from "@/ai/breakdown";
 import { claimsCall } from "@/ai/outside";
 import { research, structured } from "@/ai/server";
-import { breakdownMaterial, sanitizeBreakdown } from "@/goals/breakdown";
+import { breakdownMaterial, sanitizeBreakdown, type Breakdown } from "@/goals/breakdown";
 import { claimsMaterial, outsideTask, sanitizeClaims, OUTSIDE_LIMITS, type OutsidePage } from "@/goals/outside";
 import { chainOf, goalById } from "@/goals/tree";
 import type { Goal, GoalLever } from "@/goals/types";
@@ -42,7 +42,7 @@ export async function lookOutside(store: OrgStore, goalId: string, emit: (label:
   if (!pages.length) return { kept: 0, read: 0, error: "None of the pages it found could be read." };
   emit("Qalam AI is checking each number on its page");
   const m = claimsMaterial({ task, notes: info.notes, pages });
-  const { data, model } = await structured<unknown>(claimsCall(m));
+  const { data, model } = await structured<unknown>(claimsCall(m), signal);
   const now = Date.now();
   const dropped: { why: string; item: unknown }[] = [];
   const claims = sanitizeClaims(data, m, { now }, (why, item) => dropped.push({ why, item }));
@@ -54,7 +54,7 @@ export async function lookOutside(store: OrgStore, goalId: string, emit: (label:
 }
 
 /** Break it down: the goals under it Qalam AI would propose, from the team's own material, with what others report beside them. */
-export async function breakDown(store: OrgStore, goalId: string, o: { levers: GoalLever[] }, emit: (label: string) => void): Promise<{ parts: number; none: string }> {
+export async function breakDown(store: OrgStore, goalId: string, o: { levers: GoalLever[] }, emit: (label: string) => void, signal?: AbortSignal): Promise<{ parts: number; none: string; breakdown: Breakdown }> {
   const { goal, tree } = await goalOf(store, goalId);
   const deps = await coreDeps(store);
   const product = goal.product ? deps.products.find((p) => p.id === goal.product) : undefined;
@@ -64,15 +64,16 @@ export async function breakDown(store: OrgStore, goalId: string, o: { levers: Go
   const benchmarks = (await Promise.all(chainOf(tree, goalId).map((g) => store.getGoalWork(g.id)))).flatMap((w) => w.outside?.claims ?? []).slice(0, 12);
   const m = breakdownMaterial({ tree, goal, productName: product?.name, context: deps.productLine(goal.product ?? null).slice(0, 2500), pack: pack ? { block: pack.context.block, pieces: pack.pieces } : null, benchmarks, levers: o.levers });
   emit("Qalam AI is breaking it down");
-  const { data, model } = await structured<unknown>(breakdownCall(m));
+  const { data, model } = await structured<unknown>(breakdownCall(m), signal);
   const now = Date.now();
   const dropped: { why: string; item: unknown }[] = [];
   const r = sanitizeBreakdown(data, m, { now, id: () => nanoid(8) }, (why, item) => dropped.push({ why, item }));
   await store
     .putTrace({ id: nanoid(10), projectId: "goals", kind: "breakdown", at: now, ...(model ? { model } : {}), goal: goalId, pieces: [...m.pieces.keys()], benchmarks: [...m.benchmarks.keys()], answer: data, kept: r.parts.length, dropped } as { id: string; projectId: string })
     .catch(() => {});
-  await store.changeGoalWork(goalId, (w) => ({ ...w, breakdown: { at: now, levers: o.levers, ...r, decided: {} } }));
-  return { parts: r.parts.length, none: r.none };
+  const breakdown: Breakdown = { at: now, levers: o.levers, ...r, decided: {} };
+  await store.changeGoalWork(goalId, (w) => ({ ...w, breakdown }));
+  return { parts: r.parts.length, none: r.none, breakdown };
 }
 
 /** Accept a proposed goal under it (it goes in goals.md, under the goal, on its lever), or discard it. */

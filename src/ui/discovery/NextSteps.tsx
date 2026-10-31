@@ -9,8 +9,11 @@ import { backingLine, nextSteps, SHOWN, type CardFacts, type NextStep } from "@/
 import { metricLine } from "@/goals/goals-md";
 import { rankForGoal } from "@/goals/problems";
 import { goalById } from "@/goals/tree";
+import { GOAL_LEVERS, LEVER_LABEL, type GoalLever } from "@/goals/types";
+import { goalWork } from "@/org/goal-work";
 import { strengthOf } from "@/hub/needs";
 import { sameTopic } from "@/hub/topics";
+import { isProblemPage } from "@/space/compose";
 import { useSpaceInputs } from "@/space/session";
 import { useSpaceView } from "@/space/view";
 import { placeCard, toScreenBox } from "../ai/anchor";
@@ -18,7 +21,8 @@ import { QalamAIGlyph } from "../brand";
 import { Button, CommandKbd, IconBtn, Spinner } from "../controls";
 import { useHealth } from "../frame/useHealth";
 import { useJobs } from "../goals/useJobs";
-import { stopBusy, useBusy, type Busy } from "./busy";
+import { r } from "../recipes";
+import { stopBusy, useBusy, type Busy, type Done } from "./busy";
 import { useDump } from "./dump";
 import { foldNextSteps, runStep, useNextSteps } from "./next";
 import { useReview } from "./review";
@@ -37,6 +41,25 @@ const FOLDED_W = 76;
 const BAR = 46;
 const ICON = { size: 14, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 
+/** How many goals proposed under a goal wait to be decided (its work file, asked again when a review or a step ends). */
+function usePending(goal: string | null): number {
+  const [n, setN] = useState<{ goal: string; n: number } | null>(null);
+  const reviewing = useReview((s) => s.proposals.length > 0);
+  const busy = useBusy((s) => !!s.busy);
+  useEffect(() => {
+    if (!goal || reviewing || busy) return;
+    let alive = true;
+    void goalWork(goal).then(
+      (w) => alive && setN({ goal, n: w.breakdown ? w.breakdown.parts.filter((p) => !w.breakdown!.decided[p.id]).length : 0 }),
+      () => {},
+    );
+    return () => {
+      alive = false;
+    };
+  }, [goal, reviewing, busy]);
+  return n?.goal === goal ? n.n : 0;
+}
+
 /** What's known about the picked card, from what the canvas has loaded. */
 export function useCardFacts(id: string | null): CardFacts | null {
   const node = useStudio((s) => (id ? s.doc.nodes[id] : undefined));
@@ -47,6 +70,7 @@ export function useCardFacts(id: string | null): CardFacts | null {
   const reviewing = useReview((s) => s.proposals.length > 0);
   const { rows } = useHealth();
   const jobs = useJobs();
+  const pending = usePending(thing?.type === "goal" ? thing.goal : null);
   return useMemo(() => {
     if (!id || !isOstCard(node)) return null;
     const card = node.meta.ost;
@@ -64,17 +88,20 @@ export function useCardFacts(id: string | null): CardFacts | null {
             goal: {
               id: goal.id,
               number: (goal.metric && metricLine(goal.metric)) || null,
-              behind: rankForGoal(goal.id, { tree: inputs.tree, links: [...inputs.links], needs: [...needs] }).length,
+              // The problems on its board under it, and the pages linked to it that no board has.
+              behind: node.children.filter((k) => !isProblemPage(k) && isOstCard(doc.nodes[k]) && doc.nodes[k].meta.ost.kind === "opportunity").length + rankForGoal(goal.id, { tree: inputs.tree, links: [...inputs.links], needs: [...needs] }).filter((p) => !p.onBoard).length,
               job: jobs?.find((j) => j.goal === goal.id)?.title ?? null,
+              pending,
             },
           }
         : {}),
+      pages: needs.length,
       suggested: card.kind === "test" && !!card.test?.suggested && !card.test.criterion,
       ai: !rows?.some((r) => r.id === "engine"),
       reviewing,
       busyElsewhere: !!busy && busy.card !== id,
     };
-  }, [id, node, doc, inputs, thing, busy, reviewing, rows, jobs]);
+  }, [id, node, doc, inputs, thing, busy, reviewing, rows, jobs, pending]);
 }
 
 export default function NextSteps({ vp }: { vp: { w: number; h: number } }) {
@@ -91,8 +118,11 @@ export default function NextSteps({ vp }: { vp: { w: number; h: number } }) {
   const faint = useSpaceView((s) => !!sel && s.faint.has(sel));
   const facts = useCardFacts(sel);
   const busy = useBusy((s) => s.busy);
+  const done = useBusy((s) => (sel && s.done?.card === sel ? s.done : null));
   const folded = useNextSteps((s) => s.folded);
   const [more, setMore] = useState(false);
+  // Break it down asks which levers to look at first.
+  const [asking, setAsking] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const [h, setH] = useState(120);
   const inset = useDiscovery((s) => s.inset);
@@ -104,11 +134,16 @@ export default function NextSteps({ vp }: { vp: { w: number; h: number } }) {
   const onScreen = !!box && box.x + box.w >= 0 && box.x <= room.w && box.y + box.h >= 0 && box.y <= room.h;
   const mine = sel && busy?.card === sel ? busy : null;
   const steps = show && facts ? nextSteps(facts) : [];
+  const pick = (s: NextStep) => {
+    if (!sel || !facts) return;
+    if (s.id === "break-down") return setAsking(sel);
+    void runStep(sel, s, facts);
+  };
   // ⌘↵ runs the step drawn first.
-  const first = onScreen && !folded && !mine && steps[0] && !steps[0].blocked ? steps[0] : null;
+  const first = onScreen && !folded && !mine && asking !== sel && steps[0] && !steps[0].blocked ? steps[0] : null;
   useEffect(() => {
-    useNextSteps.setState({ first: first && sel && facts ? { card: sel, run: () => void runStep(sel, first, facts) } : null });
-  }, [first, sel, facts]);
+    useNextSteps.setState({ first: first && sel ? { card: sel, run: () => pick(first) } : null });
+  });
   useEffect(() => () => useNextSteps.setState({ first: null }), []);
   useEffect(() => setMore(false), [sel]);
   // Placed by its height, measured once drawn.
@@ -140,12 +175,22 @@ export default function NextSteps({ vp }: { vp: { w: number; h: number } }) {
           <X {...ICON} />
         </IconBtn>
       </div>
+      {done && !mine && <DoneLine done={done} />}
       {mine ? (
         <Running busy={mine} />
+      ) : asking === sel && facts.goal ? (
+        <Levers
+          onCancel={() => setAsking(null)}
+          onGo={(levers) => {
+            setAsking(null);
+            const s = steps.find((x) => x.id === "break-down");
+            if (s) void runStep(sel, s, facts, { levers });
+          }}
+        />
       ) : (
         <>
           {shown.map((s, i) => (
-            <StepRow key={s.id} step={s} main={i === 0} onRun={() => void runStep(sel, s, facts)} />
+            <StepRow key={s.id} step={s} main={i === 0} onRun={() => pick(s)} />
           ))}
           {rest > 0 && (
             <button type="button" aria-expanded={more} className="q-item flex h-[26px] items-center gap-[4px] rounded-md px-[8px] text-caption text-fg-muted hover:bg-hover hover:text-fg" onClick={() => setMore(!more)}>
@@ -189,6 +234,51 @@ function StepRow({ step, main, onRun }: { step: NextStep; main: boolean; onRun: 
       </span>
       {main && !step.blocked && <CommandKbd command="discovery.next-step" size="sm" />}
     </button>
+  );
+}
+
+/** Break it down's question: which levers to look at (none picked: Qalam AI chooses). */
+function Levers({ onGo, onCancel }: { onGo: (levers: GoalLever[]) => void; onCancel: () => void }) {
+  const [levers, setLevers] = useState<GoalLever[]>([]);
+  return (
+    <div className="flex flex-col gap-[8px] px-[8px] pt-[2px] pb-[6px]">
+      <span className="text-caption text-fg">Which levers should it look at? Leave them all off and Qalam AI picks.</span>
+      <div className="flex flex-wrap gap-[4px]" role="group" aria-label="Levers">
+        {GOAL_LEVERS.map((l) => {
+          const on = levers.includes(l);
+          return (
+            <button key={l} type="button" aria-pressed={on} onClick={() => setLevers(on ? levers.filter((x) => x !== l) : [...levers, l])} className={clsx(r.buttonSm, on ? r.buttonSecondary : r.buttonGhost, on && "shadow-[inset_0_0_0_1px_var(--color-line-strong)]")}>
+              {LEVER_LABEL[l]}
+            </button>
+          );
+        })}
+      </div>
+      <div className="flex items-center gap-[6px]">
+        <Button size="sm" onClick={() => onGo(levers)}>
+          <QalamAIGlyph size={12} /> Propose goals under it
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** What the last step for this card came to, when it isn't on the canvas. */
+function DoneLine({ done }: { done: Done }) {
+  return (
+    <div role="status" className="flex flex-col gap-[4px] px-[8px] pb-[4px] text-caption text-fg-muted" dir="auto">
+      <span>{done.text}</span>
+      {done.claims?.map((c) => (
+        <a key={c.url + c.what} href={c.url} target="_blank" rel="noreferrer" className="flex min-w-0 items-baseline gap-[6px] hover:text-fg">
+          <span className="shrink-0 font-medium text-fg tnum">{c.value}</span>
+          <span className="truncate">
+            {c.what} · {c.who}
+          </span>
+        </a>
+      ))}
+    </div>
   );
 }
 

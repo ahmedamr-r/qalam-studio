@@ -85,7 +85,7 @@ export interface Linked {
  * `pages` the need pages to read (all in their scope when not given, the best-backed 40 first).
  * `replace`: Qalam AI's earlier links between these that it doesn't make again are taken off.
  */
-export async function linkProblems(store: OrgStore, o: { targets: string[]; pages?: string[]; replace: boolean; emit?: (label: string) => void }): Promise<Linked> {
+export async function linkProblems(store: OrgStore, o: { targets: string[]; pages?: string[]; replace: boolean; emit?: (label: string) => void; signal?: AbortSignal }): Promise<Linked> {
   const tree = await store.getGoals();
   const targets = o.targets.filter((id) => goalById(tree, id));
   const none: Linked = { added: 0, kept: 0, removed: 0, none: "" };
@@ -101,7 +101,7 @@ export async function linkProblems(store: OrgStore, o: { targets: string[]; page
   const near = await nearGoals(store, targets.map((id) => goalById(tree, id)!));
   const m = bearingMaterial({ tree, targets, problems: pages, evidence: new Map(ranked.map((n) => [n.topic, n])), productName: (id) => products.find((p) => p.id === id)?.name, near });
   o.emit?.(`Qalam AI is reading ${m.problems.size === 1 ? "a problem" : `${m.problems.size} problems`} against ${targets.length === 1 ? "the goal" : `${targets.length} goals`}`);
-  const { data, model } = await structured<unknown>(bearingsCall(m));
+  const { data, model } = await structured<unknown>(bearingsCall(m), o.signal);
   const now = Date.now();
   const dropped: { why: string; item: unknown }[] = [];
   const found = sanitizeBearings(data, m, { now, refused }, (why, item) => dropped.push({ why, item }));
@@ -147,8 +147,8 @@ async function nearGoals(store: OrgStore, goals: Goal[]): Promise<Map<string, nu
 }
 
 /** "Find problems" on a goal's page: the goal and the goals under it, every need page in their scope. */
-export function findProblems(store: OrgStore, id: string, emit?: (label: string) => void): Promise<Linked> {
-  return store.getGoals().then((tree) => linkProblems(store, { targets: goalAndUnder(tree, id), replace: true, emit }));
+export function findProblems(store: OrgStore, id: string, emit?: (label: string) => void, signal?: AbortSignal): Promise<Linked> {
+  return store.getGoals().then((tree) => linkProblems(store, { targets: goalAndUnder(tree, id), replace: true, emit, signal }));
 }
 
 /** A person links a problem to a goal, or takes the link off (Qalam AI never makes it again). */

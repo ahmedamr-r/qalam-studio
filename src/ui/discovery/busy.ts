@@ -15,13 +15,21 @@ export interface Busy {
   ctrl: AbortController;
 }
 
-export const useBusy = create<{ busy: Busy | null }>(() => ({ busy: null }));
+/** What a step came to, when it isn't drawn on the canvas (links made, numbers others report). */
+export interface Done {
+  card: string;
+  text: string;
+  /** What others report, as found on their pages. */
+  claims?: { value: string; what: string; who: string; url: string }[];
+}
+
+export const useBusy = create<{ busy: Busy | null; done: Done | null }>(() => ({ busy: null, done: null }));
 
 /** Start a step for a card: null when Qalam AI is already on something. */
 export function begin(card: string, step: StepId, label: string): AbortController | null {
   if (useBusy.getState().busy) return null;
   const ctrl = new AbortController();
-  useBusy.setState({ busy: { card, step, label, started: Date.now(), ctrl } });
+  useBusy.setState({ busy: { card, step, label, started: Date.now(), ctrl }, done: null });
   return ctrl;
 }
 
@@ -30,8 +38,9 @@ export function relabel(ctrl: AbortController, label: string) {
   useBusy.setState((s) => (s.busy?.ctrl === ctrl ? { busy: { ...s.busy, label } } : {}));
 }
 
-export function end(ctrl: AbortController) {
-  useBusy.setState((s) => (s.busy?.ctrl === ctrl ? { busy: null } : {}));
+/** It's over, with what it came to when that's for the card's next steps to say. */
+export function end(ctrl: AbortController, done?: Done) {
+  useBusy.setState((s) => (s.busy?.ctrl === ctrl ? { busy: null, ...(done ? { done } : {}) } : {}));
 }
 
 export const stopBusy = () => useBusy.getState().busy?.ctrl.abort();

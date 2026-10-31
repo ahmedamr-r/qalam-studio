@@ -9,6 +9,7 @@ import { layoutDocTrees, TREE_GAP } from "./pass";
 import { fromSource, hasQuote, quotable } from "./sources";
 import { makeSticky } from "./sticky";
 import type { OstAssumption, OstCard, OstEvidence, OstMetric, StickyColor } from "./types";
+import type { BreakdownPart } from "@/goals/breakdown";
 
 /*
  * Qalam AI's proposals for the board, made safe and carried out (pure). A proposal changes one
@@ -46,6 +47,11 @@ export type Proposal = {
   | { kind: "move"; fromParent: string | null; /** null: onto the board as a tree of its own, at `at`. */ parentId: string | null; at?: Pt }
   | { kind: "merge"; /** The card that folds into `cardId`. */ dropId: string; title?: string }
   | { kind: "note"; /** The card it's beside (null: the tree's side). */ anchorId: string | null; textId: string; text: string; color: StickyColor; at?: Pt }
+  /**
+   * A goal under a goal (Break it down): drawn as a goal's card under the goal's, never put on the
+   * document; accepting it puts it in goals.md, and the canvas draws it from there.
+   */
+  | { kind: "goal"; /** The goal's card on the canvas. */ parentId: string; goal: string; part: BreakdownPart; card: OstCard }
 );
 
 /** A quote as evidence (null when its source or the quote is gone). */
@@ -54,7 +60,7 @@ export type EvidenceOf = (q: QuoteRef, against: boolean) => OstEvidence | null;
 const key = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 
 /** Where a proposal lands: the card it changes, or where a card it adds or moves goes. */
-export const proposalTarget = (p: Proposal): string | null => (p.kind === "card" || p.kind === "move" ? p.parentId : p.kind === "note" ? p.anchorId : p.cardId);
+export const proposalTarget = (p: Proposal): string | null => (p.kind === "card" || p.kind === "move" || p.kind === "goal" ? p.parentId : p.kind === "note" ? p.anchorId : p.cardId);
 
 /**
  * What a discarded proposal is remembered by, so it isn't proposed again (words attached to a
@@ -85,6 +91,8 @@ export function proposalKey(p: Proposal, all: Proposal[] = []): string {
       return `merge:${[p.cardId, p.dropId].sort().join("|")}`;
     case "note":
       return `note:${key(p.text)}`;
+    case "goal":
+      return `goal:${p.goal}:${p.part.id}`;
   }
 }
 
@@ -130,6 +138,7 @@ export function touchedRoots(doc: Doc, p: Proposal, all: Proposal[]): string[] {
   };
   const ids =
     p.kind === "card" ? [p.parentId ? rootOf(p.parentId) : p.cardId]
+    : p.kind === "goal" ? [rootOf(p.parentId)]
     : p.kind === "move" ? [rootOf(p.cardId), p.parentId ? rootOf(p.parentId) : p.cardId]
     : p.kind === "merge" ? [rootOf(p.cardId), rootOf(p.dropId)]
     : p.kind === "note" ? [p.cardId]
@@ -145,8 +154,11 @@ const resolve = (b: Backing, evidence: EvidenceOf) => [...b.quotes.map((q) => ev
 /** Words already on a card (the same span of the same source, or the same words). */
 const sameWords = (a: OstEvidence, b: OstEvidence) => (fromSource(a) && fromSource(b) && a.sourceId && a.span && b.span ? a.sourceId === b.sourceId && a.span[0] === b.span[0] && a.span[1] === b.span[1] : a.text === b.text);
 
-/** Carry out one proposal on a draft document. False when it no longer fits (a card gone or renamed, the words already there). */
-export function applyProposal(d: Doc, p: Proposal, evidence: EvidenceOf): boolean {
+/**
+ * Carry out one proposal on a draft document. False when it no longer fits (a card gone or renamed,
+ * the words already there). A goal under a goal is only drawn (`preview`): it's put in goals.md.
+ */
+export function applyProposal(d: Doc, p: Proposal, evidence: EvidenceOf, o: { preview?: boolean } = {}): boolean {
   const card = (id: string) => (isOstCard(d.nodes[id]) ? d.nodes[id].meta.ost! : null);
   switch (p.kind) {
     case "attach":
@@ -225,6 +237,11 @@ export function applyProposal(d: Doc, p: Proposal, evidence: EvidenceOf): boolea
       deleteKeepIn(d, p.dropId);
       return true;
     }
+    case "goal": {
+      if (!o.preview || d.nodes[p.cardId] || card(p.parentId)?.kind !== "outcome") return false;
+      addCardIn(d, { ...makeCardNode({ ...p.card }), id: p.cardId }, p.parentId);
+      return true;
+    }
     case "note": {
       if (d.nodes[p.cardId] || (p.anchorId && !d.nodes[p.anchorId])) return false;
       const { frame, text } = makeSticky(p.at ?? { x: 0, y: 0 }, p.color);
@@ -264,7 +281,7 @@ export function proposalDoc(doc: Doc, roots: string[], proposals: Proposal[], ev
 /** The proposals carried out on a ghost's draft: a moved card drawn anew where it goes, a note faded. */
 export function carryOut(d: Doc, proposals: Proposal[], evidence: EvidenceOf) {
   for (const p of proposals) {
-    if (!applyProposal(d, p, evidence)) continue;
+    if (!applyProposal(d, p, evidence, { preview: true })) continue;
     if (p.kind === "move" && isOstCard(d.nodes[p.cardId])) d.nodes[p.cardId].meta.ost = { ...d.nodes[p.cardId].meta.ost! };
     if (p.kind === "note") d.nodes[p.cardId].opacity = 0.72;
   }

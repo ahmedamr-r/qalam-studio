@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
 import { MoreHorizontal, X } from "lucide-react";
-import { callAI } from "@/ai/client";
 import { feedback } from "@/commands/feedback";
 import type { Decision } from "@/decisions/model";
 import { metricProgress } from "@/discovery/metric";
@@ -17,7 +16,8 @@ import type { GoalProblem } from "@/goals/problems";
 import { underOf } from "@/goals/tree";
 import type { Goal } from "@/goals/types";
 import { strengthFill, strengthOf } from "@/hub/needs";
-import { orgFetch, orgJson, orgPath } from "@/org/client";
+import { orgFetch, orgJson } from "@/org/client";
+import { findProblems, type Linked } from "@/org/goal-work";
 import { useOrgContext } from "@/org/context";
 import { onOrgChange } from "@/org/live";
 import { goalHref, spaceHref, topicHref } from "@/projects/model";
@@ -64,13 +64,6 @@ interface PageData {
   unlinked: { id: string; title: string; sources: number; quotes: number }[];
   decisions: Decision[];
   indexed: boolean;
-}
-
-interface Linked {
-  added: number;
-  kept: number;
-  removed: number;
-  none: string;
 }
 
 const ICON = { size: 14, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
@@ -149,10 +142,7 @@ export default function GoalPage({ id }: { id: string }) {
     setFinding("Qalam AI is reading the problems against the goal");
     setFound(null);
     try {
-      const { data } = await callAI<Linked>(await orgPath(`/goals/${encodeURIComponent(id)}/problems`), {}, undefined, undefined, (e) => {
-        if (e.type === "activity") setFinding(e.label);
-      });
-      setFound(data);
+      setFound(await findProblems(id, setFinding));
       load();
     } catch (e) {
       feedback(`Qalam AI couldn't finish: ${message(e)}`, { kind: "error", id: "goal.problems" });

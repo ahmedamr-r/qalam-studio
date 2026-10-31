@@ -3,8 +3,10 @@ import { isOstCard } from "@/doc/board";
 import { studio } from "@/doc/store";
 import { updateCardIn } from "@/discovery/ops";
 import type { CardFacts, NextStep } from "@/discovery/next";
+import type { GoalLever } from "@/goals/types";
 import { goalHref, topicHref } from "@/projects/model";
 import { navigate } from "../nav";
+import { breakDownFor, findProblemsFor, lookOutsideFor, reviewPartsFor } from "./goal-steps";
 import { draftSolutionsFor } from "./solutions";
 import { useDiscovery } from "./store";
 import { draftTestsFor } from "./tests";
@@ -36,10 +38,22 @@ export function foldNextSteps(folded: boolean) {
   }
 }
 
-/** Run one of a card's next steps. */
-export async function runStep(card: string, step: NextStep, f: CardFacts): Promise<void> {
+/** Run one of a card's next steps (Break it down with the levers picked: none, Qalam AI's choice). */
+export async function runStep(card: string, step: NextStep, f: CardFacts, o: { levers?: GoalLever[] } = {}): Promise<void> {
   if (step.blocked) return;
   switch (step.id) {
+    case "find-problems":
+      if (f.goal) await findProblemsFor(card, f.goal.id);
+      return;
+    case "break-down":
+      if (f.goal) await breakDownFor(card, f.goal.id, o.levers ?? []);
+      return;
+    case "review-parts":
+      if (f.goal) await reviewPartsFor(card, f.goal.id);
+      return;
+    case "others":
+      if (f.goal) await lookOutsideFor(card, f.goal.id);
+      return;
     case "draft-solutions":
       return draftSolutionsFor(card);
     case "draft-tests":
