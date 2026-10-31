@@ -68,7 +68,14 @@ export default function BrainDump({ vp }: { vp: { w: number; h: number } }) {
       style={{ left: pos.left, top: pos.top, width: W, maxHeight: area.h - 16, "--radix-popper-transform-origin": pos.side === "right" ? "0 0" : "100% 0" } as CSSProperties}
       className={clsx(r.card, "q-pop pointer-events-auto absolute z-[3] flex flex-col overflow-hidden text-fg")}
       // Keys typed here must not reach the canvas shortcuts (Backspace would delete the selection).
-      onKeyDown={(e) => e.stopPropagation()}
+      // Escape tucks it away: nothing typed or read is lost, and the bubble brings it back.
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === "Escape" && !e.defaultPrevented) {
+          e.preventDefault();
+          useDump.setState({ minimised: true });
+        }
+      }}
     >
       <header className="flex h-[44px] shrink-0 items-center gap-[8px] border-b border-line-subtle pr-[8px] pl-[14px]">
         <QalamAIGlyph size={16} done={session?.phase === "placed"} />

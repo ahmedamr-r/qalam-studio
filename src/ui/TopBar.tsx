@@ -438,6 +438,8 @@ function Crumbs() {
 
 function ZoomMenu() {
   const zoom = useStudio((s) => s.camera.zoom);
+  // A board has no pixels, guides or rulers to show: only zooming.
+  const board = useProjectType() === "discovery";
   return (
     <Menu
       label="Zoom"
@@ -459,13 +461,17 @@ function ZoomMenu() {
       {[0.5, 1, 2].map((z) => (
         <ZoomTo key={z} zoom={z} />
       ))}
-      <MenuSeparator />
-      <CommandItem id="view.pixel-preview" />
-      <CommandItem id="view.pixel-grid" />
-      <CommandItem id="view.snap-pixels" />
-      <CommandItem id="view.layout-grids" />
-      <CommandItem id="view.rulers" />
-      <CommandItem id="view.outlines" />
+      {!board && (
+        <>
+          <MenuSeparator />
+          <CommandItem id="view.pixel-preview" />
+          <CommandItem id="view.pixel-grid" />
+          <CommandItem id="view.snap-pixels" />
+          <CommandItem id="view.layout-grids" />
+          <CommandItem id="view.rulers" />
+          <CommandItem id="view.outlines" />
+        </>
+      )}
     </Menu>
   );
 }

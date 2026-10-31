@@ -18,7 +18,7 @@ import { emptyContext } from "@/org/context-md";
 import { boardFromSetup } from "@/org/setup-board";
 import { setupQuotes, splitIds } from "@/org/setup-split";
 import { sanitizeGroups } from "@/org/setup-groups";
-import { applyLines, boardGoals, decide, lineGoalId, sanitizeSetup, setupSent, type OrgNow, type PlaceSays, type SetupLine, type SetupSession } from "@/org/setup";
+import { applyLines, boardGoals, decide, lineGoalId, namedNorth, sanitizeSetup, setupSent, type OrgNow, type PlaceSays, type SetupLine, type SetupSession } from "@/org/setup";
 import { projectHref } from "@/projects/model";
 import { NAME_MAX, TITLE_MAX, useYou } from "@/org/you";
 import { createProject } from "@/projects/session";
@@ -376,6 +376,7 @@ export async function acceptLines(lineIds: string[]) {
   const lines = all.filter((l) => lineIds.includes(l.id) && !session.decided?.[l.id]);
   if (!lines.length) return;
   const w = applyLines(orgNow(), session.proposal, lines, session.made, () => nanoid(10));
+  const { quotes } = setupView(useSetup.getState());
   if (w.about) await saveAbout(w.about);
   for (const p of w.products) await saveProduct(p);
   for (const g of [...w.goals].sort((a, b) => depthOf(a.line, all) - depthOf(b.line, all))) {
@@ -388,7 +389,8 @@ export async function acceptLines(lineIds: string[]) {
       ...(g.line.metric ? { metric: g.line.metric } : {}),
       cites: g.line.pieces.map((q) => `hub:quote:${q}`),
       by: "qalam",
-      ...(g.product || g.line.parent ? {} : { north: "if-none" as const }),
+      // The organization's first top goal, or the one they called their North Star (a product's too).
+      ...((!g.product && !g.line.parent) || namedNorth(g.line, quotes) ? { north: "if-none" as const } : {}),
     });
   }
   // A goal accepted before the goal it feeds goes under it now (unless someone has moved it since).

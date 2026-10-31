@@ -4,7 +4,7 @@ import type { PlanQuestion } from "@/ai/plan";
 import { initialFlow } from "@/ui/ai/questionFlow";
 import { toQuestion } from "@/ui/ai/plan";
 import { emptyContext } from "./context-md";
-import { applyLines, boardGoals, decide, goalLines, lineGoalId, nameHolds, pendingLines, sanitizeSetup, setupLineFor, setupSent, type OrgNow, type ProductSays, type SetupSession } from "./setup";
+import { applyLines, boardGoals, decide, goalLines, lineGoalId, namedNorth, nameHolds, pendingLines, sanitizeSetup, setupLineFor, setupSent, soleOwner, type OrgNow, type ProductSays, type SetupSession } from "./setup";
 
 const nothing = (): OrgNow => ({ about: { ...emptyContext(), goals: [] }, products: [] });
 
@@ -297,5 +297,32 @@ describe("the setup line a goal came from", () => {
     expect(setupLineFor({ id: "renamed", cites: ["hub:quote:q2"] }, [s])?.line.id).toBe("l2");
     expect(setupLineFor({ id: "renamed", cites: ["hub:quote:q1"] }, [s])).toBeNull();
     expect(setupLineFor({ id: "other", cites: [] }, [s])).toBeNull();
+  });
+});
+
+describe("whether they work on it alone", () => {
+  const said = (answer: string): Pick<SetupSession, "buckets"> => {
+    const q: PlanQuestion = { id: "who", title: "Who are you in it?", why: "Whose goals.", multi: false, options: [], recommended: [], allowOther: true };
+    const buckets = firstRound([q]);
+    return { buckets: [{ ...buckets[0], form: { ...initialFlow([toQuestion(q)]), answers: { who: { kind: "text" as const, text: answer } }, submitted: true } }] };
+  };
+  it("hears it in an answer", () => {
+    expect(soleOwner(said("Only PM for Cairo rides"))).toBe(true);
+    expect(soleOwner(said("I'm the only product manager here"))).toBe(true);
+    expect(soleOwner(said("Just me, I own both sides"))).toBe(true);
+  });
+  it("and not otherwise", () => {
+    expect(soleOwner(said("One of several PMs, I own the rider side"))).toBe(false);
+    expect(soleOwner({ buckets: [] })).toBe(false);
+  });
+});
+
+describe("the goal they called their North Star", () => {
+  const line = { field: "goals" as const, pieces: ["q1"], answers: [] as { question: string; answer: string }[] };
+  it("is the one resting on words that name it so", () => {
+    expect(namedNorth(line, [{ id: "q1", text: "North Star: completed trips per week." }])).toBe(true);
+    expect(namedNorth({ ...line, pieces: [], answers: [{ question: "Which leads?", answer: "Trips, it's our north-star" }] }, [])).toBe(true);
+    expect(namedNorth(line, [{ id: "q1", text: "Cut cancellations to 10%" }])).toBe(false);
+    expect(namedNorth({ ...line, field: "segments" as never }, [{ id: "q1", text: "North Star" }])).toBe(false);
   });
 });

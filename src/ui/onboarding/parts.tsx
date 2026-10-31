@@ -8,7 +8,7 @@ import { chooseVoice, useVoice } from "@/org/voice";
 import type { VoiceChoice } from "@/voice/model";
 import { childrenOf } from "@/goals/tree";
 import { useOrgContext } from "@/org/context";
-import { boardGoals, pendingLines, pickedDocs } from "@/org/setup";
+import { boardGoals, pendingLines, pickedDocs, soleOwner } from "@/org/setup";
 import { goalHref, orgHref, placeHref, topicHref } from "@/projects/model";
 import type { RankedNeed } from "@/hub/needs";
 import { needsDb } from "@/org/needs";
@@ -491,9 +491,15 @@ export function firstGoalHref(): string {
 function YoursPart({ data }: { data: PartData }) {
   const goals = useGoals();
   const picked = useFirstRun((s) => s.picked);
+  // They said they're the only one on it: every goal starts picked.
+  const sole = useSetup((s) => !!s.source?.setup && soleOwner(s.source.setup));
   const [saving, setSaving] = useState(false);
-  const chosen = new Set(picked ?? goals.mine);
   const list = treeRows(goals);
+  const all = sole && picked === null && !goals.mine.length;
+  const chosen = new Set(all ? list.map((g) => g.id) : (picked ?? goals.mine));
+  useEffect(() => {
+    if (all && data.open && list.length) useFirstRun.setState({ picked: list.map((g) => g.id) });
+  }, [all, data.open, list.length]);
   if (!data.open) return null;
   return (
     <div className="flex flex-col gap-[10px]">
@@ -532,7 +538,7 @@ function YoursPart({ data }: { data: PartData }) {
         >
           Next
         </button>
-        <span className="text-caption text-fg-subtle">{chosen.size ? `${chosen.size} picked` : "None picked: the home leads with the North Star."}</span>
+        <span className="text-caption text-fg-subtle">{sole && chosen.size === list.length && list.length ? "You said you're the only one on it, so they're all yours. Untick any that aren't." : chosen.size ? `${chosen.size} picked` : "None picked: the home leads with the North Star."}</span>
       </ReplyChips>
     </div>
   );

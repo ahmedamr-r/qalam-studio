@@ -1,4 +1,4 @@
-import { metricProgress } from "@/discovery/metric";
+import { metricProgress, metricRange } from "@/discovery/metric";
 import type { Canvas, CanvasKit, MaskFilter, Paint, Paragraph, Path } from "canvaskit-wasm";
 import type { Doc } from "@/doc/schema";
 import { type CardNode, isOstCard } from "@/doc/board";
@@ -543,7 +543,8 @@ export class OstPainter {
     const m = card.metric;
     const x = CARD.pad;
     const named = !!m?.name?.trim();
-    const nums = m && m.baseline !== null && m.target !== null;
+    const range = metricRange(m);
+    const nums = !!range;
     if (!named && !nums) {
       const dash = this.ck.PathEffect.MakeDash([3, 3], 0);
       this.stroke.setColor(this.col(p.line));
@@ -562,7 +563,7 @@ export class OstPainter {
       return;
     }
     const unit = m?.unit ? ` ${m.unit}` : "";
-    const right = nums ? `${fmt(m!.baseline!)} → ${fmt(m!.target!)}${unit}` : "No target yet";
+    const right = range ? `${fmt(range.from)} → ${fmt(range.to)}${unit}` : "No target yet";
     const rp = this.label(right, nums ? p.ink : p.subtle, 12, nums ? 600 : 500, inner / 2);
     const rw = this.width(rp);
     const lp = this.label(named ? m!.name.trim() : "Its number", p.muted, 12, 500, inner - rw - 8);

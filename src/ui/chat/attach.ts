@@ -144,6 +144,9 @@ function add(items: Attachment[]): Attachment[] {
   return fresh;
 }
 
+/** A spreadsheet, by its name: read as text, shown as a sheet. */
+const SHEET = /\.(csv|tsv|xlsx)$/i;
+
 /** Files from this computer: each read here, as the home's Add reads them. */
 export function attachFiles(files: File[]) {
   const fresh = add(files.map((f) => ({ key: `computer:${f.name}:${f.size}:${f.lastModified}`, from: "computer", via: "this computer", title: f.name, at: new Date(f.lastModified).toISOString(), state: "reading" as const })));
@@ -151,7 +154,7 @@ export function attachFiles(files: File[]) {
     const file = files.find((f) => `computer:${f.name}:${f.size}:${f.lastModified}` === a.key)!;
     void import("../discovery/ingest").then(({ ingestFile }) =>
       ingestFile(file).then(
-        (ingested) => set(a.key, { state: "ready", ingested, type: ingested.kind, ...pagesOf(ingested), ...guessed(a, ingested) }),
+        (ingested) => set(a.key, { state: "ready", ingested, type: SHEET.test(file.name) ? "sheet" : ingested.kind, ...pagesOf(ingested), ...guessed(a, ingested) }),
         (e: unknown) => set(a.key, { state: "failed", why: message(e) }),
       ),
     );

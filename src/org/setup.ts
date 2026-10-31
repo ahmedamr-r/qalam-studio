@@ -411,3 +411,16 @@ export function setupLineFor<S extends { setup?: SetupSession }>(goal: Pick<Goal
   }
   return byCites;
 }
+
+/** "Only PM", "the only product manager", "just me", "I own both sides": they work on it alone. */
+const SOLE = /\b(?:only|sole|single)\b[^.\n]{0,24}\b(?:pm|product manager|product lead|product owner|owner)\b|\bjust me\b|\bi own (?:it all|all of it|both|everything)\b/i;
+
+/** Whether an answer in the setup says they're the only one working on it: every goal is theirs. */
+export const soleOwner = (s: Pick<SetupSession, "buckets">): boolean => roundAnswers(s).some((round) => round.some((a) => SOLE.test(a.answer)));
+
+/** Whether a goal line is the one they called their North Star: a piece or answer it rests on says so. */
+export function namedNorth(line: Pick<SetupLine, "pieces" | "answers" | "field">, quotes: readonly Pick<SourceQuote, "id" | "text">[]): boolean {
+  if (line.field !== "goals") return false;
+  const said = [...quotes.filter((q) => line.pieces.includes(q.id)).map((q) => q.text), ...line.answers.map((a) => a.answer)];
+  return said.some((t) => /\bnorth[ -]?star\b/i.test(t));
+}

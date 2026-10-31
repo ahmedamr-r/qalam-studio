@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import clsx from "clsx";
-import { ArrowLeft, ClipboardPaste, ExternalLink, FileText, Globe, MessagesSquare, NotebookPen, Plug, Plus, Quote, Trash2, Upload, Users, X } from "lucide-react";
+import { ArrowLeft, Building2, ClipboardPaste, ExternalLink, FileText, Globe, MessagesSquare, NotebookPen, Plug, Plus, Quote, Trash2, Type, Upload, Users, X } from "lucide-react";
 import { studio, useStudio } from "@/doc/store";
 import type { Doc } from "@/doc/schema";
 import { newId } from "@/doc/factory";
@@ -307,17 +307,28 @@ export function AddSource({ onAdd, compact }: { onAdd?: (inputs: AddInput[]) => 
     useSources.setState({ adding: false });
     void addSources(inputs);
   };
-  const modes: { value: Mode; label: string }[] = [
-    { value: "file", label: "Files" },
-    { value: "url", label: "Page" },
-    { value: "paste", label: "Text" },
-    ...(tools.length ? [{ value: "tool" as const, label: "Tool" }] : []),
+  const modes: { value: Mode; label: string; icon: typeof Upload }[] = [
+    { value: "file", label: "Files", icon: Upload },
+    { value: "url", label: "Page", icon: Globe },
+    { value: "paste", label: "Text", icon: Type },
+    ...(tools.length ? [{ value: "tool" as const, label: "Tool", icon: Plug }] : []),
     // On a board: the organization's other sources (interviews another board read, say).
-    ...(onAdd ? [] : [{ value: "org" as const, label: "Organization" }]),
+    ...(onAdd ? [] : [{ value: "org" as const, label: "Organization", icon: Building2 }]),
   ];
+  // Words where there's room for them all, else each mode's mark with its name on hover.
+  const options = modes.map(({ value, label, icon: Icon }) => ({
+    value,
+    title: label,
+    label: (
+      <span className="inline-flex items-center gap-[5px]">
+        <Icon {...SMALL} className="@min-[340px]:hidden" aria-hidden />
+        <span className="sr-only @min-[340px]:not-sr-only">{label}</span>
+      </span>
+    ),
+  }));
   return (
-    <section aria-label="Add a source" className={clsx("flex flex-col gap-[8px]", !compact && "rounded-lg p-[10px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]")}>
-      <Segmented label="Add from" value={mode} options={modes} onChange={setMode} />
+    <section aria-label="Add a source" className={clsx("@container flex min-w-0 flex-col gap-[8px]", !compact && "rounded-lg p-[10px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]")}>
+      <Segmented label="Add from" value={mode} options={options} onChange={setMode} />
       {mode === "file" && <DropZone onFiles={(files) => add(files.map((file) => ({ kind: "file", file })))} />}
       {mode === "org" && <FromOrganization />}
       {mode === "url" && (

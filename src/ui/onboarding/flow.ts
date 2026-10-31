@@ -107,6 +107,9 @@ export function pickShape(shape: OrgShape) {
 /** Which engine the welcome picks when the live one has no key: Claude Code signed in, then a key kept here, then a model on this computer. */
 const FIRST_CHOICE: EngineKind[] = ["cli", "codex", "api", "openai", "gemini", "openrouter", "ollama", "lmstudio"];
 
+/** How long an engine's passed test counts for a new organization on the same computer. */
+const RECENT = 60 * 60 * 1000;
+
 /** What this computer has, tested with a short real call: an engine reached with a key that has none gives way to the first that's ready. */
 export async function checkEngine() {
   const { mode } = useFirstRun.getState();
@@ -119,6 +122,8 @@ export async function checkEngine() {
       if (next) v = await engineDb.choose(next);
     }
     setEngine({ view: v });
+    // Another organization on a computer whose engine answered in the last hour: that answer stands.
+    if (mode === "new" && v.test?.ok && Date.now() - v.test.at < RECENT) return void setEngine({ test: v.test });
     const testable = v.kind === "cli" ? v.claude.found && v.claude.signedIn !== false : stateOf(v.kind) === "ready" || (v.kind === "api" && !!v.key);
     setEngine({ test: testable ? await engineDb.test() : null });
   } catch (e) {

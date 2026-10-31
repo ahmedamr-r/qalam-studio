@@ -146,7 +146,7 @@ export default function LeftDock() {
             </PanelHeader>
             {/* Pages sit above the layers and keep their place while the layers scroll. */}
             {tab === "layers" && !board && <PagesSection />}
-            <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto">
+            <div ref={scroller} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
               {/* Tab switches: the new content rises in; the old one is gone at once. */}
               <RiseIn key={onComponents && tab === "layers" ? "components-page" : tab}>
                 {tab === "layers" && (board ? <OutlinePanel /> : onComponents ? <ComponentsOutline /> : <LayersPanel />)}
