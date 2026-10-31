@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { emptyDoc } from "@/doc/schema";
-import { LANE_GAP, LANE_ITEM_H, LANE_W, laneOf, litBy } from "./lane";
+import { LANE_GAP, LANE_ITEM_H, LANE_TILE, LANE_W, laneOf, litBy } from "./lane";
+import { sourceTile } from "./look";
 import { addCardIn, makeCardNode, newCard } from "./ops";
 import { quoteEvidence, type SourceQuote, type SourceRecord } from "./sources";
 
@@ -68,8 +69,9 @@ describe("a board's sources lane", () => {
     for (const i of lane.items) expect(i.x).toBe(0 - LANE_GAP - LANE_W);
     const ys = lane.items.map((i) => i.y);
     for (let k = 1; k < ys.length; k++) expect(ys[k]).toBeGreaterThanOrEqual(ys[k - 1] + LANE_ITEM_H);
-    // Their words back the goal at the top: they're first.
-    expect(lane.items[0].y).toBe(40 - LANE_ITEM_H / 2);
+    // Their words back the goal at the top: they're first, the tile level with it, its port on the right.
+    expect(lane.items[0].y).toBe(40 - LANE_TILE / 2);
+    expect(sourceTile(lane.items[0]).port).toEqual({ x: 0 - LANE_GAP - (LANE_W - LANE_TILE) / 2, y: 40 });
   });
 
   it("lights a source's wires and the cards at their ends, or a card's sources", () => {

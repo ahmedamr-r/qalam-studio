@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { CATALOG } from "./catalog";
-import { connectorOfOrigin, glyphTone, logoFor, TILE } from "./logos";
+import { wcagContrast } from "culori";
+import { brandOn, connectorOfOrigin, glyphTone, logoFor, TILE } from "./logos";
 
 describe("connector logos", () => {
   it("draws a brand colour on the tile, and one too pale for it in ink", () => {
@@ -15,6 +16,20 @@ describe("connector logos", () => {
     expect(glyphTone("not a colour")).toBe("ink");
     expect(logoFor("intercom")).toMatchObject({ kind: "mark", title: "Intercom", hex: "6AFDEF", tone: "ink" });
     expect(logoFor("notion")).toMatchObject({ kind: "mark", title: "Notion", hex: "000000", tone: "brand" });
+  });
+
+  it("keeps a brand's hue on a board's dark tile, lighter where it wouldn't read, and draws a near-grey one in ink", () => {
+    const dark = "#2A2926";
+    expect(brandOn("F24E1E", dark)).toBe("#F24E1E");
+    expect(brandOn("000000", dark)).toBeNull();
+    expect(brandOn("181717", dark)).toBeNull();
+    for (const hex of ["0052CC", "172B4D", "03363D"]) {
+      const on = brandOn(hex, dark)!;
+      expect(on).not.toBe(`#${hex}`);
+      expect(wcagContrast(on, dark)).toBeGreaterThanOrEqual(3);
+    }
+    // On a light ground a pale one goes darker instead.
+    expect(wcagContrast(brandOn("6AFDEF", "#FFFFFF")!, "#FFFFFF")).toBeGreaterThanOrEqual(3);
   });
 
   it("has the tile's colour as the stage token, in both themes", () => {

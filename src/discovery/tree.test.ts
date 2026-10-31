@@ -362,6 +362,9 @@ describe("evidence", () => {
 
 
 describe("card footers", () => {
+  const inner = (box: { w: number }) => box.w - CARD.pad * 2;
+  const row = CARD.chip + CARD.chipRowGap;
+
   it("wrap chips that don't fit beside each other, inside the card, and the card grows to hold them", () => {
     const card = newCard("solution", {
       title: "Order again shelf",
@@ -370,13 +373,39 @@ describe("card footers", () => {
       designs: [{ projectId: "p", at: 1 }],
     });
     const box = cardBox(card);
-    expect(box.chips.map((c) => c.text)).toEqual(["Your note", "3 assumptions", "1 design"]);
-    for (const c of box.chips) expect(c.x + c.w).toBeLessThanOrEqual(box.w - CARD.pad * 2);
-    expect(box.chips.map((c) => c.y)).toEqual([0, 0, CARD.chip + CARD.chipRowGap]);
-    expect(box.h).toBe(box.footerY! + CARD.chip * 2 + CARD.chipRowGap + CARD.pad);
-    // Two that fit share a row.
-    const short = cardBox({ ...card, assumptions: [] });
+    // The stage ends the footer, as a word with its dot.
+    expect(box.chips.map((c) => c.text)).toEqual(["Your note", "3 assumptions", "1 design", "Idea"]);
+    expect(box.chips.map((c) => c.glyph === "stage")).toEqual([false, false, false, true]);
+    for (const c of box.chips) expect(c.x + c.w).toBeLessThanOrEqual(inner(box));
+    const rows = new Set(box.chips.map((c) => c.y)).size;
+    expect(rows).toBeGreaterThan(1);
+    expect(box.h).toBe(box.footerY + (rows - 1) * row + CARD.chip + CARD.footerPad);
+    // Fewer chips, fewer rows.
+    const short = cardBox({ ...card, assumptions: [], designs: [] });
     expect(short.chips.map((c) => c.y)).toEqual([0, 0]);
-    expect(short.h).toBe(box.h - CARD.chip - CARD.chipRowGap);
+    expect(short.h).toBe(box.h - (rows - 1) * row);
+  });
+
+  it("put the stage at the right of the last row, or of a row of its own when that one's full", () => {
+    const fits = cardBox(newCard("opportunity", { title: "Can't find past orders" }));
+    expect(fits.chips.map((c) => [c.text, c.y])).toEqual([
+      ["No evidence yet", 0],
+      ["Exploring", 0],
+    ]);
+    const stage = fits.chips[1];
+    expect(stage.x + stage.w).toBe(inner(fits));
+    // An Assumed chip as wide as the footer leaves the stage a row of its own.
+    const full = cardBox(newCard("opportunity", { title: "Can't find past orders", createdBy: "ai" }));
+    expect(full.chips.map((c) => c.y)).toEqual([0, row]);
+    expect(full.h).toBe(fits.h + row);
+  });
+
+  it("start the title below the kind's tag, and end on a footer under a rule", () => {
+    const box = cardBox(newCard("test", { title: "Five-user prototype test" }));
+    expect(box.titleY).toBeGreaterThan(CARD.tag / 2);
+    expect(box.ruleY).toBeGreaterThan(box.titleY + box.titleH);
+    expect(box.footerY).toBe(box.ruleY + CARD.footerPad);
+    expect(box.chips.map((c) => c.text)).toEqual(["Planned"]);
+    expect(box.h).toBe(box.footerY + CARD.chip + CARD.footerPad);
   });
 });

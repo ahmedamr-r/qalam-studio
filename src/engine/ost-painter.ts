@@ -1,14 +1,14 @@
 import { metricProgress } from "@/discovery/metric";
-import type { Canvas, CanvasKit, MaskFilter, Paint, Paragraph } from "canvaskit-wasm";
+import type { Canvas, CanvasKit, MaskFilter, Paint, Paragraph, Path } from "canvaskit-wasm";
 import type { Doc } from "@/doc/schema";
 import { type CardNode, isOstCard } from "@/doc/board";
 import type { Pt } from "@/doc/geometry";
-import { CARD, cardBox, placeholderTitle, titleProps } from "@/discovery/metrics";
+import { CARD, cardBox, METRIC_H, placeholderTitle, titleProps } from "@/discovery/metrics";
+import { type Kind, KIND_MARK, KIND_OF, MARK_STROKE, TAG } from "@/discovery/look";
 import { foldToggle, isSubOutcome, kindLabel, orientationOf } from "@/discovery/tree";
-import { stageLabel } from "@/discovery/kinds";
 import { isAssumed } from "@/discovery/evidence";
 import { NUQTA_POLYGON, PENCIL_POLYGONS } from "@/ui/brand/pencil";
-import type { OstCard, OstKind } from "@/discovery/types";
+import type { OstCard } from "@/discovery/types";
 import { getEngine, hexToColor } from "./canvaskit";
 import { buildParagraph } from "./text";
 import { OST_PALETTE, type OstPalette } from "./ost-palette";
@@ -73,6 +73,9 @@ const STAGE_TONE: Record<string, Tone> = {
   inconclusive: "warning",
 };
 
+/** Each kind's colour in the palette. */
+const KIND_HUE: Record<Kind, "kindGoal" | "kindProblem" | "kindSolution" | "kindTest"> = { goal: "kindGoal", problem: "kindProblem", solution: "kindSolution", test: "kindTest" };
+
 const FONT = ["Inter", "IBM Plex Sans Arabic"];
 const fmt = (v: number) => (Math.abs(v) >= 1000 ? v.toLocaleString("en-US", { maximumFractionDigits: 1 }) : String(Math.round(v * 100) / 100));
 
@@ -83,6 +86,7 @@ export class OstPainter {
   private blur: MaskFilter | null = null;
   private titles = new Map<string, { key: string; p: Paragraph }>();
   private labels = new Map<string, Paragraph>();
+  private marks = new Map<Kind, { stroke: Path | null; fill: Path | null }>();
   private pal: OstPalette = OST_PALETTE.dark;
   private frame: OstFrame | null = null;
   private selected = new Set<string>();
@@ -104,6 +108,11 @@ export class OstPainter {
     for (const { p } of this.titles.values()) p.delete();
     this.titles.clear();
     this.clearLabels();
+    for (const m of this.marks.values()) {
+      m.stroke?.delete();
+      m.fill?.delete();
+    }
+    this.marks.clear();
     this.blur?.delete();
     this.fill.delete();
     this.stroke.delete();
@@ -227,18 +236,88 @@ export class OstPainter {
   // -------------------------------------------------------------------------
   // marks
 
-  /** ◉ ○ ▸ ◇: the kind of a card, 12 px around (cx, cy). Shapes, not emoji, so they're crisp at any zoom. */
-  private kindMark(canvas: Canvas, kind: OstKind, cx: number, cy: number, color: string) {
-    const c = this.col(color);
-    this.fill.setColor(c);
-    this.stroke.setColor(c);
-    this.stroke.setStrokeWidth(1.5);
-    if (kind === "outcome") {
-      canvas.drawCircle(cx, cy, 5.25, this.stroke);
-      canvas.drawCircle(cx, cy, 2.25, this.fill);
-    } else if (kind === "opportunity") canvas.drawCircle(cx, cy, 5, this.stroke);
-    else if (kind === "solution") this.poly(canvas, [cx - 3.5, cy - 4.5, cx + 4.5, cy, cx - 3.5, cy + 4.5], this.fill);
-    else this.poly(canvas, [cx, cy - 5, cx + 5, cy, cx, cy + 5, cx - 5, cy], this.stroke);
+  /** A kind's mark (◉ ○ ▸ ◇, src/discovery/look.ts), `size` px square around (cx, cy). */
+  private kindMark(canvas: Canvas, kind: Kind, cx: number, cy: number, color: string, size: number) {
+    let paths = this.marks.get(kind);
+    if (!paths) {
+      const m = KIND_MARK[kind];
+      paths = { stroke: m.stroke ? this.ck.Path.MakeFromSVGString(m.stroke) : null, fill: m.fill ? this.ck.Path.MakeFromSVGString(m.fill) : null };
+      this.marks.set(kind, paths);
+    }
+    const k = size / 12;
+    canvas.save();
+    canvas.translate(cx - size / 2, cy - size / 2);
+    canvas.scale(k, k);
+    if (paths.stroke) {
+      this.stroke.setColor(this.col(color));
+      this.stroke.setStrokeWidth(MARK_STROKE);
+      canvas.drawPath(paths.stroke, this.stroke);
+    }
+    if (paths.fill) {
+      this.fill.setColor(this.col(color));
+      canvas.drawPath(paths.fill, this.fill);
+    }
+    canvas.restore();
+  }
+
+  /**
+   * The kind, as a tag on the card's top edge (TAG in src/discovery/look.ts: half above it, half on
+   * the card) in the kind's own colour. Opaque, so the edge doesn't run through it. A sub-goal's is
+   * quieter, so the goal above it reads first.
+   */
+  private kindTag(canvas: Canvas, kind: Kind, label: string, quiet: boolean) {
+    const hue = this.pal[KIND_HUE[kind]];
+    const tp = this.label(label, hue, TAG.size, TAG.weight, 160, TAG.tracking);
+    const x = CARD.pad;
+    const y = -TAG.h / 2;
+    const w = TAG.pad * 2 + TAG.mark + this.width(tp);
+    const body = this.rrect(x, y, w, TAG.h, TAG.radius);
+    this.fill.setColor(this.col(this.pal.card));
+    canvas.drawRRect(body, this.fill);
+    this.fill.setColor(this.col(hue, quiet ? TAG.quietFill : TAG.fill));
+    canvas.drawRRect(body, this.fill);
+    this.stroke.setColor(this.col(hue, quiet ? TAG.quietEdge : TAG.edge));
+    this.stroke.setStrokeWidth(1);
+    canvas.drawRRect(this.rrect(x + 0.5, y + 0.5, w - 1, TAG.h - 1, TAG.radius - 0.5), this.stroke);
+    this.kindMark(canvas, kind, x + TAG.pad + TAG.markSize / 2, 0, hue, TAG.markSize);
+    canvas.drawParagraph(tp, x + TAG.pad + TAG.mark, y + (TAG.h - tp.getHeight()) / 2);
+  }
+
+  /** Where its linked work stands, as its tool says it: a quiet tag at the top edge's other end. Returns its left. */
+  private workTag(canvas: Canvas, w: number, work: { label: string; tone: "ok" | "warn" | "off" }): number {
+    const p = this.pal;
+    const ink = work.tone === "ok" ? p.success : work.tone === "warn" ? p.warning : p.subtle;
+    const tp = this.label(work.label, p.muted, 10.5, 500, w / 2);
+    const tw = 8 + 10 + this.width(tp) + 8;
+    const x = w - CARD.pad - tw;
+    const y = -CARD.tag / 2;
+    this.fill.setColor(this.col(p.card));
+    canvas.drawRRect(this.rrect(x, y, tw, CARD.tag, 5), this.fill);
+    this.stroke.setColor(this.col(p.lineStrong, 0.55));
+    this.stroke.setStrokeWidth(1);
+    canvas.drawRRect(this.rrect(x + 0.5, y + 0.5, tw - 1, CARD.tag - 1, 4.5), this.stroke);
+    this.fill.setColor(this.col(ink));
+    canvas.drawCircle(x + 8 + 3, 0, 3, this.fill);
+    canvas.drawParagraph(tp, x + 8 + 10, y + (CARD.tag - tp.getHeight()) / 2);
+    return x;
+  }
+
+  /** Where the card stands, first in its footer: a dot and the stage's word, no chip around them. */
+  private stageMark(canvas: Canvas, card: OstCard, text: string, x: number, y: number, w: number) {
+    const p = this.pal;
+    const t = STAGE_TONE[card.stage] ?? "neutral";
+    const ink = t === "neutral" ? p.muted : t === "subtle" ? p.subtle : t === "inverse" ? p.ink : this.tone(t).ink;
+    const cy = y + CARD.chip / 2;
+    if (t === "subtle") {
+      this.stroke.setColor(this.col(ink));
+      this.stroke.setStrokeWidth(1.25);
+      canvas.drawCircle(x + 3.5, cy, 2.75, this.stroke);
+    } else {
+      this.fill.setColor(this.col(t === "neutral" ? p.subtle : ink));
+      canvas.drawCircle(x + 3.5, cy, 3, this.fill);
+    }
+    const tp = this.label(text, ink, 11, 500, Math.max(8, w - CARD.stageDot));
+    canvas.drawParagraph(tp, x + CARD.stageDot, cy - tp.getHeight() / 2);
   }
 
   private poly(canvas: Canvas, pts: number[], paint: Paint) {
@@ -343,6 +422,12 @@ export class OstPainter {
     this.shadow.setMaskFilter(null);
     this.fill.setColor(this.col(p.card));
     canvas.drawRRect(body, this.fill);
+    // The footer, a shade apart.
+    canvas.save();
+    canvas.clipRRect(body, this.ck.ClipOp.Intersect, true);
+    this.fill.setColor(this.col(p.footer));
+    canvas.drawRect(this.ck.XYWHRect(0, box.ruleY, w, h - box.ruleY), this.fill);
+    canvas.restore();
     const dashed = assumed || ghost;
     const dash = dashed ? this.ck.PathEffect.MakeDash([5, 4], 0) : null;
     this.stroke.setColor(this.col(ghost ? p.ai : assumed ? p.subtle : p.border));
@@ -351,39 +436,14 @@ export class OstPainter {
     canvas.drawRRect(this.rrect(0.5, 0.5, w - 1, h - 1, CARD.radius - 0.5), this.stroke);
     this.stroke.setPathEffect(null);
     dash?.delete();
+    // A lit top edge on the dark board, as the studio's raised surfaces have.
+    if (p.edge) {
+      this.stroke.setColor(this.col(p.edge));
+      this.stroke.setStrokeWidth(1);
+      canvas.drawLine(CARD.radius, 1.5, w - CARD.radius, 1.5, this.stroke);
+    }
 
     const inner = w - CARD.pad * 2;
-    // Kind row: mark, label, stage on the right.
-    const stage = stageLabel(card.kind, card.stage);
-    const st = this.tone(STAGE_TONE[card.stage] ?? "neutral");
-    const sp = this.label(stage, st.ink, 11, 500, inner / 2);
-    const sw = Math.min(inner / 2, this.width(sp) + 12);
-    const sx = w - CARD.pad - sw;
-    this.fill.setColor(this.col(st.bg));
-    canvas.drawRRect(this.rrect(sx, CARD.pad - 1, sw, 18, 5), this.fill);
-    canvas.drawParagraph(sp, sx + 6, CARD.pad - 1 + (18 - sp.getHeight()) / 2);
-    // Something needs a look at it (the card panel says what): a dot beside the stage.
-    if (!ghost && !f.exporting && f.ost?.noticed?.has(n.id)) {
-      this.fill.setColor(this.col(p.warning));
-      canvas.drawCircle(sx - 8, CARD.pad - 1 + 9, 3.5, this.fill);
-    }
-    // A sub-outcome's mark is muted, so the goal above it reads first.
-    this.kindMark(canvas, card.kind, CARD.pad + 6, CARD.pad + CARD.kindRow / 2, card.kind === "outcome" && !isSubOutcome(doc, n.id) ? p.ink : p.muted);
-    const kp = this.label(kindLabel(doc, n.id).toUpperCase(), p.muted, 10.5, 600, Math.max(10, sx - CARD.pad - 24), 0.6);
-    canvas.drawParagraph(kp, CARD.pad + 18, CARD.pad + (CARD.kindRow - kp.getHeight()) / 2);
-    // Where its linked work stands, as the tool says it: a dot and a word after the kind.
-    const work = !ghost && !f.exporting ? f.ost?.work?.get(n.id) : undefined;
-    if (work) {
-      const wx = CARD.pad + 18 + this.width(kp) + 8;
-      const room = sx - (f.ost?.noticed?.has(n.id) ? 18 : 8) - wx - 9;
-      if (room > 24) {
-        const ink = work.tone === "ok" ? p.success : work.tone === "warn" ? p.warning : p.muted;
-        this.fill.setColor(this.col(ink));
-        canvas.drawCircle(wx + 3, CARD.pad + CARD.kindRow / 2, 3, this.fill);
-        const wp = this.label(work.label, ink, 10.5, 500, room);
-        canvas.drawParagraph(wp, wx + 9, CARD.pad + (CARD.kindRow - wp.getHeight()) / 2);
-      }
-    }
 
     // Title (not while it's being typed over).
     if (f.ost?.editingId !== n.id) {
@@ -405,17 +465,19 @@ export class OstPainter {
 
     if (card.kind === "outcome" && box.metricY !== null) this.drawMetric(canvas, card, box.metricY, inner);
 
-    // Footer chips, in the rows the layout gave them.
-    if (box.footerY !== null) {
-      for (const c of box.chips) {
-        const glyph = c.glyph === "assumed" ? this.assumedGlyph : c.glyph === "ai" ? this.aiGlyph : c.glyph === "quote" ? this.quoteGlyph : undefined;
-        this.chip(canvas, CARD.pad + c.x, box.footerY + c.y, CARD.chip, c.text, c.tone, c.w, glyph, c.tone === "subtle");
+    // The footer under its rule: the chips in the rows the layout gave them, the stage at the end.
+    this.fill.setColor(this.col(p.border));
+    canvas.drawRect(this.ck.XYWHRect(1, box.ruleY, w - 2, 1), this.fill);
+    for (const c of box.chips) {
+      if (c.glyph === "stage") {
+        this.stageMark(canvas, card, c.text, CARD.pad + c.x, box.footerY + c.y, c.w);
+        continue;
       }
+      const glyph = c.glyph === "assumed" ? this.assumedGlyph : c.glyph === "ai" ? this.aiGlyph : c.glyph === "quote" ? this.quoteGlyph : undefined;
+      this.chip(canvas, CARD.pad + c.x, box.footerY + c.y, CARD.chip, c.text, c.tone, c.w, glyph, c.tone === "subtle");
     }
 
-    if (layer) canvas.restore();
-
-    // Selection and hover: a rounded ring of constant screen width.
+    // Selection and hover: a rounded ring of constant screen width (under the tags on the edge).
     if (!ghost && !f.exporting) {
       const sel = this.selected.has(n.id);
       const hover = f.hoverId === n.id;
@@ -426,6 +488,20 @@ export class OstPainter {
         canvas.drawRRect(this.rrect(-sw2 / 2, -sw2 / 2, w + sw2, h + sw2, CARD.radius + sw2 / 2), this.stroke);
       }
     }
+
+    // On the top edge: the kind on the left; on the right, its linked work and whether something needs a look at it (the card panel says what).
+    this.kindTag(canvas, KIND_OF[card.kind], kindLabel(doc, n.id), isSubOutcome(doc, n.id));
+    let right = w - CARD.pad;
+    const work = !ghost && !f.exporting ? f.ost?.work?.get(n.id) : undefined;
+    if (work) right = this.workTag(canvas, w, work) - 6;
+    if (!ghost && !f.exporting && f.ost?.noticed?.has(n.id)) {
+      this.fill.setColor(this.col(p.card));
+      canvas.drawCircle(right - 4, 0, 6, this.fill);
+      this.fill.setColor(this.col(p.warning));
+      canvas.drawCircle(right - 4, 0, 4, this.fill);
+    }
+
+    if (layer) canvas.restore();
 
     // The fold toggle at the child edge: "+N" while folded, "−" on hover or selection.
     const childCards = n.children.filter((c) => isOstCard(doc.nodes[c]));
@@ -456,29 +532,47 @@ export class OstPainter {
     this.canvas = null;
   }
 
-  /** The outcome's number: its name, from → to, and how far it has come. */
+  /**
+   * The outcome's number: its name, from → to, and how far it has come, in the goal's colour. With
+   * no number yet, the place it goes, dashed, rather than an empty bar.
+   */
   private drawMetric(canvas: Canvas, card: OstCard, y: number, inner: number) {
     const p = this.pal;
     const m = card.metric;
     const x = CARD.pad;
-    const nums = m && m.baseline !== null && m.target !== null;
-    const unit = m?.unit ? ` ${m.unit}` : "";
-    const right = nums ? `${fmt(m!.baseline!)} → ${fmt(m!.target!)}${unit}` : "";
-    const rp = right ? this.label(right, p.ink, 12, 600, inner / 2) : null;
-    const rw = rp ? this.width(rp) : 0;
     const named = !!m?.name?.trim();
-    const lp = this.label(named ? m!.name.trim() : "Add the number it moves", named ? p.muted : p.subtle, 12, 500, inner - rw - 8);
+    const nums = m && m.baseline !== null && m.target !== null;
+    if (!named && !nums) {
+      const dash = this.ck.PathEffect.MakeDash([3, 3], 0);
+      this.stroke.setColor(this.col(p.line));
+      this.stroke.setStrokeWidth(1);
+      this.stroke.setPathEffect(dash);
+      canvas.drawRRect(this.rrect(x + 0.5, y + 0.5, inner - 1, METRIC_H - 1, 5.5), this.stroke);
+      this.stroke.setPathEffect(null);
+      dash?.delete();
+      const cy = y + METRIC_H / 2;
+      this.stroke.setColor(this.col(p.subtle));
+      this.stroke.setStrokeWidth(1.25);
+      canvas.drawLine(x + 10, cy, x + 18, cy, this.stroke);
+      canvas.drawLine(x + 14, cy - 4, x + 14, cy + 4, this.stroke);
+      const lp = this.label("Add the number it moves", p.subtle, 12, 500, inner - 32);
+      canvas.drawParagraph(lp, x + 24, cy - lp.getHeight() / 2);
+      return;
+    }
+    const unit = m?.unit ? ` ${m.unit}` : "";
+    const right = nums ? `${fmt(m!.baseline!)} → ${fmt(m!.target!)}${unit}` : "No target yet";
+    const rp = this.label(right, nums ? p.ink : p.subtle, 12, nums ? 600 : 500, inner / 2);
+    const rw = this.width(rp);
+    const lp = this.label(named ? m!.name.trim() : "Its number", p.muted, 12, 500, inner - rw - 8);
     canvas.drawParagraph(lp, x, y + (CARD.metricText - lp.getHeight()) / 2);
-    if (rp) canvas.drawParagraph(rp, x + inner - rw, y + (CARD.metricText - rp.getHeight()) / 2);
+    canvas.drawParagraph(rp, x + inner - rw, y + (CARD.metricText - rp.getHeight()) / 2);
     const by = y + CARD.metricText + CARD.metricGap;
     this.fill.setColor(this.col(p.chip));
     canvas.drawRRect(this.rrect(x, by, inner, CARD.metricBar, 2), this.fill);
     const k = metricProgress(m);
-    if (k !== null) {
-      if (k > 0) {
-        this.fill.setColor(this.col(k >= 1 ? p.success : p.ink));
-        canvas.drawRRect(this.rrect(x, by, Math.max(4, inner * k), CARD.metricBar, 2), this.fill);
-      }
+    if (k !== null && k > 0) {
+      this.fill.setColor(this.col(k >= 1 ? p.success : p.kindGoal));
+      canvas.drawRRect(this.rrect(x, by, Math.max(4, inner * k), CARD.metricBar, 2), this.fill);
     }
   }
 }

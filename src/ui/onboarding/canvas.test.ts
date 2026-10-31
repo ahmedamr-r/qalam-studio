@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { SourceQuote } from "@/discovery/sources";
 import type { SetupLine, SetupSession } from "@/org/setup";
-import { backsOf, canvasOf, nodeHeight, partOf, pathOf } from "./canvas";
+import { SOURCE } from "@/discovery/look";
+import { backsOf, canvasOf, NODE_W, nodeHeight, partOf, pathOf } from "./canvas";
 
 // Their words, then a Drive doc: the dump's text and where each part sits.
 const TEXT = "A planner for busy parents.\n\nFrom Google Drive: Pitch\n\nParents rebuild the list every Sunday. We want 1,000 families planning weekly by March.";
@@ -114,9 +115,11 @@ describe("the setup's canvas", () => {
     expect(canvasOf({ problems: [{ doc: { from: "computer", title: "notes.txt" }, sourceId: "", pages: [] }] }).nodes[0]).toMatchObject({ kind: "source", reading: true });
   });
 
-  it("sizes a node from its words, clamped, with room for ✓ and ✕", () => {
+  it("sizes a node from its words, clamped, with room for ✓ and ✕; a source as a board's lane draws it", () => {
     expect(nodeHeight("goal", "Short")).toBeLessThan(nodeHeight("goal", "x".repeat(200)));
     expect(nodeHeight("goal", "x".repeat(200))).toBe(nodeHeight("goal", "x".repeat(400)));
     expect(nodeHeight("goal", "Short", true)).toBeGreaterThan(nodeHeight("goal", "Short"));
+    expect(nodeHeight("source", "x".repeat(400))).toBe(SOURCE.h);
+    expect(NODE_W.source).toBe(SOURCE.w);
   });
 });

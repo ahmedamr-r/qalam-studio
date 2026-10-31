@@ -2,6 +2,7 @@ import { isOstCard, treeBounds, visibleCards } from "@/doc/board";
 import { worldBounds } from "@/doc/geometry";
 import type { Doc } from "@/doc/schema";
 import type { SetupDoc } from "@/org/setup";
+import { SOURCE } from "./look";
 import { markOf, partLine, partOf, sourceLine } from "./origin";
 import { fromSource, quoteOf, type SourceRecord } from "./sources";
 
@@ -12,13 +13,19 @@ import { fromSource, quoteOf, type SourceRecord } from "./sources";
  * shows as its parts (their own words, each doc they brought), a quote in the part its span starts
  * in. The lane's rows follow the cards: each source sits level with the middle of what it backs,
  * then they're spaced so none overlap. Sizes are code's.
+ *
+ * Each source is drawn as ./look.ts says a source looks (`SOURCE`): a tile with its mark and a port,
+ * its title and where it's from under it.
  */
 
-export const LANE_W = 200;
-export const LANE_ITEM_H = 72;
+/** An item's width: its words', the tile centred over them. */
+export const LANE_W = SOURCE.w;
+export const LANE_TILE = SOURCE.tile;
+/** The tile, then up to two lines of its name and one of where it's from. */
+export const LANE_ITEM_H = SOURCE.h;
 /** From the lane's right edge to the tree's left. */
 export const LANE_GAP = 72;
-const ROW_GAP = 10;
+const ROW_GAP = 16;
 
 type LaneSource = Pick<SourceRecord, "id" | "title" | "kind" | "origin" | "quotes" | "pages" | "setup">;
 
@@ -102,10 +109,10 @@ export function laneOf(doc: Doc, sources: readonly (LaneSource & { text?: string
       }
     }
     if (!found.size) continue;
-    // Level with what each backs, in that order, spaced so none overlap.
+    // Each tile level with what it backs, in that order, spaced so none overlap.
     const tree = treeBounds(doc, root);
     const x = tree.x - LANE_GAP - LANE_W;
-    const rows = [...found.values()].map((it) => ({ it, want: it.at.reduce((a, b) => a + b, 0) / it.at.length - LANE_ITEM_H / 2 })).sort((a, b) => a.want - b.want);
+    const rows = [...found.values()].map((it) => ({ it, want: it.at.reduce((a, b) => a + b, 0) / it.at.length - LANE_TILE / 2 })).sort((a, b) => a.want - b.want);
     let next = -Infinity;
     for (const { it, want } of rows) {
       const y = Math.max(want, next);

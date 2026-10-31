@@ -28,7 +28,8 @@ export interface LayoutOptions {
 
 export const GAPS: Record<Orientation, Required<Omit<LayoutOptions, "orientation">>> = {
   tb: { siblingGap: 24, branchGap: 40, levelGap: 56 },
-  lr: { siblingGap: 16, branchGap: 28, levelGap: 72 },
+  // Cards stack here, so each leaves room above it for its kind's tag (half of it over the edge).
+  lr: { siblingGap: 26, branchGap: 36, levelGap: 72 },
 };
 
 /** One card's box in a subtree's frame: breadth (across the levels) and depth (down the levels). */

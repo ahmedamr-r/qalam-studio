@@ -8,6 +8,7 @@ import { feedback } from "@/commands/feedback";
 import { addCardIn, addChild, cardOf, dropProblem, makeCardNode, moveCardsIn, newCard, toggleCollapsed } from "@/discovery/ops";
 import { foldToggle, orientationOf } from "@/discovery/tree";
 import { GAPS } from "@/discovery/layout";
+import { CARD } from "@/discovery/metrics";
 import { makeSticky } from "@/discovery/sticky";
 import { discovery, useDiscovery } from "@/ui/discovery/store";
 import { startTitleEdit } from "@/ui/discovery/editing";
@@ -99,9 +100,12 @@ interface Drag {
 /** The card at a world point (not inside the dragged cards), however deep. */
 export function cardAt(doc: Doc, world: Pt, exclude?: Set<string>): string | null {
   const s = studio();
-  const path = hitPath(doc, world, exclude, { tol: 4 / s.camera.zoom });
-  const id = pickTarget(doc, path, [], false);
-  return id && isOstCard(doc.nodes[id]) ? id : null;
+  const tol = 4 / s.camera.zoom;
+  const id = pickTarget(doc, hitPath(doc, world, exclude, { tol }), [], false);
+  if (id) return isOstCard(doc.nodes[id]) ? id : null;
+  // The kind's tag stands half above its card's top edge.
+  const under = pickTarget(doc, hitPath(doc, { x: world.x, y: world.y + CARD.tag / 2 }, exclude, { tol }), [], false);
+  return under && isOstCard(doc.nodes[under]) && world.y >= worldBounds(doc, under).y - CARD.tag / 2 ? under : null;
 }
 
 /** Inside a tree that Qalam AI's version is drawn over (its proposals under review, a redraft). */

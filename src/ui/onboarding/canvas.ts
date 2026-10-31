@@ -1,6 +1,8 @@
 import type { SourceQuote } from "@/discovery/sources";
 import type { ShapedGoal } from "@/goals/outline";
 import { partOf } from "@/discovery/origin";
+import { CARD_LOOK, FOOTER, SOURCE } from "@/discovery/look";
+import { titleProps } from "@/discovery/metrics";
 import type { SetupDoc, SetupSession } from "@/org/setup";
 
 export { partOf };
@@ -14,7 +16,9 @@ export { partOf };
  *
  * The layout is code's, never the model's: columns left to right (sources, problems, goals, a goal
  * left of the goal it feeds), each column ordered by the mean row of what it's wired from so the
- * wires stay short, sizes from the words.
+ * wires stay short, sizes from the words. Cards and sources take their anatomy from
+ * src/discovery/look.ts, as a board's do: a source is a tile with its words under it, a card has
+ * its kind's tag over its top edge, its title, and (a goal to settle) a footer.
  */
 
 export type CanvasKind = "source" | "problem" | "goal";
@@ -91,20 +95,33 @@ export const EMPTY: Canvas = { nodes: [], edges: [], width: 0, height: 0 };
 export const isProblem = (q: Pick<SourceQuote, "role">) => q.role === "need" || q.role === "evidence";
 
 // Sizes, in canvas pixels.
-export const NODE_W: Record<CanvasKind, number> = { source: 184, problem: 212, goal: 212 };
+export const NODE_W: Record<CanvasKind, number> = { source: SOURCE.w, problem: 212, goal: 212 };
 const COL_GAP = 56;
-const ROW_GAP = 14;
-const LINE = 18;
-const CHARS = { source: 24, problem: 29, goal: 29 } as const;
+/** Room above each card for its tag, half of it over the edge. */
+const ROW_GAP = 24;
+/** A card's kind on a board, for its title's type (titleProps). */
+export const CARD_KIND = { problem: "opportunity", goal: "outcome" } as const;
+/** Characters a line of a card's title holds, about (problems at 13 px, goals at 15). */
+const CHARS = { problem: 28, goal: 24 } as const;
 /** Lines of a title the node shows (it's clamped there). */
 export const MAX_LINES = 3;
+/** A footer's row: a goal's ✓ and ✕. */
+export const SETTLE_ROW = 24;
 
-/** A node's height from its title: its padding and head line, up to three lines of words, and the goal's ✓/✕ row. */
-export function nodeHeight(kind: CanvasKind, title: string, settle = false): number {
-  const lines = Math.max(1, Math.min(MAX_LINES, Math.ceil(title.length / CHARS[kind])));
-  // 8px padding top and bottom, an 18px head, 4px gaps.
-  return 16 + 18 + 4 + lines * LINE + (settle ? 30 : 0);
+/** How many lines a card's title takes, about, up to MAX_LINES. */
+export function titleLines(kind: Exclude<CanvasKind, "source">, title: string): number {
+  return Math.max(1, Math.min(MAX_LINES, Math.ceil(title.length / CHARS[kind])));
 }
+
+/** A node's height: a source's tile and words; a card's tag room, its title's lines, and its footer (a goal to settle) or padding. */
+export function nodeHeight(kind: CanvasKind, title: string, footer = false): number {
+  if (kind === "source") return SOURCE.h;
+  const lines = titleLines(kind, title) * titleProps({ kind: CARD_KIND[kind], title }).lineHeight;
+  return CARD_LOOK.top + lines + (footer ? FOOTER.ruleGap + 1 + FOOTER.pad * 2 + SETTLE_ROW : CARD_LOOK.pad);
+}
+
+/** Whether a node ends on a footer: a goal to accept or leave out, or one already settled. */
+export const hasFooter = (n: Pick<CanvasNode, "state">) => n.state === "proposed" || n.state === "accepted" || n.state === "discarded" || n.state === "kept";
 
 type Draft = Omit<CanvasNode, "x" | "y" | "w" | "h">;
 
@@ -238,7 +255,7 @@ function layout(drafts: Draft[], edges: CanvasEdge[]): Canvas {
     col.forEach((n, i) => row.set(n.id, i));
   });
 
-  const sized = byCol.map((col) => col.map((n) => ({ ...n, w: NODE_W[n.kind], h: nodeHeight(n.kind, n.title, n.state === "proposed" || n.state === "accepted" || n.state === "discarded") })));
+  const sized = byCol.map((col) => col.map((n) => ({ ...n, w: NODE_W[n.kind], h: nodeHeight(n.kind, n.title, hasFooter(n)) })));
   const colH = sized.map((col) => col.reduce((a, n) => a + n.h, 0) + Math.max(0, col.length - 1) * ROW_GAP);
   const height = Math.max(...colH);
   const nodes: CanvasNode[] = [];

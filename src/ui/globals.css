@@ -149,6 +149,23 @@
   --color-component: #b6a4ff;
   --color-component-subtle: rgb(147 124 241 / 0.16);
 
+  /* Cards, sources and wires on a canvas (a board and the setup's canvas; src/discovery/look.ts),
+     a step above the canvas. src/engine/ost-palette.ts repeats them; a test keeps the two the same. */
+  --color-card: #2a2926;
+  --color-card-line: #ffffff1c;
+  --color-card-shadow: #00000073;
+  --color-card-edge: #ffffff0f;   /* a lit top edge */
+  --color-card-footer: #0000001f; /* the footer's shade, over the card */
+  --color-wire: #5f5c58;
+
+  /* Discovery card kinds: the tag on each card's top edge (src/engine/ost-palette.ts repeats them).
+     Clear of the status hues (success, warning, danger, selection, ai) and of saffron. Ink on its
+     own tag (the hue at 16% over the card) 4.8–5.8. */
+  --color-kind-goal: #b3a3ff;
+  --color-kind-problem: #e6c04e;
+  --color-kind-solution: #52cca8;
+  --color-kind-test: #6cc6ec;
+
   /* Agent identities: cursor arrow, tag dot, presence ring. Never saffron, never within ΔE15 of selection. */
   --color-agent-1: #36d2ba;  /* teal */
   --color-agent-2: #ea4ca4;  /* rose */
@@ -379,6 +396,19 @@
 
   --color-component: #6a4fe0;
   --color-component-subtle: rgb(106 79 224 / 0.10);
+
+  --color-card: #ffffff;
+  --color-card-line: #0000001a;
+  --color-card-shadow: #00000024;
+  --color-card-edge: #ffffff00;
+  --color-card-footer: #7a6a5508;
+  --color-wire: #bcb8b3;
+
+  /* Ink on its own tag (the hue at 10% over white) 4.6–5.4. */
+  --color-kind-goal: #6647d1;
+  --color-kind-problem: #826300;
+  --color-kind-solution: #077a5c;
+  --color-kind-test: #0a6c90;
 
   --color-agent-1: #0a7f6f;
   --color-agent-2: #c22a76;

@@ -1,6 +1,7 @@
 import type { TextProps } from "@/doc/schema";
 import { measureText } from "@/doc/measure";
-import { CARD_WIDTH } from "./kinds";
+import { CARD_WIDTH, stageLabel } from "./kinds";
+import { CARD_LOOK, FOOTER, STATE, TAG } from "./look";
 import { evidenceLabel, isAIIdea, isAssumed } from "./evidence";
 import type { OstCard } from "./types";
 
@@ -9,28 +10,40 @@ import type { OstCard } from "./types";
  * card is always exactly as tall as what's drawn on it. Pure: the text measurer is the engine's
  * once it has loaded (fonts), an estimate before that and in tests.
  *
- *   pad ┌──────────────────────────────┐
- *       │ ◉ OUTCOME          [Active] │  kind row
+ *         [◉ Goal]                         the kind's tag, half above the top edge
+ *   pad ┌─[      ]─────────────────────┐
  *       │ Grow weekly reorders         │  title (up to 5 lines)
- *       │ Reorders/week · 1.2 → 1.5    │  metric (outcome)
+ *       │ Reorders/week     1.2 → 1.5  │  metric (outcome)
  *       │ ▬▬▬▬▬▬▬░░░░░░░░              │
- *       │ [❝ From your answers] [3 as… │  footer chips, in rows
+ *       ├──────────────────────────────┤  rule
+ *       │ [❝ From your answers] ● Active │  footer: chips in rows, the stage at the end
  *       └──────────────────────────────┘
  */
 
+/** The board card's anatomy; what every canvas shares (padding, corners, tag, footer) comes from ./look.ts. */
 export const CARD = {
-  pad: 12,
-  radius: 10,
-  kindRow: 16,
-  gap: 8,
+  pad: CARD_LOOK.pad,
+  radius: CARD_LOOK.radius,
+  /** The kind's tag: its height (half of it above the card's top edge) and its insides. */
+  tag: TAG.h,
+  tagPad: TAG.pad,
+  tagMark: TAG.mark,
+  /** From the top edge to the title: the tag's lower half, then air. */
+  top: CARD_LOOK.top,
+  gap: 10,
   metricText: 16,
   metricBar: 4,
   metricGap: 6,
-  footerGap: 10,
+  /** From what the card says to the rule over its footer. */
+  ruleGap: FOOTER.ruleGap,
+  /** Above and below the footer's rows. */
+  footerPad: FOOTER.pad,
   chip: 20,
   chipPad: 6,
   /** Room for a chip's glyph (the quote mark, the Qalam AI nuqta, the Assumed dots). */
   chipGlyph: 14,
+  /** Room for the stage's dot. */
+  stageDot: STATE.room,
   chipGap: 6,
   chipRowGap: 4,
   maxLines: 5,
@@ -72,8 +85,12 @@ export const placeholderTitle = (kind: OstCard["kind"]) =>
 export interface Chip {
   text: string;
   tone: "neutral" | "warning" | "ai" | "subtle";
-  glyph?: "assumed" | "ai" | "quote";
+  /** `stage`: the card's stage, a dot and its word with no chip around it. */
+  glyph?: "assumed" | "ai" | "quote" | "stage";
 }
+
+/** The footer's last item: where the card stands. */
+export const stageItem = (card: OstCard): Chip => ({ text: stageLabel(card.kind, card.stage), tone: "neutral", glyph: "stage" });
 
 /** Chips along the card's foot: what the card rests on, its assumptions, what's been designed. */
 export function footerChips(card: OstCard): Chip[] {
@@ -121,7 +138,8 @@ export function placeChips(chips: Chip[], width: number): { chips: PlacedChip[];
   let x = 0;
   let row = 0;
   for (const c of chips) {
-    const w = Math.min(width, Math.ceil(measureText(chipTextProps(c.text), null).w) + 1 + CARD.chipPad * 2 + (c.glyph ? CARD.chipGlyph : 0));
+    const text = Math.ceil(measureText(chipTextProps(c.text), null).w) + 1;
+    const w = Math.min(width, c.glyph === "stage" ? CARD.stageDot + text : text + CARD.chipPad * 2 + (c.glyph ? CARD.chipGlyph : 0));
     if (x > 0 && x + w > width) {
       row++;
       x = 0;
@@ -139,7 +157,10 @@ export interface CardBox {
   titleH: number;
   /** Outcome only. */
   metricY: number | null;
-  footerY: number | null;
+  /** The rule over the footer, and the footer's first row. */
+  ruleY: number;
+  footerY: number;
+  /** The chips, then the stage (glyph `stage`) at the right of the last row. */
   chips: PlacedChip[];
 }
 
@@ -150,18 +171,21 @@ export function cardBox(card: OstCard): CardBox {
   const t = titleProps(card);
   const lines = Math.max(1, Math.round(measureText(t, titleW).h / t.lineHeight));
   const titleH = Math.min(lines, CARD.maxLines) * t.lineHeight;
-  const titleY = CARD.pad + CARD.kindRow + CARD.gap;
+  const titleY = CARD.top;
   let y = titleY + titleH;
   let metricY: number | null = null;
   if (card.kind === "outcome") {
     metricY = y + CARD.gap;
     y = metricY + METRIC_H;
   }
-  let footerY: number | null = null;
+  const ruleY = Math.round(y + CARD.ruleGap);
+  const footerY = ruleY + CARD.footerPad;
   const footer = placeChips(footerChips(card), titleW);
-  if (footer.chips.length) {
-    footerY = y + CARD.footerGap;
-    y = footerY + footer.h;
-  }
-  return { w, h: Math.ceil(y + CARD.pad), titleY, titleH, metricY, footerY, chips: footer.chips };
+  // The stage ends the footer, on the right of its last row, or of a row of its own when that's full.
+  const [stage] = placeChips([stageItem(card)], titleW).chips;
+  const last = footer.chips.length ? footer.chips[footer.chips.length - 1] : null;
+  const fits = !last || last.x + last.w + CARD.chipGap * 2 + stage.w <= titleW;
+  const row = !last ? 0 : fits ? last.y : last.y + CARD.chip + CARD.chipRowGap;
+  const chips = [...footer.chips, { ...stage, x: titleW - stage.w, y: row }];
+  return { w, h: Math.ceil(footerY + row + CARD.chip + CARD.footerPad), titleY, titleH, metricY, ruleY, footerY, chips };
 }

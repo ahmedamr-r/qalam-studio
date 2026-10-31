@@ -1,14 +1,20 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import clsx from "clsx";
-import { Check, FileText, Globe, Maximize, Minus, PenLine, Plus, Star, Target, TrendingUp, TriangleAlert, X } from "lucide-react";
+import { AudioLines, Check, FileText, Globe, Maximize, Minus, PenLine, Plus, X } from "lucide-react";
+import { brandOn, logoFor } from "@/connectors/logos";
+import { KIND_LABEL } from "@/discovery/kinds";
+import { CARD_LOOK, FOOTER, type Kind, KIND_MARK, KIND_TOKEN, MARK_STROKE, SOURCE, type SourceIcon, sourceMark, sourceTile, STATE, TAG, WIRE, wireCurve, wireIn, wireOut } from "@/discovery/look";
+import { titleProps } from "@/discovery/metrics";
 import { partLine } from "@/discovery/origin";
+import { OST_PALETTE } from "@/engine/ost-palette";
 import type { SetupDoc } from "@/org/setup";
 import { QalamAIGlyph } from "../brand/ai-glyph";
 import { ConnectorLogo } from "../brand/ConnectorLogo";
 import { IconBtn, Spinner, Tip } from "../controls";
+import { useTheme } from "../theme";
 import { dropKnown } from "../setup/know";
 import { acceptLines, discardLines } from "../setup/setup";
-import { MAX_LINES, pathOf, type Canvas, type CanvasEdge, type CanvasNode } from "./canvas";
+import { CARD_KIND, hasFooter, pathOf, SETTLE_ROW, titleLines, type Canvas, type CanvasEdge, type CanvasNode } from "./canvas";
 
 /*
  * The setup's canvas (./canvas.ts lays it out): what was sent on the left, wired to the problems and
@@ -16,6 +22,10 @@ import { MAX_LINES, pathOf, type Canvas, type CanvasEdge, type CanvasNode } from
  * pans and zooms (as the knowledge graph does: scroll pans, ⌘/Ctrl-scroll or pinch zooms, drag the
  * background); it frames everything as nodes arrive. Hovering or selecting a card lights its path and
  * dims the rest; a source opens its reader; a proposed goal is accepted (✓) or left out (✕) on its card.
+ *
+ * It looks as a board does: sizes, marks and wires come from src/discovery/look.ts and colours from the
+ * theme tokens a board's palette repeats, so a source is the same tile with its port, and a card has
+ * the same kind's tag over its top edge and footer under a rule, drawn here in HTML.
  */
 
 const ICON = { absoluteStrokeWidth: true, strokeWidth: 1.5 } as const;
@@ -31,10 +41,13 @@ interface View {
   k: number;
 }
 
-/** A source's mark: its connector's logo, else what it is. */
+const ICONS: Record<SourceIcon, typeof PenLine> = { "pen-line": PenLine, globe: Globe, "file-text": FileText, "audio-lines": AudioLines };
+
+/** A source's mark, small, beside its name (the reader's head): its connector's logo, else what it is (sourceMark). */
 export function SourceMark({ doc }: { doc: SetupDoc | undefined }) {
-  if (doc && doc.from !== "said" && doc.from !== "page" && doc.from !== "computer") return <ConnectorLogo id={doc.from} size={16} decorative />;
-  const Icon = doc?.from === "said" ? PenLine : doc?.from === "page" ? Globe : FileText;
+  const what = sourceMark(doc?.from);
+  if ("logo" in what) return <ConnectorLogo id={what.logo} size={16} decorative />;
+  const Icon = ICONS[what.icon];
   return (
     <span className="grid size-[16px] shrink-0 place-items-center rounded-[3px] bg-kh-research/15 text-kh-research">
       <Icon size={11} {...ICON} />
@@ -42,14 +55,81 @@ export function SourceMark({ doc }: { doc: SetupDoc | undefined }) {
   );
 }
 
-/** A wire from the right side of one card to the left side of the next. */
-function wirePath(a: CanvasNode, b: CanvasNode): string {
-  const x1 = a.x + a.w;
-  const y1 = a.y + a.h / 2;
-  const x2 = b.x;
-  const y2 = b.y + b.h / 2;
-  const dx = Math.max(36, (x2 - x1) / 2);
-  return `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+/** A source's mark on its tile, as a board's lane paints it: the logo in its colour where that reads on the card, else ink; else an icon. */
+function TileMark({ mark }: { mark: string | undefined }) {
+  const card = OST_PALETTE[useTheme((t) => t.resolved)].card;
+  const what = sourceMark(mark);
+  const logo = "logo" in what ? logoFor(what.logo) : null;
+  if (logo?.kind === "mark")
+    return (
+      <svg width={SOURCE.logo} height={SOURCE.logo} viewBox="0 0 24 24" aria-hidden fill={brandOn(logo.hex, card) ?? "var(--color-fg)"}>
+        <path d={logo.path} />
+      </svg>
+    );
+  const Icon = ICONS["icon" in what ? what.icon : "file-text"];
+  return <Icon size={SOURCE.icon} absoluteStrokeWidth strokeWidth={1.75} className="text-fg-muted" aria-hidden />;
+}
+
+/** A kind's mark (◉ ○ ▸ ◇), in the colour around it. */
+function KindMark({ kind, size }: { kind: Kind; size: number }) {
+  const m = KIND_MARK[kind];
+  return (
+    <svg width={size} height={size} viewBox="0 0 12 12" aria-hidden className="shrink-0">
+      {m.stroke && <path d={m.stroke} fill="none" stroke="currentColor" strokeWidth={MARK_STROKE} />}
+      {m.fill && <path d={m.fill} fill="currentColor" />}
+    </svg>
+  );
+}
+
+const pct = (k: number) => `${Math.round(k * 100)}%`;
+
+/** A card's kind as a tag on its top edge, half above it, in the kind's colour (TAG); quiet while it's only been read. A click on it is a click on its card. */
+function KindTag({ kind, label, quiet, onClick }: { kind: Kind; label: string; quiet?: boolean; onClick: () => void }) {
+  const hue = `var(${KIND_TOKEN[kind]})`;
+  return (
+    <span
+      aria-hidden
+      onClick={onClick}
+      className="absolute flex cursor-pointer items-center whitespace-nowrap"
+      style={{
+        left: CARD_LOOK.pad,
+        top: -TAG.h / 2,
+        height: TAG.h,
+        paddingInline: TAG.pad,
+        gap: TAG.mark - TAG.markSize,
+        borderRadius: TAG.radius,
+        color: hue,
+        background: `color-mix(in srgb, ${hue} ${pct(quiet ? TAG.quietFill : TAG.fill)}, var(--color-card))`,
+        boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${hue} ${pct(quiet ? TAG.quietEdge : TAG.edge)}, transparent)`,
+        fontSize: TAG.size,
+        fontWeight: TAG.weight,
+        letterSpacing: TAG.tracking,
+      }}
+    >
+      <KindMark kind={kind} size={TAG.markSize} />
+      {label}
+    </span>
+  );
+}
+
+/** Where something stands, at its footer's end: a dot (a ring when it's out) and a word (STATE). */
+function StateWord({ tone, out, children }: { tone: string; out?: boolean; children: ReactNode }) {
+  return (
+    <span className="inline-flex items-center whitespace-nowrap" style={{ color: tone, fontSize: STATE.size, fontWeight: STATE.weight, gap: STATE.room - STATE.dot * 2 }}>
+      <span className="shrink-0 rounded-full" style={{ width: STATE.dot * 2, height: STATE.dot * 2, ...(out ? { boxShadow: "inset 0 0 0 1.25px currentColor" } : { background: "currentColor" }) }} />
+      {children}
+    </span>
+  );
+}
+
+/** A card's surface, as a board paints one: dashed while it's only been read (subtle) or proposed (Qalam AI's colour). */
+function surface(dashed: string | null, ring: number): CSSProperties {
+  return {
+    background: "var(--color-card)",
+    borderRadius: CARD_LOOK.radius,
+    border: dashed ? `1.25px dashed ${dashed}` : "1px solid var(--color-card-line)",
+    boxShadow: [ring ? `0 0 0 ${ring}px var(--color-selection)` : "", "0 2px 12px var(--color-card-shadow)", "inset 0 1px 0 var(--color-card-edge)"].filter(Boolean).join(", "),
+  };
 }
 
 export function SetupCanvas({ canvas, selected, onSelect, onOpen, working, act }: { canvas: Canvas; selected: string | null; onSelect: (id: string | null) => void; onOpen: (source: CanvasNode) => void; working: boolean; act: (fn: () => Promise<void>) => void }) {
@@ -180,6 +260,8 @@ export function SetupCanvas({ canvas, selected, onSelect, onOpen, working, act }
             key={n.id}
             n={n}
             dim={!!lit && !lit.nodes.has(n.id)}
+            hot={(!!lit && lit.nodes.has(n.id)) || hovered === n.id}
+            hovered={hovered === n.id}
             selected={selected === n.id}
             onHover={(on) => setHovered((h) => (on ? n.id : h === n.id ? null : h))}
             onClick={() => (n.kind === "source" ? onOpen(n) : onSelect(selected === n.id ? null : n.id))}
@@ -203,104 +285,168 @@ export function SetupCanvas({ canvas, selected, onSelect, onOpen, working, act }
   );
 }
 
+/** A wire as a board draws one (look.ts): out of a source's port or a card's right edge, into a card's left, level with its title. */
 function Wire({ e, a, b, state }: { e: CanvasEdge; a: CanvasNode; b: CanvasNode; state: "rest" | "lit" | "dim" }) {
   if (!a || !b) return null;
-  const d = wirePath(a, b);
-  const tone = state === "lit" ? (e.kind === "under" ? "var(--color-kh-you)" : "var(--color-ai)") : "var(--color-line-strong)";
+  const from = a.kind === "source" ? sourceTile(a).port : wireOut(a);
+  const to = wireIn(b);
+  const [c1x, c1y, c2x, c2y] = wireCurve(from.x, from.y, to.x, to.y);
+  const tone = state === "lit" ? "var(--color-selection)" : "var(--color-wire)";
   return (
-    <g opacity={state === "dim" ? 0.25 : 1}>
-      <path d={d} fill="none" stroke={tone} strokeWidth={state === "lit" ? 2 : 1.25} strokeDasharray={e.kind === "under" ? "5 4" : undefined} />
-      <circle cx={a.x + a.w} cy={a.y + a.h / 2} r={3} fill="var(--color-panel)" stroke={tone} strokeWidth={1.25} />
-      <circle cx={b.x} cy={b.y + b.h / 2} r={3} fill="var(--color-panel)" stroke={tone} strokeWidth={1.25} />
+    <g opacity={state === "dim" ? WIRE.dim : 1}>
+      <path d={`M ${from.x} ${from.y} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${to.x} ${to.y}`} fill="none" stroke={tone} strokeWidth={state === "lit" ? WIRE.lit : WIRE.width} strokeDasharray={e.kind === "under" ? "5 4" : undefined} />
+      {/* A dot where it meets a card (and leaves one); a source's port is drawn on its tile. */}
+      {a.kind !== "source" && <circle cx={from.x} cy={from.y} r={WIRE.dot} fill="var(--color-card)" stroke={tone} strokeWidth={WIRE.width} />}
+      <circle cx={to.x} cy={to.y} r={WIRE.dot} fill="var(--color-card)" stroke={tone} strokeWidth={WIRE.width} />
     </g>
   );
 }
 
-/** A goal's state as the colour of its left edge: Qalam AI's rose while proposed, green once accepted. */
-const EDGE: Record<string, string> = { proposed: "before:bg-ai", accepted: "before:bg-success", discarded: "before:bg-transparent", kept: "before:bg-kh-you", seen: "before:bg-transparent" };
+interface NodeProps {
+  n: CanvasNode;
+  /** Off the lit path. */
+  dim: boolean;
+  /** On it, or under the pointer: a source's tile and port take the selection's colour. */
+  hot: boolean;
+  hovered: boolean;
+  selected: boolean;
+  onHover: (on: boolean) => void;
+  onClick: () => void;
+  working: boolean;
+  act: (fn: () => Promise<void>) => void;
+}
 
-function NodeCard({ n, dim, selected, onHover, onClick, working, act }: { n: CanvasNode; dim: boolean; selected: boolean; onHover: (on: boolean) => void; onClick: () => void; working: boolean; act: (fn: () => Promise<void>) => void }) {
-  const head: ReactNode =
-    n.kind === "source" ? (
-      <>
-        <SourceMark doc={n.doc} />
-        <span className="min-w-0 flex-1 truncate">{partLine(n.doc)}</span>
-        {n.reading && <Spinner size={10} />}
-      </>
-    ) : n.kind === "problem" ? (
-      <>
-        <span className="grid size-[16px] shrink-0 place-items-center rounded-[3px] bg-warning-subtle text-warning">
-          <TriangleAlert size={10} {...ICON} />
-        </span>
-        <span className="min-w-0 flex-1 truncate">Problem</span>
-      </>
-    ) : (
-      <>
-        <span className="grid size-[16px] shrink-0 place-items-center rounded-[3px] bg-kh-you/15 text-kh-you">{n.state === "kept" ? <Star size={10} {...ICON} /> : n.number ? <TrendingUp size={10} {...ICON} /> : <Target size={10} {...ICON} />}</span>
-        <span className="min-w-0 flex-1 truncate">{n.number ? "A number it read" : n.state === "seen" ? "Goal it read" : n.state === "kept" ? "Your goal" : "Goal"}</span>
-        {n.state === "proposed" && <QalamAIGlyph size={12} />}
-      </>
-    );
+function NodeCard(props: NodeProps) {
+  return props.n.kind === "source" ? <SourceNode {...props} /> : <Card {...props} />;
+}
+
+/** A source, as a board's lane draws one (SOURCE): its tile with its mark and port, its title and where it's from under it. */
+function SourceNode({ n, dim, hot, onHover, onClick }: NodeProps) {
+  const t = sourceTile({ x: 0, y: 0, w: n.w });
   return (
-    <div
-      data-node
-      className={clsx(
-        "absolute flex flex-col gap-[4px] overflow-hidden rounded-lg bg-raised px-[10px] py-[8px] text-left shadow-[inset_0_0_0_1px_var(--color-line-subtle)] transition-opacity before:absolute before:inset-y-0 before:left-0 before:w-[3px]",
-        n.kind === "goal" ? EDGE[n.state ?? "seen"] : "before:bg-transparent",
-        n.state === "seen" && "shadow-[inset_0_0_0_1px_var(--color-line)] [background-image:none] outline-dashed outline-1 -outline-offset-1 outline-line-strong",
-        selected && "shadow-[inset_0_0_0_2px_var(--color-focus)]",
-        dim && "opacity-40",
-        n.state === "discarded" && "opacity-55",
-      )}
-      style={{ left: n.x, top: n.y, width: n.w, height: n.h }}
-      onPointerEnter={() => onHover(true)}
-      onPointerLeave={() => onHover(false)}
-    >
-      <button type="button" onClick={onClick} aria-label={`${n.kind === "source" ? `Read ${n.title}` : n.title}`} aria-pressed={n.kind === "source" ? undefined : selected} className="absolute inset-0 z-0 cursor-pointer rounded-lg focus-visible:shadow-[inset_0_0_0_2px_var(--color-focus)] focus-visible:outline-none" />
-      <span className="pointer-events-none relative flex h-[18px] items-center gap-[6px] text-micro font-medium text-fg-subtle">{head}</span>
+    <div data-node className="absolute transition-opacity" style={{ left: n.x, top: n.y, width: n.w, height: n.h, opacity: dim ? WIRE.dimItem : 1 }} onPointerEnter={() => onHover(true)} onPointerLeave={() => onHover(false)}>
+      <button type="button" onClick={onClick} aria-label={`Read ${n.title}`} className="absolute inset-0 z-0 cursor-pointer rounded-lg focus-visible:shadow-[inset_0_0_0_2px_var(--color-focus)] focus-visible:outline-none" />
       <span
-        className={clsx("pointer-events-none relative text-body leading-[18px] text-fg", n.reading && "q-shimmer-text", n.state === "discarded" && "line-through", n.kind === "source" && "font-medium")}
-        style={{ display: "-webkit-box", WebkitLineClamp: MAX_LINES, WebkitBoxOrient: "vertical", overflow: "hidden" }}
-        dir="auto"
+        className="pointer-events-none absolute grid place-items-center"
+        style={{
+          left: t.x,
+          top: 0,
+          width: t.s,
+          height: t.s,
+          borderRadius: SOURCE.radius,
+          background: "var(--color-card)",
+          border: hot ? "1.5px solid var(--color-selection)" : "1px solid var(--color-card-line)",
+          boxShadow: `0 2px 12px var(--color-card-shadow)${hot ? "" : ", inset 0 1px 0 var(--color-card-edge)"}`,
+        }}
       >
-        {n.title}
+        <TileMark mark={n.doc?.from} />
+        {n.reading && (
+          <span className="absolute right-[5px] top-[5px] text-fg-subtle">
+            <Spinner size={10} />
+          </span>
+        )}
       </span>
-      {n.kind === "goal" && n.lineId && n.state !== "seen" && <Settle id={n.lineId} state={n.state!} working={working} act={act} />}
-      {n.kind === "goal" && n.goalRef && (
-        <span className="relative mt-auto flex justify-end">
-          <IconBtn size="sm" label="Leave it out" onClick={() => dropKnown(n.goalRef!)}>
-            <X size={13} {...ICON} />
-          </IconBtn>
+      {/* Its port, where its wires leave. */}
+      <span className="pointer-events-none absolute rounded-full" style={{ left: t.port.x - SOURCE.port, top: t.port.y - SOURCE.port, width: SOURCE.port * 2, height: SOURCE.port * 2, background: hot ? "var(--color-selection)" : "var(--color-wire)", boxShadow: "0 0 0 1.5px var(--color-card)" }} />
+      <span className="pointer-events-none absolute left-0 flex w-full flex-col items-center text-center" style={{ top: SOURCE.tile + SOURCE.labelGap, gap: SOURCE.lineGap }}>
+        <span className={clsx("w-full font-medium text-fg", n.reading && "q-shimmer-text")} style={{ fontSize: SOURCE.titleSize, lineHeight: "16px", display: "-webkit-box", WebkitLineClamp: SOURCE.titleLines, WebkitBoxOrient: "vertical", overflow: "hidden" }} dir="auto">
+          {n.title}
         </span>
-      )}
+        <span className="w-full truncate font-mono text-fg-subtle" style={{ fontSize: SOURCE.lineSize, lineHeight: "14px" }}>
+          {partLine(n.doc)}
+        </span>
+      </span>
     </div>
   );
 }
 
-/** ✓ and ✕ on a proposed goal, or its state once settled. */
-function Settle({ id, state, working, act }: { id: string; state: string; working: boolean; act: (fn: () => Promise<void>) => void }) {
+/** A problem or a goal, as a board paints a card: its kind's tag over its top edge, its title, and a goal's state in a footer under a rule. */
+function Card({ n, dim, hovered, selected, onHover, onClick, working, act }: NodeProps) {
+  const kind: Kind = n.kind === "problem" ? "problem" : "goal";
+  const label = n.number ? "Number" : KIND_LABEL[CARD_KIND[n.kind as "problem" | "goal"]];
+  const title = titleProps({ kind: CARD_KIND[n.kind as "problem" | "goal"], title: n.title });
+  const dashed = n.state === "seen" ? "var(--color-fg-subtle)" : n.state === "proposed" ? "var(--color-ai)" : null;
   return (
-    <span className="relative mt-auto flex h-[26px] items-center justify-end gap-[4px]">
-      {state === "accepted" ? (
-        <span className="inline-flex h-[22px] items-center gap-[4px] rounded-md bg-success-subtle px-[6px] text-micro font-semibold text-success">
-          <Check size={11} strokeWidth={2.25} /> Accepted
+    <div
+      data-node
+      className="absolute flex flex-col text-left transition-opacity"
+      style={{ left: n.x, top: n.y, width: n.w, height: n.h, opacity: dim ? WIRE.dimItem : n.state === "discarded" ? 0.55 : 1, ...surface(dashed, selected ? 2 : hovered ? 1.5 : 0) }}
+      onPointerEnter={() => onHover(true)}
+      onPointerLeave={() => onHover(false)}
+    >
+      <button type="button" onClick={onClick} aria-label={`${label}: ${n.title}`} aria-pressed={selected} className="absolute inset-0 z-0 cursor-pointer rounded-[inherit] focus-visible:shadow-[inset_0_0_0_2px_var(--color-focus)] focus-visible:outline-none" />
+      <KindTag kind={kind} label={label} quiet={n.state === "seen"} onClick={onClick} />
+      <span
+        className={clsx("pointer-events-none relative text-fg", n.state === "discarded" && "line-through")}
+        style={{
+          margin: `${CARD_LOOK.top}px ${CARD_LOOK.pad}px 0`,
+          fontSize: title.fontSize,
+          fontWeight: title.fontWeight,
+          lineHeight: `${title.lineHeight}px`,
+          letterSpacing: title.letterSpacing,
+          display: "-webkit-box",
+          WebkitLineClamp: titleLines(n.kind as "problem" | "goal", n.title),
+          WebkitBoxOrient: "vertical",
+          overflow: "hidden",
+        }}
+        dir="auto"
+      >
+        {n.title}
+      </span>
+      {hasFooter(n) && <Footer n={n} working={working} act={act} />}
+    </div>
+  );
+}
+
+/** A goal's footer: Qalam AI's proposal with ✕ and ✓, where it stands once settled, or their own goal with ✕. */
+function Footer({ n, working, act }: { n: CanvasNode; working: boolean; act: (fn: () => Promise<void>) => void }) {
+  return (
+    <span
+      className="relative mt-auto flex items-center justify-between gap-[8px]"
+      style={{ height: SETTLE_ROW + FOOTER.pad * 2 + 1, padding: `${FOOTER.pad}px ${CARD_LOOK.pad}px`, borderTop: "1px solid var(--color-card-line)", background: "var(--color-card-footer)", borderRadius: `0 0 ${CARD_LOOK.radius - 1}px ${CARD_LOOK.radius - 1}px` }}
+    >
+      {n.state === "proposed" ? (
+        <span className="pointer-events-none inline-flex items-center gap-[5px] text-ai" style={{ fontSize: STATE.size, fontWeight: STATE.weight }}>
+          <QalamAIGlyph size={12} /> Proposed
         </span>
-      ) : state === "discarded" ? (
-        <span className="text-micro font-medium text-fg-subtle">Left out</span>
+      ) : n.state === "kept" ? (
+        <span className="pointer-events-none text-fg-muted" style={{ fontSize: STATE.size, fontWeight: STATE.weight }}>
+          In your words
+        </span>
       ) : (
-        <>
-          <Tip label="Leave it out">
-            <button type="button" aria-label="Leave it out" disabled={working} onClick={() => act(() => discardLines([id]))} className="q-item grid size-[24px] place-items-center rounded-md text-fg-subtle shadow-[inset_0_0_0_1px_var(--color-line)] hover:bg-danger-subtle hover:text-danger disabled:opacity-50">
-              <X size={13} {...ICON} />
-            </button>
-          </Tip>
-          <Tip label="Accept">
-            <button type="button" aria-label="Accept" disabled={working} onClick={() => act(() => acceptLines([id]))} className="q-item grid size-[24px] place-items-center rounded-md bg-success-subtle text-success hover:bg-success hover:text-app disabled:opacity-50">
-              <Check size={13} strokeWidth={2} />
-            </button>
-          </Tip>
-        </>
+        <span />
       )}
+      {n.state === "accepted" ? (
+        <StateWord tone="var(--color-success)">Accepted</StateWord>
+      ) : n.state === "discarded" ? (
+        <StateWord tone="var(--color-fg-subtle)" out>
+          Left out
+        </StateWord>
+      ) : n.state === "kept" ? (
+        <IconBtn size="sm" label="Leave it out" onClick={() => dropKnown(n.goalRef!)}>
+          <X size={13} {...ICON} />
+        </IconBtn>
+      ) : n.lineId ? (
+        <Settle id={n.lineId} working={working} act={act} />
+      ) : null}
+    </span>
+  );
+}
+
+/** ✕ and ✓ on a proposed goal. */
+function Settle({ id, working, act }: { id: string; working: boolean; act: (fn: () => Promise<void>) => void }) {
+  return (
+    <span className="flex items-center gap-[4px]">
+      <Tip label="Leave it out">
+        <button type="button" aria-label="Leave it out" disabled={working} onClick={() => act(() => discardLines([id]))} className="q-item grid size-[24px] place-items-center rounded-md text-fg-subtle shadow-[inset_0_0_0_1px_var(--color-line)] hover:bg-danger-subtle hover:text-danger disabled:opacity-50">
+          <X size={13} {...ICON} />
+        </button>
+      </Tip>
+      <Tip label="Accept">
+        <button type="button" aria-label="Accept" disabled={working} onClick={() => act(() => acceptLines([id]))} className="q-item grid size-[24px] place-items-center rounded-md bg-success-subtle text-success hover:bg-success hover:text-app disabled:opacity-50">
+          <Check size={13} strokeWidth={2} />
+        </button>
+      </Tip>
     </span>
   );
 }

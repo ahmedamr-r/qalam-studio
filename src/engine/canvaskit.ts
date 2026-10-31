@@ -10,9 +10,11 @@ export const FONT_FILES: { family: string; file: string }[] = [
   ...[400, 500, 600, 700].map((w) => ({ family: "Inter", file: `/fonts/Inter-${w}.ttf` })),
   ...[400, 500, 600, 700].map((w) => ({ family: "IBM Plex Sans Arabic", file: `/fonts/IBMPlexSansArabic-${w}.ttf` })),
   ...[400, 600, 700].map((w) => ({ family: "Plus Jakarta Sans", file: `/fonts/PlusJakartaSans-${w}.ttf` })),
+  // The board's sources lane writes where each source is from in it.
+  { family: "Geist Mono", file: "/fonts/GeistMono-400.ttf" },
 ];
 
-export const FONT_FAMILIES = ["Inter", "Plus Jakarta Sans", "IBM Plex Sans Arabic"];
+export const FONT_FAMILIES = ["Inter", "Plus Jakarta Sans", "IBM Plex Sans Arabic", "Geist Mono"];
 
 export interface Engine {
   ck: CanvasKit;

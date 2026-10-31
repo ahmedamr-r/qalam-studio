@@ -1,4 +1,4 @@
-import { parse, wcagContrast } from "culori";
+import { clampChroma, converter, formatHex, parse, wcagContrast, wcagLuminance } from "culori";
 import { CATALOG, connectorDef } from "./catalog";
 import data from "./logos.json";
 
@@ -26,6 +26,28 @@ const MARKS: Record<string, { path: string; hex: string; title: string }> = data
 export function glyphTone(hex: string): "brand" | "ink" {
   const color = parse(`#${hex.replace(/^#/, "")}`);
   return color && wcagContrast(color, TILE) >= MIN_CONTRAST ? "brand" : "ink";
+}
+
+const toOklch = converter("oklch");
+
+/**
+ * A brand colour that reads on another ground (a board's dark tile): as it is when it does, else
+ * the same hue made lighter (or darker, on a light ground) until it does. Null when it's near grey
+ * (Notion's black): its glyph draws in ink.
+ */
+export function brandOn(hex: string, on: string): string | null {
+  const brand = `#${hex.replace(/^#/, "")}`;
+  const color = toOklch(brand);
+  const ground = parse(on);
+  if (!color || !ground) return null;
+  if (wcagContrast(brand, ground) >= MIN_CONTRAST) return brand;
+  if ((color.c ?? 0) < 0.04) return null;
+  const step = wcagLuminance(ground) < 0.2 ? 0.02 : -0.02;
+  for (let l = color.l + step; l > 0 && l < 1; l += step) {
+    const next = formatHex(clampChroma({ ...color, l }, "oklch"));
+    if (wcagContrast(next, ground) >= MIN_CONTRAST) return next;
+  }
+  return null;
 }
 
 /** A connector's logo by its id (`drive` is Google Drive's mark). */
