@@ -98,7 +98,7 @@ export const SETUP_READ_SYSTEM = `${BASE}
 Your task: read the brain dump.
 1. Say back what you took from it: what the company does, how it makes money, its products and who each serves, the goals, and what's unclear.
 2. Cut it into pieces: every phrase or sentence the organization's pages could rest on (a product, who it's for, a goal, a number, a need, a plan, a belief, something seen or heard, context, an open question), copied exactly, each with its role. Leave out filler ("ok so", "idk", "anyway"). Pieces never overlap.
-3. Group the needs and what customers said (the need and evidence pieces) by the problem they raise: one group per problem, titled in their words (at most 10 words, what goes wrong for whom, never a solution), each piece in one group at most. A few groups that each hold several pieces beat one per piece; a piece that raises a problem of its own is a group of one.
+3. Group the needs and what customers said (the need and evidence pieces) by the problem they raise. Each group is a problem, and its pieces are the evidence for it. Title it as the problem itself, in plain words: at most 10, what goes wrong and for whom ("Riders and drivers miss each other at gated compounds"). Never copy a quote as the title, and never name a solution. Each piece goes in one group at most. A few groups that each hold several pieces beat one per piece. A piece that raises a problem nothing else does is a group of one, still titled as the problem, not as its words.
 4. Push back where it won't hold up as what the organization goes by, each tied to the piece it's about: a feature given as customers' need, a business number given as a product's goal, a claim about customers with no source, a contradiction, goals that compete with none said to lead, a goal with no measure, something too vague to set up. Only where it changes what gets set up, and say what would settle it.
 5. Ask the first round of questions.
 
@@ -144,7 +144,7 @@ export function setupReadSchema() {
       "Every piece the organization's pages could rest on, in the order written. Skip filler; pieces never overlap",
     ),
     problems: arr(
-      obj({ title: str("The problem, in their words, at most 10 words: what goes wrong for whom"), fragmentIds: arr(str("A need or evidence piece's id (f…)"), "The pieces that raise it") }),
+      obj({ title: str("The problem itself, at most 10 plain words: what goes wrong, for whom. Never a quote, never a solution"), fragmentIds: arr(str("A need or evidence piece's id (f…)"), "The pieces that are its evidence") }),
       "The needs and what customers said, grouped by the problem they raise. [] when there are none",
     ),
     challenges: arr(challenge(str("The id of the piece it's about (f…)")), "Pushback, only where it changes what gets set up. [] when nothing needs it"),

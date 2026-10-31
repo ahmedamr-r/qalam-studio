@@ -1,6 +1,6 @@
 import { newId } from "@/doc/factory";
 import type { SourceQuote } from "@/discovery/sources";
-import { wordsHold } from "@/goals/said";
+import { checkWords } from "@/hub/topics";
 import { wordOverlap } from "@/discovery/near";
 
 export { wordOverlap };
@@ -10,8 +10,9 @@ import type { SetupProblem, SetupSession } from "./setup";
  * The problems a setup's reading saw (pure): what customers said and the needs in the dump, grouped
  * by the problem they raise, so the canvas and a board show a few problems with their quotes rather
  * than a card per quote. Qalam AI proposes the groups; code keeps a quote in a group only where the
- * call was sent it, it's a need or what customers said, and no group took it before; and the
- * group's title only in words they used (else the words of its first need, or its first quote).
+ * call was sent it, it's a need or what customers said, and no group took it before. The title is
+ * the problem as Qalam AI puts it, its quotes the evidence under it; code keeps it where its numbers
+ * and quoted words are in those quotes (else the words of its first need, or its first quote).
  */
 
 const CARD_TITLE_MAX = 160;
@@ -50,18 +51,19 @@ const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object"
 const items = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? v : []).map(rec);
 const clip = (v: unknown, max: number) => (typeof v === "string" ? v.trim().replace(/\s+/g, " ").slice(0, max) : "");
 
-/** A group's title: theirs where every word of it is one they used, else its first need's words, else its first quote's. */
-function titled(title: string, quotes: SourceQuote[], said: string): string {
-  if (title && wordsHold(title, said)) return title;
+/**
+ * A group's title: the problem as Qalam AI puts it (what goes wrong, for whom), kept where every
+ * number and quoted word in it is in its quotes; else its first need's words, else its first quote's.
+ */
+function titled(title: string, quotes: SourceQuote[]): { title: string; by?: "qalam" } {
+  const kept = title ? checkWords(title, quotes, "", TITLE_MAX) : null;
+  if (kept) return { title: kept, by: "qalam" };
   const first = quotes.find((q) => q.role === "need") ?? quotes[0];
-  return titleOf(first.text);
+  return { title: titleOf(first.text) };
 }
 
-/**
- * The groups the reading proposed, as code keeps them. `refs` names each piece by the id the call
- * gave it (f…); `said` is everything they sent, whose words a title must be in.
- */
-export function sanitizeGroups(raw: unknown, refs: Readonly<Record<string, string>>, quotes: readonly SourceQuote[], said: string, makeId: () => string = newId): SetupProblem[] {
+/** The groups the reading proposed, as code keeps them. `refs` names each piece by the id the call gave it (f…). */
+export function sanitizeGroups(raw: unknown, refs: Readonly<Record<string, string>>, quotes: readonly SourceQuote[], makeId: () => string = newId): SetupProblem[] {
   const byId = new Map(quotes.map((q) => [q.id, q]));
   const taken = new Set<string>();
   const out: SetupProblem[] = [];
@@ -73,7 +75,7 @@ export function sanitizeGroups(raw: unknown, refs: Readonly<Record<string, strin
     const unique = [...new Map(mine.map((q) => [q.id, q])).values()];
     if (!unique.length) continue;
     for (const q of unique) taken.add(q.id);
-    out.push({ id: makeId(), title: titled(clip(g.title, TITLE_MAX), unique, said), quotes: unique.map((q) => q.id) });
+    out.push({ id: makeId(), ...titled(clip(g.title, TITLE_MAX), unique), quotes: unique.map((q) => q.id) });
   }
   return out;
 }

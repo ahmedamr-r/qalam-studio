@@ -58,6 +58,10 @@ describe("a board started from the setup", () => {
     const b = boardFromSetup({ source, session: { proposal: undefined, problems }, goal: null });
     const cards = cardsOf(b.doc).filter((c) => c.kind === "opportunity");
     expect(cards.map((c) => [c.title, c.pieces])).toEqual([["Sunday lists and picky kids", ["hub:quote:list", "hub:quote:kids"]]]);
+    // Their words as the title are theirs; Qalam AI's wording of the problem is Qalam AI's, its quotes still theirs.
+    expect(cards[0].by).toBe("user");
+    const worded = boardFromSetup({ source, session: { proposal: undefined, problems: problems.map((p) => ({ ...p, by: "qalam" as const })) }, goal: null });
+    expect(cardsOf(worded.doc).filter((c) => c.kind === "opportunity").map((c) => c.by)).toEqual(["ai"]);
   });
 
   it("leaves another goal's problems to its own board", () => {

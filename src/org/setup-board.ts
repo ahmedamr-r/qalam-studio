@@ -50,7 +50,7 @@ export function boardFromSetup(input: SetupBoardInput): { doc: Doc; outcome: str
   const cited = new Set(lines.flatMap((l) => l.pieces));
   // The problems the reading saw, each with its quotes (needs it found, what customers said); a quote no group took is a problem of its own.
   const { groups, loose } = setupGroups(input.session, source.quotes);
-  const all = [...groups.map((g) => ({ title: g.title, quotes: g.quotes.flatMap((id) => byId.get(id) ?? []) })), ...loose.flatMap((id) => (byId.has(id) ? [{ title: titleOf(byId.get(id)!.text), quotes: [byId.get(id)!] }] : []))];
+  const all = [...groups.map((g) => ({ title: g.title, by: g.by, quotes: g.quotes.flatMap((id) => byId.get(id) ?? []) })), ...loose.flatMap((id) => (byId.has(id) ? [{ title: titleOf(byId.get(id)!.text), by: undefined, quotes: [byId.get(id)!] }] : []))];
   const needs = all
     .filter((n) => n.quotes.length)
     // The goal's own problems, and those no goal took; another goal's stay for its board.
@@ -69,7 +69,8 @@ export function boardFromSetup(input: SetupBoardInput): { doc: Doc; outcome: str
   }
   // With no goal above them, each problem is a tree of its own: side by side, with room for each one's sources lane.
   const problems = needs.map((n, i) => {
-    const node = makeCardNode(newCard("opportunity", { title: n.title, evidence: n.quotes.map(ev) }), outcome ? undefined : { x: i * ROOT_STEP, y: 0 });
+    // Qalam AI's wording of the problem is its own; the quotes under it are theirs.
+    const node = makeCardNode(newCard("opportunity", { title: n.title, evidence: n.quotes.map(ev), ...(n.by === "qalam" ? { createdBy: "ai" as const } : {}) }), outcome ? undefined : { x: i * ROOT_STEP, y: 0 });
     addCardIn(doc, node, outcome);
     return node.id;
   });

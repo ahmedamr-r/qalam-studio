@@ -85,8 +85,9 @@ export const pickedDocs = (docs: readonly SetupDoc[] | undefined): SetupDoc[] =>
 /** A problem the reading saw in what customers said and the needs in the dump, and the quotes that raise it (src/org/setup-groups.ts). */
 export interface SetupProblem {
   id: string;
-  /** In their words. */
+  /** The problem as Qalam AI puts it (`by: "qalam"`), else in their words. */
   title: string;
+  by?: "qalam";
   quotes: string[];
 }
 

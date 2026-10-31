@@ -24,7 +24,7 @@ export function setupProposals(doc: Doc, session: Pick<SetupSession, "problems">
   const titles = cards.map((c) => c.card.title);
   const byId = new Map(quotes.map((q) => [q.id, q]));
   const { groups, loose } = setupGroups(session, quotes);
-  const all = [...groups.map((g) => ({ title: g.title, quotes: g.quotes })), ...loose.map((id) => ({ title: titleOf(byId.get(id)!.text), quotes: [id] }))];
+  const all = [...groups.map((g) => ({ title: g.title, by: g.by, quotes: g.quotes })), ...loose.map((id) => ({ title: titleOf(byId.get(id)!.text), by: undefined, quotes: [id] }))];
   const out: Proposal[] = [];
   for (const g of all) {
     const refs: QuoteRef[] = g.quotes.flatMap((id) => {
@@ -34,7 +34,7 @@ export function setupProposals(doc: Doc, session: Pick<SetupSession, "problems">
     if (!refs.length || titles.some((t) => sameTopic(t, g.title)) || g.quotes.every((id) => on.has(quotePiece(id)))) continue;
     titles.push(g.title);
     const n = refs.length;
-    out.push({ id: makeId(), kind: "card", cardId: makeId(), parentId: outcome, card: newCard("opportunity", { title: g.title, createdBy: "user" }), backing: { quotes: refs, words: [] }, why: `From what you sent in the setup: ${n} ${n === 1 ? "quote" : "quotes"}.` });
+    out.push({ id: makeId(), kind: "card", cardId: makeId(), parentId: outcome, card: newCard("opportunity", { title: g.title, createdBy: g.by === "qalam" ? "ai" : "user" }), backing: { quotes: refs, words: [] }, why: `From what you sent in the setup: ${n} ${n === 1 ? "quote" : "quotes"}.` });
   }
   return out;
 }

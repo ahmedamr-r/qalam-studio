@@ -26,19 +26,25 @@ describe("the problems the reading grouped", () => {
       { title: "The price at the end", fragmentIds: ["f4", "f2"] },
       { title: "Nothing", fragmentIds: ["f5"] },
     ];
-    expect(sanitizeGroups(raw, REFS, QUOTES, SAID, id)).toEqual([
-      { id: "g1", title: "Pickup at the gate", quotes: ["need", "gate", "air"] },
-      { id: "g2", title: "The price at the end", quotes: ["fare"] },
+    expect(sanitizeGroups(raw, REFS, QUOTES, id)).toEqual([
+      { id: "g1", title: "Pickup at the gate", by: "qalam", quotes: ["need", "gate", "air"] },
+      { id: "g2", title: "The price at the end", by: "qalam", quotes: ["fare"] },
     ]);
   });
 
-  it("titles a group in their words, else by its need's or first quote's words", () => {
+  it("titles a group as the problem Qalam AI names, its quotes the evidence; a number or quoted words its quotes don't have fall back to their words", () => {
     n = 0;
     const raw = [
-      { title: "Drivers cannot locate riders", fragmentIds: ["f2", "f1"] },
-      { title: "Surprise surcharges", fragmentIds: ["f4"] },
+      { title: "Drivers and riders miss each other at the gate", fragmentIds: ["f2", "f1"] },
+      { title: "Fares come out 60 pounds over the estimate", fragmentIds: ["f4"] },
+      { title: "Airport pickups “take forever”", fragmentIds: ["f3"] },
     ];
-    expect(sanitizeGroups(raw, REFS, QUOTES, SAID, id).map((g) => g.title)).toEqual(["Pickup is the worst part.", "The price at the end was 40 pounds more."]);
+    const groups = sanitizeGroups(raw, REFS, QUOTES, id);
+    expect(groups.map((g) => [g.title, g.by])).toEqual([
+      ["Drivers and riders miss each other at the gate", "qalam"],
+      ["The price at the end was 40 pounds more.", undefined],
+      ["Pickup at the airport takes 25 minutes.", undefined],
+    ]);
   });
 
   it("makes groups from the needs for a session from before: what customers said joins the need it shares words with", () => {

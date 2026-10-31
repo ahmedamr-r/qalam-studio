@@ -237,7 +237,7 @@ export async function readSetup() {
     const { raw, model } = await call("Qalam AI is reading what you wrote", { stage: "read", ...orgFields(org.name, orgNow()), dump: s.text });
     const r = sanitizeRead(raw, s.text, []);
     if (!r.fragments.length) throw new AIError("parse", "Qalam AI found nothing in it to set up from. Try again, or write a little more.");
-    const problems = sanitizeGroups((raw as { problems?: unknown } | null)?.problems, r.refs, r.fragments, s.text);
+    const problems = sanitizeGroups((raw as { problems?: unknown } | null)?.problems, r.refs, r.fragments);
     await update((x) => ({
       ...x,
       quotes: r.fragments,
