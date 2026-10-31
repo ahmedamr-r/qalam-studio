@@ -30,6 +30,17 @@ describe("the setup's places", () => {
     expect(placeKey(null, s)).toBe("org");
   });
 
+  it("doesn't show again, as what a place says now, what an accepted line put there", () => {
+    const s = session([line("c", { to: "new:n1", text: "Rides in Cairo." }), line("s1", { to: "new:n1", field: "segments", text: "Airport riders" })], { made: { n1: "prod1" }, decided: { c: "accepted", s1: "accepted" } });
+    const products = [product("prod1", "Uber rides", { context: "Rides in Cairo.", segments: ["Airport riders", "Cash payers"] })];
+    const [, rides] = placesOf({ org: "Uber", session: s, products, about, quotes: [] });
+    expect(rides.lines.map((l) => [l.label, l.state, l.text])).toEqual([
+      ["Context", "accepted", "Rides in Cairo."],
+      ["Segments", "accepted", "Airport riders"],
+      ["Segments", "kept", "Cash payers"],
+    ]);
+  });
+
   it("shows the products there now, and those named at the know door, once each", () => {
     const places = placesOf({ org: "Basket", session: null, products: [product("g", "Grocery", { segments: ["Parents", "Offices"] })], about, quotes: [], named: ["Grocery", "Pantry"] });
     expect(places.map((p) => [p.key, p.fresh, p.lines.map((l) => l.text)])).toEqual([

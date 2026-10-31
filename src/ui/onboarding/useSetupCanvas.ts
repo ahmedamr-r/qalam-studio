@@ -6,7 +6,7 @@ import { useKnow } from "../setup/know";
 import { useSetup, useSetupQuotes } from "../setup/setup";
 import { canvasOf, type Canvas } from "./canvas";
 import { useFirstRun } from "./flow";
-import { placesOf } from "./places";
+import { placesOf, type Place } from "./places";
 
 /*
  * What the setup's canvas draws, from what's kept: the door's own material (the setup's reading,
@@ -14,7 +14,7 @@ import { placesOf } from "./places";
  * the goals in goals.md, the tools connected). Before there's an organization, only its name, faint.
  */
 
-export function useSetupCanvas(): { canvas: Canvas; empty: string | null; name: string } {
+export function useSetupCanvas(): { canvas: Canvas; empty: string | null; name: string; places: Place[] } {
   const fr = useFirstRun();
   const source = useSetup((s) => s.source);
   const quotes = useSetupQuotes();
@@ -38,13 +38,14 @@ export function useSetupCanvas(): { canvas: Canvas; empty: string | null; name: 
               ? { setup: { session: source.setup, sourceId: source.id, quotes, text: source.text } }
               : {};
     const org = fr.org;
+    const places = org ? placesOf({ org: org.name, session: source?.setup ?? null, products, about, quotes, named }) : [];
     const canvas = canvasOf({
       ...door,
       busy,
       org: { name, ghost: !org },
       ...(org
         ? {
-            places: placesOf({ org: org.name, session: source?.setup ?? null, products, about, quotes, named }),
+            places,
             tree: goals,
             tools: (fr.tools ?? []).filter((t) => t.tone === "ok").map((t) => ({ id: t.id, label: t.label })),
           }
@@ -52,6 +53,6 @@ export function useSetupCanvas(): { canvas: Canvas; empty: string | null; name: 
     });
     // Nothing on it but the organization itself: a word on what will be.
     const quiet = canvas.nodes.every((n) => n.kind === "place" || n.kind === "tool") && canvas.nodes.filter((n) => n.kind === "place").every((n) => !n.quotes.length);
-    return { canvas, empty: quiet ? `What ${name} is becoming shows here, wired from what you send.` : null, name };
+    return { canvas, empty: quiet ? `What ${name} is becoming shows here, wired from what you send.` : null, name, places };
   }, [fr.door, fr.problems.sources, fr.org, fr.tools, name, know.phase, know.goals, pending, source, quotes, busy, goals, about, products]);
 }

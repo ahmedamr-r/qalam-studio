@@ -9,23 +9,22 @@ import { useVoice } from "@/org/voice";
 import { positionLabel, useYou } from "@/org/you";
 import { voiceOffer } from "@/voice/model";
 import { orgHref } from "@/projects/model";
-import { QalamAIGlyph, QalamMark } from "../brand";
+import { QalamMark } from "../brand";
 import { toQuestion } from "../ai/plan";
 import { Questionnaire } from "../ai/Questionnaire";
 import { initialFlow, type FlowState } from "../ai/questionFlow";
 import { attachFiles, clearAttachments, docsCheck, readyDocs, useAttach } from "../chat/attach";
 import { AttachmentChips, SourceRow } from "../chat/SourcePicker";
 import { ChatComposer, ChatThread } from "../chat/ChatThread";
-import { Panel, PanelLayout, StepList, useWide, WIDE } from "../chat/Panels";
 import { PageFrame } from "../frame/PageFrame";
 import { useFrame } from "../frame/store";
 import { r } from "../recipes";
 import Toasts from "../toast";
 import { answerKnown, readKnown, saveKnownForm, useKnow } from "../setup/know";
 import { answerSetupRound, saveSetupRound, startSetup, stopSetup, useSetup } from "../setup/setup";
-import { nameOrg, openSoFar, sendProblems, startSetupPage, startWelcome, useFirstRun, type FirstRun } from "./flow";
+import { nameOrg, sendProblems, startSetupPage, startWelcome, useFirstRun, type FirstRun } from "./flow";
 import { PARTS } from "./parts";
-import { SoFar } from "./SoFarPanel";
+import { CanvasPage } from "./CanvasPage";
 import { askOf, isAddress, stepsOf, threadOf, type EngineState, type ThreadInput } from "./thread";
 
 /*
@@ -157,7 +156,6 @@ export function Onboarding({ route }: { route: "welcome" | "setup" }) {
     if (lastAsk.current !== null && lastAsk.current !== ask.key) clearAttachments();
     lastAsk.current = ask.key;
   }, [ask.key, ask.kind]);
-  const wide = useWide(WIDE);
   const lastDump = useRef("");
   const running = !!input.busy || fr.naming.busy;
   const first = route === "welcome" || fr.first;
@@ -172,11 +170,8 @@ export function Onboarding({ route }: { route: "welcome" | "setup" }) {
     history.replaceState(null, "", u);
   }, [source?.id]);
 
-  // Proposals are reviewed in So far: on a narrow window it opens by itself.
+  // Proposals are reviewed on the canvas: as the review starts, a chat drawn over it steps aside.
   const reviewing = source?.setup?.phase === "review";
-  useEffect(() => {
-    if (reviewing) openSoFar(true);
-  }, [reviewing]);
 
   const title = route === "welcome" ? (fr.mode === "verify" ? "Check the setup" : fr.mode === "new" ? "A new organization" : "Welcome to Qalam") : `Set up ${name ?? "your organization"}`;
   useEffect(() => {
@@ -252,39 +247,14 @@ export function Onboarding({ route }: { route: "welcome" | "setup" }) {
       />
     );
 
-  const open = source?.setup?.proposal ? pendingLines(source.setup).length : 0;
   const layout = (
-    <PanelLayout
-      left={
-        <Panel title={first ? "Setting up" : "Goals"} body={false}>
-          <StepList steps={steps} />
-        </Panel>
+    <CanvasPage
+      reviewing={reviewing}
+      chat={
+        <div className="min-h-0 flex-1">
+          <ChatThread messages={messages} running={running} onCancel={stopSetup} parts={PARTS} footer={footer} pinned={ask.kind !== "questions"} />
+        </div>
       }
-      center={
-        <Panel
-          label="Qalam AI"
-          title={
-            <span className="flex items-center gap-[8px]">
-              <QalamAIGlyph size={14} /> Qalam AI
-            </span>
-          }
-          actions={
-            !wide && (
-              <button type="button" className={clsx(r.buttonSm, r.buttonGhost)} onClick={() => openSoFar(!fr.soFarOpen)} aria-expanded={fr.soFarOpen}>
-                So far{open ? <span className="text-fg-subtle tnum"> · {open}</span> : null}
-              </button>
-            )
-          }
-          body={false}
-        >
-          <div className="min-h-0 flex-1">
-            <ChatThread messages={messages} running={running} onCancel={stopSetup} parts={PARTS} footer={footer} pinned={ask.kind !== "questions"} />
-          </div>
-        </Panel>
-      }
-      right={<SoFar />}
-      rightOpen={fr.soFarOpen}
-      onRightOpen={openSoFar}
     />
   );
 

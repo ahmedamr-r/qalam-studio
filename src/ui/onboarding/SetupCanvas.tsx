@@ -134,7 +134,27 @@ function surface(dashed: string | null, ring: number): CSSProperties {
   };
 }
 
-export function SetupCanvas({ canvas, selected, onSelect, onOpen, working, act, empty }: { canvas: Canvas; selected: string | null; onSelect: (id: string | null) => void; onOpen: (source: CanvasNode) => void; working: boolean; act: (fn: () => Promise<void>) => void; empty?: string | null }) {
+export function SetupCanvas({
+  canvas,
+  selected,
+  onSelect,
+  onOpen,
+  working,
+  act,
+  empty,
+  bring,
+}: {
+  canvas: Canvas;
+  selected: string | null;
+  onSelect: (id: string | null) => void;
+  /** A source, a place or a goal clicked: its panel opens. */
+  onOpen: (node: CanvasNode) => void;
+  working: boolean;
+  act: (fn: () => Promise<void>) => void;
+  empty?: string | null;
+  /** A node to bring into the middle (`n` changes each time it's asked). */
+  bring?: { id: string; n: number } | null;
+}) {
   const host = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [view, setView] = useState<View>({ x: 0, y: 0, k: 1 });
@@ -194,6 +214,16 @@ export function SetupCanvas({ canvas, selected, onSelect, onOpen, working, act, 
       commit({ ...v, x: v.x + (size.w - before.w) / 2, y: v.y + (size.h - before.h) / 2 });
     }
   }, [shape, size.w, size.h]);
+
+  // A node asked for (a review's next line, a goal picked in a panel): into the middle, at the zoom it's at.
+  useEffect(() => {
+    const n = bring ? canvas.nodes.find((x) => x.id === bring.id) : undefined;
+    if (!n || !size.w) return;
+    const k = viewRef.current.k;
+    touched.current = true;
+    commit({ k, x: size.w / 2 - (n.x + n.w / 2) * k, y: size.h / 2 - (n.y + n.h / 2) * k });
+    onSelect(n.id);
+  }, [bring?.n, size.w > 0]);
 
   const zoomAt = useCallback(
     (factor: number, sx = size.w / 2, sy = size.h / 2) => {
@@ -285,7 +315,15 @@ export function SetupCanvas({ canvas, selected, onSelect, onOpen, working, act, 
             hovered={hovered === n.id}
             selected={selected === n.id}
             onHover={(on) => setHovered((h) => (on ? n.id : h === n.id ? null : h))}
-            onClick={() => (n.kind === "source" ? onOpen(n) : onSelect(selected === n.id ? null : n.id))}
+            onClick={() => {
+              if (n.kind === "source") return onOpen(n);
+              // A place or a goal opens its panel too; a problem lights its path.
+              if (n.kind === "place" || n.kind === "goal") {
+                onSelect(n.id);
+                return onOpen(n);
+              }
+              onSelect(selected === n.id ? null : n.id);
+            }}
             working={working}
             act={act}
           />

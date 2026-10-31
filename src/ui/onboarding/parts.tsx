@@ -33,8 +33,9 @@ import { connectFor } from "../welcome/steps";
 import { Dictated } from "../voice/MicButton";
 import { ParakeetInstall } from "../voice/ParakeetInstall";
 import { wordsFor } from "@/org/words";
-import { checkEngine, engineChanged, finishFirstRun, goStep, openKeyField, openSoFar, pickDoor, pickShape, saveVoice, saveYou, saveYours, skipEngine, togglePick, useFirstRun } from "./flow";
+import { checkEngine, engineChanged, finishFirstRun, goStep, openKeyField, pickDoor, pickShape, saveVoice, saveYou, saveYours, skipEngine, togglePick, useFirstRun } from "./flow";
 import { treeRows } from "./places";
+import { reviewNext } from "./dock";
 
 /*
  * What the first run's conversation draws besides words (named parts, ./thread.ts): the engine
@@ -200,7 +201,7 @@ function ChoicesPart({ data }: { data: PartData }) {
       return (
         <ReplyChips>
           {chip(`Accept all · ${n}`, () => (session ? acceptLines(pendingLines(session).map((l) => l.id)) : undefined), true)}
-          {chip("Review one by one", () => openSoFar(true))}
+          {chip("Review one by one", () => reviewNext(useSetup.getState().source?.setup))}
         </ReplyChips>
       );
     case "know-review":

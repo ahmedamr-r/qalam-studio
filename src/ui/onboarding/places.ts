@@ -62,10 +62,15 @@ export function placeKey(to: string | null, session: Pick<SetupSession, "made"> 
   return ref ? `new:${ref}` : to;
 }
 
-/** What a place says now, line by line, read-only. */
-function kept(key: string, labels: Record<SetupField, string>, c: { context: string; audience: string; segments?: readonly string[] }): LineRow[] {
-  const row = (field: SetupField, text: string): LineRow[] => (text.trim() ? [{ id: `${key}:${field}`, field, label: labels[field], text: text.trim(), state: "kept", rests: { quotes: [], answers: [] }, pieces: [] }] : []);
-  return [...row("context", c.context), ...row("audience", c.audience), ...row("segments", (c.segments ?? []).join(", "))];
+const norm = (t: string) => t.toLowerCase().replace(/\s+/g, " ").trim();
+
+/** What a place says now, line by line, read-only: less what an accepted line of the proposal put there (it shows as that line). */
+function kept(key: string, labels: Record<SetupField, string>, c: { context: string; audience: string; segments?: readonly string[] }, accepted: readonly LineRow[] = []): LineRow[] {
+  const took = (field: SetupField) => accepted.filter((l) => l.field === field && l.state === "accepted").map((l) => norm(l.text));
+  const rest = (field: SetupField, text: string) => took(field).reduce((t, a) => t.replace(a, ""), norm(text)).replace(/[\s.]+/g, " ").trim();
+  const row = (field: SetupField, text: string): LineRow[] => (text.trim() && rest(field, text) ? [{ id: `${key}:${field}`, field, label: labels[field], text: text.trim(), state: "kept", rests: { quotes: [], answers: [] }, pieces: [] }] : []);
+  const segments = (c.segments ?? []).filter((x) => !took("segments").includes(norm(x)));
+  return [...row("context", c.context), ...row("audience", c.audience), ...(segments.length ? row("segments", segments.join(", ")) : [])];
 }
 
 /** The About and each product (those there, those Qalam AI proposes, those they named), with their lines. */
@@ -77,17 +82,21 @@ export function placesOf(i: PlacesInput): Place[] {
       .filter((l) => placeKey(l.to, s) === key)
       .sort((a, b) => ORDER.indexOf(a.field) - ORDER.indexOf(b.field))
       .map((l) => ({ id: l.id, field: l.field, label: labels[l.field], text: l.text, state: s?.decided?.[l.id] ?? "proposed", rests: { quotes: l.pieces.flatMap((id) => i.quotes.find((q) => q.id === id)?.text ?? []), answers: l.answers }, pieces: l.pieces }));
-  const places: Place[] = [{ key: "org", title: `About ${i.org}`, fresh: false, lines: [...linesFor("org", ORG_FIELD), ...kept("org", ORG_FIELD, i.about)] }];
+  const place = (key: string, title: string, fresh: boolean, labels: Record<SetupField, string>, now: Parameters<typeof kept>[2] | null): Place => {
+    const lines = linesFor(key, labels);
+    return { key, title, fresh, lines: [...lines, ...(now ? kept(key, labels, now, lines) : [])] };
+  };
+  const places: Place[] = [place("org", `About ${i.org}`, false, ORG_FIELD, i.about)];
   // Products Qalam AI proposes, in its order; made ones under the name they have now.
   for (const p of s?.proposal?.products ?? []) {
     const key = `new:${p.ref}`;
     const made = i.products.find((x) => x.id === s?.made?.[p.ref]);
-    places.push({ key, title: made?.name ?? p.name, fresh: !made, lines: [...linesFor(key, PRODUCT_FIELD), ...(made ? kept(key, PRODUCT_FIELD, made) : [])] });
+    places.push(place(key, made?.name ?? p.name, !made, PRODUCT_FIELD, made ?? null));
   }
   for (const p of i.products) {
     const key = placeKey(p.id, s);
     if (places.some((x) => x.key === key)) continue;
-    places.push({ key, title: p.name, fresh: false, lines: [...linesFor(key, PRODUCT_FIELD), ...kept(key, PRODUCT_FIELD, p)] });
+    places.push(place(key, p.name, false, PRODUCT_FIELD, p));
   }
   for (const name of i.named ?? []) {
     if (i.products.some((p) => p.name.toLowerCase() === name.toLowerCase())) continue;
