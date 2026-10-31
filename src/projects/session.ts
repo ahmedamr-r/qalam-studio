@@ -176,8 +176,15 @@ export function startDocPersistence(onSaved?: (doc: Doc) => void) {
   return stop;
 }
 
+/** What else holds edits to save before the page goes (a space's canvas, src/space/session.ts). */
+let alsoFlush: (() => Promise<void>) | null = null;
+export const flushAlso = (fn: () => Promise<void>) => void (alsoFlush = fn);
+
 /** Finish any pending save (before leaving the page). `force` saves over a change made elsewhere. */
-export const flushDoc = (opts: { force?: boolean } = {}) => flushSaving?.(opts) ?? Promise.resolve();
+export const flushDoc = async (opts: { force?: boolean } = {}) => {
+  await (flushSaving?.(opts) ?? Promise.resolve());
+  await alsoFlush?.();
+};
 
 let skipNext = false;
 const fromElsewhere = new Set<(doc: Doc, before: Doc) => void>();

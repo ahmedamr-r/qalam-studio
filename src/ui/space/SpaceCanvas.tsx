@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import clsx from "clsx";
-import { Cable, Maximize, Minus, Plus } from "lucide-react";
+import { Cable, FileText, Maximize, Minus, Plus } from "lucide-react";
 import { visibleCards } from "@/doc/board";
 import { boundsOf, worldBounds } from "@/doc/geometry";
 import { studio, useStudio, type Camera } from "@/doc/store";
@@ -15,6 +15,8 @@ import { IconBtn, Spinner } from "../controls";
 import { onCanvasReady } from "../discovery/canvas";
 import { useSources } from "../discovery/sources";
 import { startSpaceCanvas } from "./boot";
+import { consumeHomeParams } from "./links";
+import { SourcesDock } from "./SourcesDock";
 
 /*
  * A space's canvas on its home: the board's own canvas (its painter, gestures, card bar and
@@ -65,9 +67,24 @@ export function SpaceCanvas({ org, space, inputs, sources }: { org: string | nul
   const status = useSpaceStatus();
   const lanes = useStudio((s) => s.view.sources);
   const key = `qalam.space.view.${org ?? ""}:${space ?? "org"}`;
+  const [dock, setDock] = useState(() => {
+    try {
+      return sessionStorage.getItem("qalam.space.sources") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const showDock = (on: boolean) => {
+    setDock(on);
+    try {
+      sessionStorage.setItem("qalam.space.sources", on ? "1" : "0");
+    } catch {
+      // Only this tab's view.
+    }
+  };
 
-  // Every source in the organization: the lane draws the ones a card rests on.
-  useEffect(() => useSources.setState({ projectId: null, loaded: true, list: sources }), [sources]);
+  // The organization's sources (a product's space: its own and the whole organization's); the lane draws the ones a card rests on.
+  useEffect(() => useSources.setState({ projectId: null, loaded: true, list: sources.filter((s) => !s.product || !space || s.product === space).sort((a, b) => a.addedAt - b.addedAt) }), [sources, space]);
 
   useEffect(() => {
     if (engine !== true || !org || !inputs) return;
@@ -87,6 +104,8 @@ export function SpaceCanvas({ org, space, inputs, sources }: { org: string | nul
     onCanvasReady((c) => {
       const cam = kept && Number.isFinite(kept.zoom) ? kept : readableCamera(c);
       if (cam) studio().setCamera(cam);
+      // What the address asks of it (a card, a board, a draft…), now it's in view.
+      void consumeHomeParams();
     });
     let t = 0;
     const off = useStudio.subscribe((s, prev) => {
@@ -111,36 +130,49 @@ export function SpaceCanvas({ org, space, inputs, sources }: { org: string | nul
   if (engine !== true || !ready) return <Waiting />;
   const zoomBy = (k: number) => getController()?.zoomBy(k);
   return (
-    <div className="relative h-full w-full">
-      <CanvasView />
-      <div className="absolute bottom-[12px] left-[12px] z-[8] flex items-center gap-[2px] rounded-lg bg-raised p-[2px] shadow-floating">
-        <IconBtn size="sm" label="Zoom out" onClick={() => zoomBy(0.8)}>
-          <Minus size={13} {...ICON} />
-        </IconBtn>
-        <IconBtn size="sm" label="Zoom in" onClick={() => zoomBy(1.25)}>
-          <Plus size={13} {...ICON} />
-        </IconBtn>
-        <IconBtn
-          size="sm"
-          label="Show it all"
-          onClick={() => {
-            const c = getController();
-            const cam = c && readableCamera(c);
-            if (c && cam) c.glideTo(cam, 280);
-          }}
-        >
-          <Maximize size={13} {...ICON} />
-        </IconBtn>
-        <span aria-hidden className="mx-[2px] h-[16px] w-px bg-line-subtle" />
-        <button
-          type="button"
-          aria-pressed={lanes}
-          onClick={() => studio().setView({ sources: !lanes })}
-          className={clsx("q-item flex h-[24px] items-center gap-[6px] rounded-md px-[8px] text-caption", lanes ? "bg-selection-subtle text-selection-label" : "text-fg-muted hover:bg-hover hover:text-fg")}
-        >
-          <Cable size={13} {...ICON} />
-          Sources and wires
-        </button>
+    <div className="flex h-full w-full">
+      {dock && <SourcesDock onClose={() => showDock(false)} />}
+      <div className="relative min-w-0 flex-1">
+        <CanvasView />
+        <div className="absolute bottom-[12px] left-[12px] z-[8] flex items-center gap-[2px] rounded-lg bg-raised p-[2px] shadow-floating">
+          <button
+            type="button"
+            aria-pressed={dock}
+            onClick={() => showDock(!dock)}
+            className={clsx("q-item flex h-[24px] items-center gap-[6px] rounded-md px-[8px] text-caption", dock ? "bg-selection-subtle text-selection-label" : "text-fg-muted hover:bg-hover hover:text-fg")}
+          >
+            <FileText size={13} {...ICON} />
+            Sources
+          </button>
+          <span aria-hidden className="mx-[2px] h-[16px] w-px bg-line-subtle" />
+          <IconBtn size="sm" label="Zoom out" onClick={() => zoomBy(0.8)}>
+            <Minus size={13} {...ICON} />
+          </IconBtn>
+          <IconBtn size="sm" label="Zoom in" onClick={() => zoomBy(1.25)}>
+            <Plus size={13} {...ICON} />
+          </IconBtn>
+          <IconBtn
+            size="sm"
+            label="Show it all"
+            onClick={() => {
+              const c = getController();
+              const cam = c && readableCamera(c);
+              if (c && cam) c.glideTo(cam, 280);
+            }}
+          >
+            <Maximize size={13} {...ICON} />
+          </IconBtn>
+          <span aria-hidden className="mx-[2px] h-[16px] w-px bg-line-subtle" />
+          <button
+            type="button"
+            aria-pressed={lanes}
+            onClick={() => studio().setView({ sources: !lanes })}
+            className={clsx("q-item flex h-[24px] items-center gap-[6px] rounded-md px-[8px] text-caption", lanes ? "bg-selection-subtle text-selection-label" : "text-fg-muted hover:bg-hover hover:text-fg")}
+          >
+            <Cable size={13} {...ICON} />
+            Sources and wires
+          </button>
+        </div>
       </div>
     </div>
   );

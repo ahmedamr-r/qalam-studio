@@ -26,6 +26,7 @@ import { addSources, mapQuotes, placeFromOrganization, placeSetup, readSources, 
 import { acceptAll, discardAll, useReview } from "./review";
 import { dragQuote, dragSource } from "./drop";
 import { openSource, removeSource, updateSource, useSources } from "./sources";
+import { useSpaceView } from "@/space/view";
 import { addFeed } from "./feeds";
 import { connectorsDb, type ConnectorState } from "@/org/connectors";
 import { sourcesDb } from "@/discovery/db";
@@ -125,6 +126,7 @@ function metaOf(s: SourceRecord): string {
 }
 
 function SourceRow({ source, quoting }: { source: SourceRecord; quoting: boolean }) {
+  const space = useSpaceView((s) => s.active);
   const Icon = KIND_ICON[source.kind];
   // A connector's material shows the tool it came from; one it can't tell, the plug.
   const via = source.kind === "connector" ? connectorOfOrigin(source.origin) : null;
@@ -146,11 +148,14 @@ function SourceRow({ source, quoting }: { source: SourceRecord; quoting: boolean
         </span>
         <span className={clsx("truncate text-micro", quoting ? "q-shimmer-text text-fg-muted" : "text-fg-subtle")}>{quoting ? "Qalam AI is picking out quotes…" : metaOf(source)}</span>
       </span>
-      <span className={r.layerTail} onClick={(e) => e.stopPropagation()}>
-        <IconBtn size="sm" label="Remove it from this board" onClick={() => void confirmRemove(source)}>
-          <Trash2 {...SMALL} />
-        </IconBtn>
-      </span>
+      {/* A space's canvas holds the organization's sources: none is on it to take off. */}
+      {!space && (
+        <span className={r.layerTail} onClick={(e) => e.stopPropagation()}>
+          <IconBtn size="sm" label="Remove it from this board" onClick={() => void confirmRemove(source)}>
+            <Trash2 {...SMALL} />
+          </IconBtn>
+        </span>
+      )}
     </div>
   );
 }
@@ -344,6 +349,7 @@ type Mode = "file" | "url" | "paste" | "tool" | "org" | "watch";
 
 /** What a source can come from: files, a web page, pasted text, a connected tool. Shared with the start sheet. */
 export function AddSource({ onAdd, compact }: { onAdd?: (inputs: AddInput[]) => void; compact?: boolean }) {
+  const space = useSpaceView((s) => s.active);
   const [mode, setMode] = useState<Mode>("file");
   const [url, setUrl] = useState("");
   const [text, setText] = useState("");
@@ -364,7 +370,8 @@ export function AddSource({ onAdd, compact }: { onAdd?: (inputs: AddInput[]) => 
     { value: "paste", label: "Text", icon: Type },
     ...(tools.length ? [{ value: "tool" as const, label: "Tool", icon: Plug }] : []),
     // On a board: the organization's other sources (interviews another board read, say), and a feed to keep watching a tool.
-    ...(onAdd ? [] : [{ value: "org" as const, label: "Organization", icon: Building2 }, { value: "watch" as const, label: "Watch", icon: Radio }]),
+    // (A space's canvas lists the organization's sources already.)
+    ...(onAdd ? [] : [...(space ? [] : [{ value: "org" as const, label: "Organization", icon: Building2 }]), { value: "watch" as const, label: "Watch", icon: Radio }]),
   ];
   // Words where there's room for them all, else each mode's mark with its name on hover.
   const options = modes.map(({ value, label, icon: Icon }) => ({

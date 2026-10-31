@@ -12,7 +12,7 @@ import type { RankedNeed } from "@/hub/needs";
 import { ConflictError, orgJson } from "@/org/client";
 import { onOrgChange } from "@/org/live";
 import { newProject, type Project } from "@/projects/model";
-import { announceFromElsewhere } from "@/projects/session";
+import { announceFromElsewhere, flushAlso } from "@/projects/session";
 import { useSources } from "@/ui/discovery/sources";
 import { sourcesDb } from "@/discovery/db";
 import { allCards } from "@/discovery/tree";
@@ -258,6 +258,8 @@ export function relayoutSpace() {
 function install() {
   if (installed) return;
   installed = true;
+  // Leaving the page (a link, Design this) saves the canvas first, as a board's page did.
+  flushAlso(() => flushSpace());
   registerDocPass(ostPass);
   registerDocPass(spacePass);
   // An edit settles when its transaction does (a title typed letter by letter is one edit).

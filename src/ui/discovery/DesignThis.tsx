@@ -8,6 +8,7 @@ import { buildHandoff } from "@/discovery/handoff";
 import type { DesignHandoff } from "@/discovery/types";
 import { projectHref, type Project } from "@/projects/model";
 import { createProject, currentProject, flushDoc } from "@/projects/session";
+import { boardOfCard, useSpaceView } from "@/space/view";
 import { listProjects } from "@/projects/library";
 import { projectsDb } from "@/projects/db";
 import { useSystems } from "@/design-system/registry";
@@ -45,7 +46,9 @@ export default function DesignThis({ vp }: { vp: { w: number; h: number } }) {
 }
 
 function Card({ id }: { id: string }) {
-  const project = currentProject();
+  // The board the solution is on (a space's canvas: its card's own).
+  const board = boardOfCard(id);
+  const project = currentProject() ?? (board ? { id: board, name: useSpaceView.getState().boards.get(board)?.name ?? "" } : null);
   const [h, setH] = useState<DesignHandoff | null>(() => (project ? buildHandoff(studio().doc, id, { projectId: project.id, projectName: project.name }) : null));
   const [screens, setScreens] = useState<Project[]>([]);
   const [target, setTarget] = useState<string>("new");
@@ -60,7 +63,7 @@ function Card({ id }: { id: string }) {
   }, []);
   useEffect(() => {
     if (project) setH(buildHandoff(studio().doc, id, { projectId: project.id, projectName: project.name }));
-  }, [id, project]);
+  }, [id, project?.id]);
 
   if (!h || !project) return null;
 

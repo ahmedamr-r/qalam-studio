@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { toggleSidebar } from "@/ui/frame/store";
 import { commandState, commandsFor, kb, registerCommands, runCommand, type Command } from "./registry";
+import { commandCanvas } from "./canvas";
 import "./theme";
 import "@/ui/voice/commands";
 
@@ -20,6 +21,8 @@ export const PAGE_COMMANDS: Command[] = [
     category: "essential",
     keys: [kb("⌘K")],
     context: "global",
+    // A page with a canvas (a space's home) has the studio's keys too: the page's own win there.
+    priority: 10,
     run: () => usePagePalette.setState((s) => ({ open: !s.open })),
     keywords: ["find", "jump", "go to", "ask"],
   },
@@ -29,6 +32,7 @@ export const PAGE_COMMANDS: Command[] = [
     category: "view",
     keys: [kb("⌘\\")],
     context: "global",
+    priority: 10,
     run: toggleSidebar,
     keywords: ["sidebar", "rail", "collapse", "expand"],
   },
@@ -41,6 +45,8 @@ registerCommands(PAGE_COMMANDS);
  * of the key is kept from it. Other keys (⌘R, ⌘F, typing) stay the browser's.
  */
 export function dispatchPageKey(e: KeyboardEvent): boolean {
+  // A canvas on the page (a space's home) dispatches every key itself, the page's among them.
+  if (commandCanvas()) return false;
   const hits = commandsFor(e, "field");
   const cmd = hits.find((c) => commandState(c) === true);
   if (!cmd) return false;
