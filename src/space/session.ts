@@ -11,6 +11,8 @@ import type { Notice } from "@/hub/checks";
 import type { RankedNeed } from "@/hub/needs";
 import { ConflictError, orgJson } from "@/org/client";
 import { onOrgChange } from "@/org/live";
+import { feedback } from "@/commands/feedback";
+import { openStores, type IdbStore } from "@/ui/idb";
 import { newProject, type Project } from "@/projects/model";
 import { announceFromElsewhere, flushAlso } from "@/projects/session";
 import { useSources } from "@/ui/discovery/sources";
@@ -90,7 +92,10 @@ export async function openSpace(org: string, space: Space, inputs: SpaceInputs):
     install();
     useSpaceStatus.setState({ key, loading: true, error: null });
     try {
-      const boards = await orgJson<Stored[]>(`/boards/docs${space ? `?space=${encodeURIComponent(space)}` : ""}`);
+      const where = `/boards/docs${space ? `?space=${encodeURIComponent(space)}` : ""}`;
+      // What this page left unsaved when it last went: saved first, then the boards are read.
+      await sendLeft(key);
+      const boards = await orgJson<Stored[]>(where);
       const stored = new Map(boards.map((b) => [b.id, b]));
       await fixCopies(stored, inputs);
       open = { key, space, stored, base: studio().doc, known: { boardOf: new Map(), anchors: new Set(), virtual: new Set() }, composed: composeSpace({ tree: inputs.tree, boards: [], space }), inputs };
@@ -135,8 +140,22 @@ export function setSpaceInputs(inputs: SpaceInputs) {
   if (signOf(inputs) !== was) void recompose();
 }
 
+/** Once no gesture is under way (a title being typed, a drag): what comes from elsewhere waits for it. */
+function settled(): Promise<void> {
+  if (!studio().txBase) return Promise.resolve();
+  return new Promise((resolve) => {
+    const off = useStudio.subscribe((s) => {
+      if (s.txBase) return;
+      off();
+      // The edit it ends is noticed (and its save scheduled) before what came in is composed.
+      setTimeout(resolve, 0);
+    });
+  });
+}
+
 /** Compose again once anything waiting is saved (a change from elsewhere). */
 async function recompose() {
+  await settled();
   if (unsaved) await flushSpace();
   if (!open || unsaved || useSpaceConflict.getState().boards.length) return;
   compose({ fresh: false });
@@ -278,7 +297,10 @@ function install() {
   useStudio.subscribe((s, prev) => s.view.sources !== prev.view.sources && relayoutSpace());
   useSources.subscribe((s, prev) => s.list !== prev.list && relayoutSpace());
   document.addEventListener("visibilitychange", () => document.visibilityState === "hidden" && void flushSpace());
-  window.addEventListener("pagehide", () => void flushSpace());
+  window.addEventListener("pagehide", () => {
+    keepLeft();
+    void flushSpace({ leaving: true });
+  });
   // Boards changed elsewhere (another window, the folder): load them again.
   onOrgChange((c) => {
     if (!open || c.kind !== "project") return;
@@ -290,16 +312,16 @@ function install() {
 // Saving
 
 /** Save the canvas's changes now (before leaving, or once edits settle). */
-export function flushSpace(o: { force?: boolean; skip?: ReadonlySet<string> } = {}): Promise<void> {
+export function flushSpace(o: { force?: boolean; skip?: ReadonlySet<string>; leaving?: boolean } = {}): Promise<void> {
   clearTimeout(timer);
   saving = saving.then(() => saveOnce(o)).catch(() => {});
   return saving;
 }
 
-async function saveOnce(o: { force?: boolean; skip?: ReadonlySet<string> }) {
-  if (!open || !unsaved) return;
-  if (useSpaceConflict.getState().boards.length && !o.force && !o.skip) return;
-  const s = open;
+type SaveBody = { writes: { id: string; doc: Doc; ifMatch: string; patch: Record<string, unknown> }[]; create: { record: Project; doc: Doc }[] };
+
+/** What a save would send now: each board's new document, and the boards to make. */
+function planSave(s: Open, o: { force?: boolean; skip?: ReadonlySet<string> }) {
   const now = studio().doc;
   const before = assignBoards(s.base, s.known);
   const after = assignBoards(now, s.known);
@@ -307,12 +329,6 @@ async function saveOnce(o: { force?: boolean; skip?: ReadonlySet<string> }) {
   const r = splitSpace({ base: s.base, now, before, after, stored, anchors: s.known.anchors, virtual: s.known.virtual });
   // Boards whose edits here are being given up for another window's.
   for (const id of o.skip ?? []) r.writes.delete(id);
-  unsaved = false;
-  if (!r.writes.size && !r.create.length) {
-    s.base = now;
-    s.known = { ...s.known, boardOf: realBoards(after) };
-    return;
-  }
   const tree = goalsNow();
   const made = new Map<string, Project>();
   for (const c of r.create) {
@@ -321,12 +337,30 @@ async function saveOnce(o: { force?: boolean; skip?: ReadonlySet<string> }) {
     made.set(c.key, newProject("discovery", (goal?.title ?? top ?? "").slice(0, 80) || "Untitled board", { product: goal ? goal.product : s.space, discovery: { v: 1, stage: "ready" } }));
   }
   const conflicts = useSpaceConflict.getState().boards;
-  const body = {
+  const body: SaveBody = {
     writes: [...r.writes].map(([id, doc]) => ({ id, doc, ifMatch: o.force && conflicts.some((c) => c.id === id) ? conflicts.find((c) => c.id === id)!.version : s.stored.get(id)!.version, patch: { updatedAt: Date.now() } })),
     create: r.create.map((c) => ({ record: made.get(c.key)!, doc: c.doc })),
   };
+  // Goals whose boards this starts: each works on its board once it's made.
+  const goals = r.create.flatMap((c) => (c.goal ? [{ goal: c.goal, board: made.get(c.key)!.id }] : []));
+  return { now, after, r, made, body, goals };
+}
+
+async function saveOnce(o: { force?: boolean; skip?: ReadonlySet<string>; leaving?: boolean }) {
+  if (!open || !unsaved) return;
+  if (useSpaceConflict.getState().boards.length && !o.force && !o.skip) return;
+  const s = open;
+  const { now, after, r, made, body, goals } = planSave(s, o);
+  unsaved = false;
+  if (!r.writes.size && !r.create.length) {
+    s.base = now;
+    s.known = { ...s.known, boardOf: realBoards(after) };
+    return;
+  }
   try {
-    const res = await orgJson<{ versions: Record<string, string> }>("/boards/docs", { method: "PUT", json: body });
+    // The page going: a small save may outlive it (the rest waits in the outbox).
+    const keepalive = !!o.leaving && JSON.stringify(body).length < 60_000;
+    const res = await orgJson<{ versions: Record<string, string> }>("/boards/docs", { method: "PUT", json: body, keepalive });
     if (o.force) useSpaceConflict.setState({ boards: [] });
     for (const [id, doc] of r.writes) s.stored.set(id, { ...s.stored.get(id)!, doc, version: res.versions[id] ?? s.stored.get(id)!.version });
     const boards = new Map(after);
@@ -347,8 +381,9 @@ async function saveOnce(o: { force?: boolean; skip?: ReadonlySet<string> }) {
       const v = useSpaceView.getState();
       useSpaceView.setState({ boardOf: s.known.boardOf, virtual: new Set([...v.virtual].filter((id) => !r.create.some((c) => c.goal === id))), boards: new Map([...s.stored.values()].map((b) => [b.id, { name: b.name, product: b.product }])) });
     }
+    void outbox()?.remove(outKey(s.key)).catch(() => {});
     // A goal whose board just started works on it: its card is the board's outcome.
-    for (const c of r.create) if (c.goal) await changeGoal(c.goal, { on: { board: made.get(c.key)!.id, card: c.goal } }).catch(() => {});
+    for (const g of goals) await changeGoal(g.goal, { on: { board: g.board, card: g.goal } }).catch(() => {});
     // The sources its cards rest on list the board (src/discovery/sources.ts: a source lists the boards that use it).
     await linkSources([...r.writes, ...r.create.map((c) => [made.get(c.key)!.id, c.doc] as const)]);
   } catch (e) {
@@ -368,6 +403,49 @@ async function linkSources(boards: Iterable<readonly [string, Doc]>) {
       const src = list.find((x) => x.id === id);
       if (src && !(src.boards ?? []).includes(board)) await sourcesDb.link(id, board, true).catch(() => {});
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The outbox: the page can close before its last save reaches the folder. What it would save is
+// kept in the browser as the page goes, and saved the next time this space opens here.
+
+interface Left {
+  body: SaveBody;
+  goals: { goal: string; board: string }[];
+  at: number;
+}
+
+// One connection, opened as the space opens: a page that's going has no time to open one.
+let box: IdbStore | null = null;
+const outbox = () => (typeof indexedDB === "undefined" ? null : (box ??= openStores("qalam-outbox", 1, ["docs"])("docs")));
+const outKey = (key: string) => `space:${key}`;
+
+/** The page is going with edits not saved yet: keep what the save would send. */
+function keepLeft() {
+  if (!open || !unsaved) return;
+  const { r, body, goals } = planSave(open, {});
+  if (r.writes.size || r.create.length) void outbox()?.put(outKey(open.key), { body, goals, at: Date.now() } satisfies Left);
+}
+
+/**
+ * Edits kept when the page last went here, saved now. A board changed elsewhere since keeps the
+ * other version (unless it already holds these edits: the save had reached it), and says so.
+ */
+async function sendLeft(key: string): Promise<boolean> {
+  const left = await outbox()?.get<Left>(outKey(key)).catch(() => undefined);
+  if (!left) return false;
+  void outbox()?.remove(outKey(key)).catch(() => {});
+  try {
+    await orgJson("/boards/docs", { method: "PUT", json: left.body });
+    for (const g of left.goals) await changeGoal(g.goal, { on: { board: g.board, card: g.goal } }).catch(() => {});
+    return true;
+  } catch (e) {
+    if (!(e instanceof ConflictError) || !Array.isArray(e.current)) return false;
+    const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+    const lost = (e.current as { id: string; doc: Doc | null }[]).filter((c) => !same(c.doc, left.body.writes.find((w) => w.id === c.id)?.doc));
+    if (lost.length) feedback("Edits from before the page reloaded weren't saved: those boards changed elsewhere since", { kind: "error", id: "space.outbox" });
+    return false;
   }
 }
 
@@ -391,17 +469,21 @@ export async function resolveSpaceConflict(take: "mine" | "theirs") {
   compose({ fresh: false });
 }
 
-/** A board changed elsewhere: load the space's boards again and compose what changed in. */
+/** A board changed elsewhere: once what's waiting here is saved, load the space's boards again and compose what changed in. */
 async function reloadBoards(_id: string) {
   if (!open) return;
   const s = open;
+  await settled();
+  // A save here meanwhile that it changed too stops at a conflict (the person chooses).
+  if (unsaved) await flushSpace();
+  if (s !== open || useSpaceConflict.getState().boards.length) return;
   const boards = await orgJson<Stored[]>(`/boards/docs${s.space ? `?space=${encodeURIComponent(s.space)}` : ""}`).catch(() => null);
   if (!boards || s !== open) return;
+  // Edited again meanwhile: try once that's saved.
+  if (unsaved || studio().txBase) return void setTimeout(() => void reloadBoards(_id), 500);
   const changed = boards.filter((b) => s.stored.get(b.id)?.version !== b.version);
   const gone = [...s.stored.keys()].filter((id) => !boards.some((b) => b.id === id));
   if (!changed.length && !gone.length) return;
-  if (unsaved) await flushSpace();
-  if (s !== open || useSpaceConflict.getState().boards.length) return;
   for (const b of changed) s.stored.set(b.id, b);
   for (const id of gone) s.stored.delete(id);
   compose({ fresh: false });
