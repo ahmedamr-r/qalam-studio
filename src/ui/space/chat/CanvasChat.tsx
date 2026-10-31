@@ -9,7 +9,9 @@ import { QalamAIGlyph } from "../../brand/ai-glyph";
 import { IconBtn } from "../../controls";
 import { toQuestion } from "../../ai/plan";
 import { Questionnaire } from "../../ai/Questionnaire";
-import type { FlowState } from "../../ai/questionFlow";
+import { initialFlow, type FlowState } from "../../ai/questionFlow";
+import { findRound, type FindWhat } from "@/space/find";
+import { r } from "../../recipes";
 import { answerRound, resumeDumps, saveRound, sessionOf, useDump } from "../../discovery/dump";
 import { useSources } from "../../discovery/sources";
 import { ChatComposer, ChatThread } from "../../chat/ChatThread";
@@ -20,7 +22,7 @@ import type { Space } from "../../frame/spaces";
 import { ASK_EVENT, takeAskNext } from "../../org/ask-next";
 import { PARTS } from "./parts";
 import { clearMode, useCompose } from "./compose";
-import { ask, clearChat, openChat, send, stopTurn, useCanvasChat } from "./store";
+import { answerFind, ask, clearChat, findWith, openChat, send, stopTurn, useCanvasChat } from "./store";
 
 /*
  * Qalam AI's chat on the left of a space's canvas, as Figma keeps its panel there: one box for
@@ -103,16 +105,27 @@ export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
           parts={PARTS}
           empty={
             loaded && (
-              <div className="flex flex-col gap-[6px] pt-[8px]">
+              <div className="flex flex-col gap-[10px] pt-[8px]">
                 <p className="text-body text-fg">Ask what your {org} knows, or bring something to the canvas.</p>
                 <p className="text-caption text-fg-muted">A question is answered from its problem pages, sources, boards and decisions. Your thinking is read and placed as cards; what customers said goes into problems&apos; pages; a goal or a problem goes on the canvas in your words.</p>
+                <div className="flex flex-wrap gap-[6px]">
+                  {(["goal", "problem"] as FindWhat[]).map((w) => (
+                    <button key={w} type="button" className={r.replyChip} onClick={() => findWith(w, space)}>
+                      <QalamAIGlyph size={12} /> Help me find {w === "goal" ? "a goal" : "a problem"}
+                    </button>
+                  ))}
+                </div>
               </div>
             )
           }
           pinned={!waiting}
           footer={
             waiting && !busy ? (
-              <DumpRound key={`${waiting.source}:${dumpOf(waiting.source)?.buckets.length}`} source={waiting.source} dumpOf={dumpOf} />
+              "find" in waiting ? (
+                <FindRound key={`${waiting.turn.id}:${waiting.find}`} turn={waiting.turn.id} what={waiting.find} />
+              ) : (
+                <DumpRound key={`${waiting.source}:${dumpOf(waiting.source)?.buckets.length}`} source={waiting.source} dumpOf={dumpOf} />
+              )
             ) : (
             <ChatComposer
               label="Message Qalam AI"
@@ -157,6 +170,22 @@ export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
         />
       </div>
     </section>
+  );
+}
+
+/** "Help me find one": code's opening questions, in place of the box until they're answered. */
+function FindRound({ turn, what }: { turn: string; what: FindWhat }) {
+  const questions = useMemo(() => findRound(what).map(toQuestion), [what]);
+  const [form, setForm] = useState<FlowState>(() => initialFlow(questions));
+  return (
+    <Questionnaire
+      title={what === "goal" ? "To find a goal" : "To find a problem"}
+      questions={questions}
+      state={form}
+      onChange={setForm}
+      onSubmit={(f) => void answerFind(turn, Object.fromEntries(questions.map((q) => [q.id, f.answers[q.id]?.kind === "text" ? (f.answers[q.id] as { text: string }).text : ""])))}
+      review={{ submitLabel: "Send answers" }}
+    />
   );
 }
 

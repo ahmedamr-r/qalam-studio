@@ -56,7 +56,9 @@ const DumpCardIn = CardIn.extend({
 export type DumpCardInput = z.infer<typeof DumpCardIn>;
 const FragmentIn = z.object({ id: text(12), quote: text(1200), role: z.enum(DUMP_ROLES) });
 const ChallengeIn = z.object({ kind: z.enum(CHALLENGE_KINDS), fragmentId: text(12), cardId: text(12).nullable(), text: text(400) });
-const DumpBase = { product: text(2000), dump: z.string().trim().min(40).max(DUMP_MAX_CHARS), tree: z.array(DumpCardIn).max(400) };
+/** A dump that answers the canvas chat's "Help me find one": what they asked for, and the questions their answers are to, in order. */
+const DumpAim = z.object({ find: z.enum(["goal", "problem"]), asked: z.array(text(300)).max(6) }).optional();
+const DumpBase = { product: text(2000), dump: z.string().trim().min(40).max(DUMP_MAX_CHARS), tree: z.array(DumpCardIn).max(400), aim: DumpAim };
 const KId = z.string().regex(/^k\d{1,4}$/);
 /** What the organization already knows, packed for the call: pieces under ids, and which ids are customers' quotes. */
 export const ContextIn = z.object({ block: text(60_000), ids: z.array(KId).max(400), quotes: z.array(KId).max(400) }).optional();
@@ -644,11 +646,15 @@ export function dumpOutline(tree: z.infer<typeof DumpCardIn>[]): string[] {
 
 type DumpRequest = Extract<DiscoveryRequest, { stage: "dump-read" | "dump-followup" | "dump-place" }>;
 
+/** What they asked for, when the dump answers "Help me find one". */
+const AIM_LINE = { goal: "a goal: an outcome the team is trying to move, said as a change it could see", problem: "a problem: a need, a pain or a wish of the people the product is for" } as const;
+
 const dumpMaterial = (b: DumpRequest) => [
   `The product: ${b.product.trim() || "(not described yet)"}`,
   "",
   b.tree.length ? "The board (id · kind · title — description [metric] {assumptions} (what backs it), each card under its parent):" : "The board is empty.",
   ...dumpOutline(b.tree),
+  ...(b.aim ? ["", `They asked you to help them find ${AIM_LINE[b.aim.find]}. The brain dump is their answers to these questions, in order (an empty one they skipped):`, ...b.aim.asked.map((q) => `- ${q}`)] : []),
   "",
   "The brain dump:",
   `<brain_dump>\n${b.dump}\n</brain_dump>`,
@@ -694,7 +700,11 @@ export function dumpPlaceContent(b: Extract<DiscoveryRequest, { stage: "dump-pla
     ...b.answers.map((a) => `- ${a.id}: ${a.question}\n  ${a.answer.trim() || "(skipped)"}`),
     ...knowledgeBlock(b.context),
     "",
-    "Place the brain dump on the board.",
+    b.aim
+      ? b.aim.find === "goal"
+        ? "Propose 1 to 3 goals (outcome cards) from what they said, each resting on their words, the best first: under the goal it moves when the board has one, else as a tree of its own. Propose nothing else."
+        : "Propose 1 to 3 problems (opportunity cards) from what they said, each resting on their words, the best first: under the goal it bears on when the board has one, else as a tree of its own. Propose nothing else."
+      : "Place the brain dump on the board.",
   ].join("\n");
 }
 

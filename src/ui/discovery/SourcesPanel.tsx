@@ -80,7 +80,7 @@ function SourceList() {
   const adding = useSources((s) => s.adding);
   const pending = Object.entries(jobs).filter(([id, j]) => j.phase === "reading" && !list.some((x) => x.id === id));
   const empty = loaded && !list.length && !pending.length;
-  // On a space's canvas with no card picked, what's added is the organization's (filed into its problem pages), as Ask's + adds it.
+  // On a space's canvas with no card picked, what's added is the organization's (filed into its problem pages), as the chat takes it in.
   const space = useSpaceView((s) => (s.active ? s.space : undefined));
   const picked = useStudio((s) => s.selection.length > 0);
   const toOrg = space !== undefined && !picked;

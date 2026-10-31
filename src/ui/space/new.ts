@@ -3,10 +3,9 @@ import { feedback } from "@/commands/feedback";
 import { studio } from "@/doc/store";
 import { isOstCard } from "@/doc/board";
 import { addCardIn, makeCardNode, newCard } from "@/discovery/ops";
-import { createGoal, goalsNow } from "@/goals/client";
 import type { Topic } from "@/hub/topics";
 import { topicsDb } from "@/org/topics";
-import { goalHref, topicHref } from "@/projects/model";
+import { topicHref } from "@/projects/model";
 import type { Space } from "../frame/spaces";
 import { promptDialog } from "../surfaces/dialog";
 import { navigate } from "../nav";
@@ -24,21 +23,6 @@ import { showDock } from "./dock";
  */
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
-
-export async function newGoal(space: Space) {
-  const north = goalsNow().north;
-  const title = await promptDialog({
-    title: "New goal",
-    body: north ? "A change the team is trying to make: it goes under the North Star until you say which goal it feeds." : "The first is the North Star: what the whole company is trying to move.",
-    label: "The change it's after",
-    placeholder: north ? "More customers reorder every week" : "2M dirhams a month in orders by end of Q2",
-    confirmLabel: "Add goal",
-    validate: (v) => (v.trim() ? null : "Say what it's after"),
-  });
-  if (!title?.trim()) return;
-  const g = await createGoal({ title: title.trim(), product: space, parent: north, north: "if-none" }).catch((e) => feedback(`Couldn't add it: ${message(e)}`, { kind: "error", id: "goals.new" }));
-  if (g) navigate(goalHref(g.id));
-}
 
 export type Written = "outcome" | "opportunity";
 

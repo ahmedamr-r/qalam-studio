@@ -4,7 +4,7 @@ import { apply, worldMatrix } from "@/doc/geometry";
 import { dispatchKeyDown } from "@/commands";
 import { cardOf, updateCardIn } from "@/discovery/ops";
 import { CARD, cardBox, placeholderTitle, titleProps } from "@/discovery/metrics";
-import { CARD_WIDTH } from "@/discovery/kinds";
+import { CARD_WIDTH, KIND_LABEL } from "@/discovery/kinds";
 import { useDiscovery } from "./store";
 import { finishTitleEdit } from "./editing";
 import { addChildCard, addSiblingCard } from "./commands";
@@ -73,7 +73,7 @@ export default function TitleEditor() {
       spellCheck
       value={card.title}
       placeholder={placeholderTitle(card.kind)}
-      aria-label={`${card.kind === "outcome" ? "Outcome" : "Card"} title`}
+      aria-label={`${KIND_LABEL[card.kind]}'s title`}
       maxLength={240}
       className="selection:bg-selection/30 placeholder:text-fg-faint"
       onChange={(e) => {

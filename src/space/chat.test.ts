@@ -69,9 +69,18 @@ describe("a brain dump in the canvas's chat", () => {
 
   it("has the box ask the newest dump's questions while it waits on them", () => {
     const c = withTurn(withTurn(emptyChat(), { ...dumpTurn("s1"), id: "a" }), { ...dumpTurn("s2"), id: "b" });
-    expect(asking(c, (id) => session({ phase: id === "s1" ? "asking" : "review" }))?.source).toBe("s1");
+    expect(asking(c, (id) => session({ phase: id === "s1" ? "asking" : "review" }))).toMatchObject({ source: "s1" });
     expect(asking(c, () => session({}))?.turn.id).toBe("b");
     expect(asking(c, () => session({ phase: "placed" }))).toBeNull();
+  });
+
+  it("asks code's opening questions first when they want help finding one, then reads the answers as a dump", () => {
+    let c = withTurn(emptyChat(), turn("f", { kind: "find", what: "goal" }, "Help me find a goal"));
+    expect(asking(c, () => null)).toMatchObject({ find: "goal" });
+    expect(threadOf(c)[1].parts.map((p) => (p.type === "data" ? p.name : "text"))).toEqual(["text", "cancel"]);
+    c = withJob(c, "f", () => ({ kind: "dump", source: "s1", find: { what: "goal", said: [{ question: "What changes?", answer: "More riders finish trips" }] } }));
+    expect(asking(c, () => session({ phase: "review" }))).toBeNull();
+    expect(threadOf(c, () => session({ phase: "review" }))[1].parts.map((p) => (p.type === "data" ? p.name : "text"))).toEqual(["opening", "took", "answered", "proposed"]);
   });
 });
 

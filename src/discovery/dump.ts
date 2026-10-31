@@ -101,6 +101,8 @@ export interface DumpSession {
   turn?: { chatId: string; turnId: string };
   sample?: boolean;
   model?: string;
+  /** It answers the chat's "Help me find one": what they asked for, and the questions their answers (the dump's text) are to. */
+  aim?: { find: "goal" | "problem"; asked: string[] };
 }
 
 /** The most text one brain dump takes (longer: add the rest as a source). */

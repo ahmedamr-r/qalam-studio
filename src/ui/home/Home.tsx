@@ -28,8 +28,10 @@ import { SpaceConflictBanner } from "../space/ConflictBanner";
 import { r } from "../recipes";
 import { NeedsALook } from "../org/NeedsALook";
 import { LabSections, SpacePages, SpaceProblems, UnplacedGoals } from "./SpaceSections";
-import { addMaterial, newGoal } from "../space/new";
+import { addMaterial, writeCard } from "../space/new";
 import { CanvasChat, ChatPill } from "../space/chat/CanvasChat";
+import { findWith } from "../space/chat/store";
+import { QalamAIGlyph } from "../brand/ai-glyph";
 import { useOrgData } from "../org/useOrgData";
 import { useNotices } from "../notices/useNotices";
 import { useTopics } from "../topics/list";
@@ -252,30 +254,42 @@ export default function Home({ product: productId = null }: { product?: string |
   );
 }
 
-/** Nothing on the canvas yet: where to begin. */
+/** Nothing on the canvas yet: a goal or a problem, written on the canvas or found with Qalam AI in the chat. */
 function EmptyMap({ space }: { space: string | null }) {
+  const rows = [
+    { what: "goal", kind: "outcome", title: "A goal", body: "What the team is trying to move." },
+    { what: "problem", kind: "opportunity", title: "A problem", body: "What customers need, struggle with or wish for." },
+  ] as const;
   return (
     <div className="pointer-events-none absolute inset-0 grid place-items-center p-[24px]">
-      <div className="pointer-events-auto flex max-w-[360px] flex-col items-center gap-[10px] rounded-xl bg-raised px-[20px] py-[18px] text-center shadow-floating">
-        <p className="text-body font-medium text-fg">Nothing on the map yet</p>
-        <p className="text-caption text-fg-muted">{space ? "Give this product a goal, and its problems, solutions and tests show here as its board grows." : "Start with what you're trying to move: each goal shows here, with its problems, solutions and tests under it."}</p>
-        <div className="flex flex-wrap justify-center gap-[6px]">
-          <button type="button" onClick={() => void newGoal(space)} className={clsx(r.buttonSm, r.buttonPrimary)}>
-            Set a goal
-          </button>
-          {/* v0.1 (src/lab.ts) starts from what customers said; the brain dump is one of the hidden doors. */}
-          {lab("doors") ? (
-            !space && (
-              <a href={setupHref()} className={clsx(r.buttonSm, r.buttonSecondary)}>
-                Start from a brain dump
-              </a>
-            )
-          ) : (
-            <button type="button" onClick={addMaterial} className={clsx(r.buttonSm, r.buttonSecondary)}>
-              Add what customers said
-            </button>
-          )}
+      <div className="pointer-events-auto flex w-[min(420px,100%)] flex-col gap-[12px] rounded-xl bg-raised px-[18px] py-[16px] shadow-floating">
+        <div className="flex flex-col gap-[4px] text-center">
+          <p className="text-body font-medium text-fg">Start with a goal or a problem</p>
+          <p className="text-caption text-fg-muted">{space ? "This product's goals and problems show here, with their solutions and tests under them." : "Each goal shows here with the problems behind it, and their solutions and tests under them."}</p>
         </div>
+        {rows.map((x) => (
+          <div key={x.what} className="flex flex-wrap items-center justify-between gap-x-[12px] gap-y-[8px] rounded-lg bg-panel px-[12px] py-[10px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
+            <span className="flex min-w-0 flex-col">
+              <span className="text-body font-medium text-fg">{x.title}</span>
+              <span className="text-caption text-fg-muted">{x.body}</span>
+            </span>
+            <span className="flex shrink-0 gap-[6px]">
+              <button type="button" onClick={() => writeCard(x.kind, { under: null })} className={clsx(r.buttonSm, r.buttonSecondary)}>
+                Write it
+              </button>
+              <button type="button" onClick={() => findWith(x.what, space)} className={clsx(r.buttonSm, r.buttonSecondary, "gap-[6px]")}>
+                <QalamAIGlyph size={12} /> Help me find one
+              </button>
+            </span>
+          </div>
+        ))}
+        <p className="text-center text-caption text-fg-subtle">
+          Or paste your thinking in the chat, or{" "}
+          <button type="button" onClick={addMaterial} className="text-fg-muted underline decoration-fg/20 underline-offset-2 hover:text-fg">
+            add what customers said
+          </button>
+          .
+        </p>
       </div>
     </div>
   );

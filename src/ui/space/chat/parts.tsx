@@ -24,7 +24,7 @@ import { AnswersSummary, qr } from "../../ai/Questionnaire";
 import { QalamAIGlyph } from "../../brand/ai-glyph";
 import { getController } from "../../CanvasView";
 import { placeDump, retryDump, sessionOf, skipRest, useDump } from "../../discovery/dump";
-import { REVIEW_TURN, acceptAll, discardAll, startReview, useReview } from "../../discovery/review";
+import { REVIEW_TURN, acceptAll, acceptProposals, discardAll, discardProposals, startReview, useReview } from "../../discovery/review";
 import { openSource, sourceOf, useSources } from "../../discovery/sources";
 import { Button, Spinner, Tag, Tip } from "../../controls";
 import { Dots, StatusDot } from "../../viz";
@@ -32,7 +32,7 @@ import { r } from "../../recipes";
 import { useTopics } from "../../topics/list";
 import { useWords } from "../../frame/store";
 import { show } from "../links";
-import { retake, turnOf, useCanvasChat } from "./store";
+import { dropTurn, retake, turnOf, useCanvasChat } from "./store";
 
 /*
  * What the messages in the canvas's chat draw (./CanvasChat.tsx): each part names its turn, and
@@ -362,6 +362,33 @@ function showGhosts() {
   if (c && ids.length) requestAnimationFrame(() => c.glideToFit(ids));
 }
 
+/** A goal or a problem found for them: each one proposed, with where it would go, to accept or leave out here. */
+function FoundList({ list }: { list: Proposal[] }) {
+  const doc = useStudio((st) => st.doc);
+  return (
+    <ul className="flex w-full flex-col gap-[6px]">
+      {list.map((p) =>
+        p.kind === "card" ? (
+          <li key={p.id} className={clsx(qr.inset, "flex flex-col gap-[6px] px-[10px] py-[8px]")}>
+            <span className="text-body leading-[20px] text-fg" dir="auto">
+              {p.card.title}
+            </span>
+            <span className="text-micro text-fg-subtle">{p.parentId && doc.nodes[p.parentId]?.meta.ost ? `Under “${doc.nodes[p.parentId].meta.ost!.title}”` : "On its own"}</span>
+            <span className="flex gap-[6px]">
+              <button type="button" className={r.replyChipPrimary} onClick={() => acceptProposals([p.id])}>
+                Accept
+              </button>
+              <button type="button" className={r.replyChip} onClick={() => discardProposals([p.id])}>
+                Leave out
+              </button>
+            </span>
+          </li>
+        ) : null,
+      )}
+    </ul>
+  );
+}
+
 /** What the dump proposes on the canvas: accepted or discarded here, or one by one on the canvas. */
 function ProposedPart({ data }: { data: PartData }) {
   const d = useDumpOf(data.turn);
@@ -370,6 +397,15 @@ function ProposedPart({ data }: { data: PartData }) {
   if (!d) return null;
   const list = mine ?? d.s.proposals ?? [];
   if (!list.length) return <p className="text-body text-fg-muted">Nothing it proposes is left to settle.</p>;
+  if (d.s.aim && mine)
+    return (
+      <div className="flex flex-col items-start gap-[8px]">
+        <p className="text-body leading-[20px] text-fg">
+          From what you said, {list.length === 1 ? `here's ${d.s.aim.find === "goal" ? "a goal" : "a problem"}` : `here are ${list.length} ${d.s.aim.find === "goal" ? "goals" : "problems"}`}, in your words where it could. Each is drawn on the canvas where it would go.
+        </p>
+        <FoundList list={list} />
+      </div>
+    );
   return (
     <div className="flex flex-col items-start gap-[8px]">
       <p className="text-body leading-[20px] text-fg">
@@ -412,6 +448,39 @@ function PlacedPart({ data }: { data: PartData }) {
   if (!c) return null;
   const said = [c.added ? plural(c.added, "card added", "cards added") : "", c.attached ? plural(c.attached, "piece attached", "pieces attached") : "", c.edited ? plural(c.edited, "card changed", "cards changed") : ""].filter(Boolean).join(" · ");
   return <p className="text-body leading-[20px] text-fg">{said ? `On the canvas: ${said}.` : "Nothing went on the canvas from it."}</p>;
+}
+
+/** What they told code's opening questions, folded. */
+function OpeningPart({ data }: { data: PartData }) {
+  const t = useTurn(data.turn);
+  const said = t?.job.kind === "dump" ? t.job.find?.said : undefined;
+  if (!said?.length) return null;
+  return (
+    <details className="group/answers rounded-lg px-[10px] text-caption shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
+      <summary className="flex h-[30px] cursor-pointer list-none items-center gap-[6px] font-medium text-fg-muted hover:text-fg [&::-webkit-details-marker]:hidden">Your answers ({said.length})</summary>
+      <dl className="flex flex-col gap-[8px] pb-[10px]">
+        {said.map((s, i) => (
+          <div key={i} className="flex flex-col gap-[2px]">
+            <dt className="text-fg-subtle">{s.question}</dt>
+            <dd className="text-fg" dir="auto">
+              {s.answer}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </details>
+  );
+}
+
+/** "Help me find one" let go before it's answered. */
+function CancelPart({ data }: { data: PartData }) {
+  return (
+    <ReplyChips>
+      <button type="button" className={r.replyChip} onClick={() => dropTurn(String(data.turn))}>
+        Never mind
+      </button>
+    </ReplyChips>
+  );
 }
 
 const WHAT: Record<"goal" | "problem", string> = { goal: "a goal", problem: "a problem" };
@@ -518,4 +587,6 @@ export const PARTS: Record<string, PartComponent> = {
   retry: RetryPart,
   proposed: ProposedPart,
   placed: PlacedPart,
+  opening: OpeningPart,
+  cancel: CancelPart,
 };

@@ -91,6 +91,9 @@ export function openBrainDump(opts: { text?: string; sourceId?: string } = {}) {
 /** The board as a dump's calls see it, now. */
 const board = () => outlineOf(studio().doc);
 
+/** What a dump that answers "Help me find one" tells each of its calls. */
+const aimOf = (s: DumpSession | undefined) => (s?.aim ? { aim: s.aim } : {});
+
 /** A call for a dump, with its progress on the card and its turn, and Stop. */
 async function call(sourceId: string, label: string, body: unknown, recorded: () => unknown, ms: number, onDelta?: (d: AIDelta) => void): Promise<{ raw: unknown; sample: boolean; model?: string }> {
   const s = sourceOf(sourceId);
@@ -157,7 +160,7 @@ function readFields(s: SourceRecord, cards: PlaceCard[]) {
  * chat named it), read, and placed at once when Qalam AI has nothing to ask. Throws, in words, when
  * it can't start.
  */
-export async function startDump(text: string, opts: { sample?: boolean; id?: string } = {}): Promise<string> {
+export async function startDump(text: string, opts: { sample?: boolean; id?: string; aim?: DumpSession["aim"] } = {}): Promise<string> {
   const body = (opts.sample ? SAMPLE_DUMP_TEXT : text).trim();
   if (body.length < 40) throw new Error("Write a few sentences more, so there's something to read.");
   if (body.length > DUMP_MAX_CHARS) throw new Error(`That's more than one brain dump takes (${DUMP_MAX_CHARS.toLocaleString()} characters): add the rest as a source.`);
@@ -179,7 +182,7 @@ export async function startDump(text: string, opts: { sample?: boolean; id?: str
     read: [],
     quotes: [],
     needs: [],
-    dump: { v: 1, phase: "reading", understanding: "", challenges: [], buckets: [], anchor: treeFor(s.doc, s.selection), ...(opts.sample ? { sample: true } : {}) },
+    dump: { v: 1, phase: "reading", understanding: "", challenges: [], buckets: [], anchor: treeFor(s.doc, s.selection), ...(opts.sample ? { sample: true } : {}), ...(opts.aim ? { aim: opts.aim } : {}) },
   };
   const turn = openTurn("discovery", { text: `Brain dump · ${read.title}` });
   rec.dump!.turn = turn;
@@ -199,7 +202,7 @@ export async function readDump(sourceId: string) {
   await setSession(sourceId, (d) => ({ ...d, phase: "reading", failed: undefined }));
   const { tree, cards } = board();
   try {
-    const { raw, sample, model } = await call(sourceId, "Qalam AI is reading your brain dump", { stage: "dump-read", product: product(), dump: s.text, tree }, () => sampleRaw(SAMPLE_DUMP_READ_RAW, cards), 3500);
+    const { raw, sample, model } = await call(sourceId, s.dump.aim ? "Qalam AI is reading your answers" : "Qalam AI is reading your brain dump", { stage: "dump-read", product: product(), dump: s.text, tree, ...aimOf(s.dump) }, () => sampleRaw(SAMPLE_DUMP_READ_RAW, cards), 3500);
     const r = sanitizeRead(raw, s.text, cards);
     if (!r.fragments.length) throw new AIError("parse", "Qalam AI found nothing in it to place on the canvas. Try again, or write a little more.");
     await updateSource(sourceId, (x) => ({
@@ -263,7 +266,7 @@ export async function readAnswers(sourceId: string) {
   const { tree, cards } = board();
   const { pieces, fields } = readFields(s, cards);
   const rounds = roundAnswers(session).map((answers, i) => ({ answers: answers.map((a) => ({ question: a.question.slice(0, 200), answer: a.answer })), ...(session.buckets[i]?.analysis ? { analysis: session.buckets[i].analysis!.slice(0, 1500) } : {}) }));
-  const body = { stage: "dump-followup", product: product(), dump: s.text, tree, ...fields, rounds, last: session.buckets.length >= MAX_DUMP_ROUNDS };
+  const body = { stage: "dump-followup", product: product(), dump: s.text, tree, ...aimOf(session), ...fields, rounds, last: session.buckets.length >= MAX_DUMP_ROUNDS };
   const recorded = () => sampleRaw(SAMPLE_DUMP_FOLLOWUP_RAW[Math.min(session.buckets.length, SAMPLE_DUMP_FOLLOWUP_RAW.length) - 1], cards);
   try {
     const { raw, sample, model } = await call(sourceId, "Qalam AI is reading your answers", body, recorded, 2500);
@@ -321,7 +324,7 @@ export async function placeDump(sourceId: string) {
     const c = cardOf(studio().doc, cardId);
     return !!c && hasQuote(c, q.sourceId, span, quotePiece(q.quoteId));
   };
-  const body = { stage: "dump-place", product: product(), dump: s.text, tree, ...fields, answers: answers.map(({ ref, question, answer }) => ({ id: ref, question: question.slice(0, 400), answer })), ...(org ? { context: org.context } : {}) };
+  const body = { stage: "dump-place", product: product(), dump: s.text, tree, ...aimOf(session), ...fields, answers: answers.map(({ ref, question, answer }) => ({ id: ref, question: question.slice(0, 400), answer })), ...(org ? { context: org.context } : {}) };
   const origin = placeFor(studio().doc, null);
   const ids = new Map<string, string>();
   const turn = session.turn ?? { chatId: "", turnId: `dump:${sourceId}` };
@@ -333,13 +336,10 @@ export async function placeDump(sourceId: string) {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let shown = 0;
   // Stickies have nowhere to be kept on the space's canvas: what a note would say stays in the chat's reading.
-  const proposalsNow = (raw: unknown, partial: boolean) =>
-    arrangeNew(
-      studio().doc,
-      (partial ? partialPlace(raw, ctx, ids) : sanitizePlace(raw, ctx, ids)).filter((p) => p.kind !== "note"),
-      evidenceOf,
-      origin,
-    );
+  // Asked to find a goal or a problem, only cards of that kind are kept (under cards already there, or on their own).
+  const want = session.aim ? (session.aim.find === "goal" ? "outcome" : "opportunity") : null;
+  const keeps = (p: Proposal) => (want ? p.kind === "card" && p.card.kind === want && (p.parentId === null || !!studio().doc.nodes[p.parentId]) : p.kind !== "note");
+  const proposalsNow = (raw: unknown, partial: boolean) => arrangeNew(studio().doc, (partial ? partialPlace(raw, ctx, ids) : sanitizePlace(raw, ctx, ids)).filter(keeps), evidenceOf, origin);
   const show = () => {
     timer = undefined;
     const list = proposalsNow(parsePartial(buffer), true);
@@ -372,7 +372,7 @@ export async function placeDump(sourceId: string) {
     if (c && ghostIds.length) requestAnimationFrame(() => c.glideToFit(ghostIds));
   };
   try {
-    const { raw, sample, model } = await call(sourceId, "Qalam AI is placing your brain dump", body, () => sampleRaw(SAMPLE_DUMP_PLACE_RAW, cards), 9000, onDelta);
+    const { raw, sample, model } = await call(sourceId, session.aim ? `Qalam AI is finding ${session.aim.find === "goal" ? "a goal" : "a problem"} in what you said` : "Qalam AI is placing your brain dump", body, () => sampleRaw(SAMPLE_DUMP_PLACE_RAW, cards), 9000, onDelta);
     clearTimeout(timer);
     clearGhosts(preview);
     const list = proposalsNow(raw, false);

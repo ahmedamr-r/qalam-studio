@@ -19,6 +19,7 @@ import { PLACES, placeShown, type Place } from "./places";
 import type { Space } from "./spaces";
 import { useCurrentOrg, useFrame } from "./store";
 import { navigate } from "../nav";
+import { composeIn } from "../space/chat/compose";
 
 /*
  * ⌘K on a page: one field that finds the organization's canvases, Decisions and Connections, the
@@ -82,6 +83,16 @@ function Palette({ space }: { space: Space }) {
     if (q) for (const t of topics ?? []) add("Problems and pages", `topic:${t.id}`, t.title, <NotebookText {...ICON} />, () => navigate(topicHref(t.id)), TOPIC_KIND_LABEL[t.kind]);
     add("Actions", "theme", "Toggle dark and light", <Moon {...ICON} />, () => runCommand("view.theme-toggle", "palette"), undefined, ["theme", "appearance"]);
     add("Actions", "chat", useFrame.getState().chat ? "Hide Qalam AI" : "Show Qalam AI", <PanelLeft {...ICON} />, () => runCommand("frame.chat", "palette"), undefined, ["chat", "sidebar", "fold", "panel"]);
+    // Qalam AI's chat on the canvas: finding a goal or a problem with its questions, or reading a brain dump.
+    const onCanvas = (then: () => void) => () => {
+      navigate(spaceHref(space));
+      then();
+    };
+    // The chat's store comes with the canvas: loaded only when it's asked for.
+    const find = (what: "goal" | "problem") => () => void import("../space/chat/store").then((m) => m.findWith(what, space));
+    add("Actions", "find-goal", "Find a goal with Qalam AI", <QalamAIGlyph size={14} />, onCanvas(find("goal")), undefined, ["help", "suggest", "goal", "questions"]);
+    add("Actions", "find-problem", "Find a problem with Qalam AI", <QalamAIGlyph size={14} />, onCanvas(find("problem")), undefined, ["help", "suggest", "problem", "questions"]);
+    add("Actions", "dump", "Brain dump", <QalamAIGlyph size={14} />, onCanvas(() => composeIn({ mode: "dump" })), undefined, ["paste", "thinking", "notes", "place"]);
     // Grouped as listed; within a group, the best match first, and a few per group.
     const groups = [...new Set(out.map((x) => x.group))];
     const ranked = groups.flatMap((g) =>

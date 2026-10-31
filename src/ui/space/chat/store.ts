@@ -13,6 +13,7 @@ import type { Ingested } from "@/discovery/ingest/core";
 import { chatKey, chatOf, emptyChat, withJob, withTurn, type CanvasChat, type ChatDoc, type ChatJob, type ChatTurn, type FiledPage } from "@/space/chat";
 import { cardForPage, pageOf } from "@/space/pages";
 import { DUMP_WORDS, routeOf, titleFrom, wordsIn, type ChatMode } from "@/space/route";
+import { FIND_MIN, findRound, findText, type FindWhat } from "@/space/find";
 import { useSpaceView } from "@/space/view";
 import { newId } from "@/doc/factory";
 import { docPart, docRef, guessVoice, joinParts, type SentDoc } from "../../chat/attach";
@@ -20,6 +21,7 @@ import { ingestPaste } from "../../discovery/ingest";
 import { startDump, stopDump, useDump } from "../../discovery/dump";
 import { placeFor, writeCard } from "../new";
 import { useCompose } from "./compose";
+import { toggleChat } from "../../frame/store";
 
 /*
  * Qalam AI's chat beside a space's canvas, in the window: the canvas's turns (src/space/chat.ts),
@@ -41,9 +43,11 @@ interface ChatState {
   chat: CanvasChat;
   loaded: boolean;
   live: Record<string, Live>;
+  /** "Help me find one" asked for a canvas whose chat isn't loaded yet: started as it loads. */
+  pending: { key: string; what: FindWhat } | null;
 }
 
-export const useCanvasChat = create<ChatState>(() => ({ key: null, space: null, chat: emptyChat(), loaded: false, live: {} }));
+export const useCanvasChat = create<ChatState>(() => ({ key: null, space: null, chat: emptyChat(), loaded: false, live: {}, pending: null }));
 
 const st = () => useCanvasChat.getState();
 const ctrls = new Map<string, AbortController>();
@@ -73,7 +77,13 @@ export async function openChat(space: string | null) {
   ctrls.clear();
   useCanvasChat.setState({ key, space, chat: emptyChat(), loaded: false, live: {} });
   const chat = await orgJson<unknown>(`/canvas-chat/${key}`).then(chatOf, () => emptyChat());
-  if (st().key === key) useCanvasChat.setState({ chat, loaded: true });
+  if (st().key !== key) return;
+  useCanvasChat.setState({ chat, loaded: true });
+  const pending = st().pending;
+  if (pending?.key === key) {
+    useCanvasChat.setState({ pending: null });
+    findWith(pending.what, space);
+  }
 }
 
 /** A new chat: the turns go (what they made stays where it is). */
@@ -170,6 +180,44 @@ async function dumpIt(at: string | null, said: string, docs: readonly SentDoc[])
   } catch (e) {
     change((c) => withJob(c, id, (j) => (j.kind === "dump" ? { ...j, error: message(e) } : j)));
   }
+}
+
+// ---------------------------------------------------------------------------
+// Help me find one
+
+const FIND_SAID: Record<FindWhat, string> = { goal: "Help me find a goal", problem: "Help me find a problem" };
+
+/** "Help me find one" on `space`'s canvas: code's opening questions in the box (one at a time: an open one is kept). */
+export function findWith(what: FindWhat, space: string | null) {
+  toggleChat(true);
+  const key = chatKey(space);
+  if (st().key !== key || !st().loaded) return useCanvasChat.setState({ pending: { key, what } });
+  const open = st().chat.turns.find((t) => t.job.kind === "find");
+  if (open?.job.kind === "find" && open.job.what === what) return;
+  if (open) dropTurn(open.id);
+  addTurn(FIND_SAID[what], { kind: "find", what });
+}
+
+/** The opening round answered: their answers read as a brain dump that's asked for a goal or a problem. */
+export async function answerFind(id: string, answers: Readonly<Record<string, string>>) {
+  const t = turnOf(id);
+  if (t?.job.kind !== "find") return;
+  const what = t.job.what;
+  const { text, asked, said } = findText(findRound(what), answers);
+  if (text.length < FIND_MIN) return change((c) => withJob(c, id, () => ({ kind: "find", what, error: "Say a little more in your answers, so there's something to go on." })));
+  const source = newId();
+  change((c) => withJob(c, id, () => ({ kind: "dump", source, find: { what, said } })));
+  try {
+    await startDump(text, { id: source, aim: { find: what, asked } });
+  } catch (e) {
+    change((c) => withJob(c, id, (j) => (j.kind === "dump" ? { ...j, error: message(e) } : j)));
+  }
+}
+
+/** A turn taken out of the chat (what it made stays where it is). */
+export function dropTurn(id: string) {
+  stopTurn(id);
+  change((c) => ({ ...c, turns: c.turns.filter((t) => t.id !== id) }));
 }
 
 // ---------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 import type { DumpSession } from "@/discovery/dump";
 import type { AskAnswer } from "@/hub/ask";
 import type { SetupDoc } from "@/org/setup";
+import type { FindWhat } from "./find";
 
 /*
  * Qalam AI's chat on the left of a space's canvas (src/ui/space/chat/), as it's kept: one file per
@@ -32,8 +33,10 @@ export type ChatJob =
   | { kind: "add"; what: "goal" | "problem"; card: string; under: string | null }
   /** What customers said, taken in as sources: filed into problem pages, placed where it fits. */
   | { kind: "take"; state: "taking" | "done" | "failed"; sources: string[]; pages: FiledPage[]; quotes: number; error?: string }
-  /** Their own thinking as a brain dump: its source's session is how it's going (`error`: it never started). */
-  | { kind: "dump"; source: string; error?: string };
+  /** Their own thinking as a brain dump: its source's session is how it's going (`error`: it never started; `find`: it answers "Help me find one", with what they said to code's questions). */
+  | { kind: "dump"; source: string; error?: string; find?: { what: FindWhat; said: { question: string; answer: string }[] } }
+  /** "Help me find one": code's opening questions, being answered (the box asks them). */
+  | { kind: "find"; what: FindWhat; error?: string };
 
 export interface ChatTurn {
   id: string;
@@ -59,7 +62,7 @@ function stopped(j: ChatJob): ChatJob {
   return j;
 }
 
-const KINDS = new Set(["ask", "choose", "add", "take", "dump"]);
+const KINDS = new Set(["ask", "choose", "add", "take", "dump", "find"]);
 
 /** A chat as read from its file (what it doesn't know is left out). */
 export function chatOf(raw: unknown): CanvasChat {
@@ -157,7 +160,9 @@ function replyTo(t: ChatTurn, dumpOf: DumpOf): ChatPart[] {
         ...(j.pages.length ? [part("pages", id)] : []),
       ];
     case "dump":
-      return j.error ? [text(j.error)] : dumpReply(t, dumpOf(j.source));
+      return [...(j.find ? [part("opening", id)] : []), ...(j.error ? [text(j.error)] : dumpReply(t, dumpOf(j.source)))];
+    case "find":
+      return [text(`A few questions first, then I'll suggest ${j.what === "goal" ? "a goal" : "a problem"} in your words. Skip any you can't answer.`), ...(j.error ? [text(j.error)] : []), part("cancel", id)];
   }
 }
 
@@ -166,9 +171,10 @@ export function threadOf(c: CanvasChat, dumpOf: DumpOf = () => null): ChatMessag
   return c.turns.flatMap((t) => [you(t), reply(t, replyTo(t, dumpOf))]);
 }
 
-/** The brain dump whose questions the box asks now: the newest one waiting on its answers. */
-export function asking(c: CanvasChat, dumpOf: DumpOf): { turn: ChatTurn; source: string } | null {
+/** Whose questions the box asks now: the newest "Help me find one" or brain dump waiting on its answers. */
+export function asking(c: CanvasChat, dumpOf: DumpOf): ({ turn: ChatTurn } & ({ source: string } | { find: FindWhat })) | null {
   for (const t of [...c.turns].reverse()) {
+    if (t.job.kind === "find") return { turn: t, find: t.job.what };
     if (t.job.kind !== "dump" || t.job.error) continue;
     if (dumpOf(t.job.source)?.phase === "asking") return { turn: t, source: t.job.source };
   }
