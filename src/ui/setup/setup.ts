@@ -10,7 +10,6 @@ import type { SourceRecord, TextBlock } from "@/discovery/sources";
 import { newId } from "@/doc/factory";
 import { currentOrg, orgFetch } from "@/org/client";
 import { changeGoal, createGoal, goalWords, goalsNow, useGoals } from "@/goals/client";
-import { textGoalId } from "@/goals/migrate";
 import { sanitizeShaped, type OutlineGoal, type ShapedGoal } from "@/goals/outline";
 import { goalById } from "@/goals/tree";
 import { sameTopic } from "@/hub/topics";
@@ -19,7 +18,7 @@ import { emptyContext } from "@/org/context-md";
 import { boardFromSetup } from "@/org/setup-board";
 import { setupQuotes, splitIds } from "@/org/setup-split";
 import { sanitizeGroups } from "@/org/setup-groups";
-import { applyLines, boardGoals, decide, sanitizeSetup, setupSent, type OrgNow, type PlaceSays, type SetupLine, type SetupSession } from "@/org/setup";
+import { applyLines, boardGoals, decide, lineGoalId, sanitizeSetup, setupSent, type OrgNow, type PlaceSays, type SetupLine, type SetupSession } from "@/org/setup";
 import { projectHref } from "@/projects/model";
 import { NAME_MAX, TITLE_MAX, useYou } from "@/org/you";
 import { createProject } from "@/projects/session";
@@ -345,8 +344,6 @@ function settled(): Promise<void> {
   return settling;
 }
 
-/** The goal a setup line made: named by its words, so making it twice makes one. */
-const lineGoalId = (text: string, product: string | null) => textGoalId(product ? `${product}:${text}` : text);
 
 /** The product a line is for (null: the whole organization; undefined: a new one not made yet). */
 const lineProduct = (l: SetupLine, made: Record<string, string> | undefined): string | null | undefined => (l.to === "org" ? null : l.to.startsWith("new:") ? made?.[l.to.slice(4)] : l.to);
@@ -421,23 +418,41 @@ export async function startBoard(lineId: string) {
   // The core may be splitting the docs out still: the board rests on where the quotes live once it's done.
   await settling;
   const s = source();
-  const session = s?.setup;
+  if (s) await startBoardFor(s, lineId, useSetup.getState().splits);
+}
+
+/**
+ * The same for any settled setup, from anywhere a goal can start its board (the goal's page, the
+ * map): its docs' sources are loaded when they aren't given. False when the line isn't an accepted goal.
+ */
+export async function startBoardFor(s: SourceRecord, lineId: string, splits?: SourceRecord[]): Promise<boolean> {
+  const session = s.setup;
   const goal = session && boardGoals(session).find((g) => g.line.id === lineId);
-  if (!s || !session || !goal) return;
+  if (!session || !goal) return false;
   const made = session.boards?.[lineId];
-  if (made) return window.location.assign(projectHref({ id: made, type: "discovery" }));
+  if (made) {
+    window.location.assign(projectHref({ id: made, type: "discovery" }));
+    return true;
+  }
   // The goal the line made, as it is now (its words and number may have changed since).
   const g = goalById(goalsNow(), lineGoalId(goal.line.text, goal.product)) ?? goalsNow().goals.find((x) => x.product === goal.product && !x.on && sameTopic(x.title, goal.line.text));
   const title = g?.title ?? goal.line.text;
-  const view = setupView(useSetup.getState());
+  const view = setupView({ source: s, splits: splits ?? (await loadSplits(s)) });
   const { doc, outcome, problems, ideas } = boardFromSetup({ source: { ...s, quotes: view.quotes }, homeOf: view.homeOf, session, goal: { line: goal.line, title, metric: g?.metric ?? null } });
   const p = await createProject("discovery", title.slice(0, 80), { discovery: { v: 1, stage: "ready" }, ...(goal.product ? { product: goal.product } : {}) }, doc);
   // The board's outcome card is the goal on the canvas.
   if (g && outcome) await changeGoal(g.id, { on: { board: p.id, card: outcome } }).catch(() => {});
   for (const x of view.sources) await sourcesDb.link(x.id, p.id, true);
-  await setSession((d) => ({ ...d, boards: { ...d.boards, [lineId]: p.id } }));
+  // The setup remembers the board, on the source as it is now.
+  const now = (await sourcesDb.get(s.id).catch(() => null)) ?? s;
+  if (now.setup) {
+    const next = { ...now, setup: { ...now.setup, boards: { ...now.setup.boards, [lineId]: p.id } } };
+    await sourcesDb.put(next);
+    if (source()?.id === s.id) useSetup.setState({ source: next });
+  }
   // It opens on the idea's card, its next step (drafting its tests) on its bar.
   window.location.assign(`${projectHref(p)}${problems.length && ideas[0] ? `?card=${ideas[0]}` : ""}`);
+  return true;
 }
 
 /** The idea's board, once they choose: under the first goal they accepted, else on its own, named after the idea, its problems at the top. Either way it's filled from what the setup read. */

@@ -22,10 +22,10 @@ import { confirmDialog } from "../surfaces/dialog";
 import { getController } from "../CanvasView";
 import { glideToLayer } from "./canvas";
 import { ACCEPT } from "./ingest";
-import { addSources, mapQuotes, readSources, stopSources, type AddInput } from "./import";
+import { addSources, mapQuotes, placeFromOrganization, placeSetup, readSources, stopSources, type AddInput } from "./import";
 import { acceptAll, discardAll, useReview } from "./review";
 import { dragQuote, dragSource } from "./drop";
-import { addFromOrganization, openSource, removeSource, updateSource, useSources } from "./sources";
+import { openSource, removeSource, updateSource, useSources } from "./sources";
 import { sourcesDb } from "@/discovery/db";
 import { SpeakersLine, SpeakersStep } from "./SpeakersStep";
 import { openBrainDump } from "./dump";
@@ -191,7 +191,7 @@ function FromOrganization() {
             disabled={!!adding}
             onClick={() => {
               setAdding(x.id);
-              void addFromOrganization(x.id)
+              void placeFromOrganization(x.id)
                 .then(() => {
                   setList((l) => l?.filter((y) => y.id !== x.id) ?? null);
                   useSources.setState({ adding: false, open: { id: x.id } });
@@ -484,9 +484,16 @@ function SourceView({ source, focus }: { source: SourceRecord; focus?: string })
         </IconBtn>
       </div>
       {dump && (
-        <Button size="sm" variant="secondary" className="self-start" onClick={() => openBrainDump({ sourceId: source.id })}>
-          <QalamAIGlyph size={12} /> Continue with Qalam AI
-        </Button>
+        source.setup ? (
+          // A setup's reading: its problems go on the board as they were found, nothing read again.
+          <Button size="sm" variant="secondary" className="self-start" onClick={() => void placeSetup(source.id)}>
+            <QalamAIGlyph size={12} /> Place its problems on this board
+          </Button>
+        ) : (
+          <Button size="sm" variant="secondary" className="self-start" onClick={() => openBrainDump({ sourceId: source.id })}>
+            <QalamAIGlyph size={12} /> Continue with Qalam AI
+          </Button>
+        )
       )}
       {source.transcript && (roles ? <SpeakersStep source={source} onDone={changing ? () => setChanging(false) : undefined} /> : <SpeakersLine t={source.transcript} onChange={() => setChanging(true)} />)}
       <Segmented

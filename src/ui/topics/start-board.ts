@@ -8,9 +8,11 @@ import type { OstEvidence } from "@/discovery/types";
 import { emptyDoc } from "@/doc/schema";
 import { changeGoal } from "@/goals/client";
 import type { Goal } from "@/goals/types";
+import { setupLineFor } from "@/org/setup";
 import { topicsDb } from "@/org/topics";
 import { projectHref } from "@/projects/model";
 import { createProject } from "@/projects/session";
+import { startBoardFor } from "../setup/setup";
 
 const QUOTE = "hub:quote:";
 
@@ -76,6 +78,12 @@ export async function startBoardForNeed(topicId: string, o: { drafts?: SolutionD
  * stage), and a problem to work on can go under it straight away.
  */
 export async function startBoardForGoal(goal: Goal, topicId?: string) {
+  // A goal the setup proposed: its board opens filled with the problems and quotes the setup read.
+  if (!topicId) {
+    const setups = (await sourcesDb.all().catch(() => [] as SourceRecord[])).filter((s) => s.setup?.phase === "done");
+    const found = setupLineFor(goal, setups);
+    if (found && (await startBoardFor(found.source, found.line.id))) return;
+  }
   const doc = emptyDoc();
   const outcome = makeCardNode(newCard("outcome", { title: goal.title, stage: goal.status, ...(goal.metric ? { metric: goal.metric } : {}) }));
   addCardIn(doc, outcome, null);

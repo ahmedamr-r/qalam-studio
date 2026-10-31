@@ -2,7 +2,9 @@ import { newId } from "@/doc/factory";
 import { fragmentRefs, roundAnswers, type DumpChallenge } from "@/discovery/dump";
 import type { SourceQuote } from "@/discovery/sources";
 import type { OstMetric } from "@/discovery/types";
+import { textGoalId } from "@/goals/migrate";
 import { metricFrom } from "@/goals/said";
+import type { Goal } from "@/goals/types";
 import { checkWords } from "@/hub/topics";
 import type { PlanBucket } from "@/ui/ai/plan";
 import { emptyContext, type ContextFields, type Product } from "./context-md";
@@ -388,4 +390,24 @@ export function boardGoals(s: Pick<SetupSession, "proposal" | "decided" | "made"
       const product = line.to.startsWith("new:") ? s.made?.[line.to.slice(4)] : line.to;
       return product ? [{ line, product }] : [];
     });
+}
+
+/** The goal a setup line made: named by its words, so making it twice makes one. */
+export const lineGoalId = (text: string, product: string | null) => textGoalId(product ? `${product}:${text}` : text);
+
+/**
+ * The setup line a goal came from, among the settled setups: the line whose goal it is (by its id,
+ * named by the line's words), else the accepted goal line whose pieces the goal cites.
+ */
+export function setupLineFor<S extends { setup?: SetupSession }>(goal: Pick<Goal, "id" | "cites">, setups: readonly S[]): { source: S; line: SetupLine } | null {
+  const cites = new Set((goal.cites ?? []).map((c) => c.replace(/^hub:quote:/, "")));
+  let byCites: { source: S; line: SetupLine } | null = null;
+  for (const source of setups) {
+    if (!source.setup) continue;
+    for (const { line, product } of boardGoals(source.setup)) {
+      if (lineGoalId(line.text, product) === goal.id) return { source, line };
+      if (!byCites && cites.size && line.pieces.some((p) => cites.has(p))) byCites = { source, line };
+    }
+  }
+  return byCites;
 }

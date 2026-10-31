@@ -4,7 +4,7 @@ import type { PlanQuestion } from "@/ai/plan";
 import { initialFlow } from "@/ui/ai/questionFlow";
 import { toQuestion } from "@/ui/ai/plan";
 import { emptyContext } from "./context-md";
-import { applyLines, boardGoals, decide, goalLines, nameHolds, pendingLines, sanitizeSetup, setupSent, type OrgNow, type ProductSays, type SetupSession } from "./setup";
+import { applyLines, boardGoals, decide, goalLines, lineGoalId, nameHolds, pendingLines, sanitizeSetup, setupLineFor, setupSent, type OrgNow, type ProductSays, type SetupSession } from "./setup";
 
 const nothing = (): OrgNow => ({ about: { ...emptyContext(), goals: [] }, products: [] });
 
@@ -277,5 +277,25 @@ describe("accepting lines", () => {
     expect(next.decided).toEqual({ [orgGoal.id]: "accepted", [bizGoal.id]: "accepted", [audience.id]: "discarded", [bizAudience.id]: "discarded" });
     // A new product's goal waits for the product to be made.
     expect(boardGoals({ ...next, made: {} }).map((g) => g.line.text)).toEqual(["2M dirhams a month in orders"]);
+  });
+});
+
+describe("the setup line a goal came from", () => {
+  const goalLine = (id: string, text: string, pieces: string[]) => ({ id, to: "org", field: "goals" as const, text, pieces, answers: [], why: "" });
+  const setup = (lines: ReturnType<typeof goalLine>[], decided: Record<string, "accepted" | "discarded">): { id: string; setup: SetupSession } => ({
+    id: "dump",
+    setup: { v: 1, phase: "done", understanding: "", challenges: [], buckets: [], proposal: { summary: "", products: [], lines }, decided },
+  });
+
+  it("finds the accepted line whose goal it is, by its words", () => {
+    const s = setup([goalLine("l1", "Cut cancellations", ["q1"]), goalLine("l2", "Grow trips", ["q2"])], { l1: "accepted", l2: "accepted" });
+    expect(setupLineFor({ id: lineGoalId("Grow trips", null), cites: [] }, [s])?.line.id).toBe("l2");
+  });
+
+  it("else the accepted line whose pieces the goal cites, and never a discarded one", () => {
+    const s = setup([goalLine("l1", "Cut cancellations", ["q1"]), goalLine("l2", "Grow trips", ["q2"])], { l1: "discarded", l2: "accepted" });
+    expect(setupLineFor({ id: "renamed", cites: ["hub:quote:q2"] }, [s])?.line.id).toBe("l2");
+    expect(setupLineFor({ id: "renamed", cites: ["hub:quote:q1"] }, [s])).toBeNull();
+    expect(setupLineFor({ id: "other", cites: [] }, [s])).toBeNull();
   });
 });

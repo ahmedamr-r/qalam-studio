@@ -5,7 +5,6 @@ import type { Doc } from "@/doc/schema";
 import { isOstCard } from "@/doc/board";
 import { AIError, callAI } from "@/ai/client";
 import type { ResearchInfo } from "@/ai/research-shared";
-import { feedback } from "@/commands/feedback";
 import { cardOf } from "@/discovery/ops";
 import { allCards, childCards, outcomeLines } from "@/discovery/tree";
 import { SOURCE_KIND_LABEL, hasQuote, packCalls, quotePiece, unread, type SourceKind, type SourceQuote, type SourceRecord } from "@/discovery/sources";
@@ -16,7 +15,10 @@ import { currentProject } from "@/projects/session";
 import { offline } from "./ai";
 import { hasOutcome, treeFor } from "./draft";
 import { IngestError, ingestFile, ingestPaste, ingestUrl, type Ingested } from "./ingest";
-import { addSourceRecord, setJob, sourceOf, updateSource, useSources } from "./sources";
+import { sourcesDb } from "@/discovery/db";
+import { setupProposals } from "@/org/setup-place";
+import { setupQuotes, splitIds } from "@/org/setup-split";
+import { addFromOrganization, addSourceRecord, setJob, sourceOf, updateSource, useSources } from "./sources";
 import { boardCardRefs, hubQuotes, packProduct, recordCall } from "./knowledge";
 import { startReview } from "./review";
 import { boardGoalIds } from "./goals";
@@ -290,7 +292,10 @@ export async function mapQuotes(opts: { sourceIds?: string[] } = {}, given?: Abo
   const want = new Set(opts.sourceIds ?? []);
   // A brain dump is the builder's own thinking: its words are never mapped as customers'.
   const sources = [...all.filter((s) => want.has(s.id)), ...all.filter((s) => !want.has(s.id))].filter((s) => s.kind !== "dump" && s.quotes.length);
-  if (!sources.length) return void useSources.setState({ notice: { text: "No quotes to map yet: add a source, and Qalam AI picks out what customers said." } });
+  if (!sources.length)
+    return void useSources.setState({
+      notice: { text: all.some((s) => s.kind === "dump" && s.quotes.length) ? "Only your own words are on this board, and they're never mapped as what customers said. Add what customers said, or drag your words onto a card." : "No quotes to map yet: add a source, and Qalam AI picks out what customers said." },
+    });
   const ctrl = given ?? begin();
   useSources.setState({ mapping: { started: Date.now(), tokens: 0 } });
   // What the organization knows beyond this board: what customers said in its other sources (mapped
@@ -314,12 +319,46 @@ export async function mapQuotes(opts: { sourceIds?: string[] } = {}, given?: Abo
     const { data, model } = await callAI<unknown>(PATH, { ...body, ...(org ? { context: org.context } : {}) }, (tokens) => useSources.setState((s) => (s.mapping ? { mapping: { ...s.mapping, tokens } } : {})), ctrl.signal);
     const proposals = sanitizeSynthesis(data, ctx);
     recordCall({ title: "Mapped quotes to the tree", org, also: quotes, raw: data, model, status: "proposed", produced: { refs: proposals.map((p) => p.cardId) } });
-    if (!proposals.length) feedback("Qalam AI found nothing to add: the tree already reflects these quotes", { id: "discovery.map" });
-    else startReview({ kind: "sources" }, proposals);
+    if (!proposals.length) {
+      // Said where it stays, with what was sent: a toast is gone before anyone reads it.
+      const from = new Set(ctx.quotes.map((q) => q.sourceId)).size;
+      useSources.setState({ notice: { text: `Sent ${ctx.quotes.length} ${ctx.quotes.length === 1 ? "quote" : "quotes"} from ${from} ${from === 1 ? "source" : "sources"}: nothing new fits the tree. It already reflects them.` } });
+    } else startReview({ kind: "sources" }, proposals);
   } catch (e) {
     if ((e as Error).name !== "AbortError") useSources.setState({ notice: { text: `Qalam AI couldn't map the quotes: ${message(e)}` } });
   } finally {
     useSources.setState({ mapping: null });
     if (!given) end(ctrl);
   }
+}
+
+// ---------------------------------------------------------------------------
+// The organization's sources on this board
+
+/**
+ * What a setup found, on this board: each problem it grouped, with its quotes where they live now
+ * (src/org/setup-place.ts), proposed under the outcome for review. No call: the setup read it.
+ */
+export async function placeSetup(sourceId: string) {
+  const s = sourceOf(sourceId) ?? (await sourcesDb.get(sourceId).catch(() => null));
+  if (!s?.setup) return;
+  if (!hasOutcome(studio().doc)) return void useSources.setState({ notice: { text: "Name the outcome you want to move first: the setup's problems go under it." } });
+  const splits = (await Promise.all(splitIds(s).map((id) => sourceOf(id) ?? sourcesDb.get(id).catch(() => null)))).filter((x): x is SourceRecord => !!x);
+  const { quotes, homeOf } = setupQuotes(s, splits);
+  const proposals = setupProposals(studio().doc, s.setup, quotes, homeOf);
+  if (!proposals.length) return void useSources.setState({ notice: { text: "Every problem the setup found is on this board already." } });
+  startReview({ kind: "sources" }, proposals);
+}
+
+/**
+ * Put one of the organization's sources on this board, and do what its words call for: a setup's
+ * problems are proposed (the sources its docs became come along), what customers said elsewhere is
+ * mapped to the tree.
+ */
+export async function placeFromOrganization(id: string) {
+  const s = await sourcesDb.get(id).catch(() => null);
+  await addFromOrganization(id, s ? splitIds(s) : []);
+  if (!s) return;
+  if (s.setup) await placeSetup(id);
+  else if (s.kind !== "dump" && s.quotes.length && hasOutcome(studio().doc)) await mapQuotes({ sourceIds: [id] });
 }

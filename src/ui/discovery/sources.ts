@@ -133,11 +133,11 @@ export async function removeSource(id: string) {
   await sourcesDb.link(id, board, false).catch(() => {});
 }
 
-/** Put one of the organization's sources on this board. */
-export async function addFromOrganization(id: string) {
+/** Put one of the organization's sources on this board (and those that go with it: a setup's docs, once they're sources of their own). */
+export async function addFromOrganization(id: string, along: readonly string[] = []) {
   const board = useSources.getState().projectId;
   if (!board) return;
-  await sourcesDb.link(id, board, true);
+  for (const x of [id, ...along]) await sourcesDb.link(x, board, true).catch(() => {});
   await reloadSources(board);
 }
 
