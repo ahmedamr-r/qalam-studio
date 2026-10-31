@@ -184,7 +184,9 @@ export async function startSetupPage(search: string) {
   const kept = useSetup.getState().source;
   const door = at.door === "problems" || at.door === "idea" ? at.door : kept ? (kept.setup?.idea ? "idea" : "find") : (at.door ?? (useKnow.getState().sent ? "know" : null));
   useFirstRun.setState({ door, opened: true });
+  // The canvas draws the tools connected here from the start (cheap: no Claude Code check).
   if (at.step === "connect") void loadConnect();
+  else void connectorsDb.list().then((v) => useFirstRun.setState({ tools: v.connectors }), () => {});
   window.addEventListener("popstate", () => {
     const now = fromAddress(window.location.search);
     useFirstRun.setState({ step: now.step, ...(now.door ? { door: now.door } : {}) });

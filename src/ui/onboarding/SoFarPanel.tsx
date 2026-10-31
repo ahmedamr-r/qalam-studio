@@ -12,7 +12,7 @@ import { dropKnown, useKnow } from "../setup/know";
 import { acceptLines, discardLines, useSetup, useSetupQuotes } from "../setup/setup";
 import { openSoFar, useFirstRun } from "./flow";
 import { metricLine } from "@/goals/goals-md";
-import { canvasOf, EMPTY, type Canvas } from "./canvas";
+import { useSetupCanvas } from "./useSetupCanvas";
 import { SetupCanvas } from "./SetupCanvas";
 import { SourceReader } from "./SourceReader";
 import { soFarOf, tally, type GoalRow, type LineField, type LineRow, type RestsOn, type RowState } from "./soFar";
@@ -235,24 +235,6 @@ function ReviewStrip({ accepted, discarded, open }: { accepted: number; discarde
   );
 }
 
-/** What the canvas draws: the door's own material (the setup's reading, the know door's goals, the problems door's sources). */
-function useCanvas(): Canvas {
-  const door = useFirstRun((s) => s.door);
-  const problems = useFirstRun((s) => s.problems.sources);
-  const source = useSetup((s) => s.source);
-  const quotes = useSetupQuotes();
-  const pending = useSetup((s) => s.pending);
-  const busy = useSetup((s) => !!s.busy);
-  const know = useKnow();
-  return useMemo(() => {
-    if (door === "problems") return canvasOf({ problems: problems ?? [] });
-    if (door === "know") return canvasOf({ know: know.phase === "asking" || know.phase === "review" ? know.goals : [] });
-    if (pending) return canvasOf({ pending: { docs: [...(pending.text ? [{ from: "said", title: "Your words" }] : []), ...(pending.url ? [{ from: "page", title: pending.url }] : []), ...(pending.docs ?? [])] } });
-    if (source?.setup) return canvasOf({ setup: { session: source.setup, sourceId: source.id, quotes, text: source.text }, busy });
-    return EMPTY;
-  }, [door, problems, source, quotes, pending, busy, know.phase, know.goals]);
-}
-
 export function SoFar() {
   const org = useFirstRun((s) => s.org);
   const naming = useFirstRun((s) => s.naming);
@@ -275,7 +257,7 @@ export function SoFar() {
   const t = tally(v);
   const mine = new Set(picked ?? goals.mine);
   const connected = (tools ?? []).filter((x) => x.tone === "ok");
-  const canvas = useCanvas();
+  const { canvas, empty } = useSetupCanvas();
   const door = useFirstRun((s) => s.door);
   const [selected, setSelected] = useState<string | null>(null);
   const [reading, setReading] = useState<string | null>(null);
@@ -287,9 +269,8 @@ export function SoFar() {
         <SourceReader key={readingNode.id} node={readingNode} canvas={canvas} setup={door !== "problems" && source ? { text: source.text, quotes, blocks: source.blocks } : null} onClose={() => setReading(null)} className="min-h-0 flex-1 rounded-[inherit]" />
       </Panel>
     );
-  // Once anything is sent, the canvas is what's drawn; the About, products and what's connected sit under it.
-  if (canvas.nodes.length)
-    return (
+  // The canvas is what's drawn, the organization on it from the start; the review's lines sit under it until the page is the canvas.
+  return (
       <Panel title={`${name} so far`} actions={<SoFarActions open={v.open} working={working} act={act} wide={wide} />} body={false}>
         <div className="flex min-h-0 flex-1 flex-col">
           {v.from === "proposal" && (
@@ -298,7 +279,7 @@ export function SoFar() {
             </div>
           )}
           <div className="relative min-h-[240px] flex-1">
-            <SetupCanvas canvas={canvas} selected={selected} onSelect={setSelected} onOpen={(n) => setReading(n.id)} working={working} act={act} />
+            <SetupCanvas canvas={canvas} selected={selected} onSelect={setSelected} onOpen={(n) => setReading(n.id)} working={working} act={act} empty={empty} />
           </div>
           {(v.groups.length > 0 || connected.length > 0) && (
             <div className="flex max-h-[35%] flex-col gap-[14px] overflow-y-auto border-t border-line-subtle p-[12px]">
@@ -309,51 +290,6 @@ export function SoFar() {
         </div>
       </Panel>
     );
-  return (
-    <Panel
-      title={`${name} so far`}
-      actions={<SoFarActions open={v.open} working={working} act={act} wide={wide} />}
-    >
-      {v.from === "none" && !connected.length ? (
-        <div className="flex flex-col items-center gap-[10px] px-[24px] py-[40px] text-center">
-          <span className="flex gap-[6px]">
-            {(["goals", "about", "product", "connected"] as const).map((k) => {
-              const { icon: Icon, tone } = SECTION[k];
-              return (
-                <span key={k} className={clsx("grid size-[28px] place-items-center rounded-md", tone)}>
-                  <Icon size={14} {...ICON} />
-                </span>
-              );
-            })}
-          </span>
-          <p className="max-w-[240px] text-caption text-fg-subtle">{org ? "Goals, About and products show here as Qalam AI finds them." : "Your organization shows here once it has a name."}</p>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-[18px] p-[12px]">
-          {v.from === "proposal" && <ReviewStrip {...t} />}
-          {v.goals.length > 0 && (
-            <section aria-label="Goals" className="flex flex-col gap-[8px]">
-              <SectionHead kind="goals" title="Goals" count={v.goals.length}>
-                {v.from === "know" && <Chip>Not added yet</Chip>}
-                {v.from === "proposal" && t.open > 0 && (
-                  <Chip tone="text-ai bg-ai-subtle" lead={<QalamAIGlyph size={12} />}>
-                    Proposed
-                  </Chip>
-                )}
-              </SectionHead>
-              <ul className="flex flex-col gap-[8px]">
-                {v.goals.map((g) => (
-                  <GoalCard key={g.key} g={g} mine={!!g.goalId && mine.has(g.goalId)} working={working} act={act} />
-                ))}
-              </ul>
-            </section>
-          )}
-          <Groups v={v} working={working} act={act} />
-          <Connected tools={connected} />
-        </div>
-      )}
-    </Panel>
-  );
 }
 
 /** Accept all, and Close where So far is a drawer. */

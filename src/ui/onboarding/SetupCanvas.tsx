@@ -3,7 +3,7 @@ import clsx from "clsx";
 import { AudioLines, Check, FileText, Globe, Maximize, Minus, PenLine, Plus, X } from "lucide-react";
 import { brandOn, logoFor } from "@/connectors/logos";
 import { KIND_LABEL } from "@/discovery/kinds";
-import { CARD_LOOK, FOOTER, type Kind, KIND_MARK, KIND_TOKEN, MARK_STROKE, SOURCE, type SourceIcon, sourceMark, sourceTile, STATE, TAG, WIRE, wireCurve, wireIn, wireOut } from "@/discovery/look";
+import { CARD_LOOK, DASH, FOOTER, type Kind, KIND_MARK, KIND_TOKEN, MARK_STROKE, SOURCE, type SourceIcon, sourceMark, sourceTile, STATE, TAG, TOOL, WIRE, wireCurve, wireIn, wireOut } from "@/discovery/look";
 import { titleProps } from "@/discovery/metrics";
 import { partLine } from "@/discovery/origin";
 import { OST_PALETTE } from "@/engine/ost-palette";
@@ -22,6 +22,8 @@ import { CARD_KIND, COUNT_ROW, hasFooter, pathOf, SETTLE_ROW, titleLines, type C
  * pans and zooms (as the knowledge graph does: scroll pans, ⌘/Ctrl-scroll or pinch zooms, drag the
  * background); it frames everything as nodes arrive, until they pan or zoom it themselves. Hovering or selecting a card lights its path and
  * dims the rest; a source opens its reader; a proposed goal is accepted (✓) or left out (✕) on its card.
+ * The organization is on it too: its places (the About, each product) at the right, goals wired into
+ * them dotted, and the tools connected, faint, under the sources.
  *
  * It looks as a board does: sizes, marks and wires come from src/discovery/look.ts and colours from the
  * theme tokens a board's palette repeats, so a source is the same tile with its port, and a card has
@@ -132,7 +134,7 @@ function surface(dashed: string | null, ring: number): CSSProperties {
   };
 }
 
-export function SetupCanvas({ canvas, selected, onSelect, onOpen, working, act }: { canvas: Canvas; selected: string | null; onSelect: (id: string | null) => void; onOpen: (source: CanvasNode) => void; working: boolean; act: (fn: () => Promise<void>) => void }) {
+export function SetupCanvas({ canvas, selected, onSelect, onOpen, working, act, empty }: { canvas: Canvas; selected: string | null; onSelect: (id: string | null) => void; onOpen: (source: CanvasNode) => void; working: boolean; act: (fn: () => Promise<void>) => void; empty?: string | null }) {
   const host = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [view, setView] = useState<View>({ x: 0, y: 0, k: 1 });
@@ -289,6 +291,11 @@ export function SetupCanvas({ canvas, selected, onSelect, onOpen, working, act }
           />
         ))}
       </div>
+      {empty && (
+        <p className="pointer-events-none absolute inset-x-0 bottom-[56px] mx-auto max-w-[320px] text-center text-caption text-fg-subtle" role="status">
+          {empty}
+        </p>
+      )}
       <div className="absolute bottom-[10px] right-[10px] flex items-center gap-[2px] rounded-lg bg-raised p-[2px] shadow-floating">
         <IconBtn size="sm" label="Zoom out" onClick={() => zoomAt(0.8)}>
           <Minus size={13} {...ICON} />
@@ -314,13 +321,13 @@ export function SetupCanvas({ canvas, selected, onSelect, onOpen, working, act }
 /** A wire as a board draws one (look.ts): out of a source's port or a card's right edge, into a card's left, level with its title. */
 function Wire({ e, a, b, state }: { e: CanvasEdge; a: CanvasNode; b: CanvasNode; state: "rest" | "lit" | "dim" }) {
   if (!a || !b) return null;
-  const from = a.kind === "source" ? sourceTile(a).port : wireOut(a);
+  const from = a.kind === "source" || a.kind === "tool" ? sourceTile(a).port : wireOut(a);
   const to = wireIn(b);
   const [c1x, c1y, c2x, c2y] = wireCurve(from.x, from.y, to.x, to.y);
   const tone = state === "lit" ? "var(--color-selection)" : "var(--color-wire)";
   return (
     <g opacity={state === "dim" ? WIRE.dim : 1}>
-      <path d={`M ${from.x} ${from.y} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${to.x} ${to.y}`} fill="none" stroke={tone} strokeWidth={state === "lit" ? WIRE.lit : WIRE.width} strokeDasharray={e.kind === "under" ? "5 4" : undefined} />
+      <path d={`M ${from.x} ${from.y} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${to.x} ${to.y}`} fill="none" stroke={tone} strokeWidth={state === "lit" ? WIRE.lit : WIRE.width} strokeDasharray={e.kind === "under" ? DASH.under : e.kind === "in" ? DASH.in : undefined} />
       {/* A dot where it meets a card (and leaves one); a source's port is drawn on its tile. */}
       {a.kind !== "source" && <circle cx={from.x} cy={from.y} r={WIRE.dot} fill="var(--color-card)" stroke={tone} strokeWidth={WIRE.width} />}
       <circle cx={to.x} cy={to.y} r={WIRE.dot} fill="var(--color-card)" stroke={tone} strokeWidth={WIRE.width} />
@@ -343,7 +350,27 @@ interface NodeProps {
 }
 
 function NodeCard(props: NodeProps) {
-  return props.n.kind === "source" ? <SourceNode {...props} /> : <Card {...props} />;
+  return props.n.kind === "source" ? <SourceNode {...props} /> : props.n.kind === "tool" ? <ToolNode {...props} /> : <Card {...props} />;
+}
+
+/** A tool connected: a source's tile, faint, with no port (nothing came from it yet). */
+function ToolNode({ n, dim }: NodeProps) {
+  const t = sourceTile({ x: 0, y: 0, w: n.w });
+  return (
+    <div data-node className="pointer-events-none absolute" style={{ left: n.x, top: n.y, width: n.w, height: n.h, opacity: (dim ? WIRE.dimItem : 1) * TOOL.faint }} aria-label={`${n.title}, connected`} role="img">
+      <span className="absolute grid place-items-center" style={{ left: t.x, top: 0, width: t.s, height: t.s, borderRadius: SOURCE.radius, background: "var(--color-card)", border: "1px dashed var(--color-card-line)" }}>
+        <TileMark mark={n.doc?.from} />
+      </span>
+      <span className="absolute left-0 flex w-full flex-col items-center text-center" style={{ top: SOURCE.tile + SOURCE.labelGap, gap: SOURCE.lineGap }}>
+        <span className="w-full truncate font-medium text-fg" style={{ fontSize: SOURCE.titleSize, lineHeight: "16px" }}>
+          {n.title}
+        </span>
+        <span className="w-full truncate font-mono text-fg-subtle" style={{ fontSize: SOURCE.lineSize, lineHeight: "14px" }}>
+          Connected
+        </span>
+      </span>
+    </div>
+  );
 }
 
 /** A source, as a board's lane draws one (SOURCE): its tile with its mark and port, its title and where it's from under it. */
@@ -388,10 +415,12 @@ function SourceNode({ n, dim, hot, onHover, onClick }: NodeProps) {
 
 /** A problem or a goal, as a board paints a card: its kind's tag over its top edge, its title, and a goal's state in a footer under a rule. */
 function Card({ n, dim, hovered, selected, onHover, onClick, working, act }: NodeProps) {
-  const kind: Kind = n.kind === "problem" ? "problem" : "goal";
-  const label = n.number ? "Number" : n.loose ? "Quotes" : KIND_LABEL[CARD_KIND[n.kind as "problem" | "goal"]];
-  const title = titleProps({ kind: CARD_KIND[n.kind as "problem" | "goal"], title: n.title });
-  const dashed = n.state === "seen" || n.loose ? "var(--color-fg-subtle)" : n.state === "proposed" ? "var(--color-ai)" : null;
+  const kind: Kind = n.kind === "problem" ? "problem" : n.kind === "place" ? "place" : "goal";
+  const cardKind = CARD_KIND[n.kind as "problem" | "goal" | "place"];
+  const label = n.place ? (n.place.key === "org" ? "About" : n.place.fresh ? "New product" : "Product") : n.number ? "Number" : n.loose ? "Quotes" : n.north ? "North Star" : KIND_LABEL[cardKind];
+  const title = titleProps({ kind: cardKind, title: n.title });
+  // Dashed while it's only been read, a stack, or the organization's bare name (subtle); proposed, or a product not made yet (Qalam AI's colour).
+  const dashed = n.state === "seen" || n.loose || n.ghost ? "var(--color-fg-subtle)" : n.state === "proposed" || n.place?.fresh ? "var(--color-ai)" : null;
   const box = surface(dashed, selected ? 2 : hovered ? 1.5 : 0);
   return (
     <div
@@ -402,7 +431,7 @@ function Card({ n, dim, hovered, selected, onHover, onClick, working, act }: Nod
         top: n.y,
         width: n.w,
         height: n.h,
-        opacity: dim ? WIRE.dimItem : n.state === "discarded" ? 0.55 : 1,
+        opacity: dim ? WIRE.dimItem : n.state === "discarded" ? 0.55 : n.ghost ? TOOL.faint : 1,
         ...box,
         // What no problem took yet: a stack of cards.
         ...(n.loose ? { boxShadow: `${box.boxShadow}, 4px 4px 0 -1px var(--color-card), 4px 4px 0 0 var(--color-card-line)` } : {}),
@@ -411,7 +440,7 @@ function Card({ n, dim, hovered, selected, onHover, onClick, working, act }: Nod
       onPointerLeave={() => onHover(false)}
     >
       <button type="button" onClick={onClick} aria-label={`${label}: ${n.title}`} aria-pressed={selected} className="absolute inset-0 z-0 cursor-pointer rounded-[inherit] focus-visible:shadow-[inset_0_0_0_2px_var(--color-focus)] focus-visible:outline-none" />
-      <KindTag kind={kind} label={label} quiet={n.state === "seen"} onClick={onClick} />
+      <KindTag kind={kind} label={label} quiet={n.state === "seen" || n.ghost} onClick={onClick} />
       <span
         className={clsx("pointer-events-none relative text-fg", n.state === "discarded" && "line-through")}
         style={{
@@ -421,7 +450,7 @@ function Card({ n, dim, hovered, selected, onHover, onClick, working, act }: Nod
           lineHeight: `${title.lineHeight}px`,
           letterSpacing: title.letterSpacing,
           display: "-webkit-box",
-          WebkitLineClamp: titleLines(n.kind as "problem" | "goal", n.title),
+          WebkitLineClamp: titleLines(n.kind as "problem" | "goal" | "place", n.title),
           WebkitBoxOrient: "vertical",
           overflow: "hidden",
         }}
@@ -429,10 +458,16 @@ function Card({ n, dim, hovered, selected, onHover, onClick, working, act }: Nod
       >
         {n.title}
       </span>
-      {n.count && (
-        <span className="pointer-events-none relative truncate text-fg-subtle tnum" style={{ margin: `4px ${CARD_LOOK.pad}px 0`, fontSize: STATE.size, lineHeight: `${COUNT_ROW - 4}px` }}>
-          {n.count.quotes} {n.count.quotes === 1 ? "quote" : "quotes"}
-          {n.count.sources > 1 ? ` · ${n.count.sources} sources` : ""}
+      {(n.count || n.place) && (
+        <span className={clsx("pointer-events-none relative truncate tnum", n.place?.open ? "text-ai" : "text-fg-subtle")} style={{ margin: `4px ${CARD_LOOK.pad}px 0`, fontSize: STATE.size, lineHeight: `${COUNT_ROW - 4}px` }}>
+          {n.place ? (
+            n.ghost ? "Who it serves, what it does, its products: as you go" : n.place.line
+          ) : (
+            <>
+              {n.count!.quotes} {n.count!.quotes === 1 ? "quote" : "quotes"}
+              {n.count!.sources > 1 ? ` · ${n.count!.sources} sources` : ""}
+            </>
+          )}
         </span>
       )}
       {hasFooter(n) && <Footer n={n} working={working} act={act} />}
