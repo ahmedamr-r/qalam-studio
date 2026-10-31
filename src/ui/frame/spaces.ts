@@ -1,13 +1,11 @@
-import type { Goal } from "@/goals/types";
 import type { Route } from "../routes";
 import { legacyTab, type Place } from "./places";
 
 /*
  * Where in the organization a page is: the organization's own space (null), whose places show all
  * of it, each thing marked with its product, or one product's, whose places show only that
- * product's. A product's space has addresses of its own (/o/<org>/products/<id>/goals); you pick
- * one at /o/<org>/products, which the organization opens on once it has products. Connections is
- * the organization's, in every space. Kept free of React so routes and tests can read it.
+ * product's. Each has a canvas, at /o/<org> and /o/<org>/products/<id>; the sidebar lists them.
+ * Connections is the organization's, in every space. Kept free of React so routes and tests can read it.
  */
 
 /** The organization's space (null), or a product's id. */
@@ -60,25 +58,4 @@ export function movedTo(route: Route, search: string): { place: Place; product: 
   if (!isSpacePlace(place)) product = null;
   const rest = q.toString();
   return { place, product, search: rest ? `?${rest}` : "" };
-}
-
-/**
- * What a space holds, for the picker and the organization's home: how many goals, problems (need
- * pages; null while they load) and sources, and its top goal: the North Star in the organization's,
- * else the product's first active goal in the tree that doesn't feed another of its own.
- */
-export function spaceSummary(
-  space: Space,
-  d: { goals: readonly Goal[]; north?: string | null; topics: readonly { kind: string; products: readonly string[] }[] | null; sources: readonly { product?: string | null }[] },
-): { goals: number; problems: number | null; sources: number; top?: Goal } {
-  const goals = d.goals.filter((g) => inSpace(g.product, space));
-  const own = new Set(goals.map((g) => g.id));
-  const tops = goals.filter((g) => !g.parent || !own.has(g.parent));
-  const top = space === null ? d.goals.find((g) => g.id === d.north) : (tops.find((g) => g.status === "active") ?? tops[0]);
-  return {
-    goals: goals.length,
-    problems: d.topics ? d.topics.filter((t) => t.kind === "need" && inSpace(t.products, space)).length : null,
-    sources: d.sources.filter((s) => inSpace(s.product, space)).length,
-    top,
-  };
 }

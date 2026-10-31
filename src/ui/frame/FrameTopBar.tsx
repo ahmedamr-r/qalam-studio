@@ -1,6 +1,6 @@
 import { Fragment, type ReactNode } from "react";
 import clsx from "clsx";
-import { orgHref } from "@/projects/model";
+import { orgsHref } from "@/projects/model";
 import { QalamMark } from "../brand";
 import { r } from "../recipes";
 import { OrgSwitcher } from "../org/OrgSwitcher";
@@ -12,15 +12,15 @@ export interface Crumb {
 }
 
 /**
- * A page's top bar, aligned with Studio's: the mark in the rail's column (the space's home), the
- * organization (its menu switches, makes or renames one), where you are in it, and the page's own
- * actions on the right.
+ * A page's top bar, aligned with Studio's: the mark in the rail's column (every organization),
+ * the organization (its menu switches, makes or renames one), where you are in it, and the page's
+ * own actions on the right.
  */
-export function FrameTopBar({ crumbs = [], right, home = orgHref() }: { crumbs?: Crumb[]; right?: ReactNode; home?: string }) {
+export function FrameTopBar({ crumbs = [], right }: { crumbs?: Crumb[]; right?: ReactNode }) {
   const org = useCurrentOrg();
   return (
     <header className={clsx(r.topBar, "min-w-0")} data-region="topbar">
-      <a href={home} aria-label="Home" className={r.brandCell}>
+      <a href={orgsHref()} aria-label="All organizations" className={r.brandCell}>
         <QalamMark size={20} />
       </a>
       <nav aria-label="Location" className="flex min-w-0 items-center gap-[2px] text-body text-fg-subtle">

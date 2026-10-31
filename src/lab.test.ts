@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { engineShown, lab, labState, setLab } from "./lab";
-import { withoutProducts, type SetupLine } from "./org/setup";
 import { sourcesFor } from "./ui/chat/attach";
 import { PLACES, placeShown } from "./ui/frame/places";
 import { firstRunLeft, stepAfter, stepsFor } from "./ui/welcome/steps";
@@ -58,22 +57,5 @@ describe("with everything hidden (v0.1)", () => {
     expect(sourcesFor("docs", [notion])).toHaveLength(1);
     setLab([]);
     expect(sourcesFor("docs", [notion])).toEqual([]);
-  });
-});
-
-describe("one project, no products", () => {
-  const line = (id: string, to: string, field: SetupLine["field"]): SetupLine => ({ id, to, field, text: id, pieces: [], answers: [], why: "" });
-
-  it("keeps a product's goals on the organization and leaves its other lines out", () => {
-    const p = withoutProducts({
-      summary: "",
-      products: [{ ref: "n1", name: "Pantry", why: "" }],
-      lines: [line("a", "org", "context"), line("g", "new:n1", "goals"), line("w", "new:n1", "audience"), line("s", "prod1", "segments")],
-    });
-    expect(p.products).toEqual([]);
-    expect(p.lines.map((l) => [l.id, l.to])).toEqual([
-      ["a", "org"],
-      ["g", "org"],
-    ]);
   });
 });

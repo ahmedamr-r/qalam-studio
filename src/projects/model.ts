@@ -86,11 +86,14 @@ export const placeHref = (place: Place, org: string | null = linkOrg) => (place 
 export const spaceHref = (product: string | null, place: Place = "home", org: string | null = linkOrg) =>
   !product || place === "connections" ? placeHref(place, org) : `${org ? `/o/${org}` : ""}/products/${encodeURIComponent(product)}${place === "home" ? "" : `/${place}`}`;
 
-/** Where you pick a space: the whole organization or one product. */
+/** The organizations on this computer, to open one. */
+export const orgsHref = () => "/";
+
+/** An organization's spaces: the address opens the canvas this tab was on last there (the app decides as it boots). */
 export const spacesHref = (org: string | null = linkOrg) => `${org ? `/o/${org}` : ""}/products`;
 
-/** Opening an organization (its menu): the picker once it has products, else its home (the app decides as it boots). */
-export const openOrgHref = (org: string) => `${spacesHref(org)}?open=1`;
+/** Opening an organization (its card in the list, its menu): its last canvas, else its own. */
+export const openOrgHref = (org: string) => spacesHref(org);
 
 /** Where a project opens. */
 export const projectHref = (p: Pick<Project, "id" | "type">, org: string | null = linkOrg) => `${org ? `/o/${org}` : ""}/${projectLetter(p.type)}/${p.id}`;

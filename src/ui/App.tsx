@@ -3,16 +3,17 @@ import clsx from "clsx";
 import { bootOrg } from "@/org/boot";
 import { CantReachFiles, listOrgs, NoOrgYet, OrgMissing, type OrgRef } from "@/org/client";
 import { useOrgContext } from "@/org/context";
-import { orgHref, projectLetter, spaceHref, spacesHref, welcomeHref, type ProjectType } from "@/projects/model";
+import { projectLetter, spaceHref, welcomeHref, type ProjectType } from "@/projects/model";
 import { Splash } from "./brand/splash";
 import { r } from "./recipes";
 import { routeOf, type Route } from "./routes";
 import { movedTo } from "./frame/spaces";
-import StudioLoader, { CaptureLoader, GoalLoader, HomeLoader, SeenLoader, PageSuspense, PlaceLoader, SetupLoader, SpacesLoader, SystemProjectLoader, TopicLoader, WelcomeLoader } from "./StudioLoader";
+import { lastSpace } from "./frame/useSpace";
+import StudioLoader, { CaptureLoader, GoalLoader, HomeLoader, OrgsLoader, SeenLoader, PageSuspense, PlaceLoader, SetupLoader, SystemProjectLoader, TopicLoader, WelcomeLoader } from "./StudioLoader";
 import { startInPlace } from "./nav";
 import { bootRetryDelay } from "./welcome/steps";
 import { boardHomeHref } from "./space/href";
-import { lab, loadLab } from "@/lab";
+import { loadLab } from "@/lab";
 
 type State = { kind: "loading" } | { kind: "ready"; org: OrgRef } | { kind: "error"; message: string; missingOrg?: boolean } | { kind: "missing" };
 
@@ -30,20 +31,18 @@ export function App() {
   }, [ready]);
 
   const boot = (attempt = 0) => {
-    // The welcome needs no organization (there may be none yet).
-    if (route.kind === "welcome") return;
+    // The welcome needs no organization (there may be none yet), and the organizations' list picks one.
+    if (route.kind === "welcome" || route.kind === "root") return;
     setState({ kind: "loading" });
-    const org = route.kind === "root" || route.kind === "capture" || route.kind === "missing" ? null : route.org;
+    const org = route.kind === "capture" || route.kind === "missing" ? null : route.org;
     loadLab(bootRetryDelay).then(() => bootOrg(org)).then(
       async (o) => {
-        // Opening an organization (the bare address opens the one opened last) lands on picking a
-        // space once it has products, else on its home. With products hidden there's no picking.
-        const products = lab("products") ? useOrgContext.getState().products.length : 0;
-        if (route.kind === "root") return window.location.replace(products && !window.location.search ? spacesHref(o.id) : orgHref(o.id) + window.location.search);
-        if (route.kind === "spaces" && !lab("products")) return window.location.replace(orgHref(o.id));
-        if (route.kind === "spaces" && new URLSearchParams(window.location.search).has("open")) {
-          if (!products) return window.location.replace(orgHref(o.id));
-          history.replaceState(null, "", spacesHref(o.id));
+        // Opening an organization lands on the canvas this tab was on last (a product's, while it's
+        // there), else the organization's own.
+        if (route.kind === "spaces") {
+          const last = lastSpace(o.id);
+          const product = last && useOrgContext.getState().products.some((p) => p.id === last) ? last : null;
+          return window.location.replace(spaceHref(product, "home", o.id));
         }
         // Addresses from before spaces: the sidebar's ?product=, the home's old tabs, places from before the job order.
         const moved = movedTo(route, window.location.search);
@@ -85,6 +84,7 @@ export function App() {
 
 function Page({ route, state, labReady, retry }: { route: Route; state: State; labReady: boolean; retry: () => void }) {
   if (route.kind === "welcome" && labReady) return <WelcomeLoader />;
+  if (route.kind === "root" && labReady) return <OrgsLoader />;
   if (state.kind === "loading" || !labReady)
     return (
       <div className="fixed inset-0 grid place-items-center bg-app text-fg">
@@ -94,7 +94,6 @@ function Page({ route, state, labReady, retry }: { route: Route; state: State; l
   if (state.kind === "error") return state.missingOrg ? <Missing title="Organization not found" body="It isn't on this computer: its folder moved, or it was made on another computer." /> : <CantReach message={state.message} onRetry={retry} />;
   if (state.kind === "missing" || route.kind === "missing") return <Missing title="Page not found" body="There's nothing at this address." />;
   if (route.kind === "org") return <HomeLoader product={route.product} />;
-  if (route.kind === "spaces") return <SpacesLoader />;
   if (route.kind === "topic") return <TopicLoader id={route.id} />;
   if (route.kind === "goal") return <GoalLoader id={route.id} />;
   if (route.kind === "seen") return <SeenLoader seenKey={route.key} add={!!route.add} />;

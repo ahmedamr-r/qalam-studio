@@ -16,14 +16,13 @@ import { useTopics } from "../topics/list";
 import { askNext } from "../org/ask-next";
 import { SpaceTile } from "./OrgPlaces";
 import { PLACES, placeShown, type Place } from "./places";
-import { lab } from "@/lab";
 import type { Space } from "./spaces";
 import { useCurrentOrg } from "./store";
 import { navigate } from "../nav";
 
 /*
- * ⌘K on a page: one field that finds the places (in the space the page is in), the spaces, the
- * boards and the topic pages by name, a few actions, and hands anything else to Qalam AI (Ask the
+ * ⌘K on a page: one field that finds the organization's canvases, Decisions and Connections, the
+ * goals, the boards and the topic pages by name, a few actions, and hands anything else to Qalam AI (Ask the
  * org, on the home). Studio's own palette (src/ui/surfaces/CommandPalette.tsx) also searches the
  * canvas; this one has no canvas.
  */
@@ -72,11 +71,12 @@ function Palette({ space }: { space: Space }) {
       const m = scoreItem(q, { label, keywords, extra: sub });
       if (m) out.push({ key, group, label, hits: m.hits, icon, sub, score: m.score, run });
     };
-    for (const p of PLACES.filter((p) => placeShown(p.id))) {
+    // The organization's canvases, then the pages of their own.
+    for (const s of [{ id: null, name: org?.name ?? "Organization" }, ...products]) add("Go to", `space:${s.id ?? ""}`, s.name, <SpaceTile name={s.name || "·"} size="sm" />, () => navigate(spaceHref(s.id)), s.id ? "Product" : wordsFor(org?.shape).whole);
+    for (const p of PLACES.filter((p) => (p.id === "decisions" || p.id === "connections") && placeShown(p.id))) {
       const Icon = ICONS[p.id];
       add("Go to", `place:${p.id}`, p.label, <Icon {...ICON} />, () => navigate(spaceHref(space, p.id)));
     }
-    if (q && lab("products")) for (const s of [{ id: null, name: org?.name ?? "Organization" }, ...products]) add("Spaces", `space:${s.id ?? ""}`, s.name, <SpaceTile name={s.name} size="sm" />, () => navigate(spaceHref(s.id)), s.id ? "Product" : wordsFor(org?.shape).whole);
     if (q) for (const g of goals) add("Goals", `goal:${g.id}`, g.title, <Target {...ICON} />, () => navigate(goalHref(g.id)), "Goal");
     for (const b of boards.slice(0, q ? boards.length : 4)) add("Boards", `board:${b.id}`, b.name, <Network {...ICON} />, () => navigate(projectHref(b)), "Board");
     if (q) for (const t of topics ?? []) add("Problems and pages", `topic:${t.id}`, t.title, <NotebookText {...ICON} />, () => navigate(topicHref(t.id)), TOPIC_KIND_LABEL[t.kind]);
@@ -112,7 +112,7 @@ function Palette({ space }: { space: Space }) {
             ref={input}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Go to a place, a board or a topic page, or ask Qalam AI"
+            placeholder="Go to a canvas, a goal or a problem, or ask Qalam AI"
             aria-label="Search"
             aria-activedescendant={rows[at] ? `palette-${rows[at].key}` : undefined}
             className={r.paletteInput}

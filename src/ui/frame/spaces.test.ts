@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { Goal } from "@/goals/types";
 import { routeOf } from "../routes";
-import { inSpace, itemSpace, movedTo, spaceSummary } from "./spaces";
-
-const goal = (id: string, product: string | null, parent: string | null = null, status: Goal["status"] = "active") => ({ id, title: id, parent, product, status }) as Goal;
+import { inSpace, itemSpace, movedTo } from "./spaces";
 
 describe("spaces", () => {
   it("shows everything in the organization's space, and only a product's own in its space", () => {
@@ -59,19 +56,4 @@ describe("spaces", () => {
     expect(movedTo(routeOf("/o/R02vmeVH/g/g-1"), "?product=grocery")).toBeNull();
   });
 
-  it("sums up a space: its goals, problems and sources, and its top goal", () => {
-    const goals = [goal("north", null), goal("reorder", "grocery", "north", "paused"), goal("slot", "grocery", "reorder"), goal("basket", "grocery", "north"), goal("drops", "rider", "north")];
-    const topics = [
-      { kind: "need", products: ["grocery"] },
-      { kind: "need", products: ["grocery", "rider"] },
-      { kind: "need", products: [] },
-      { kind: "segment", products: ["grocery"] },
-    ];
-    const sources = [{ product: "grocery" }, { product: null }, {}];
-    expect(spaceSummary(null, { goals, north: "north", topics, sources })).toEqual({ goals: 5, problems: 3, sources: 3, top: goals[0] });
-    // The product's first active goal that doesn't feed another of its own.
-    expect(spaceSummary("grocery", { goals, topics, sources })).toEqual({ goals: 3, problems: 2, sources: 1, top: goals[3] });
-    expect(spaceSummary("rider", { goals, topics: null, sources })).toEqual({ goals: 1, problems: null, sources: 0, top: goals[4] });
-    expect(spaceSummary("empty", { goals, topics, sources }).top).toBeUndefined();
-  });
 });

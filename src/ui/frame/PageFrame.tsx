@@ -13,13 +13,13 @@ import type { Space } from "./spaces";
 import { keepSpace, lastSpace, useSpaceName } from "./useSpace";
 
 /**
- * The frame every page outside the canvas sits in: the top bar (the organization, where you are,
- * the page's actions), the sidebar (the space and its places; ⌘\ folds it to the rail), and the
+ * The frame every page sits in, the canvas too: the top bar (the organization, where you are,
+ * the page's actions), the sidebar (the organization's canvases; ⌘\ folds it to the rail), and the
  * page, which scrolls under them. What every page needs is mounted here once: toasts, the dialogs,
  * the About and product editor, ⌘K and the page keys. `space` is the space the page is in (kept
  * for the tab, and named in the top bar when it's a product's); a page outside the spaces leaves
- * it out and links into the tab's last one. `focus` leaves the sidebar out (first run, the
- * picker); `fill` lets a page of panels scroll inside itself.
+ * it out and links into the tab's last one. `focus` leaves the sidebar out (the first run);
+ * `fill` lets a page of panels scroll inside itself.
  */
 export function PageFrame({
   place,
@@ -54,7 +54,7 @@ export function PageFrame({
   return (
     <Tooltip.Provider delayDuration={500} skipDelayDuration={300}>
       <div className="grid h-screen grid-rows-[var(--topbar-h)_minmax(0,1fr)] overflow-hidden bg-app text-fg">
-        <FrameTopBar crumbs={trail} right={right} home={spaceHref(here)} />
+        <FrameTopBar crumbs={trail} right={right} />
         <div className="flex min-h-0">
           {!focus && <OrgSidebar place={place} space={here} />}
           {/* Toasts sit over the page, bottom-centre (no toolbar here to clear). */}

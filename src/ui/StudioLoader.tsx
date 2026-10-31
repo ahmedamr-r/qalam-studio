@@ -20,7 +20,7 @@ const SeenReading = lazy(() => import("./seen/SeenReading"));
 const SetupPage = lazy(() => import("./setup/SetupPage"));
 const WelcomePage = lazy(() => import("./welcome/WelcomePage"));
 const CapturePage = lazy(() => import("./capture/CapturePage"));
-const SpacesPage = lazy(() => import("./places/SpacesPage"));
+const OrgsPage = lazy(() => import("./org/OrgsPage"));
 const ConnectionsPage = lazy(() => import("./connections/ConnectionsPage"));
 /** The places a space has its own of (src/ui/frame/spaces.ts); Connections is the organization's. */
 const SPACE_PAGES = {
@@ -46,9 +46,9 @@ export function HomeLoader({ product = null }: { product?: string | null }) {
   return <Home product={product} />;
 }
 
-/** Picking a space: the whole organization or one product. */
-export function SpacesLoader() {
-  return <SpacesPage />;
+/** The organizations on this computer, to open one. */
+export function OrgsLoader() {
+  return <OrgsPage />;
 }
 
 /** A design-system project: its brand interview, or its system once saved. */

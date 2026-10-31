@@ -43,7 +43,7 @@ describe("routeOf", () => {
 
   it("reads a product's space and the picker, and round-trips spaceHref", () => {
     expect(routeOf(spacesHref("R02vmeVH"))).toEqual({ kind: "spaces", org: "R02vmeVH" });
-    expect(openOrgHref("R02vmeVH")).toBe("/o/R02vmeVH/products?open=1");
+    expect(openOrgHref("R02vmeVH")).toBe("/o/R02vmeVH/products");
     expect(routeOf(spaceHref("grocery", "home", "R02vmeVH"))).toEqual({ kind: "org", org: "R02vmeVH", product: "grocery" });
     for (const place of ["goals", "problems", "evidence", "decisions"] as const) {
       expect(spaceHref("grocery", place, "R02vmeVH")).toBe(`/o/R02vmeVH/products/grocery/${place}`);

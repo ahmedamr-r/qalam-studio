@@ -9,8 +9,6 @@
 export const LAB_FEATURES = [
   /** Screens, design systems and prototypes, and Design this on a solution. */
   "design",
-  /** Products and spaces: the picker, New product, the home's products row, product lines in setup. */
-  "products",
   /** The Decisions place and the "why?" prompt (decisions are still recorded). */
   "decisions",
   /** The first run's You step. */

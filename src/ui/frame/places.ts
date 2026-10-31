@@ -15,7 +15,7 @@ export type Place = "home" | "goals" | "problems" | "evidence" | "decisions" | "
 export type PagePlace = Exclude<Place, "home">;
 
 export const PLACES: readonly { id: Place; label: string }[] = [
-  { id: "home", label: "Home" },
+  { id: "home", label: "Canvas" },
   { id: "goals", label: "Goals" },
   { id: "problems", label: "Problems" },
   { id: "evidence", label: "Evidence" },
@@ -26,8 +26,8 @@ export const PLACES: readonly { id: Place; label: string }[] = [
 /** Whether a place shows in the sidebar: Decisions is hidden in v0.1 (src/lab.ts), though its address still opens. */
 export const placeShown = (p: Place) => p !== "decisions" || lab("decisions");
 
-/** Above a board's panels only these: the organization's Evidence would read as the board's own Sources panel. */
-export const RAIL_PLACES: readonly Place[] = ["home", "goals", "problems", "connections"];
+/** Above a board's panels only these: the space's canvas, and Connections. */
+export const RAIL_PLACES: readonly Place[] = ["home", "connections"];
 
 const PAGES = new Set<string>(PLACES.map((p) => p.id).filter((p) => p !== "home"));
 export const isPagePlace = (s: string): s is PagePlace => PAGES.has(s);

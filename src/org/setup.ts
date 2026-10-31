@@ -200,11 +200,6 @@ export function nameHolds(name: string, said: string): boolean {
  * there twice, and a new product is named in their words and has a line to stand on. Lines for a
  * product there already go to it, whether the answer names it by its id or by its name.
  */
-/** One project and no products (v0.1, src/lab.ts): a product's goals go to the organization, its other lines are left out. */
-export function withoutProducts(p: SetupProposal): SetupProposal {
-  return { ...p, products: [], lines: p.lines.flatMap((l) => (l.to === "org" ? [l] : l.field === "goals" ? [{ ...l, to: "org" }] : [])) };
-}
-
 export function sanitizeSetup(raw: unknown, sent: SetupSent): SetupProposal {
   const r = rec(raw);
   const pieceOf = new Map(sent.pieces.map((p) => [p.ref, p.q]));

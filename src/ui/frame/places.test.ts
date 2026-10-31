@@ -16,12 +16,12 @@ describe("the organization's places", () => {
   });
 
   it("lists the places in the order of the job, gives every one but Home a page, and keeps the board's rail short", () => {
-    expect(PLACES.map((p) => p.label)).toEqual(["Home", "Goals", "Problems", "Evidence", "Decisions", "Connections"]);
+    expect(PLACES.map((p) => p.label)).toEqual(["Canvas", "Goals", "Problems", "Evidence", "Decisions", "Connections"]);
     expect(PLACES.filter((p) => isPagePlace(p.id)).map((p) => p.id)).toEqual(["goals", "problems", "evidence", "decisions", "connections"]);
     expect(isPagePlace("home")).toBe(false);
     expect(isPagePlace("setup")).toBe(false);
     expect(isPagePlace("boards")).toBe(false);
-    expect(RAIL_PLACES).toEqual(["home", "goals", "problems", "connections"]);
+    expect(RAIL_PLACES).toEqual(["home", "connections"]);
   });
 
   it("moves the home's old tabs to their places, keeping the rest of the query", () => {

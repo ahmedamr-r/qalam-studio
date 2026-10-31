@@ -7,16 +7,17 @@ import { isSpacePlace } from "./frame/spaces";
  * the next address here); a board, setup and the welcome are a full page load each.
  *
  * Pages live under their organization: /o/<org> is its home, /o/<org>/d/<id> a board. A product's
- * space has its own home and places under /o/<org>/products/<id> (src/ui/frame/spaces.ts), and
- * /o/<org>/products is where you pick one. Addresses from before organizations (/d/<id>) and the
- * bare / still work: the app finds the organization and moves to the full address.
+ * space has its own canvas and places under /o/<org>/products/<id> (src/ui/frame/spaces.ts), and
+ * /o/<org>/products opens the canvas the tab was on last. The bare / lists the organizations;
+ * addresses from before organizations (/d/<id>) still work: the app finds the organization and
+ * moves to the full address.
  */
 export type Route =
-  /** "/": the organization opened last. */
+  /** "/": the organizations on this computer, the one opened last first. */
   | { kind: "root" }
   /** A space's home: the organization's, or with `product`, that product's. */
   | { kind: "org"; org: string; product?: string }
-  /** Picking a space: the whole organization or one product. */
+  /** An organization's spaces: opens the canvas this tab was on last there, else the organization's. */
   | { kind: "spaces"; org: string }
   /** `org` is null for an address from before organizations. */
   | { kind: "project"; org: string | null; type: ProjectType; id: string }
@@ -74,7 +75,7 @@ export function routeOf(pathname: string): Route {
   return { kind: "missing" };
 }
 
-/** Under /o/<org>/products: the picker, a product's home, or one of its places (Connections is the organization's only). */
+/** Under /o/<org>/products: the last canvas, a product's canvas, or one of its places (Connections is the organization's only). */
 function spaceRoute(org: string, parts: string[]): Route {
   if (!parts.length) return { kind: "spaces", org };
   const product = parts[0];

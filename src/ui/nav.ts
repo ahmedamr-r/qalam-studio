@@ -2,15 +2,15 @@ import { movedTo } from "./frame/spaces";
 import { routeOf, type Route } from "./routes";
 
 /*
- * Moving between the frame's pages in place: the home, the places, the picker, a goal's or a
+ * Moving between the frame's pages in place: a space's canvas, the places, a goal's or a
  * problem's page, in the organization this window has open. A link to one (or ⌘K) changes the
  * address and the page without loading the app again, so the frame stays and there's no splash;
- * Back and Forward do the same. Anything else (a board, setup, the welcome, another
- * organization, an old address that redirects) is a full page load, as every page was before:
+ * Back and Forward do the same. Anything else (a board, setup, the welcome, the organizations'
+ * list, another organization, an address that redirects) is a full page load, as every page was before:
  * a board's document and everything module-level still belong to one load.
  */
 
-const IN_PLACE = new Set<Route["kind"]>(["org", "spaces", "place", "topic", "goal", "seen"]);
+const IN_PLACE = new Set<Route["kind"]>(["org", "place", "topic", "goal", "seen"]);
 
 /** Whether a page can be shown in place in this organization. */
 export const inPlace = (r: Route, org: string) => IN_PLACE.has(r.kind) && "org" in r && r.org === org;

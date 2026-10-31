@@ -39,7 +39,6 @@ import { glideToLayer, onCanvasReady } from "../discovery/canvas";
 import { SpaceCanvas } from "../space/SpaceCanvas";
 import { useWide, WIDE } from "../chat/Panels";
 import { useNeeds } from "./useNeeds";
-import { ProductsRow } from "./ProductsRow";
 import { lab } from "@/lab";
 import { homeGoals } from "./YourGoals";
 import { ContinueSetup, useFirstRunLeft } from "./ContinueSetup";
@@ -188,8 +187,6 @@ export default function Home({ product: productId = null }: { product?: string |
                 groups={yours.goals.map((g) => ({ id: g.id, title: g.title, href: goalHref(g.id) }))}
                 onShow={showNotice}
               />
-
-              {space === null && !!products.length && lab("products") && <ProductsRow products={products} tree={goalTree} topics={topics} sources={sources} />}
 
               <p className="text-caption text-fg-subtle">{org ? `Saved in ${org.name}, at ${org.dir}.` : "Saved in your organization's folder."}</p>
             </div>
