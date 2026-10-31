@@ -165,6 +165,8 @@
   --color-kind-problem: #e6c04e;
   --color-kind-solution: #52cca8;
   --color-kind-test: #6cc6ec;
+  /* A place on the setup's canvas (the About, a product): the stone the About was drawn in. */
+  --color-kind-place: #b9ad9b;
 
   /* Agent identities: cursor arrow, tag dot, presence ring. Never saffron, never within ΔE15 of selection. */
   --color-agent-1: #36d2ba;  /* teal */
@@ -409,6 +411,7 @@
   --color-kind-problem: #826300;
   --color-kind-solution: #077a5c;
   --color-kind-test: #0a6c90;
+  --color-kind-place: #7a6d5b;
 
   --color-agent-1: #0a7f6f;
   --color-agent-2: #c22a76;

@@ -51,6 +51,6 @@ function useReading(node: CanvasNode, canvas: Canvas, setup: { text: string; quo
 /** The setup's reader: the shared one, over the canvas, with what the source backs on it. */
 export function SourceReader({ node, canvas, setup, onClose, className }: { node: CanvasNode; canvas: Canvas; setup: { text: string; quotes: readonly SourceQuote[]; blocks?: readonly TextBlock[] } | null; onClose: () => void; className?: string }) {
   const r = useReading(node, canvas, setup);
-  const backs = r.backs.map((b): Back => ({ id: b.node.id, kind: b.node.kind === "problem" ? "problem" : "goal", title: b.node.title, quotes: b.quotes }));
+  const backs = r.backs.map((b): Back => ({ id: b.node.id, kind: b.node.kind === "problem" ? "problem" : b.node.kind === "place" ? "place" : "goal", title: b.node.title, quotes: b.quotes }));
   return <Reader title={node.title} doc={node.doc} text={r.text} quotes={r.quotes} pages={r.pages} blocks={r.blocks} range={r.range} backs={backs} loading={r.loading} error={r.error} onClose={onClose} className={className ?? "absolute inset-0 z-10"} />;
 }

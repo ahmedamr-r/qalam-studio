@@ -76,7 +76,7 @@ const STAGE_TONE: Record<string, Tone> = {
 };
 
 /** Each kind's colour in the palette. */
-const KIND_HUE: Record<Kind, "kindGoal" | "kindProblem" | "kindSolution" | "kindTest"> = { goal: "kindGoal", problem: "kindProblem", solution: "kindSolution", test: "kindTest" };
+const KIND_HUE: Record<Kind, "kindGoal" | "kindProblem" | "kindSolution" | "kindTest" | "kindPlace"> = { goal: "kindGoal", problem: "kindProblem", solution: "kindSolution", test: "kindTest", place: "kindPlace" };
 
 const FONT = ["Inter", "IBM Plex Sans Arabic"];
 const fmt = (v: number) => (Math.abs(v) >= 1000 ? v.toLocaleString("en-US", { maximumFractionDigits: 1 }) : String(Math.round(v * 100) / 100));

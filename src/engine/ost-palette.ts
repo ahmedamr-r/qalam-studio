@@ -43,6 +43,8 @@ export interface OstPalette {
   kindProblem: string;
   kindSolution: string;
   kindTest: string;
+  /** A place (the About, a product): only the setup's canvas draws one, but the look is one. */
+  kindPlace: string;
 }
 
 export const OST_PALETTE: { dark: OstPalette; light: OstPalette } = {
@@ -74,6 +76,7 @@ export const OST_PALETTE: { dark: OstPalette; light: OstPalette } = {
     kindProblem: "#E6C04E",
     kindSolution: "#52CCA8",
     kindTest: "#6CC6EC",
+    kindPlace: "#B9AD9B",
   },
   light: {
     card: "#FFFFFF",
@@ -103,6 +106,7 @@ export const OST_PALETTE: { dark: OstPalette; light: OstPalette } = {
     kindProblem: "#826300",
     kindSolution: "#077A5C",
     kindTest: "#0A6C90",
+    kindPlace: "#7A6D5B",
   },
 };
 
@@ -126,4 +130,5 @@ export const PALETTE_TOKENS: Partial<Record<keyof OstPalette, string>> = {
   kindProblem: "--color-kind-problem",
   kindSolution: "--color-kind-solution",
   kindTest: "--color-kind-test",
+  kindPlace: "--color-kind-place",
 };

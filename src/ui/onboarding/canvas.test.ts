@@ -3,6 +3,9 @@ import type { SourceQuote } from "@/discovery/sources";
 import type { SetupLine, SetupSession } from "@/org/setup";
 import { SOURCE } from "@/discovery/look";
 import { backsOf, canvasOf, NODE_W, nodeHeight, partOf, pathOf } from "./canvas";
+import { placesOf } from "./places";
+import type { GoalTree } from "@/goals/types";
+import { lineGoalId } from "@/org/setup";
 
 // Their words, then a Drive doc: the dump's text and where each part sits.
 const TEXT = "A planner for busy parents.\n\nFrom Google Drive: Pitch\n\nParents rebuild the list every Sunday. We want 1,000 families planning weekly by March.";
@@ -138,5 +141,78 @@ describe("the setup's canvas", () => {
     expect(nodeHeight("goal", "Short", true)).toBeGreaterThan(nodeHeight("goal", "Short"));
     expect(nodeHeight("source", "x".repeat(400))).toBe(SOURCE.h);
     expect(NODE_W.source).toBe(SOURCE.w);
+  });
+});
+
+describe("the organization on the setup's canvas", () => {
+  const proposal = (decided: Record<string, "accepted" | "discarded"> = {}, made?: Record<string, string>) =>
+    session({
+      phase: "review",
+      proposal: {
+        summary: "",
+        products: [{ ref: "n1", name: "Planner", why: "" }],
+        lines: [line("north", { text: "Families plan weekly" }), line("g1", { text: "Lists in ten minutes", pieces: ["q3"], parent: "north", to: "new:n1" }), line("who", { field: "audience", text: "Busy parents", pieces: ["q1"] }), line("ctx", { field: "context", to: "new:n1", text: "A weekly planner", pieces: ["q2"] })],
+      },
+      decided,
+      ...(made ? { made } : {}),
+    });
+  const tree = (goals: { id: string; title: string; parent?: string | null; product?: string | null }[], north: string | null = null): GoalTree => ({ goals: goals.map((g) => ({ parent: null, product: null, status: "active", cites: [], by: "person", at: 0, ...g })) as GoalTree["goals"], north });
+
+  it("puts the places last, the About first, each goal wired into its own and each place from the sources its lines rest on", () => {
+    const s = proposal();
+    const c = canvasOf({ setup: setup(s), places: placesOf({ org: "Weekly meals", session: s, products: [], about: { context: "", audience: "" }, quotes: QUOTES }) });
+    const places = c.nodes.filter((n) => n.kind === "place");
+    expect(places.map((n) => [n.id, n.title, n.place?.fresh, n.place?.line])).toEqual([
+      ["place:org", "About Weekly meals", false, "1 line · 1 to review"],
+      ["place:new:n1", "Planner", true, "1 line · 1 to review"],
+    ]);
+    const maxGoalX = Math.max(...c.nodes.filter((n) => n.kind === "goal").map((n) => n.x));
+    for (const p of places) expect(p.x).toBeGreaterThan(maxGoalX);
+    expect(c.edges.filter((e) => e.kind === "in").map((e) => [e.from, e.to])).toEqual([
+      ["line:north", "place:org"],
+      ["line:g1", "place:new:n1"],
+    ]);
+    expect(c.edges.filter((e) => e.to.startsWith("place:") && e.kind === "backs").map((e) => [e.from, e.to, e.quotes])).toEqual([
+      ["src:0", "place:org", ["q1"]],
+      ["src:1", "place:new:n1", ["q2"]],
+    ]);
+    expect(backsOf(c, "src:0").map((b) => b.node.id)).toEqual(["place:org"]);
+  });
+
+  it("wires a goal into its place only where it doesn't feed a goal of the same place", () => {
+    const t = tree([{ id: "a", title: "Grow" }, { id: "b", title: "Retain", parent: "a" }, { id: "c", title: "Pantry", parent: "a", product: "p2" }], "a");
+    const c = canvasOf({ tree: t, places: placesOf({ org: "Basket", session: null, products: [{ id: "p2", name: "Pantry", audience: "", context: "", segments: [] }], about: { context: "", audience: "" }, quotes: [] }) });
+    expect(c.nodes.filter((n) => n.kind === "goal").map((n) => [n.id, n.state, n.north])).toEqual([
+      ["goal:b", "in", undefined],
+      ["goal:c", "in", undefined],
+      ["goal:a", "in", true],
+    ]);
+    expect(c.edges.filter((e) => e.kind === "in").map((e) => [e.from, e.to])).toEqual([
+      ["goal:a", "place:org"],
+      ["goal:c", "place:p2"],
+    ]);
+  });
+
+  it("keeps a proposed product's place once it's made, and draws a goal an accepted line made only once", () => {
+    const s = proposal({ g1: "accepted", ctx: "accepted" }, { n1: "prod1" });
+    const products = [{ id: "prod1", name: "Planner", audience: "", context: "A weekly planner", segments: [] }];
+    const made = lineGoalId("Lists in ten minutes", "prod1");
+    const c = canvasOf({ setup: setup(s), tree: tree([{ id: made, title: "Lists in ten minutes", product: "prod1" }]), places: placesOf({ org: "Weekly meals", session: s, products, about: { context: "", audience: "" }, quotes: QUOTES }) });
+    expect(c.nodes.some((n) => n.id === "place:new:n1")).toBe(true);
+    expect(c.nodes.some((n) => n.id === "place:prod1")).toBe(false);
+    expect(c.nodes.filter((n) => n.title === "Lists in ten minutes").map((n) => n.id)).toEqual(["line:g1"]);
+  });
+
+  it("draws the tools connected under the sources, with no wires", () => {
+    const c = canvasOf({ setup: setup(session()), tools: [{ id: "notion", label: "Notion" }] });
+    const tool = c.nodes.find((n) => n.kind === "tool")!;
+    expect(tool).toMatchObject({ id: "tool:notion", title: "Notion", x: 0 });
+    expect(tool.y).toBeGreaterThan(c.nodes.find((n) => n.id === "src:1")!.y);
+    expect(c.edges.some((e) => e.from === tool.id || e.to === tool.id)).toBe(false);
+  });
+
+  it("shows only the organization's name, faint, before anything is known", () => {
+    const c = canvasOf({ org: { name: "Weekly meals", ghost: true } });
+    expect(c.nodes.map((n) => [n.id, n.kind, n.title, n.ghost])).toEqual([["place:org", "place", "Weekly meals", true]]);
   });
 });

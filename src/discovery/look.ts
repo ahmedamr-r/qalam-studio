@@ -10,13 +10,13 @@ import type { OstKind } from "./types";
  * the two the same. A change to the look is a change here or there, never in one renderer alone.
  */
 
-/** What a canvas shows a tag for, each kind in its own colour. */
-export type Kind = "goal" | "problem" | "solution" | "test";
+/** What a canvas shows a tag for, each kind in its own colour (a place, the About or a product, only on the setup's canvas). */
+export type Kind = "goal" | "problem" | "solution" | "test" | "place";
 
 export const KIND_OF: Record<OstKind, Kind> = { outcome: "goal", opportunity: "problem", solution: "solution", test: "test" };
 
 /** Each kind's colour, as its theme token. */
-export const KIND_TOKEN: Record<Kind, string> = { goal: "--color-kind-goal", problem: "--color-kind-problem", solution: "--color-kind-solution", test: "--color-kind-test" };
+export const KIND_TOKEN: Record<Kind, string> = { goal: "--color-kind-goal", problem: "--color-kind-problem", solution: "--color-kind-solution", test: "--color-kind-test", place: "--color-kind-place" };
 
 /**
  * ◉ ○ ▸ ◇: each kind's mark as SVG paths in a 12-unit box, one stroked (MARK_STROKE wide) and one
@@ -27,6 +27,7 @@ export const KIND_MARK: Record<Kind, { stroke?: string; fill?: string }> = {
   problem: { stroke: "M6 1a5 5 0 1 1 0 10a5 5 0 1 1 0-10Z" },
   solution: { fill: "M2.5 1.5L10.5 6L2.5 10.5Z" },
   test: { stroke: "M6 1L11 6L6 11L1 6Z" },
+  place: { stroke: "M3.5 1.25h5a2.25 2.25 0 0 1 2.25 2.25v5a2.25 2.25 0 0 1-2.25 2.25h-5a2.25 2.25 0 0 1-2.25-2.25v-5A2.25 2.25 0 0 1 3.5 1.25Z" },
 };
 export const MARK_STROKE = 1.5;
 
@@ -55,6 +56,12 @@ export const SOURCE = { w: 168, tile: 64, radius: 14, logo: 30, icon: 26, port: 
 
 /** A feed's tile: its cords dashed (on, off), and its count of what's new in a badge on the tile's corner. */
 export const FEED = { dash: [5, 4], badge: 18, badgeSize: 10.5 } as const;
+
+/** A connected tool on the setup's canvas: a source's tile, faint until it brings something in. */
+export const TOOL = { faint: 0.6 } as const;
+
+/** Wires' dashes by what they mean: a goal under the goal it feeds, a goal in its place (the About, a product). */
+export const DASH = { under: "5 4", in: "2 3" } as const;
 
 /** Wires: their widths at rest and lit, the dot where one meets a card, how far a curve reaches, how faint what isn't lit gets. */
 export const WIRE = { width: 1.25, lit: 2, dot: 3, reach: 40, enter: 36, dim: 0.3, dimItem: 0.45 } as const;

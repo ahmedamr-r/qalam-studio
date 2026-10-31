@@ -34,7 +34,7 @@ import { Dictated } from "../voice/MicButton";
 import { ParakeetInstall } from "../voice/ParakeetInstall";
 import { wordsFor } from "@/org/words";
 import { checkEngine, engineChanged, finishFirstRun, goStep, openKeyField, openSoFar, pickDoor, pickShape, saveVoice, saveYou, saveYours, skipEngine, togglePick, useFirstRun } from "./flow";
-import { treeRows } from "./soFar";
+import { treeRows } from "./places";
 
 /*
  * What the first run's conversation draws besides words (named parts, ./thread.ts): the engine

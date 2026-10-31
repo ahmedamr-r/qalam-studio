@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
-import { ArrowLeft, ArrowUpRight, ExternalLink, FlaskConical, Lightbulb, Target, TriangleAlert, X } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Box, ExternalLink, FlaskConical, Lightbulb, Target, TriangleAlert, X } from "lucide-react";
 import { connectorDef } from "@/connectors/catalog";
 import { partLine } from "@/discovery/origin";
 import { segmentsOf } from "@/discovery/segments";
@@ -20,7 +20,7 @@ import { SourceMark } from "../onboarding/SetupCanvas";
 
 const ICON = { absoluteStrokeWidth: true, strokeWidth: 1.5 } as const;
 
-export type BackKind = "problem" | "goal" | "solution" | "test";
+export type BackKind = "problem" | "goal" | "solution" | "test" | "place";
 
 export interface Back {
   id: string;
@@ -34,6 +34,7 @@ const TONE: Record<BackKind, { mark: string; chip: string; icon: typeof Target }
   goal: { mark: "bg-kh-you/20", chip: "bg-kh-you/15 text-kh-you", icon: Target },
   solution: { mark: "bg-ai-subtle", chip: "bg-ai-subtle text-ai", icon: Lightbulb },
   test: { mark: "bg-selection-subtle", chip: "bg-selection-subtle text-selection", icon: FlaskConical },
+  place: { mark: "bg-kh-system/20", chip: "bg-kh-system/15 text-kh-system", icon: Box },
 };
 
 /** Conversations: read in a narrower panel than a document is. */

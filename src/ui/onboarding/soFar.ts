@@ -1,11 +1,11 @@
 import type { ShapedGoal } from "@/goals/outline";
-import { metricLine } from "@/goals/goals-md";
-import { childrenOf, goalById } from "@/goals/tree";
+import { goalById } from "@/goals/tree";
 import type { GoalTree } from "@/goals/types";
 import type { OstMetric } from "@/discovery/types";
 import type { Product } from "@/org/context-md";
 import { goalLines, pendingLines, type SetupLine, type SetupSession } from "@/org/setup";
 import { groupsOf, placeName } from "../setup/review";
+import { numberLine, treeRows } from "./places";
 
 /*
  * The "{org} so far" panel as data (pure): the goals as one tree, then the About and each product.
@@ -76,28 +76,6 @@ export interface SoFarInput {
 const rests = (l: SetupLine, quotes: SoFarInput["quotes"]): RestsOn => ({ quotes: l.pieces.flatMap((id) => quotes.find((q) => q.id === id)?.text ?? []), answers: l.answers });
 
 const stateOf = (s: SetupSession, id: string): RowState => s.decided?.[id] ?? "proposed";
-
-/** A goal's number in a line: its name when it isn't the goal's own words, then where it stands (never the same words twice). */
-export function numberLine(m: OstMetric | null | undefined, title: string): string {
-  if (!m) return "No number yet";
-  const line = metricLine(m);
-  return [...new Set([m.name !== title ? m.name : null, line].filter((x): x is string => !!x))].join(": ");
-}
-
-/** The goals there now, in tree order, each with how deep it sits. */
-export function treeRows(t: GoalTree): { id: string; title: string; depth: number; line: string; north: boolean }[] {
-  const out: { id: string; title: string; depth: number; line: string; north: boolean }[] = [];
-  const seen = new Set<string>();
-  const walk = (id: string, depth: number) => {
-    const g = goalById(t, id);
-    if (!g || seen.has(id)) return;
-    seen.add(id);
-    out.push({ id, title: g.title, depth, line: g.metric ? metricLine(g.metric) : "", north: id === t.north });
-    childrenOf(t, id).forEach((c) => walk(c.id, depth + 1));
-  };
-  t.goals.filter((g) => !g.parent).forEach((g) => walk(g.id, 0));
-  return out;
-}
 
 function knowRows(goals: ShapedGoal[], products: readonly Product[]): GoalRow[] {
   const depth = (g: ShapedGoal) => {

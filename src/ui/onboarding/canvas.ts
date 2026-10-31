@@ -3,8 +3,10 @@ import type { ShapedGoal } from "@/goals/outline";
 import { partOf } from "@/discovery/origin";
 import { CARD_LOOK, FOOTER, SOURCE } from "@/discovery/look";
 import { titleProps } from "@/discovery/metrics";
-import type { SetupDoc, SetupSession } from "@/org/setup";
+import type { GoalTree } from "@/goals/types";
+import { lineGoalId, type SetupDoc, type SetupSession } from "@/org/setup";
 import { isProblem, setupGroups } from "@/org/setup-groups";
+import { placeKey, placeLine, type Place } from "./places";
 
 export { isProblem, partOf };
 
@@ -18,17 +20,22 @@ export { isProblem, partOf };
  * Problems are the groups the reading made of what customers said and the needs it found
  * (src/org/setup-groups.ts), each carrying its quotes; what no group took sits in one stack.
  *
- * The layout is code's, never the model's: columns left to right (sources, problems, goals, a goal
- * left of the goal it feeds), each column ordered by the mean row of what it's wired from so the
- * wires stay short, sizes from the words. Cards and sources take their anatomy from
+ * It's the setup's one page, so it always draws the organization as it is too: its places (the
+ * About and each product, src/ui/onboarding/places.ts) at the right, each goal wired into its place
+ * and each place from the sources its lines rest on; the goals already in goals.md; and the tools
+ * connected, faint, under the sources.
+ *
+ * The layout is code's, never the model's: columns left to right (sources and tools, problems,
+ * goals, a goal left of the goal it feeds, places), each column ordered by the mean row of what it's
+ * wired from so the wires stay short, sizes from the words. Cards and sources take their anatomy from
  * src/discovery/look.ts, as a board's do: a source is a tile with its words under it, a card has
  * its kind's tag over its top edge, its title, and (a goal to settle) a footer.
  */
 
-export type CanvasKind = "source" | "problem" | "goal";
+export type CanvasKind = "source" | "problem" | "goal" | "place" | "tool";
 
-/** A goal's state: found in the reading, proposed, accepted, left out, or written by them. */
-export type GoalState = "seen" | "proposed" | "accepted" | "discarded" | "kept";
+/** A goal's state: found in the reading, proposed, accepted, left out, written by them (not added yet), or in goals.md. */
+export type GoalState = "seen" | "proposed" | "accepted" | "discarded" | "kept" | "in";
 
 export interface CanvasNode {
   id: string;
@@ -54,6 +61,14 @@ export interface CanvasNode {
   count?: { quotes: number; sources: number };
   /** What customers said that no problem took yet, as one stack. */
   loose?: true;
+  /** A goal: the organization's North Star. */
+  north?: true;
+  /** A goal in goals.md (its id). */
+  goalId?: string;
+  /** A place: its key (places.ts), whether it's a product not made yet, and its lines in a few words. */
+  place?: { key: string; fresh: boolean; line: string; open: number };
+  /** Only the organization's name so far: drawn faint. */
+  ghost?: true;
   x: number;
   y: number;
   w: number;
@@ -64,8 +79,8 @@ export interface CanvasEdge {
   id: string;
   from: string;
   to: string;
-  /** `backs`: the source's or problem's words back it; `under`: a goal feeds the goal it points to. */
-  kind: "backs" | "under";
+  /** `backs`: the source's or problem's words back it; `under`: a goal feeds the goal it points to; `in`: a goal is the place's it points to. */
+  kind: "backs" | "under" | "in";
   /** The quotes behind the wire (empty where the reader finds them: the problems door's pages). */
   quotes: string[];
 }
@@ -92,22 +107,29 @@ export interface CanvasInput {
   /** Qalam AI is working on it. */
   busy?: boolean;
   /** The know door's goals, as they wrote them. */
-  know?: readonly Pick<ShapedGoal, "ref" | "title" | "parent">[] | null;
+  know?: readonly (Pick<ShapedGoal, "ref" | "title" | "parent"> & Partial<Pick<ShapedGoal, "product">>)[] | null;
   /** The problems door. */
   problems?: readonly ProblemPart[] | null;
+  /** The organization as it is: its name (`ghost`: nothing else known yet), its places, the goals in goals.md, the tools connected. */
+  org?: { name: string; ghost?: boolean } | null;
+  places?: readonly Place[] | null;
+  tree?: GoalTree | null;
+  tools?: readonly { id: string; label: string }[] | null;
 }
 
 export const EMPTY: Canvas = { nodes: [], edges: [], width: 0, height: 0 };
 
 // Sizes, in canvas pixels.
-export const NODE_W: Record<CanvasKind, number> = { source: SOURCE.w, problem: 212, goal: 212 };
+export const NODE_W: Record<CanvasKind, number> = { source: SOURCE.w, tool: SOURCE.w, problem: 212, goal: 212, place: 212 };
 const COL_GAP = 56;
+/** The places' column: after every goal's. */
+const PLACE_COL = 1000;
 /** Room above each card for its tag, half of it over the edge. */
 const ROW_GAP = 24;
 /** A card's kind on a board, for its title's type (titleProps). */
-export const CARD_KIND = { problem: "opportunity", goal: "outcome" } as const;
-/** Characters a line of a card's title holds, about (problems at 13 px, goals at 15). */
-const CHARS = { problem: 28, goal: 24 } as const;
+export const CARD_KIND = { problem: "opportunity", goal: "outcome", place: "outcome" } as const;
+/** Characters a line of a card's title holds, about (problems at 13 px, goals and places at 15). */
+const CHARS = { problem: 28, goal: 24, place: 24 } as const;
 /** Lines of a title the node shows (it's clamped there). */
 export const MAX_LINES = 3;
 /** A footer's row: a goal's ✓ and ✕. */
@@ -116,13 +138,13 @@ export const SETTLE_ROW = 24;
 export const COUNT_ROW = 20;
 
 /** How many lines a card's title takes, about, up to MAX_LINES. */
-export function titleLines(kind: Exclude<CanvasKind, "source">, title: string): number {
+export function titleLines(kind: Exclude<CanvasKind, "source" | "tool">, title: string): number {
   return Math.max(1, Math.min(MAX_LINES, Math.ceil(title.length / CHARS[kind])));
 }
 
 /** A node's height: a source's tile and words; a card's tag room, its title's lines, a problem's count, and its footer (a goal to settle) or padding. */
 export function nodeHeight(kind: CanvasKind, title: string, footer = false, count = false): number {
-  if (kind === "source") return SOURCE.h;
+  if (kind === "source" || kind === "tool") return SOURCE.h;
   const lines = titleLines(kind, title) * titleProps({ kind: CARD_KIND[kind], title }).lineHeight;
   return CARD_LOOK.top + lines + (count ? COUNT_ROW : 0) + (footer ? FOOTER.ruleGap + 1 + FOOTER.pad * 2 + SETTLE_ROW : CARD_LOOK.pad);
 }
@@ -141,6 +163,10 @@ export function canvasOf(input: CanvasInput): Canvas {
     edges.set(id, { id, from, to, kind, quotes: [...new Set([...(had?.quotes ?? []), ...quotes])] });
   };
 
+  // Which source each quote is in, and which goal node each goal in goals.md is (a line accepted made it).
+  const sourceOf = new Map<string, string>();
+  const goalNode = new Map<string, string>();
+  const goalPlace = new Map<string, string>();
   const setup = input.setup;
   if (setup) {
     const s = setup.session;
@@ -151,7 +177,6 @@ export function canvasOf(input: CanvasInput): Canvas {
     // Their own words are titled by how they begin.
     const titleOf = (doc: SetupDoc) => (doc.from === "said" && doc.span ? setup.text.slice(doc.span[0], doc.span[1]).replace(/\s+/g, " ").trim().slice(0, 140) || doc.title : doc.title);
     docs.forEach((doc, i) => nodes.push({ id: srcId(i), kind: "source", title: titleOf(doc), doc, sourceId: setup.sourceId, quotes: [], ...(reading ? { reading } : {}) }));
-    const sourceOf = new Map<string, string>();
     for (const q of setup.quotes) {
       const i = partOf(docs, q);
       if (i < 0) continue;
@@ -181,6 +206,9 @@ export function canvasOf(input: CanvasInput): Canvas {
         const id = `line:${l.id}`;
         const decided = s.decided?.[l.id];
         nodes.push({ id, kind: "goal", title: l.text, quotes: [...l.pieces], state: decided ?? "proposed", lineId: l.id });
+        goalPlace.set(id, placeKey(l.to, s));
+        // A line accepted is a goal in goals.md now: this node stands for it.
+        if (decided === "accepted") goalNode.set(lineGoalId(l.text, l.to === "org" ? null : l.to.startsWith("new:") ? (s.made?.[l.to.slice(4)] ?? l.to) : l.to), id);
         for (const p of l.pieces) {
           const q = byId.get(p);
           if (!q) continue;
@@ -213,6 +241,7 @@ export function canvasOf(input: CanvasInput): Canvas {
     for (const g of input.know) {
       const id = `know:${g.ref}`;
       nodes.push({ id, kind: "goal", title: g.title, quotes: [], state: "kept", goalRef: g.ref });
+      goalPlace.set(id, !g.product ? "org" : "id" in g.product ? placeKey(g.product.id, null) : `named:${g.product.name}`);
       if (g.parent && refs.has(g.parent)) wire(id, `know:${g.parent}`, "under", []);
       else wire(src, id, "backs", []);
     }
@@ -232,7 +261,54 @@ export function canvasOf(input: CanvasInput): Canvas {
     });
   }
 
+  composeOrg(input, nodes, edges, wire, { sourceOf, goalNode, goalPlace });
   return layout(nodes, [...edges.values()]);
+}
+
+/**
+ * The organization as it is, around the door's material: the goals in goals.md (those no node stands
+ * for yet), the tools connected under the sources, and the places at the right, each goal wired into
+ * its own (one feeding a goal of the same place reaches it through that goal), each place from the
+ * sources its lines rest on.
+ */
+function composeOrg(input: CanvasInput, nodes: Draft[], edges: ReadonlyMap<string, CanvasEdge>, wire: (from: string, to: string, kind: CanvasEdge["kind"], quotes: string[]) => void, at: { sourceOf: Map<string, string>; goalNode: Map<string, string>; goalPlace: Map<string, string> }) {
+  const session = input.setup?.session ?? null;
+  const tree = input.tree;
+  if (tree) {
+    for (const g of tree.goals) if (!at.goalNode.has(g.id)) at.goalNode.set(g.id, `goal:${g.id}`);
+    for (const g of tree.goals) {
+      const id = at.goalNode.get(g.id)!;
+      if (id !== `goal:${g.id}`) continue;
+      nodes.push({ id, kind: "goal", title: g.title, quotes: [], state: "in", goalId: g.id, ...(tree.north === g.id ? { north: true as const } : {}) });
+      at.goalPlace.set(id, placeKey(g.product, session));
+      const parent = g.parent ? at.goalNode.get(g.parent) : undefined;
+      if (parent) wire(id, parent, "under", []);
+    }
+  }
+  for (const t of input.tools ?? []) nodes.push({ id: `tool:${t.id}`, kind: "tool", title: t.label, doc: { from: t.id, title: t.label }, quotes: [] });
+  const places = input.places?.length ? input.places : input.org ? [{ key: "org", title: input.org.name, fresh: false, lines: [] }] : [];
+  if (!places.length) return;
+  const ids = new Set(places.map((p) => `place:${p.key}`));
+  for (const p of places) {
+    const id = `place:${p.key}`;
+    const quotes = [...new Set(p.lines.flatMap((l) => (l.state === "discarded" ? [] : l.pieces)))];
+    const open = p.lines.filter((l) => l.state === "proposed").length;
+    nodes.push({ id, kind: "place", title: p.title, quotes, place: { key: p.key, fresh: p.fresh, line: placeLine(p), open }, ...(input.org?.ghost && !input.places?.length ? { ghost: true as const } : {}) });
+    for (const q of quotes) {
+      const from = at.sourceOf.get(q);
+      if (from) wire(from, id, "backs", [q]);
+    }
+  }
+  // Each goal into its place, unless it feeds a goal of the same place (it reaches the place through it).
+  const parentOf = new Map([...edges.values()].filter((e) => e.kind === "under").map((e) => [e.from, e.to]));
+  for (const n of nodes) {
+    if (n.kind !== "goal" || n.number || n.state === "seen") continue;
+    const key = at.goalPlace.get(n.id);
+    if (!key || !ids.has(`place:${key}`)) continue;
+    const parent = parentOf.get(n.id);
+    if (parent && at.goalPlace.get(parent) === key) continue;
+    wire(n.id, `place:${key}`, "in", []);
+  }
 }
 
 /** Columns left to right, rows ordered to keep wires short, sizes from the words. */
@@ -251,7 +327,8 @@ function layout(drafts: Draft[], edges: CanvasEdge[]): Canvas {
     goalDepth.set(id, d);
     return d;
   };
-  const colOf = (n: Draft) => (n.kind === "source" ? 0 : n.kind === "problem" ? 1 : 2 + depthOf(n.id));
+  // Places last, whatever the goals' depth.
+  const colOf = (n: Draft) => (n.kind === "source" || n.kind === "tool" ? 0 : n.kind === "problem" ? 1 : n.kind === "place" ? PLACE_COL : 2 + depthOf(n.id));
   // Empty columns close up (no problems: goals sit next to the sources).
   const cols = [...new Set(drafts.map(colOf))].sort((a, b) => a - b);
   const byCol = cols.map((c) => drafts.filter((n) => colOf(n) === c));
@@ -261,6 +338,8 @@ function layout(drafts: Draft[], edges: CanvasEdge[]): Canvas {
   byCol.forEach((col, ci) => {
     if (ci > 0) {
       const key = (n: Draft) => {
+        // The About heads its column.
+        if (n.id === "place:org") return -1;
         const from = (into.get(n.id) ?? []).map((f) => row.get(f)).filter((r): r is number => r !== undefined);
         return from.length ? from.reduce((a, b) => a + b, 0) / from.length : Number.MAX_SAFE_INTEGER;
       };
@@ -269,7 +348,7 @@ function layout(drafts: Draft[], edges: CanvasEdge[]): Canvas {
     col.forEach((n, i) => row.set(n.id, i));
   });
 
-  const sized = byCol.map((col) => col.map((n) => ({ ...n, w: NODE_W[n.kind], h: nodeHeight(n.kind, n.title, hasFooter(n), !!n.count) })));
+  const sized = byCol.map((col) => col.map((n) => ({ ...n, w: NODE_W[n.kind], h: nodeHeight(n.kind, n.title, hasFooter(n), !!n.count || !!n.place) })));
   const colH = sized.map((col) => col.reduce((a, n) => a + n.h, 0) + Math.max(0, col.length - 1) * ROW_GAP);
   const height = Math.max(...colH);
   const nodes: CanvasNode[] = [];
