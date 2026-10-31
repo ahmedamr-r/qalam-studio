@@ -21,6 +21,8 @@ export const LAB_FEATURES = [
   "voice",
   /** The setup's "Help me find them" and idea doors. */
   "doors",
+  /** Questions before a draft on a card nothing backs, kept as your answers (src/discovery/questions.ts). */
+  "questions",
   /** Engines other than Claude Code, Codex and an Anthropic key. */
   "engines",
   /** Connectors (the catalog, the first run's Connect step, Bring it from), and work status on cards. */

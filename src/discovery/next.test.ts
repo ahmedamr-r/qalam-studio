@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { setLab } from "@/lab";
 import { backingLine, nextSteps, type CardFacts } from "./next";
 
 const none = { quotes: 0, sources: 0, ours: 0, online: 0, against: 0, who: [], from: [] };
@@ -97,6 +98,34 @@ describe("a card's next steps", () => {
     expect(nextSteps(facts({ reviewing: true }))[0].blocked).toBe("Accept or discard the proposals first");
     expect(nextSteps(facts({ busyElsewhere: true }))[0].blocked).toBe("Qalam AI is on another card");
     expect(nextSteps(facts({ kind: "solution", ai: false })).map((s) => s.blocked)).toEqual(["Qalam AI isn't ready here", undefined]);
+  });
+});
+
+describe("a card's next steps in v0.1 (src/lab.ts)", () => {
+  afterEach(() => setLab(true));
+
+  it("offer only the loop: drafting solutions, what backs a card, its page, a goal's problems, a file", () => {
+    setLab([]);
+    const can = { search: true, material: true, tools: ["Intercom"] };
+    // Nothing behind a problem: what the organization has first, then drafting at once; no tool, no questions.
+    const thin = nextSteps(facts(can));
+    expect(thin.map((s) => s.id)).toEqual(["find-backing", "draft-solutions", "add-file"]);
+    expect(thin[1]).toMatchObject({ hint: "Ways to solve it, each with a test" });
+    expect(thin[1].asks).toBeUndefined();
+    expect(ids(facts({ tools: [], asking: true, evidence: { ...none, quotes: 2, sources: 1 }, page: { topic: "late-orders", strength: "thin", quotes: 2, sources: 1 } }))).toEqual(["draft-solutions", "add-file", "page"]);
+    expect(ids(facts({ ...can, kind: "solution" }))).toEqual(["find-backing"]);
+    expect(ids(facts({ ...can, kind: "outcome", pages: 5, goal: goal({ pending: 2, drafted: 1, job: "Ask five families" }) }))).toEqual(["find-problems", "add-file"]);
+    expect(ids(facts({ kind: "outcome", goal: goal() }))).toEqual(["add-file"]);
+  });
+
+  it("bring a feature's steps back once it's on, and ask first only with the questions on", () => {
+    setLab(["tests", "goals"]);
+    expect(ids(facts({ kind: "solution" }))).toEqual(["draft-tests"]);
+    const steps = nextSteps(facts({ kind: "outcome", pages: 5, goal: goal() }));
+    expect(steps.map((s) => s.id)).toEqual(["find-problems", "draft-problems", "break-down", "others", "add-file"]);
+    expect(steps.some((s) => s.asks)).toBe(false);
+    setLab(["questions"]);
+    expect(nextSteps(facts())[0]).toMatchObject({ id: "draft-solutions", asks: true });
   });
 });
 

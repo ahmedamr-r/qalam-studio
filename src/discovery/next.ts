@@ -1,11 +1,12 @@
 import type { EvidenceSummary } from "./evidence";
 import type { OstKind } from "./types";
 import type { Strength } from "@/hub/needs";
+import { lab } from "@/lab";
 
 /*
  * What to do next with a card on the canvas (pure, no tokens): the steps that fit it, best first,
  * worked out from what's known about it, and one line on what it rests on. Qalam AI runs only when
- * a step is picked (src/ui/discovery/next.ts).
+ * a step is picked (src/ui/discovery/next.ts). What v0.1 hides (src/lab.ts) isn't offered.
  */
 
 export type StepId = "draft-solutions" | "draft-tests" | "design-this" | "page" | "pass-line" | "next-job" | "find-problems" | "break-down" | "review-parts" | "others" | "find-backing" | "watch" | "connect" | "add-file" | "questions" | "draft-problems" | "review-problems";
@@ -77,10 +78,12 @@ function grounding(f: CardFacts): { find: NextStep | null; watch: NextStep | nul
   const quotable = f.kind === "opportunity" || f.kind === "solution";
   const find: NextStep | null = quotable && f.search && f.material ? { id: "find-backing", label: f.evidence.quotes ? "Find more that backs it" : "Find what backs it", hint: "In your organization · free" } : null;
   const tools = f.tools ?? [];
+  // Feeds and connectors are hidden in v0.1 (src/lab.ts).
   const watch: NextStep | null =
-    f.tools === null ? null
+    f.tools === null || !lab("feeds") ? null
     : tools.length ? { id: "watch", label: tools.length === 1 ? `Watch ${tools[0]} for it` : "Watch a tool for it", hint: f.feeds.length ? `Watched in ${f.feeds.join(", ")} already` : "What's new there, brought in under it" }
-    : { id: "connect", label: "Connect a tool", hint: "Intercom, Slack, Notion… in Connections" };
+    : lab("connectors") ? { id: "connect", label: "Connect a tool", hint: "Intercom, Slack, Notion… in Connections" }
+    : null;
   const file: NextStep = { id: "add-file", label: "Add a file for it", hint: f.kind === "outcome" ? "Read, and its problems proposed under it" : "Read, and placed under it" };
   return { find, watch, file };
 }
@@ -94,17 +97,21 @@ export function nextSteps(f: CardFacts): NextStep[] {
   };
   switch (f.kind) {
     case "opportunity": {
-      const asks = thin(f) || !!f.asking;
-      const draft: NextStep = { id: "draft-solutions", label: "Draft solutions", hint: f.asking ? "Picks up your answers where you left them" : asks ? "Asks a few questions first" : f.under.solutions ? "More ways to solve it, each with a test" : "Ways to solve it, each with a test", ai: true, ...(asks ? { asks } : {}) };
+      const bare = thin(f);
+      // Asking first is hidden in v0.1 (src/lab.ts): a card nothing backs still leads with what the organization has.
+      const asks = lab("questions") && (bare || !!f.asking);
+      const draft: NextStep = { id: "draft-solutions", label: "Draft solutions", hint: asks && f.asking ? "Picks up your answers where you left them" : asks ? "Asks a few questions first" : f.under.solutions ? "More ways to solve it, each with a test" : "Ways to solve it, each with a test", ai: true, ...(asks ? { asks } : {}) };
       const page: NextStep | null = f.page ? { id: "page", label: "Its page", hint: "Everything known about it" } : null;
       // Nothing behind it yet: what the organization has first, when it has something.
-      if (asks && ground.find) push(ground.find, draft, ground.watch, ground.file, page);
-      else push(draft, ground.find, ground.watch, ground.file, page, asks ? null : QUESTIONS);
+      if ((asks || bare) && ground.find) push(ground.find, draft, ground.watch, ground.file, page);
+      else push(draft, ground.find, ground.watch, ground.file, page, asks || !lab("questions") ? null : QUESTIONS);
       break;
     }
     case "solution":
-      push({ id: "draft-tests", label: "Draft its tests", hint: f.under.tests ? "More of what it assumes, and a test" : "What it assumes, and a test of the riskiest", ai: true });
-      push({ id: "design-this", label: "Design this", hint: "Screens built on what it rests on" }, ground.find);
+      // Hidden in v0.1 (src/lab.ts): Draft solutions gave it a test already, and Design this is the design tool.
+      if (lab("tests")) push({ id: "draft-tests", label: "Draft its tests", hint: f.under.tests ? "More of what it assumes, and a test" : "What it assumes, and a test of the riskiest", ai: true });
+      if (lab("design")) push({ id: "design-this", label: "Design this", hint: "Screens built on what it rests on" });
+      push(ground.find);
       break;
     case "test":
       if (f.suggested) out.push({ id: "pass-line", label: "Use the suggested pass line" });
@@ -113,16 +120,18 @@ export function nextSteps(f: CardFacts): NextStep[] {
       const g = f.goal;
       if (!g) break;
       const find: NextStep | null = f.pages ? { id: "find-problems", label: "Find its problems", hint: g.behind ? "More of your problem pages that bear on it" : "Links your problem pages that bear on it", ai: true } : null;
+      // A goal's extras are hidden in v0.1 (src/lab.ts): its problems found among the pages stay, and grounding it.
+      const extras = lab("goals");
       // What was proposed for it before waits to be decided before it's asked for again.
-      const asks = thin(f) || !!f.asking;
-      const asking = f.asking ? "Picks up your answers where you left them" : asks ? "Asks a few questions first" : null;
-      const parts: NextStep = g.pending ? { id: "review-parts", label: `Review the ${plural(g.pending, "goal")} proposed under it`, hint: "From breaking it down" } : { id: "break-down", label: "Break it down", hint: asking ?? "Goals under it that make its number", ai: true, ...(asks ? { asks } : {}) };
-      const drafted: NextStep = g.drafted ? { id: "review-problems", label: `Review the ${plural(g.drafted, "problem")} drafted for it`, hint: "From drafting its problems" } : { id: "draft-problems", label: "Draft its problems", hint: asking ?? (g.behind ? "More problems that would move it" : "Problems that would move it, from your material"), ai: true, ...(asks ? { asks } : {}) };
+      const asks = lab("questions") && (thin(f) || !!f.asking);
+      const asking = !asks ? null : f.asking ? "Picks up your answers where you left them" : "Asks a few questions first";
+      const parts: NextStep | null = !extras ? null : g.pending ? { id: "review-parts", label: `Review the ${plural(g.pending, "goal")} proposed under it`, hint: "From breaking it down" } : { id: "break-down", label: "Break it down", hint: asking ?? "Goals under it that make its number", ai: true, ...(asks ? { asks } : {}) };
+      const drafted: NextStep | null = !extras ? null : g.drafted ? { id: "review-problems", label: `Review the ${plural(g.drafted, "problem")} drafted for it`, hint: "From drafting its problems" } : { id: "draft-problems", label: "Draft its problems", hint: asking ?? (g.behind ? "More problems that would move it" : "Problems that would move it, from your material"), ai: true, ...(asks ? { asks } : {}) };
       // What waits to be decided first; then, while nothing is behind it, its problems (found among the pages when there are some, else drafted).
       const waiting = [g.pending ? parts : null, g.drafted ? drafted : null];
       const rest = [g.pending ? null : parts, find, g.drafted ? null : drafted];
-      push(...waiting, ...(g.behind ? rest : [rest[1], rest[2], rest[0]]), { id: "others", label: "What others aim for", hint: "Numbers others report · a minute or two", ai: true }, ground.watch, ground.file);
-      if (g.job) push({ id: "next-job", label: `Next: ${g.job}`, hint: "What we don't know yet" });
+      push(...waiting, ...(g.behind ? rest : [rest[1], rest[2], rest[0]]), extras ? { id: "others", label: "What others aim for", hint: "Numbers others report · a minute or two", ai: true } : null, ground.watch, ground.file);
+      if (g.job && extras) push({ id: "next-job", label: `Next: ${g.job}`, hint: "What we don't know yet" });
       break;
     }
   }

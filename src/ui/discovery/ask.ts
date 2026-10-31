@@ -12,6 +12,7 @@ import { quotePiece } from "@/discovery/sources";
 import type { GoalLever } from "@/goals/types";
 import { contextFor } from "@/org/context";
 import { lookOnline } from "@/org/online";
+import { lab } from "@/lab";
 import { boardOfCard, productOfCard, useSpaceView } from "@/space/view";
 import type { PlanBucket } from "@/ui/ai/plan";
 import type { FlowState } from "@/ui/ai/questionFlow";
@@ -148,8 +149,8 @@ async function readAndAsk() {
     const found = (await backingFor(a.card, said).catch(() => [])).filter((q) => sharedWords(about, q.text) >= 2);
     const customers = found.filter((q) => q.whose === "customers").length;
     patch({ found: found.map((q) => quotePiece(q.quoteId)).slice(0, 20), customers });
-    // Little from customers on a problem: what people say online, while the questions are asked.
-    if (card.kind === "opportunity" && customers < 2) lookFor(a.card, said);
+    // Little from customers on a problem: what people say online, while the questions are asked (hidden in v0.1, src/lab.ts).
+    if (card.kind === "opportunity" && customers < 2 && lab("online")) lookFor(a.card, said);
     relabel(ctrl, "Qalam AI is reading what you said");
     const body = {
       stage: "card-questions" as const,

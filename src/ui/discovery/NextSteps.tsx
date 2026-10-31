@@ -17,6 +17,7 @@ import { isProblemPage } from "@/space/compose";
 import { useSpaceInputs } from "@/space/session";
 import { boardOfCard, useSpaceView } from "@/space/view";
 import type { FeedView } from "@/org/feeds";
+import { lab } from "@/lab";
 import { placeCard, toScreenBox } from "../ai/anchor";
 import { QalamAIGlyph } from "../brand";
 import { Button, CommandKbd, IconBtn, Select, Spinner } from "../controls";
@@ -58,7 +59,8 @@ function usePending(goal: string | null): { parts: number; problems: number } {
   const reviewing = useReview((s) => s.proposals.length > 0);
   const busy = useBusy((s) => !!s.busy);
   useEffect(() => {
-    if (!goal || reviewing || busy) return;
+    // A goal's extras are hidden in v0.1 (src/lab.ts): nothing is proposed for it, so nothing waits.
+    if (!goal || reviewing || busy || !lab("goals")) return;
     let alive = true;
     const open = (x: { decided: Record<string, unknown> } | undefined, ids: { id: string }[] = []) => (x ? ids.filter((p) => !x.decided[p.id]).length : 0);
     void goalWork(goal).then(
