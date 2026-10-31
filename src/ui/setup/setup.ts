@@ -18,6 +18,7 @@ import { saveAbout, saveProduct, useOrgContext } from "@/org/context";
 import { emptyContext } from "@/org/context-md";
 import { boardFromSetup } from "@/org/setup-board";
 import { setupQuotes, splitIds } from "@/org/setup-split";
+import { sanitizeGroups } from "@/org/setup-groups";
 import { applyLines, boardGoals, decide, sanitizeSetup, setupSent, type OrgNow, type PlaceSays, type SetupLine, type SetupSession } from "@/org/setup";
 import { projectHref } from "@/projects/model";
 import { NAME_MAX, TITLE_MAX, useYou } from "@/org/you";
@@ -237,10 +238,11 @@ export async function readSetup() {
     const { raw, model } = await call("Qalam AI is reading what you wrote", { stage: "read", ...orgFields(org.name, orgNow()), dump: s.text });
     const r = sanitizeRead(raw, s.text, []);
     if (!r.fragments.length) throw new AIError("parse", "Qalam AI found nothing in it to set up from. Try again, or write a little more.");
+    const problems = sanitizeGroups((raw as { problems?: unknown } | null)?.problems, r.refs, r.fragments, s.text);
     await update((x) => ({
       ...x,
       quotes: r.fragments,
-      setup: { ...x.setup!, phase: r.questions.length ? "asking" : "ready", failed: undefined, understanding: r.understanding, challenges: r.challenges, buckets: firstRound(r.questions), ...(model ? { model } : {}) },
+      setup: { ...x.setup!, phase: r.questions.length ? "asking" : "ready", failed: undefined, understanding: r.understanding, challenges: r.challenges, buckets: firstRound(r.questions), problems, ...(model ? { model } : {}) },
     }));
   } catch (e) {
     return void (await failed("reading", e));

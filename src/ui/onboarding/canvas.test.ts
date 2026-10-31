@@ -23,6 +23,23 @@ const setup = (s: SetupSession) => ({ session: s, sourceId: "dump1", quotes: QUO
 const ids = (xs: { id: string }[]) => xs.map((x) => x.id);
 
 describe("the setup's canvas", () => {
+  it("draws the problems the reading grouped, each with its quotes and the sources they're in, and a stack for what no group took", () => {
+    const more = [...QUOTES, quote("q4", "the list every Sunday", "evidence"), quote("q5", "busy", "evidence")].map((q) => (q.id === "q1" ? { ...q, span: [said + 2, said + 9] as [number, number], text: "planner", role: "evidence" as const } : q));
+    const s = session({ problems: [{ id: "p1", title: "Sunday lists take too long", quotes: ["q1", "q2"] }] });
+    const c = canvasOf({ setup: { ...setup(s), quotes: more } });
+    const group = c.nodes.find((n) => n.id === "group:p1")!;
+    expect(group).toMatchObject({ kind: "problem", title: "Sunday lists take too long", quotes: ["q1", "q2"], count: { quotes: 2, sources: 2 } });
+    expect(c.edges.filter((e) => e.to === "group:p1").map((e) => [e.from, e.quotes])).toEqual([
+      ["src:0", ["q1"]],
+      ["src:1", ["q2"]],
+    ]);
+    const loose = c.nodes.find((n) => n.loose)!;
+    expect(loose).toMatchObject({ kind: "problem", title: "Not placed yet", quotes: ["q4", "q5"] });
+    // A card per problem, never per quote.
+    expect(c.nodes.filter((n) => n.kind === "problem")).toHaveLength(2);
+    expect(group.h).toBeGreaterThan(nodeHeight("problem", group.title));
+  });
+
   it("shows what was sent at once, being read", () => {
     const c = canvasOf({ pending: { docs: [{ from: "said", title: "Your words" }, { from: "drive", title: "Pitch" }] } });
     expect(c.nodes.map((n) => [n.kind, n.title, n.reading])).toEqual([
@@ -42,21 +59,21 @@ describe("the setup's canvas", () => {
     expect(c.nodes.map((n) => [n.id, n.kind])).toEqual([
       ["src:0", "source"],
       ["src:1", "source"],
-      ["need:q2", "problem"],
+      ["group:n0", "problem"],
       ["frag:q3", "goal"],
     ]);
     expect(c.nodes.find((n) => n.id === "src:1")?.quotes).toEqual(["q2", "q3"]);
     // Their own words are titled by how they begin.
     expect(c.nodes.find((n) => n.id === "src:0")?.title).toBe("A planner for busy parents.");
     expect(c.edges.map((e) => [e.from, e.to, e.quotes])).toEqual([
-      ["src:1", "need:q2", ["q2"]],
+      ["src:1", "group:n0", ["q2"]],
       ["src:1", "frag:q3", ["q3"]],
     ]);
     // Columns left to right: sources, problems, goals.
     const x = (id: string) => c.nodes.find((n) => n.id === id)!.x;
     expect(x("src:0")).toBe(0);
-    expect(x("need:q2")).toBeGreaterThan(x("src:1"));
-    expect(x("frag:q3")).toBeGreaterThan(x("need:q2"));
+    expect(x("group:n0")).toBeGreaterThan(x("src:1"));
+    expect(x("frag:q3")).toBeGreaterThan(x("group:n0"));
   });
 
   it("shows the proposal's goals with their state, wired through the problems they rest on and to the goal they feed", () => {
@@ -72,8 +89,8 @@ describe("the setup's canvas", () => {
       ["line:north", "proposed"],
     ]);
     expect(c.edges.map((e) => [e.from, e.to, e.kind])).toEqual([
-      ["src:1", "need:q2", "backs"],
-      ["need:q2", "line:g1", "backs"],
+      ["src:1", "group:n0", "backs"],
+      ["group:n0", "line:g1", "backs"],
       ["src:1", "line:g1", "backs"],
       ["line:g1", "line:north", "under"],
     ]);
@@ -82,13 +99,13 @@ describe("the setup's canvas", () => {
     expect(x("line:north")).toBeGreaterThan(x("line:g1"));
     // The reader's chips: what the Pitch backs, with its quotes.
     expect(backsOf(c, "src:1").map((b) => [b.node.id, b.quotes])).toEqual([
-      ["need:q2", ["q2"]],
+      ["group:n0", ["q2"]],
       ["line:g1", ["q2", "q3"]],
     ]);
     expect(backsOf(c, "src:0")).toEqual([]);
     // Lighting a goal's path: its problem, its source, and the goal it feeds.
     const p = pathOf(c, "line:g1");
-    expect([...p.nodes].sort()).toEqual(["line:g1", "line:north", "need:q2", "src:1"]);
+    expect([...p.nodes].sort()).toEqual(["group:n0", "line:g1", "line:north", "src:1"]);
   });
 
   it("draws the know door's goals from their own words, and the problems door's sources into their pages", () => {

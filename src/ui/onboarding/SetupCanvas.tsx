@@ -14,13 +14,13 @@ import { IconBtn, Spinner, Tip } from "../controls";
 import { useTheme } from "../theme";
 import { dropKnown } from "../setup/know";
 import { acceptLines, discardLines } from "../setup/setup";
-import { CARD_KIND, hasFooter, pathOf, SETTLE_ROW, titleLines, type Canvas, type CanvasEdge, type CanvasNode } from "./canvas";
+import { CARD_KIND, COUNT_ROW, hasFooter, pathOf, SETTLE_ROW, titleLines, type Canvas, type CanvasEdge, type CanvasNode } from "./canvas";
 
 /*
  * The setup's canvas (./canvas.ts lays it out): what was sent on the left, wired to the problems and
  * goals Qalam AI found in it, n8n-style. Cards are HTML over a layer of SVG wires in one world that
  * pans and zooms (as the knowledge graph does: scroll pans, ⌘/Ctrl-scroll or pinch zooms, drag the
- * background); it frames everything as nodes arrive. Hovering or selecting a card lights its path and
+ * background); it frames everything as nodes arrive, until they pan or zoom it themselves. Hovering or selecting a card lights its path and
  * dims the rest; a source opens its reader; a proposed goal is accepted (✓) or left out (✕) on its card.
  *
  * It looks as a board does: sizes, marks and wires come from src/discovery/look.ts and colours from the
@@ -155,6 +155,15 @@ export function SetupCanvas({ canvas, selected, onSelect, onOpen, working, act }
     viewRef.current = v;
     setView(v);
   }, []);
+  /** They panned or zoomed: the canvas stops framing itself as cards come. */
+  const touched = useRef(false);
+  const moved = useCallback(
+    (v: View) => {
+      touched.current = true;
+      commit(v);
+    },
+    [commit],
+  );
 
   /** Frame everything, never smaller than reads well: a canvas wider than that starts at its sources and pans. `all` zooms out as far as it takes. */
   const fit = useCallback(
@@ -170,9 +179,19 @@ export function SetupCanvas({ canvas, selected, onSelect, onOpen, working, act }
     [size.w, size.h, canvas.width, canvas.height, commit],
   );
 
-  // Frame everything when the panel is measured and whenever cards come or go.
+  // Frame everything when the panel is measured and whenever cards come or go, until they move it
+  // themselves; then a resize keeps what was in the middle there.
   const shape = canvas.nodes.map((n) => n.id).join("|");
-  useEffect(() => fit(), [shape, size.w, size.h]);
+  const was = useRef(size);
+  useEffect(() => {
+    const before = was.current;
+    was.current = size;
+    if (!touched.current) return fit();
+    if (before.w && (before.w !== size.w || before.h !== size.h)) {
+      const v = viewRef.current;
+      commit({ ...v, x: v.x + (size.w - before.w) / 2, y: v.y + (size.h - before.h) / 2 });
+    }
+  }, [shape, size.w, size.h]);
 
   const zoomAt = useCallback(
     (factor: number, sx = size.w / 2, sy = size.h / 2) => {
@@ -180,9 +199,9 @@ export function SetupCanvas({ canvas, selected, onSelect, onOpen, working, act }
       const k = clampK(v.k * factor);
       const wx = (sx - v.x) / v.k;
       const wy = (sy - v.y) / v.k;
-      commit({ k, x: sx - wx * k, y: sy - wy * k });
+      moved({ k, x: sx - wx * k, y: sy - wy * k });
     },
-    [size, commit],
+    [size, moved],
   );
 
   // Scroll pans, ⌘/Ctrl (and pinch) zooms around the pointer: a non-passive listener.
@@ -195,12 +214,12 @@ export function SetupCanvas({ canvas, selected, onSelect, onOpen, working, act }
       if (e.ctrlKey || e.metaKey) zoomAt(Math.exp(-e.deltaY * 0.01), e.clientX - rect.left, e.clientY - rect.top);
       else {
         const v = viewRef.current;
-        commit({ ...v, x: v.x - e.deltaX, y: v.y - e.deltaY });
+        moved({ ...v, x: v.x - e.deltaX, y: v.y - e.deltaY });
       }
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, [zoomAt, commit]);
+  }, [zoomAt, moved]);
 
   // Dragging the background pans; a click on it clears the selection.
   const drag = useRef<{ sx: number; sy: number; vx: number; vy: number; moved: boolean; id: number } | null>(null);
@@ -217,7 +236,7 @@ export function SetupCanvas({ canvas, selected, onSelect, onOpen, working, act }
     const dy = e.clientY - d.sy;
     if (!d.moved && Math.hypot(dx, dy) < 3) return;
     d.moved = true;
-    commit({ ...viewRef.current, x: d.vx + dx, y: d.vy + dy });
+    moved({ ...viewRef.current, x: d.vx + dx, y: d.vy + dy });
   };
   const onPointerUp = (e: React.PointerEvent) => {
     const d = drag.current;
@@ -277,7 +296,14 @@ export function SetupCanvas({ canvas, selected, onSelect, onOpen, working, act }
         <IconBtn size="sm" label="Zoom in" onClick={() => zoomAt(1.25)}>
           <Plus size={13} {...ICON} />
         </IconBtn>
-        <IconBtn size="sm" label="Show it all" onClick={() => fit(true)}>
+        <IconBtn
+          size="sm"
+          label="Show it all"
+          onClick={() => {
+            touched.current = true;
+            fit(true);
+          }}
+        >
           <Maximize size={13} {...ICON} />
         </IconBtn>
       </div>
@@ -363,14 +389,24 @@ function SourceNode({ n, dim, hot, onHover, onClick }: NodeProps) {
 /** A problem or a goal, as a board paints a card: its kind's tag over its top edge, its title, and a goal's state in a footer under a rule. */
 function Card({ n, dim, hovered, selected, onHover, onClick, working, act }: NodeProps) {
   const kind: Kind = n.kind === "problem" ? "problem" : "goal";
-  const label = n.number ? "Number" : KIND_LABEL[CARD_KIND[n.kind as "problem" | "goal"]];
+  const label = n.number ? "Number" : n.loose ? "Quotes" : KIND_LABEL[CARD_KIND[n.kind as "problem" | "goal"]];
   const title = titleProps({ kind: CARD_KIND[n.kind as "problem" | "goal"], title: n.title });
-  const dashed = n.state === "seen" ? "var(--color-fg-subtle)" : n.state === "proposed" ? "var(--color-ai)" : null;
+  const dashed = n.state === "seen" || n.loose ? "var(--color-fg-subtle)" : n.state === "proposed" ? "var(--color-ai)" : null;
+  const box = surface(dashed, selected ? 2 : hovered ? 1.5 : 0);
   return (
     <div
       data-node
       className="absolute flex flex-col text-left transition-opacity"
-      style={{ left: n.x, top: n.y, width: n.w, height: n.h, opacity: dim ? WIRE.dimItem : n.state === "discarded" ? 0.55 : 1, ...surface(dashed, selected ? 2 : hovered ? 1.5 : 0) }}
+      style={{
+        left: n.x,
+        top: n.y,
+        width: n.w,
+        height: n.h,
+        opacity: dim ? WIRE.dimItem : n.state === "discarded" ? 0.55 : 1,
+        ...box,
+        // What no problem took yet: a stack of cards.
+        ...(n.loose ? { boxShadow: `${box.boxShadow}, 4px 4px 0 -1px var(--color-card), 4px 4px 0 0 var(--color-card-line)` } : {}),
+      }}
       onPointerEnter={() => onHover(true)}
       onPointerLeave={() => onHover(false)}
     >
@@ -393,6 +429,12 @@ function Card({ n, dim, hovered, selected, onHover, onClick, working, act }: Nod
       >
         {n.title}
       </span>
+      {n.count && (
+        <span className="pointer-events-none relative truncate text-fg-subtle tnum" style={{ margin: `4px ${CARD_LOOK.pad}px 0`, fontSize: STATE.size, lineHeight: `${COUNT_ROW - 4}px` }}>
+          {n.count.quotes} {n.count.quotes === 1 ? "quote" : "quotes"}
+          {n.count.sources > 1 ? ` · ${n.count.sources} sources` : ""}
+        </span>
+      )}
       {hasFooter(n) && <Footer n={n} working={working} act={act} />}
     </div>
   );

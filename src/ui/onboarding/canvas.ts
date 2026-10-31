@@ -4,8 +4,9 @@ import { partOf } from "@/discovery/origin";
 import { CARD_LOOK, FOOTER, SOURCE } from "@/discovery/look";
 import { titleProps } from "@/discovery/metrics";
 import type { SetupDoc, SetupSession } from "@/org/setup";
+import { isProblem, setupGroups } from "@/org/setup-groups";
 
-export { partOf };
+export { isProblem, partOf };
 
 /*
  * The setup's canvas as data (pure): what was sent on the left, the problems and goals Qalam AI found
@@ -13,6 +14,9 @@ export { partOf };
  * behind it, so the reader can mark exactly those words. Worked out from what's kept (the setup's
  * session and its source's quotes, the know door's goals, the problems door's sources), like the
  * thread. A fragment belongs to the part of the dump its span starts in (`SetupDoc.span`).
+ *
+ * Problems are the groups the reading made of what customers said and the needs it found
+ * (src/org/setup-groups.ts), each carrying its quotes; what no group took sits in one stack.
  *
  * The layout is code's, never the model's: columns left to right (sources, problems, goals, a goal
  * left of the goal it feeds), each column ordered by the mean row of what it's wired from so the
@@ -46,6 +50,10 @@ export interface CanvasNode {
   goalRef?: string;
   /** A problem page (the problems door). */
   pageId?: string;
+  /** A problem the reading grouped quotes under: how many quotes, from how many sources. */
+  count?: { quotes: number; sources: number };
+  /** What customers said that no problem took yet, as one stack. */
+  loose?: true;
   x: number;
   y: number;
   w: number;
@@ -91,9 +99,6 @@ export interface CanvasInput {
 
 export const EMPTY: Canvas = { nodes: [], edges: [], width: 0, height: 0 };
 
-/** A problem in what was read: a need it found, or what customers said (their words are the problem in their terms). */
-export const isProblem = (q: Pick<SourceQuote, "role">) => q.role === "need" || q.role === "evidence";
-
 // Sizes, in canvas pixels.
 export const NODE_W: Record<CanvasKind, number> = { source: SOURCE.w, problem: 212, goal: 212 };
 const COL_GAP = 56;
@@ -107,17 +112,19 @@ const CHARS = { problem: 28, goal: 24 } as const;
 export const MAX_LINES = 3;
 /** A footer's row: a goal's ✓ and ✕. */
 export const SETTLE_ROW = 24;
+/** A problem's line under its title: how many quotes, from how many sources. */
+export const COUNT_ROW = 20;
 
 /** How many lines a card's title takes, about, up to MAX_LINES. */
 export function titleLines(kind: Exclude<CanvasKind, "source">, title: string): number {
   return Math.max(1, Math.min(MAX_LINES, Math.ceil(title.length / CHARS[kind])));
 }
 
-/** A node's height: a source's tile and words; a card's tag room, its title's lines, and its footer (a goal to settle) or padding. */
-export function nodeHeight(kind: CanvasKind, title: string, footer = false): number {
+/** A node's height: a source's tile and words; a card's tag room, its title's lines, a problem's count, and its footer (a goal to settle) or padding. */
+export function nodeHeight(kind: CanvasKind, title: string, footer = false, count = false): number {
   if (kind === "source") return SOURCE.h;
   const lines = titleLines(kind, title) * titleProps({ kind: CARD_KIND[kind], title }).lineHeight;
-  return CARD_LOOK.top + lines + (footer ? FOOTER.ruleGap + 1 + FOOTER.pad * 2 + SETTLE_ROW : CARD_LOOK.pad);
+  return CARD_LOOK.top + lines + (count ? COUNT_ROW : 0) + (footer ? FOOTER.ruleGap + 1 + FOOTER.pad * 2 + SETTLE_ROW : CARD_LOOK.pad);
 }
 
 /** Whether a node ends on a footer: a goal to accept or leave out, or one already settled. */
@@ -152,13 +159,20 @@ export function canvasOf(input: CanvasInput): Canvas {
       nodes[i].quotes.push(q.id);
     }
     const byId = new Map(setup.quotes.map((q) => [q.id, q]));
-    // Problems: the needs it found and what customers said, each from its source.
-    for (const q of setup.quotes.filter(isProblem)) {
-      const id = `need:${q.id}`;
-      nodes.push({ id, kind: "problem", title: q.text, quotes: [q.id] });
-      const from = sourceOf.get(q.id);
-      if (from) wire(from, id, "backs", [q.id]);
-    }
+    // Problems: the needs it found and what customers said, grouped by the problem they raise, each wired from the sources its quotes are in.
+    const { groups, loose } = setupGroups(s, setup.quotes);
+    const problemOf = new Map<string, string>();
+    const problem = (id: string, title: string, quotes: string[], extra: Partial<Draft> = {}) => {
+      const from = [...new Set(quotes.flatMap((q) => sourceOf.get(q) ?? []))];
+      nodes.push({ id, kind: "problem", title, quotes, count: { quotes: quotes.length, sources: from.length }, ...extra });
+      for (const q of quotes) {
+        problemOf.set(q, id);
+        const src = sourceOf.get(q);
+        if (src) wire(src, id, "backs", [q]);
+      }
+    };
+    for (const g of groups) problem(`group:${g.id}`, g.title, g.quotes);
+    if (loose.length) problem("loose", "Not placed yet", loose, { loose: true });
     const lines = s.proposal?.lines.filter((l) => l.field === "goals") ?? [];
     if (lines.length && (s.phase === "review" || s.phase === "done")) {
       // Goals as proposed: each wired from the problems and sources its pieces are in, and to the goal it feeds.
@@ -170,7 +184,7 @@ export function canvasOf(input: CanvasInput): Canvas {
         for (const p of l.pieces) {
           const q = byId.get(p);
           if (!q) continue;
-          if (isProblem(q)) wire(`need:${q.id}`, id, "backs", [q.id]);
+          if (isProblem(q) && problemOf.has(q.id)) wire(problemOf.get(q.id)!, id, "backs", [q.id]);
           else {
             const from = sourceOf.get(q.id);
             if (from) wire(from, id, "backs", [q.id]);
@@ -255,7 +269,7 @@ function layout(drafts: Draft[], edges: CanvasEdge[]): Canvas {
     col.forEach((n, i) => row.set(n.id, i));
   });
 
-  const sized = byCol.map((col) => col.map((n) => ({ ...n, w: NODE_W[n.kind], h: nodeHeight(n.kind, n.title, hasFooter(n)) })));
+  const sized = byCol.map((col) => col.map((n) => ({ ...n, w: NODE_W[n.kind], h: nodeHeight(n.kind, n.title, hasFooter(n), !!n.count) })));
   const colH = sized.map((col) => col.reduce((a, n) => a + n.h, 0) + Math.max(0, col.length - 1) * ROW_GAP);
   const height = Math.max(...colH);
   const nodes: CanvasNode[] = [];

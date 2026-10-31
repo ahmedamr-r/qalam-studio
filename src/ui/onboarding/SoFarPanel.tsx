@@ -301,7 +301,7 @@ export function SoFar() {
             <SetupCanvas canvas={canvas} selected={selected} onSelect={setSelected} onOpen={(n) => setReading(n.id)} working={working} act={act} />
           </div>
           {(v.groups.length > 0 || connected.length > 0) && (
-            <div className="flex max-h-[40%] flex-col gap-[14px] overflow-y-auto border-t border-line-subtle p-[12px]">
+            <div className="flex max-h-[35%] flex-col gap-[14px] overflow-y-auto border-t border-line-subtle p-[12px]">
               <Groups v={v} working={working} act={act} />
               <Connected tools={connected} />
             </div>

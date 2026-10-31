@@ -8,11 +8,12 @@ import type { OstMetric } from "@/discovery/types";
 import { emptyDoc, type Doc } from "@/doc/schema";
 import type { SetupLine, SetupSession } from "./setup";
 import type { QuoteHome } from "./setup-split";
+import { needFor, setupGroups, titleOf } from "./setup-groups";
 
 /*
  * A board started from the setup, built by code from what the setup read (pure): the goal as its
- * outcome, each problem the goal rests on under it (and the problems no goal took: a need it found,
- * or what customers said), and the idea (what was read as one, else at the idea door what they
+ * outcome, each problem the goal rests on under it (and the problems no goal took), each with every
+ * quote the reading grouped under it (src/org/setup-groups.ts), and the idea (what was read as one, else at the idea door what they
  * wrote) as a solution under the problem it shares the most words with. Every card rests on the setup
  * setup's own quotes, in their own words (customers' where their doc became a source of its own), so
  * nothing is read or asked again, and the problem pages and the index connect to the same pieces. With no problem to put it under, the idea waits on a
@@ -24,43 +25,16 @@ export interface SetupBoardInput {
   source: Pick<SourceRecord, "id" | "title" | "kind" | "quotes"> & { text?: string };
   /** Where a quote lives now, once its doc became a source of its own: a card rests on it there. */
   homeOf?: (quoteId: string) => QuoteHome | null;
-  session: Pick<SetupSession, "proposal" | "idea" | "docs" | "said">;
+  session: Pick<SetupSession, "proposal" | "idea" | "docs" | "said" | "problems">;
   /** The goal the board is for (none: the idea's own board, its problems at the top). */
   goal?: { line: SetupLine; title: string; metric?: OstMetric | null } | null;
   now?: number;
 }
 
-const TITLE_MAX = 160;
 /** From one tree's left edge to the next one's, when problems start trees of their own. */
 const ROOT_STEP = CARD_WIDTH.opportunity + TREE_GAP + LANE_GAP + LANE_W;
 
-/** A card's title from someone's words: whole words, the first sentence when it's long. */
-export function titleOf(words: string): string {
-  const one = words.replace(/\s+/g, " ").trim();
-  if (one.length <= TITLE_MAX) return one;
-  const first = one.split(/(?<=[.!?])\s/)[0];
-  if (first.length <= TITLE_MAX) return first;
-  const cut = one.slice(0, TITLE_MAX);
-  return `${cut.slice(0, cut.lastIndexOf(" ") > 80 ? cut.lastIndexOf(" ") : TITLE_MAX).trim()}…`;
-}
-
-const STOP = new Set("about after also and are because been but can could did does for from had has have her his how into its just like more most much not now only our out over some such than that the their them then there these they this those very was were what when where which while who why will with would your you".split(" "));
-const words = (s: string) => new Set(s.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 2 && !STOP.has(w)));
-
-/** The need an idea answers: the one sharing the most words with it, else the first. */
-export function needFor(idea: Pick<SourceQuote, "text">, needs: readonly Pick<SourceQuote, "text">[]): number {
-  const mine = words(idea.text);
-  let best = 0;
-  let score = 0;
-  needs.forEach((n, i) => {
-    const shared = [...words(n.text)].filter((w) => mine.has(w)).length;
-    if (shared > score) {
-      score = shared;
-      best = i;
-    }
-  });
-  return best;
-}
+export { needFor, titleOf };
 
 export function boardFromSetup(input: SetupBoardInput): { doc: Doc; outcome: string | null; problems: string[]; ideas: string[] } {
   const { source, goal } = input;
@@ -74,12 +48,14 @@ export function boardFromSetup(input: SetupBoardInput): { doc: Doc; outcome: str
 
   const lines = input.session.proposal?.lines.filter((l) => l.field === "goals") ?? [];
   const cited = new Set(lines.flatMap((l) => l.pieces));
-  const needs = source.quotes
-    // A need it found, or what customers said: their words are the problem in their terms.
-    .filter((q) => q.role === "need" || q.role === "evidence")
+  // The problems the reading saw, each with its quotes (needs it found, what customers said); a quote no group took is a problem of its own.
+  const { groups, loose } = setupGroups(input.session, source.quotes);
+  const all = [...groups.map((g) => ({ title: g.title, quotes: g.quotes.flatMap((id) => byId.get(id) ?? []) })), ...loose.flatMap((id) => (byId.has(id) ? [{ title: titleOf(byId.get(id)!.text), quotes: [byId.get(id)!] }] : []))];
+  const needs = all
+    .filter((n) => n.quotes.length)
     // The goal's own problems, and those no goal took; another goal's stay for its board.
-    .filter((q) => !goal || goal.line.pieces.includes(q.id) || !cited.has(q.id))
-    .sort((a, b) => a.span[0] - b.span[0]);
+    .filter((n) => !goal || n.quotes.some((q) => goal.line.pieces.includes(q.id)) || !n.quotes.some((q) => cited.has(q.id)))
+    .sort((a, b) => a.quotes[0].span[0] - b.quotes[0].span[0]);
   const ideas = source.quotes.filter((q) => q.role === "idea").sort((a, b) => a.span[0] - b.span[0]);
   // The idea door: with nothing read as an idea, what they wrote is the idea (resting on what was read in it).
   const said = input.session.docs?.find((d) => d.from === "said" && d.span);
@@ -92,8 +68,8 @@ export function boardFromSetup(input: SetupBoardInput): { doc: Doc; outcome: str
     outcome = node.id;
   }
   // With no goal above them, each problem is a tree of its own: side by side, with room for each one's sources lane.
-  const problems = needs.map((q, i) => {
-    const node = makeCardNode(newCard("opportunity", { title: titleOf(q.text), evidence: [ev(q)] }), outcome ? undefined : { x: i * ROOT_STEP, y: 0 });
+  const problems = needs.map((n, i) => {
+    const node = makeCardNode(newCard("opportunity", { title: n.title, evidence: n.quotes.map(ev) }), outcome ? undefined : { x: i * ROOT_STEP, y: 0 });
     addCardIn(doc, node, outcome);
     return node.id;
   });
@@ -103,7 +79,7 @@ export function boardFromSetup(input: SetupBoardInput): { doc: Doc; outcome: str
   if (problems.length) {
     for (const idea of asIdeas) {
       const node = makeCardNode(newCard("solution", { title: titleOf(idea.text), evidence: idea.rests.map(ev) }));
-      addCardIn(doc, node, problems[needFor(idea, needs)]);
+      addCardIn(doc, node, problems[needFor(idea, needs.map((n) => ({ text: [n.title, ...n.quotes.map((q) => q.text)].join(" ") })))]);
       placed.push(node.id);
     }
   } else

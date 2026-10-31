@@ -53,6 +53,13 @@ describe("a board started from the setup", () => {
     expect(card.evidence[0]).toMatchObject({ kind: "quote", sourceId: "tickets", piece: "hub:quote:list", span: [0, 46], speaker: "Sara" });
   });
 
+  it("makes a card per problem the reading grouped, resting on every quote in it", () => {
+    const problems = [{ id: "p1", title: "Sunday lists and picky kids", quotes: ["list", "kids"] }];
+    const b = boardFromSetup({ source, session: { proposal: undefined, problems }, goal: null });
+    const cards = cardsOf(b.doc).filter((c) => c.kind === "opportunity");
+    expect(cards.map((c) => [c.title, c.pieces])).toEqual([["Sunday lists and picky kids", ["hub:quote:list", "hub:quote:kids"]]]);
+  });
+
   it("leaves another goal's problems to its own board", () => {
     const g1 = line("g1", ["goal"]);
     const g2 = line("g2", ["kids"]);

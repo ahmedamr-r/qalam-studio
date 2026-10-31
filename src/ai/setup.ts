@@ -98,8 +98,9 @@ export const SETUP_READ_SYSTEM = `${BASE}
 Your task: read the brain dump.
 1. Say back what you took from it: what the company does, how it makes money, its products and who each serves, the goals, and what's unclear.
 2. Cut it into pieces: every phrase or sentence the organization's pages could rest on (a product, who it's for, a goal, a number, a need, a plan, a belief, something seen or heard, context, an open question), copied exactly, each with its role. Leave out filler ("ok so", "idk", "anyway"). Pieces never overlap.
-3. Push back where it won't hold up as what the organization goes by, each tied to the piece it's about: a feature given as customers' need, a business number given as a product's goal, a claim about customers with no source, a contradiction, goals that compete with none said to lead, a goal with no measure, something too vague to set up. Only where it changes what gets set up, and say what would settle it.
-4. Ask the first round of questions.
+3. Group the needs and what customers said (the need and evidence pieces) by the problem they raise: one group per problem, titled in their words (at most 10 words, what goes wrong for whom, never a solution), each piece in one group at most. A few groups that each hold several pieces beat one per piece; a piece that raises a problem of its own is a group of one.
+4. Push back where it won't hold up as what the organization goes by, each tied to the piece it's about: a feature given as customers' need, a business number given as a product's goal, a claim about customers with no source, a contradiction, goals that compete with none said to lead, a goal with no measure, something too vague to set up. Only where it changes what gets set up, and say what would settle it.
+5. Ask the first round of questions.
 
 ${QUESTION_RULES}`;
 
@@ -141,6 +142,10 @@ export function setupReadSchema() {
     fragments: arr(
       obj({ id: str("f1, f2, …"), quote: str("Their words exactly as written, a phrase to two sentences. Leave words out only with …"), role: enm(DUMP_ROLES, ROLE_HINT) }),
       "Every piece the organization's pages could rest on, in the order written. Skip filler; pieces never overlap",
+    ),
+    problems: arr(
+      obj({ title: str("The problem, in their words, at most 10 words: what goes wrong for whom"), fragmentIds: arr(str("A need or evidence piece's id (f…)"), "The pieces that raise it") }),
+      "The needs and what customers said, grouped by the problem they raise. [] when there are none",
     ),
     challenges: arr(challenge(str("The id of the piece it's about (f…)")), "Pushback, only where it changes what gets set up. [] when nothing needs it"),
     questions: arr(QUESTION, `The first round: the questions whose answers decide the most now, at most ${BUCKET_MAX}. [] when the dump settles it all`),

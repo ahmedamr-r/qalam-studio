@@ -80,6 +80,14 @@ export interface SetupDoc {
 /** Their docs, without their own words or a page they pointed at. */
 export const pickedDocs = (docs: readonly SetupDoc[] | undefined): SetupDoc[] => (docs ?? []).filter((d) => d.from !== "said" && d.from !== "page");
 
+/** A problem the reading saw in what customers said and the needs in the dump, and the quotes that raise it (src/org/setup-groups.ts). */
+export interface SetupProblem {
+  id: string;
+  /** In their words. */
+  title: string;
+  quotes: string[];
+}
+
 export interface SetupSession {
   v: 1;
   /** reading → asking ⇄ analyzing → ready → placing → review → done. */
@@ -94,6 +102,8 @@ export interface SetupSession {
   idea?: true;
   /** What Qalam AI took from it, revised after each round of answers. */
   understanding: string;
+  /** The problems the reading grouped what customers said into (none: a session from before; `setupGroups` makes them from its needs). */
+  problems?: SetupProblem[];
   /** Pushback still open. */
   challenges: DumpChallenge[];
   /** Every round of questions so far; the last is the one being asked (or just answered). */

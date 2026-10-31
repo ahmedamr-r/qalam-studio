@@ -233,6 +233,8 @@ export interface DumpRead {
   fragments: SourceQuote[];
   challenges: DumpChallenge[];
   questions: PlanQuestion[];
+  /** The id each piece kept was given, by the id the call named it with (f…). */
+  refs: Record<string, string>;
 }
 
 const quoteKind = (role: DumpRole): QuoteKind => (role === "idea" || role === "test" ? "idea" : "need");
@@ -311,6 +313,7 @@ export function sanitizeRead(raw: unknown, text: string, cards: PlaceCard[], now
     fragments,
     challenges: sanitizeChallenges(r.challenges, (ref) => kept.get(ref), cards, names),
     questions: sanitizeQuestions(r.questions),
+    refs: Object.fromEntries(kept),
   };
 }
 
