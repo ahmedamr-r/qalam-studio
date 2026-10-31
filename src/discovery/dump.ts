@@ -47,7 +47,7 @@ export const CHALLENGE_LABEL: Record<ChallengeKind, string> = {
   "solution-as-need": "Solution in disguise",
   "business-goal": "Business number, not a product outcome",
   "second-hand": "Heard second-hand",
-  conflict: "Conflicts with the board",
+  conflict: "Conflicts with the canvas",
   "competing-goals": "Competing goals",
   unmeasured: "No measure",
   vague: "Too vague to place",
@@ -162,7 +162,10 @@ export function metricText(m: OstMetric | undefined): string | null {
 
 /** The board for a brain dump's calls (refs c1…), and the cards as code checks the answers. */
 export function outlineOf(doc: Doc, max = 400): { tree: DumpCardInput[]; cards: PlaceCard[] } {
-  const list = allCards(doc).slice(0, max);
+  // A problem's page drawn faint on the space's canvas (`topic:…`) is on no board and holds nothing: never sent.
+  const list = allCards(doc)
+    .filter((c) => !c.id.startsWith("topic:"))
+    .slice(0, max);
   const refOf = new Map(list.map((c, i) => [c.id, `c${i + 1}`]));
   /** How many cards of `kind` in a row, from `id` up (it included). */
   const run = (id: string | null, kind: OstKind) => {
@@ -261,6 +264,12 @@ export function readable(v: unknown, words: (ref: string) => string | undefined)
     .replace(/\s+([.,;:!?])/g, "$1");
 }
 
+/** Questions in words: the ids a call gave pieces and cards (f1, c6) read as what they name, in the question, its why and its options. */
+function readableQuestions(qs: PlanQuestion[], names: (ref: string) => string | undefined): PlanQuestion[] {
+  const say = (v: string) => readable(v, names);
+  return qs.map((q) => ({ ...q, title: say(q.title), why: say(q.why), options: q.options.map((o) => ({ ...o, label: say(o.label), description: say(o.description) })) }));
+}
+
 /** What a call named, by the ids it used: the pieces' words and the cards' titles. */
 const namesOf = (pieces: Iterable<[string, string]>, cards: PlaceCard[]) => {
   const m = new Map([...pieces, ...cards.map((c): [string, string] => [c.ref, c.title])]);
@@ -312,7 +321,7 @@ export function sanitizeRead(raw: unknown, text: string, cards: PlaceCard[], now
     understanding: clip(readable(r.understanding, names), READ_LIMITS.understanding),
     fragments,
     challenges: sanitizeChallenges(r.challenges, (ref) => kept.get(ref), cards, names),
-    questions: sanitizeQuestions(r.questions),
+    questions: readableQuestions(sanitizeQuestions(r.questions), names),
     refs: Object.fromEntries(kept),
   };
 }
@@ -360,8 +369,8 @@ export function sanitizeDumpFollowup(raw: unknown, pieces: { ref: string; q: Sou
     const quoteId = byRef.get(String(x.fragmentId));
     if (quoteId && isRole(x.role)) roles.set(quoteId, x.role);
   }
-  const questions = sanitizeQuestions(r.questions);
   const names = namesOf(pieces.map((p): [string, string] => [p.ref, p.q.text]), cards);
+  const questions = readableQuestions(sanitizeQuestions(r.questions), names);
   return {
     analysis: clip(readable(r.analysis, names), 1200),
     understanding: clip(readable(r.understanding, names), READ_LIMITS.understanding),

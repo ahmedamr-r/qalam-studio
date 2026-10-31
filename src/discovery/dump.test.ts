@@ -128,6 +128,24 @@ describe("reading a brain dump", () => {
     expect(f.analysis).toBe("That settles “We could do a substitution preferences thing”.");
   });
 
+  it("reads the ids in its questions as what they name too: the question, its why, its options", () => {
+    const { cards } = read();
+    const c = cards.find((x) => x.title === "I forget to reorder until I've run out")!;
+    const text = "Parents hate substitutions, they get the wrong milk brand and nobody asked them.";
+    const question = { id: "where", title: `Where does f1 go: under ${c.ref}?`, why: `It decides whether ${c.ref} splits (${c.ref}).`, options: [
+        { value: "under", label: `Under ${c.ref}`, description: "A narrower need." },
+        { value: "own", label: "On its own", description: `Apart from ${c.ref}.` },
+      ] };
+    const r = sanitizeRead({ fragments: [{ id: "f1", quote: text, role: "need" }], questions: [question] }, text, cards, 1);
+    expect(r.questions[0]).toMatchObject({ title: "Where does “Parents hate substitutions, they get the wrong milk…” go: under “I forget to reorder until I've run out”?", why: "It decides whether “I forget to reorder until I've run out” splits." });
+    expect(r.questions[0].options.map((o) => [o.label, o.description])).toEqual([
+      ["Under “I forget to reorder until I've run out”", "A narrower need."],
+      ["On its own", "Apart from “I forget to reorder until I've run out”."],
+    ]);
+    const f = sanitizeDumpFollowup({ questions: [question] }, fragmentRefs(r.fragments), cards);
+    expect(f.questions[0].options[0].label).toBe("Under “I forget to reorder until I've run out”");
+  });
+
   it("finds Arabic pieces whatever the hamza or the short vowels", () => {
     const text = "أنا شايف إن الأهالي بيكرهوا البدائل لما محدش يسألهم.";
     const r = sanitizeRead({ fragments: [{ id: "f1", quote: "انا شايف ان الاهالي بيكرهوا البدائل", role: "need" }] }, text, [], 1);

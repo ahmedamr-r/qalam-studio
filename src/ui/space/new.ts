@@ -1,6 +1,8 @@
 import { nanoid } from "nanoid";
 import { feedback } from "@/commands/feedback";
 import { studio } from "@/doc/store";
+import { isOstCard } from "@/doc/board";
+import { addCardIn, makeCardNode, newCard } from "@/discovery/ops";
 import { createGoal, goalsNow } from "@/goals/client";
 import type { Topic } from "@/hub/topics";
 import { topicsDb } from "@/org/topics";
@@ -9,12 +11,16 @@ import type { Space } from "../frame/spaces";
 import { promptDialog } from "../surfaces/dialog";
 import { navigate } from "../nav";
 import { useSources } from "../discovery/sources";
+import { created } from "../discovery/commands";
+import { show } from "./links";
 import { showDock } from "./dock";
 
 /*
- * Making a goal, a problem or a segment from a space's canvas: named in a dialog, then its page
- * opens in the canvas's panel (./page.tsx). A goal goes under the North Star (the first is the
- * North Star); each is for the space's product, or the whole organization on its own canvas.
+ * Making a goal, a problem or a segment from a space's canvas. A goal's or a problem's card is
+ * written on the canvas itself (writeCard): typed in place, or in the words sent to the chat; a
+ * goal's card becomes a goal in goals.md as the canvas saves (./goals.ts). A problem's or a
+ * segment's page is named in a dialog, then opens in the canvas's panel (./page.tsx). Each is for
+ * the space's product, or the whole organization on its own canvas.
  */
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -32,6 +38,36 @@ export async function newGoal(space: Space) {
   if (!title?.trim()) return;
   const g = await createGoal({ title: title.trim(), product: space, parent: north, north: "if-none" }).catch((e) => feedback(`Couldn't add it: ${message(e)}`, { kind: "error", id: "goals.new" }));
   if (g) navigate(goalHref(g.id));
+}
+
+export type Written = "outcome" | "opportunity";
+
+/** Where a new card goes: under the card picked when it can hold one (a goal under a goal, a problem under a goal or a problem), else at the top. */
+export function placeFor(kind: Written): string | null {
+  const s = studio();
+  const id = s.selection.length === 1 ? s.selection[0] : null;
+  const k = id && !id.startsWith("topic:") && isOstCard(s.doc.nodes[id]) ? s.doc.nodes[id].meta.ost!.kind : null;
+  return k === "outcome" || (kind === "opportunity" && k === "opportunity") ? id : null;
+}
+
+/**
+ * A goal or a problem written on the canvas: with `title` (their words, sent to the chat) it's
+ * put there and shown; without, its title is typed in place (Esc takes it back). One undo step.
+ */
+export function writeCard(kind: Written, o: { title?: string; under?: string | null } = {}): string {
+  const s = studio();
+  const under = o.under !== undefined ? o.under : placeFor(kind);
+  const node = makeCardNode(newCard(kind, o.title ? { title: o.title } : {}));
+  if (!o.title) s.beginTx();
+  s.mutate((d) => {
+    const at = under && d.nodes[under] ? under : null;
+    // Folded, the card it goes under opens to show it.
+    if (at) delete d.nodes[at].meta.ost!.collapsed;
+    addCardIn(d, node, at);
+  });
+  if (o.title) show(node.id);
+  else created(node.id, () => s.cancelTx(), "");
+  return node.id;
 }
 
 const ASK = {

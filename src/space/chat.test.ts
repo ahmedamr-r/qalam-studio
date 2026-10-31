@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
+import type { DumpSession } from "@/discovery/dump";
 import type { AskAnswer } from "@/hub/ask";
-import { chatKey, chatOf, emptyChat, MAX_TURNS, running, threadOf, withJob, withTurn, type ChatTurn } from "./chat";
+import { asking, chatKey, chatOf, emptyChat, MAX_TURNS, running, threadOf, withJob, withTurn, type ChatTurn } from "./chat";
 
 const answer: AskAnswer = { question: "Why do parents stop?", answer: "The window.", claims: [], unknowns: [], how: "packed", at: 1 };
 const turn = (id: string, job: ChatTurn["job"], said = "Why do parents stop ordering?"): ChatTurn => ({ id, at: 1, said, job });
@@ -35,8 +36,60 @@ describe("the canvas's chat", () => {
       { id: "a:ai", role: "assistant", parts: [{ type: "data", name: "working", data: { turn: "a" } }] },
     ]);
     c = withJob(c, "a", () => ({ kind: "ask", state: "answered", answer, secs: 4 }));
-    expect(threadOf(c)[1].parts).toEqual([{ type: "data", name: "answer", data: { turn: "a" } }]);
+    // An answer offers to take the words another way ("Not a question?").
+    expect(threadOf(c)[1].parts).toEqual([
+      { type: "data", name: "answer", data: { turn: "a" } },
+      { type: "data", name: "switch", data: { turn: "a" } },
+    ]);
     c = withJob(c, "a", () => ({ kind: "ask", state: "failed", error: "No engine" }));
-    expect(threadOf(c)[1].parts).toEqual([{ type: "text", text: "I couldn't answer that: No engine" }]);
+    expect(threadOf(c)[1].parts[0]).toEqual({ type: "text", text: "I couldn't answer that: No engine" });
+  });
+});
+
+describe("a brain dump in the canvas's chat", () => {
+  const session = (over: Partial<DumpSession>): DumpSession => ({ v: 1, phase: "asking", understanding: "Riders give up when the car moves away.", challenges: [], buckets: [{ questions: [], form: { current: null, answers: {}, visited: [], editing: false, submitted: false } } as never], anchor: null, ...over });
+  const dumpTurn = (source: string): ChatTurn => ({ id: "d", at: 1, said: "My thinking…", job: { kind: "dump", source } });
+
+  it("reads its session for where it stands: reading, asking, placing, proposing", () => {
+    const c = withTurn(emptyChat(), dumpTurn("s1"));
+    const names = (s: DumpSession | null) =>
+      threadOf(c, () => s)[1].parts.map((p) => (p.type === "data" ? p.name : "text"));
+    expect(names(null)).toEqual(["dumping"]);
+    expect(names(session({ phase: "reading", understanding: "" }))).toEqual(["dumping"]);
+    expect(names(session({}))).toEqual(["took", "text", "skip"]);
+    expect(names(session({ phase: "placing" }))).toEqual(["took", "answered", "dumping"]);
+    expect(names(session({ phase: "review" }))).toEqual(["took", "answered", "proposed"]);
+    expect(names(session({ phase: "failed", failed: { at: "placing", error: "No engine" } }))).toEqual(["took", "answered", "text", "retry"]);
+  });
+
+  it("says when a dump never started", () => {
+    const c = withTurn(emptyChat(), { ...dumpTurn("s1"), job: { kind: "dump", source: "s1", error: "Qalam AI isn't set up here." } });
+    expect(threadOf(c)[1].parts).toEqual([{ type: "text", text: "Qalam AI isn't set up here." }]);
+  });
+
+  it("has the box ask the newest dump's questions while it waits on them", () => {
+    const c = withTurn(withTurn(emptyChat(), { ...dumpTurn("s1"), id: "a" }), { ...dumpTurn("s2"), id: "b" });
+    expect(asking(c, (id) => session({ phase: id === "s1" ? "asking" : "review" }))?.source).toBe("s1");
+    expect(asking(c, () => session({}))?.turn.id).toBe("b");
+    expect(asking(c, () => session({ phase: "placed" }))).toBeNull();
+  });
+});
+
+describe("short statements and what came of them", () => {
+  it("asks whether a short statement is a goal or a problem", () => {
+    const c = withTurn(emptyChat(), turn("s", { kind: "choose", first: "problem" }, "Riders can't find the car"));
+    expect(threadOf(c)[1].parts.map((p) => (p.type === "data" ? p.name : "text"))).toEqual(["text", "choose"]);
+  });
+
+  it("lists the pages what customers said went into, and says when none took it", () => {
+    const took = (pages: number, quotes: number) => threadOf(withTurn(emptyChat(), turn("t", { kind: "take", state: "done", sources: ["a"], pages: Array.from({ length: pages }, (_, i) => ({ id: `p${i}`, title: `Page ${i}` })), quotes }, "")))[1].parts;
+    expect(took(2, 5)).toEqual([{ type: "text", text: "I kept 1 source. 5 quotes from customers went into these problems' pages:" }, { type: "data", name: "pages", data: { turn: "t" } }]);
+    expect(took(0, 0)).toEqual([{ type: "text", text: "I kept 1 source, but found nothing customers said in it." }]);
+    expect(running(withTurn(emptyChat(), turn("t", { kind: "take", state: "taking", sources: [], pages: [], quotes: 0 }, "")))?.id).toBe("t");
+  });
+
+  it("forgets a capture the page closed on, as it does an ask", () => {
+    const c = chatOf({ v: 1, turns: [turn("t", { kind: "take", state: "taking", sources: [], pages: [], quotes: 0 }), turn("x", { kind: "made-up" } as never)] });
+    expect(c.turns.map((t) => [t.id, t.job.kind === "take" && t.job.state])).toEqual([["t", "failed"]]);
   });
 });

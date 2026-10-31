@@ -5,7 +5,6 @@ import NextSteps from "./NextSteps";
 import StartSheet from "./StartSheet";
 import DesignThis from "./DesignThis";
 import ReviewLayer from "./ReviewLayer";
-import BrainDump from "./BrainDump";
 import WhyPrompt from "../decisions/WhyPrompt";
 import { lab } from "@/lab";
 import { noticesStale, useNotices } from "../notices/useNotices";
@@ -16,8 +15,8 @@ import { useDiscovery } from "./store";
 /**
  * The Discovery board's DOM over the canvas: the title being typed, the bar over the selected
  * card and its next steps beside it, the start sheet (interview, sample, import, blank), the Design this card, Qalam AI's
- * proposals under review, the brain dump card, the why a big decision asks for, and a source from
- * the sources lane being read. Only in Discovery.
+ * proposals under review, the why a big decision asks for, and a source from the sources lane being
+ * read. Only in Discovery. (A brain dump is Qalam AI's chat beside the canvas, ../space/chat/.)
  * It also keeps what needs a look about the board's cards current (the canvas marks them).
  */
 export default function DiscoveryLayer() {
@@ -43,7 +42,6 @@ export default function DiscoveryLayer() {
           <NextSteps vp={vp} />
           {lab("design") && <DesignThis vp={vp} />}
           <ReviewLayer vp={vp} />
-          <BrainDump vp={vp} />
           {lab("decisions") && <WhyPrompt />}
           <StartSheet />
         </>

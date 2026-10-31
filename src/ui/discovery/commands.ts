@@ -64,7 +64,7 @@ export function keepOnScreen(id: string) {
 }
 
 /** A new card made by a key or a button: select it and start typing its title (one undo step with it). */
-function created(id: string | null, undo: () => void, why: string) {
+export function created(id: string | null, undo: () => void, why: string) {
   if (!id) {
     undo();
     feedback(why, { id: "discovery.add" });

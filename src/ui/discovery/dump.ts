@@ -9,7 +9,6 @@ import { clearGhosts, useGhosts } from "@/doc/ghosts";
 import { AIError, type AIDelta } from "@/ai/client";
 import { parsePartial } from "@/ai/partial-json";
 import { SAMPLE_DUMP_FOLLOWUP_RAW, SAMPLE_DUMP_PLACE_RAW, SAMPLE_DUMP_READ_RAW, SAMPLE_DUMP_TEXT } from "@/ai/fixtures-discovery";
-import { feedback } from "@/commands/feedback";
 import {
   DUMP_MAX_CHARS,
   MAX_DUMP_ROUNDS,
@@ -37,7 +36,9 @@ import { initialFlow, type FlowState } from "../ai/questionFlow";
 import { openTurn, patchTurn } from "../ai/chats";
 import { appendThought, endAgent, narrate, startAgent, updateAgent } from "../ai/agents";
 import { getController } from "../CanvasView";
-import { canvasBoard, canvasProduct } from "@/space/view";
+import { canvasProduct } from "@/space/view";
+import { toggleChat } from "../frame/store";
+import { composeIn } from "../space/chat/compose";
 import { offline, runDump } from "./ai";
 import { placeFor, placeSample, routeTurns, treeFor } from "./draft";
 import { REVIEW_TURN, evidenceOf, ghostsFor, startReview, useReview } from "./review";
@@ -49,22 +50,20 @@ import { useDiscovery } from "./store";
 import { boardGoalIds } from "./goals";
 
 /*
- * A brain dump on the board: the builder pastes their thinking, Qalam AI reads it (what it took
- * from it, its pieces, its pushback, a round of questions), reads each round of answers (up to
- * three), then places it as proposals to accept or discard. The dump is a source (its words stay
- * the builder's), and how it's going lives on it, so a reload picks up where it was. Each dump is a
- * turn in the board's chat; the card on the canvas is where the conversation happens.
+ * A brain dump on the canvas: the builder writes their thinking in Qalam AI's chat beside it
+ * (../space/chat/), Qalam AI reads it (what it took from it, its pieces, its pushback, a round of
+ * questions), reads each round of answers (up to three), then places it as proposals to accept or
+ * discard: cards under the cards already there, or new ones, quotes attached, edits. The dump is a
+ * source (its words stay the builder's), and how it's going lives on it, so a reload picks up where
+ * it was; the chat's thread is worked out from it.
  */
 
 export interface DumpUI {
-  /** The card: a new dump being written (sourceId null), or a dump's session. */
-  open: { sourceId: string | null; draft: string } | null;
-  minimised: boolean;
   /** A call running for a dump, and how far it's got. */
   busy: { sourceId: string; label: string; started: number; tokens: number } | null;
 }
 
-export const useDump = create<DumpUI>(() => ({ open: null, minimised: false, busy: null }));
+export const useDump = create<DumpUI>(() => ({ busy: null }));
 
 const runs = new Map<string, AbortController>();
 
@@ -79,19 +78,12 @@ async function setSession(sourceId: string, fn: (s: DumpSession) => DumpSession,
   await updateSource(sourceId, (s) => (s.dump ? { ...s, dump: fn(s.dump), ...(quotes ? { quotes: quotes(s) } : {}) } : s));
 }
 
-/** Open the card: to write a new dump (with pasted text), or on a dump's session. */
+/** A brain dump in the chat: its box filled with pasted text, or (a dump's source) the chat open on its thread. */
 export function openBrainDump(opts: { text?: string; sourceId?: string } = {}) {
-  const busy = useDump.getState().busy;
-  if (!opts.sourceId && busy) {
-    feedback("Qalam AI is still on your last brain dump", { id: "discovery.dump" });
-    return useDump.setState({ open: { sourceId: busy.sourceId, draft: "" }, minimised: false });
-  }
-  useDump.setState({ open: { sourceId: opts.sourceId ?? null, draft: (opts.text ?? "").slice(0, DUMP_MAX_CHARS) }, minimised: false });
   if (useDiscovery.getState().sheet === "start") useDiscovery.setState({ sheet: "closed" });
+  if (opts.sourceId) return toggleChat(true);
+  composeIn({ text: (opts.text ?? "").slice(0, DUMP_MAX_CHARS), mode: "dump" });
 }
-
-export const closeBrainDump = () => useDump.setState({ open: null, minimised: false });
-export const setDraft = (draft: string) => useDump.setState((s) => (s.open && !s.open.sourceId ? { open: { ...s.open, draft } } : {}));
 
 // ---------------------------------------------------------------------------
 // Calls
@@ -160,21 +152,26 @@ function readFields(s: SourceRecord, cards: PlaceCard[]) {
 // ---------------------------------------------------------------------------
 // Read
 
-/** A new dump: kept as a source, then read. */
-export async function startDump(text: string, opts: { sample?: boolean } = {}) {
-  const projectId = canvasBoard();
+/**
+ * A new dump: kept as a source (the organization's, for the canvas's product, under `id` when the
+ * chat named it), read, and placed at once when Qalam AI has nothing to ask. Throws, in words, when
+ * it can't start.
+ */
+export async function startDump(text: string, opts: { sample?: boolean; id?: string } = {}): Promise<string> {
   const body = (opts.sample ? SAMPLE_DUMP_TEXT : text).trim();
-  if (!projectId || body.length < 40) return;
-  if (body.length > DUMP_MAX_CHARS) return feedback(`That's more than one brain dump takes (${DUMP_MAX_CHARS.toLocaleString()} characters): add the rest as a source`, { kind: "error", id: "discovery.dump" });
-  if (!opts.sample && (await offline())) return feedback("Qalam AI isn't set up here, so it can't read your text. Try the sample to see how it works.", { id: "discovery.dump" });
+  if (body.length < 40) throw new Error("Write a few sentences more, so there's something to read.");
+  if (body.length > DUMP_MAX_CHARS) throw new Error(`That's more than one brain dump takes (${DUMP_MAX_CHARS.toLocaleString()} characters): add the rest as a source.`);
+  if (!opts.sample && (await offline())) throw new Error("Qalam AI isn't set up here, so it can't read your text. Connections says how.");
   // The sample is about Basket: its tree goes on the board first if it isn't there.
   if (opts.sample && !studio().doc.roots.some((id) => studio().doc.nodes[id]?.meta.ost?.title === "More customers reorder every week")) placeSample();
   const read = await ingestPaste(body, opts.sample ? "Basket founder, after the investor call" : undefined);
   const s = studio();
   const rec: SourceRecord = {
     v: 1,
-    id: newId(),
-    projectId,
+    id: opts.id ?? newId(),
+    // The organization's: its cards land on the boards the canvas makes or keeps for them as it saves.
+    projectId: "",
+    product: canvasProduct(),
     kind: "dump",
     title: read.title,
     text: read.text,
@@ -188,8 +185,11 @@ export async function startDump(text: string, opts: { sample?: boolean } = {}) {
   rec.dump!.turn = turn;
   await addSourceRecord(rec);
   patchTurn(turn.chatId, turn.turnId, { outcome: { kind: "discovery", action: "dump", sourceId: rec.id } });
-  useDump.setState({ open: { sourceId: rec.id, draft: "" }, minimised: false });
-  await readDump(rec.id);
+  void readDump(rec.id).then(() => {
+    // Nothing to ask: Qalam AI places it straight away.
+    if (sessionOf(sourceOf(rec.id))?.phase === "ready") return placeDump(rec.id);
+  });
+  return rec.id;
 }
 
 /** Have Qalam AI read a dump: what it took from it, its pieces, its pushback, the first round. */
@@ -201,7 +201,7 @@ export async function readDump(sourceId: string) {
   try {
     const { raw, sample, model } = await call(sourceId, "Qalam AI is reading your brain dump", { stage: "dump-read", product: product(), dump: s.text, tree }, () => sampleRaw(SAMPLE_DUMP_READ_RAW, cards), 3500);
     const r = sanitizeRead(raw, s.text, cards);
-    if (!r.fragments.length) throw new AIError("parse", "Qalam AI found nothing in it to place on the board. Try again, or write a little more.");
+    if (!r.fragments.length) throw new AIError("parse", "Qalam AI found nothing in it to place on the canvas. Try again, or write a little more.");
     await updateSource(sourceId, (x) => ({
       ...x,
       quotes: r.fragments,
@@ -328,12 +328,18 @@ export async function placeDump(sourceId: string) {
   const preview = `${turn.turnId}:place`;
   const anchor = session.anchor && studio().doc.nodes[session.anchor] ? treeBounds(studio().doc, session.anchor) : null;
   if (session.turn) startAgent({ turnId: turn.turnId, chatId: turn.chatId, kind: "strategist", task: "Placing your brain dump", activity: "Reading", target: anchor });
-  useDump.setState({ minimised: true });
 
   let buffer = "";
   let timer: ReturnType<typeof setTimeout> | undefined;
   let shown = 0;
-  const proposalsNow = (raw: unknown, partial: boolean) => arrangeNew(studio().doc, partial ? partialPlace(raw, ctx, ids) : sanitizePlace(raw, ctx, ids), evidenceOf, origin);
+  // Stickies have nowhere to be kept on the space's canvas: what a note would say stays in the chat's reading.
+  const proposalsNow = (raw: unknown, partial: boolean) =>
+    arrangeNew(
+      studio().doc,
+      (partial ? partialPlace(raw, ctx, ids) : sanitizePlace(raw, ctx, ids)).filter((p) => p.kind !== "note"),
+      evidenceOf,
+      origin,
+    );
   const show = () => {
     timer = undefined;
     const list = proposalsNow(parsePartial(buffer), true);
@@ -356,8 +362,8 @@ export async function placeDump(sourceId: string) {
   };
   const review = async (list: Proposal[]) => {
     if (!list.length) {
+      // The chat says so: nothing to change on the canvas.
       await setSession(sourceId, (d) => ({ ...d, phase: "placed", placed: { at: Date.now(), counts: d.placed?.counts ?? { added: 0, attached: 0, edited: 0, notes: 0 } } }));
-      feedback("Qalam AI found nothing to change on the board", { id: "discovery.dump" });
       return;
     }
     if (!startReview({ kind: "dump", sourceId }, list)) return void (await setSession(sourceId, (d) => ({ ...d, phase: "ready" })));
@@ -401,7 +407,6 @@ export function stopDump(sourceId: string) {
 export function retryDump(sourceId: string) {
   const s = sessionOf(sourceOf(sourceId));
   if (!s || useDump.getState().busy?.sourceId === sourceId) return;
-  useDump.setState({ open: { sourceId, draft: "" }, minimised: false });
   const at = s.failed?.at;
   if (at === "reading") void readDump(sourceId);
   else if (at === "analyzing") void readAnswers(sourceId);
@@ -429,8 +434,8 @@ export function ensureDumpHandlers() {
 }
 
 /**
- * After a reload: a step that was running didn't finish (Try again runs it), and the latest dump
- * that waits on the builder comes back as a bubble beside its tree.
+ * After a reload: a step that was running didn't finish (Try again runs it), and the proposals a
+ * dump was waiting on come back on the canvas. The chat's thread shows the rest.
  */
 export async function resumeDumps() {
   const list = useSources.getState().list.filter((s) => s.kind === "dump" && s.dump);
@@ -441,6 +446,4 @@ export async function resumeDumps() {
   // Proposals that were waiting on the board come back (what no longer fits drops out).
   const reviewed = [...list].reverse().find((s) => s.dump!.phase === "review" && s.dump!.proposals?.length);
   if (reviewed && !useReview.getState().proposals.length) startReview({ kind: "dump", sourceId: reviewed.id }, reviewed.dump!.proposals!);
-  const waiting = [...list].reverse().find((s) => ["asking", "ready", "failed", "review"].includes(sessionOf(sourceOf(s.id))?.phase ?? ""));
-  if (waiting && !useDump.getState().open) useDump.setState({ open: { sourceId: waiting.id, draft: "" }, minimised: true });
 }

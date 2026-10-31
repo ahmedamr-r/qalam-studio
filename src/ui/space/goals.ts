@@ -13,8 +13,9 @@ import { useWhy } from "../decisions/recorder";
  * goal's words, number and status; an edit to a goal's card goes to the goal once changes settle
  * (a goal with no board too), and the goal's change records the decision. A goal's card deleted
  * takes the goal off its board (the goal stays, with no board yet). An outcome card saved on a
- * board that isn't a goal yet becomes one, under the goal above it. What goals.md changes
- * elsewhere comes back in when the canvas is composed again.
+ * board that isn't a goal yet becomes one, under the goal above it (at the top: under the North
+ * Star, or the North Star when there's none). What goals.md changes elsewhere comes back in when
+ * the canvas is composed again.
  */
 
 const SETTLE = 1500;
@@ -93,6 +94,8 @@ async function syncOnce() {
     const above = up ? v.things.get(up) : undefined;
     const copy = copyOfCard(card);
     ids.add(gid);
-    await createGoal({ id: gid, title: copy.title, parent: above?.type === "goal" ? above.goal : null, product: v.boards.get(board)?.product ?? null, ...(copy.metric ? { metric: copy.metric } : {}), status: copy.stage, on: { board, card: id } }).catch(() => {});
+    // One at the top goes under the North Star, as a goal made by hand does; the first one is the North Star.
+    const parent = above?.type === "goal" ? above.goal : goalsNow().north;
+    await createGoal({ id: gid, title: copy.title, parent, ...(parent ? {} : { north: "if-none" as const }), product: v.boards.get(board)?.product ?? null, ...(copy.metric ? { metric: copy.metric } : {}), status: copy.stage, on: { board, card: id } }).catch(() => {});
   }
 }

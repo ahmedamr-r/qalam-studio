@@ -11,7 +11,7 @@ import { openSpace, useSpaceStatus, type SpaceInputs } from "@/space/session";
 import { useSpaceView } from "@/space/view";
 import type { SourceRecord } from "@/discovery/sources";
 import CanvasView, { getController } from "../CanvasView";
-import { IconBtn, Spinner } from "../controls";
+import { IconBtn, Spinner, Tip } from "../controls";
 import { onCanvasReady } from "../discovery/canvas";
 import { useSources } from "../discovery/sources";
 import { startSpaceCanvas } from "./boot";
@@ -19,7 +19,7 @@ import { consumeHomeParams } from "./links";
 import { useAddress } from "../nav";
 import { SourcesDock } from "./SourcesDock";
 import { showDock, useDock } from "./dock";
-import { newGoal } from "./new";
+import { writeCard } from "./new";
 
 /*
  * A space's canvas on its home: the board's own canvas (its painter, gestures, card bar and
@@ -139,10 +139,19 @@ export function SpaceCanvas({ org, space, inputs, sources }: { org: string | nul
             <FileText size={13} {...ICON} />
             Sources
           </button>
-          <button type="button" onClick={() => void newGoal(space)} className="q-item flex h-[24px] items-center gap-[6px] rounded-md px-[8px] text-caption text-fg-muted hover:bg-hover hover:text-fg">
-            <Plus size={13} {...ICON} />
-            Goal
-          </button>
+          {/* Written on the canvas: under the goal picked, else at the top (../space/new.ts). */}
+          <Tip label="A goal, typed on the canvas (under the goal picked)">
+            <button type="button" onClick={() => writeCard("outcome")} className="q-item flex h-[24px] items-center gap-[6px] rounded-md px-[8px] text-caption text-fg-muted hover:bg-hover hover:text-fg">
+              <Plus size={13} {...ICON} />
+              Goal
+            </button>
+          </Tip>
+          <Tip label="A problem, typed on the canvas (under the goal or problem picked)">
+            <button type="button" onClick={() => writeCard("opportunity")} className="q-item flex h-[24px] items-center gap-[6px] rounded-md px-[8px] text-caption text-fg-muted hover:bg-hover hover:text-fg">
+              <Plus size={13} {...ICON} />
+              Problem
+            </button>
+          </Tip>
           <span aria-hidden className="mx-[2px] h-[16px] w-px bg-line-subtle" />
           <IconBtn size="sm" label="Zoom out" onClick={() => zoomBy(0.8)}>
             <Minus size={13} {...ICON} />

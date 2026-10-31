@@ -1,3 +1,4 @@
+import type { DumpSession } from "@/discovery/dump";
 import type { AskAnswer } from "@/hub/ask";
 import type { SetupDoc } from "@/org/setup";
 
@@ -16,7 +17,23 @@ export const MAX_TURNS = 100;
 
 export type ChatDoc = Omit<SetupDoc, "span" | "cut">;
 
-export type ChatJob = { kind: "ask"; state: "asking" | "answered" | "failed"; answer?: AskAnswer; secs?: number; error?: string };
+/** A problem page material went into. */
+export interface FiledPage {
+  id: string;
+  title: string;
+}
+
+export type ChatJob =
+  /** A question for the organization, and its checked answer. */
+  | { kind: "ask"; state: "asking" | "answered" | "failed"; answer?: AskAnswer; secs?: number; error?: string }
+  /** A short statement: is it a goal or a problem (or a question)? The chips say. */
+  | { kind: "choose"; first: "goal" | "problem" }
+  /** Their words written on the canvas as a goal's or a problem's card. */
+  | { kind: "add"; what: "goal" | "problem"; card: string; under: string | null }
+  /** What customers said, taken in as sources: filed into problem pages, placed where it fits. */
+  | { kind: "take"; state: "taking" | "done" | "failed"; sources: string[]; pages: FiledPage[]; quotes: number; error?: string }
+  /** Their own thinking as a brain dump: its source's session is how it's going (`error`: it never started). */
+  | { kind: "dump"; source: string; error?: string };
 
 export interface ChatTurn {
   id: string;
@@ -34,13 +51,23 @@ export interface CanvasChat {
 
 export const emptyChat = (): CanvasChat => ({ v: 1, turns: [] });
 
-/** A chat as read from its file: a turn still running when the page went is over (nothing carries it on). */
+/** A turn still running when the page went is over (nothing carries it on). */
+function stopped(j: ChatJob): ChatJob {
+  if (j.kind === "ask" && j.state === "asking") return { ...j, state: "failed", error: "It stopped when the page closed. Ask again." };
+  // Capture goes on in the core: what was taken in shows up on the canvas and in its panel.
+  if (j.kind === "take" && j.state === "taking") return { ...j, state: "failed", error: "The page closed while it was being taken in. What was kept is in the sources." };
+  return j;
+}
+
+const KINDS = new Set(["ask", "choose", "add", "take", "dump"]);
+
+/** A chat as read from its file (what it doesn't know is left out). */
 export function chatOf(raw: unknown): CanvasChat {
   const c = raw as Partial<CanvasChat> | null;
   if (!c || c.v !== 1 || !Array.isArray(c.turns)) return emptyChat();
   return {
     v: 1,
-    turns: c.turns.filter((t) => t && typeof t.id === "string" && typeof t.said === "string" && t.job).map((t) => (t.job.kind === "ask" && t.job.state === "asking" ? { ...t, job: { ...t.job, state: "failed" as const, error: "It stopped when the page closed. Ask again." } } : t)),
+    turns: c.turns.filter((t) => t && typeof t.id === "string" && typeof t.said === "string" && KINDS.has(t.job?.kind)).map((t) => ({ ...t, job: stopped(t.job) })),
   };
 }
 
@@ -71,20 +98,84 @@ const reply = (t: ChatTurn, parts: ChatPart[]): ChatMessage => ({ id: `${t.id}:a
 const text = (s: string): ChatPart => ({ type: "text", text: s });
 const part = (name: string, data: PartData): ChatPart => ({ type: "data", name, data });
 
-/** The conversation, from the turns: each one's words, then what Qalam AI made of it. */
-export function threadOf(c: CanvasChat): ChatMessage[] {
-  const out: ChatMessage[] = [];
-  for (const t of c.turns) {
-    out.push(you(t));
-    const j = t.job;
-    if (j.kind === "ask") {
-      if (j.state === "asking") out.push(reply(t, [part("working", { turn: t.id })]));
-      else if (j.state === "failed") out.push(reply(t, [text(`I couldn't answer that: ${j.error ?? "something went wrong"}`)]));
-      else out.push(reply(t, [part("answer", { turn: t.id })]));
-    }
+const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
+
+/** A dump's session by its source's id (null: not loaded, or gone). */
+export type DumpOf = (source: string) => DumpSession | null;
+
+/** A brain dump in the thread: what Qalam AI took from it, each round answered, then where it stands. */
+function dumpReply(t: ChatTurn, s: DumpSession | null): ChatPart[] {
+  const id = { turn: t.id };
+  if (!s || s.phase === "reading") return [part("dumping", id)];
+  const out: ChatPart[] = [];
+  if (s.understanding || s.challenges.length) out.push(part("took", id));
+  const last = s.buckets.length - 1;
+  s.buckets.forEach((b, i) => {
+    if (i < last || s.phase !== "asking") out.push(part("answered", { turn: t.id, round: i }));
+  });
+  switch (s.phase) {
+    case "asking":
+      return [...out, text(last > 0 ? "A few more questions, then I'll place it." : "A few questions before I place it on the canvas: answer what you can."), part("skip", id)];
+    case "analyzing":
+    case "placing":
+      return [...out, part("dumping", id)];
+    case "ready":
+      return [...out, text(s.skipped ? "I'll place it with what you've answered." : "I have what I need."), part("place", id)];
+    case "review":
+      return [...out, part("proposed", id)];
+    case "placed":
+      return [...out, part("placed", id)];
+    case "failed":
+      return [...out, text(s.failed?.error === "Stopped." ? "You stopped me before I finished." : `I couldn't finish: ${s.failed?.error ?? "something went wrong"}`), part("retry", id)];
   }
-  return out;
 }
 
-/** Whether something in the chat is still running (the composer offers Stop). */
-export const running = (c: CanvasChat): ChatTurn | null => [...c.turns].reverse().find((t) => t.job.kind === "ask" && t.job.state === "asking") ?? null;
+/** What Qalam AI says to a turn, from its job. */
+function replyTo(t: ChatTurn, dumpOf: DumpOf): ChatPart[] {
+  const j = t.job;
+  const id = { turn: t.id };
+  switch (j.kind) {
+    case "ask":
+      if (j.state === "asking") return [part("working", id)];
+      if (j.state === "failed") return [text(`I couldn't answer that: ${j.error ?? "something went wrong"}`), part("switch", id)];
+      return [part("answer", id), part("switch", id)];
+    case "choose":
+      return [text("Is it a goal or a problem? I'll put it on the canvas in your words."), part("choose", id)];
+    case "add":
+      return [part("added", id)];
+    case "take":
+      if (j.state === "taking") return [part("working", id)];
+      if (j.state === "failed") return [text(j.error ?? "It couldn't be taken in.")];
+      return [
+        text(
+          j.pages.length
+            ? `I kept ${plural(j.sources.length, "source")}. ${j.quotes ? `${plural(j.quotes, "quote")} from customers went` : "What it says went"} into ${j.pages.length === 1 ? "this problem's page" : "these problems' pages"}:`
+            : j.quotes
+              ? `I kept ${plural(j.sources.length, "source")} and found ${plural(j.quotes, "quote")} from customers, but no problem's page took them in yet.`
+              : `I kept ${plural(j.sources.length, "source")}, but found nothing customers said in ${j.sources.length === 1 ? "it" : "them"}.`,
+        ),
+        ...(j.pages.length ? [part("pages", id)] : []),
+      ];
+    case "dump":
+      return j.error ? [text(j.error)] : dumpReply(t, dumpOf(j.source));
+  }
+}
+
+/** The conversation, from the turns: each one's words, then what Qalam AI made of it. */
+export function threadOf(c: CanvasChat, dumpOf: DumpOf = () => null): ChatMessage[] {
+  return c.turns.flatMap((t) => [you(t), reply(t, replyTo(t, dumpOf))]);
+}
+
+/** The brain dump whose questions the box asks now: the newest one waiting on its answers. */
+export function asking(c: CanvasChat, dumpOf: DumpOf): { turn: ChatTurn; source: string } | null {
+  for (const t of [...c.turns].reverse()) {
+    if (t.job.kind !== "dump" || t.job.error) continue;
+    if (dumpOf(t.job.source)?.phase === "asking") return { turn: t, source: t.job.source };
+  }
+  return null;
+}
+
+const busy = (j: ChatJob) => (j.kind === "ask" && j.state === "asking") || (j.kind === "take" && j.state === "taking");
+
+/** What in the chat is still running (the composer offers Stop). */
+export const running = (c: CanvasChat): ChatTurn | null => [...c.turns].reverse().find((t) => busy(t.job)) ?? null;

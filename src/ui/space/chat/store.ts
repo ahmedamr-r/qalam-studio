@@ -7,15 +7,26 @@ import { KIND_LABEL } from "@/discovery/kinds";
 import { goalsNow } from "@/goals/client";
 import { goalById } from "@/goals/tree";
 import { askOrganization } from "@/org/ask";
+import { captureIngested } from "@/org/capture";
 import { orgFetch, orgJson } from "@/org/client";
-import { chatKey, chatOf, emptyChat, withJob, withTurn, type CanvasChat, type ChatJob, type ChatTurn } from "@/space/chat";
+import type { Ingested } from "@/discovery/ingest/core";
+import { chatKey, chatOf, emptyChat, withJob, withTurn, type CanvasChat, type ChatDoc, type ChatJob, type ChatTurn, type FiledPage } from "@/space/chat";
 import { cardForPage, pageOf } from "@/space/pages";
+import { DUMP_WORDS, routeOf, titleFrom, wordsIn, type ChatMode } from "@/space/route";
 import { useSpaceView } from "@/space/view";
+import { newId } from "@/doc/factory";
+import { docPart, docRef, guessVoice, joinParts, type SentDoc } from "../../chat/attach";
+import { ingestPaste } from "../../discovery/ingest";
+import { startDump, stopDump, useDump } from "../../discovery/dump";
+import { placeFor, writeCard } from "../new";
+import { useCompose } from "./compose";
 
 /*
  * Qalam AI's chat beside a space's canvas, in the window: the canvas's turns (src/space/chat.ts),
- * loaded as the canvas opens and saved a moment after each change, and what's running now (an
- * ask's steps and its Stop), which is never kept.
+ * loaded as the canvas opens and saved a moment after each change, and what's running now (its
+ * steps and its Stop), which is never kept. What's sent goes where src/space/route.ts says: asked,
+ * taken in, written on the canvas, read as a brain dump, or first a choice between them; a turn
+ * can be taken another way after (its words stay, its job changes).
  */
 
 interface Live {
@@ -77,10 +88,133 @@ export function turnOf(id: string): ChatTurn | undefined {
   return st().chat.turns.find((t) => t.id === id);
 }
 
-function addTurn(said: string, job: ChatJob, docs?: ChatTurn["docs"]): string {
+function addTurn(said: string, job: ChatJob, docs?: ChatDoc[]): string {
   const id = nanoid(10);
   change((c) => withTurn(c, { id, at: Date.now(), said, ...(docs?.length ? { docs } : {}), job }));
   return id;
+}
+
+/** A turn's job set: a new turn, or (`at`) one taken another way. */
+function jobAt(at: string | null, said: string, job: ChatJob, docs?: ChatDoc[]): string {
+  if (!at) return addTurn(said, job, docs);
+  change((c) => withJob(c, at, () => job));
+  return at;
+}
+
+function begin(id: string): AbortController {
+  const ctrl = new AbortController();
+  ctrls.set(id, ctrl);
+  useCanvasChat.setState((s) => ({ live: { ...s.live, [id]: { steps: [], started: Date.now() } } }));
+  return ctrl;
+}
+
+const step = (id: string) => (label: string) => useCanvasChat.setState((s) => (s.live[id] ? { live: { ...s.live, [id]: { ...s.live[id], steps: [...s.live[id].steps, label].slice(-4) } } } : s));
+
+function end(id: string) {
+  ctrls.delete(id);
+  useCanvasChat.setState((s) => {
+    const { [id]: _gone, ...live } = s.live;
+    return { live };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Sending
+
+/** What the box sent, where it goes (the box's mode first): false keeps the text in the box. */
+export function send(text: string, docs: readonly SentDoc[]): boolean {
+  const said = text.trim();
+  const mode = useCompose.getState().mode;
+  const routed = routeOf({ text: said, docs, pasted: said ? guessVoice({ text: said, title: "" }) : undefined, mode });
+  if (!routed) return false;
+  // Sent: the box's text and mode are spent (the box drawn again after a round of questions starts empty).
+  useCompose.setState({ text: "", mode: null });
+  if (routed.job === "choose") {
+    addTurn(said, { kind: "choose", first: routed.first });
+    return true;
+  }
+  void runAs(null, said, routed.job, docs);
+  return true;
+}
+
+/** A turn's words taken one way: as a new turn, or (`at`) a turn taken another way than it was. */
+export async function runAs(at: string | null, said: string, mode: ChatMode, docs: readonly SentDoc[] = []): Promise<void> {
+  if (at) stopTurn(at);
+  if (mode === "ask") return ask(said, at);
+  if (mode === "goal" || mode === "problem") return void addCard(at, said, mode);
+  if (mode === "take") return takeIn(at, said, docs);
+  if (mode === "dump") return dumpIt(at, said, docs);
+}
+
+/** Words sent to the chat from elsewhere (the first run's idea), taken as `mode`. */
+export function sendToChat(text: string, mode: ChatMode) {
+  void runAs(null, text.trim(), mode);
+}
+
+/** A turn taken another way, from the thread (its chips): the same words. */
+export function retake(id: string, mode: ChatMode) {
+  const t = turnOf(id);
+  if (t) void runAs(id, t.said, mode);
+}
+
+// ---------------------------------------------------------------------------
+// A brain dump
+
+/** Their own thinking, read as a brain dump (src/ui/discovery/dump.ts): their words and their own docs as one text. */
+async function dumpIt(at: string | null, said: string, docs: readonly SentDoc[]) {
+  const source = newId();
+  const id = jobAt(at, said, { kind: "dump", source }, docs.map(docRef));
+  const text = joinParts([...(said ? [{ body: said }] : []), ...docs.map((d) => docPart({ via: d.via, title: d.title, text: d.ingested.text, blocks: d.ingested.blocks, voice: d.voice }))]).text;
+  try {
+    await startDump(text, { id: source });
+  } catch (e) {
+    change((c) => withJob(c, id, (j) => (j.kind === "dump" ? { ...j, error: message(e) } : j)));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Writing it on the canvas
+
+function addCard(at: string | null, said: string, what: "goal" | "problem") {
+  const kind = what === "goal" ? "outcome" : "opportunity";
+  const under = placeFor(kind);
+  const card = writeCard(kind, { title: titleFrom(said), under });
+  jobAt(at, said, { kind: "add", what, card, under });
+}
+
+// ---------------------------------------------------------------------------
+// Taking in what customers said
+
+/**
+ * What customers said, taken in as the organization's sources (server/capture.ts): each of their
+ * docs, and what they pasted when it reads as who said what. Their own docs and long text that came
+ * with it are kept as their thinking (read as what they believe).
+ */
+async function takeIn(at: string | null, said: string, docs: readonly SentDoc[]) {
+  const id = jobAt(at, said, { kind: "take", state: "taking", sources: [], pages: [], quotes: 0 }, docs.map(docRef));
+  const ctrl = begin(id);
+  const parts: { ing: () => Promise<Ingested>; own: boolean }[] = [];
+  const voice = said ? guessVoice({ text: said, title: "" }) : "own";
+  if (said && (voice === "customers" || wordsIn(said) >= DUMP_WORDS)) parts.push({ ing: () => ingestPaste(said), own: voice !== "customers" });
+  for (const d of docs) parts.push({ ing: async () => d.ingested, own: d.voice !== "customers" });
+  const sources: string[] = [];
+  const pages = new Map<string, FiledPage>();
+  let quotes = 0;
+  try {
+    for (const p of parts) {
+      const r = await captureIngested(await p.ing(), { product: st().space, own: p.own, onActivity: step(id), signal: ctrl.signal });
+      sources.push(r.sourceId);
+      quotes += r.quotes;
+      for (const f of r.filed?.pages ?? []) if (f.kind === "need") pages.set(f.id, { id: f.id, title: f.title });
+      change((c) => withJob(c, id, (j) => (j.kind === "take" ? { ...j, sources: [...sources], pages: [...pages.values()], quotes } : j)));
+    }
+    change((c) => withJob(c, id, (j) => (j.kind === "take" ? { ...j, state: "done" } : j)));
+  } catch (e) {
+    const stopped = (e as Error).name === "AbortError";
+    change((c) => withJob(c, id, (j) => (j.kind === "take" ? { ...j, state: "failed", error: stopped ? `You stopped it${sources.length ? `, after keeping ${sources.length}` : ""}.` : `It couldn't be taken in: ${message(e)}` } : j)));
+  } finally {
+    end(id);
+  }
 }
 
 /** What they're looking at on the canvas, for Qalam AI to hear: the card picked, else the page open, in its own words. */
@@ -106,37 +240,28 @@ export function aboutNow(): string | null {
 // ---------------------------------------------------------------------------
 // Ask
 
-/** A question for the organization, answered in the thread (the answer is kept with it). */
-export async function ask(question: string): Promise<void> {
+/** A question for the organization, answered in the thread (the answer is kept with it); `at`: a turn asked instead. */
+export async function ask(question: string, at: string | null = null): Promise<void> {
   const q = question.replace(/\s+/g, " ").trim();
   if (q.length < 3) return;
-  const id = addTurn(q, { kind: "ask", state: "asking" });
+  const id = jobAt(at, q, { kind: "ask", state: "asking" });
   if (!(await aiStatus()).ai) return change((c) => withJob(c, id, () => ({ kind: "ask", state: "failed", error: "Qalam AI isn't set up here. Connections says how." })));
-  const ctrl = new AbortController();
-  ctrls.set(id, ctrl);
+  const ctrl = begin(id);
   const started = Date.now();
-  useCanvasChat.setState((s) => ({ live: { ...s.live, [id]: { steps: [], started } } }));
   try {
-    const answer = await askOrganization(q, {
-      product: st().space,
-      about: aboutNow(),
-      signal: ctrl.signal,
-      onActivity: (label) => useCanvasChat.setState((s) => (s.live[id] ? { live: { ...s.live, [id]: { ...s.live[id], steps: [...s.live[id].steps, label].slice(-4) } } } : s)),
-    });
+    const answer = await askOrganization(q, { product: st().space, about: aboutNow(), signal: ctrl.signal, onActivity: step(id) });
     change((c) => withJob(c, id, () => ({ kind: "ask", state: "answered", answer, secs: Math.round((Date.now() - started) / 1000) })));
   } catch (e) {
     const stopped = (e as Error).name === "AbortError";
     change((c) => withJob(c, id, () => ({ kind: "ask", state: "failed", error: stopped ? "You stopped it." : message(e) })));
   } finally {
-    ctrls.delete(id);
-    useCanvasChat.setState((s) => {
-      const { [id]: _gone, ...live } = s.live;
-      return { live };
-    });
+    end(id);
   }
 }
 
-/** Stop what a turn is running. */
+/** Stop what a turn is running (a brain dump's call too). */
 export function stopTurn(id: string) {
   ctrls.get(id)?.abort();
+  const j = turnOf(id)?.job;
+  if (j?.kind === "dump" && useDump.getState().busy?.sourceId === j.source) stopDump(j.source);
 }

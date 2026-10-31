@@ -29,7 +29,6 @@ import { toQuestion } from "../ai/plan";
 import { Questionnaire } from "../ai/Questionnaire";
 import { answerRound, cancelAsk, changeRound, draftNow, skipQuestions, startAsk, useAsk, type Ask } from "./ask";
 import { stopBusy, useBusy, type Busy, type Done } from "./busy";
-import { useDump } from "./dump";
 import { SPACE, addFeed, checkFeed, refreshFeed, useFeeds, wiredCards, type FeedNews } from "./feeds";
 import { addSources } from "./import";
 import { ACCEPT } from "./ingest";
@@ -141,7 +140,6 @@ export default function NextSteps({ vp }: { vp: { w: number; h: number } }) {
   const editing = useDiscovery((s) => s.editing);
   const dragging = useDiscovery((s) => s.dragging);
   const designFor = useDiscovery((s) => s.designFor);
-  const dump = useDump((s) => !!s.open && !s.minimised);
   const reviewing = useReview((s) => s.proposals.length > 0);
   // A problem's page not on a board yet keeps the card bar's "Work on it".
   const faint = useSpaceView((s) => !!sel && s.faint.has(sel));
@@ -161,7 +159,7 @@ export default function NextSteps({ vp }: { vp: { w: number; h: number } }) {
   const inset = useDiscovery((s) => s.inset);
   // The canvas it can sit on: less a panel lying over its right side.
   const room = { w: Math.max(0, vp.w - inset), h: vp.h };
-  const show = !!sel && isOstCard(node) && !!facts && !editing && !dragging && !designFor && !dump && !reviewing && !faint && tool === "select";
+  const show = !!sel && isOstCard(node) && !!facts && !editing && !dragging && !designFor && !reviewing && !faint && tool === "select";
   const world = show ? worldBounds(studio().doc, sel) : null;
   const box = world && toScreenBox(world, cam);
   const onScreen = !!box && box.x + box.w >= 0 && box.x <= room.w && box.y + box.h >= 0 && box.y <= room.h;

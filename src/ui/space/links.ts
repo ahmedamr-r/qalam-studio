@@ -5,7 +5,7 @@ import { addCardIn, makeCardNode, newCard } from "@/discovery/ops";
 import { sameTopic } from "@/hub/topics";
 import { useSpaceView } from "@/space/view";
 import { glideToLayer, onCanvasReady } from "../discovery/canvas";
-import { startDump } from "../discovery/dump";
+import { sendToChat } from "./chat/store";
 import { takeIdea } from "../discovery/idea";
 import { reviewPlacements, usePlacements } from "../discovery/placements";
 import { draftSolutionsFor, draftsFromUrl } from "../discovery/solutions";
@@ -24,7 +24,7 @@ import { addMaterial } from "./new";
  *   ?solutions=<topic>    the drafts kept on the problem's page, reviewed under its card
  *   ?review=placed        what Qalam AI found for the space's boards, reviewed
  *   ?source=<id>          that source read
- *   ?idea=1               the first run's idea, read as a brain dump
+ *   ?idea=1               the first run's idea, read as a brain dump in the chat
  *   ?add=1                the sources open on adding what customers said (Evidence's old address)
  */
 
@@ -72,7 +72,7 @@ export async function consumeHomeParams() {
   if (source) openSourceItem(source);
   if (idea === "1") {
     const text = takeIdea();
-    if (text) void startDump(text);
+    if (text) void sendToChat(text, "dump");
   }
 }
 
