@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import LaneReader, { useReaderWidth } from "./discovery/LaneReader";
+import CordPicker from "./discovery/CordPicker";
 import { useDiscovery } from "./discovery/store";
 import clsx from "clsx";
 import * as Tabs from "@radix-ui/react-tabs";
@@ -253,7 +254,9 @@ function RightPanel() {
   const tab: RightTab = designOnly ? "design" : chosen;
   const tabs = board ? [{ value: "design" as RightTab, label: "Board" }] : designOnly ? RIGHT_TABS.slice(0, 1) : RIGHT_TABS;
   const reading = useDiscovery((s) => s.reading);
-  // A source from the board's lane is read in place of the panel.
+  const cordPick = useDiscovery((s) => s.cordPick);
+  // A cord drawn onto a card picks its quotes, and a source from the board's lane is read, in place of the panel.
+  if (board && cordPick) return <CordPicker />;
   if (board && reading) return <LaneReader />;
   return (
     <Tabs.Root value={tab} onValueChange={(v) => setRightTab(v as RightTab)} asChild>

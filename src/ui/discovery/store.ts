@@ -37,8 +37,10 @@ interface DiscoveryUI {
   work: Record<string, WorkStatus>;
   /** The sources lane's item open in the reader (its key, src/discovery/lane.ts). */
   reading: string | null;
+  /** A cord drawn from a lane source's port onto a card: its quotes picked in the right panel. */
+  cordPick: { key: string; card: string } | null;
 }
 
-export const useDiscovery = create<DiscoveryUI>(() => ({ editing: null, sheet: "closed", designFor: null, designs: {}, dragging: false, drafting: null, quoteDrop: null, notices: [], work: {}, reading: null }));
+export const useDiscovery = create<DiscoveryUI>(() => ({ editing: null, sheet: "closed", designFor: null, designs: {}, dragging: false, drafting: null, quoteDrop: null, notices: [], work: {}, reading: null, cordPick: null }));
 
 export const discovery = () => useDiscovery.getState();

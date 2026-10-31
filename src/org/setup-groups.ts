@@ -1,6 +1,9 @@
 import { newId } from "@/doc/factory";
 import type { SourceQuote } from "@/discovery/sources";
 import { wordsHold } from "@/goals/said";
+import { wordOverlap } from "@/discovery/near";
+
+export { wordOverlap };
 import type { SetupProblem, SetupSession } from "./setup";
 
 /*
@@ -21,15 +24,6 @@ export function titleOf(words: string): string {
   if (first.length <= CARD_TITLE_MAX) return first;
   const cut = one.slice(0, CARD_TITLE_MAX);
   return `${cut.slice(0, cut.lastIndexOf(" ") > 80 ? cut.lastIndexOf(" ") : CARD_TITLE_MAX).trim()}…`;
-}
-
-const STOP = new Set("about after also and are because been but can could did does for from had has have her his how into its just like more most much not now only our out over some such than that the their them then there these they this those very was were what when where which while who why will with would your you".split(" "));
-const words = (s: string) => new Set(s.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 2 && !STOP.has(w)));
-
-/** How many words (past the small ones) two texts share. */
-export function wordOverlap(a: string, b: string): number {
-  const mine = words(a);
-  return [...words(b)].filter((w) => mine.has(w)).length;
 }
 
 /** The need an idea answers: the one sharing the most words with it, else the first. */

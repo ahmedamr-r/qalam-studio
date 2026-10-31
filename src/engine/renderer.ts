@@ -291,7 +291,7 @@ export class Renderer {
       if (!boxesIntersect(rootBounds(doc, id), view)) continue;
       this.drawNode(canvas, doc, id, input);
     }
-    if (lane) this.lanes.drawItems(canvas, lane);
+    if (lane) this.lanes.drawItems(canvas, lane, input.camera.zoom);
     // Routes' state cards: their components, on the cards the route painter drew.
     const cards = input.view?.routeParts ? cardDoc(doc) : null;
     for (const id of cards?.roots ?? []) if (boxesIntersect(rootBounds(cards!, id), view)) this.drawNode(canvas, cards!, id, input);

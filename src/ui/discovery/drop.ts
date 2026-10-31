@@ -80,6 +80,19 @@ export function attachQuote(cardId: string, sourceId: string, quoteId: string): 
   return true;
 }
 
+/** Attach several of a source's quotes to a card at once, as the builder's choice (one undo step). The number attached. */
+export function attachQuotes(cardId: string, sourceId: string, quoteIds: readonly string[]): number {
+  const s = sourceOf(sourceId);
+  const card = cardOf(studio().doc, cardId);
+  if (!s || !card || !quotable(card, s.kind)) return 0;
+  const fresh = s.quotes.filter((q) => quoteIds.includes(q.id) && !hasQuote(card, s.id, q.span, quotePiece(q.id)));
+  if (!fresh.length) return 0;
+  studio().mutate((d) => updateCardIn(d, cardId, (c) => void c.evidence.push(...fresh.map((q) => quoteEvidence(s, q, "user")))));
+  const what = s.kind === "dump" ? (fresh.length === 1 ? "Your words" : `${fresh.length} pieces of your words`) : fresh.length === 1 ? "A quote" : `${fresh.length} quotes`;
+  feedback(`${what} attached to “${card.title.length > 48 ? `${card.title.slice(0, 47)}…` : card.title}”`, { kind: "success", id: "discovery.quote" });
+  return fresh.length;
+}
+
 /** Over a board: true when the drag is the board's own (a quote, a source, files to read). */
 export function boardDragOver(e: DragEvent, world: Pt): boolean {
   if (carries(e, QUOTE_MIME)) {

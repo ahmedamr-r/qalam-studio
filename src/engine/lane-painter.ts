@@ -23,6 +23,8 @@ export interface LaneRender {
   lit: { items: ReadonlySet<string>; cards: ReadonlySet<string>; edges: ReadonlySet<string> } | null;
   /** The source under the pointer. */
   hover: string | null;
+  /** A cord being drawn from a source's port to the pointer (ok: the card under it can take its words). */
+  cord?: { from: { x: number; y: number }; to: { x: number; y: number }; ok: boolean } | null;
 }
 
 const FONT = ["Inter", "IBM Plex Sans Arabic"];
@@ -131,9 +133,29 @@ export class LanePainter {
     }
   }
 
-  /** The sources in their column. */
-  drawItems(canvas: Canvas, r: LaneRender) {
+  /** The sources in their column, then a cord being drawn, over everything. */
+  drawItems(canvas: Canvas, r: LaneRender, zoom = 1) {
     for (const it of r.lane.items) this.drawItem(canvas, it, r);
+    if (r.cord) this.drawCord(canvas, r.cord, zoom);
+  }
+
+  /** A cord from a source's port to the pointer: the selection's colour where it can land, dashed where it can't. */
+  private drawCord(canvas: Canvas, c: NonNullable<LaneRender["cord"]>, zoom: number) {
+    const p = this.pal;
+    const path = new this.ck.PathBuilder();
+    path.moveTo(c.from.x, c.from.y);
+    path.cubicTo(...wireCurve(c.from.x, c.from.y, c.to.x, c.to.y), c.to.x, c.to.y);
+    const built = path.detachAndDelete();
+    const dash = c.ok ? null : this.ck.PathEffect.MakeDash([5 / Math.min(1, zoom), 4 / Math.min(1, zoom)], 0);
+    this.stroke.setColor(this.col(c.ok ? p.selection : p.muted));
+    this.stroke.setStrokeWidth(WIRE.lit / Math.min(1, zoom));
+    this.stroke.setPathEffect(dash);
+    canvas.drawPath(built, this.stroke);
+    this.stroke.setPathEffect(null);
+    dash?.delete();
+    built.delete();
+    this.fill.setColor(this.col(c.ok ? p.selection : p.muted));
+    canvas.drawCircle(c.to.x, c.to.y, WIRE.dot + 0.5, this.fill);
   }
 
   private drawItem(canvas: Canvas, it: LaneItem, r: LaneRender) {

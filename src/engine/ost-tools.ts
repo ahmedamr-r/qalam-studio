@@ -12,7 +12,6 @@ import { CARD } from "@/discovery/metrics";
 import { makeSticky } from "@/discovery/sticky";
 import { discovery, useDiscovery } from "@/ui/discovery/store";
 import { startTitleEdit } from "@/ui/discovery/editing";
-import { openSource } from "@/ui/discovery/sources";
 import { openBrainDump } from "@/ui/discovery/dump";
 import { looksLikeDump } from "@/discovery/dump";
 import { hitPath, pickTarget } from "./hit-test";
@@ -37,9 +36,11 @@ function noticedCards(list: Notice[]): ReadonlySet<string> {
 import type { PointerInfo } from "./vector-tools";
 import { cardWork, type WorkStatus } from "@/connectors/work";
 import { laneOf, litBy, NO_LANE, type Lane, type LaneItem } from "@/discovery/lane";
-import type { SourceRecord } from "@/discovery/sources";
-import { useSources } from "@/ui/discovery/sources";
+import { SOURCE, sourceTile } from "@/discovery/look";
+import { quotable, type SourceRecord } from "@/discovery/sources";
+import { sourceOf, useSources } from "@/ui/discovery/sources";
 import type { LaneRender } from "./lane-painter";
+import { openSource } from "@/ui/discovery/sources";
 
 /** The board's sources lane (kept while the document and its sources are the same; none with the view option off). */
 let laneMemo: { doc: Doc; list: SourceRecord[]; visiting: SourceRecord[]; lane: Lane } | null = null;
@@ -55,6 +56,17 @@ export function boardLane(): Lane {
 /** The lane's source card at a world point. */
 function laneAt(world: Pt): LaneItem | null {
   return boardLane().items.find((i) => world.x >= i.x && world.x <= i.x + i.w && world.y >= i.y && world.y <= i.y + i.h) ?? null;
+}
+
+/** The lane source whose port (where its wires leave) is at a world point: grabbed, it draws a cord. */
+function portAt(world: Pt): LaneItem | null {
+  const r = Math.max(SOURCE.port * 2, 8 / studio().camera.zoom);
+  return (
+    boardLane().items.find((i) => {
+      const { port } = sourceTile(i);
+      return Math.hypot(world.x - port.x, world.y - port.y) <= r;
+    }) ?? null
+  );
 }
 import type { OstCard } from "@/discovery/types";
 
@@ -81,6 +93,8 @@ function workChips(statuses: Record<string, WorkStatus>) {
  *     new parent, or between two cards to change its order; dropped on the empty board it becomes
  *     a branch of its own there. Drops the tree's rules don't allow are refused, with the reason.
  *   - click a card's fold toggle; double-click a card to type its title
+ *   - drag from a lane source's port onto a card: a cord, and the right panel picks which of its
+ *     quotes the card rests on (no quote picked, no cord)
  */
 
 const DRAG_THRESHOLD = 3;
@@ -147,6 +161,13 @@ export function createOstTools(): CanvasDelegate {
   let hoverToggle: string | null = null;
   /** The lane's source under the pointer. */
   let hoverLane: string | null = null;
+  /** A lane source's port under the pointer. */
+  let hoverPort: string | null = null;
+  /** A cord being drawn from a source's port: where the pointer is, the card under it, and whether it can rest on the source's words. */
+  let cord: { item: LaneItem; to: Pt; target: string | null; ok: boolean } | null = null;
+
+  /** Whether a card can rest on the cord's source's words (and isn't under Qalam AI's proposals). */
+  const takes = (item: LaneItem, card: string, world: Pt) => quotable(cardOf(studio().doc, card) ?? undefined, sourceOf(item.sourceId)?.kind) && !coveredAt(world);
 
   /** Where the dragged cards would land with the pointer here. */
   const dropAt = (d: Drag, world: Pt): Drag["drop"] => {
@@ -260,6 +281,13 @@ export function createOstTools(): CanvasDelegate {
         toggleCollapsed([fold]);
         return true;
       }
+      // A source's port starts a cord to a card.
+      const port = portAt(p.world);
+      if (port) {
+        cord = { item: port, to: p.world, target: null, ok: false };
+        s.invalidate();
+        return true;
+      }
       // A source in the lane opens its reader (what it backs, its words marked).
       const source = laneAt(p.world);
       if (source) {
@@ -287,6 +315,12 @@ export function createOstTools(): CanvasDelegate {
     },
 
     pointerMove(p: PointerInfo) {
+      if (cord) {
+        const target = cardAt(studio().doc, p.world);
+        cord = { ...cord, to: p.world, target, ok: !!target && takes(cord.item, target, p.world) };
+        studio().invalidate();
+        return true;
+      }
       if (drag) {
         if (!drag.active) {
           if (Math.hypot(p.screen.x - drag.startScreen.x, p.screen.y - drag.startScreen.y) < DRAG_THRESHOLD) return true;
@@ -301,16 +335,27 @@ export function createOstTools(): CanvasDelegate {
       const s = studio();
       if (s.tool !== "select") return false;
       const t = toggleAt(s.doc, p.world);
+      const port = t ? null : (portAt(p.world)?.key ?? null);
       const lane = t ? null : (laneAt(p.world)?.key ?? null);
-      if (t !== hoverToggle || lane !== hoverLane) {
+      if (t !== hoverToggle || lane !== hoverLane || port !== hoverPort) {
         hoverToggle = t;
         hoverLane = lane;
+        hoverPort = port;
         s.invalidate();
       }
-      return !!t || !!lane;
+      return !!t || !!lane || !!port;
     },
 
     pointerUp() {
+      if (cord) {
+        const c = cord;
+        cord = null;
+        studio().invalidate();
+        // On a card that can take its words: pick which in the right panel.
+        if (c.target && c.ok) useDiscovery.setState({ cordPick: { key: c.item.key, card: c.target }, reading: null });
+        else if (c.target) feedback(sourceOf(c.item.sourceId)?.kind === "dump" ? "Your words back outcomes, problems and solutions" : "Quotes back problems and solutions", { id: "discovery.quote" });
+        return true;
+      }
       const d = drag;
       drag = null;
       if (!d) return false;
@@ -338,7 +383,9 @@ export function createOstTools(): CanvasDelegate {
     },
 
     cursor() {
+      if (cord) return cord.ok ? "copy" : "crosshair";
       if (drag?.active) return drag.drop && !drag.drop.ok ? "not-allowed" : "grabbing";
+      if (hoverPort) return "crosshair";
       if (hoverToggle || hoverLane) return "pointer";
       const tool = studio().tool;
       return tool === "card" || tool === "sticky" ? "crosshair" : null;
@@ -350,11 +397,11 @@ export function createOstTools(): CanvasDelegate {
       const ui = discovery();
       const lane = boardLane();
       return {
-        lane: lane.items.length ? laneRender(lane, hoverLane ?? ui.reading) : null,
+        lane: lane.items.length ? { ...laneRender(lane, cord?.item.key ?? hoverLane ?? ui.reading), cord: cord ? { from: sourceTile(cord.item).port, to: cord.to, ok: cord.ok } : null } : null,
         editingId: ui.editing?.id ?? null,
         drag: drag?.active ? { ids: drag.ids, dx: drag.dx, dy: drag.dy } : null,
-        // A card being dragged, else a quote dragged in from the Sources tab.
-        drop: drag?.active && drag.drop ? { target: drag.drop.target, line: drag.drop.line, ok: drag.drop.ok } : ui.quoteDrop ? { target: ui.quoteDrop.target, line: null, ok: ui.quoteDrop.ok } : null,
+        // A card being dragged, a cord being drawn, else a quote dragged in from the Sources tab.
+        drop: drag?.active && drag.drop ? { target: drag.drop.target, line: drag.drop.line, ok: drag.drop.ok } : cord?.target ? { target: cord.target, line: null, ok: cord.ok } : ui.quoteDrop ? { target: ui.quoteDrop.target, line: null, ok: ui.quoteDrop.ok } : null,
         hoverToggle,
         noticed: noticedCards(ui.notices),
         work: workChips(ui.work),
