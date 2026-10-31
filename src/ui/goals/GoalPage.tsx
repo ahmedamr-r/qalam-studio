@@ -20,7 +20,8 @@ import { strengthFill, strengthOf } from "@/hub/needs";
 import { orgFetch, orgJson, orgPath } from "@/org/client";
 import { useOrgContext } from "@/org/context";
 import { onOrgChange } from "@/org/live";
-import { goalHref, projectHref, spaceHref, topicHref } from "@/projects/model";
+import { goalHref, spaceHref, topicHref } from "@/projects/model";
+import { boardHomeHref } from "../space/href";
 import { Button, Tip } from "../controls";
 import DecisionRow from "../decisions/DecisionRow";
 import { PageFrame } from "../frame/PageFrame";
@@ -169,7 +170,7 @@ export default function GoalPage({ id }: { id: string }) {
   const workOn = (p: GoalProblem) => {
     const target = (p.via && goals.goals.find((x) => x.id === p.via)) || g;
     const on = page.boards.find((b) => b.goal === target.id);
-    if (on) return window.location.assign(`${projectHref({ id: on.board, type: "discovery" })}?problem=${encodeURIComponent(p.topic)}&under=${encodeURIComponent(on.card)}`);
+    if (on) return window.location.assign(boardHomeHref(on.board, target.product, { query: `problem=${encodeURIComponent(p.topic)}&under=${encodeURIComponent(on.card)}` }));
     void startBoardForGoal(target, p.topic);
   };
 
@@ -254,18 +255,16 @@ export default function GoalPage({ id }: { id: string }) {
         <section aria-label="The board working on it" className="flex flex-wrap items-center justify-between gap-[12px] rounded-lg bg-panel px-[14px] py-[10px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
           {board ? (
             <>
-              <span className="text-body text-fg-muted">
-                Worked on in <span className="text-fg">{board.name}</span>
-              </span>
-              <a href={`${projectHref({ id: board.board, type: "discovery" })}?card=${encodeURIComponent(board.card)}`} className={clsx(r.buttonSm, r.buttonSecondary)}>
-                Open the board
+              <span className="text-body text-fg-muted">Its problems, solutions and tests are on the canvas, under it.</span>
+              <a href={boardHomeHref(board.board, g.product, { card: board.card })} className={clsx(r.buttonSm, r.buttonSecondary)}>
+                Show it on the canvas
               </a>
             </>
           ) : (
             <>
-              <span className="text-body text-fg-muted">No board works on this goal yet.</span>
+              <span className="text-body text-fg-muted">Nothing is worked on under it yet.</span>
               <Button variant="secondary" size="sm" onClick={() => void startBoardForGoal(g)}>
-                Start a board
+                Work on it on the canvas
               </Button>
             </>
           )}
@@ -393,8 +392,8 @@ function ProblemRow({ p, via, at, onWork, onUnlink, boardName }: { p: GoalProble
           {p.against > 0 && <span className="text-warning"> · {p.against} against</span>}
         </span>
         {onThis ? (
-          <a href={`${projectHref({ id: onThis.board, type: "discovery" })}?card=${encodeURIComponent(onThis.card)}`} className="truncate text-caption text-fg-muted hover:text-fg hover:underline">
-            On {boardName(onThis.board)}
+          <a href={boardHomeHref(onThis.board, null, { card: onThis.card })} className="truncate text-caption text-fg-muted hover:text-fg hover:underline">
+            On the canvas
           </a>
         ) : (
           <button type="button" onClick={onWork} className={clsx(r.buttonSm, r.buttonSecondary)}>

@@ -19,7 +19,7 @@ import { boardFromSetup } from "@/org/setup-board";
 import { setupQuotes, splitIds } from "@/org/setup-split";
 import { sanitizeGroups } from "@/org/setup-groups";
 import { applyLines, boardGoals, decide, lineGoalId, namedNorth, sanitizeSetup, setupSent, type OrgNow, type PlaceSays, type SetupLine, type SetupSession } from "@/org/setup";
-import { projectHref } from "@/projects/model";
+import { boardHomeHref } from "../space/href";
 import { NAME_MAX, TITLE_MAX, useYou } from "@/org/you";
 import { createProject } from "@/projects/session";
 import { initialFlow, type FlowState } from "../ai/questionFlow";
@@ -433,7 +433,7 @@ export async function startBoardFor(s: SourceRecord, lineId: string, splits?: So
   if (!session || !goal) return false;
   const made = session.boards?.[lineId];
   if (made) {
-    window.location.assign(projectHref({ id: made, type: "discovery" }));
+    window.location.assign(boardHomeHref(made, goal.product));
     return true;
   }
   // The goal the line made, as it is now (its words and number may have changed since).
@@ -453,7 +453,7 @@ export async function startBoardFor(s: SourceRecord, lineId: string, splits?: So
     if (source()?.id === s.id) useSetup.setState({ source: next });
   }
   // It opens on the idea's card, its next step (drafting its tests) on its bar.
-  window.location.assign(`${projectHref(p)}${problems.length && ideas[0] ? `?card=${ideas[0]}` : ""}`);
+  window.location.assign(boardHomeHref(p.id, p.product ?? null, problems.length && ideas[0] ? { card: ideas[0] } : {}));
   return true;
 }
 
@@ -466,14 +466,14 @@ export async function startIdeaBoard() {
   const first = boardGoals(session)[0];
   if (first) return startBoard(first.line.id);
   const made = session.boards?.idea;
-  if (made) return window.location.assign(projectHref({ id: made, type: "discovery" }));
+  if (made) return window.location.assign(boardHomeHref(made, null));
   const name = ideaBoardName(session.said || session.docs?.[0]?.title.replace(/\.[a-z0-9]{1,5}$/i, "") || s.text);
   const view = setupView(useSetup.getState());
   const { doc, problems, ideas } = boardFromSetup({ source: { ...s, quotes: view.quotes }, homeOf: view.homeOf, session, goal: null });
   const p = await createProject("discovery", name, { discovery: { v: 1, stage: "ready" } }, doc);
   for (const x of view.sources) await sourcesDb.link(x.id, p.id, true);
   await setSession((d) => ({ ...d, boards: { ...d.boards, idea: p.id } }));
-  window.location.assign(`${projectHref(p)}${problems.length && ideas[0] ? `?card=${ideas[0]}` : ""}`);
+  window.location.assign(boardHomeHref(p.id, null, problems.length && ideas[0] ? { card: ideas[0] } : {}));
 }
 
 // ---------------------------------------------------------------------------

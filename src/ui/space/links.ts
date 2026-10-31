@@ -47,7 +47,11 @@ export async function consumeHomeParams() {
   history.replaceState(null, "", `${u.pathname}${p.size ? `?${p}` : ""}${u.hash}`);
   const doc = studio().doc;
 
-  if (problem) return void addProblem(problem, under);
+  if (problem) {
+    await addProblem(problem, under);
+    if (drafts) void draftsFromUrl();
+    return;
+  }
   if (card && isOstCard(doc.nodes[card])) {
     show(card);
     if (then === "solutions" && doc.nodes[card].meta.ost?.kind === "opportunity") void draftSolutionsFor(card);

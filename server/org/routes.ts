@@ -13,7 +13,7 @@ import { orgGraph } from "@/hub/graph";
 import { filingShape, topicShape, type Topic } from "@/hub/topics";
 import { chooseFolder, createOrg, currentOrg, listOrgs, openFolder, qalamHome, rememberOrg, storeFor } from "./home";
 import { noticesNow } from "./notices";
-import { boardCards, spaceBoards } from "./map";
+import { spaceBoards } from "./map";
 import { needsNow } from "./needs";
 import { needSummary } from "@/hub/needs";
 import { quickCapture } from "../quick";
@@ -731,8 +731,6 @@ export function orgRoutes(): Hono<Env> {
     await c.get("store").removeProject(c.req.param("id"), { tab: tabOf(c.req.raw.headers) });
     return c.json({ ok: true });
   });
-  // Every board's cards, for the space's map.
-  r.get("/api/org/:org/boards/cards", async (c) => c.json(await boardCards(c.get("store"))));
   // A space's canvas: its boards' documents (?space=<product>, none for the organization's), and saving several at once.
   r.get("/api/org/:org/boards/docs", async (c) => {
     const space = c.req.query("space") || null;

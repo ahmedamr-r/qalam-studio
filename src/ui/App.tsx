@@ -11,6 +11,7 @@ import { movedTo } from "./frame/spaces";
 import StudioLoader, { CaptureLoader, GoalLoader, HomeLoader, SeenLoader, PageSuspense, PlaceLoader, SetupLoader, SpacesLoader, SystemProjectLoader, TopicLoader, WelcomeLoader } from "./StudioLoader";
 import { startInPlace } from "./nav";
 import { bootRetryDelay } from "./welcome/steps";
+import { boardHomeHref } from "./space/href";
 
 type State = { kind: "loading" } | { kind: "ready"; org: OrgRef } | { kind: "error"; message: string; missingOrg?: boolean } | { kind: "missing" };
 
@@ -42,6 +43,12 @@ export function App() {
         // Addresses from before spaces: the sidebar's ?product=, the home's old tabs, places from before the job order.
         const moved = movedTo(route, window.location.search);
         if (moved) return window.location.replace(spaceHref(moved.product, moved.place, o.id) + moved.search + window.location.hash);
+        // A board's page is its space's home now: the board's old address lands there, with what it asked for.
+        if (route.kind === "project" && route.type === "discovery" && route.org) {
+          const p = (await fetch(`/api/org/${o.id}/projects/${route.id}`).then((r) => (r.ok ? r.json() : null), () => null)) as { product?: string | null } | null;
+          if (!p) return setState({ kind: "missing" });
+          return window.location.replace(boardHomeHref(route.id, p.product ?? null, { query: window.location.search, org: o.id }) + window.location.hash);
+        }
         // An address from before organizations moves to its organization's.
         if (route.kind === "project" && !route.org) {
           const home = await findProject(route.id, route.type, o.id);

@@ -10,7 +10,7 @@ import { changeGoal } from "@/goals/client";
 import type { Goal } from "@/goals/types";
 import { setupLineFor } from "@/org/setup";
 import { topicsDb } from "@/org/topics";
-import { projectHref } from "@/projects/model";
+import { boardHomeHref } from "../space/href";
 import { createProject } from "@/projects/session";
 import { startBoardFor } from "../setup/setup";
 
@@ -70,7 +70,7 @@ export async function startBoardForNeed(topicId: string, o: { drafts?: SolutionD
   const p = await createProject("discovery", c.title.slice(0, 80), c.products[0] ? { product: c.products[0] } : {}, doc);
   for (const s of sources.values()) await sourcesDb.link(s.id, p.id, true);
   for (const d of o.drafts ?? []) await decideDraft(topicId, d.id, "accepted").catch(() => {});
-  window.location.assign(projectHref(p));
+  window.location.assign(boardHomeHref(p.id, p.product ?? null, { card: problem.id }));
 }
 
 /**
@@ -84,13 +84,9 @@ export async function startBoardForGoal(goal: Goal, topicId?: string) {
     const found = setupLineFor(goal, setups);
     if (found && (await startBoardFor(found.source, found.line.id))) return;
   }
-  const doc = emptyDoc();
-  const outcome = makeCardNode(newCard("outcome", { title: goal.title, stage: goal.status, ...(goal.metric ? { metric: goal.metric } : {}) }));
-  addCardIn(doc, outcome, null);
-  const c = topicId ? await problemCard(topicId) : null;
-  if (c) addCardIn(doc, makeCardNode(newCard("opportunity", { title: c.title, evidence: c.evidence })), outcome.id);
-  const p = await createProject("discovery", goal.title.slice(0, 80), goal.product ? { product: goal.product } : {}, doc);
-  await changeGoal(goal.id, { on: { board: p.id, card: outcome.id } }).catch(() => {});
-  for (const s of c?.sources ?? []) await sourcesDb.link(s.id, p.id, true);
-  window.location.assign(projectHref(p));
+  // Otherwise on the space's canvas: the goal's card there (its id is the goal's while it has no
+  // board), with the problem put under it; adding under it starts its board.
+  const card = goal.on?.card ?? goal.id;
+  const query = topicId ? `problem=${encodeURIComponent(topicId)}&under=${encodeURIComponent(card)}` : "";
+  window.location.assign(boardHomeHref(goal.on?.board ?? "", goal.product, topicId ? { query } : { card }));
 }

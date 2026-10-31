@@ -52,7 +52,6 @@ import { Splash } from "./brand";
 import { CommandSurfaces } from "./surfaces";
 import { frameCount, motionArmed } from "./shell";
 import { useProjectType } from "@/projects/mode";
-import { startDiscoveryStudio } from "./discovery/boot";
 import DesignPanel from "./discovery/DesignPanel";
 import { allCards } from "@/discovery/tree";
 import { consumeHandoff, focusFromUrl, startServesTagging, syncServes } from "./discovery/handoff-consume";
@@ -99,13 +98,6 @@ export default function Studio({ projectId, mode = "screens" }: { projectId: str
       .then(([p]) => {
         setTextMeasurer(measureTextProps);
         startAutoLayout();
-        // A Discovery board: its trees, gestures and commands (no design system to follow).
-        if (p.type === "discovery") {
-          installDevHooks();
-          startDocPersistence(startDiscoveryStudio(p));
-          keepCurrent();
-          return setState("ready");
-        }
         // Screens follow their design system live (components edited in Assets, by AI or in Tokens).
         startSystemSync();
         installDevHooks();
