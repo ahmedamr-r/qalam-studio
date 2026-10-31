@@ -634,10 +634,12 @@ export class Renderer {
   private drawCardNode(canvas: Canvas, doc: Doc, n: CardNode, input: RenderInput) {
     canvas.save();
     canvas.concat(toCk(localMatrix(n)));
-    const faded = !!input.ost?.drag?.ids.includes(n.id);
+    const dragged = !!input.ost?.drag?.ids.includes(n.id);
+    // The space's map: what isn't on a board yet is drawn faint.
+    const faded = dragged || !!input.ost?.faint?.has(n.id);
     if (faded) {
       const lp = new this.ck.Paint();
-      lp.setAlphaf(0.3);
+      lp.setAlphaf(dragged ? 0.3 : 0.6);
       canvas.saveLayer(lp);
       lp.delete();
     }

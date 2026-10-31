@@ -39,6 +39,8 @@ export interface OstRenderInput {
   work?: ReadonlyMap<string, { label: string; tone: "ok" | "warn" | "off" }>;
   /** The board's sources lane, wired to its cards (painted by ./lane-painter.ts). */
   lane?: LaneRender | null;
+  /** Cards drawn faint (the space's map: problems not on a board yet). */
+  faint?: ReadonlySet<string>;
 }
 
 export interface OstFrame {
