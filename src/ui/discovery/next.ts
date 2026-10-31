@@ -81,7 +81,7 @@ export async function runStep(card: string, step: NextStep, f: CardFacts, o: { l
       if (f.page) navigate(topicHref(f.page.topic));
       return;
     case "next-job":
-      if (f.goal) navigate(`${goalHref(f.goal.id)}#unknowns`);
+      if (f.goal) navigate(goalHref(f.goal.id, undefined, "unknowns"));
       return;
     case "pass-line":
       return usePassLine(card);

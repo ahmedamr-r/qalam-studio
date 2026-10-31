@@ -1,17 +1,21 @@
 import { useState } from "react";
 import clsx from "clsx";
 import { strengthFill, strengthOf, type RankedNeed } from "@/hub/needs";
-import { projectHref, topicHref } from "@/projects/model";
+import { topicHref } from "@/projects/model";
+import { useSpaceView } from "@/space/view";
+import { cardForPage } from "@/space/pages";
+import { cardHref } from "../space/href";
+import { addProblem } from "../space/links";
+import { workOnProblem } from "../space/SpacePanel";
 import type { ShowsUpOn } from "@/org/topics";
 import { r } from "../recipes";
 import { Meter, Sparkline, StatusDot } from "../viz";
-import { startBoardForNeed } from "./start-board";
 
 /*
  * The strip on top of a need's page: how strong its backing is, at a glance. A meter and a word,
  * its quotes and sources (and what speaks against it), when that evidence arrived over eight weeks,
- * who raises it (the segment pages citing the same words), and the board that has it, or a way to
- * start one.
+ * who raises it (the segment pages citing the same words), and the card that has it on the canvas,
+ * or "Work on it", which puts it there (where it's drawn faint, else on its own).
  */
 
 const STRENGTH: Record<ReturnType<typeof strengthOf>, string> = { strong: "Strong", growing: "Growing", thin: "Thin", assumed: "Assumed" };
@@ -41,7 +45,7 @@ export function NeedStrip({ s, shows }: { s: RankedNeed; shows: ShowsUpOn[] }) {
         </span>
         <span className="ml-auto flex items-center gap-[8px]">
           {board ? (
-            <a href={`${projectHref({ id: board.board, type: "discovery" })}?card=${encodeURIComponent(board.card)}`} className="inline-flex items-center gap-[6px] text-caption text-fg-muted hover:text-fg hover:underline">
+            <a href={cardHref(board.board, board.card)} className="inline-flex items-center gap-[6px] text-caption text-fg-muted hover:text-fg hover:underline">
               <StatusDot tone="ok" />
               On {boardName}
               {s.boards.length > 1 ? ` +${s.boards.length - 1}` : ""}
@@ -57,11 +61,12 @@ export function NeedStrip({ s, shows }: { s: RankedNeed; shows: ShowsUpOn[] }) {
                 disabled={starting}
                 onClick={() => {
                   setStarting(true);
-                  void startBoardForNeed(s.topic).finally(() => setStarting(false));
+                  const faint = cardForPage({ page: s.topic }, useSpaceView.getState().things);
+                  void (faint ? workOnProblem(s.topic, faint) : addProblem(s.topic, null)).finally(() => setStarting(false));
                 }}
                 className={clsx(r.buttonSm, r.buttonSecondary)}
               >
-                {starting ? "Starting…" : "Start a board"}
+                {starting ? "Adding…" : "Work on it"}
               </button>
             </>
           )}

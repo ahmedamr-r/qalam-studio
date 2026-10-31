@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import clsx from "clsx";
 import { MoreHorizontal, Plus, Quote } from "lucide-react";
 import { nanoid } from "nanoid";
@@ -11,13 +11,14 @@ import { ConflictError, currentOrg, type OrgRef } from "@/org/client";
 import { useOrgContext } from "@/org/context";
 import { onOrgChange } from "@/org/live";
 import { topicsDb, type CitedPiece, type TopicView } from "@/org/topics";
-import { projectHref, spaceHref } from "@/projects/model";
+import { canvasPageHref } from "@/projects/model";
 import { Button, Tip } from "../controls";
 import { Menu, MenuItem, MenuSeparator, SubMenu } from "../menu";
 import { r } from "../recipes";
 import { confirmDialog, promptDialog } from "../surfaces/dialog";
-import { PageFrame } from "../frame/PageFrame";
-import { useItemSpace } from "../frame/useSpace";
+import { itemSpace, type Space } from "../frame/spaces";
+import { boardHref, cardHref } from "../space/href";
+import { closePage, PanelPageHeader } from "../space/page";
 import { QalamAIGlyph } from "../brand";
 import { NeedStrip } from "./NeedStrip";
 import { Drafts } from "./Drafts";
@@ -26,10 +27,9 @@ import { BearsOn } from "./BearsOn";
 import { ago } from "../time";
 import { Dictated } from "../voice/MicButton";
 import { lab } from "@/lab";
-import { navigate } from "../nav";
 
 /**
- * One topic page: what the organization knows about a need, a kind of customer or a product, what
+ * One topic page, open in a space's canvas panel (../space/page.tsx): what the organization knows about a need, a kind of customer or a product, what
  * it believes, what speaks against it and what nobody knows yet. Each line shows the pieces it rests
  * on (hover one for its words, click to open it where it lives), how many quotes back it, and what's
  * been said against it. People add, edit, move and remove lines; a line they edit is theirs, and
@@ -49,7 +49,7 @@ const EMPTY: Record<TopicSection, string> = {
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-export default function TopicPage({ id }: { id: string }) {
+export default function TopicView({ id, space }: { id: string; space: Space }) {
   const [view, setView] = useState<TopicView | null>(null);
   const [missing, setMissing] = useState(false);
   const [org, setOrg] = useState<OrgRef | null>(null);
@@ -57,6 +57,7 @@ export default function TopicPage({ id }: { id: string }) {
   const version = useRef<string | null>(null);
   const saving = useRef(0);
   const { products } = useOrgContext();
+  const ids = useId();
 
   const load = useCallback(() => {
     void topicsDb.get(id).then(
@@ -90,27 +91,14 @@ export default function TopicPage({ id }: { id: string }) {
     });
   }, [id, load]);
 
-  // The space it shows in: the tab's, else its product's when it has one (src/ui/frame/spaces.ts).
-  const space = useItemSpace(view?.topic.products ?? null);
-
   if (missing)
     return (
-      <div className="fixed inset-0 grid place-items-center bg-app text-fg">
-        <div className="flex w-[320px] flex-col items-center gap-[12px] text-center">
-          <p className="text-title font-medium">This page isn&apos;t here</p>
-          <p className="text-body text-fg-muted">It was deleted, or its file moved out of the organization&apos;s folder.</p>
-          <a className={clsx(r.button, r.buttonSecondary)} href={spaceHref(space, "problems")}>
-            Back to the problems
-          </a>
-        </div>
+      <div className="flex flex-col gap-[14px] px-[16px] py-[14px]">
+        <PanelPageHeader kind="Page" title="This page isn't here" />
+        <p className="text-body text-fg-muted">It was deleted, or its file moved out of the organization&apos;s folder.</p>
       </div>
     );
-  if (!view)
-    return (
-      <PageFrame place="problems" crumbs={[{ label: "Problems", href: spaceHref(space, "problems") }]} space={space}>
-        <div />
-      </PageFrame>
-    );
+  if (!view) return <div className={clsx(r.skeleton, "m-[16px] h-[120px] rounded-lg")} aria-hidden />;
   const t = view.topic;
 
   /** Save the page as changed here; a change made elsewhere meanwhile wins, and the page shows it. */
@@ -168,34 +156,43 @@ export default function TopicPage({ id }: { id: string }) {
     const ok = await confirmDialog({ title: `Delete “${t.title}”?`, body: "The page is removed from the organization's folder. The sources and boards its lines rest on stay as they are.", confirmLabel: "Delete page", danger: true });
     if (!ok) return;
     await topicsDb.remove(t.id);
-    navigate(spaceHref(space, t.kind === "need" ? "problems" : "evidence"));
+    closePage({ gone: true });
   };
 
   const productNames = t.products.map((p) => products.find((x) => x.id === p)?.name).filter(Boolean) as string[];
+  // A page of another product's is shown here too; its own canvas is one click away.
+  const elsewhere = space !== null && !t.products.includes(space);
   return (
-    <PageFrame place={t.kind === "need" ? "problems" : "evidence"} crumbs={[t.kind === "need" ? { label: "Problems", href: spaceHref(space, "problems") } : { label: "Evidence", href: spaceHref(space, "evidence") }, { label: t.title }]} space={space}>
-        <div className={clsx(r.pageMain, "max-w-[760px]")}>
+    <div className="@container flex flex-col gap-[20px] px-[16px] py-[14px]">
           <div className="flex flex-col gap-[8px]">
-            <div className="flex items-start justify-between gap-[12px]">
-              <h1 className="text-display font-semibold text-fg">{t.title}</h1>
-              <Menu
-                label="Page actions"
-                align="end"
-                className="w-[180px]"
-                trigger={
-                  <button type="button" aria-label="Page actions" className={clsx(r.iconButton, "shrink-0")}>
-                    <MoreHorizontal {...ICON} />
-                  </button>
-                }
-              >
-                <MenuItem onSelect={() => void rename()}>Rename…</MenuItem>
-                <MenuSeparator />
-                <MenuItem danger onSelect={() => void remove()}>
-                  Delete page…
-                </MenuItem>
-              </Menu>
-            </div>
-            <p className="text-caption text-fg-muted">{[TOPIC_KIND_LABEL[t.kind], ...(productNames.length ? productNames : ["Whole organization"]), `updated ${ago(t.updatedAt)}`].join(" · ")}</p>
+            <PanelPageHeader
+              kind={TOPIC_KIND_LABEL[t.kind]}
+              title={t.title}
+              actions={
+                <Menu
+                  label="Page actions"
+                  align="end"
+                  className="w-[180px]"
+                  trigger={
+                    <button type="button" aria-label="Page actions" className={clsx(r.iconButtonSm, "shrink-0")}>
+                      <MoreHorizontal {...ICON} />
+                    </button>
+                  }
+                >
+                  <MenuItem onSelect={() => void rename()}>Rename…</MenuItem>
+                  <MenuSeparator />
+                  <MenuItem danger onSelect={() => void remove()}>
+                    Delete page…
+                  </MenuItem>
+                </Menu>
+              }
+            />
+            <p className="text-caption text-fg-muted">{[...(productNames.length ? productNames : ["Whole organization"]), `updated ${ago(t.updatedAt)}`].join(" · ")}</p>
+            {elsewhere && (
+              <a href={canvasPageHref({ page: t.id }, itemSpace(t.products, undefined))} className="self-start text-caption text-fg-muted hover:text-fg hover:underline">
+                Open it on its own canvas
+              </a>
+            )}
             {t.intro && <p className="whitespace-pre-wrap text-body text-fg-muted">{t.intro}</p>}
           </div>
 
@@ -206,9 +203,9 @@ export default function TopicPage({ id }: { id: string }) {
           {SECTIONS.map((s) => {
             const lines = t.lines.filter((l) => l.section === s);
             return (
-              <section key={s} aria-labelledby={`section-${s}`} className="flex flex-col gap-[8px]">
+              <section key={s} aria-labelledby={`${ids}section-${s}`} className="flex flex-col gap-[8px]">
                 <div className="flex items-center justify-between gap-[12px]">
-                  <h2 id={`section-${s}`} className="text-title font-medium">
+                  <h2 id={`${ids}section-${s}`} className="text-title font-medium">
                     {SECTION_HEADING[s]}
                     {lines.length > 0 && <span className="ml-[6px] text-caption font-normal text-fg-subtle">{lines.length}</span>}
                   </h2>
@@ -246,15 +243,15 @@ export default function TopicPage({ id }: { id: string }) {
 
           {t.kind === "need" && <BearsOn need={t.id} />}
 
-          <section aria-labelledby="shows" className="flex flex-col gap-[8px]">
-            <h2 id="shows" className="text-title font-medium">
+          <section aria-labelledby={`${ids}shows`} className="flex flex-col gap-[8px]">
+            <h2 id={`${ids}shows`} className="text-title font-medium">
               Shows up on
             </h2>
             {view.shows.length ? (
               <ul className="flex flex-col divide-y divide-line-subtle rounded-lg bg-panel shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
                 {view.shows.map((c) => (
                   <li key={c.ref}>
-                    <a href={`${projectHref({ id: c.board, type: "discovery" })}?card=${encodeURIComponent(c.card)}`} className="q-item flex flex-col gap-[2px] px-[12px] py-[10px] hover:bg-hover">
+                    <a href={cardHref(c.board, c.card)} className="q-item flex flex-col gap-[2px] px-[12px] py-[10px] hover:bg-hover">
                       <span className="text-body text-fg">{c.title}</span>
                       <span className="text-caption text-fg-muted">
                         {[KIND_LABEL[c.kind as OstKind] ?? "Card", `on ${c.boardName ?? "a board"}`, c.shared ? `rests on ${c.shared} of the pieces this page cites` : "named like this page"].join(" · ")}
@@ -271,8 +268,8 @@ export default function TopicPage({ id }: { id: string }) {
           {t.notes && <p className="whitespace-pre-wrap text-caption text-fg-muted">{t.notes}</p>}
 
           {!!t.history.length && (
-            <section aria-labelledby="history" className="flex flex-col gap-[8px]">
-              <h2 id="history" className="text-title font-medium">
+            <section aria-labelledby={`${ids}history`} className="flex flex-col gap-[8px]">
+              <h2 id={`${ids}history`} className="text-title font-medium">
                 History
               </h2>
               <ul className="flex flex-col gap-[4px]">
@@ -295,8 +292,7 @@ export default function TopicPage({ id }: { id: string }) {
             </Tip>
             {org ? <span className="truncate">· {t.file}</span> : null}
           </p>
-        </div>
-    </PageFrame>
+    </div>
   );
 }
 
@@ -406,9 +402,9 @@ function backingOf(refs: string[], view: TopicView): string | null {
 function hrefOf(p: CitedPiece, view: TopicView): string | null {
   if ((p.type === "quote" || p.type === "need") && p.source) {
     const board = view.sources[p.source]?.boards[0];
-    return board ? `${projectHref({ id: board, type: "discovery" })}?source=${encodeURIComponent(p.source)}` : null;
+    return board ? boardHref(board, `source=${encodeURIComponent(p.source)}`) : null;
   }
-  if (p.board) return `${projectHref({ id: p.board, type: "discovery" })}${p.card ? `?card=${encodeURIComponent(p.card)}` : ""}`;
+  if (p.board) return p.card ? cardHref(p.board, p.card) : boardHref(p.board, `board=${encodeURIComponent(p.board)}`);
   return null;
 }
 

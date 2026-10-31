@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { openOrgHref, orgHref, placeHref, projectHref, setupHref, spaceHref, spacesHref, topicHref, welcomeHref } from "@/projects/model";
+import { canvasPageHref, goalHref, openOrgHref, orgHref, placeHref, projectHref, setupHref, spaceHref, spacesHref, topicHref, welcomeHref } from "@/projects/model";
 import { routeOf } from "./routes";
 
 describe("routeOf", () => {
@@ -16,8 +16,13 @@ describe("routeOf", () => {
     expect(routeOf("/o/R02vmeVH/s/abc123def0/")).toEqual({ kind: "project", org: "R02vmeVH", type: "system", id: "abc123def0" });
   });
 
-  it("reads a topic page, only inside its organization", () => {
-    expect(routeOf(topicHref("Xk2_9aLm0q", "R02vmeVH"))).toEqual({ kind: "topic", org: "R02vmeVH", id: "Xk2_9aLm0q" });
+  it("opens a goal's or a topic page's page in a canvas's panel", () => {
+    expect(topicHref("Xk2_9aLm0q", "R02vmeVH")).toBe("/o/R02vmeVH?page=Xk2_9aLm0q");
+    expect(goalHref("g-1", "R02vmeVH", "unknowns")).toBe("/o/R02vmeVH?goal=g-1&at=unknowns");
+    expect(canvasPageHref({ goal: "g-1" }, "grocery", { org: "R02vmeVH" })).toBe("/o/R02vmeVH/products/grocery?goal=g-1");
+  });
+
+  it("still reads a topic page's own address (it moves to the canvas), only inside its organization", () => {
     expect(routeOf("/o/R02vmeVH/t/h1abc~2")).toEqual({ kind: "topic", org: "R02vmeVH", id: "h1abc~2" });
     expect(routeOf("/t/Xk2_9aLm0q")).toEqual({ kind: "missing" });
     expect(routeOf("/o/R02vmeVH/t/a%2Fb")).toEqual({ kind: "missing" });

@@ -16,6 +16,7 @@ import { onCanvasReady } from "../discovery/canvas";
 import { useSources } from "../discovery/sources";
 import { startSpaceCanvas } from "./boot";
 import { consumeHomeParams } from "./links";
+import { useAddress } from "../nav";
 import { SourcesDock } from "./SourcesDock";
 
 /*
@@ -124,6 +125,12 @@ export function SpaceCanvas({ org, space, inputs, sources }: { org: string | nul
       off();
     };
   }, [ready, key]);
+
+  // A move in place that asks the canvas something (a card, drafts, a problem under a goal): done once it's open.
+  const address = useAddress();
+  useEffect(() => {
+    if (ready) onCanvasReady(() => void consumeHomeParams());
+  }, [ready, address]);
 
   if (engine === "failed") return <Waiting failed />;
   if (status.error) return <Waiting failed message={`Couldn't open the boards: ${status.error}`} />;

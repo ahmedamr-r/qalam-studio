@@ -30,6 +30,7 @@ import { useDiscovery } from "./store";
 import KindMark from "./KindMark";
 import { EvidenceStrip } from "./EvidenceStrip";
 import { saveThenGo } from "./links";
+import { cardHref } from "../space/href";
 import { addFromOrganization, openSource, useSources } from "./sources";
 import { orgJson } from "@/org/client";
 import { useCardBoard, useSpaceView } from "@/space/view";
@@ -131,7 +132,6 @@ function OneCard({ id, card }: { id: string; card: OstCard }) {
   );
 }
 
-const cardHref = (board: string, card: string) => `${projectHref({ id: board, type: "discovery" })}?card=${encodeURIComponent(card)}`;
 const linkCls = "font-medium text-fg underline decoration-fg/30 underline-offset-2";
 
 /**
@@ -171,12 +171,12 @@ function NoticedSection({ id }: { id: string }) {
             <p className="text-caption text-fg-muted">{n.why}</p>
             <div className="flex flex-wrap items-center gap-x-[10px] gap-y-[4px] text-caption">
               {other && (
-                <a href={cardHref(other.board, other.card)} onClick={saveThenGo} className={linkCls}>
+                <a href={cardHref(other.board, other.card)} className={linkCls}>
                   Open the other card
                 </a>
               )}
               {n.topic && (
-                <a href={topicHref(n.topic)} onClick={saveThenGo} className={linkCls}>
+                <a href={topicHref(n.topic)} className={linkCls}>
                   Open the topic page
                 </a>
               )}
@@ -196,7 +196,7 @@ function NoticedSection({ id }: { id: string }) {
         <div key={l.ref} className="flex items-start justify-between gap-[8px] text-caption">
           <span className="text-fg-muted">
             The same need on {l.boardName}:{" "}
-            <a href={cardHref(l.board, l.card)} onClick={saveThenGo} className={linkCls}>
+            <a href={cardHref(l.board, l.card)} className={linkCls}>
               {l.title || "a card"}
             </a>
           </span>

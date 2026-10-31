@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { PanelRight, X } from "lucide-react";
 import type { Bearing } from "@/goals/bearings";
 import type { Notice } from "@/hub/checks";
@@ -14,12 +14,16 @@ import { goalHref, placeHref, setupHref, spaceHref, type Project } from "@/proje
 import { importLegacy } from "@/projects/library";
 import type { SpaceInputs } from "@/space/session";
 import { useSpaceView } from "@/space/view";
+import { cardForPage } from "@/space/pages";
 import { Button, IconBtn } from "../controls";
 import LaneReader, { useReaderWidth } from "../discovery/LaneReader";
 import CordPicker from "../discovery/CordPicker";
 import QuotePicker from "../discovery/QuotePicker";
 import { useDiscovery } from "../discovery/store";
 import { SpaceCardPanel } from "../space/SpacePanel";
+import { show as showCard } from "../space/links";
+import { closePage, usePanelPage } from "../space/page";
+import { useMoves } from "../nav";
 import { SpaceConflictBanner } from "../space/ConflictBanner";
 import { r } from "../recipes";
 import { NeedsALook } from "../org/NeedsALook";
@@ -49,11 +53,18 @@ import { ContinueSetup, useFirstRunLeft } from "./ContinueSetup";
  * thing on the page, where the trees are worked on in place, and a panel beside it. With nothing
  * picked the panel picks up the first run while it isn't finished here (./ContinueSetup.tsx), asks
  * what the space knows, and says what needs a look, under the goal it bears on; the organization's
- * ends with its products, each opening its own space. A card picked on the canvas takes the panel
- * over. Everything is saved in the organization's folder, each card on its own board.
+ * A card picked on the canvas takes the panel over, and a goal's or a problem's page opens in it
+ * (?goal=, ?page=; picking a card lies over it, and letting the card go shows it again).
+ * Everything is saved in the organization's folder, each card on its own board.
  */
 
 const NONE: Bearing[] = [];
+
+// A goal's or a topic page's page, open in the panel (../space/page.tsx).
+const GoalView = lazy(() => import("../goals/GoalPage"));
+const TopicView = lazy(() => import("../topics/TopicPage"));
+/** How wide the panel is for a page. */
+const PAGE_W = 480;
 
 export default function Home({ product: productId = null }: { product?: string | null }) {
   const { projects, legacy, sources, refresh } = useOrgData();
@@ -88,13 +99,31 @@ export default function Home({ product: productId = null }: { product?: string |
   const quotePick = useDiscovery((s) => !!s.quotePick);
   const readerW = useReaderWidth();
   const [drawer, setDrawer] = useState(false);
+  const aside = useRef<HTMLElement>(null);
+
+  // A page opened (or asked for again): it takes the panel, its card comes into view without being picked.
+  const open = usePanelPage();
+  const openKey = open ? ("goal" in open.ref ? `goal:${open.ref.goal}` : `page:${open.ref.page}`) : null;
+  const moves = useMoves();
+  useEffect(() => {
+    if (!open) return;
+    studio().select([]);
+    setDrawer(true);
+    const card = cardForPage(open.ref, useSpaceView.getState().things);
+    if (card) showCard(card, { select: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- per page opened, and per move to it
+  }, [openKey, moves]);
+  useEffect(() => {
+    if (aside.current) aside.current.scrollTop = 0;
+  }, [openKey]);
+  const showsPage = !!open && !cordPick && !quotePick && !reading && !picked;
 
   useEffect(() => {
     if (picked || reading || cordPick || quotePick) setDrawer(true);
   }, [picked, reading, cordPick, quotePick]);
   // A narrow window's panel lies over the canvas: what's drawn beside a card keeps out of it.
   const wide = useWide(WIDE);
-  const panelW = reading && readerW ? readerW : 380;
+  const panelW = reading && readerW ? readerW : showsPage ? PAGE_W : 380;
   const over = !wide && (drawer || !!reading) ? panelW : 0;
   useEffect(() => useDiscovery.setState({ inset: over }), [over]);
   useEffect(() => () => useDiscovery.setState({ inset: 0 }), []);
@@ -127,7 +156,14 @@ export default function Home({ product: productId = null }: { product?: string |
         </div>
 
         <aside
-          aria-label={reading ? "Reading a source" : picked ? "The picked card" : "This space"}
+          ref={aside}
+          aria-label={reading ? "Reading a source" : picked ? "The picked card" : showsPage ? "A page" : "This space"}
+          // Esc closes a page (not while a field or a menu takes it).
+          onKeyDown={(e) => {
+            if (!showsPage || e.key !== "Escape" || e.defaultPrevented || (e.target as HTMLElement).closest("input, textarea, [contenteditable=true]")) return;
+            e.stopPropagation();
+            closePage();
+          }}
           className={clsx(
             "flex shrink-0 flex-col overflow-y-auto border-l border-line-subtle bg-app",
             "max-[1179px]:absolute max-[1179px]:inset-y-0 max-[1179px]:right-0 max-[1179px]:z-30 max-[1179px]:max-w-full max-[1179px]:shadow-floating",
@@ -144,6 +180,10 @@ export default function Home({ product: productId = null }: { product?: string |
             <LaneReader />
           ) : picked ? (
             <SpaceCardPanel ids={picked} things={things} tree={goalTree} jobs={jobs} needs={needs?.needs ?? null} />
+          ) : open ? (
+            <Suspense fallback={<div className={clsx(r.skeleton, "m-[16px] h-[120px] rounded-lg")} aria-hidden />}>
+              {"goal" in open.ref ? <GoalView key={open.ref.goal} id={open.ref.goal} space={space} at={open.at} /> : <TopicView key={open.ref.page} id={open.ref.page} space={space} />}
+            </Suspense>
           ) : (
             <div className="flex flex-col gap-[20px] px-[16px] py-[14px]">
               <div className="flex items-center justify-end min-[1180px]:hidden">

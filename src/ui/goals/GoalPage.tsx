@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import clsx from "clsx";
 import { MoreHorizontal, X } from "lucide-react";
 import { feedback } from "@/commands/feedback";
@@ -20,13 +20,15 @@ import { orgFetch, orgJson } from "@/org/client";
 import { findProblems, type Linked } from "@/org/goal-work";
 import { useOrgContext } from "@/org/context";
 import { onOrgChange } from "@/org/live";
-import { goalHref, spaceHref, topicHref } from "@/projects/model";
-import { boardHomeHref } from "../space/href";
+import { canvasPageHref, goalHref, topicHref } from "@/projects/model";
+import { studio } from "@/doc/store";
+import { cardHref } from "../space/href";
+import { addProblem } from "../space/links";
+import { doneWithAt, PanelPageHeader, closePage, scrollToSection } from "../space/page";
 import { Button, Tip } from "../controls";
 import DecisionRow from "../decisions/DecisionRow";
-import { PageFrame } from "../frame/PageFrame";
 import { useCurrentOrg, useWords } from "../frame/store";
-import { useItemSpace } from "../frame/useSpace";
+import type { Space } from "../frame/spaces";
 import { Menu, MenuItem, MenuSeparator, SubMenu } from "../menu";
 import { QalamAIGlyph } from "../brand";
 import { r } from "../recipes";
@@ -38,10 +40,9 @@ import { Funnel } from "./Funnel";
 import { Unknowns } from "./Unknowns";
 import { FlowsToward } from "../seen/SeenSection";
 import { lab } from "@/lab";
-import { navigate } from "../nav";
 
 /**
- * A goal's page: the number and how far there is to go, the goal it feeds and the goals under it,
+ * A goal's page, open in a space's canvas panel (../space/page.tsx): the number and how far there is to go, the goal it feeds and the goals under it,
  * the board working on it, and the problems behind it, the ones that bear directly on its number
  * first, each with one line on how it would move it. "Find problems" has Qalam AI read the
  * organization's problem pages against the goal (code keeps only links it can stand behind);
@@ -72,7 +73,7 @@ const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const STATUS: Record<Goal["status"], string> = { active: "Active", achieved: "Achieved", paused: "Paused" };
 
-export default function GoalPage({ id }: { id: string }) {
+export default function GoalView({ id, space, at }: { id: string; space: Space; at: string | null }) {
   const [page, setPage] = useState<PageData | null>(null);
   const [missing, setMissing] = useState(false);
   const [finding, setFinding] = useState<string | null>(null);
@@ -81,6 +82,8 @@ export default function GoalPage({ id }: { id: string }) {
   const { products } = useOrgContext();
   const words = useWords();
   const solo = useCurrentOrg()?.shape === "solo";
+  const root = useRef<HTMLDivElement>(null);
+  const ids = useId();
 
   const load = useCallback(() => {
     void orgJson<PageData>(`/goals/${encodeURIComponent(id)}/page`).then(
@@ -108,27 +111,20 @@ export default function GoalPage({ id }: { id: string }) {
     if (goals.loaded) load();
   }, [goals.version, goals.loaded, load]);
 
-  // The space it shows in: the tab's, else its product's (src/ui/frame/spaces.ts).
-  const space = useItemSpace(page ? (page.goal.product ? [page.goal.product] : []) : null);
-  const goalsCrumb = { label: "Goals", href: spaceHref(space, "goals") };
+  // A section the address asks for (`at`), once the page is in.
+  const loaded = !!page;
+  useEffect(() => {
+    if (loaded && at && scrollToSection(root.current, at)) doneWithAt();
+  }, [loaded, at]);
 
   if (missing)
     return (
-      <PageFrame place="goals" crumbs={[goalsCrumb]} space={space}>
-        <div className={clsx(r.pageMain, "max-w-[880px] items-start")}>
-          <p className="text-title font-medium">This goal isn&apos;t here</p>
-          <a href={spaceHref(space)} className={clsx(r.button, r.buttonSecondary)}>
-            Back home
-          </a>
-        </div>
-      </PageFrame>
+      <div className="flex flex-col gap-[14px] px-[16px] py-[14px]">
+        <PanelPageHeader kind="Goal" title="This goal isn't here" />
+        <p className="text-body text-fg-muted">It was taken off the goals, or its file changed elsewhere.</p>
+      </div>
     );
-  if (!page)
-    return (
-      <PageFrame place="goals" crumbs={[goalsCrumb]} space={space}>
-        {null}
-      </PageFrame>
-    );
+  if (!page) return <div className={clsx(r.skeleton, "m-[16px] h-[120px] rounded-lg")} aria-hidden />;
 
   const g = page.goal;
   const north = page.north === g.id;
@@ -160,8 +156,9 @@ export default function GoalPage({ id }: { id: string }) {
   // A problem goes to the most specific goal it bears on: the goal under this one it came through, when it did.
   const workOn = (p: GoalProblem) => {
     const target = (p.via && goals.goals.find((x) => x.id === p.via)) || g;
-    const on = page.boards.find((b) => b.goal === target.id);
-    if (on) return window.location.assign(boardHomeHref(on.board, target.product, { query: `problem=${encodeURIComponent(p.topic)}&under=${encodeURIComponent(on.card)}` }));
+    // Its card on this canvas (a goal with no board has its own there, its id): the problem goes under it here.
+    const card = page.boards.find((b) => b.goal === target.id)?.card ?? target.id;
+    if (studio().doc.nodes[card]) return void addProblem(p.topic, card);
     void startBoardForGoal(target, p.topic);
   };
 
@@ -177,69 +174,95 @@ export default function GoalPage({ id }: { id: string }) {
     const ok = await confirmDialog({ title: `Take “${g.title}” off the goals?`, body: "The goals under it move up to the goal it feeds. What was decided about it stays in the log.", confirmLabel: "Take it off", danger: true });
     if (!ok) return;
     await removeGoal(g.id).then(
-      () => navigate(spaceHref(space)),
+      () => closePage({ gone: true }),
       (e) => feedback(board ? "A board works on this goal: delete its outcome card there first." : `Couldn't take it off: ${message(e)}`, { kind: "error", id: "goal.remove" }),
     );
   };
 
+  // A goal of another product's is shown here too; its own canvas is one click away.
+  const elsewhere = space !== null && g.product !== space;
   return (
-    <PageFrame place="goals" crumbs={[goalsCrumb, ...[...page.chain].reverse().map((c) => ({ label: c.title, href: goalHref(c.id) })), { label: g.title }]} space={space}>
-      <div className={clsx(r.pageMain, "max-w-[880px]")}>
+    <div ref={root} className="@container flex flex-col gap-[20px] px-[16px] py-[14px]">
         <header className="flex flex-col gap-[8px]">
-          <div className="flex items-start justify-between gap-[12px]">
-            <h1 className="text-display font-semibold text-fg">{g.title}</h1>
-            <div className="flex shrink-0 items-center gap-[8px]">
-              {/* On your own every goal is yours: nothing to pick. */}
-              {!solo && (
-                <Button variant={mine ? "secondary" : "ghost"} size="sm" onClick={() => void setMine(mine ? goals.mine.filter((x) => x !== g.id) : [...goals.mine, g.id])}>
-                  {mine ? "Yours" : "Make it yours"}
-                </Button>
-              )}
-              <Menu
-                label="Goal actions"
-                align="end"
-                className="w-[220px]"
-                trigger={
-                  <button type="button" aria-label="Goal actions" className={r.iconButton}>
-                    <MoreHorizontal {...ICON} />
-                  </button>
-                }
-              >
-                <MenuItem onSelect={() => void rename()}>Rename…</MenuItem>
-                {!north && !g.parent && <MenuItem onSelect={() => void setNorth(g.id)}>Make it the North Star</MenuItem>}
-                <SubMenu label="Feeds" checks>
-                  {feedsInto.slice(0, 30).map((x) => (
-                    <MenuItem key={x.id} checked={g.parent === x.id} onSelect={() => void changeGoal(g.id, { parent: x.id }).catch((e) => feedback(message(e), { kind: "error", id: "goal.move" }))}>
-                      {x.id === page.north ? `North Star: ${x.title}` : x.title}
+          <PanelPageHeader
+            kind={north ? "North Star" : g.parent ? "Sub-goal" : "Goal"}
+            title={g.title}
+            actions={
+              <div className="flex shrink-0 items-center gap-[4px]">
+                {/* On your own every goal is yours: nothing to pick. */}
+                {!solo && (
+                  <Button variant={mine ? "secondary" : "ghost"} size="sm" onClick={() => void setMine(mine ? goals.mine.filter((x) => x !== g.id) : [...goals.mine, g.id])}>
+                    {mine ? "Yours" : "Make it yours"}
+                  </Button>
+                )}
+                <Menu
+                  label="Goal actions"
+                  align="end"
+                  className="w-[220px]"
+                  trigger={
+                    <button type="button" aria-label="Goal actions" className={r.iconButtonSm}>
+                      <MoreHorizontal {...ICON} />
+                    </button>
+                  }
+                >
+                  <MenuItem onSelect={() => void rename()}>Rename…</MenuItem>
+                  {!north && !g.parent && <MenuItem onSelect={() => void setNorth(g.id)}>Make it the North Star</MenuItem>}
+                  <SubMenu label="Feeds" checks>
+                    {feedsInto.slice(0, 30).map((x) => (
+                      <MenuItem key={x.id} checked={g.parent === x.id} onSelect={() => void changeGoal(g.id, { parent: x.id }).catch((e) => feedback(message(e), { kind: "error", id: "goal.move" }))}>
+                        {x.id === page.north ? `North Star: ${x.title}` : x.title}
+                      </MenuItem>
+                    ))}
+                    {!!feedsInto.length && <MenuSeparator />}
+                    <MenuItem checked={!g.parent} onSelect={() => void changeGoal(g.id, { parent: null })}>
+                      No goal yet
                     </MenuItem>
-                  ))}
-                  {!!feedsInto.length && <MenuSeparator />}
-                  <MenuItem checked={!g.parent} onSelect={() => void changeGoal(g.id, { parent: null })}>
-                    No goal yet
+                  </SubMenu>
+                  <SubMenu label="Where it stands">
+                    {(Object.keys(STATUS) as Goal["status"][]).map((s) => (
+                      <MenuItem key={s} checked={g.status === s} onSelect={() => void changeGoal(g.id, { status: s })}>
+                        {STATUS[s]}
+                      </MenuItem>
+                    ))}
+                  </SubMenu>
+                  <MenuSeparator />
+                  <MenuItem danger onSelect={() => void takeOff()}>
+                    Take it off the goals…
                   </MenuItem>
-                </SubMenu>
-                <SubMenu label="Where it stands">
-                  {(Object.keys(STATUS) as Goal["status"][]).map((s) => (
-                    <MenuItem key={s} checked={g.status === s} onSelect={() => void changeGoal(g.id, { status: s })}>
-                      {STATUS[s]}
-                    </MenuItem>
-                  ))}
-                </SubMenu>
-                <MenuSeparator />
-                <MenuItem danger onSelect={() => void takeOff()}>
-                  Take it off the goals…
-                </MenuItem>
-              </Menu>
-            </div>
-          </div>
+                </Menu>
+              </div>
+            }
+          />
           <p className="text-caption text-fg-muted">
-            {[north ? "North Star" : null, product ?? words.whole, g.status !== "active" ? STATUS[g.status] : null, page.chain[0] ? `feeds “${page.chain[0].title}”` : north ? null : "feeds no goal yet"].filter(Boolean).join(" · ")}
+            {[product ?? words.whole, g.status !== "active" ? STATUS[g.status] : null].filter(Boolean).join(" · ")}
+            {page.chain[0] ? (
+              <>
+                {" · feeds "}
+                <a href={goalHref(page.chain[0].id)} className="hover:text-fg hover:underline">
+                  “{page.chain[0].title}”
+                </a>
+              </>
+            ) : north ? null : (
+              " · feeds no goal yet"
+            )}
           </p>
+          {elsewhere && (
+            <p className="text-caption text-fg-subtle">
+              A goal of {product ?? words.whole.toLowerCase()}.{" "}
+              <a href={canvasPageHref({ goal: g.id }, g.product ?? null)} className="text-fg-muted hover:text-fg hover:underline">
+                Open it on its canvas
+              </a>
+            </p>
+          )}
         </header>
 
         <NumberBlock goal={g} />
 
-        {lab("goals") && <Funnel goal={g} funnel={page.funnel} numbers={page.work.funnel} steps={page.steps} problems={page.problems} onWork={workOn} onChanged={load} />}
+        {lab("goals") && (
+          <div data-at="funnel">
+            <Funnel goal={g} funnel={page.funnel} numbers={page.work.funnel} steps={page.steps} problems={page.problems} onWork={workOn} onChanged={load} />
+          </div>
+        )}
 
         {lab("seen") && <FlowsToward goal={g.id} />}
 
@@ -247,7 +270,7 @@ export default function GoalPage({ id }: { id: string }) {
           {board ? (
             <>
               <span className="text-body text-fg-muted">Its problems, solutions and tests are on the canvas, under it.</span>
-              <a href={boardHomeHref(board.board, g.product, { card: board.card })} className={clsx(r.buttonSm, r.buttonSecondary)}>
+              <a href={cardHref(board.board, board.card)} className={clsx(r.buttonSm, r.buttonSecondary)}>
                 Show it on the canvas
               </a>
             </>
@@ -263,10 +286,10 @@ export default function GoalPage({ id }: { id: string }) {
 
         <GoalsUnder goal={g} children={page.children} breakdown={page.work.breakdown} onChanged={load} />
 
-        <section aria-labelledby="problems" className="flex flex-col gap-[10px]">
+        <section aria-labelledby={`${ids}problems`} className="flex flex-col gap-[10px]">
           <div className="flex flex-wrap items-end justify-between gap-[12px]">
             <div className="flex flex-col gap-[2px]">
-              <h2 id="problems" className="text-title font-medium">
+              <h2 id={`${ids}problems`} className="text-title font-medium">
                 Problems behind it
               </h2>
               <p className="text-caption text-fg-subtle">The ones that bear directly on its number first, then by what customers said.</p>
@@ -308,7 +331,7 @@ export default function GoalPage({ id }: { id: string }) {
           {page.problems.length ? (
             <ul className="flex flex-col rounded-lg bg-panel py-[4px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
               {page.problems.map((p) => (
-                <ProblemRow key={p.topic} p={p} via={p.via ? goals.goals.find((x) => x.id === p.via)?.title : undefined} at={atSteps(p.topic)} onWork={() => workOn(p)} onUnlink={() => void link(p.topic, p.via ?? g.id, false)} boardName={(b) => page.boards.find((x) => x.board === b)?.name} />
+                <ProblemRow key={p.topic} p={p} via={p.via ? goals.goals.find((x) => x.id === p.via)?.title : undefined} at={atSteps(p.topic)} funnel={goalHref(g.id, undefined, "funnel")} onWork={() => workOn(p)} onUnlink={() => void link(p.topic, p.via ?? g.id, false)} boardName={(b) => page.boards.find((x) => x.board === b)?.name} />
               ))}
             </ul>
           ) : (
@@ -318,13 +341,17 @@ export default function GoalPage({ id }: { id: string }) {
           )}
         </section>
 
-        {lab("goals") && <Unknowns goal={g} gaps={page.gaps} jobs={page.jobs} onChanged={load} />}
+        {lab("goals") && (
+          <div data-at="unknowns">
+            <Unknowns goal={g} gaps={page.gaps} jobs={page.jobs} onChanged={load} />
+          </div>
+        )}
 
         {lab("goals") && <OtherAims goal={g} outside={page.work.outside} onChanged={load} />}
 
         {!!page.decisions.length && (
-          <section aria-labelledby="history" className="flex flex-col gap-[8px]">
-            <h2 id="history" className="text-title font-medium">
+          <section aria-labelledby={`${ids}history`} className="flex flex-col gap-[8px]">
+            <h2 id={`${ids}history`} className="text-title font-medium">
               History
             </h2>
             <ul className="flex flex-col gap-[2px]">
@@ -334,18 +361,17 @@ export default function GoalPage({ id }: { id: string }) {
             </ul>
           </section>
         )}
-      </div>
-    </PageFrame>
+    </div>
   );
 }
 
 const STRENGTH: Record<ReturnType<typeof strengthOf>, string> = { strong: "Strong", growing: "Growing", thin: "Thin", assumed: "Assumed" };
 
-function ProblemRow({ p, via, at, onWork, onUnlink, boardName }: { p: GoalProblem; via?: string; at: string[]; onWork: () => void; onUnlink: () => void; boardName: (board: string) => string | undefined }) {
+function ProblemRow({ p, via, at, funnel, onWork, onUnlink, boardName }: { p: GoalProblem; via?: string; at: string[]; funnel: string; onWork: () => void; onUnlink: () => void; boardName: (board: string) => string | undefined }) {
   const strength = strengthOf(p);
   const onThis = p.onBoard ? p.boards.find((b) => boardName(b.board)) : undefined;
   return (
-    <li className="group/problem grid grid-cols-[16px_minmax(0,1fr)_96px_minmax(0,240px)_28px] items-start gap-x-[12px] px-[12px] py-[8px] hover:bg-hover max-[760px]:grid-cols-[16px_minmax(0,1fr)_minmax(0,120px)_28px] max-[760px]:[&>.wide]:hidden">
+    <li className="group/problem grid grid-cols-[16px_minmax(0,1fr)_96px_minmax(0,240px)_28px] items-start gap-x-[12px] px-[12px] py-[8px] hover:bg-hover @max-[560px]:grid-cols-[16px_minmax(0,1fr)_minmax(0,120px)_28px] @max-[560px]:[&>.wide]:hidden">
       <Tip label={p.bears === "direct" ? "Bears directly on the number" : "Bears on it around the edges"}>
         <span className="pt-[3px]">
           <StatusDot tone={p.bears === "direct" ? "ok" : "off"} hollow={p.bears !== "direct"} />
@@ -365,7 +391,7 @@ function ProblemRow({ p, via, at, onWork, onUnlink, boardName }: { p: GoalProble
         )}
         {via && <span className="text-micro text-fg-subtle">Through “{via}”</span>}
         {!!at.length && (
-          <a href="#funnel" className="truncate text-micro text-fg-subtle hover:text-fg">
+          <a href={funnel} className="truncate text-micro text-fg-subtle hover:text-fg">
             At {at.map((t) => `“${t}”`).join(", ")} in the funnel
           </a>
         )}
@@ -383,7 +409,7 @@ function ProblemRow({ p, via, at, onWork, onUnlink, boardName }: { p: GoalProble
           {p.against > 0 && <span className="text-warning"> · {p.against} against</span>}
         </span>
         {onThis ? (
-          <a href={boardHomeHref(onThis.board, null, { card: onThis.card })} className="truncate text-caption text-fg-muted hover:text-fg hover:underline">
+          <a href={cardHref(onThis.board, onThis.card)} className="truncate text-caption text-fg-muted hover:text-fg hover:underline">
             On the canvas
           </a>
         ) : (
@@ -438,14 +464,14 @@ function NumberBlock({ goal }: { goal: Goal }) {
         </span>
         {progress !== null && <Meter value={progress} label={`${Math.round(progress * 100)}% of the way to the target`} className="w-[140px]" />}
       </div>
-      <div className="grid grid-cols-6 gap-[10px] max-[760px]:grid-cols-3">
+      <div className="grid grid-cols-6 gap-[10px] @max-[560px]:grid-cols-3">
         {field("What it measures", draft.name, (v) => save({ ...draft, name: v.trim() }), true)}
         {field("Unit", draft.unit ?? "", (v) => save({ ...draft, ...(v.trim() ? { unit: v.trim() } : { unit: undefined }) }))}
         {field("Started at", draft.baseline === null ? "" : String(draft.baseline), (v) => save({ ...draft, baseline: num(v) }))}
         {field("Now", draft.current === null ? "" : String(draft.current), (v) => save({ ...draft, current: num(v) }))}
         {field("Target", draft.target === null ? "" : String(draft.target), (v) => save({ ...draft, target: num(v) }))}
       </div>
-      <div className="grid grid-cols-6 gap-[10px] max-[760px]:grid-cols-3">{field("By when", draft.timeframe ?? "", (v) => save({ ...draft, ...(v.trim() ? { timeframe: v.trim() } : { timeframe: undefined }) }), true)}</div>
+      <div className="grid grid-cols-6 gap-[10px] @max-[560px]:grid-cols-3">{field("By when", draft.timeframe ?? "", (v) => save({ ...draft, ...(v.trim() ? { timeframe: v.trim() } : { timeframe: undefined }) }), true)}</div>
       {m?.source?.label && <span className="text-micro text-fg-subtle">Now is read from {m.source.connector === "posthog" ? "PostHog" : m.source.connector}: {m.source.label}</span>}
     </section>
   );

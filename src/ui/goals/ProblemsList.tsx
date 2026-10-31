@@ -3,11 +3,12 @@ import clsx from "clsx";
 import type { Bearing } from "@/goals/bearings";
 import type { Goal } from "@/goals/types";
 import { strengthFill, strengthOf, type RankedNeed } from "@/hub/needs";
-import { goalHref, projectHref, topicHref, type Project } from "@/projects/model";
+import { goalHref, topicHref, type Project } from "@/projects/model";
 import { Tip } from "../controls";
 import { r } from "../recipes";
 import { Meter, Sparkline, StatusDot } from "../viz";
 import { startBoardForNeed } from "../topics/start-board";
+import { cardHref } from "../space/href";
 
 /*
  * Customers' problems, the best-backed first: ● a board has it, ○ none does; a meter for how strong
@@ -71,7 +72,7 @@ function Row({ n, boardName, goals }: { n: RankedNeed; boardName: (id: string) =
       </span>
       <span className="flex min-w-0 justify-end">
         {on ? (
-          <a href={`${projectHref({ id: n.boards[0].board, type: "discovery" })}?card=${encodeURIComponent(n.boards[0].card)}`} className="truncate text-caption text-fg-muted hover:text-fg hover:underline">
+          <a href={cardHref(n.boards[0].board, n.boards[0].card)} className="truncate text-caption text-fg-muted hover:text-fg hover:underline">
             {boardName(n.boards[0].board)}
             {n.boards.length > 1 ? ` +${n.boards.length - 1}` : ""}
           </a>

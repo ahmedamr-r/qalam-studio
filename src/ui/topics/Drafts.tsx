@@ -5,11 +5,11 @@ import type { SolutionDraft } from "@/discovery/solutions";
 import { feedback } from "@/commands/feedback";
 import { onOrgChange } from "@/org/live";
 import { decideDraft, draftSolutions, solutionsOf, type SolutionsView } from "@/org/solutions";
-import { projectHref } from "@/projects/model";
 import { QalamAIGlyph } from "../brand";
 import { Checkbox } from "../controls";
 import { r } from "../recipes";
 import { startBoardForNeed } from "./start-board";
+import { boardHref } from "../space/href";
 
 /*
  * Solutions on a problem's page: "Draft solutions" has Qalam AI propose a few ways to solve it
@@ -118,7 +118,7 @@ export function Drafts({ topic, board }: { topic: string; board: { board: string
       {open.length > 0 && (
         <div className="flex items-center justify-end gap-[8px]">
           {board ? (
-            <a href={`${projectHref({ id: board.board, type: "discovery" })}?solutions=${encodeURIComponent(topic)}`} className={clsx(r.buttonSm, r.buttonPrimary)}>
+            <a href={boardHref(board.board, `solutions=${encodeURIComponent(topic)}`)} className={clsx(r.buttonSm, r.buttonPrimary)}>
               Review them on {board.name}
             </a>
           ) : (

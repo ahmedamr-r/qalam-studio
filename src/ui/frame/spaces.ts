@@ -1,3 +1,4 @@
+import { canvasPageHref } from "@/projects/model";
 import type { Route } from "../routes";
 import { legacyTab, type Place } from "./places";
 
@@ -58,4 +59,11 @@ export function movedTo(route: Route, search: string): { place: Place; product: 
   if (!isSpacePlace(place)) product = null;
   const rest = q.toString();
   return { place, product, search: rest ? `?${rest}` : "" };
+}
+
+/** A goal's or a topic page's old address (/g/<id>, /t/<id>): its page in `space`'s canvas panel, an old section anchor kept. Null for any other. */
+export function pageMovedTo(route: Route, hash: string, space: Space): string | null {
+  if (route.kind !== "goal" && route.kind !== "topic") return null;
+  const at = /^#(unknowns|funnel)$/.exec(hash)?.[1];
+  return canvasPageHref(route.kind === "goal" ? { goal: route.id } : { page: route.id }, space, { org: route.org, at });
 }

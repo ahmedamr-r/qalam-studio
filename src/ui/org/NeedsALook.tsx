@@ -5,7 +5,7 @@ import { NOTICE_LABEL, type Notice, type NoticeKind } from "@/hub/checks";
 import { cardRef } from "@/hub/pieces";
 import type { TopicInfo } from "@/hub/topics";
 import { noticesDb, type NoticesNow } from "@/org/notices";
-import { goalHref, projectHref, topicHref, type Project } from "@/projects/model";
+import { goalHref, topicHref, type Project } from "@/projects/model";
 import { QalamAIGlyph } from "../brand/ai-glyph";
 import { Button, IconBtn } from "../controls";
 import { StatusDot } from "../viz";
@@ -13,6 +13,7 @@ import { r } from "../recipes";
 import { ago } from "../time";
 import { lab } from "@/lab";
 import { reviewNow, useReview } from "../notices/review";
+import { boardHref, cardHref } from "../space/href";
 
 /**
  * Needs a look: what the organization's checks found (code, no tokens) and what Qalam AI's last
@@ -37,7 +38,6 @@ const KIND_ICON: Record<Exclude<NoticeKind, "review">, typeof X> = {
 };
 const SHOWN = 5;
 
-const cardHref = (board: string, card: string) => `${projectHref({ id: board, type: "discovery" })}?card=${encodeURIComponent(card)}`;
 
 /** A heading Needs a look groups under: a goal (the notices bearing on it), or the rest (`id` null). */
 export interface NoticeGroup {
@@ -77,9 +77,9 @@ export function NeedsALook({ now, scope, projects, topics, groups, onShow }: { n
 
   const where = (n: Notice): { href: string; label: string } | null => {
     // Proposals waiting on a board: the board opens with them under review.
-    if (n.kind === "placed" && n.board) return { href: `${projectHref({ id: n.board, type: "discovery" })}?review=placed`, label: boardName(n.board) ?? "The board" };
+    if (n.kind === "placed" && n.board) return { href: boardHref(n.board, "review=placed"), label: boardName(n.board) ?? "The board" };
     // A funnel's drop: the goal's page, where its steps are.
-    if (n.kind === "drop" && n.goal) return { href: `${goalHref(n.goal)}#funnel`, label: "The goal's funnel" };
+    if (n.kind === "drop" && n.goal) return { href: goalHref(n.goal, undefined, "funnel"), label: "The goal's funnel" };
     if (n.topic && (n.kind === "disputed" || n.kind === "pattern" || n.kind === "orphan")) return { href: topicHref(n.topic), label: topicTitle(n.topic) ?? "The topic page" };
     if (n.board && n.card) return { href: cardHref(n.board, n.card), label: boardName(n.board) ?? "The board" };
     if (n.topic) return { href: topicHref(n.topic), label: topicTitle(n.topic) ?? "The topic page" };

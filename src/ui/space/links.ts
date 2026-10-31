@@ -44,7 +44,8 @@ export async function consumeHomeParams() {
   for (const k of KEYS) p.delete(k);
   // The kept drafts read the address themselves (src/ui/discovery/solutions.ts).
   const drafts = p.has("solutions");
-  history.replaceState(null, "", `${u.pathname}${p.size ? `?${p}` : ""}${u.hash}`);
+  // The step keeps its own state (how many pages are open over the canvas, src/ui/nav.ts).
+  history.replaceState(history.state, "", `${u.pathname}${p.size ? `?${p}` : ""}${u.hash}`);
   const doc = studio().doc;
 
   if (problem) {
@@ -72,8 +73,8 @@ export async function consumeHomeParams() {
   }
 }
 
-/** Pick a card and bring it into view, unfolding what hides it (outside undo). */
-export function show(id: string) {
+/** Bring a card into view, unfolding what hides it (outside undo), and pick it unless `select` is false. */
+export function show(id: string, o: { select?: boolean } = {}) {
   const doc = studio().doc;
   const folded: string[] = [];
   for (let p = doc.nodes[id]?.parentId; p && isOstCard(doc.nodes[p]); p = doc.nodes[p].parentId) if (doc.nodes[p].meta.ost?.collapsed) folded.push(p);
@@ -84,12 +85,12 @@ export function show(id: string) {
       },
       { history: false },
     );
-  studio().select([id]);
+  if (o.select !== false) studio().select([id]);
   onCanvasReady((c) => glideToLayer(c, id));
 }
 
 /** A goal page's "Work on it": the problem under the card (a goal's), once; one there already is just shown. */
-async function addProblem(topic: string, under: string | null) {
+export async function addProblem(topic: string, under: string | null) {
   const c = await problemCard(topic);
   if (!c) return;
   const doc = studio().doc;
@@ -117,7 +118,7 @@ async function waitForPlacements() {
 }
 
 /** A source read in the panel, from the lane (where a card rests on it). */
-function openSourceItem(id: string) {
+export function openSourceItem(id: string) {
   onCanvasReady(() => {
     void import("@/engine/ost-tools").then(({ boardLane }) => {
       const item = boardLane().items.find((i) => i.sourceId === id);

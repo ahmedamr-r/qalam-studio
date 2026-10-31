@@ -1,6 +1,6 @@
 import { useState } from "react";
 import clsx from "clsx";
-import { ArrowRight, ExternalLink, LucideProvider, Star, Target, X } from "lucide-react";
+import { ArrowRight, LucideProvider, Star, Target, X } from "lucide-react";
 import { studio } from "@/doc/store";
 import { addCardIn, makeCardNode, newCard } from "@/discovery/ops";
 import { metricProgress } from "@/discovery/metric";
@@ -73,7 +73,7 @@ function GoalSummary({ goal, tree, jobs, close }: { goal: string; tree: GoalsNow
         </a>
       )}
       {next && (
-        <a href={`${goalHref(g.id)}#unknowns`} className="flex min-w-0 items-center gap-[6px] text-caption text-fg-muted hover:text-fg">
+        <a href={goalHref(g.id, undefined, "unknowns")} className="flex min-w-0 items-center gap-[6px] text-caption text-fg-muted hover:text-fg">
           <ArrowRight {...ICON} size={12} className="shrink-0 text-fg-subtle" />
           <span className="truncate">Next: {next.title}</span>
         </a>
@@ -122,7 +122,6 @@ function ProblemPanel({ id, thing, need, tree, close }: { id: string; thing: Ext
         </Button>
         <a href={topicHref(thing.topic)} className={clsx(r.buttonSm, r.buttonSecondary)}>
           Its page
-          <ExternalLink size={12} absoluteStrokeWidth strokeWidth={1.25} className="ml-[4px] opacity-60" />
         </a>
       </div>
     </div>

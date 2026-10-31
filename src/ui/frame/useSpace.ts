@@ -1,7 +1,8 @@
 import { useEffect } from "react";
 import { useOrgContext } from "@/org/context";
 import type { Product } from "@/org/context-md";
-import { linkOrgNow, spaceHref } from "@/projects/model";
+import { linkOrgNow, setLinkSpace, spaceHref } from "@/projects/model";
+import { routeOf } from "../routes";
 import type { Place } from "./places";
 import { itemSpace, type Space } from "./spaces";
 import { useCurrentOrg } from "./store";
@@ -33,6 +34,17 @@ export function keepSpace(space: Space, org: string | null = linkOrgNow()) {
   }
 }
 
+/** The canvas this window is on: the address's space on a space's own page, else the tab's last one. */
+export function currentSpace(): Space {
+  const r = routeOf(window.location.pathname);
+  if (r.kind === "org") return r.product ?? null;
+  if (r.kind === "place" && r.place !== "connections") return r.product ?? null;
+  return lastSpace() ?? null;
+}
+
+// A goal's or a problem's page opens on the canvas this window is on (src/projects/model.ts).
+setLinkSpace(currentSpace);
+
 /** A place in the space this tab is in, narrowed to the thing open when it's elsewhere (a board's product). */
 export const hereHref = (place: Place, products?: readonly string[]) => spaceHref(products ? itemSpace(products, lastSpace()) : (lastSpace() ?? null), place);
 
@@ -55,13 +67,4 @@ export function useSpace(product: string | null, place: Place): { space: Space; 
     if (gone) window.location.replace(spaceHref(null, place) + window.location.search);
   }, [gone, place]);
   return { space: gone ? null : product, product: p };
-}
-
-/** The space a goal's or problem's page shows in, from the products it's for (null while it loads, or when it's missing: the tab's last space). */
-export function useItemSpace(products: readonly string[] | null | undefined): Space {
-  const known = useOrgContext((s) => s.products);
-  const last = lastSpace();
-  if (!products) return last ?? null;
-  const space = itemSpace(products, last);
-  return space && !known.some((p) => p.id === space) ? null : space;
 }

@@ -7,9 +7,9 @@ import { projectLetter, spaceHref, welcomeHref, type ProjectType } from "@/proje
 import { Splash } from "./brand/splash";
 import { r } from "./recipes";
 import { routeOf, type Route } from "./routes";
-import { movedTo } from "./frame/spaces";
-import { lastSpace } from "./frame/useSpace";
-import StudioLoader, { CaptureLoader, GoalLoader, HomeLoader, OrgsLoader, SeenLoader, PageSuspense, PlaceLoader, SetupLoader, SystemProjectLoader, TopicLoader, WelcomeLoader } from "./StudioLoader";
+import { movedTo, pageMovedTo } from "./frame/spaces";
+import { currentSpace, lastSpace } from "./frame/useSpace";
+import StudioLoader, { CaptureLoader, HomeLoader, OrgsLoader, SeenLoader, PageSuspense, PlaceLoader, SetupLoader, SystemProjectLoader, WelcomeLoader } from "./StudioLoader";
 import { startInPlace } from "./nav";
 import { bootRetryDelay } from "./welcome/steps";
 import { boardHomeHref } from "./space/href";
@@ -44,6 +44,13 @@ export function App() {
           const product = last && useOrgContext.getState().products.some((p) => p.id === last) ? last : null;
           return window.location.replace(spaceHref(product, "home", o.id));
         }
+        // A goal's or a topic page's own address: its page in the canvas's panel, in place (read from the
+        // address as it is now: boot can run again after it moved).
+        const page = pageMovedTo(routeOf(window.location.pathname), window.location.hash, currentSpace());
+        if (page) {
+          history.replaceState(null, "", page);
+          setRoute(routeOf(window.location.pathname));
+        }
         // Addresses from before spaces: the sidebar's ?product=, the home's old tabs, places from before the job order.
         const moved = movedTo(route, window.location.search);
         if (moved) return window.location.replace(spaceHref(moved.product, moved.place, o.id) + moved.search + window.location.hash);
@@ -74,10 +81,11 @@ export function App() {
   useEffect(() => boot(), []);
 
   // One boundary for every page; each address is a page of its own, so moving in place mounts the
-  // next one fresh while the last one shows until its code is in.
+  // next one fresh while the last one shows until its code is in. A canvas stays one page while its
+  // query changes (a page opened in its panel, a card asked for).
   return (
     <PageSuspense>
-      <Page key={window.location.pathname + window.location.search} route={route} state={state} labReady={labReady} retry={boot} />
+      <Page key={route.kind === "org" ? window.location.pathname : window.location.pathname + window.location.search} route={route} state={state} labReady={labReady} retry={boot} />
     </PageSuspense>
   );
 }
@@ -94,8 +102,6 @@ function Page({ route, state, labReady, retry }: { route: Route; state: State; l
   if (state.kind === "error") return state.missingOrg ? <Missing title="Organization not found" body="It isn't on this computer: its folder moved, or it was made on another computer." /> : <CantReach message={state.message} onRetry={retry} />;
   if (state.kind === "missing" || route.kind === "missing") return <Missing title="Page not found" body="There's nothing at this address." />;
   if (route.kind === "org") return <HomeLoader product={route.product} />;
-  if (route.kind === "topic") return <TopicLoader id={route.id} />;
-  if (route.kind === "goal") return <GoalLoader id={route.id} />;
   if (route.kind === "seen") return <SeenLoader seenKey={route.key} add={!!route.add} />;
   if (route.kind === "setup") return <SetupLoader />;
   if (route.kind === "place") return <PlaceLoader place={route.place} product={route.product} />;

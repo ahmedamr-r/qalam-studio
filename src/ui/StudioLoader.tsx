@@ -13,8 +13,6 @@ const loading = (
 const Studio = lazy(() => import("./Studio"));
 const Home = lazy(() => import("./home/Home"));
 const SystemProject = lazy(() => import("./SystemProject"));
-const TopicPage = lazy(() => import("./topics/TopicPage"));
-const GoalPage = lazy(() => import("./goals/GoalPage"));
 const SeenPage = lazy(() => import("./seen/SeenPage"));
 const SeenReading = lazy(() => import("./seen/SeenReading"));
 const SetupPage = lazy(() => import("./setup/SetupPage"));
@@ -54,16 +52,6 @@ export function OrgsLoader() {
 /** A design-system project: its brand interview, or its system once saved. */
 export function SystemProjectLoader({ projectId }: { projectId: string }) {
   return <SystemProject projectId={projectId} />;
-}
-
-/** One of the organization's topic pages. */
-export function TopicLoader({ id }: { id: string }) {
-  return <TopicPage id={id} />;
-}
-
-/** A goal's page: its number and the problems behind it. */
-export function GoalLoader({ id }: { id: string }) {
-  return <GoalPage id={id} />;
 }
 
 /** What people see in a product, or reading a batch of screenshots for it. */

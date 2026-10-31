@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { routeOf } from "../routes";
-import { inSpace, itemSpace, movedTo } from "./spaces";
+import { inSpace, itemSpace, movedTo, pageMovedTo } from "./spaces";
 
 describe("spaces", () => {
   it("shows everything in the organization's space, and only a product's own in its space", () => {
@@ -56,4 +56,10 @@ describe("spaces", () => {
     expect(movedTo(routeOf("/o/R02vmeVH/g/g-1"), "?product=grocery")).toBeNull();
   });
 
+  it("moves a goal's or a topic page's own address to its page on a canvas, keeping an old section anchor", () => {
+    expect(pageMovedTo(routeOf("/o/R02vmeVH/g/g-1"), "", null)).toBe("/o/R02vmeVH?goal=g-1");
+    expect(pageMovedTo(routeOf("/o/R02vmeVH/g/g-1"), "#funnel", "grocery")).toBe("/o/R02vmeVH/products/grocery?goal=g-1&at=funnel");
+    expect(pageMovedTo(routeOf("/o/R02vmeVH/t/Xk2_9aLm0q"), "#nope", null)).toBe("/o/R02vmeVH?page=Xk2_9aLm0q");
+    expect(pageMovedTo(routeOf("/o/R02vmeVH/goals"), "", null)).toBeNull();
+  });
 });

@@ -15,13 +15,14 @@ import type { GoalProblem } from "@/goals/problems";
 import type { Goal } from "@/goals/types";
 import { orgFetch, orgPath } from "@/org/client";
 import { numbersDb } from "@/org/connectors";
-import { placeHref, projectHref, topicHref } from "@/projects/model";
+import { placeHref, topicHref } from "@/projects/model";
 import { QalamAIGlyph } from "../brand";
 import { Button, IconBtn, Tip } from "../controls";
 import { Menu, MenuItem } from "../menu";
 import { r } from "../recipes";
 import { promptDialog } from "../surfaces/dialog";
 import { ago } from "../time";
+import { cardHref } from "../space/href";
 
 /**
  * A goal's funnel: the flow in the product's code whose events measure it (hub/maps, read by the
@@ -326,7 +327,7 @@ function StepDetail({ step, picture, here, said, quotes, problems, onPin, onFigm
                       {p.title}
                     </a>
                     {on ? (
-                      <a href={`${projectHref({ id: on.board, type: "discovery" })}?card=${encodeURIComponent(on.card)}`} className="shrink-0 text-caption text-fg-muted hover:text-fg hover:underline">
+                      <a href={cardHref(on.board, on.card)} className="shrink-0 text-caption text-fg-muted hover:text-fg hover:underline">
                         On its board
                       </a>
                     ) : (
