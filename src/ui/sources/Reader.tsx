@@ -4,7 +4,7 @@ import { ArrowLeft, ArrowUpRight, ExternalLink, FlaskConical, Lightbulb, Target,
 import { connectorDef } from "@/connectors/catalog";
 import { partLine } from "@/discovery/origin";
 import { segmentsOf } from "@/discovery/segments";
-import type { SourceQuote } from "@/discovery/sources";
+import type { SourceQuote, TextBlock } from "@/discovery/sources";
 import type { SetupDoc } from "@/org/setup";
 import { IconBtn, Spinner } from "../controls";
 import { MarkedText } from "../discovery/MarkedText";
@@ -36,6 +36,12 @@ const TONE: Record<BackKind, { mark: string; chip: string; icon: typeof Target }
   test: { mark: "bg-selection-subtle", chip: "bg-selection-subtle text-selection", icon: FlaskConical },
 };
 
+/** Conversations: read in a narrower panel than a document is. */
+const TALK = new Set(["slack", "intercom", "zendesk", "said", "dump", "interview", "post"]);
+
+/** How wide the panel a source is read in gets, by its mark (a connector, or what it is): a document reads wider than a conversation. */
+export const readerWidth = (mark: string | undefined) => (mark && TALK.has(mark) ? 440 : 520);
+
 const webAddress = (s: string | undefined) => (s && /^https?:\/\//i.test(s) ? s : null);
 
 export function Reader({
@@ -45,6 +51,7 @@ export function Reader({
   text,
   quotes,
   pages,
+  blocks,
   range,
   backs,
   loading,
@@ -62,6 +69,8 @@ export function Reader({
   text: string;
   quotes: readonly SourceQuote[];
   pages?: number[];
+  /** Its shape (a PDF's headings and list items): drawn as such. */
+  blocks?: readonly TextBlock[];
   range?: [number, number];
   backs: readonly Back[];
   loading?: boolean;
@@ -82,7 +91,7 @@ export function Reader({
     return m;
   }, [shown]);
   const marked = useMemo(() => quotes.filter((q) => tone.has(q.id)), [quotes, tone]);
-  const segments = useMemo(() => segmentsOf(text, marked, { pages, range }), [text, marked, pages, range]);
+  const segments = useMemo(() => segmentsOf(text, marked, { pages, range, ...(blocks?.length ? { blocks } : {}) }), [text, marked, pages, range, blocks]);
   const first = segments.find((s) => s.quote)?.quote;
   useEffect(() => {
     if (first) body.current?.querySelector(`[data-quote="${first}"]`)?.scrollIntoView({ block: "center" });
@@ -167,7 +176,7 @@ export function Reader({
         ) : (
           <>
             {!backs.length && <p className="mb-[10px] text-caption text-fg-subtle">Nothing in it backs a card yet.</p>}
-            <MarkedText text={text} segments={segments} focus={first} toneOf={(q) => tone.get(q)} />
+            <MarkedText text={text} segments={segments} focus={first} toneOf={(q) => tone.get(q)} blocks={blocks} />
           </>
         )}
       </div>

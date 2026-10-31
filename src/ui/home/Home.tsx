@@ -17,6 +17,7 @@ import { navigate } from "../nav";
 import { MapCanvas, MapWaiting, useEngine } from "../map/MapCanvas";
 import { hrefOf, PickedPanel } from "../map/MapPanel";
 import { MapReader } from "../map/MapReader";
+import { readerWidth } from "../sources/Reader";
 import { useBoardCards } from "../map/useBoardCards";
 import { r } from "../recipes";
 import { NeedsALook } from "../org/NeedsALook";
@@ -164,7 +165,25 @@ export default function Home({ product: productId = null }: { product?: string |
             <MapWaiting failed={engine === "failed"} />
           )}
           {view && !view.doc.roots.length && <EmptyMap space={space} />}
-          {reading && laid && (
+          {!drawer && (
+            <button type="button" onClick={() => setDrawer(true)} className={clsx(r.buttonSm, r.buttonSecondary, "absolute top-[12px] right-[12px] shadow-floating min-[1180px]:hidden")}>
+              <PanelRight size={14} absoluteStrokeWidth strokeWidth={1.25} className="mr-[6px]" />
+              {notices?.notices.length ? `Needs a look · ${notices.notices.filter((n) => inSpace(n.products, space)).length}` : "Ask and more"}
+            </button>
+          )}
+        </div>
+
+        <aside
+          aria-label={reading ? `Reading ${reading.title}` : thing ? "The picked card" : "This space"}
+          className={clsx(
+            "flex shrink-0 flex-col overflow-y-auto border-l border-line-subtle bg-app",
+            "max-[1179px]:absolute max-[1179px]:inset-y-0 max-[1179px]:right-0 max-[1179px]:z-30 max-[1179px]:max-w-full max-[1179px]:shadow-floating",
+            !drawer && !reading && "max-[1179px]:hidden",
+          )}
+          // A source being read takes the panel over, wider for a document than a conversation.
+          style={{ width: reading ? readerWidth(reading.part?.from ?? reading.mark) : 380 }}
+        >
+          {reading && laid ? (
             <MapReader
               item={reading}
               lane={laid.lane}
@@ -176,24 +195,7 @@ export default function Home({ product: productId = null }: { product?: string |
                 show(id);
               }}
             />
-          )}
-          {!drawer && (
-            <button type="button" onClick={() => setDrawer(true)} className={clsx(r.buttonSm, r.buttonSecondary, "absolute top-[12px] right-[12px] shadow-floating min-[1180px]:hidden")}>
-              <PanelRight size={14} absoluteStrokeWidth strokeWidth={1.25} className="mr-[6px]" />
-              {notices?.notices.length ? `Needs a look · ${notices.notices.filter((n) => inSpace(n.products, space)).length}` : "Ask and more"}
-            </button>
-          )}
-        </div>
-
-        <aside
-          aria-label={thing ? "The picked card" : "This space"}
-          className={clsx(
-            "flex w-[380px] shrink-0 flex-col overflow-y-auto border-l border-line-subtle bg-app",
-            "max-[1179px]:absolute max-[1179px]:inset-y-0 max-[1179px]:right-0 max-[1179px]:z-30 max-[1179px]:w-[min(380px,100%)] max-[1179px]:shadow-floating",
-            !drawer && "max-[1179px]:hidden",
-          )}
-        >
-          {thing && picked && map && laid ? (
+          ) : thing && picked && map && laid ? (
             <PickedPanel id={picked} thing={thing} doc={laid.doc} tree={goalTree} jobs={jobs} needs={needs?.needs ?? null} lane={laid.lane} boardName={boardName} onClose={() => setPicked(null)} onRead={setReading} />
           ) : (
             <div className="flex flex-col gap-[20px] px-[16px] py-[14px]">

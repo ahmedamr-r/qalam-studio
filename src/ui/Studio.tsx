@@ -1,4 +1,6 @@
 import { lazy, Suspense, useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import LaneReader, { useReaderWidth } from "./discovery/LaneReader";
+import { useDiscovery } from "./discovery/store";
 import clsx from "clsx";
 import * as Tabs from "@radix-ui/react-tabs";
 import * as Tooltip from "@radix-ui/react-tooltip";
@@ -170,6 +172,8 @@ function keepCurrent() {
 function Shell() {
   const uiHidden = useStudio((s) => s.view.uiHidden);
   const prototyping = usePrototypeMode((s) => s.open);
+  // A board's source read in the right panel widens it (a document more than a conversation).
+  const readerW = useReaderWidth();
   usePlayParam();
   return (
     <Tooltip.Provider delayDuration={500} skipDelayDuration={300}>
@@ -178,6 +182,7 @@ function Shell() {
           "grid h-screen overflow-hidden bg-app",
           uiHidden ? "grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)]" : "grid-cols-[auto_minmax(0,1fr)_var(--right-w)] grid-rows-[var(--topbar-h)_minmax(0,1fr)_var(--footer-h)]",
         )}
+        style={readerW ? ({ "--right-w": `${readerW}px` } as CSSProperties) : undefined}
       >
         {!uiHidden && (
           <BootIn delay={0} className="col-span-3 flex min-w-0">
@@ -247,6 +252,9 @@ function RightPanel() {
   const chosen = useRightTab((s) => s.tab);
   const tab: RightTab = designOnly ? "design" : chosen;
   const tabs = board ? [{ value: "design" as RightTab, label: "Board" }] : designOnly ? RIGHT_TABS.slice(0, 1) : RIGHT_TABS;
+  const reading = useDiscovery((s) => s.reading);
+  // A source from the board's lane is read in place of the panel.
+  if (board && reading) return <LaneReader />;
   return (
     <Tabs.Root value={tab} onValueChange={(v) => setRightTab(v as RightTab)} asChild>
       <aside className="flex min-h-0 min-w-0 flex-1 flex-col border-l border-line-subtle bg-panel" aria-label={tabs.find((t) => t.value === tab)!.label}>

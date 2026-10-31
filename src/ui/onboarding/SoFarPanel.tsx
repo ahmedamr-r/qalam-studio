@@ -278,6 +278,13 @@ export function SoFar() {
   const [selected, setSelected] = useState<string | null>(null);
   const [reading, setReading] = useState<string | null>(null);
   const readingNode = reading ? canvas.nodes.find((n) => n.id === reading && n.kind === "source") : undefined;
+  // A source being read takes the whole panel.
+  if (readingNode)
+    return (
+      <Panel label={`Reading ${readingNode.title}`} body={false}>
+        <SourceReader key={readingNode.id} node={readingNode} canvas={canvas} setup={door !== "problems" && source ? { text: source.text, quotes: source.quotes, blocks: source.blocks } : null} onClose={() => setReading(null)} className="min-h-0 flex-1 rounded-[inherit]" />
+      </Panel>
+    );
   // Once anything is sent, the canvas is what's drawn; the About, products and what's connected sit under it.
   if (canvas.nodes.length)
     return (
@@ -290,7 +297,6 @@ export function SoFar() {
           )}
           <div className="relative min-h-[240px] flex-1">
             <SetupCanvas canvas={canvas} selected={selected} onSelect={setSelected} onOpen={(n) => setReading(n.id)} working={working} act={act} />
-            {readingNode && <SourceReader key={readingNode.id} node={readingNode} canvas={canvas} setup={door !== "problems" && source ? { text: source.text, quotes: source.quotes } : null} onClose={() => setReading(null)} />}
           </div>
           {(v.groups.length > 0 || connected.length > 0) && (
             <div className="flex max-h-[40%] flex-col gap-[14px] overflow-y-auto border-t border-line-subtle p-[12px]">

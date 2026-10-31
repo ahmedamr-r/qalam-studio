@@ -6,7 +6,6 @@ import DesignThis from "./DesignThis";
 import ReviewLayer from "./ReviewLayer";
 import BrainDump from "./BrainDump";
 import WhyPrompt from "../decisions/WhyPrompt";
-import LaneReader from "./LaneReader";
 import { noticesStale, useNotices } from "../notices/useNotices";
 import { useStudio } from "@/doc/store";
 import { useProject } from "@/projects/session";
@@ -44,7 +43,6 @@ export default function DiscoveryLayer() {
           <BrainDump vp={vp} />
           <WhyPrompt />
           <StartSheet />
-          <LaneReader />
         </>
       )}
     </div>

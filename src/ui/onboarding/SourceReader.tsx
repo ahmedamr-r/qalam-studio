@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { sourcesDb } from "@/discovery/db";
-import type { SourceQuote, SourceRecord } from "@/discovery/sources";
+import type { SourceQuote, SourceRecord, TextBlock } from "@/discovery/sources";
 import { topicsDb } from "@/org/topics";
 import { Reader, type Back } from "../sources/Reader";
 import { backsOf, type Canvas, type CanvasNode } from "./canvas";
@@ -19,7 +19,7 @@ interface Backing {
 }
 
 /** The words to read and what they back: the setup's own text, or the problems door's source loaded. */
-function useReading(node: CanvasNode, canvas: Canvas, setup: { text: string; quotes: readonly SourceQuote[] } | null) {
+function useReading(node: CanvasNode, canvas: Canvas, setup: { text: string; quotes: readonly SourceQuote[]; blocks?: readonly TextBlock[] } | null) {
   const [loaded, setLoaded] = useState<{ source: SourceRecord; backs: Backing[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const problemsDoor = !setup && !!node.sourceId;
@@ -43,14 +43,14 @@ function useReading(node: CanvasNode, canvas: Canvas, setup: { text: string; quo
       live = false;
     };
   }, [node.id, node.sourceId, problemsDoor]);
-  if (setup) return { text: setup.text, quotes: setup.quotes, pages: undefined, range: node.doc?.span, backs: backsOf(canvas, node.id), loading: false, error: null };
-  if (loaded) return { text: loaded.source.text, quotes: loaded.source.quotes, pages: loaded.source.pages, range: undefined, backs: loaded.backs, loading: false, error: null };
-  return { text: "", quotes: [] as readonly SourceQuote[], pages: undefined, range: undefined, backs: [] as Backing[], loading: !error, error };
+  if (setup) return { text: setup.text, quotes: setup.quotes, pages: undefined, blocks: setup.blocks, range: node.doc?.span, backs: backsOf(canvas, node.id), loading: false, error: null };
+  if (loaded) return { text: loaded.source.text, quotes: loaded.source.quotes, pages: loaded.source.pages, blocks: loaded.source.blocks, range: undefined, backs: loaded.backs, loading: false, error: null };
+  return { text: "", quotes: [] as readonly SourceQuote[], pages: undefined, blocks: undefined, range: undefined, backs: [] as Backing[], loading: !error, error };
 }
 
 /** The setup's reader: the shared one, over the canvas, with what the source backs on it. */
-export function SourceReader({ node, canvas, setup, onClose }: { node: CanvasNode; canvas: Canvas; setup: { text: string; quotes: readonly SourceQuote[] } | null; onClose: () => void }) {
+export function SourceReader({ node, canvas, setup, onClose, className }: { node: CanvasNode; canvas: Canvas; setup: { text: string; quotes: readonly SourceQuote[]; blocks?: readonly TextBlock[] } | null; onClose: () => void; className?: string }) {
   const r = useReading(node, canvas, setup);
   const backs = r.backs.map((b): Back => ({ id: b.node.id, kind: b.node.kind === "problem" ? "problem" : "goal", title: b.node.title, quotes: b.quotes }));
-  return <Reader title={node.title} doc={node.doc} text={r.text} quotes={r.quotes} pages={r.pages} range={r.range} backs={backs} loading={r.loading} error={r.error} onClose={onClose} className="absolute inset-0 z-10" />;
+  return <Reader title={node.title} doc={node.doc} text={r.text} quotes={r.quotes} pages={r.pages} blocks={r.blocks} range={r.range} backs={backs} loading={r.loading} error={r.error} onClose={onClose} className={className ?? "absolute inset-0 z-10"} />;
 }

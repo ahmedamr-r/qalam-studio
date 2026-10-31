@@ -2,13 +2,13 @@ import { useEffect } from "react";
 import { studio, useStudio } from "@/doc/store";
 import { boardLane } from "@/engine/ost-tools";
 import type { OstKind } from "@/discovery/types";
-import { Reader, type Back } from "../sources/Reader";
+import { Reader, readerWidth, type Back } from "../sources/Reader";
 import { glideToLayer, onCanvasReady } from "./canvas";
 import { useSources } from "./sources";
 import { useDiscovery } from "./store";
 
 /*
- * A source from the board's sources lane, read over the canvas (src/ui/sources/Reader.tsx): what
+ * A source from the board's sources lane, read in place of the right panel (src/ui/sources/Reader.tsx): what
  * it backs on this board as chips, its words, or its own part of a brain dump, with each card's
  * quotes marked, and a pressed chip takes you to its card.
  */
@@ -41,6 +41,7 @@ export default function LaneReader() {
       text={source.text}
       quotes={source.quotes}
       pages={item.part ? undefined : source.pages}
+      blocks={source.blocks}
       range={item.part?.span}
       backs={backs}
       onClose={() => useDiscovery.setState({ reading: null })}
@@ -49,7 +50,15 @@ export default function LaneReader() {
         onCanvasReady((c) => glideToLayer(c, id));
       }}
       close="close"
-      className="pointer-events-auto absolute top-[12px] right-[12px] bottom-[84px] z-20 w-[min(420px,calc(100%-24px))] overflow-hidden rounded-xl shadow-floating"
+      className="min-h-0 min-w-0 flex-1 border-l border-line-subtle"
     />
   );
+}
+
+/** The right panel's width while a source is read in it (null: the panel's own). */
+export function useReaderWidth(): number | null {
+  // Read when what's being read changes, not on every edit (the board's shell uses it).
+  const key = useDiscovery((s) => s.reading);
+  const item = key ? boardLane().items.find((i) => i.key === key) : undefined;
+  return item ? readerWidth(item.part?.from ?? item.mark) : null;
 }

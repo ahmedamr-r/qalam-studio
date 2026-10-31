@@ -305,7 +305,7 @@ export function MapCanvas({
     <div ref={wrap} className="relative h-full w-full overflow-hidden bg-canvas" data-region="map">
       <canvas
         ref={canvasRef}
-        className="block touch-none select-none outline-none"
+        className="absolute top-0 left-0 block touch-none select-none outline-none"
         style={{ cursor }}
         tabIndex={0}
         aria-label="The map: every goal, with its problems, solutions and tests"

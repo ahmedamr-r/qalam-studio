@@ -5,7 +5,7 @@ import type { Doc } from "@/doc/schema";
 import { Reader, type Back } from "../sources/Reader";
 
 /*
- * A source read over the map (src/ui/sources/Reader.tsx), as a board's lane reads one: what it
+ * A source read in place of the map's panel (src/ui/sources/Reader.tsx), as a board's lane reads one: what it
  * backs on the map as chips, its words (or its own part of a brain dump) with each card's quotes
  * marked, and a pressed chip picks its card on the map.
  */
@@ -29,12 +29,13 @@ export function MapReader({ item, lane, doc, sources, onClose, onPick }: { item:
       text={source.text}
       quotes={source.quotes}
       pages={item.part ? undefined : source.pages}
+      blocks={source.blocks}
       range={item.part?.span}
       backs={backs}
       onClose={onClose}
       onPick={onPick}
       close="close"
-      className="pointer-events-auto absolute top-[12px] right-[12px] bottom-[60px] z-20 w-[min(420px,calc(100%-24px))] overflow-hidden rounded-xl shadow-floating"
+      className="min-h-0 flex-1"
     />
   );
 }
