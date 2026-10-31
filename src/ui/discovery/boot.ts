@@ -2,6 +2,8 @@ import { useStudio, registerDocPass, studio } from "@/doc/store";
 import { startWork } from "./work";
 import type { Doc } from "@/doc/schema";
 import { isOstCard } from "@/doc/board";
+import { boundsOf, worldBounds } from "@/doc/geometry";
+import { litBy } from "@/discovery/lane";
 import { clearMeasureCache } from "@/doc/measure";
 import { onFontsChanged } from "@/engine/fonts";
 import { setCanvasDelegate } from "@/engine/canvas-delegate";
@@ -28,7 +30,8 @@ import { loadPlacements, reviewPlacements } from "./placements";
 import { startRecorder } from "../decisions/recorder";
 import { startGoalSync } from "./goals";
 import { problemCard } from "../topics/start-board";
-import { draftsFromUrl } from "./solutions";
+import { draftSolutionsFor, draftsFromUrl } from "./solutions";
+import { draftTestsFor } from "./tests";
 import { addCardIn, makeCardNode, newCard } from "@/discovery/ops";
 import { sourcesDb } from "@/discovery/db";
 import { sameTopic } from "@/hub/topics";
@@ -72,7 +75,7 @@ export function startDiscoveryStudio(p: Project): (doc: Doc) => void {
   // What gets decided on the board goes to the organization's decision log.
   startRecorder();
   ensureDumpHandlers();
-  void loadSources(p.id).then(resumeDumps).then(linkEvidence).then(frameLane).then(selectFromUrl).then(openSourceFromUrl).then(() => loadPlacements(p.id)).then(reviewPlacedFromUrl);
+  void loadSources(p.id).then(resumeDumps).then(linkEvidence).then(frameLane).then(thenFromUrl).then(openSourceFromUrl).then(() => loadPlacements(p.id)).then(reviewPlacedFromUrl);
   onOrgChange((c) => {
     if (c.kind === "source" && c.boards.includes(p.id)) void reloadSources(p.id);
     // Material added to the organization may have something for this board (it's on no board yet).
@@ -195,7 +198,10 @@ async function addProblemFromUrl(boardId: string) {
   onCanvasReady((canvas) => glideToLayer(canvas, id!));
 }
 
-/** /d/<id>?card=<cardId>: select that card and bring it into view (a Screens project's link back). */
+/** The card the address opened the board on (?card=): the board lands there, not on the whole lane. */
+let openedOn: string | null = null;
+
+/** /d/<id>?card=<cardId>: select that card and bring it into view (the map's, a page's or a Screens project's link). */
 function focusCardFromUrl() {
   const params = new URLSearchParams(location.search);
   const id = params.get("card");
@@ -204,6 +210,7 @@ function focusCardFromUrl() {
   history.replaceState(null, "", `${location.pathname}${params.size ? `?${params}` : ""}`);
   const doc = studio().doc;
   if (!isOstCard(doc.nodes[id])) return;
+  openedOn = id;
   // Unfold what hides it, then glide there once the canvas is up.
   let p = doc.nodes[id].parentId;
   const folded: string[] = [];
@@ -225,6 +232,17 @@ function focusCardFromUrl() {
 /** The board opens with its sources lane in view too: once its sources are in, a source card off-screen frames the whole board. */
 function frameLane() {
   onCanvasReady((c) => {
+    // Opened on a card: that card and the sources wired to it.
+    if (openedOn) {
+      const doc = studio().doc;
+      const lane = boardLane();
+      const lit = litBy(lane, openedOn);
+      const items = lane.items.filter((i) => lit?.items.has(i.key));
+      if (!doc.nodes[openedOn] || !items.length) return;
+      const box = boundsOf([worldBounds(doc, openedOn), ...items].flatMap((b) => [{ x: b.x, y: b.y }, { x: b.x + b.w, y: b.y + b.h }]));
+      c.glideTo(c.fitCamera(box, {}, 1));
+      return;
+    }
     const cam = studio().camera;
     const view = { x: cam.x, y: cam.y, w: c.viewport.w / cam.zoom, h: c.viewport.h / cam.zoom };
     const out = boardLane().items.some((i) => i.x < view.x || i.y < view.y || i.x + i.w > view.x + view.w || i.y + i.h > view.y + view.h);
@@ -232,12 +250,15 @@ function frameLane() {
   });
 }
 
-/** ?card=<id>: that card selected when the board opens (a board from setup opens on the idea's card, its next step on its bar). */
-function selectFromUrl() {
+/** ?card=<id>&then=solutions|tests: once its sources are in, Qalam AI drafts what goes under the card it opened on (the map's "Draft solutions", "Draft its tests"). */
+function thenFromUrl() {
   const params = new URLSearchParams(location.search);
-  const id = params.get("card");
-  if (!id) return;
-  params.delete("card");
+  const then = params.get("then");
+  if (!then) return;
+  params.delete("then");
   history.replaceState(null, "", `${location.pathname}${params.size ? `?${params}` : ""}`);
-  if (isOstCard(studio().doc.nodes[id])) studio().select([id]);
+  const card = openedOn ? studio().doc.nodes[openedOn]?.meta.ost : undefined;
+  if (!openedOn || !card) return;
+  if (then === "solutions" && card.kind === "opportunity") void draftSolutionsFor(openedOn);
+  if (then === "tests" && card.kind === "solution") void draftTestsFor(openedOn);
 }
