@@ -49,7 +49,8 @@ export function CanvasPage({ chat, waiting = false, reviewing = false }: { chat:
   const byId = new Map(canvas.nodes.map((n) => [n.id, n]));
   // A panel whose node went (a line left out, a door changed) closes.
   const right = dock.right.filter((x) => byId.has(x.id));
-  const chatOpen = dock.chat ?? width >= CHAT_OPEN_AT;
+  // Open by default on a wide page, or while there's nothing on the canvas yet but the organization (the chat is all there is to do).
+  const chatOpen = dock.chat ?? (width >= CHAT_OPEN_AT || !!empty);
   const layout = dockLayout(width, chatOpen, right.map((x) => ({ id: x.id, w: widthOf(x, byId.get(x.id)) })));
 
   // A panel opened beside another that no longer fits: the chat folds to its button if that makes room for both.

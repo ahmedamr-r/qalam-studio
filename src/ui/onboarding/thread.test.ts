@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SetupLine, SetupSession } from "@/org/setup";
 import { initialFlow } from "../ai/questionFlow";
-import { askOf, isAddress, stepsOf, threadOf, type ChatMessage, type ThreadInput } from "./thread";
+import { askOf, isAddress, progressOf, stepsOf, threadOf, type ChatMessage, type ThreadInput } from "./thread";
 
 const base = (over: Partial<ThreadInput> = {}): ThreadInput => ({
   route: "setup",
@@ -337,5 +337,12 @@ describe("isAddress", () => {
     expect(isAddress(" https://basket.ae/about ")).toBe(true);
     expect(isAddress("We deliver groceries. See basket.ae")).toBe(false);
     expect(isAddress("notes")).toBe(false);
+  });
+});
+
+describe("where the setup is, for the top bar", () => {
+  it("names the step it's on and the part of it under way", () => {
+    expect(progressOf([{ id: "a", label: "Qalam AI", state: "done" }, { id: "b", label: "Start", state: "now", sub: [{ label: "Way in", state: "done" }, { label: "Review", state: "now" }] }, { id: "c", label: "Yours", state: "next" }])).toEqual({ at: 2, total: 3, label: "Start · Review" });
+    expect(progressOf([{ id: "a", label: "Qalam AI", state: "done" }, { id: "b", label: "Start", state: "done" }])).toEqual({ at: 2, total: 2, label: "Done" });
   });
 });

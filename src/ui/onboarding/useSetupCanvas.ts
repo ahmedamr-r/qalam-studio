@@ -53,6 +53,8 @@ export function useSetupCanvas(): { canvas: Canvas; empty: string | null; name: 
     });
     // Nothing on it but the organization itself: a word on what will be.
     const quiet = canvas.nodes.every((n) => n.kind === "place" || n.kind === "tool") && canvas.nodes.filter((n) => n.kind === "place").every((n) => !n.quotes.length);
-    return { canvas, empty: quiet ? `What ${name} is becoming shows here, wired from what you send.` : null, name, places };
-  }, [fr.door, fr.problems.sources, fr.org, fr.tools, name, know.phase, know.goals, pending, source, quotes, busy, goals, about, products]);
+    // Mid-sentence, a name not given yet reads in lower case.
+    const called = fr.org?.name ?? fr.naming.name ?? `your ${wordsFor(fr.shape).org}`;
+    return { canvas, empty: quiet ? `What ${called} is becoming shows here, wired from what you send.` : null, name, places };
+  }, [fr.door, fr.problems.sources, fr.org, fr.naming.name, fr.shape, fr.tools, name, know.phase, know.goals, pending, source, quotes, busy, goals, about, products]);
 }

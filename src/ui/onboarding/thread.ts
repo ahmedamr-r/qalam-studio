@@ -197,7 +197,7 @@ export function threadOf(i: ThreadInput): ChatMessage[] {
       out.push(ai("know:missing", text(k.questions === 1 ? "One number is missing a part. Answer what you know." : `${k.questions} numbers are missing a part. Answer what you know.`), ...(k.phase === "asking" && !i.busy ? [part("choices", { set: "know-skip" })] : [])));
       if (k.answered) out.push(you("know:answers", ...(k.answered === "answered" ? [part("answers", { scope: "know" })] : [text("Skip the questions")])));
     }
-    if (k.phase === "review" && !i.busy) out.push(ai("know:review", text(k.goals === 1 ? "Here's your goal, on the right. Add it when it reads right." : `Here are your ${k.goals} goals, on the right. Leave out any that don't belong, then add them.`), part("choices", { set: "know-review", n: k.goals })));
+    if (k.phase === "review" && !i.busy) out.push(ai("know:review", text(k.goals === 1 ? "Here's your goal, on the canvas. Add it when it reads right." : `Here are your ${k.goals} goals, on the canvas. Leave out any that don't belong, then add them.`), part("choices", { set: "know-review", n: k.goals })));
     if (k.error && !i.busy) out.push(ai("know:error", part("error", { text: k.error })));
   }
 
@@ -233,7 +233,7 @@ export function threadOf(i: ThreadInput): ChatMessage[] {
       if (s.phase === "failed" && s.failed && !i.busy) out.push(ai(`${d}:failed`, part("error", { text: s.failed.error === "Stopped." ? "You stopped Qalam AI before it finished." : `Qalam AI couldn't finish: ${s.failed.error}`, retry: true })));
       if ((s.phase === "review" || s.phase === "done") && s.proposal) {
         if (s.proposal.lines.length)
-          out.push(ai(`${d}:proposal`, text(s.proposal.summary), text("Review them on the right: accept what's true, discard the rest."), ...(i.find.open ? [part("choices", { set: "proposal", n: i.find.open })] : [])));
+          out.push(ai(`${d}:proposal`, text(s.proposal.summary), text("Review them on the canvas: accept what's true, leave out the rest."), ...(i.find.open ? [part("choices", { set: "proposal", n: i.find.open })] : [])));
         else out.push(ai(`${d}:proposal`, text(`I found nothing I could set up from it. Fill in the ${wordsFor(i.shape).org} by hand from its home.`)));
       }
     }
@@ -314,7 +314,7 @@ export function askOf(i: ThreadInput): Ask {
     const k = i.know;
     if (k.phase === "write" && !k.sent) return { kind: "outline", placeholder: "2M dirhams a month in orders by end of Q2\n  More customers reorder every week: 1.2 now, 1.5 by March", submit: "ctrlEnter", key: "outline" };
     if (k.phase === "asking") return { kind: "questions", scope: "know", placeholder: "", submit: "enter", key: "know:questions" };
-    if (k.phase === "review") return none("Leave out any goal on the right, then add them", "know:review");
+    if (k.phase === "review") return none("Leave out any goal on the canvas, then add them", "know:review");
     return none("", "know:done");
   }
   const s = i.find.session;
@@ -325,7 +325,7 @@ export function askOf(i: ThreadInput): Ask {
         ? { kind: "idea", placeholder: "A planner that builds the week's meals from what the family already buys, for parents who…", submit: "ctrlEnter", key: "idea", sources: "docs" }
         : { kind: "dump", placeholder: "Paste what you have, or a web address like example.com", submit: "ctrlEnter", key: "dump", sources: "docs" };
   if (roundOpen(s)) return { kind: "questions", scope: "find", placeholder: "", submit: "enter", key: `find:questions:${s.buckets.length}` };
-  if (s.phase === "review") return none("Accept or leave out each one on the right", "find:review");
+  if (s.phase === "review") return none("Accept or leave out each one on the canvas", "find:review");
   if (door === "idea" && s.phase === "done") return none("Start the idea's board above when you're ready", "idea:done");
   return none("", `find:${s.phase}`);
 }
@@ -390,4 +390,13 @@ export function stepsOf(i: ThreadInput): StepItem[] {
     { id: "yours", label: "Yours", state: state("yours") },
     { id: "connect", label: "Connect", state: state("connect") },
   ].filter((s) => order.includes(s.id));
+}
+
+/** Where the setup is, for the top bar: the step it's on (1-based), how many there are, and its name with the part of it under way. */
+export function progressOf(steps: readonly StepItem[]): { at: number; total: number; label: string } {
+  const now = steps.findIndex((x) => x.state === "now");
+  const at = now < 0 ? steps.filter((x) => x.state === "done").length : now + 1;
+  const step = steps[now];
+  const sub = step?.sub?.find((x) => x.state === "now");
+  return { at, total: steps.length, label: step ? (sub ? `${step.label} · ${sub.label}` : step.label) : at >= steps.length ? "Done" : "" };
 }

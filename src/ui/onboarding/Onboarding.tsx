@@ -25,6 +25,8 @@ import { answerSetupRound, saveSetupRound, startSetup, stopSetup, useSetup } fro
 import { nameOrg, sendProblems, startSetupPage, startWelcome, useFirstRun, type FirstRun } from "./flow";
 import { PARTS } from "./parts";
 import { CanvasPage } from "./CanvasPage";
+import { ReviewPill, StepsProgress } from "./TopBarParts";
+import { useWide } from "../chat/Panels";
 import { askOf, isAddress, stepsOf, threadOf, type EngineState, type ThreadInput } from "./thread";
 
 /*
@@ -247,9 +249,12 @@ export function Onboarding({ route }: { route: "welcome" | "setup" }) {
       />
     );
 
+  const narrow = !useWide(1024);
   const layout = (
     <CanvasPage
       reviewing={reviewing}
+      // Something to answer in the chat: its box, or a choice "above" in the thread.
+      waiting={!running && (ask.kind !== "none" || ask.placeholder.includes("above"))}
       chat={
         <div className="min-h-0 flex-1">
           <ChatThread messages={messages} running={running} onCancel={stopSetup} parts={PARTS} footer={footer} pinned={ask.kind !== "questions"} />
@@ -260,7 +265,17 @@ export function Onboarding({ route }: { route: "welcome" | "setup" }) {
 
   if (route === "setup" && fr.opened && !fr.first)
     return (
-      <PageFrame place={null} crumbs={[{ label: "Set up" }]} fill>
+      <PageFrame
+        place={null}
+        crumbs={[{ label: "Set up" }]}
+        right={
+          <span className="flex items-center gap-[8px]">
+            <StepsProgress steps={steps} compact={narrow} />
+            <ReviewPill compact={narrow} />
+          </span>
+        }
+        fill
+      >
         {layout}
       </PageFrame>
     );
@@ -272,7 +287,9 @@ export function Onboarding({ route }: { route: "welcome" | "setup" }) {
             <QalamMark size={20} />
           </a>
           <span className="truncate text-body font-medium text-fg">{title}</span>
+          <StepsProgress steps={steps} compact={narrow} />
           <span className="flex-1" />
+          <ReviewPill compact={narrow} />
           {route === "setup" && fr.step !== "connect" && (
             <a href={orgHref()} className={clsx(r.buttonSm, r.buttonGhost, "mr-[10px]")}>
               Set up later
