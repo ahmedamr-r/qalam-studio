@@ -61,10 +61,12 @@ Open the address it prints, http://127.0.0.1:3101, in Chrome or Edge (the canvas
 
 ### The Mac app
 
-A signed Mac app for Apple silicon will be on [GitHub Releases](https://github.com/ahmedamr-r/qalam-studio/releases), and in Homebrew (`brew install --cask ahmedamr-r/tap/qalam-studio`), once the first release is out. Until then, run Qalam from source as above.
-- **Updates:** it looks for a newer version when it starts and every six hours, and installs it when you quit. **Qalam Studio ▸ Check for Updates…** looks right away.
+The Mac app for Apple silicon will be on [GitHub Releases](https://github.com/ahmedamr-r/qalam-studio/releases) once the first release is out. Until then, run Qalam from source as above.
+- **Opening it the first time:** it isn't notarized by Apple yet, so macOS stops it once. [docs/install-mac.md](docs/install-mac.md) shows how to open it with **Open Anyway** in **System Settings ▸ Privacy & Security**.
+- **Updates:** it looks for a newer version when it starts and every six hours. Until it's notarized it can't install one itself, so it says a version is out and opens its page. **Qalam Studio ▸ Check for Updates…** looks right away.
+- **Homebrew** (`brew install --cask ahmedamr-r/tap/qalam-studio`) comes with the first notarized release.
 - **Finding Claude Code:** opened from the Dock or Finder, it reads your login shell's PATH, so it finds Claude Code wherever your terminal does.
-- **Building it yourself:** run `pnpm dist:mac`. [docs/releasing.md](docs/releasing.md) explains signing and releases.
+- **Building it yourself:** run `pnpm dist:mac`, or `pnpm dist:mac:adhoc` to sign it ad hoc as releases are for now. [docs/releasing.md](docs/releasing.md) explains signing and releases.
 
 ### First steps
 

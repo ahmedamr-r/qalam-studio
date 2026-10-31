@@ -220,6 +220,6 @@ else {
     if (!app.getLoginItemSettings().wasOpenedAtLogin) createWindow();
     shortcut = globalShortcut.register(CAPTURE_KEYS, openCapture) ? CAPTURE_KEYS : null;
     startTray({ open: showMain, capture: openCapture, api, shortcut: () => shortcut });
-    watchForUpdates();
+    void watchForUpdates();
   });
 }

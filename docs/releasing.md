@@ -1,8 +1,14 @@
 # Releasing the Mac app
 
-Qalam Studio ships as a signed, notarized Mac app for Apple silicon: a `.dmg` to install from, and a `.zip` the installed app updates itself from. GitHub Actions builds it from a version tag ([`.github/workflows/release.yml`](../.github/workflows/release.yml)) and uploads it as a **draft** release, which you check and publish. Intel Macs can run `npx qalam-studio` instead.
+Qalam Studio ships as a Mac app for Apple silicon: a `.dmg` to install from, and a `.zip` the installed app updates itself from. GitHub Actions builds it from a version tag ([`.github/workflows/release.yml`](../.github/workflows/release.yml)) and uploads it as a **draft** release, which you check and publish. Intel Macs can run `npx qalam-studio` instead.
+
+How it's signed depends on the repository's Apple secrets:
+- **With them** (below), it's signed with your Developer ID and notarized. It opens without a warning, updates itself, and gets a Homebrew cask.
+- **Without them**, it's signed ad hoc. macOS stops it the first time and people open it with **Open Anyway** ([install-mac.md](install-mac.md)). It can't install an update itself, so it says a new version is out and opens its page. There's no Homebrew cask.
 
 ## Once: Apple and GitHub
+
+This is for a notarized app. Skip it to release signed ad hoc.
 
 1. **Join the Apple Developer Program** ($99 a year) at [developer.apple.com/programs](https://developer.apple.com/programs/). Apple only trusts an app downloaded from the web if a member signed it and Apple has checked it (notarization).
 2. **Make a Developer ID Application certificate.** In Xcode, go to **Settings ▸ Accounts**, pick your team, click **Manage Certificates…**, then **+ ▸ Developer ID Application**. In Keychain Access, find "Developer ID Application: …" under **My Certificates**, then right-click ▸ **Export…** as a `.p12` with a password.
@@ -32,16 +38,16 @@ Qalam Studio ships as a signed, notarized Mac app for Apple silicon: a `.dmg` to
 3. The **Release** workflow:
    - runs the checks;
    - makes sure the tag matches `package.json`;
-   - builds, signs and notarizes the app;
-   - uploads `Qalam-Studio-0.2.0-arm64.dmg`, the `.zip` and `latest-mac.yml` to a draft release.
+   - builds the app, signed and notarized with the Apple secrets, or signed ad hoc without them (the run shows a warning);
+   - uploads `Qalam-Studio-0.2.0-arm64.dmg`, the `.zip` and `latest-mac.yml` to a draft release, which starts with how to install it ([`build/release-notes.md`](../build/release-notes.md)).
 
-   It stops if the Apple secrets aren't set.
-4. Open the draft on GitHub, download the `.dmg`, and open the app from it on a Mac. It should open without any warning.
-5. Write what's new, then **Publish release**. Publishing does two things:
-   - Installed apps update to it: they look when they start and every six hours, and install it when you quit (or from **Qalam Studio ▸ Check for Updates…**).
-   - The **Homebrew** workflow writes the new version into the tap.
+   It stops if only one of the two is set: the certificate and the notarizing key go together.
+4. Open the draft on GitHub, download the `.dmg`, and open the app from it on a Mac. Notarized, it opens without any warning. Signed ad hoc, macOS stops it once, and [Open Anyway](install-mac.md) opens it.
+5. Write what's new under the install notes, then **Publish release**. Publishing does two things:
+   - Installed apps hear of it: they look when they start and every six hours (or from **Qalam Studio ▸ Check for Updates…**). A notarized app installs it when you quit; one signed ad hoc says it's out and opens its page.
+   - For a notarized release, the **Homebrew** workflow writes the new version into the tap.
 
-To try a build without releasing, run the workflow by hand (**Actions ▸ Release ▸ Run workflow**). It builds without publishing, signed if the secrets are there, and keeps the files with the run for a week.
+To try a build without releasing, run the workflow by hand (**Actions ▸ Release ▸ Run workflow**). It builds without publishing, signed as a tag would be, and keeps the files with the run for a week.
 
 ## On your own Mac
 
@@ -50,13 +56,15 @@ pnpm dist:mac
 ```
 
 This puts the `.dmg`, the `.zip` and `latest-mac.yml` in `release/dist/`.
-- **Signing:** electron-builder signs with a Developer ID certificate it finds in your keychain. Run `CSC_IDENTITY_AUTO_DISCOVERY=false pnpm dist:mac` to skip signing.
+- **Signing:** electron-builder signs with a Developer ID certificate it finds in your keychain. Run `pnpm dist:mac:adhoc` to sign it ad hoc, as releases are without the Apple secrets; its `.dmg` window then shows how to open the app the first time.
 - **Notarizing:** it notarizes when `APPLE_API_KEY` (the `.p8` file's path), `APPLE_API_KEY_ID` and `APPLE_API_ISSUER` are set.
-- **Unsigned builds:** these run on the Mac that built them, but can't update themselves, and another Mac refuses them once they're downloaded.
+- **Ad hoc:** another Mac stops it once it's downloaded, until **Open Anyway**, and it can't update itself.
+- **Not signed at all** (`CSC_IDENTITY_AUTO_DISCOVERY=false`): it runs on the Mac that built it, but a downloaded copy reads as damaged, with no Open Anyway. Don't hand those out.
 
 How it's put together:
 - **Staging:** [`scripts/stage-app.mjs`](../scripts/stage-app.mjs) puts what the installed app loads in `release/app`: the built UI, the Node entries, and node-llama-cpp for search by meaning.
 - **Packaging:** [`electron-builder.yml`](../electron-builder.yml) packages that folder.
 - **The icon:** it's `build/icon.png`, rendered from `build/icon.svg` with `pnpm exec electron scripts/render-icon.mjs`.
+- **The ad-hoc `.dmg` window:** its background is `build/dmg-open-anyway.tiff`, rendered at 1x and 2x from `build/dmg-open-anyway.html` with `pnpm exec electron scripts/render-dmg.mjs`. The page writes around where Finder puts the icons (electron-builder's layout), so keep those spots clear when you change it.
 
 The installed app checks for updates unless `QALAM_NO_UPDATES=1` is set.
