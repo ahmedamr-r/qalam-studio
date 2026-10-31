@@ -17,7 +17,7 @@ export const LAB_FEATURES = [
   "you",
   /** The first run's Yours step (which goals are a team member's own). */
   "yours",
-  /** Talking instead of typing: the Voice step, the mic buttons, Connections' Voice card. */
+  /** The first run's Voice step (the mic in the boxes and Connections' Voice card stay). */
   "voice",
   /** The setup's "Help me find them" and idea doors. */
   "doors",

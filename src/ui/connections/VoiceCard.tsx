@@ -9,8 +9,9 @@ import { ParakeetInstall } from "../voice/ParakeetInstall";
 
 /*
  * Talking instead of typing on this Mac (src/voice/model.ts): what the mic in the boxes uses, and
- * changing it. Apple's engine where macOS has it, else Parakeet once installed (offered here, never
- * downloaded unasked); their own dictation app, or off.
+ * changing it. Apple's engine where macOS has it, else Parakeet once installed; Parakeet is offered
+ * here on every Mac, in place of Apple's or instead of it, never downloaded unasked. Their own
+ * dictation app, or off.
  */
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -70,7 +71,7 @@ export function VoiceCard() {
           />
         )}
       </div>
-      {offer === "parakeet" && <ParakeetInstall onDone={() => void chooseVoice("parakeet")} />}
+      {offer !== "none" && <ParakeetInstall onDone={() => void chooseVoice("parakeet")} />}
       {view.parakeet.installed && (
         <button
           type="button"

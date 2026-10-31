@@ -3,9 +3,9 @@ import { installVoice, parakeetSize, useVoice } from "@/org/voice";
 import { Button } from "../controls";
 
 /*
- * Parakeet, offered where the Mac has no Apple engine (macOS before 26): how big it is, Install
- * with its progress and Stop. Nothing downloads until they click; a stopped download goes on from
- * where it was next time.
+ * Parakeet: in place of Apple's engine where the Mac has none (macOS before 26), else as the other
+ * engine to use instead. How big it is, Install with its progress and Stop. Nothing downloads until
+ * they click; a stopped download goes on from where it was next time.
  */
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -13,6 +13,7 @@ export const megabytes = (n: number) => `${Math.round(n / 1e6)} MB`;
 
 export function ParakeetInstall({ onDone }: { onDone?: () => void }) {
   const installed = useVoice((v) => v.view?.parakeet.installed ?? false);
+  const apple = useVoice((v) => v.view?.apple.available ?? false);
   const [size, setSize] = useState<number | null>(null);
   const [done, setDone] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -39,7 +40,9 @@ export function ParakeetInstall({ onDone }: { onDone?: () => void }) {
 
   return (
     <div className="flex flex-col gap-[8px]">
-      <p className="text-caption text-fg-muted">Apple&apos;s speech engine needs macOS 26. Parakeet, NVIDIA&apos;s English model, runs on this Mac instead: {size ? megabytes(size) : "about 465 MB"}, downloaded once from Hugging Face.</p>
+      <p className="text-caption text-fg-muted">
+        {apple ? "Or use Parakeet, NVIDIA's English model, in place of Apple's engine. It runs on this Mac" : "Apple's speech engine needs macOS 26. Parakeet, NVIDIA's English model, runs on this Mac instead"}: {size ? megabytes(size) : "about 465 MB"}, downloaded once from Hugging Face.
+      </p>
       {done !== null ? (
         <div className="flex items-center gap-[10px]" role="status">
           <div className="h-[4px] flex-1 overflow-hidden rounded-full bg-muted">
@@ -51,7 +54,7 @@ export function ParakeetInstall({ onDone }: { onDone?: () => void }) {
           </Button>
         </div>
       ) : (
-        <Button size="sm" className="self-start" onClick={install}>
+        <Button size="sm" variant={apple ? "secondary" : "primary"} className="self-start" onClick={install}>
           Install Parakeet
         </Button>
       )}

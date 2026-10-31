@@ -34,12 +34,10 @@ export default function ConnectionsPage() {
             <ProductCode />
           </div>
         )}
-        {lab("voice") && (
-          <div className="flex flex-col gap-[8px]">
-            <h2 className="text-micro font-medium text-fg-subtle">Voice</h2>
-            <VoiceCard />
-          </div>
-        )}
+        <div className="flex flex-col gap-[8px]">
+          <h2 className="text-micro font-medium text-fg-subtle">Voice</h2>
+          <VoiceCard />
+        </div>
         <div className="flex flex-col gap-[8px]">
           <div className="flex items-center justify-between gap-[12px]">
             <h2 className="text-micro font-medium text-fg-subtle">This computer</h2>

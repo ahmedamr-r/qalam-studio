@@ -1,9 +1,9 @@
 /*
  * Talking instead of typing (pure; the window and the core share it). This Mac's voice helper
  * (native/voice, run by server/voice) listens and writes what it hears, on the Mac: Apple's
- * on-device engine where macOS has it (26 and later), on by default there. Where it doesn't, Qalam
- * offers Parakeet and never downloads it unasked; or they use their own dictation app, and Qalam's
- * mic stays out of the way. English only for now.
+ * on-device engine where macOS has it (26 and later), on by default there. Qalam offers Parakeet
+ * too, in place of Apple's where the Mac has none or instead of it, and never downloads it unasked;
+ * or they use their own dictation app, and Qalam's mic stays out of the way. English only for now.
  */
 
 /** What they chose on this Mac: an engine, their own dictation app, or no voice. */
