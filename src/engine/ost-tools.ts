@@ -290,6 +290,11 @@ export function createOstTools(): CanvasDelegate {
       }
       if (s.tool === "sticky") {
         s.setTool("select");
+        // A space's canvas keeps cards on their boards; a sticky would have nowhere to be kept yet.
+        if (useSpaceView.getState().active) {
+          feedback("Stickies aren't on the home's canvas yet: put the thought in a card's notes", { id: "discovery.sticky" });
+          return true;
+        }
         const { frame, text } = makeSticky(p.world);
         s.mutate((d) => {
           d.nodes[frame.id] = frame;
