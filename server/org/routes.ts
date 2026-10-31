@@ -19,7 +19,7 @@ import { needSummary } from "@/hub/needs";
 import { quickCapture } from "../quick";
 import { reviewOrg } from "./review";
 import { askOrg } from "../ask";
-import { captureSource, fileSources, readAsOwn } from "../capture";
+import { captureSource, fileSources, readAsOwn, splitSetupSource } from "../capture";
 import type { Ingested } from "@/discovery/ingest/core";
 import type { Proposal } from "@/discovery/proposals";
 import { MAX_SOURCE_TEXT, SOURCE_KIND_LABEL, type SourceRecord, type TextBlock } from "@/discovery/sources";
@@ -604,8 +604,10 @@ export function orgRoutes(): Hono<Env> {
     const ids = (Array.isArray(b?.sources) ? b.sources : []).filter((x): x is string => typeof x === "string" && ID.test(x)).slice(0, 20);
     if (!ids.length) return bad("Say which sources");
     const product = typeof b?.product === "string" && ID.test(b.product) ? b.product : null;
-    void fileSources(c.get("store"), ids, product).catch((e) => console.warn(`[qalam] filing into the topic pages didn't finish: ${e instanceof Error ? e.message : String(e)}`));
-    return c.json({ started: true }, 202);
+    // A settled setup's docs of customers' words become sources of their own first: the answer comes once they are.
+    const all = [...new Set((await Promise.all(ids.map((id) => splitSetupSource(c.get("store"), id)))).flat())];
+    void fileSources(c.get("store"), all, product).catch((e) => console.warn(`[qalam] filing into the topic pages didn't finish: ${e instanceof Error ? e.message : String(e)}`));
+    return c.json({ started: true, sources: all }, 202);
   });
   /** What Qalam AI proposed for a board from what was added to the organization, by source. */
   r.get("/api/org/:org/placements", async (c) => {

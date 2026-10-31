@@ -17,6 +17,7 @@ import { goalsText } from "@/goals/text";
 import { contextText } from "@/org/context-md";
 import { wordsFor } from "@/org/words";
 import { contextOf, type OrgContext, type PackRequest } from "@/org/pack";
+import { splitSetup } from "@/org/setup-split";
 import { indexFor } from "./index/registry";
 import { packedPieces, packFor } from "./index/search";
 import { NotFoundError, type OrgStore } from "./org/store";
@@ -99,6 +100,21 @@ export async function coreDeps(store: OrgStore): Promise<FilingDeps> {
       return { created: r.created, counts: r.counts, pages: r.pages.map((p) => ({ id: p.id, title: p.title, kind: p.kind })) };
     },
   };
+}
+
+/**
+ * A settled setup's docs of customers' words, each made a source of its own (src/org/setup-split.ts),
+ * before it's filed: their quotes count as what customers said, by the sources they came from. The
+ * ids of the sources to file: the setup's, and those it was split into.
+ */
+export async function splitSetupSource(store: OrgStore, id: string): Promise<string[]> {
+  const s = await store.getSource(id);
+  if (!s?.setup || s.setup.phase !== "done") return [id];
+  const { dump, made } = splitSetup(s, () => nanoid(10));
+  // The new sources first, so the dump never names one that isn't there.
+  for (const m of made) await store.putSource(m);
+  if (made.length) await store.putSource(dump);
+  return [id, ...(dump.setup?.docs ?? []).flatMap((d) => (d.source ? [d.source] : []))];
 }
 
 // Sources being filed by the core now (by folder and id): asked twice, a source is filed once.

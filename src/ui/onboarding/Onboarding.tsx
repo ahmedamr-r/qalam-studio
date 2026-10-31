@@ -209,7 +209,7 @@ export function Onboarding({ route }: { route: "welcome" | "setup" }) {
         draft={ask.kind === "outline" ? knowText : ask.kind === "dump" || ask.kind === "idea" ? lastDump.current : ""}
         onKeyDown={ask.kind === "outline" ? indent : undefined}
         above={ask.sources ? <SourceRow fit={ask.sources} /> : undefined}
-        attached={ask.sources ? <AttachmentChips /> : undefined}
+        attached={ask.sources ? <AttachmentChips voices={ask.sources === "docs"} /> : undefined}
         onFiles={ask.sources ? attachFiles : undefined}
         sendEmpty={!!ask.sources && readyDocs(attached).length > 0}
         hint={ask.kind === "outline" ? "Tab puts a goal under the one above · ⌘↵ sends" : ask.kind === "dump" || ask.kind === "problems" ? "A web address alone reads the page · ⌘↵ sends" : ask.kind === "idea" ? "⌘↵ sends" : null}

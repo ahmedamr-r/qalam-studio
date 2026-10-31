@@ -9,7 +9,7 @@ import { Button, IconBtn, Tip } from "../controls";
 import { Panel, useWide, WIDE } from "../chat/Panels";
 import { r } from "../recipes";
 import { dropKnown, useKnow } from "../setup/know";
-import { acceptLines, discardLines, useSetup } from "../setup/setup";
+import { acceptLines, discardLines, useSetup, useSetupQuotes } from "../setup/setup";
 import { openSoFar, useFirstRun } from "./flow";
 import { metricLine } from "@/goals/goals-md";
 import { canvasOf, EMPTY, type Canvas } from "./canvas";
@@ -240,6 +240,7 @@ function useCanvas(): Canvas {
   const door = useFirstRun((s) => s.door);
   const problems = useFirstRun((s) => s.problems.sources);
   const source = useSetup((s) => s.source);
+  const quotes = useSetupQuotes();
   const pending = useSetup((s) => s.pending);
   const busy = useSetup((s) => !!s.busy);
   const know = useKnow();
@@ -247,9 +248,9 @@ function useCanvas(): Canvas {
     if (door === "problems") return canvasOf({ problems: problems ?? [] });
     if (door === "know") return canvasOf({ know: know.phase === "asking" || know.phase === "review" ? know.goals : [] });
     if (pending) return canvasOf({ pending: { docs: [...(pending.text ? [{ from: "said", title: "Your words" }] : []), ...(pending.url ? [{ from: "page", title: pending.url }] : []), ...(pending.docs ?? [])] } });
-    if (source?.setup) return canvasOf({ setup: { session: source.setup, sourceId: source.id, quotes: source.quotes, text: source.text }, busy });
+    if (source?.setup) return canvasOf({ setup: { session: source.setup, sourceId: source.id, quotes, text: source.text }, busy });
     return EMPTY;
-  }, [door, problems, source, pending, busy, know.phase, know.goals]);
+  }, [door, problems, source, quotes, pending, busy, know.phase, know.goals]);
 }
 
 export function SoFar() {
@@ -258,6 +259,7 @@ export function SoFar() {
   const picked = useFirstRun((s) => s.picked);
   const tools = useFirstRun((s) => s.tools);
   const source = useSetup((s) => s.source);
+  const quotes = useSetupQuotes();
   const know = useKnow();
   const goals = useGoals();
   const { about, products } = useOrgContext();
@@ -269,7 +271,7 @@ export function SoFar() {
     void fn().finally(() => setWorking(false));
   };
   const name = org?.name ?? naming.name ?? "Your organization";
-  const v = soFarOf({ org: name, session: source?.setup ?? null, quotes: source?.quotes ?? [], products, know: { phase: know.phase, goals: know.goals }, tree: goals, about });
+  const v = soFarOf({ org: name, session: source?.setup ?? null, quotes, products, know: { phase: know.phase, goals: know.goals }, tree: goals, about });
   const t = tally(v);
   const mine = new Set(picked ?? goals.mine);
   const connected = (tools ?? []).filter((x) => x.tone === "ok");
@@ -282,7 +284,7 @@ export function SoFar() {
   if (readingNode)
     return (
       <Panel label={`Reading ${readingNode.title}`} body={false}>
-        <SourceReader key={readingNode.id} node={readingNode} canvas={canvas} setup={door !== "problems" && source ? { text: source.text, quotes: source.quotes, blocks: source.blocks } : null} onClose={() => setReading(null)} className="min-h-0 flex-1 rounded-[inherit]" />
+        <SourceReader key={readingNode.id} node={readingNode} canvas={canvas} setup={door !== "problems" && source ? { text: source.text, quotes, blocks: source.blocks } : null} onClose={() => setReading(null)} className="min-h-0 flex-1 rounded-[inherit]" />
       </Panel>
     );
   // Once anything is sent, the canvas is what's drawn; the About, products and what's connected sit under it.

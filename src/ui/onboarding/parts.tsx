@@ -28,7 +28,7 @@ import type { PartData } from "../chat/types";
 import { r } from "../recipes";
 import { StatusDot } from "../viz";
 import { addKnown, editKnown, skipKnown, useKnow } from "../setup/know";
-import { acceptLines, placeSetup, retrySetup, skipSetupRest, startBoard, startIdeaBoard, useSetup } from "../setup/setup";
+import { acceptLines, placeSetup, retrySetup, skipSetupRest, startBoard, startIdeaBoard, useSetup, useSetupQuotes } from "../setup/setup";
 import { connectFor } from "../welcome/steps";
 import { Dictated } from "../voice/MicButton";
 import { ParakeetInstall } from "../voice/ParakeetInstall";
@@ -280,12 +280,13 @@ function TookPart({ data }: { data: PartData }) {
 
 function PushbackPart() {
   const source = useSetup((x) => x.source);
+  const quotes = useSetupQuotes();
   const challenges = source?.setup?.challenges ?? [];
   if (!challenges.length) return null;
   return (
     <ul aria-label="Pushback" className="flex flex-col gap-[6px]">
       {challenges.map((c) => {
-        const words = source?.quotes.find((q) => q.id === c.quoteId);
+        const words = quotes.find((q) => q.id === c.quoteId);
         return (
           <li key={c.id} className={clsx(qr.inset, "flex flex-col gap-[4px] px-[10px] py-[8px]")}>
             <span className="flex items-start gap-[8px]">

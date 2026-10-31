@@ -27,6 +27,8 @@ export interface Attachment extends DocRef {
   state: "reading" | "ready" | "failed";
   ingested?: Ingested;
   why?: string;
+  /** The person chose whose words it holds (else it's guessed once it's read). */
+  chose?: true;
 }
 
 /** The connector groups each fit draws on, in order. */
@@ -77,8 +79,25 @@ export function joinParts(parts: readonly Part[]): { text: string; spans: [numbe
   return { text, spans, blocks };
 }
 
-/** A doc's part: its words under "From <tool>: <title>". */
-export const docPart = (d: { via: string; title: string; text: string; blocks?: readonly TextBlock[] }): Part => ({ header: `From ${d.via}: ${d.title}`, body: d.text, ...(d.blocks?.length ? { blocks: d.blocks } : {}) });
+/** A doc's part: its words under "From <tool>: <title>", and "(customers' words)" when that's whose they are. */
+export const docPart = (d: { via: string; title: string; text: string; blocks?: readonly TextBlock[]; voice?: SetupDoc["voice"] }): Part => ({ header: `From ${d.via}: ${d.title}${d.voice === "customers" ? " (customers' words)" : ""}`, body: d.text, ...(d.blocks?.length ? { blocks: d.blocks } : {}) });
+
+/** What a doc's name says it holds: people talking to the team. */
+const CUSTOMER_NAME = /interview|review|ticket|survey|feedback|support|transcript|respons|complain|nps|chats?\b|calls?\b|verbatim|customer|user ?research/i;
+/** Lines that start with who's talking ("Sara: …", a sheet's rows as ./rows.ts reads them). */
+const TURN = /^[^\n:]{1,40}:[ \t]+\S/gm;
+
+/**
+ * Whose words a doc most likely holds, before the person says: customers' when people are talking in
+ * it (an interview, a sheet of answers read as who said what, "Name: …" turns making up much of it), when
+ * it's from a tool of customers' voice, or when its name says so; else the person's own.
+ */
+export function guessVoice(d: { kind?: string; text: string; title: string; group?: string }): "customers" | "own" {
+  if (d.kind === "interview" || d.group === "voice" || CUSTOMER_NAME.test(d.title)) return "customers";
+  const turns = d.text.match(TURN)?.length ?? 0;
+  const lines = d.text.split("\n").filter((l) => l.trim()).length;
+  return turns >= 3 && turns >= lines * 0.4 ? "customers" : "own";
+}
 
 /** Each part's span once the text is cut at `max`: shortened (`cut`) where the cut falls in it, left out where it falls before it. */
 export function spansWithin<T>(parts: readonly T[], spans: readonly [number, number][], max: number): (T & { span: [number, number]; cut?: true })[] {
@@ -132,25 +151,35 @@ export function attachFiles(files: File[]) {
     const file = files.find((f) => `computer:${f.name}:${f.size}:${f.lastModified}` === a.key)!;
     void import("../discovery/ingest").then(({ ingestFile }) =>
       ingestFile(file).then(
-        (ingested) => set(a.key, { state: "ready", ingested, type: ingested.kind, ...pagesOf(ingested) }),
+        (ingested) => set(a.key, { state: "ready", ingested, type: ingested.kind, ...pagesOf(ingested), ...guessed(a, ingested) }),
         (e: unknown) => set(a.key, { state: "failed", why: message(e) }),
       ),
     );
   }
 }
 
+/** Its voice as guessed once it's read, unless the person chose. */
+const guessed = (a: Attachment, ing: Ingested, group?: string) => (useAttach.getState().items.find((x) => x.key === a.key)?.chose ? {} : { voice: guessVoice({ kind: ing.kind, text: ing.text, title: a.title, group }) });
+
 /** Items picked in a connector: read together in the core, not taken in until the box sends. */
-export async function attachHits(connector: Pick<ConnectorState, "id" | "label">, hits: Hit[]) {
+export async function attachHits(connector: Pick<ConnectorState, "id" | "label"> & { group?: string }, hits: Hit[]) {
   const fresh = add(hits.map((h) => ({ key: `${connector.id}:${h.id}`, from: connector.id, via: connector.label, title: h.title, ...(h.url ? { origin: h.url } : {}), ...(h.type && h.type !== "folder" ? { type: h.type } : {}), ...(h.at ? { at: h.at } : {}), state: "reading" as const })));
   if (!fresh.length) return;
   const picked = hits.filter((h) => fresh.some((a) => a.key === `${connector.id}:${h.id}`));
   try {
     const read = await connectorsDb.read(connector.id, picked);
-    for (const it of read) set(`${connector.id}:${it.id}`, it.ingested ? { state: "ready", ingested: it.ingested, ...pagesOf(it.ingested) } : { state: "failed", why: it.why ?? "Nothing came back for it." });
+    for (const it of read) {
+      const key = `${connector.id}:${it.id}`;
+      const a = fresh.find((x) => x.key === key);
+      set(key, it.ingested && a ? { state: "ready", ingested: it.ingested, ...pagesOf(it.ingested), ...guessed(a, it.ingested, connector.group) } : { state: "failed", why: it.why ?? "Nothing came back for it." });
+    }
   } catch (e) {
     for (const a of fresh) set(a.key, { state: "failed", why: message(e) });
   }
 }
+
+/** Whose words a doc holds, as the person says. */
+export const setVoice = (key: string, voice: "customers" | "own") => set(key, { voice, chose: true });
 
 export const removeAttachment = (key: string) => useAttach.setState((s) => ({ items: s.items.filter((x) => x.key !== key) }));
 export const clearAttachments = () => useAttach.setState({ items: [] });
@@ -162,4 +191,4 @@ export type SentDoc = Attachment & { ingested: Ingested };
 export const readyDocs = (items: readonly Attachment[]): SentDoc[] => items.filter((x): x is SentDoc => x.state === "ready" && !!x.ingested);
 
 /** What's kept of a sent doc: where it came from and what was known of it. */
-export const docRef = ({ from, title, origin, type, at, pages }: DocRef): DocRef => ({ from, title, ...(origin ? { origin } : {}), ...(type ? { type } : {}), ...(at ? { at } : {}), ...(pages ? { pages } : {}) });
+export const docRef = ({ from, title, origin, type, at, pages, voice }: DocRef): DocRef => ({ from, title, ...(origin ? { origin } : {}), ...(type ? { type } : {}), ...(at ? { at } : {}), ...(pages ? { pages } : {}), ...(voice ? { voice } : {}) });

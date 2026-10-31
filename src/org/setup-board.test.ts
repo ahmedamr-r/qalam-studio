@@ -43,6 +43,16 @@ describe("a board started from the setup", () => {
     expect(b.doc.roots).toEqual([outcome.id]);
   });
 
+  it("rests a card on the quote where it lives now, once its doc became a source of its own", () => {
+    const tickets = { id: "tickets", title: "tickets.csv", kind: "text" as const, quotes: [{ ...QUOTES[1], span: [0, 46] as [number, number], speaker: "Sara" }] };
+    const homeOf = (id: string) => (id === "list" ? { source: { ...tickets, v: 1 as const, projectId: "", text: "", addedAt: 0, read: [], needs: [] }, quote: tickets.quotes[0] } : null);
+    const b = boardFromSetup({ source, homeOf, session: { proposal: undefined }, goal: null });
+    const card = Object.values(b.doc.nodes)
+      .map((n) => (n.meta as { ost?: OstCard } | undefined)?.ost)
+      .find((c) => c?.title === "Parents rebuild the shopping list every Sunday")!;
+    expect(card.evidence[0]).toMatchObject({ kind: "quote", sourceId: "tickets", piece: "hub:quote:list", span: [0, 46], speaker: "Sara" });
+  });
+
   it("leaves another goal's problems to its own board", () => {
     const g1 = line("g1", ["goal"]);
     const g2 = line("g2", ["kids"]);

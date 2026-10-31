@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ConnectorState } from "@/org/connectors";
-import { docPart, docsCheck, joinParts, sourcesFor, spansWithin, type Attachment } from "./attach";
+import { docPart, docsCheck, guessVoice, joinParts, sourcesFor, spansWithin, type Attachment } from "./attach";
 
 const c = (id: string, group: ConnectorState["group"], o: Partial<ConnectorState> = {}): ConnectorState =>
   ({ id, label: id[0].toUpperCase() + id.slice(1), group, feeds: "material", imports: true, via: null, tone: "off", claudeCode: null, ...o }) as ConnectorState;
@@ -69,5 +69,24 @@ describe("docs sent with the words", () => {
     // A doc that couldn't be read doesn't count, and problems have no total.
     expect(docsCheck("Hi", [doc("Gone", "failed")], 100)).toBeNull();
     expect(docsCheck("Hi", [doc("Pitch", "ready", "x".repeat(500))], null)).toBeNull();
+  });
+});
+
+describe("whose words a doc holds", () => {
+  it("guesses customers' when people talk in it, it's from a tool of their voice, or its name says so", () => {
+    expect(guessVoice({ kind: "interview", text: "…", title: "Call 3" })).toBe("customers");
+    expect(guessVoice({ text: "Notes", title: "rider-interviews-oct.md" })).toBe("customers");
+    expect(guessVoice({ text: "Notes", title: "Inbox", group: "voice" })).toBe("customers");
+    expect(guessVoice({ text: "Ahmed S.: Pins land mid-compound\n\nMohamed R.: Long pickups aren't paid\n\nHany T.: Riders have no change", title: "export.csv" })).toBe("customers");
+  });
+
+  it("guesses the person's own otherwise, a few labelled lines in a plan included", () => {
+    expect(guessVoice({ text: "Our plan for Q4.\nGoal: more trips\nOwner: Sara\nMetric: trips per week\nWe start with pickups.\nThen fares.\nThen cash.\nThen safety.", title: "Q4 plan.md" })).toBe("own");
+    expect(guessVoice({ text: "What we do and why.", title: "strategy.pdf" })).toBe("own");
+  });
+
+  it("says so in the doc's header when they're customers' words", () => {
+    expect(docPart({ via: "this computer", title: "a.md", text: "x", voice: "customers" }).header).toBe("From this computer: a.md (customers' words)");
+    expect(docPart({ via: "this computer", title: "a.md", text: "x", voice: "own" }).header).toBe("From this computer: a.md");
   });
 });

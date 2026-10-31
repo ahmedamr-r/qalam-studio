@@ -7,19 +7,23 @@ import { makeSticky } from "@/discovery/sticky";
 import type { OstMetric } from "@/discovery/types";
 import { emptyDoc, type Doc } from "@/doc/schema";
 import type { SetupLine, SetupSession } from "./setup";
+import type { QuoteHome } from "./setup-split";
 
 /*
  * A board started from the setup, built by code from what the setup read (pure): the goal as its
  * outcome, each problem the goal rests on under it (and the problems no goal took: a need it found,
  * or what customers said), and the idea (what was read as one, else at the idea door what they
  * wrote) as a solution under the problem it shares the most words with. Every card rests on the setup
- * source's own quotes, in their own words, so nothing is read or asked again, and the problem pages
- * and the index connect to the same pieces. With no problem to put it under, the idea waits on a
+ * setup's own quotes, in their own words (customers' where their doc became a source of its own), so
+ * nothing is read or asked again, and the problem pages and the index connect to the same pieces. With no problem to put it under, the idea waits on a
  * sticky beside the goal.
  */
 
 export interface SetupBoardInput {
+  /** The setup's source, with every quote it read (`setupQuotes`: in its text, wherever each lives now). */
   source: Pick<SourceRecord, "id" | "title" | "kind" | "quotes"> & { text?: string };
+  /** Where a quote lives now, once its doc became a source of its own: a card rests on it there. */
+  homeOf?: (quoteId: string) => QuoteHome | null;
   session: Pick<SetupSession, "proposal" | "idea" | "docs" | "said">;
   /** The goal the board is for (none: the idea's own board, its problems at the top). */
   goal?: { line: SetupLine; title: string; metric?: OstMetric | null } | null;
@@ -62,7 +66,10 @@ export function boardFromSetup(input: SetupBoardInput): { doc: Doc; outcome: str
   const { source, goal } = input;
   const now = input.now ?? Date.now();
   const byId = new Map(source.quotes.map((q) => [q.id, q]));
-  const ev = (q: SourceQuote) => quoteEvidence(source, q, "user", { now });
+  const ev = (q: SourceQuote) => {
+    const home = input.homeOf?.(q.id);
+    return home ? quoteEvidence(home.source, home.quote, "user", { now }) : quoteEvidence(source, q, "user", { now });
+  };
   const doc = emptyDoc();
 
   const lines = input.session.proposal?.lines.filter((l) => l.field === "goals") ?? [];

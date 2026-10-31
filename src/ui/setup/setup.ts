@@ -1,4 +1,5 @@
 import { nanoid } from "nanoid";
+import { useMemo } from "react";
 import { create } from "zustand";
 import { docPart, docRef, joinParts, spansWithin, type DocRef, type Part, type SentDoc } from "../chat/attach";
 import { AIError, aiStatus, callAI } from "@/ai/client";
@@ -16,6 +17,7 @@ import { sameTopic } from "@/hub/topics";
 import { saveAbout, saveProduct, useOrgContext } from "@/org/context";
 import { emptyContext } from "@/org/context-md";
 import { boardFromSetup } from "@/org/setup-board";
+import { setupQuotes, splitIds } from "@/org/setup-split";
 import { applyLines, boardGoals, decide, sanitizeSetup, setupSent, type OrgNow, type PlaceSays, type SetupLine, type SetupSession } from "@/org/setup";
 import { projectHref } from "@/projects/model";
 import { NAME_MAX, TITLE_MAX, useYou } from "@/org/you";
@@ -43,9 +45,31 @@ export interface SetupUI {
   error: string | null;
   /** What they sent, while the page is fetched and before there's a source to keep it on. */
   pending: { text: string; url: string; docs?: DocRef[] } | null;
+  /** The sources its docs of customers' words became once it was settled (src/org/setup-split.ts). */
+  splits: SourceRecord[];
 }
 
-export const useSetup = create<SetupUI>(() => ({ source: null, busy: null, error: null, pending: null }));
+export const useSetup = create<SetupUI>(() => ({ source: null, busy: null, error: null, pending: null, splits: [] }));
+
+/** Every quote the setup read, wherever each lives now, and the sources they live in. */
+export function setupView(u: Pick<SetupUI, "source" | "splits">) {
+  const s = u.source;
+  if (!s) return { quotes: [], homeOf: () => null, sources: [] as SourceRecord[] };
+  return { ...setupQuotes(s, u.splits), sources: [s, ...u.splits] };
+}
+
+/** Every quote the setup read, in its text, wherever each lives now (a doc of customers' words, once split, holds its own). */
+export function useSetupQuotes() {
+  const source = useSetup((u) => u.source);
+  const splits = useSetup((u) => u.splits);
+  return useMemo(() => setupView({ source, splits }).quotes, [source, splits]);
+}
+
+/** The sources a setup's docs became, as they are now. */
+async function loadSplits(s: SourceRecord | null): Promise<SourceRecord[]> {
+  const ids = s ? splitIds(s) : [];
+  return (await Promise.all(ids.map((id) => sourcesDb.get(id).catch(() => null)))).filter((x): x is SourceRecord => !!x);
+}
 
 const PATH = "/api/setup";
 let run: AbortController | null = null;
@@ -69,7 +93,7 @@ export async function openSetup(id: string | null) {
   const found = list
     .filter((s): s is SourceRecord => !!s?.setup && (!!id || s.setup.phase !== "done"))
     .sort((a, b) => b.addedAt - a.addedAt)[0];
-  useSetup.setState({ source: found ?? null, error: null });
+  useSetup.setState({ source: found ?? null, error: null, splits: await loadSplits(found ?? null) });
   const p = found?.setup?.phase;
   if (found && (p === "reading" || p === "analyzing" || p === "placing") && !run) await setSession((d) => ({ ...d, phase: "failed", failed: { at: p, error: "Interrupted: the page was closed or reloaded." } }));
 }
@@ -167,7 +191,7 @@ export async function startSetup(input: { text: string; url: string; docs?: Sent
       from.push({ from: "page", title: page.title, ...(page.origin ? { origin: page.origin } : {}) });
     }
     for (const d of docs) {
-      parts.push(docPart({ via: d.via, title: d.title, text: d.ingested.text, blocks: d.ingested.blocks }));
+      parts.push(docPart({ via: d.via, title: d.title, text: d.ingested.text, blocks: d.ingested.blocks, voice: d.voice }));
       from.push(docRef(d));
     }
     ({ text, spans, blocks } = joinParts(parts));
@@ -199,7 +223,7 @@ export async function startSetup(input: { text: string; url: string; docs?: Sent
     setup: { v: 1, phase: "reading", ...(input.text.trim() ? { said: input.text.trim().slice(0, DUMP_MAX_CHARS) } : {}), docs: spansWithin(from, spans, DUMP_MAX_CHARS), ...(input.idea ? { idea: true as const } : {}), understanding: "", challenges: [], buckets: [] },
   };
   await sourcesDb.put(rec);
-  useSetup.setState({ source: rec, pending: null, busy: null });
+  useSetup.setState({ source: rec, pending: null, busy: null, splits: [] });
   await readSetup();
 }
 
@@ -291,16 +315,32 @@ export async function placeSetup() {
     const proposal = sanitizeSetup(raw, sent);
     await setSession((d) => ({ ...d, phase: proposal.lines.length ? "review" : "done", proposal, decided: {}, ...(model ? { model } : {}) }));
     // Nothing to set up from it: what they said still goes on the topic pages.
-    if (!proposal.lines.length) settled();
+    if (!proposal.lines.length) void settled();
   } catch (e) {
     await failed("placing", e);
   }
 }
 
-/** Every line is settled: what they said goes on the topic pages too, filed by the core (it carries on when this page is left for a board). */
-function settled() {
+let settling: Promise<void> | null = null;
+
+/**
+ * Every line is settled: the docs of customers' words become sources of their own, and what they
+ * said goes on the topic pages too, filed by the core (it carries on when this page is left for a
+ * board). The core splits before it answers, so the page then sees where each quote lives.
+ */
+function settled(): Promise<void> {
   const s = source();
-  if (s?.setup?.phase === "done") void orgFetch("/file", { method: "POST", json: { sources: [s.id] } }).catch(() => {});
+  if (s?.setup?.phase !== "done") return Promise.resolve();
+  settling = orgFetch("/file", { method: "POST", json: { sources: [s.id] } })
+    .then(async () => {
+      const now = await sourcesDb.get(s.id).catch(() => null);
+      if (now && useSetup.getState().source?.id === s.id) useSetup.setState({ source: now, splits: await loadSplits(now) });
+    })
+    .catch(() => {})
+    .finally(() => {
+      settling = null;
+    });
+  return settling;
 }
 
 /** The goal a setup line made: named by its words, so making it twice makes one. */
@@ -362,12 +402,12 @@ export async function acceptLines(lineIds: string[]) {
     if (parent && goalById(goalsNow(), id)?.parent === null) await changeGoal(id, { parent }).catch(() => {});
   }
   await setSession((d) => decide(d, lines.map((l) => l.id), "accepted", w.made));
-  settled();
+  void settled();
 }
 
 export async function discardLines(lineIds: string[]) {
   await setSession((d) => decide(d, lineIds, "discarded"));
-  settled();
+  void settled();
 }
 
 /**
@@ -376,6 +416,8 @@ export async function discardLines(lineIds: string[]) {
  * resting on their words. Nothing is read or asked again.
  */
 export async function startBoard(lineId: string) {
+  // The core may be splitting the docs out still: the board rests on where the quotes live once it's done.
+  await settling;
   const s = source();
   const session = s?.setup;
   const goal = session && boardGoals(session).find((g) => g.line.id === lineId);
@@ -385,11 +427,12 @@ export async function startBoard(lineId: string) {
   // The goal the line made, as it is now (its words and number may have changed since).
   const g = goalById(goalsNow(), lineGoalId(goal.line.text, goal.product)) ?? goalsNow().goals.find((x) => x.product === goal.product && !x.on && sameTopic(x.title, goal.line.text));
   const title = g?.title ?? goal.line.text;
-  const { doc, outcome, problems, ideas } = boardFromSetup({ source: s, session, goal: { line: goal.line, title, metric: g?.metric ?? null } });
+  const view = setupView(useSetup.getState());
+  const { doc, outcome, problems, ideas } = boardFromSetup({ source: { ...s, quotes: view.quotes }, homeOf: view.homeOf, session, goal: { line: goal.line, title, metric: g?.metric ?? null } });
   const p = await createProject("discovery", title.slice(0, 80), { discovery: { v: 1, stage: "ready" }, ...(goal.product ? { product: goal.product } : {}) }, doc);
   // The board's outcome card is the goal on the canvas.
   if (g && outcome) await changeGoal(g.id, { on: { board: p.id, card: outcome } }).catch(() => {});
-  await sourcesDb.link(s.id, p.id, true);
+  for (const x of view.sources) await sourcesDb.link(x.id, p.id, true);
   await setSession((d) => ({ ...d, boards: { ...d.boards, [lineId]: p.id } }));
   // It opens on the idea's card, its next step (drafting its tests) on its bar.
   window.location.assign(`${projectHref(p)}${problems.length && ideas[0] ? `?card=${ideas[0]}` : ""}`);
@@ -397,6 +440,7 @@ export async function startBoard(lineId: string) {
 
 /** The idea's board, once they choose: under the first goal they accepted, else on its own, named after the idea, its problems at the top. Either way it's filled from what the setup read. */
 export async function startIdeaBoard() {
+  await settling;
   const s = source();
   const session = s?.setup;
   if (!s || !session) return;
@@ -405,9 +449,10 @@ export async function startIdeaBoard() {
   const made = session.boards?.idea;
   if (made) return window.location.assign(projectHref({ id: made, type: "discovery" }));
   const name = ideaBoardName(session.said || session.docs?.[0]?.title.replace(/\.[a-z0-9]{1,5}$/i, "") || s.text);
-  const { doc, problems, ideas } = boardFromSetup({ source: s, session, goal: null });
+  const view = setupView(useSetup.getState());
+  const { doc, problems, ideas } = boardFromSetup({ source: { ...s, quotes: view.quotes }, homeOf: view.homeOf, session, goal: null });
   const p = await createProject("discovery", name, { discovery: { v: 1, stage: "ready" } }, doc);
-  await sourcesDb.link(s.id, p.id, true);
+  for (const x of view.sources) await sourcesDb.link(x.id, p.id, true);
   await setSession((d) => ({ ...d, boards: { ...d.boards, idea: p.id } }));
   window.location.assign(`${projectHref(p)}${problems.length && ideas[0] ? `?card=${ideas[0]}` : ""}`);
 }

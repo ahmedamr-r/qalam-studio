@@ -71,6 +71,10 @@ export interface SetupDoc {
   pages?: number;
   span?: [number, number];
   cut?: true;
+  /** Whose words a doc holds: customers' (it becomes a source of its own once the setup is settled) or the person's own (it stays in the dump). */
+  voice?: "customers" | "own";
+  /** Its own source, once it was split out (src/org/setup-split.ts). */
+  source?: string;
 }
 
 /** Their docs, without their own words or a page they pointed at. */

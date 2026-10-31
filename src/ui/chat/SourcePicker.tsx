@@ -12,7 +12,7 @@ import { Button, Checkbox, IconBtn, MenuItem, MenuLabel, Spinner } from "../cont
 import { r } from "../recipes";
 import { ago } from "../time";
 import { StatusDot } from "../viz";
-import { attachFiles, attachHits, removeAttachment, sourcesFor, useAttach, wordCount, type DocRef, type SourceFit } from "./attach";
+import { attachFiles, attachHits, removeAttachment, setVoice, sourcesFor, useAttach, wordCount, type DocRef, type SourceFit } from "./attach";
 
 /*
  * Bringing docs into the chat box: a row of the sources that fit what Qalam AI asked (two connectors,
@@ -375,7 +375,8 @@ function DocMark({ from }: { from: string }) {
 }
 
 /** The picked docs in the box: reading, how long, or why not; × leaves one out. */
-export function AttachmentChips() {
+/** The docs in the box, as chips. `voices`: each says whose words it holds (customers' or the person's own), and a click changes it. */
+export function AttachmentChips({ voices = false }: { voices?: boolean }) {
   const items = useAttach((s) => s.items);
   if (!items.length) return null;
   return (
@@ -384,11 +385,22 @@ export function AttachmentChips() {
         <li
           key={a.key}
           title={a.state === "failed" ? `${a.title}: ${a.why}` : a.title}
-          className={clsx("inline-flex h-[26px] max-w-[280px] items-center gap-[6px] rounded-md bg-hover pl-[6px] pr-[1px] text-caption shadow-[inset_0_0_0_1px_var(--color-line-subtle)]", a.state === "failed" && "shadow-[inset_0_0_0_1px_var(--color-danger)]")}
+          className={clsx("inline-flex h-[26px] max-w-[360px] items-center gap-[6px] rounded-md bg-hover pl-[6px] pr-[1px] text-caption shadow-[inset_0_0_0_1px_var(--color-line-subtle)]", a.state === "failed" && "shadow-[inset_0_0_0_1px_var(--color-danger)]")}
         >
           <DocMark from={a.from} />
           <span className={clsx("min-w-0 truncate font-medium", a.state === "reading" ? "q-shimmer-text text-fg-muted" : "text-fg")}>{a.title}</span>
           {a.state === "reading" ? <Spinner size={10} /> : a.state === "ready" ? <span className="shrink-0 text-fg-subtle tnum">{wordCount(a.ingested!.text).toLocaleString()} words</span> : <span className="shrink-0 text-danger">Can't read it</span>}
+          {voices && a.state === "ready" && (
+            <button
+              type="button"
+              aria-label={`${a.title} holds ${a.voice === "customers" ? "customers' words" : "your own words"}: change it`}
+              title={a.voice === "customers" ? "Read as what customers said. Click if they're your own words" : "Read as your own thinking. Click if customers said it"}
+              onClick={() => setVoice(a.key, a.voice === "customers" ? "own" : "customers")}
+              className={clsx("shrink-0 rounded-sm px-[5px] text-micro font-medium leading-[18px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)] hover:bg-active", a.voice === "customers" ? "text-fg" : "text-fg-muted")}
+            >
+              {a.voice === "customers" ? "Customers' words" : "Mine"}
+            </button>
+          )}
           <IconBtn size="sm" label={`Leave out ${a.title}`} onClick={() => removeAttachment(a.key)} className="size-[22px]">
             <X {...ICON} size={12} />
           </IconBtn>
