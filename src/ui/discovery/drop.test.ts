@@ -3,7 +3,7 @@ import { studio, useStudio } from "@/doc/store";
 import { emptyDoc } from "@/doc/schema";
 import { addCardIn, cardOf, makeCardNode, newCard } from "@/discovery/ops";
 import type { SourceRecord } from "@/discovery/sources";
-import { attachQuotes } from "./drop";
+import { attachQuoteRefs, attachQuotes } from "./drop";
 import { useSources } from "./sources";
 
 const q = (id: string, text: string, at: number) => ({ id, text, span: [at, at + text.length] as [number, number], kind: "pain" as const, addedBy: "ai" as const, at: 0 });
@@ -34,5 +34,19 @@ describe("a cord's quotes onto a card", () => {
     expect(attachQuotes(problem, "tickets", ["a", "c"])).toBe(1);
     const outcome = studio().doc.roots[0];
     expect(attachQuotes(outcome, "tickets", ["a"])).toBe(0);
+  });
+});
+
+describe("quotes found in the organization onto a card", () => {
+  const OTHER: SourceRecord = { ...SOURCE, id: "calls", title: "calls.txt", quotes: [q("z", "The driver called four times", 0)] };
+
+  it("attaches the picked quotes from several sources in one step, each once, and one undo takes them back", () => {
+    useSources.setState({ list: [SOURCE, OTHER], visiting: [] });
+    const past = studio().past.length;
+    expect(attachQuoteRefs(problem, [{ sourceId: "tickets", quoteId: "b" }, { sourceId: "calls", quoteId: "z" }, { sourceId: "calls", quoteId: "z" }, { sourceId: "gone", quoteId: "x" }])).toBe(2);
+    expect(cardOf(studio().doc, problem)!.evidence.map((e) => e.piece)).toEqual(["hub:quote:b", "hub:quote:z"]);
+    expect(studio().past.length).toBe(past + 1);
+    studio().undo();
+    expect(cardOf(studio().doc, problem)!.evidence).toEqual([]);
   });
 });

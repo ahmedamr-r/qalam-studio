@@ -144,6 +144,24 @@ export interface SynthContext {
   outcomeRef: string | null;
   /** The card already has these words. */
   has: (cardId: string, q: SynthQuote) => boolean;
+  /** A scoped placement: new needs hang only under these cards (by ref), wherever the answer put them. */
+  within?: ReadonlySet<string>;
+}
+
+/** Whether a card is somewhere under another. */
+export function isUnder(doc: Doc, id: string, above: string): boolean {
+  for (let at = doc.nodes[id]?.parentId; at; at = doc.nodes[at]?.parentId) if (at === above) return true;
+  return false;
+}
+
+/** A card a scoped placement sends: one it's scoped to, under one, or above one (so the call reads where they sit). */
+export const inScope = (doc: Doc, id: string, scope: readonly string[]) => scope.some((w) => w === id || isUnder(doc, id, w) || isUnder(doc, w, id));
+
+/** Only what's about these cards (by ref): a mapping, a word against, a new need under one of them. */
+export function forBoard(raw: unknown, refs: ReadonlySet<string>): Record<string, unknown> {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const list = (k: string, field: string) => (Array.isArray(r[k]) ? (r[k] as Record<string, unknown>[]).filter((x) => refs.has(String(x?.[field]))) : []);
+  return { mappings: list("mappings", "cardId"), newOpportunities: list("newOpportunities", "parent"), contradictions: list("contradictions", "cardId") };
 }
 
 /** How deep an opportunity is (1 = right under the outcome); 0 for other cards. */
@@ -157,9 +175,11 @@ function depthOf(doc: Doc, id: string): number {
   return d;
 }
 
-/** A board's cards as a synthesize call names them (c1, c2…, from `first`), at most `max`. */
-export function synthCardsOf(doc: Doc, first = 1, max = 400): SynthCard[] {
-  const cards = allCards(doc).slice(0, max);
+/** A board's cards as a synthesize call names them (c1, c2…, from `first`), at most `max`: only those `keep` takes, before the limit. */
+export function synthCardsOf(doc: Doc, first = 1, max = 400, keep?: (id: string) => boolean): SynthCard[] {
+  const cards = allCards(doc)
+    .filter((c) => !keep || keep(c.id))
+    .slice(0, max);
   const refOf = new Map(cards.map((c, i) => [c.id, `c${first + i}`]));
   return cards.map(({ id, card }) => {
     const parent = doc.nodes[id].parentId;
@@ -213,7 +233,8 @@ export function sanitizeSynthesis(raw: unknown, ctx: SynthContext): Proposal[] {
     let parent = cards.get(String(x.parent));
     if (!parent || !canHold(parent.kind, "opportunity")) parent = ctx.outcomeRef ? cards.get(ctx.outcomeRef) : undefined;
     while (parent && parent.kind === "opportunity" && parent.depth >= SYNTH_LIMITS.depth) parent = parent.parentRef ? cards.get(parent.parentRef) : undefined;
-    if (!parent || !title) continue;
+    // Re-hung out of a scoped placement's cards (under a solution, too deep): left out.
+    if (!parent || !title || (ctx.within && !ctx.within.has(parent.ref))) continue;
     const backed = (Array.isArray(x.quoteIds) ? x.quoteIds : [])
       .map((id) => quotes.get(String(id)))
       .filter((q): q is SynthQuote => !!q)

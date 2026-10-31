@@ -9,9 +9,11 @@ import { cardOf } from "@/discovery/ops";
 import { allCards, childCards, outcomeLines } from "@/discovery/tree";
 import { SOURCE_KIND_LABEL, hasQuote, packCalls, quotePiece, unread, type SourceKind, type SourceQuote, type SourceRecord } from "@/discovery/sources";
 import { orgContext } from "@/org/pack";
-import { sanitizeExtract, sanitizeSynthesis, synthCardsOf, type CallChunk, type SynthContext, type SynthQuote } from "@/discovery/synthesis";
+import { forBoard, inScope, isUnder, sanitizeExtract, sanitizeSynthesis, synthCardsOf, type CallChunk, type SynthContext, type SynthQuote } from "@/discovery/synthesis";
+import { canHold } from "@/discovery/kinds";
 import { awaitingRoles, finishExtracted, finishInterviewQuotes, speakerNote, type SpeakerRole } from "@/discovery/transcript";
-import { canvasBoard, canvasProduct } from "@/space/view";
+import { isProblemPage } from "@/space/compose";
+import { boardOfCard, canvasBoard, canvasProduct } from "@/space/view";
 import { offline } from "./ai";
 import { hasOutcome, treeFor } from "./draft";
 import { IngestError, ingestFile, ingestPaste, ingestUrl, type Ingested } from "./ingest";
@@ -65,10 +67,14 @@ export function stopSources() {
   for (const c of running) c.abort();
 }
 
-/** Add sources, have Qalam AI pick out their quotes, then map those to the tree (unless `map` is false). */
-export async function addSources(inputs: AddInput[], opts: { map?: boolean } = {}) {
-  const projectId = canvasBoard();
-  if (!projectId || !inputs.length) return;
+/**
+ * Add sources, have Qalam AI pick out their quotes, then map those to the tree (unless `map` is
+ * false). `under`: for one card, on its own board, mapped only on its branch (a card whose board
+ * isn't made yet: the organization's, until its cards rest on it).
+ */
+export async function addSources(inputs: AddInput[], opts: { map?: boolean; under?: string } = {}) {
+  const projectId = opts.under ? (boardOfCard(opts.under) ?? "") : canvasBoard();
+  if (projectId === null || !inputs.length) return;
   const ctrl = begin();
   useSources.setState({ notice: null });
   const added: string[] = [];
@@ -97,7 +103,7 @@ export async function addSources(inputs: AddInput[], opts: { map?: boolean } = {
     const waiting = added.filter((id) => awaitingRoles(sourceOf(id) ?? { kind: "" })).length;
     if (waiting && added.length > 1) useSources.setState({ notice: { text: `Say who is who in ${waiting === 1 ? "the interview" : `${waiting} interviews`} (open ${waiting === 1 ? "it" : "each"} from the list): Qalam AI reads ${waiting === 1 ? "it" : "them"} after that.` } });
     const found = await readSources(added, ctrl);
-    if (opts.map !== false && found > 0 && !ctrl.signal.aborted && hasOutcome(studio().doc)) await mapQuotes({ sourceIds: added }, ctrl);
+    if (opts.map !== false && found > 0 && !ctrl.signal.aborted && hasOutcome(studio().doc)) await mapQuotes({ sourceIds: added, ...(opts.under ? { under: opts.under } : {}) }, ctrl);
   } finally {
     end(ctrl);
   }
@@ -244,13 +250,16 @@ const MAX_CARDS = 400;
 /**
  * The synthesize request and what code checks its answer against. `elsewhere`: what customers said
  * in the organization's other sources that bears on the tree, mapped like the board's own quotes.
+ * `under`: only that card's branch is proposed for (`mine`), with the cards above it to read where
+ * it sits. Problems' pages drawn faint are never sent: they aren't cards yet.
  */
-export function synthesizeInput(doc: Doc, given: SourceRecord[], elsewhere: { s: SourceRecord; q: SourceQuote }[] = []) {
+export function synthesizeInput(doc: Doc, given: SourceRecord[], elsewhere: { s: SourceRecord; q: SourceQuote }[] = [], under?: string) {
   // The builder's own thinking (a brain dump) is never mapped as customers' words.
   const sources = given.filter((s) => s.kind !== "dump");
   const cards = allCards(doc).slice(0, MAX_CARDS);
-  const synthCards = synthCardsOf(doc, 1, MAX_CARDS);
+  const synthCards = synthCardsOf(doc, 1, MAX_CARDS, (id) => !isProblemPage(id) && (!under || inScope(doc, id, [under])));
   const refOf = new Map(synthCards.map((c) => [c.id, c.ref]));
+  const mine = new Set(synthCards.filter((c) => !under || c.id === under || isUnder(doc, c.id, under)).map((c) => c.ref));
   // Quotes no card has yet first, then the rest, up to what one call takes.
   const on = new Set(cards.flatMap(({ card }) => card.evidence.flatMap((e) => [...(e.kind === "quote" && e.sourceId && e.span ? [`${e.sourceId}:${e.span[0]}:${e.span[1]}`] : []), ...(e.piece ? [e.piece] : [])])));
   const all = sources.flatMap((s) => s.quotes.map((q) => ({ s, q })));
@@ -270,28 +279,35 @@ export function synthesizeInput(doc: Doc, given: SourceRecord[], elsewhere: { s:
       .filter((n) => n.quoteIds.length)
       .slice(0, 60),
   };
+  // Scoped: a need with no good parent goes under the card itself when it can hold one, else nowhere.
+  const outcome = under ? (canHold(cardOf(doc, under)?.kind ?? "test", "opportunity") ? under : null) : root;
   const ctx: SynthContext = {
     cards: synthCards,
     quotes,
-    outcomeRef: root ? (refOf.get(root) ?? null) : null,
+    outcomeRef: outcome ? (refOf.get(outcome) ?? null) : null,
     has: (cardId, q) => {
       const c = cardOf(studio().doc, cardId);
       return !!c && hasQuote(c, q.sourceId, q.span, quotePiece(q.quoteId));
     },
+    ...(under ? { within: mine } : {}),
   };
-  return { body, ctx };
+  return { body, ctx, mine };
 }
 
-/** Have Qalam AI map the sources' quotes to the tree; its proposals open for review. */
-export async function mapQuotes(opts: { sourceIds?: string[] } = {}, given?: AbortController) {
+/**
+ * Have Qalam AI map the sources' quotes to the tree; its proposals open for review. `under`: the
+ * given sources only, mapped only on that card's branch.
+ */
+export async function mapQuotes(opts: { sourceIds?: string[]; under?: string } = {}, given?: AbortController) {
   const doc = studio().doc;
   if (!allCards(doc).length) return void useSources.setState({ notice: { text: "Name the outcome you want to move first: quotes are mapped to a tree." } });
   if (await offline()) return void useSources.setState({ notice: { text: "Qalam AI isn't set up here. Drag quotes onto cards to attach them yourself." } });
+  const under = opts.under && doc.nodes[opts.under] ? opts.under : undefined;
   const all = useSources.getState().list;
-  // The new sources' quotes first; the others' fill up the call.
+  // The new sources' quotes first; the others' fill up the call (for one card: only the new ones).
   const want = new Set(opts.sourceIds ?? []);
   // A brain dump is the builder's own thinking: its words are never mapped as customers'.
-  const sources = [...all.filter((s) => want.has(s.id)), ...all.filter((s) => !want.has(s.id))].filter((s) => s.kind !== "dump" && s.quotes.length);
+  const sources = [...all.filter((s) => want.has(s.id)), ...(under ? [] : all.filter((s) => !want.has(s.id)))].filter((s) => s.kind !== "dump" && s.quotes.length);
   if (!sources.length)
     return void useSources.setState({
       notice: { text: all.some((s) => s.kind === "dump" && s.quotes.length) ? "Only your own words are on this board, and they're never mapped as what customers said. Add what customers said, or drag your words onto a card." : "No quotes to map yet: add a source, and Qalam AI picks out what customers said." },
@@ -309,15 +325,17 @@ export async function mapQuotes(opts: { sourceIds?: string[] } = {}, given?: Abo
     orgContext({ query, product: packProduct(), budget: 2500, wholeTop: 0, types: ["quote"], exclude: own }),
     orgContext({ query, product: packProduct(), budget: 1500, types: ["page", "decision", "card", "need", "assumption", "context", "evidence"], exclude: boardCardRefs(doc) }),
   ]);
-  const elsewhere = [...(await hubQuotes(quotes)).values()].flatMap((h) => {
-    const s = sourceOf(h.quote.sourceId);
-    const q = s?.quotes.find((x) => x.id === h.quote.quoteId);
-    return s && q ? [{ s, q }] : [];
-  });
-  const { body, ctx } = synthesizeInput(studio().doc, sources, elsewhere);
+  const elsewhere = under
+    ? []
+    : [...(await hubQuotes(quotes)).values()].flatMap((h) => {
+        const s = sourceOf(h.quote.sourceId);
+        const q = s?.quotes.find((x) => x.id === h.quote.quoteId);
+        return s && q ? [{ s, q }] : [];
+      });
+  const { body, ctx, mine } = synthesizeInput(studio().doc, sources, elsewhere, under);
   try {
     const { data, model } = await callAI<unknown>(PATH, { ...body, ...(org ? { context: org.context } : {}) }, (tokens) => useSources.setState((s) => (s.mapping ? { mapping: { ...s.mapping, tokens } } : {})), ctrl.signal);
-    const proposals = sanitizeSynthesis(data, ctx);
+    const proposals = sanitizeSynthesis(under ? forBoard(data, mine) : data, ctx);
     recordCall({ title: "Mapped quotes to the tree", org, also: quotes, raw: data, model, status: "proposed", produced: { refs: proposals.map((p) => p.cardId) } });
     if (!proposals.length) {
       // Said where it stays, with what was sent: a toast is gone before anyone reads it.

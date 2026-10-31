@@ -7,7 +7,7 @@ import type { CaptureResult } from "@/discovery/capture";
 import type { Ingested } from "@/discovery/ingest/core";
 import type { Proposal } from "@/discovery/proposals";
 import { hasQuote, packCalls, quotePiece, SOURCE_KIND_LABEL, unread, type SourceRecord } from "@/discovery/sources";
-import { sanitizeExtract, sanitizeSynthesis, synthCardsOf, type CallChunk, type SynthCard, type SynthQuote } from "@/discovery/synthesis";
+import { forBoard, inScope, isUnder, sanitizeExtract, sanitizeSynthesis, synthCardsOf, type CallChunk, type SynthCard, type SynthQuote } from "@/discovery/synthesis";
 import { awaitingRoles, finishExtracted, speakerNote } from "@/discovery/transcript";
 import type { Doc } from "@/doc/schema";
 import { isOstCard } from "@/doc/board";
@@ -180,22 +180,6 @@ interface BoardTree {
   cards: SynthCard[];
 }
 
-/** Whether a card is somewhere under another. */
-function isUnder(doc: Doc, id: string, above: string): boolean {
-  for (let at = doc.nodes[id]?.parentId; at; at = doc.nodes[at]?.parentId) if (at === above) return true;
-  return false;
-}
-
-/** A card a scoped placement sends: one it's wired to, under one, or above one (so the call reads where they sit). */
-const inScope = (doc: Doc, id: string, wired: readonly string[]) => wired.some((w) => w === id || isUnder(doc, id, w) || isUnder(doc, w, id));
-
-/** Only what's about one board's cards: a mapping, a word against, a new need under one of them. */
-function forBoard(raw: unknown, refs: Set<string>): Record<string, unknown> {
-  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-  const list = (k: string, field: string) => (Array.isArray(r[k]) ? (r[k] as Record<string, unknown>[]).filter((x) => refs.has(String(x?.[field]))) : []);
-  return { mappings: list("mappings", "cardId"), newOpportunities: list("newOpportunities", "parent"), contradictions: list("contradictions", "cardId") };
-}
-
 /** Where the source's quotes fit on the boards of its product (every board, for the whole organization's): proposals for each. */
 export async function placeIn(store: OrgStore, deps: FilingDeps, s: SourceRecord, o: CaptureOpts): Promise<Record<string, Proposal[]>> {
   if (s.kind === "dump" || !s.quotes.length) return {};
@@ -207,7 +191,7 @@ export async function placeIn(store: OrgStore, deps: FilingDeps, s: SourceRecord
     if (!doc || next > 400) continue;
     // A feed's board: only the cards it's wired to and what's under them, with what's above for the call to read.
     const under = o.scope?.[p.id];
-    const cards = synthCardsOf(doc, next, 401 - next).filter((c) => !under || inScope(doc, c.id, under));
+    const cards = synthCardsOf(doc, next, 401 - next, under ? (id) => inScope(doc, id, under) : undefined);
     if (!cards.some((c) => c.kind === "outcome")) continue;
     next += cards.length;
     boards.push({ id: p.id, name: p.name, product: p.product ?? null, doc, cards });
@@ -242,6 +226,7 @@ export async function placeIn(store: OrgStore, deps: FilingDeps, s: SourceRecord
       cards: b.cards,
       quotes,
       outcomeRef: outcome?.ref ?? null,
+      ...(under ? { within: mine } : {}),
       has: (cardId, q) => {
         const n = b.doc.nodes[cardId];
         return isOstCard(n) && hasQuote(n.meta.ost, q.sourceId, q.span, quotePiece(q.quoteId));

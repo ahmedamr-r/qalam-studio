@@ -45,5 +45,8 @@ export function end(ctrl: AbortController, done?: Done) {
 
 export const stopBusy = () => useBusy.getState().busy?.ctrl.abort();
 
+/** What a step that needed no Qalam AI came to, said beside its card. */
+export const say = (done: Done) => useBusy.setState({ done });
+
 /** A call ended by Stop. */
 export const stopped = (e: unknown) => (e as { name?: string } | null)?.name === "AbortError";

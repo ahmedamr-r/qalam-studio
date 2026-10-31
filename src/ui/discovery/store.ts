@@ -10,6 +10,17 @@ import type { WorkStatus } from "@/connectors/work";
 
 export type Sheet = "closed" | "start" | "interview" | "followups" | "drafting" | "import";
 
+/** Words found in the organization that could back a card: where they live, and whose they are. */
+export interface FoundQuote {
+  sourceId: string;
+  quoteId: string;
+  text: string;
+  speaker: string | null;
+  /** The source's title. */
+  from: string;
+  whose: "customers" | "online" | "yours";
+}
+
 export interface DesignLink {
   projectId: string;
   projectName: string;
@@ -39,10 +50,12 @@ interface DiscoveryUI {
   reading: string | null;
   /** A cord drawn from a lane source's port onto a card: its quotes picked in the right panel. */
   cordPick: { key: string; card: string } | null;
+  /** What the organization has that could back a card (its next steps' "Find what backs it"): picked in the right panel. */
+  quotePick: { card: string; quotes: FoundQuote[] } | null;
   /** How much of the canvas's right side a panel lies over (a narrow window's drawer): what's drawn beside a card keeps out of it. */
   inset: number;
 }
 
-export const useDiscovery = create<DiscoveryUI>(() => ({ editing: null, sheet: "closed", designFor: null, designs: {}, dragging: false, drafting: null, quoteDrop: null, notices: [], work: {}, reading: null, cordPick: null, inset: 0 }));
+export const useDiscovery = create<DiscoveryUI>(() => ({ editing: null, sheet: "closed", designFor: null, designs: {}, dragging: false, drafting: null, quoteDrop: null, notices: [], work: {}, reading: null, cordPick: null, quotePick: null, inset: 0 }));
 
 export const discovery = () => useDiscovery.getState();

@@ -17,6 +17,7 @@ import { useSpaceView } from "@/space/view";
 import { Button, IconBtn } from "../controls";
 import LaneReader, { useReaderWidth } from "../discovery/LaneReader";
 import CordPicker from "../discovery/CordPicker";
+import QuotePicker from "../discovery/QuotePicker";
 import { useDiscovery } from "../discovery/store";
 import { SpaceCardPanel } from "../space/SpacePanel";
 import { SpaceConflictBanner } from "../space/ConflictBanner";
@@ -82,12 +83,13 @@ export default function Home({ product: productId = null }: { product?: string |
   const picked = allCards ? selection : null;
   const reading = useDiscovery((s) => s.reading);
   const cordPick = useDiscovery((s) => !!s.cordPick);
+  const quotePick = useDiscovery((s) => !!s.quotePick);
   const readerW = useReaderWidth();
   const [drawer, setDrawer] = useState(false);
 
   useEffect(() => {
-    if (picked || reading || cordPick) setDrawer(true);
-  }, [picked, reading, cordPick]);
+    if (picked || reading || cordPick || quotePick) setDrawer(true);
+  }, [picked, reading, cordPick, quotePick]);
   // A narrow window's panel lies over the canvas: what's drawn beside a card keeps out of it.
   const wide = useWide(WIDE);
   const panelW = reading && readerW ? readerW : 380;
@@ -134,6 +136,8 @@ export default function Home({ product: productId = null }: { product?: string |
         >
           {cordPick ? (
             <CordPicker />
+          ) : quotePick ? (
+            <QuotePicker />
           ) : reading ? (
             <LaneReader />
           ) : picked ? (

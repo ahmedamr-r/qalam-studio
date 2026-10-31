@@ -8,7 +8,7 @@ import type { Strength } from "@/hub/needs";
  * a step is picked (src/ui/discovery/next.ts).
  */
 
-export type StepId = "draft-solutions" | "draft-tests" | "design-this" | "page" | "pass-line" | "next-job" | "find-problems" | "break-down" | "review-parts" | "others";
+export type StepId = "draft-solutions" | "draft-tests" | "design-this" | "page" | "pass-line" | "next-job" | "find-problems" | "break-down" | "review-parts" | "others" | "find-backing" | "watch" | "connect" | "add-file";
 
 export interface NextStep {
   id: StepId;
@@ -33,6 +33,13 @@ export interface CardFacts {
   goal?: { id: string; number: string | null; behind: number; job: string | null; pending: number };
   /** Problem pages there are (what Find its problems reads). */
   pages: number;
+  /** The organization's search answers here, and it has material to search. */
+  search: boolean;
+  material: boolean;
+  /** The connected tools that bring material in, by name (null: not known yet). */
+  tools: string[] | null;
+  /** The tools watching for it already, by name. */
+  feeds: string[];
   /** A test whose pass line Qalam AI suggested and nobody has set. */
   suggested?: boolean;
   /** Qalam AI can run here. */
@@ -48,17 +55,45 @@ export const SHOWN = 4;
 
 const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
 
+/** Nothing from customers behind the card yet: a problem with no quotes on it or its page, a goal with no problems behind it. */
+export function thin(f: CardFacts): boolean {
+  if (f.kind === "outcome") return !f.goal?.behind;
+  if (f.kind === "opportunity") return !f.evidence.quotes && !f.page?.quotes;
+  return false;
+}
+
+/** Ways to ground a card: the organization's words, a tool watched for it, a file read for it. */
+function grounding(f: CardFacts): { find: NextStep | null; watch: NextStep | null; file: NextStep } {
+  const quotable = f.kind === "opportunity" || f.kind === "solution";
+  const find: NextStep | null = quotable && f.search && f.material ? { id: "find-backing", label: f.evidence.quotes ? "Find more that backs it" : "Find what backs it", hint: "In your organization · free" } : null;
+  const tools = f.tools ?? [];
+  const watch: NextStep | null =
+    f.tools === null ? null
+    : tools.length ? { id: "watch", label: tools.length === 1 ? `Watch ${tools[0]} for it` : "Watch a tool for it", hint: f.feeds.length ? `Watched in ${f.feeds.join(", ")} already` : "What's new there, brought in under it" }
+    : { id: "connect", label: "Connect a tool", hint: "Intercom, Slack, Notion… in Connections" };
+  const file: NextStep = { id: "add-file", label: "Add a file for it", hint: f.kind === "outcome" ? "Read, and its problems proposed under it" : "Read, and placed under it" };
+  return { find, watch, file };
+}
+
 /** The steps that fit a card, best first. */
 export function nextSteps(f: CardFacts): NextStep[] {
   const out: NextStep[] = [];
+  const ground = grounding(f);
+  const push = (...steps: (NextStep | null)[]) => {
+    for (const s of steps) if (s) out.push(s);
+  };
   switch (f.kind) {
-    case "opportunity":
-      out.push({ id: "draft-solutions", label: "Draft solutions", hint: f.under.solutions ? "More ways to solve it, each with a test" : "Ways to solve it, each with a test", ai: true });
-      if (f.page) out.push({ id: "page", label: "Its page", hint: "Everything known about it" });
+    case "opportunity": {
+      const draft: NextStep = { id: "draft-solutions", label: "Draft solutions", hint: f.under.solutions ? "More ways to solve it, each with a test" : "Ways to solve it, each with a test", ai: true };
+      const page: NextStep | null = f.page ? { id: "page", label: "Its page", hint: "Everything known about it" } : null;
+      // Nothing behind it yet: what the organization has first, when it has something.
+      if (thin(f) && ground.find) push(ground.find, draft, ground.watch, ground.file, page);
+      else push(draft, ground.find, ground.watch, ground.file, page);
       break;
+    }
     case "solution":
-      out.push({ id: "draft-tests", label: "Draft its tests", hint: f.under.tests ? "More of what it assumes, and a test" : "What it assumes, and a test of the riskiest", ai: true });
-      out.push({ id: "design-this", label: "Design this", hint: "Screens built on what it rests on" });
+      push({ id: "draft-tests", label: "Draft its tests", hint: f.under.tests ? "More of what it assumes, and a test" : "What it assumes, and a test of the riskiest", ai: true });
+      push({ id: "design-this", label: "Design this", hint: "Screens built on what it rests on" }, ground.find);
       break;
     case "test":
       if (f.suggested) out.push({ id: "pass-line", label: "Use the suggested pass line" });
@@ -71,9 +106,8 @@ export function nextSteps(f: CardFacts): NextStep[] {
       const parts: NextStep = g.pending ? { id: "review-parts", label: `Review the ${plural(g.pending, "goal")} proposed under it`, hint: "From breaking it down" } : { id: "break-down", label: "Break it down", hint: "Goals under it that make its number", ai: true };
       // Nothing behind it yet: its problems first.
       const lead = !g.pending && !g.behind && find ? [find, parts] : [parts, find];
-      for (const s of lead) if (s) out.push(s);
-      out.push({ id: "others", label: "What others aim for", hint: "Numbers others report · a minute or two", ai: true });
-      if (g.job) out.push({ id: "next-job", label: `Next: ${g.job}`, hint: "What we don't know yet" });
+      push(...lead, { id: "others", label: "What others aim for", hint: "Numbers others report · a minute or two", ai: true }, ground.watch, ground.file);
+      if (g.job) push({ id: "next-job", label: `Next: ${g.job}`, hint: "What we don't know yet" });
       break;
     }
   }
@@ -99,10 +133,10 @@ export function backingLine(f: CardFacts): string {
   }
   if (f.kind === "test") return "";
   const e = f.evidence;
-  const against = e.against ? ` · ${e.against} against` : "";
-  if (e.quotes) return `Rests on ${plural(e.quotes, "quote")} from ${plural(e.sources, "source")}${against}`;
-  if (f.page?.quotes) return `Its page rests on ${plural(f.page.quotes, "quote")} from ${plural(f.page.sources, "source")}${against}`;
-  if (e.ours) return `Only your words so far${against}`;
-  if (e.online) return `Only people online: ${plural(e.online, "post")}${against}`;
-  return f.kind === "solution" ? "Rests on the problem above it" : `Nothing behind it yet${against}`;
+  const tail = `${e.against ? ` · ${e.against} against` : ""}${f.feeds.length ? ` · watched in ${f.feeds.join(", ")}` : ""}`;
+  if (e.quotes) return `Rests on ${plural(e.quotes, "quote")} from ${plural(e.sources, "source")}${tail}`;
+  if (f.page?.quotes) return `Its page rests on ${plural(f.page.quotes, "quote")} from ${plural(f.page.sources, "source")}${tail}`;
+  if (e.ours) return `Only your words so far${tail}`;
+  if (e.online) return `Only people online: ${plural(e.online, "post")}${tail}`;
+  return f.kind === "solution" ? `Rests on the problem above it${tail}` : `Nothing behind it yet${tail}`;
 }

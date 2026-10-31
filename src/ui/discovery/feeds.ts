@@ -6,6 +6,7 @@ import { useGoals } from "@/goals/client";
 import { feedsDb, type FeedView } from "@/org/feeds";
 import { loadPlacements } from "./placements";
 import { boardOfCard, canvasBoards, onSpaceCanvas } from "@/space/view";
+import { flushSpace } from "@/space/session";
 
 /*
  * The feeds on this board (server/org/feeds.ts): a connector's saved search wired to its cards or
@@ -133,23 +134,28 @@ export const unwireFeed = (id: string, card: string) => {
 };
 export const stopFeed = (id: string, on: boolean) => change(id, { status: on ? "on" : "off" });
 
-/** A new feed on this board, wired to the selected card (else the first tree's outcome). */
-export async function addFeed(connector: string, query: string): Promise<boolean> {
+/**
+ * A new feed on this board, wired to `card` (else the selected card, else the first tree's outcome),
+ * and checked at once. Its id, or null. On a space's canvas a card whose board isn't made yet is
+ * saved first, so the feed can name it.
+ */
+export async function addFeed(connector: string, query: string, o: { card?: string } = {}): Promise<string | null> {
   const board = useFeeds.getState().board;
   const doc = studio().doc;
-  const card = studio().selection.find((id) => doc.nodes[id]?.meta.ost) ?? doc.roots.find((id) => doc.nodes[id]?.meta.ost?.kind === "outcome");
+  const card = o.card ?? studio().selection.find((id) => doc.nodes[id]?.meta.ost) ?? doc.roots.find((id) => doc.nodes[id]?.meta.ost?.kind === "outcome");
+  if (board === SPACE && card && !targetOf(board, card)) await flushSpace();
   const target = board && card ? targetOf(board, card) : null;
   if (!board || !target) {
     feedback(onSpaceCanvas() ? "Pick the goal or card a feed watches for first." : "Name the outcome you want to move first: a feed watches for its cards.", { id: "discovery.feed" });
-    return false;
+    return null;
   }
   try {
     const f = await feedsDb.add({ connector, query, targets: [target] });
     await loadFeeds(board, false);
     void checkFeed(f.id);
-    return true;
+    return f.id;
   } catch (e) {
     feedback(`Couldn't keep the feed: ${message(e)}`, { kind: "error", id: "discovery.feed" });
-    return false;
+    return null;
   }
 }

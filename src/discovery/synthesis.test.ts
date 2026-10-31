@@ -6,7 +6,7 @@ import { addCardIn, makeCardNode, newCard } from "./ops";
 import { layoutDocTrees } from "./pass";
 import { isAssumed } from "./evidence";
 import { quoteEvidence, type SourceQuote } from "./sources";
-import { sanitizeExtract, sanitizeSynthesis, type CallChunk, type SynthCard, type SynthContext, type SynthQuote } from "./synthesis";
+import { forBoard, inScope, isUnder, sanitizeExtract, sanitizeSynthesis, synthCardsOf, type CallChunk, type SynthCard, type SynthContext, type SynthQuote } from "./synthesis";
 import { applyProposal, proposalDoc, type EvidenceOf, type Proposal } from "./proposals";
 
 /** A proposal's quote, when it attaches one. */
@@ -185,6 +185,53 @@ describe("sanitizeSynthesis", () => {
   it("returns nothing for output that isn't what was asked for", () => {
     expect(sanitizeSynthesis(undefined, ctx())).toEqual([]);
     expect(sanitizeSynthesis({ mappings: {}, newOpportunities: "x" }, ctx())).toEqual([]);
+  });
+
+  it("keeps a scoped placement's new needs under its cards, wherever the answer re-hung them", () => {
+    // Scoped to "Prices confuse me" (c4) and what's under it.
+    const within = new Set(["c4", "c5", "c6"]);
+    const raw = {
+      newOpportunities: [
+        { parent: "c3", title: "Under a solution: re-hung under the outcome, outside the scope", quoteIds: ["q1"] },
+        { parent: "c6", title: "Too deep: climbs above the scope? no, c5 is in it", quoteIds: ["q2"] },
+        { parent: "c4", title: "Right under it", quoteIds: ["q3"] },
+      ],
+    };
+    const titles = sanitizeSynthesis(raw, { ...ctx(), within }).flatMap((p) => (p.kind === "card" ? [p.card.title] : []));
+    expect(titles).toEqual(["Too deep: climbs above the scope? no, c5 is in it", "Right under it"]);
+    // Unscoped, the first lands under the outcome as before.
+    expect(sanitizeSynthesis(raw, ctx()).filter((p) => p.kind === "card")).toHaveLength(3);
+  });
+});
+
+describe("a scoped placement's cards", () => {
+  function doc() {
+    const d = emptyDoc();
+    const add = (id: string, parent: string | null, kind: SynthCard["kind"], title: string) => {
+      const n = makeCardNode(newCard(kind, { title }));
+      n.id = id;
+      addCardIn(d, n, parent);
+    };
+    add("o", null, "outcome", "More customers reorder every week");
+    add("a", "o", "opportunity", "Late deliveries");
+    add("a1", "a", "solution", "Live tracking");
+    add("b", "o", "opportunity", "Prices confuse me");
+    add("b1", "b", "solution", "Price history");
+    return d;
+  }
+
+  it("are the card, what's under it and what's above it, chosen before the limit", () => {
+    const d = doc();
+    expect(synthCardsOf(d, 1, 3, (id) => inScope(d, id, ["b"])).map((c) => c.id)).toEqual(["o", "b", "b1"]);
+    // Unscoped, the limit would have cut it off.
+    expect(synthCardsOf(d, 1, 3).map((c) => c.id)).toEqual(["o", "a", "a1"]);
+  });
+
+  it("answer only about their own cards", () => {
+    const d = doc();
+    const mine = new Set(synthCardsOf(d, 1, 10, (id) => inScope(d, id, ["b"])).filter((c) => c.id === "b" || isUnder(d, c.id, "b")).map((c) => c.ref));
+    const r = forBoard({ mappings: [{ cardId: "c2" }, { cardId: "c1" }], newOpportunities: [{ parent: "c1" }, { parent: "c2" }], contradictions: [] }, mine);
+    expect(r).toEqual({ mappings: [{ cardId: "c2" }], newOpportunities: [{ parent: "c2" }], contradictions: [] });
   });
 });
 

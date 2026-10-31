@@ -15,15 +15,21 @@ import { strengthOf } from "@/hub/needs";
 import { sameTopic } from "@/hub/topics";
 import { isProblemPage } from "@/space/compose";
 import { useSpaceInputs } from "@/space/session";
-import { useSpaceView } from "@/space/view";
+import { boardOfCard, useSpaceView } from "@/space/view";
+import type { FeedView } from "@/org/feeds";
 import { placeCard, toScreenBox } from "../ai/anchor";
 import { QalamAIGlyph } from "../brand";
-import { Button, CommandKbd, IconBtn, Spinner } from "../controls";
+import { Button, CommandKbd, IconBtn, Select, Spinner } from "../controls";
 import { useHealth } from "../frame/useHealth";
 import { useJobs } from "../goals/useJobs";
 import { r } from "../recipes";
 import { stopBusy, useBusy, type Busy, type Done } from "./busy";
 import { useDump } from "./dump";
+import { SPACE, addFeed, checkFeed, refreshFeed, useFeeds, wiredCards, type FeedNews } from "./feeds";
+import { addSources } from "./import";
+import { ACCEPT } from "./ingest";
+import { useSources } from "./sources";
+import { useTools, type Tool } from "./tools";
 import { foldNextSteps, runStep, useNextSteps } from "./next";
 import { useReview } from "./review";
 import { useDiscovery } from "./store";
@@ -71,6 +77,9 @@ export function useCardFacts(id: string | null): CardFacts | null {
   const { rows } = useHealth();
   const jobs = useJobs();
   const pending = usePending(thing?.type === "goal" ? thing.goal : null);
+  const tools = useTools();
+  const material = useSources((s) => s.list.some((x) => x.quotes.length > 0));
+  const feeds = useFeeds((s) => s.list);
   return useMemo(() => {
     if (!id || !isOstCard(node)) return null;
     const card = node.meta.ost;
@@ -96,13 +105,20 @@ export function useCardFacts(id: string | null): CardFacts | null {
           }
         : {}),
       pages: needs.length,
+      search: !rows?.some((r) => r.id === "search"),
+      material,
+      tools: tools?.map((t) => t.label) ?? null,
+      feeds: [...new Set(watching(feeds, id).map((f) => f.label))],
       suggested: card.kind === "test" && !!card.test?.suggested && !card.test.criterion,
       ai: !rows?.some((r) => r.id === "engine"),
       reviewing,
       busyElsewhere: !!busy && busy.card !== id,
     };
-  }, [id, node, doc, inputs, thing, busy, reviewing, rows, jobs, pending]);
+  }, [id, node, doc, inputs, thing, busy, reviewing, rows, jobs, pending, tools, material, feeds]);
 }
+
+/** The feeds watching for a card, on. */
+const watching = (feeds: FeedView[], card: string) => feeds.filter((f) => f.status === "on" && wiredCards(f, useFeeds.getState().board ?? SPACE).includes(card));
 
 export default function NextSteps({ vp }: { vp: { w: number; h: number } }) {
   const sel = useStudio((s) => (s.selection.length === 1 ? s.selection[0] : null));
@@ -121,8 +137,12 @@ export default function NextSteps({ vp }: { vp: { w: number; h: number } }) {
   const done = useBusy((s) => (sel && s.done?.card === sel ? s.done : null));
   const folded = useNextSteps((s) => s.folded);
   const [more, setMore] = useState(false);
-  // Break it down asks which levers to look at first.
-  const [asking, setAsking] = useState<string | null>(null);
+  // Break it down asks which levers to look at first; watching a tool, which and what for.
+  const [asking, setAsking] = useState<{ card: string; what: "levers" | "watch" } | null>(null);
+  const files = useRef<HTMLInputElement>(null);
+  const tools = useTools();
+  const feeds = useFeeds((s) => s.list);
+  const news = useFeeds((s) => s.news);
   const ref = useRef<HTMLDivElement>(null);
   const [h, setH] = useState(120);
   const inset = useDiscovery((s) => s.inset);
@@ -134,13 +154,16 @@ export default function NextSteps({ vp }: { vp: { w: number; h: number } }) {
   const onScreen = !!box && box.x + box.w >= 0 && box.x <= room.w && box.y + box.h >= 0 && box.y <= room.h;
   const mine = sel && busy?.card === sel ? busy : null;
   const steps = show && facts ? nextSteps(facts) : [];
+  const asked = asking?.card === sel ? asking.what : null;
   const pick = (s: NextStep) => {
     if (!sel || !facts) return;
-    if (s.id === "break-down") return setAsking(sel);
+    if (s.id === "break-down") return setAsking({ card: sel, what: "levers" });
+    if (s.id === "watch") return setAsking({ card: sel, what: "watch" });
+    if (s.id === "add-file") return files.current?.click();
     void runStep(sel, s, facts);
   };
   // ⌘↵ runs the step drawn first.
-  const first = onScreen && !folded && !mine && asking !== sel && steps[0] && !steps[0].blocked ? steps[0] : null;
+  const first = onScreen && !folded && !mine && !asked && steps[0] && !steps[0].blocked ? steps[0] : null;
   useEffect(() => {
     useNextSteps.setState({ first: first && sel ? { card: sel, run: () => pick(first) } : null });
   });
@@ -178,13 +201,23 @@ export default function NextSteps({ vp }: { vp: { w: number; h: number } }) {
       {done && !mine && <DoneLine done={done} />}
       {mine ? (
         <Running busy={mine} />
-      ) : asking === sel && facts.goal ? (
+      ) : asked === "levers" && facts.goal ? (
         <Levers
           onCancel={() => setAsking(null)}
           onGo={(levers) => {
             setAsking(null);
             const s = steps.find((x) => x.id === "break-down");
             if (s) void runStep(sel, s, facts, { levers });
+          }}
+        />
+      ) : asked === "watch" && tools?.length ? (
+        <WatchForm
+          tools={tools}
+          query={(isOstCard(node) && node.meta.ost.title) || ""}
+          goalNoBoard={facts.kind === "outcome" && !boardOfCard(sel)}
+          onCancel={() => setAsking(null)}
+          onWatch={async (tool, query) => {
+            if (await addFeed(tool, query, { card: sel })) setAsking(null);
           }}
         />
       ) : (
@@ -198,8 +231,76 @@ export default function NextSteps({ vp }: { vp: { w: number; h: number } }) {
               <ChevronDown size={12} absoluteStrokeWidth strokeWidth={1.25} className={clsx("q-chevron text-fg-subtle", more && "rotate-180")} />
             </button>
           )}
+          {watching(feeds, sel).map((f) => (
+            <FeedLine key={f.id} feed={f} news={news[f.id]} />
+          ))}
         </>
       )}
+      <input
+        ref={files}
+        type="file"
+        multiple
+        accept={ACCEPT}
+        hidden
+        onChange={(e) => {
+          const picked = [...(e.target.files ?? [])];
+          e.target.value = "";
+          if (picked.length) void addSources(picked.map((file) => ({ kind: "file" as const, file })), { under: sel });
+        }}
+      />
+    </div>
+  );
+}
+
+/** Watching a tool for the card: which tool, and the words to look for there (the card's, to start). */
+function WatchForm({ tools, query, goalNoBoard, onWatch, onCancel }: { tools: Tool[]; query: string; goalNoBoard: boolean; onWatch: (tool: string, query: string) => Promise<void>; onCancel: () => void }) {
+  const [tool, setTool] = useState(tools[0].id);
+  const [words, setWords] = useState(query.slice(0, 120));
+  const [saving, setSaving] = useState(false);
+  return (
+    <div className="flex flex-col gap-[8px] px-[8px] pt-[2px] pb-[6px]">
+      <span className="text-caption text-fg">What to look for there. What's new is counted; nothing is read until you bring it in.</span>
+      {tools.length > 1 && <Select ariaLabel="Tool to watch" value={tool} options={tools.map((t) => ({ value: t.id, label: t.label }))} onChange={setTool} />}
+      <label className={r.field}>
+        <input className={r.fieldInput} aria-label="What to look for" value={words} onChange={(e) => setWords(e.target.value)} />
+      </label>
+      {goalNoBoard && <span className="text-micro text-fg-subtle">What comes in is filed and linked to this goal; it's placed once the goal has a board.</span>}
+      <div className="flex items-center gap-[6px]">
+        <Button
+          size="sm"
+          disabled={saving || words.trim().length < 2}
+          onClick={() => {
+            setSaving(true);
+            void onWatch(tool, words.trim()).finally(() => setSaving(false));
+          }}
+        >
+          {saving ? "Keeping it…" : `Watch ${tools.find((t) => t.id === tool)?.label ?? "it"}`}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** A tool watched for the card: what's new there, and bringing it in (placed only under what it watches). */
+function FeedLine({ feed, news }: { feed: FeedView; news?: FeedNews }) {
+  const fresh = news?.fresh ?? 0;
+  return (
+    <div className="flex min-h-[28px] items-center gap-[6px] border-t border-line-subtle px-[8px] pt-[4px] text-caption text-fg-muted">
+      <span className="min-w-0 flex-1 truncate" dir="auto">
+        {news?.activity ? <span className="q-shimmer-text">{news.activity}</span> : `${feed.label}: “${feed.query}” · ${news?.checking ? "looking…" : news?.error ? "couldn't look" : fresh ? `${fresh} new` : "nothing new"}`}
+      </span>
+      {!news?.activity && (fresh > 0 ? (
+        <Button size="sm" variant="secondary" onClick={() => void refreshFeed(feed.id)}>
+          Bring in
+        </Button>
+      ) : (
+        <Button size="sm" variant="ghost" disabled={!!news?.checking} onClick={() => void checkFeed(feed.id)}>
+          Check
+        </Button>
+      ))}
     </div>
   );
 }

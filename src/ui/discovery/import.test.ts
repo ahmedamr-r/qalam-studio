@@ -65,4 +65,29 @@ describe("mapping sources to the tree", () => {
     tree();
     expect(productLine(studio().doc)).toBe("The outcomes the team wants to move (sub-outcomes under theirs):\n- 2M a month in orders\n  - More customers reorder every week (Weekly reorders)");
   });
+
+  it("for one card, sends its branch and what's above it, and proposes only on its branch", () => {
+    tree();
+    const doc = studio().doc;
+    const other = makeCardNode(newCard("opportunity", { title: "Prices confuse me" }));
+    const goal = Object.values(doc.nodes).find((n) => n.meta.ost?.title === "More customers reorder every week")!;
+    studio().mutate((d) => addCardIn(d, other, goal.id));
+    const need = Object.values(studio().doc.nodes).find((n) => n.meta.ost?.title === "I forget to reorder")!;
+    const { body, ctx, mine } = synthesizeInput(studio().doc, [source("notes", "paste", "I never remember to reorder")], [], need.id);
+    expect(body.tree.map((c) => c.title)).toEqual(["2M a month in orders", "More customers reorder every week", "I forget to reorder"]);
+    // Only the card itself is its branch; a new need hangs under it, never under the goals above.
+    expect([...mine]).toEqual([body.tree[2].id]);
+    expect(ctx.outcomeRef).toBe(body.tree[2].id);
+    expect(ctx.within).toEqual(mine);
+  });
+
+  it("never sends a problem's page drawn faint: it isn't a card yet", () => {
+    tree();
+    const goal = Object.values(studio().doc.nodes).find((n) => n.meta.ost?.title === "More customers reorder every week")!;
+    const faint = makeCardNode(newCard("opportunity", { title: "Parents rebuild the same basket" }));
+    faint.id = "topic:g1:rebuild";
+    studio().mutate((d) => addCardIn(d, faint, goal.id));
+    const { body } = synthesizeInput(studio().doc, [source("notes", "paste", "I never remember to reorder")]);
+    expect(body.tree.map((c) => c.title)).not.toContain("Parents rebuild the same basket");
+  });
 });

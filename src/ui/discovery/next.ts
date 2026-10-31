@@ -4,8 +4,9 @@ import { studio } from "@/doc/store";
 import { updateCardIn } from "@/discovery/ops";
 import type { CardFacts, NextStep } from "@/discovery/next";
 import type { GoalLever } from "@/goals/types";
-import { goalHref, topicHref } from "@/projects/model";
+import { goalHref, placeHref, topicHref } from "@/projects/model";
 import { navigate } from "../nav";
+import { findBackingFor } from "./backing";
 import { breakDownFor, findProblemsFor, lookOutsideFor, reviewPartsFor } from "./goal-steps";
 import { draftSolutionsFor } from "./solutions";
 import { useDiscovery } from "./store";
@@ -53,6 +54,15 @@ export async function runStep(card: string, step: NextStep, f: CardFacts, o: { l
       return;
     case "others":
       if (f.goal) await lookOutsideFor(card, f.goal.id);
+      return;
+    case "find-backing":
+      return findBackingFor(card);
+    case "connect":
+      navigate(placeHref("connections"));
+      return;
+    // Asked in the box first (./NextSteps.tsx): a tool and its words, a file.
+    case "watch":
+    case "add-file":
       return;
     case "draft-solutions":
       return draftSolutionsFor(card);

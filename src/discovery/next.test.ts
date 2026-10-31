@@ -2,14 +2,14 @@ import { describe, expect, it } from "vitest";
 import { backingLine, nextSteps, type CardFacts } from "./next";
 
 const none = { quotes: 0, sources: 0, ours: 0, online: 0, against: 0, who: [], from: [] };
-const facts = (over: Partial<CardFacts> = {}): CardFacts => ({ kind: "opportunity", evidence: none, page: null, under: { solutions: 0, tests: 0 }, pages: 0, ai: true, reviewing: false, busyElsewhere: false, ...over });
+const facts = (over: Partial<CardFacts> = {}): CardFacts => ({ kind: "opportunity", evidence: none, page: null, under: { solutions: 0, tests: 0 }, pages: 0, search: false, material: false, tools: null, feeds: [], ai: true, reviewing: false, busyElsewhere: false, ...over });
 const goal = (over: Partial<NonNullable<CardFacts["goal"]>> = {}) => ({ id: "g1", number: null, behind: 0, job: null, pending: 0, ...over });
 const ids = (f: CardFacts) => nextSteps(f).map((s) => s.id);
 
 describe("a card's next steps", () => {
   it("lead a problem with drafting its solutions, then its page", () => {
-    expect(ids(facts())).toEqual(["draft-solutions"]);
-    expect(ids(facts({ page: { topic: "late-orders", strength: "thin", quotes: 2, sources: 1 } }))).toEqual(["draft-solutions", "page"]);
+    expect(ids(facts())).toEqual(["draft-solutions", "add-file"]);
+    expect(ids(facts({ page: { topic: "late-orders", strength: "thin", quotes: 2, sources: 1 } }))).toEqual(["draft-solutions", "add-file", "page"]);
   });
 
   it("lead a solution with its tests, then designing it", () => {
@@ -23,21 +23,46 @@ describe("a card's next steps", () => {
   });
 
   it("lead a goal with its problems while none is behind it, else with breaking it down", () => {
-    expect(ids(facts({ kind: "outcome", pages: 5, goal: goal() }))).toEqual(["find-problems", "break-down", "others"]);
-    expect(ids(facts({ kind: "outcome", pages: 5, goal: goal({ behind: 2 }) }))).toEqual(["break-down", "find-problems", "others"]);
+    expect(ids(facts({ kind: "outcome", pages: 5, goal: goal() }))).toEqual(["find-problems", "break-down", "others", "add-file"]);
+    expect(ids(facts({ kind: "outcome", pages: 5, goal: goal({ behind: 2 }) }))).toEqual(["break-down", "find-problems", "others", "add-file"]);
     // No problem pages to read: nothing to find.
-    expect(ids(facts({ kind: "outcome", goal: goal() }))).toEqual(["break-down", "others"]);
+    expect(ids(facts({ kind: "outcome", goal: goal() }))).toEqual(["break-down", "others", "add-file"]);
   });
 
   it("offer a goal the goals proposed under it before breaking it down again", () => {
     const steps = nextSteps(facts({ kind: "outcome", pages: 5, goal: goal({ pending: 3 }) }));
-    expect(steps.map((s) => s.id)).toEqual(["review-parts", "find-problems", "others"]);
+    expect(steps.map((s) => s.id)).toEqual(["review-parts", "find-problems", "others", "add-file"]);
     expect(steps[0]).toMatchObject({ label: "Review the 3 goals proposed under it" });
     expect(steps[0].ai).toBeUndefined();
   });
 
   it("end a goal's steps with its next job", () => {
     expect(nextSteps(facts({ kind: "outcome", goal: goal({ job: "Ask five families" }) })).at(-1)).toMatchObject({ id: "next-job", label: "Next: Ask five families" });
+  });
+
+  it("ground a problem: the organization's words first while nothing backs it, then a tool, then a file", () => {
+    const can = { search: true, material: true, tools: ["Intercom"] };
+    expect(ids(facts(can))).toEqual(["find-backing", "draft-solutions", "watch", "add-file"]);
+    expect(nextSteps(facts(can))[2].label).toBe("Watch Intercom for it");
+    // Backed already: drafting first, more of what backs it next.
+    const backed = nextSteps(facts({ ...can, evidence: { ...none, quotes: 2, sources: 1 } }));
+    expect(backed.map((s) => s.id)).toEqual(["draft-solutions", "find-backing", "watch", "add-file"]);
+    expect(backed[1].label).toBe("Find more that backs it");
+  });
+
+  it("offer Connections when no tool that brings material in is connected, and nothing while that isn't known", () => {
+    expect(ids(facts({ tools: [] }))).toEqual(["draft-solutions", "connect", "add-file"]);
+    expect(ids(facts({ tools: null }))).toEqual(["draft-solutions", "add-file"]);
+    expect(nextSteps(facts({ tools: ["Intercom", "Slack"] }))[1].label).toBe("Watch a tool for it");
+  });
+
+  it("search the organization only where its search answers and it has material", () => {
+    expect(ids(facts({ search: false, material: true, tools: [] }))).not.toContain("find-backing");
+    expect(ids(facts({ search: true, material: false, tools: [] }))).not.toContain("find-backing");
+  });
+
+  it("ground a goal with a tool and a file after its own steps, never with quotes", () => {
+    expect(ids(facts({ kind: "outcome", search: true, material: true, tools: ["Slack"], goal: goal({ behind: 1 }) }))).toEqual(["break-down", "others", "watch", "add-file"]);
   });
 
   it("say why Qalam AI can't run a step now, and leave the rest to run", () => {
@@ -60,6 +85,10 @@ describe("what a card rests on, in a line", () => {
     expect(backingLine(facts({ evidence: { ...none, online: 3 } }))).toBe("Only people online: 3 posts");
     expect(backingLine(facts())).toBe("Nothing behind it yet");
     expect(backingLine(facts({ kind: "solution" }))).toBe("Rests on the problem above it");
+  });
+
+  it("says which tools watch for it", () => {
+    expect(backingLine(facts({ evidence: { ...none, quotes: 4, sources: 2 }, feeds: ["Intercom"] }))).toBe("Rests on 4 quotes from 2 sources · watched in Intercom");
   });
 
   it("gives a goal its number and the problems behind it", () => {

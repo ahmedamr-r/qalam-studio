@@ -6,9 +6,10 @@ import { boardLane } from "@/engine/ost-tools";
 import { cardOf } from "@/discovery/ops";
 import { partOf } from "@/discovery/origin";
 import { rankQuotes } from "@/discovery/near";
-import { Button, Checkbox, IconBtn } from "../controls";
+import { Button, IconBtn } from "../controls";
 import { r } from "../recipes";
 import { attachQuotes } from "./drop";
+import { QuoteList, toggled } from "./QuoteList";
 import { useSources } from "./sources";
 import { useDiscovery } from "./store";
 
@@ -44,13 +45,6 @@ export default function CordPicker() {
     return rankQuotes(mine, { id: pick.card, title: card.title, description: card.description }, parent, on);
   }, [pick, card, source, item, doc]);
   if (!pick || !item || !card || !source) return null;
-  const toggle = (id: string, on: boolean) =>
-    setChosen((c) => {
-      const next = new Set(c);
-      if (on) next.add(id);
-      else next.delete(id);
-      return next;
-    });
   const n = chosen.size;
   return (
     <aside aria-label="Pick the quotes the card rests on" className="flex min-h-0 min-w-0 flex-1 flex-col border-l border-line-subtle bg-panel">
@@ -64,24 +58,7 @@ export default function CordPicker() {
         Pick the words that back <span className="text-fg">“{card.title || "Untitled"}”</span>. Nearest first.
       </p>
       {quotes.length ? (
-        <ul className="flex min-h-0 flex-1 flex-col gap-[2px] overflow-y-auto px-[8px] py-[8px]">
-          {quotes.map((q) => (
-            <li key={q.id} className="rounded-md px-[4px] py-[2px] hover:bg-hover">
-              <Checkbox
-                checked={chosen.has(q.id)}
-                onChange={(on) => toggle(q.id, on)}
-                label={
-                  <span className="flex min-w-0 flex-col py-[2px]">
-                    <span className="text-body leading-[20px] text-fg" dir="auto">
-                      {q.text}
-                    </span>
-                    {q.speaker && <span className="text-micro text-fg-subtle">{q.speaker}</span>}
-                  </span>
-                }
-              />
-            </li>
-          ))}
-        </ul>
+        <QuoteList quotes={quotes.map((q) => ({ id: q.id, text: q.text, ...(q.speaker ? { note: q.speaker } : {}) }))} chosen={chosen} onToggle={(id, on) => setChosen((c) => toggled(c, id, on))} />
       ) : (
         <p className="flex-1 px-[12px] py-[12px] text-caption text-fg-subtle">Every quote it has is on this card already.</p>
       )}
