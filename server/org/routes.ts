@@ -209,7 +209,7 @@ export function orgRoutes(): Hono<Env> {
     const card = solutionsCardShape(b?.card);
     if (!topic && !card) return bad("Name a problem: its page, or its card");
     const store = c.get("store");
-    return streamed(c.req.raw.signal, (emit) => draftSolutions(store, { topic, ...(card ? { card } : {}) }, emit, { tab: tabOf(c.req.raw.headers) }));
+    return streamed(c.req.raw.signal, (emit, signal) => draftSolutions(store, { topic, ...(card ? { card } : {}) }, emit, { tab: tabOf(c.req.raw.headers), signal }));
   });
   // Drafting a solution card's tests (server/org/tests.ts): its riskiest assumptions and a test of the riskiest.
   r.post("/api/org/:org/tests", async (c) => {
@@ -217,7 +217,7 @@ export function orgRoutes(): Hono<Env> {
     const req = testsShape(await c.req.json().catch(() => null));
     if (!req) return bad("Send the solution card");
     const store = c.get("store");
-    return streamed(c.req.raw.signal, (emit) => draftTests(store, req, emit));
+    return streamed(c.req.raw.signal, (emit, signal) => draftTests(store, req, emit, signal));
   });
   // What people say online about a problem (server/org/posts.ts), taken in as people online's.
   r.post("/api/org/:org/topics/:id/online", async (c) => {
@@ -1121,9 +1121,9 @@ function solutionsCardShape(x: unknown): SolutionsCard | null {
   const c = x as { title?: unknown; evidence?: unknown; children?: unknown } | null;
   const title = clipped(c?.title, 200);
   if (!c || !title) return null;
-  const evidence = (Array.isArray(c.evidence) ? c.evidence : []).slice(0, 30).flatMap((e: { text?: unknown; piece?: unknown; sourceId?: unknown; sourceTitle?: unknown; kind?: unknown }) => {
+  const evidence = (Array.isArray(c.evidence) ? c.evidence : []).slice(0, 30).flatMap((e: { text?: unknown; piece?: unknown; sourceId?: unknown; sourceTitle?: unknown; kind?: unknown; online?: unknown }) => {
     const text = clipped(e?.text, 1200);
-    return text ? [{ text, kind: clipped(e.kind, 20) || "note", ...(clipped(e.piece, 120) ? { piece: clipped(e.piece, 120) } : {}), ...(clipped(e.sourceId, 64) ? { sourceId: clipped(e.sourceId, 64) } : {}), ...(clipped(e.sourceTitle, 200) ? { sourceTitle: clipped(e.sourceTitle, 200) } : {}) }] : [];
+    return text ? [{ text, kind: clipped(e.kind, 20) || "note", ...(clipped(e.piece, 120) ? { piece: clipped(e.piece, 120) } : {}), ...(clipped(e.sourceId, 64) ? { sourceId: clipped(e.sourceId, 64) } : {}), ...(clipped(e.sourceTitle, 200) ? { sourceTitle: clipped(e.sourceTitle, 200) } : {}), ...(e.online === true ? { online: true } : {}) }] : [];
   });
   const children = (Array.isArray(c.children) ? c.children : []).slice(0, 30).flatMap((k: { title?: unknown; kind?: unknown }) => (clipped(k?.title, 200) && (k.kind === "solution" || k.kind === "test") ? [{ title: clipped(k.title, 200), kind: k.kind as "solution" | "test" }] : []));
   return { title, evidence, children };

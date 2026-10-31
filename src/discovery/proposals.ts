@@ -257,14 +257,17 @@ export function proposalDoc(doc: Doc, roots: string[], proposals: Proposal[], ev
   };
   const real = roots.filter((r) => doc.nodes[r]);
   real.forEach(walk);
-  const next = produce({ ...emptyDoc(), nodes, roots: [...real] } as Doc, (d) => {
-    for (const p of proposals) {
-      if (!applyProposal(d, p, evidence)) continue;
-      if (p.kind === "move" && isOstCard(d.nodes[p.cardId])) d.nodes[p.cardId].meta.ost = { ...d.nodes[p.cardId].meta.ost! };
-      if (p.kind === "note") d.nodes[p.cardId].opacity = 0.72;
-    }
-  });
+  const next = produce({ ...emptyDoc(), nodes, roots: [...real] } as Doc, (d) => carryOut(d, proposals, evidence));
   return next.roots.length ? layoutDocTrees(next) : null;
+}
+
+/** The proposals carried out on a ghost's draft: a moved card drawn anew where it goes, a note faded. */
+export function carryOut(d: Doc, proposals: Proposal[], evidence: EvidenceOf) {
+  for (const p of proposals) {
+    if (!applyProposal(d, p, evidence)) continue;
+    if (p.kind === "move" && isOstCard(d.nodes[p.cardId])) d.nodes[p.cardId].meta.ost = { ...d.nodes[p.cardId].meta.ost! };
+    if (p.kind === "note") d.nodes[p.cardId].opacity = 0.72;
+  }
 }
 
 /** The right edge and top of what's on the board (new trees go beyond it), or null on an empty board. */

@@ -7,7 +7,7 @@ import { sanitizeSolutions, solutionsMaterial, type Drafted, type SolutionsFile,
 import { foldBearings } from "@/goals/bearings";
 import { metricLine } from "@/goals/goals-md";
 import { goalById } from "@/goals/tree";
-import { isEvidence, sameWords, type Topic } from "@/hub/topics";
+import { isEvidence, isOnline, sameWords, type Topic } from "@/hub/topics";
 import { indexFor } from "../index/registry";
 import { showsUp } from "../index/search";
 import { NotFoundError, type OrgStore } from "./store";
@@ -23,7 +23,7 @@ import { NotFoundError, type OrgStore } from "./store";
 /** A card on a board asking, with or without a page of its own: its words, and what's under it already. */
 export interface SolutionsCard {
   title: string;
-  evidence: { text: string; piece?: string; sourceId?: string; sourceTitle?: string; kind: string }[];
+  evidence: { text: string; piece?: string; sourceId?: string; sourceTitle?: string; kind: string; online?: boolean }[];
   children: { title: string; kind: "solution" | "test" }[];
 }
 
@@ -48,7 +48,7 @@ async function solutionsInput(store: OrgStore, topic: Topic | null, card: Soluti
       for (const [ref, row] of ix.piecesByRef(refs)) {
         if (row.type !== "quote" && row.type !== "evidence") continue;
         const s = row.source ? await store.getSource(row.source) : null;
-        pieces.push({ ref, text: row.text, label: s?.title ?? row.title ?? "", source: row.source, evidence: isEvidence(row) });
+        pieces.push({ ref, text: row.text, label: s?.title ?? row.title ?? "", source: row.source, evidence: isEvidence(row), ...(isOnline(row) ? { online: true } : {}) });
       }
       // What its boards have under it already.
       for (const shown of showsUp(ix, topic.title, refs).filter((x) => x.kind === "opportunity")) {
@@ -66,7 +66,7 @@ async function solutionsInput(store: OrgStore, topic: Topic | null, card: Soluti
     }
   } else
     for (const [i, e] of (card?.evidence ?? []).entries())
-      pieces.push({ ref: e.piece ?? `card:${i}`, text: e.text, label: e.sourceTitle ?? (e.kind === "quote" ? "A source" : "The team's words"), source: e.sourceId ?? null, evidence: e.kind === "quote" });
+      pieces.push({ ref: e.piece ?? `card:${i}`, text: e.text, label: e.sourceTitle ?? (e.kind === "quote" ? "A source" : "The team's words"), source: e.sourceId ?? null, evidence: e.kind === "quote" && !e.online, ...(e.online ? { online: true } : {}) });
 
   // The goals it bears on, and what others report for them.
   const tree = await store.getGoals();
@@ -102,7 +102,7 @@ async function solutionsInput(store: OrgStore, topic: Topic | null, card: Soluti
 }
 
 /** One call drafting solutions for a problem (a page, or a card on a board); code keeps what it can stand behind. */
-export async function draftSolutions(store: OrgStore, req: { topic?: string; card?: SolutionsCard }, emit?: (label: string) => void, opts: { tab?: string } = {}): Promise<Drafted> {
+export async function draftSolutions(store: OrgStore, req: { topic?: string; card?: SolutionsCard }, emit?: (label: string) => void, opts: { tab?: string; signal?: AbortSignal } = {}): Promise<Drafted> {
   const topic = req.topic ? await store.getTopic(req.topic) : null;
   if (req.topic && !topic) throw new NotFoundError("No such problem");
   if (!topic && !req.card?.title.trim()) throw new NotFoundError("No problem to draft for");
@@ -110,7 +110,7 @@ export async function draftSolutions(store: OrgStore, req: { topic?: string; car
   const input = await solutionsInput(store, topic, req.card ?? null);
   const m = solutionsMaterial(input);
   emit?.("Qalam AI is drafting ways to solve it");
-  const { data, model } = await structured<unknown>(solutionsCall(m));
+  const { data, model } = await structured<unknown>(solutionsCall(m), opts.signal);
   const now = Date.now();
   const dropped: { why: string; item: unknown }[] = [];
   const { drafts, note } = sanitizeSolutions(data, m, { now, id: () => nanoid(10) }, (why, item) => dropped.push({ why, item }));

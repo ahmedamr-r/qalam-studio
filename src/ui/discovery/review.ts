@@ -1,15 +1,17 @@
+import { produce } from "immer";
 import { create } from "zustand";
 import { studio, useStudio } from "@/doc/store";
 import type { Doc } from "@/doc/schema";
 import { isOstCard } from "@/doc/board";
 import { boardOfCard, onSpaceCanvas } from "@/space/view";
+import { previewLayout } from "@/space/session";
 import { boardsPlacedFor } from "./placements";
 import { useGhosts, type Ghost } from "@/doc/ghosts";
 import { feedback } from "@/commands/feedback";
 import { cardOf } from "@/discovery/ops";
 import { hasQuote, quoteEvidence } from "@/discovery/sources";
 import { dropProblem } from "@/discovery/ops";
-import { applyProposal, proposalDoc, proposalKey, touchedRoots, withDependents, withNeeds, type EvidenceOf, type Proposal } from "@/discovery/proposals";
+import { applyProposal, carryOut, proposalDoc, proposalKey, touchedRoots, withDependents, withNeeds, type EvidenceOf, type Proposal } from "@/discovery/proposals";
 import type { DumpCounts } from "@/discovery/dump";
 import { recordAccepted, recordDiscarded } from "../decisions/recorder";
 import { orgFetch } from "@/org/client";
@@ -92,8 +94,18 @@ function fits(p: Proposal, all: Proposal[]): boolean {
   }
 }
 
+/**
+ * On a space's canvas: the proposals carried out on the whole canvas, laid out as an edit lays it
+ * out (each goal's lane column too), so the ghost is where accepting puts it, not a board's layout.
+ */
+export function spaceGhost(doc: Doc, roots: string[], proposals: Proposal[], evidence: EvidenceOf): Doc | null {
+  const laid = previewLayout(produce(doc, (d) => carryOut(d, proposals, evidence)));
+  const kept = roots.filter((r) => laid.nodes[r]);
+  return kept.length ? { ...laid, roots: kept } : null;
+}
+
 /** The board as it would be, as ghosts: trees a move or merge joins are drawn together, then one ghost per tree. */
-export function ghostsFor(doc: Doc, proposals: Proposal[], turnId: string, keyOf = (root: string) => `${turnId}:${root}`): Ghost[] {
+export function ghostsFor(doc: Doc, proposals: Proposal[], turnId: string, keyOf = (root: string) => `${turnId}:${root}`, build: typeof proposalDoc = proposalDoc): Ghost[] {
   // Group the proposals by the trees they touch (joined when one touches two).
   const group = new Map<string, string>();
   const find = (x: string): string => (group.get(x) === x || !group.has(x) ? (group.set(x, x), x) : find(group.get(x)!));
@@ -111,7 +123,7 @@ export function ghostsFor(doc: Doc, proposals: Proposal[], turnId: string, keyOf
   });
   const ghosts: Ghost[] = [];
   for (const { roots, list } of byGroup.values()) {
-    const g = proposalDoc(doc, [...roots], list, evidenceOf);
+    const g = build(doc, [...roots], list, evidenceOf);
     if (!g) continue;
     for (const r of g.roots) ghosts.push({ key: keyOf(r), turnId, index: 0, doc: { ...g, roots: [r] }, ...(doc.nodes[r] ? { covers: r } : {}) });
     // A tree a merge or a move took apart still hides under its ghost.
@@ -132,7 +144,7 @@ function show() {
     useReview.setState({ proposals });
     void keep(useReview.getState().origin);
   }
-  const ghosts = ghostsFor(studio().doc, proposals, REVIEW_TURN);
+  const ghosts = ghostsFor(studio().doc, proposals, REVIEW_TURN, undefined, onSpaceCanvas() ? spaceGhost : proposalDoc);
   useGhosts.setState((s) => ({ list: [...s.list.filter((g) => g.turnId !== REVIEW_TURN), ...ghosts] }));
   if (!proposals.length) {
     unsubscribe?.();
@@ -185,15 +197,26 @@ async function keep(origin: ReviewOrigin | null, done?: Partial<DumpCounts>) {
   });
 }
 
+const WAITS: Record<ReviewOrigin["kind"], string> = {
+  sources: "Accept or discard Qalam AI's proposals from your sources first",
+  dump: "Accept or discard Qalam AI's proposals from your brain dump first",
+  placed: "Accept or discard what Qalam AI found for these cards first",
+  solutions: "Accept or discard the drafted solutions first",
+  tests: "Accept or discard the drafted tests first",
+};
+
+/** What the review that's open waits for, in words (null: none is open). A draft asks before it calls Qalam AI. */
+export function reviewWaits(): string | null {
+  const cur = useReview.getState();
+  return cur.proposals.length ? WAITS[cur.origin?.kind ?? "sources"] : null;
+}
+
 /** Open a review (false when another one is waiting: one at a time). */
 export function startReview(origin: ReviewOrigin, proposals: Proposal[]): boolean {
   const cur = useReview.getState();
   const same = cur.origin && JSON.stringify(cur.origin) === JSON.stringify(origin);
   if (cur.proposals.length && !same) {
-    feedback(
-      cur.origin?.kind === "dump" ? "Accept or discard Qalam AI's proposals from your brain dump first" : cur.origin?.kind === "placed" ? "Accept or discard what Qalam AI found for this board first" : cur.origin?.kind === "solutions" ? "Accept or discard the drafted solutions first" : cur.origin?.kind === "tests" ? "Accept or discard the drafted tests first" : "Accept or discard Qalam AI's proposals from your sources first",
-      { id: "discovery.review" },
-    );
+    feedback(reviewWaits()!, { id: "discovery.review" });
     return false;
   }
   useReview.setState({ origin, proposals });

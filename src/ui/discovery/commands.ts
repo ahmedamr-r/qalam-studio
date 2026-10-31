@@ -1,4 +1,6 @@
 import { refreshFeed, useFeeds } from "./feeds";
+import { useNextSteps } from "./next";
+import { draftSolutionsFor } from "./solutions";
 import { draftTestsFor } from "./tests";
 import { feedback } from "@/commands/feedback";
 import { getCommand, kb, registerCommands, setCommandGuard, type Command } from "@/commands/registry";
@@ -339,6 +341,28 @@ export function registerDiscoveryCommands() {
           .map((c) => c.id);
         s().select(ids);
         feedback(`${ids.length} assumed ${ids.length === 1 ? "problem" : "problems"}: attach evidence to make them solid`, { id: "discovery.assumed" });
+      },
+    },
+    {
+      id: "discovery.next-step",
+      label: "Run the card's next step",
+      category: "discovery",
+      keys: [kb("⌘↵")],
+      priority: PRIORITY,
+      keywords: ["next", "suggest", "what now", "qalam ai"],
+      // The step drawn first beside the picked card (./NextSteps.tsx).
+      enabled: () => (oneCard() && useNextSteps.getState().first?.card === oneCard() ? true : "Pick a card with a next step"),
+      run: () => useNextSteps.getState().first?.run(),
+    },
+    {
+      id: "discovery.draft-solutions",
+      label: "Draft solutions",
+      category: "discovery",
+      keywords: ["solutions", "ideas", "ideate", "assumptions", "test", "problem", "opportunity", "qalam ai"],
+      enabled: ofKind("opportunity"),
+      run: () => {
+        const id = oneCard();
+        if (id) void draftSolutionsFor(id);
       },
     },
     {

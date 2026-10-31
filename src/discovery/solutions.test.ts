@@ -54,6 +54,11 @@ describe("the material", () => {
     expect(m.text).toContain("- i1 · “a button to copy last week's plan”");
     expect(m.text).toContain("- Solution: Meal kits");
   });
+
+  it("says people online's words are theirs, never the customers'", () => {
+    const m = solutionsMaterial(input({ pieces: [...input().pieces, { ref: "hub:quote:p", text: "the app forgets my list", label: "Reddit thread", source: "s9", evidence: false, online: true }] }));
+    expect(m.text).toContain("· people online · Reddit thread · “the app forgets my list”");
+  });
 });
 
 describe("what code keeps of the drafts", () => {

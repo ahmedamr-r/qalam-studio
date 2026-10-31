@@ -23,8 +23,8 @@ export interface SolutionsInput {
   problem: { title: string; topic: string | null };
   /** The problem page's lines (none: a card with no page; its own evidence is the pieces). */
   lines: { id: string; section: TopicSection; text: string; cites: string[] }[];
-  /** The words its lines rest on (or a card's own evidence): customers' and the team's. */
-  pieces: { ref: string; text: string; label: string; source: string | null; evidence: boolean }[];
+  /** The words its lines rest on (or a card's own evidence): customers', people online's and the team's. */
+  pieces: { ref: string; text: string; label: string; source: string | null; evidence: boolean; online?: boolean }[];
   /** The goals it bears on, and how it moves each. */
   goals: { id: string; title: string; metric: string | null; how: string | null }[];
   /** What others report for those goals: never evidence, context for what's been tried. */
@@ -105,6 +105,8 @@ export interface Drafted {
 }
 
 const one = (s: string) => s.replace(/\s+/g, " ").trim();
+/** Whose words a piece is, as the material says it: people online are never the customers. */
+export const whose = (p: { evidence: boolean; online?: boolean }) => (p.evidence ? "customers" : p.online ? "people online" : "the team");
 
 /**
  * The material, each item with the id the call cites it by: the page's lines (l…) and the words
@@ -129,7 +131,7 @@ export function solutionsMaterial(o: SolutionsInput): SolutionsSent {
   for (const p of cited) {
     const id = `q${pieces.size + 1}`;
     pieces.set(id, p);
-    out.push(`- ${id} · ${p.evidence ? "customers" : "the team"} · ${one(p.label)} · “${one(p.text)}”`);
+    out.push(`- ${id} · ${whose(p)} · ${one(p.label)} · “${one(p.text)}”`);
   }
   if (!pieces.size) out.push("(no words yet: it rests on what the team believes)");
 

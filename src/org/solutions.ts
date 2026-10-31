@@ -11,7 +11,7 @@ import { orgFetch, orgGet, orgPath } from "./client";
 /** A card asking, with or without a page of its own. */
 export interface DraftCard {
   title: string;
-  evidence: Pick<OstEvidence, "text" | "piece" | "sourceId" | "sourceTitle" | "kind">[];
+  evidence: Pick<OstEvidence, "text" | "piece" | "sourceId" | "sourceTitle" | "kind" | "online">[];
   children: { title: string; kind: "solution" | "test" }[];
 }
 

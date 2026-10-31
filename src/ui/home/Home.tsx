@@ -36,6 +36,7 @@ import { inSpace } from "../frame/spaces";
 import { useSpace } from "../frame/useSpace";
 import { glideToLayer, onCanvasReady } from "../discovery/canvas";
 import { SpaceCanvas } from "../space/SpaceCanvas";
+import { useWide, WIDE } from "../chat/Panels";
 import { useNeeds } from "./useNeeds";
 import { ProductsRow } from "./ProductsRow";
 import { homeGoals } from "./YourGoals";
@@ -87,6 +88,12 @@ export default function Home({ product: productId = null }: { product?: string |
   useEffect(() => {
     if (picked || reading || cordPick) setDrawer(true);
   }, [picked, reading, cordPick]);
+  // A narrow window's panel lies over the canvas: what's drawn beside a card keeps out of it.
+  const wide = useWide(WIDE);
+  const panelW = reading && readerW ? readerW : 380;
+  const over = !wide && (drawer || !!reading) ? panelW : 0;
+  useEffect(() => useDiscovery.setState({ inset: over }), [over]);
+  useEffect(() => () => useDiscovery.setState({ inset: 0 }), []);
 
   const show = (id: string | undefined) => {
     if (!id || !studio().doc.nodes[id]) return;
@@ -123,7 +130,7 @@ export default function Home({ product: productId = null }: { product?: string |
             !drawer && !reading && "max-[1179px]:hidden",
           )}
           // A source being read takes the panel over, wider for a document than a conversation.
-          style={{ width: reading && readerW ? readerW : 380 }}
+          style={{ width: panelW }}
         >
           {cordPick ? (
             <CordPicker />

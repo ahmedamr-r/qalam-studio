@@ -39,8 +39,10 @@ interface DiscoveryUI {
   reading: string | null;
   /** A cord drawn from a lane source's port onto a card: its quotes picked in the right panel. */
   cordPick: { key: string; card: string } | null;
+  /** How much of the canvas's right side a panel lies over (a narrow window's drawer): what's drawn beside a card keeps out of it. */
+  inset: number;
 }
 
-export const useDiscovery = create<DiscoveryUI>(() => ({ editing: null, sheet: "closed", designFor: null, designs: {}, dragging: false, drafting: null, quoteDrop: null, notices: [], work: {}, reading: null, cordPick: null }));
+export const useDiscovery = create<DiscoveryUI>(() => ({ editing: null, sheet: "closed", designFor: null, designs: {}, dragging: false, drafting: null, quoteDrop: null, notices: [], work: {}, reading: null, cordPick: null, inset: 0 }));
 
 export const discovery = () => useDiscovery.getState();

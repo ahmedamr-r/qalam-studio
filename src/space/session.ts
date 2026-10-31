@@ -66,6 +66,9 @@ interface Open {
 /** Boards changed here and elsewhere since they loaded: the save waits until the person chooses. */
 export const useSpaceConflict = create<{ boards: { id: string; name: string; doc: Doc | null; version: string }[] }>(() => ({ boards: [] }));
 
+/** What the open canvas is composed from besides its boards (the goals, their problems): read beside a picked card too. */
+export const useSpaceInputs = create<{ inputs: SpaceInputs | null }>(() => ({ inputs: null }));
+
 /** Whether the canvas is loading its boards, and why it couldn't. */
 export const useSpaceStatus = create<{ key: string | null; loading: boolean; error: string | null }>(() => ({ key: null, loading: false, error: null }));
 
@@ -99,6 +102,7 @@ export async function openSpace(org: string, space: Space, inputs: SpaceInputs):
       const stored = new Map(boards.map((b) => [b.id, b]));
       await fixCopies(stored, inputs);
       open = { key, space, stored, base: studio().doc, known: { boardOf: new Map(), anchors: new Set(), virtual: new Set() }, composed: composeSpace({ tree: inputs.tree, boards: [], space }), inputs };
+      useSpaceInputs.setState({ inputs });
       unsaved = false;
       compose({ fresh: true });
       useSpaceStatus.setState({ loading: false });
@@ -117,6 +121,7 @@ export async function closeSpace() {
   await flushSpace();
   open = null;
   resetSpaceView();
+  useSpaceInputs.setState({ inputs: null });
   useSpaceConflict.setState({ boards: [] });
 }
 
@@ -137,6 +142,7 @@ export function setSpaceInputs(inputs: SpaceInputs) {
   if (!open) return;
   const was = signOf(open.inputs);
   open.inputs = inputs;
+  useSpaceInputs.setState({ inputs });
   if (signOf(inputs) !== was) void recompose();
 }
 
@@ -254,6 +260,17 @@ function laidOut(doc: Doc): Doc {
   const { doc: laid, slots } = layoutSpace(doc, { column: inColumn, isGoal: isGoalCard, lanes: rows });
   useSpaceView.setState({ groups, slots });
   return laid;
+}
+
+/**
+ * The canvas laid out as an edit would lay it out, telling nothing (a review's ghost: drawn where
+ * accepting puts it, lanes and all).
+ */
+export function previewLayout(doc: Doc): Doc {
+  const next = goalsLast(doc, isGoalCard);
+  // Its own lane rows (the canvas's are remembered for the canvas as it is).
+  const rows = useStudio.getState().view.sources ? laneRows(laneOf(next, useSources.getState().list, groupsOf(next, isGoalCard)).items) : undefined;
+  return layoutSpace(next, { column: inColumn, isGoal: isGoalCard, lanes: rows }).doc;
 }
 
 /** After every edit on the canvas, in the same undo step: another board's cards kept, everything laid out. */

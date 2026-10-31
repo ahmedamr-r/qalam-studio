@@ -4,7 +4,8 @@ import { cardOf } from "@/discovery/ops";
 import type { AIAction } from "../surfaces/ai-actions";
 import { useDiscovery } from "./store";
 import { openBrainDump } from "./dump";
-import { draftSolutionsFor, useDrafting } from "./solutions";
+import { useBusy } from "./busy";
+import { draftSolutionsFor } from "./solutions";
 
 /**
  * Qalam AI on a Discovery board, for the ⌘K palette and the context menu (the Screens actions,
@@ -21,7 +22,7 @@ export function boardAIActions(doc: Doc, selection: string[]): AIAction[] {
       sub: one?.kind === "opportunity" ? one.title || undefined : undefined,
       state: "Risks and a test each",
       keywords: ["solutions", "ideas", "ideate", "assumptions", "test", "experiment", "problem", "opportunity"],
-      enabled: one?.kind !== "opportunity" ? "Select a problem to draft solutions for" : useDrafting.getState().card ? "Qalam AI is drafting solutions" : true,
+      enabled: one?.kind !== "opportunity" ? "Select a problem to draft solutions for" : useBusy.getState().busy ? "Qalam AI is on another card" : true,
       run: () => void draftSolutionsFor(selection[0]),
     },
     {

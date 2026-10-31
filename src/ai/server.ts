@@ -265,30 +265,38 @@ function streamWithResearch(opts: CallOpts, research: ResearchRequest): Response
  * A structured-output call read here to its end: the core's own calls (a review of the
  * organization), where no window reads the stream. Throws the stream's error.
  */
-export async function structured<T>(opts: CallOpts): Promise<{ data: T; model?: string }> {
-  return readStructured<T>(streamStructured(opts));
+export async function structured<T>(opts: CallOpts, signal?: AbortSignal): Promise<{ data: T; model?: string }> {
+  return readStructured<T>(streamStructured(opts), signal);
 }
 
-/** A structured call's NDJSON read to its result (or its error, thrown). */
-export async function readStructured<T>(res: Response): Promise<{ data: T; model?: string }> {
+/** A structured call's NDJSON read to its result (or its error, thrown). Stopped, the stream is cancelled, which ends the call. */
+export async function readStructured<T>(res: Response, signal?: AbortSignal): Promise<{ data: T; model?: string }> {
   const reader = res.body!.getReader();
+  const stop = () => void reader.cancel().catch(() => {});
+  if (signal?.aborted) stop();
+  else signal?.addEventListener("abort", stop, { once: true });
   const dec = new TextDecoder();
   let buf = "";
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    let nl: number;
-    while ((nl = buf.indexOf("\n")) >= 0) {
-      const line = buf.slice(0, nl).trim();
-      buf = buf.slice(nl + 1);
-      if (!line) continue;
-      const msg = JSON.parse(line) as { type: string; data?: unknown; model?: string; error?: string; message?: string };
-      if (msg.type === "result") return { data: msg.data as T, model: msg.model };
-      if (msg.type === "error") throw new Error(msg.message ?? msg.error ?? "Qalam AI couldn't answer.");
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let nl: number;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line) continue;
+        const msg = JSON.parse(line) as { type: string; data?: unknown; model?: string; error?: string; message?: string };
+        if (msg.type === "result") return { data: msg.data as T, model: msg.model };
+        if (msg.type === "error") throw new Error(msg.message ?? msg.error ?? "Qalam AI couldn't answer.");
+      }
     }
+    if (signal?.aborted) throw Object.assign(new Error("Stopped."), { name: "AbortError" });
+    throw new Error("The response ended early.");
+  } finally {
+    signal?.removeEventListener("abort", stop);
   }
-  throw new Error("The response ended early.");
 }
 
 export function streamResearch(research: ResearchRequest): Response {

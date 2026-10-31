@@ -11,11 +11,8 @@ import { Button, IconBtn } from "../controls";
 import { Menu, MenuItem } from "../menu";
 import { r } from "../recipes";
 import { toScreenBox } from "../ai/anchor";
-import { QalamAIGlyph } from "../brand";
 import { useDiscovery } from "./store";
 import { addChildCard, addSiblingCard } from "./commands";
-import { draftSolutionsFor, useDrafting } from "./solutions";
-import { draftTestsFor, useTesting } from "./tests";
 import { useSpaceView } from "@/space/view";
 import { workOnProblem } from "../space/SpacePanel";
 
@@ -24,7 +21,8 @@ const BAR_H = 36;
 
 /**
  * A small bar over the selected card (FigJam's contextual toolbar): add a card under it or next
- * to it, its stage, fold its branch, Design this for a solution, delete. Keys show in the tooltips.
+ * to it, its stage, fold its branch, delete. Keys show in the tooltips. What Qalam AI can do next
+ * with the card is beside it (./NextSteps.tsx).
  */
 export default function CardBar({ vp }: { vp: { w: number; h: number } }) {
   const sel = useStudio((s) => (s.selection.length === 1 ? s.selection[0] : null));
@@ -34,8 +32,6 @@ export default function CardBar({ vp }: { vp: { w: number; h: number } }) {
   const editing = useDiscovery((s) => s.editing);
   const dragging = useDiscovery((s) => s.dragging);
   const designFor = useDiscovery((s) => s.designFor);
-  const drafting = useDrafting((s) => s.card);
-  const testing = useTesting((s) => s.card);
   const faint = useSpaceView((s) => {
     const t = sel && s.faint.has(sel) ? s.things.get(sel) : undefined;
     return t?.type === "problem" ? t : null;
@@ -45,7 +41,7 @@ export default function CardBar({ vp }: { vp: { w: number; h: number } }) {
   const doc = studio().doc;
   const box = toScreenBox(worldBounds(doc, sel), cam);
   const hasKids = node.children.some((c) => isOstCard(doc.nodes[c]));
-  const w = card.kind === "solution" ? 312 : card.kind === "opportunity" ? 340 : 216;
+  const w = 216;
   const left = Math.max(8, Math.min(vp.w - w - 8, box.x + box.w / 2 - w / 2));
   const above = box.y - BAR_H - 10;
   const top = above >= 8 ? above : Math.min(vp.h - BAR_H - 8, box.y + box.h + 22);
@@ -104,21 +100,6 @@ export default function CardBar({ vp }: { vp: { w: number; h: number } }) {
         ))}
       </Menu>
       <span className="flex-1" />
-      {card.kind === "solution" && (
-        <Button size="sm" variant="secondary" className="mr-[2px] whitespace-nowrap" disabled={!!testing} onClick={() => void draftTestsFor(sel)}>
-          <QalamAIGlyph size={12} /> {testing === sel ? "Drafting…" : "Draft its tests"}
-        </Button>
-      )}
-      {card.kind === "solution" && (
-        <Button size="sm" variant="secondary" className="mr-[2px] whitespace-nowrap" onClick={() => runCommand("discovery.design-this", "toolbar")}>
-          Design this
-        </Button>
-      )}
-      {card.kind === "opportunity" && (
-        <Button size="sm" variant="secondary" className="mr-[2px] whitespace-nowrap" disabled={!!drafting} onClick={() => void draftSolutionsFor(sel)}>
-          <QalamAIGlyph size={12} /> {drafting === sel ? "Drafting…" : "Draft solutions"}
-        </Button>
-      )}
       {hasKids && (
         <IconBtn label={card.collapsed ? "Unfold the branch" : "Fold the branch"} command="discovery.collapse" size="sm" onClick={() => runCommand("discovery.collapse", "toolbar")}>
           {card.collapsed ? <PanelTopOpen {...ICON} /> : <PanelTopClose {...ICON} />}

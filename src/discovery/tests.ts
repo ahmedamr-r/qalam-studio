@@ -2,7 +2,7 @@ import { sameWords } from "@/hub/topics";
 import { ASSUMPTION_CATEGORIES } from "./kinds";
 import { newCard } from "./ops";
 import type { Proposal } from "./proposals";
-import { draftWords, type DraftAssumption, type DraftTest } from "./solutions";
+import { draftWords, whose, type DraftAssumption, type DraftTest } from "./solutions";
 import type { OstAssumption } from "./types";
 
 /*
@@ -20,8 +20,8 @@ export interface TestsInput {
   solution: { title: string; description: string; assumptions: string[]; tests: string[] };
   problem: { title: string } | null;
   goal: { title: string; metric: string | null } | null;
-  /** The words the solution and its problem rest on: customers' and the team's. */
-  pieces: { ref: string; text: string; label: string; evidence: boolean }[];
+  /** The words the solution and its problem rest on: customers', people online's and the team's. */
+  pieces: { ref: string; text: string; label: string; evidence: boolean; online?: boolean }[];
 }
 
 type Piece = TestsInput["pieces"][number];
@@ -54,7 +54,7 @@ export function testsMaterial(o: TestsInput): TestsSent {
   for (const p of cited) {
     const id = `q${pieces.size + 1}`;
     pieces.set(id, p);
-    out.push(`- ${id} · ${p.evidence ? "customers" : "the team"} · ${one(p.label)} · “${one(p.text)}”`);
+    out.push(`- ${id} · ${whose(p)} · ${one(p.label)} · “${one(p.text)}”`);
   }
   if (!pieces.size) out.push("(no words yet: it rests on what the team believes)");
   const existing = o.solution.assumptions.slice(0, TEST_LIMITS.existing);

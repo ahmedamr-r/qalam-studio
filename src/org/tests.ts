@@ -8,7 +8,7 @@ import { orgPath } from "./client";
  * it's under and the goal go with the words each rests on; what comes back is what code kept.
  */
 
-type Words = { title: string; evidence: Pick<OstEvidence, "text" | "piece" | "sourceTitle" | "kind">[] };
+type Words = { title: string; evidence: Pick<OstEvidence, "text" | "piece" | "sourceTitle" | "kind" | "online">[] };
 
 export interface TestsAsk {
   solution: Words & { description: string; assumptions: string[]; tests: string[] };

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import TitleEditor from "./TitleEditor";
 import CardBar from "./CardBar";
+import NextSteps from "./NextSteps";
 import StartSheet from "./StartSheet";
 import DesignThis from "./DesignThis";
 import ReviewLayer from "./ReviewLayer";
@@ -13,7 +14,7 @@ import { useDiscovery } from "./store";
 
 /**
  * The Discovery board's DOM over the canvas: the title being typed, the bar over the selected
- * card, the start sheet (interview, sample, import, blank), the Design this card, Qalam AI's
+ * card and its next steps beside it, the start sheet (interview, sample, import, blank), the Design this card, Qalam AI's
  * proposals under review, the brain dump card, the why a big decision asks for, and a source from
  * the sources lane being read. Only in Discovery.
  * It also keeps what needs a look about the board's cards current (the canvas marks them).
@@ -38,6 +39,7 @@ export default function DiscoveryLayer() {
       {vp.w > 0 && (
         <>
           <CardBar vp={vp} />
+          <NextSteps vp={vp} />
           <DesignThis vp={vp} />
           <ReviewLayer vp={vp} />
           <BrainDump vp={vp} />

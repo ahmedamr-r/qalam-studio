@@ -14,7 +14,7 @@ import type { OrgStore } from "./store";
 /** A card as the board sends it: its words, and the words it rests on. */
 export interface TestsCardWords {
   title: string;
-  evidence: { text: string; piece?: string; sourceTitle?: string; kind: string }[];
+  evidence: { text: string; piece?: string; sourceTitle?: string; kind: string; online?: boolean }[];
 }
 
 export interface TestsRequest {
@@ -23,17 +23,17 @@ export interface TestsRequest {
   goal: { title: string; metric: string | null } | null;
 }
 
-export async function draftTests(store: OrgStore, req: TestsRequest, emit?: (label: string) => void): Promise<TestsDrafted> {
+export async function draftTests(store: OrgStore, req: TestsRequest, emit?: (label: string) => void, signal?: AbortSignal): Promise<TestsDrafted> {
   emit?.("Reading what the solution rests on");
   const pieces: TestsInput["pieces"] = [];
   for (const e of [...req.solution.evidence, ...(req.problem?.evidence ?? [])]) {
     const ref = e.piece ?? `card:${pieces.length}`;
     if (pieces.some((p) => p.ref === ref || p.text === e.text)) continue;
-    pieces.push({ ref, text: e.text, label: e.sourceTitle ?? (e.kind === "quote" ? "A source" : "The team's words"), evidence: e.kind === "quote" });
+    pieces.push({ ref, text: e.text, label: e.sourceTitle ?? (e.kind === "quote" ? "A source" : "The team's words"), evidence: e.kind === "quote" && !e.online, ...(e.online ? { online: true } : {}) });
   }
   const m = testsMaterial({ solution: req.solution, problem: req.problem ? { title: req.problem.title } : null, goal: req.goal, pieces });
   emit?.("Qalam AI is drafting its tests");
-  const { data, model } = await structured<unknown>(testsCall(m));
+  const { data, model } = await structured<unknown>(testsCall(m), signal);
   const now = Date.now();
   const dropped: { why: string; item: unknown }[] = [];
   const drafted = sanitizeTests(data, m, { id: () => nanoid(10) }, (why, item) => dropped.push({ why, item }));
