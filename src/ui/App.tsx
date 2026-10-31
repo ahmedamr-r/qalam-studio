@@ -12,6 +12,7 @@ import StudioLoader, { CaptureLoader, GoalLoader, HomeLoader, SeenLoader, PageSu
 import { startInPlace } from "./nav";
 import { bootRetryDelay } from "./welcome/steps";
 import { boardHomeHref } from "./space/href";
+import { lab, loadLab } from "@/lab";
 
 type State = { kind: "loading" } | { kind: "ready"; org: OrgRef } | { kind: "error"; message: string; missingOrg?: boolean } | { kind: "missing" };
 
@@ -19,6 +20,9 @@ type State = { kind: "loading" } | { kind: "ready"; org: OrgRef } | { kind: "err
 export function App() {
   const [route, setRoute] = useState<Route>(() => routeOf(window.location.pathname));
   const [state, setState] = useState<State>({ kind: "loading" });
+  // What v0.1 hides is read before any page draws (src/lab.ts), the welcome's too.
+  const [labReady, setLabReady] = useState(false);
+  useEffect(() => void loadLab(bootRetryDelay).then(() => setLabReady(true)), []);
   const ready = state.kind === "ready" ? state.org.id : null;
   useEffect(() => {
     if (!ready) return;
@@ -30,12 +34,13 @@ export function App() {
     if (route.kind === "welcome") return;
     setState({ kind: "loading" });
     const org = route.kind === "root" || route.kind === "capture" || route.kind === "missing" ? null : route.org;
-    bootOrg(org).then(
+    loadLab(bootRetryDelay).then(() => bootOrg(org)).then(
       async (o) => {
         // Opening an organization (the bare address opens the one opened last) lands on picking a
-        // space once it has products, else on its home.
-        const products = useOrgContext.getState().products.length;
+        // space once it has products, else on its home. With products hidden there's no picking.
+        const products = lab("products") ? useOrgContext.getState().products.length : 0;
         if (route.kind === "root") return window.location.replace(products && !window.location.search ? spacesHref(o.id) : orgHref(o.id) + window.location.search);
+        if (route.kind === "spaces" && !lab("products")) return window.location.replace(orgHref(o.id));
         if (route.kind === "spaces" && new URLSearchParams(window.location.search).has("open")) {
           if (!products) return window.location.replace(orgHref(o.id));
           history.replaceState(null, "", spacesHref(o.id));
@@ -73,14 +78,14 @@ export function App() {
   // next one fresh while the last one shows until its code is in.
   return (
     <PageSuspense>
-      <Page key={window.location.pathname + window.location.search} route={route} state={state} retry={boot} />
+      <Page key={window.location.pathname + window.location.search} route={route} state={state} labReady={labReady} retry={boot} />
     </PageSuspense>
   );
 }
 
-function Page({ route, state, retry }: { route: Route; state: State; retry: () => void }) {
-  if (route.kind === "welcome") return <WelcomeLoader />;
-  if (state.kind === "loading")
+function Page({ route, state, labReady, retry }: { route: Route; state: State; labReady: boolean; retry: () => void }) {
+  if (route.kind === "welcome" && labReady) return <WelcomeLoader />;
+  if (state.kind === "loading" || !labReady)
     return (
       <div className="fixed inset-0 grid place-items-center bg-app text-fg">
         <Splash />

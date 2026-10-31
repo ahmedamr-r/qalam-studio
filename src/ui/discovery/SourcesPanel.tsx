@@ -32,6 +32,7 @@ import { connectorsDb, type ConnectorState } from "@/org/connectors";
 import { sourcesDb } from "@/discovery/db";
 import { SpeakersLine, SpeakersStep } from "./SpeakersStep";
 import { openBrainDump } from "./dump";
+import { lab } from "@/lab";
 import { MarkedText } from "./MarkedText";
 
 /*
@@ -368,10 +369,10 @@ export function AddSource({ onAdd, compact }: { onAdd?: (inputs: AddInput[]) => 
     { value: "file", label: "Files", icon: Upload },
     { value: "url", label: "Page", icon: Globe },
     { value: "paste", label: "Text", icon: Type },
-    ...(tools.length ? [{ value: "tool" as const, label: "Tool", icon: Plug }] : []),
+    ...(tools.length && lab("connectors") ? [{ value: "tool" as const, label: "Tool", icon: Plug }] : []),
     // On a board: the organization's other sources (interviews another board read, say), and a feed to keep watching a tool.
     // (A space's canvas lists the organization's sources already.)
-    ...(onAdd ? [] : [...(space ? [] : [{ value: "org" as const, label: "Organization", icon: Building2 }]), { value: "watch" as const, label: "Watch", icon: Radio }]),
+    ...(onAdd ? [] : [...(space ? [] : [{ value: "org" as const, label: "Organization", icon: Building2 }]), ...(lab("feeds") ? [{ value: "watch" as const, label: "Watch", icon: Radio }] : [])]),
   ];
   // Words where there's room for them all, else each mode's mark with its name on hover.
   const options = modes.map(({ value, label, icon: Icon }) => ({

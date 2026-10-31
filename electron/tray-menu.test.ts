@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { trayMenuTemplate, type TrayStatus } from "./tray-menu";
 
-const status = (over: Partial<TrayStatus> = {}): TrayStatus => ({ engine: { ready: true, word: "Ready" }, shortcut: "Control+Alt+Space", openAtLogin: false, canOpenAtLogin: true, keepInMenuBar: true, ...over });
+const status = (over: Partial<TrayStatus> = {}): TrayStatus => ({ engine: { ready: true, word: "Ready" }, capture: true, shortcut: "Control+Alt+Space", openAtLogin: false, canOpenAtLogin: true, keepInMenuBar: true, ...over });
 const actions = () => ({ open: vi.fn(), capture: vi.fn(), setOpenAtLogin: vi.fn(), setKeepInMenuBar: vi.fn(), quit: vi.fn() });
 
 describe("the menu bar's menu", () => {
@@ -17,6 +17,11 @@ describe("the menu bar's menu", () => {
     const m = trayMenuTemplate(status({ shortcut: null }), actions());
     expect(m.find((i) => i.label === "Quick capture…")?.accelerator).toBeUndefined();
     expect(m.some((i) => i.label === "Its shortcut is taken by another app")).toBe(true);
+  });
+
+  it("leaves quick capture out while it's hidden", () => {
+    const m = trayMenuTemplate(status({ capture: false, shortcut: null }), actions());
+    expect(m.some((i) => i.label === "Quick capture…" || i.label === "Its shortcut is taken by another app")).toBe(false);
   });
 
   it("toggles opening at login (installed app only) and staying in the menu bar", () => {

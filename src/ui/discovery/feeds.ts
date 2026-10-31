@@ -5,6 +5,7 @@ import type { FeedTarget } from "@/feeds/feeds";
 import { useGoals } from "@/goals/client";
 import { feedsDb, type FeedView } from "@/org/feeds";
 import { loadPlacements } from "./placements";
+import { lab } from "@/lab";
 import { boardOfCard, canvasBoards, onSpaceCanvas } from "@/space/view";
 
 /*
@@ -44,6 +45,8 @@ export const SPACE = "space";
 
 /** The feeds on the board (on a space's canvas, `board` "space": all of them); those whose tool answers without Claude Code are checked at once. */
 export async function loadFeeds(board: string, check = true) {
+  // Feeds are hidden in v0.1 (src/lab.ts): none load, so none show and none are checked.
+  if (!lab("feeds")) return;
   const list = await feedsDb.list(board === SPACE ? undefined : board).catch(() => null);
   if (!list || (useFeeds.getState().board && useFeeds.getState().board !== board)) return;
   useFeeds.setState({ board, list });

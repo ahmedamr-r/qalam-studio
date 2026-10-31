@@ -1,11 +1,12 @@
 import clsx from "clsx";
 import { Cable, ChevronsUpDown, Files, House, MessageSquareWarning, Milestone, Moon, PanelLeft, PanelLeftClose, Sun, Target, type LucideIcon } from "lucide-react";
-import { placeHref, spaceHref, spacesHref } from "@/projects/model";
+import { orgHref, placeHref, spaceHref, spacesHref } from "@/projects/model";
+import { lab } from "@/lab";
 import { runCommand } from "@/commands/registry";
 import { Tip } from "../controls";
 import { r } from "../recipes";
 import { useTheme } from "../theme";
-import { PLACES, RAIL_PLACES, type Place } from "./places";
+import { PLACES, placeShown, RAIL_PLACES, type Place } from "./places";
 import type { Space } from "./spaces";
 import { useFrame } from "./store";
 import { useHealthDot } from "./useHealth";
@@ -23,7 +24,6 @@ import { StatusDot } from "../viz";
 const ICONS: Record<Place, LucideIcon> = { home: House, goals: Target, problems: MessageSquareWarning, evidence: Files, decisions: Milestone, connections: Cable };
 const ICON = { size: 16, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 
-const PRIMARY = PLACES.filter((p) => p.id !== "connections");
 const CONNECTIONS = PLACES.find((p) => p.id === "connections")!;
 
 const TILE = { sm: "size-[16px] rounded-[4px] text-micro", md: "size-[24px] rounded-md text-caption", lg: "size-[36px] rounded-lg text-heading" } as const;
@@ -42,17 +42,22 @@ export function OrgSidebar({ place, space }: { place: Place | null; space: Space
   const folded = useFrame((s) => s.sidebar) === "rail";
   const name = useSpaceName(space);
   const href = (p: Place) => spaceHref(space, p);
+  const places = PLACES.filter((p) => placeShown(p.id));
+  // With products hidden (src/lab.ts) there's one space, so its name opens its home, not the picker.
+  const spaces = lab("products");
+  const top = spaces ? spacesHref() : orgHref();
+  const topLabel = spaces ? `${name}: switch space` : name;
 
   if (folded)
     return (
       <nav aria-label="Organization" data-region="rail" className={r.rail}>
-        <Tip label={`${name} · Switch space`} side="right">
-          <a href={spacesHref()} aria-label={`${name}: switch space`} className={r.railItem}>
+        <Tip label={spaces ? `${name} · Switch space` : name} side="right">
+          <a href={top} aria-label={topLabel} className={r.railItem}>
             <SpaceTile name={name} />
           </a>
         </Tip>
         <span aria-hidden className={r.railDivider} />
-        {PLACES.map((p) => {
+        {places.map((p) => {
           const Icon = ICONS[p.id];
           return (
             <Tip key={p.id} label={p.label} side="right">
@@ -70,14 +75,14 @@ export function OrgSidebar({ place, space }: { place: Place | null; space: Space
 
   return (
     <nav aria-label="Organization" className={r.sidebar}>
-      <Tip label="Switch space" side="right">
-        <a href={spacesHref()} aria-label={`${name}: switch space`} className={r.sidebarSpace}>
+      <Tip label={spaces ? "Switch space" : name} side="right">
+        <a href={top} aria-label={topLabel} className={r.sidebarSpace}>
           <SpaceTile name={name} />
           <span className="truncate">{name}</span>
-          <ChevronsUpDown size={14} absoluteStrokeWidth strokeWidth={1.25} />
+          {spaces && <ChevronsUpDown size={14} absoluteStrokeWidth strokeWidth={1.25} />}
         </a>
       </Tip>
-      {PRIMARY.map((p) => {
+      {places.filter((p) => p.id !== "connections").map((p) => {
         const Icon = ICONS[p.id];
         return (
           <a key={p.id} href={href(p.id)} aria-current={place === p.id ? "page" : undefined} className={r.sidebarItem}>

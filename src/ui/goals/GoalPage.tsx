@@ -37,6 +37,7 @@ import { GoalsUnder, OtherAims } from "./Breakdown";
 import { Funnel } from "./Funnel";
 import { Unknowns } from "./Unknowns";
 import { FlowsToward } from "../seen/SeenSection";
+import { lab } from "@/lab";
 import { navigate } from "../nav";
 
 /**
@@ -248,9 +249,9 @@ export default function GoalPage({ id }: { id: string }) {
 
         <NumberBlock goal={g} />
 
-        <Funnel goal={g} funnel={page.funnel} numbers={page.work.funnel} steps={page.steps} problems={page.problems} onWork={workOn} onChanged={load} />
+        {lab("goals") && <Funnel goal={g} funnel={page.funnel} numbers={page.work.funnel} steps={page.steps} problems={page.problems} onWork={workOn} onChanged={load} />}
 
-        <FlowsToward goal={g.id} />
+        {lab("seen") && <FlowsToward goal={g.id} />}
 
         <section aria-label="The board working on it" className="flex flex-wrap items-center justify-between gap-[12px] rounded-lg bg-panel px-[14px] py-[10px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
           {board ? (
@@ -327,9 +328,9 @@ export default function GoalPage({ id }: { id: string }) {
           )}
         </section>
 
-        <Unknowns goal={g} gaps={page.gaps} jobs={page.jobs} onChanged={load} />
+        {lab("goals") && <Unknowns goal={g} gaps={page.gaps} jobs={page.jobs} onChanged={load} />}
 
-        <OtherAims goal={g} outside={page.work.outside} onChanged={load} />
+        {lab("goals") && <OtherAims goal={g} outside={page.work.outside} onChanged={load} />}
 
         {!!page.decisions.length && (
           <section aria-labelledby="history" className="flex flex-col gap-[8px]">

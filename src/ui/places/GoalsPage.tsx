@@ -19,6 +19,7 @@ import { useOrgData } from "../org/useOrgData";
 import { PlaceHead } from "./PlaceHead";
 import { ProjectCard, StartTile } from "./ProjectCard";
 import { navigate } from "../nav";
+import { lab } from "@/lab";
 
 /**
  * The organization's goals as one tree (goals.md), in the space: all of them in the organization's,
@@ -116,29 +117,31 @@ export default function GoalsPage({ product: productId = null }: { product?: str
           </section>
         )}
 
-        <details className="group flex flex-col gap-[12px]">
-          <summary className="cursor-pointer list-none text-title font-medium text-fg-muted marker:hidden hover:text-fg">
-            <span className="inline-flex items-center gap-[6px]">
-              <ChevronRight size={14} absoluteStrokeWidth strokeWidth={1.25} className="transition-transform group-open:rotate-90" />
-              Design <span className="text-caption font-normal text-fg-subtle">· screens and design systems{design.length ? ` · ${design.length}` : ""}</span>
-            </span>
-          </summary>
-          <div className="mt-[12px] flex flex-col gap-[16px]">
-            <div className="grid gap-[12px] sm:grid-cols-2">
-              <StartTile icon={<Palette {...ICON} />} title="Design system" body="Three directions from your brand, shaped on real screens." onClick={() => void start("system")} />
-              <StartTile icon={<Frame {...ICON} />} title="Screens" body="A blank canvas for screens and flows." onClick={() => void start("screens")} />
+        {lab("design") && (
+          <details className="group flex flex-col gap-[12px]">
+            <summary className="cursor-pointer list-none text-title font-medium text-fg-muted marker:hidden hover:text-fg">
+              <span className="inline-flex items-center gap-[6px]">
+                <ChevronRight size={14} absoluteStrokeWidth strokeWidth={1.25} className="transition-transform group-open:rotate-90" />
+                Design <span className="text-caption font-normal text-fg-subtle">· screens and design systems{design.length ? ` · ${design.length}` : ""}</span>
+              </span>
+            </summary>
+            <div className="mt-[12px] flex flex-col gap-[16px]">
+              <div className="grid gap-[12px] sm:grid-cols-2">
+                <StartTile icon={<Palette {...ICON} />} title="Design system" body="Three directions from your brand, shaped on real screens." onClick={() => void start("system")} />
+                <StartTile icon={<Frame {...ICON} />} title="Screens" body="A blank canvas for screens and flows." onClick={() => void start("screens")} />
+              </div>
+              {!!design.length && (
+                <ul className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-[16px]">
+                  {design.map((p) => (
+                    <li key={p.id}>
+                      <ProjectCard p={p} products={products} onChanged={refresh} />
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
-            {!!design.length && (
-              <ul className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-[16px]">
-                {design.map((p) => (
-                  <li key={p.id}>
-                    <ProjectCard p={p} products={products} onChanged={refresh} />
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </details>
+          </details>
+        )}
       </div>
     </PageFrame>
   );

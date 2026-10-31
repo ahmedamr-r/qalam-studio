@@ -3,7 +3,8 @@
 # release, signed and notarized with the Apple credentials in the repository's secrets
 # (docs/releasing.md). Without them the Mac app is signed ad hoc: macOS stops it the first time and
 # people open it with Open Anyway (docs/install-mac.md), and it can't update itself. The Windows
-# installer and latest.yml go into the same draft, unsigned for now. Run by hand (Actions ▸ Release
+# installer and latest.yml go into the same draft, unsigned for now; v0.1 leaves it out unless a
+# manual run asks for it (docs/v0.1.md). Run by hand (Actions ▸ Release
 # ▸ Run workflow), it builds without publishing and keeps the files with the run for a week.
 name: Release
 
@@ -11,6 +12,11 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      windows:
+        description: "Build the Windows installer too (off for v0.1)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -94,7 +100,10 @@ jobs:
 
   # Windows (x64): the installer and latest.yml, into the same draft release. Not signed yet, so
   # SmartScreen warns the first time it's run. Voice and reading words on screenshots are the Mac's.
+  # Off for v0.1 (docs/v0.1.md): the installed app hasn't been run on Windows yet. A manual run
+  # with `windows` checked still builds it.
   windows:
+    if: ${{ inputs.windows == true }}
     runs-on: windows-latest
     timeout-minutes: 60
     steps:

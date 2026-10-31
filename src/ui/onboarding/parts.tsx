@@ -29,7 +29,8 @@ import { r } from "../recipes";
 import { StatusDot } from "../viz";
 import { addKnown, editKnown, skipKnown, useKnow } from "../setup/know";
 import { acceptLines, placeSetup, retrySetup, skipSetupRest, startBoard, startIdeaBoard, useSetup, useSetupQuotes } from "../setup/setup";
-import { connectFor } from "../welcome/steps";
+import { connectFor, stepAfter } from "../welcome/steps";
+import { lab } from "@/lab";
 import { Dictated } from "../voice/MicButton";
 import { ParakeetInstall } from "../voice/ParakeetInstall";
 import { wordsFor } from "@/org/words";
@@ -154,6 +155,14 @@ function ChoicesPart({ data }: { data: PartData }) {
       {label}
     </button>
   );
+  // After the goals: the next step that's asked, else Finish (v0.1 asks neither Yours nor Connect, src/lab.ts).
+  const nextChip = (solo: unknown, primary: boolean) => {
+    const next = stepAfter("goals", solo ? "solo" : null);
+    if (next === "yours") return chip("Next: which are yours", () => goStep("yours"), primary);
+    if (next === "connect") return chip("Next: what to connect", () => goStep("connect"), primary);
+    // In through the problems they hear about: Finish opens Problems, ranked by what customers said.
+    return chip("Finish", () => finishFirstRun(useFirstRun.getState().door === "problems" ? placeHref("problems") : firstGoalHref()), primary);
+  };
   const n = Number(data.n ?? 0);
   switch (data.set) {
     case "shape":
@@ -168,16 +177,19 @@ function ChoicesPart({ data }: { data: PartData }) {
       const idea = chip("An idea to test", () => pickDoor("idea"));
       return (
         <ReplyChips>
-          {data.solo && idea}
+          {/* v0.1 (src/lab.ts): problems first, then goals they know. */}
+          {!lab("doors") && chip("Problems we hear about", () => pickDoor("problems"), true)}
+          {lab("doors") && data.solo && idea}
           {chip("I know our goals", () => pickDoor("know"))}
-          {chip(
-            <>
-              <QalamAIGlyph size={12} /> Help me find our goals
-            </>,
-            () => pickDoor("find"),
-          )}
-          {chip("Problems we hear about", () => pickDoor("problems"))}
-          {!data.solo && idea}
+          {lab("doors") &&
+            chip(
+              <>
+                <QalamAIGlyph size={12} /> Help me find our goals
+              </>,
+              () => pickDoor("find"),
+            )}
+          {lab("doors") && chip("Problems we hear about", () => pickDoor("problems"))}
+          {lab("doors") && !data.solo && idea}
         </ReplyChips>
       );
     }
@@ -212,12 +224,12 @@ function ChoicesPart({ data }: { data: PartData }) {
         </ReplyChips>
       );
     case "goals-in":
-      return <ReplyChips>{data.solo ? chip("Next: what to connect", () => goStep("connect"), true) : chip("Next: which are yours", () => goStep("yours"), true)}</ReplyChips>;
+      return <ReplyChips>{nextChip(data.solo, true)}</ReplyChips>;
     case "idea-board":
       return (
         <ReplyChips>
           {chip("Start the idea's board", () => startIdeaBoard(), true)}
-          {data.first ? (data.solo ? chip("Next: what to connect", () => goStep("connect")) : chip("Next: which are yours", () => goStep("yours"))) : null}
+          {data.first ? nextChip(data.solo, false) : null}
         </ReplyChips>
       );
     case "verify":
@@ -534,7 +546,9 @@ function YoursPart({ data }: { data: PartData }) {
           className={r.replyChipPrimary}
           onClick={() => {
             setSaving(true);
-            void saveYours(list.map((g) => g.id)).finally(() => setSaving(false));
+            void saveYours(list.map((g) => g.id))
+              .then((next) => (next ? undefined : finishFirstRun(firstGoalHref())))
+              .finally(() => setSaving(false));
           }}
         >
           Next

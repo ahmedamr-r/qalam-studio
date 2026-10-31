@@ -18,7 +18,8 @@ import type { ProblemPart } from "./canvas";
 import { isAddress } from "./thread";
 import { openKnow, useKnow } from "../setup/know";
 import { openSetup, useSetup } from "../setup/setup";
-import { changesThings, setupStep, welcomeMode, type SetupStep, type WelcomeMode } from "../welcome/steps";
+import { changesThings, setupStep, stepAfter, welcomeMode, type SetupStep, type WelcomeMode } from "../welcome/steps";
+import { engineShown, lab } from "@/lab";
 
 /*
  * The first run as state, apart from the pages that show it: Qalam AI found and tested, the
@@ -115,7 +116,7 @@ export async function checkEngine() {
     let v = await engineDb.view();
     const stateOf = (k: EngineKind) => (k === "cli" ? (v.claude.found && v.claude.signedIn ? "ready" : null) : (v.options?.find((o) => o.kind === k)?.state ?? null));
     if (changesThings(mode) && isKeyed(v.kind) && !v.key) {
-      const next = FIRST_CHOICE.find((k) => k !== v.kind && stateOf(k) === "ready");
+      const next = FIRST_CHOICE.find((k) => k !== v.kind && engineShown(k) && stateOf(k) === "ready");
       if (next) v = await engineDb.choose(next);
     }
     setEngine({ view: v });
@@ -145,8 +146,9 @@ export async function engineChanged(view: EngineView) {
 export async function nameOrg(name: string): Promise<boolean> {
   useFirstRun.setState({ naming: { name, busy: true, error: null } });
   try {
-    const org = await createOrg(name, useFirstRun.getState().shape ?? undefined);
-    window.location.assign(`${setupHref(org.id)}?first=1&step=you`);
+    const shape = useFirstRun.getState().shape;
+    const org = await createOrg(name, shape ?? undefined);
+    window.location.assign(`${setupHref(org.id)}?first=1&step=${await nextAsked("name", shape)}`);
     return true;
   } catch (e) {
     useFirstRun.setState({ naming: { name: null, busy: false, error: message(e) } });
@@ -183,7 +185,8 @@ export async function startSetupPage(search: string) {
   useFirstRun.setState({ door, opened: true });
   // The canvas draws the tools connected here from the start (cheap: no Claude Code check).
   if (at.step === "connect") void loadConnect();
-  else void connectorsDb.list().then((v) => useFirstRun.setState({ tools: v.connectors }), () => {});
+  // Connectors are hidden in v0.1 (src/lab.ts): no tool tiles.
+  else if (lab("connectors")) void connectorsDb.list().then((v) => useFirstRun.setState({ tools: v.connectors }), () => {});
   window.addEventListener("popstate", () => {
     const now = fromAddress(window.location.search);
     useFirstRun.setState({ step: now.step, ...(now.door ? { door: now.door } : {}) });
@@ -243,17 +246,23 @@ export function goStep(step: SetupStep) {
   if (step === "connect") void loadConnect();
 }
 
+/** The step after `step` there's something to ask in: Voice only while this Mac hasn't chosen (the goals are always asked). */
+async function nextAsked(step: "name" | "you" | "voice", shape: OrgShape | null): Promise<SetupStep> {
+  const next = stepAfter(step, shape) ?? "goals";
+  return next === "voice" && voiceSettled(await loadVoice()) ? (stepAfter("voice", shape) ?? "goals") : next;
+}
+
 /** Their name (this Mac's) and their position here (this organization's, on this computer), then voice if this Mac hasn't chosen, else the goals. */
 export async function saveYou(name: string, me: Me): Promise<void> {
   await setYourName(name);
   await setMe(me);
-  goStep(voiceSettled(await loadVoice()) ? "goals" : "voice");
+  goStep(await nextAsked("you", useFirstRun.getState().shape));
 }
 
 /** How this Mac talks instead of typing, then on to the goals. */
 export async function saveVoice(use: VoiceChoice): Promise<void> {
   await chooseVoice(use);
-  goStep("goals");
+  goStep(stepAfter("voice", useFirstRun.getState().shape) ?? "goals");
 }
 
 export function togglePick(id: string, on: boolean) {
@@ -264,13 +273,15 @@ export function togglePick(id: string, on: boolean) {
   useFirstRun.setState({ picked: [...chosen] });
 }
 
-/** Their goals kept (on this computer), then on to what to connect. */
-export async function saveYours(order: string[]) {
+/** Their goals kept (on this computer), then on to what to connect; the step it went to, null when there's none left (Finish). */
+export async function saveYours(order: string[]): Promise<SetupStep | null> {
   const s = useFirstRun.getState();
   const chosen = new Set(s.picked ?? useGoals.getState().mine);
   await setMine(order.filter((id) => chosen.has(id))).catch(() => {});
   useFirstRun.setState({ picked: [...chosen] });
-  goStep("connect");
+  const next = stepAfter("yours", s.shape);
+  if (next) goStep(next);
+  return next;
 }
 
 /** Finish: the first run is done here (the home stops offering to pick it up), then on to `href`. */

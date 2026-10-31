@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { setLab } from "@/lab";
 import type { SetupLine, SetupSession } from "@/org/setup";
 import { initialFlow } from "../ai/questionFlow";
 import { askOf, isAddress, progressOf, stepsOf, threadOf, type ChatMessage, type ThreadInput } from "./thread";
@@ -344,5 +345,19 @@ describe("where the setup is, for the top bar", () => {
   it("names the step it's on and the part of it under way", () => {
     expect(progressOf([{ id: "a", label: "Qalam AI", state: "done" }, { id: "b", label: "Start", state: "now", sub: [{ label: "Way in", state: "done" }, { label: "Review", state: "now" }] }, { id: "c", label: "Yours", state: "next" }])).toEqual({ at: 2, total: 3, label: "Start · Review" });
     expect(progressOf([{ id: "a", label: "Qalam AI", state: "done" }, { id: "b", label: "Start", state: "done" }])).toEqual({ at: 2, total: 2, label: "Done" });
+  });
+});
+
+describe("the first run with what v0.1 hides left out (src/lab.ts)", () => {
+  afterEach(() => setLab(true));
+
+  it("asks only for Qalam AI, a name and a start, and ends on Finish once the goals are in", () => {
+    setLab([]);
+    const i = base({ shape: "team", door: "know", know: { ...base().know, phase: "added", added: 2 } });
+    expect(stepsOf(i).map((s) => s.id)).toEqual(["engine", "name", "goals"]);
+    const m = threadOf(i);
+    expect(ids(m)).not.toContain("you:ask");
+    expect(ids(m)).not.toContain("voice:ask");
+    expect(m.find((x) => x.id === "goals:in")?.parts[0]).toEqual({ type: "text", text: "Your 2 goals are in. That's the setup: Finish takes you to it." });
   });
 });

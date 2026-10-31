@@ -19,6 +19,7 @@ import { useTopics } from "../topics/list";
 import { PlaceHead } from "./PlaceHead";
 import { ProductMaps } from "./ProductMaps";
 import { SeenSection } from "../seen/SeenSection";
+import { lab } from "@/lab";
 import { navigate } from "../nav";
 
 /**
@@ -31,7 +32,8 @@ import { navigate } from "../nav";
  */
 export default function EvidencePage({ product: productId = null }: { product?: string | null }) {
   const { space } = useSpace(productId, "evidence");
-  const [adding, setAdding] = useState(false);
+  // ?add=1 (the empty canvas's "Add what customers said") opens on adding.
+  const [adding, setAdding] = useState(() => new URLSearchParams(window.location.search).has("add"));
   const { projects, sources, refresh } = useOrgData();
   const topics = useTopics();
   const products = useOrgContext((s) => s.products);
@@ -76,8 +78,8 @@ export default function EvidencePage({ product: productId = null }: { product?: 
             <TopicsList topics={pages} sources={scopedSources} products={products} onFiled={refresh} banner={false} />
           </section>
         )}
-        <SeenSection product={product} products={products} />
-        <ProductMaps product={product} products={products} />
+        {lab("seen") && <SeenSection product={product} products={products} />}
+        {lab("code") && <ProductMaps product={product} products={products} />}
       </div>
     </PageFrame>
   );

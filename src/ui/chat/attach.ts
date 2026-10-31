@@ -3,6 +3,7 @@ import type { Ingested } from "@/discovery/ingest/core";
 import type { TextBlock } from "@/discovery/sources";
 import type { Hit } from "@/connectors/recipes";
 import type { SetupDoc } from "@/org/setup";
+import { lab } from "@/lab";
 import { connectorsDb, type ConnectorState } from "@/org/connectors";
 
 /*
@@ -42,6 +43,8 @@ const reach = (c: ConnectorState) => (c.via && c.tone === "ok" ? 0 : c.claudeCod
  * catalog's. Only connectors that bring material in.
  */
 export function sourcesFor(fit: SourceFit, connectors: readonly ConnectorState[]): ConnectorState[] {
+  // v0.1 brings material in from this computer only (src/lab.ts).
+  if (!lab("connectors")) return [];
   const groups = GROUPS[fit];
   return connectors
     .map((c, i) => ({ c, i, g: groups.indexOf(c.group) }))

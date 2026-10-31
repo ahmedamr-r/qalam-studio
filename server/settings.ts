@@ -26,6 +26,8 @@ export interface Settings {
   voice?: { use: VoiceChoice };
   /** How each connector is reached: through Claude Code's server of that name, a token in the Keychain, Qalam's own sign-in to the service's MCP server at `url`, or Qalam's own Google sign-in to Drive's API (tokens in the Keychain). */
   connectors?: Record<string, { via: "claude-code"; server: string } | { via: "token" } | { via: "oauth"; url: string } | { via: "google" }>;
+  /** What v0.1 hides, shown here anyway (src/lab.ts): true for everything, or the features named. QALAM_LAB wins. */
+  labs?: boolean | string[];
 }
 
 const file = () => path.join(localDir(), "settings.json");

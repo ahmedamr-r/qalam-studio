@@ -5,6 +5,7 @@ import type { AIAction } from "../surfaces/ai-actions";
 import { useDiscovery } from "./store";
 import { openBrainDump } from "./dump";
 import { draftSolutionsFor, useDrafting } from "./solutions";
+import { lab } from "@/lab";
 
 /**
  * Qalam AI on a Discovery board, for the ⌘K palette and the context menu (the Screens actions,
@@ -14,7 +15,7 @@ export function boardAIActions(doc: Doc, selection: string[]): AIAction[] {
   const one = selection.length === 1 ? cardOf(doc, selection[0]) : null;
   const tree = doc.roots.some((id) => isOstCard(doc.nodes[id]) && doc.nodes[id].meta.ost?.kind === "outcome");
   const drafting = useDiscovery.getState().drafting ? "Qalam AI is drafting the tree" : null;
-  return [
+  const actions: AIAction[] = [
     {
       id: "ai:draft-solutions",
       label: "Draft solutions for this problem",
@@ -50,4 +51,5 @@ export function boardAIActions(doc: Doc, selection: string[]): AIAction[] {
       run: () => useDiscovery.setState({ sheet: tree ? "interview" : "start" }),
     },
   ];
+  return lab("design") ? actions : actions.filter((a) => a.id !== "ai:design-this");
 }
