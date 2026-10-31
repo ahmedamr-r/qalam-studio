@@ -13,6 +13,7 @@ import { orgGraph } from "@/hub/graph";
 import { filingShape, topicShape, type Topic } from "@/hub/topics";
 import { chooseFolder, createOrg, currentOrg, listOrgs, openFolder, qalamHome, rememberOrg, storeFor } from "./home";
 import { noticesNow } from "./notices";
+import { boardCards } from "./map";
 import { needsNow } from "./needs";
 import { needSummary } from "@/hub/needs";
 import { quickCapture } from "../quick";
@@ -680,6 +681,8 @@ export function orgRoutes(): Hono<Env> {
     await c.get("store").removeProject(c.req.param("id"), { tab: tabOf(c.req.raw.headers) });
     return c.json({ ok: true });
   });
+  // Every board's cards, for the space's map.
+  r.get("/api/org/:org/boards/cards", async (c) => c.json(await boardCards(c.get("store"))));
   r.get("/api/org/:org/projects/:id/doc", async (c) => {
     const d = await c.get("store").getDoc(c.req.param("id"));
     return d ? c.json({ doc: d.doc }, 200, { etag: etag(d.version) }) : c.json({ error: "not_found" }, 404);

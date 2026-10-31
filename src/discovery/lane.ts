@@ -25,7 +25,7 @@ export const LANE_TILE = SOURCE.tile;
 export const LANE_ITEM_H = SOURCE.h;
 /** From the lane's right edge to the tree's left. */
 export const LANE_GAP = 72;
-const ROW_GAP = 16;
+export const LANE_ROW_GAP = 16;
 
 type LaneSource = Pick<SourceRecord, "id" | "title" | "kind" | "origin" | "quotes" | "pages" | "setup">;
 
@@ -64,21 +64,34 @@ export interface Lane {
 
 export const NO_LANE: Lane = { items: [], edges: [] };
 
+/**
+ * The cards one lane serves, and where it goes: a board's are its trees (each tree's cards, the
+ * lane left of the tree); the space's map gives each goal its own cards, and the column its layout
+ * kept for the lane (`x`), whose rows start no higher than `top`.
+ */
+export interface LaneGroup {
+  head: string;
+  cards: string[];
+  x?: number;
+  top?: number;
+}
+
 /** Their own words are titled by how they begin. */
 function partTitle(source: LaneSource, part: SetupDoc): string {
   if (part.from !== "said" || !part.span) return part.title;
   return (source as { text?: string }).text?.slice(part.span[0], part.span[1]).replace(/\s+/g, " ").trim().slice(0, 120) || part.title;
 }
 
-export function laneOf(doc: Doc, sources: readonly (LaneSource & { text?: string })[]): Lane {
+export function laneOf(doc: Doc, sources: readonly (LaneSource & { text?: string })[], groups?: readonly LaneGroup[]): Lane {
   const byId = new Map(sources.map((s) => [s.id, s]));
   const items: LaneItem[] = [];
   const edges: LaneEdge[] = [];
-  for (const root of doc.roots) {
-    if (!isOstCard(doc.nodes[root])) continue;
+  const lanes = groups ?? doc.roots.filter((id) => isOstCard(doc.nodes[id])).map((id): LaneGroup => ({ head: id, cards: visibleCards(doc, id) }));
+  for (const { head: root, cards, x: column, top } of lanes) {
     // Each card's quotes, by the source (or dump part) they're from.
     const found = new Map<string, Omit<LaneItem, "x" | "y" | "w" | "h"> & { at: number[] }>();
-    for (const id of visibleCards(doc, root)) {
+    for (const id of cards) {
+      if (!doc.nodes[id]?.visible) continue;
       const card = doc.nodes[id].meta.ost!;
       const box = worldBounds(doc, id);
       for (const e of card.evidence) {
@@ -110,13 +123,12 @@ export function laneOf(doc: Doc, sources: readonly (LaneSource & { text?: string
     }
     if (!found.size) continue;
     // Each tile level with what it backs, in that order, spaced so none overlap.
-    const tree = treeBounds(doc, root);
-    const x = tree.x - LANE_GAP - LANE_W;
+    const x = column ?? treeBounds(doc, root).x - LANE_GAP - LANE_W;
     const rows = [...found.values()].map((it) => ({ it, want: it.at.reduce((a, b) => a + b, 0) / it.at.length - LANE_TILE / 2 })).sort((a, b) => a.want - b.want);
-    let next = -Infinity;
+    let next = top ?? -Infinity;
     for (const { it, want } of rows) {
       const y = Math.max(want, next);
-      next = y + LANE_ITEM_H + ROW_GAP;
+      next = y + LANE_ITEM_H + LANE_ROW_GAP;
       const { at: _at, ...rest } = it;
       items.push({ ...rest, x, y, w: LANE_W, h: LANE_ITEM_H });
     }
