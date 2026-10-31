@@ -1,3 +1,4 @@
+import { refreshFeed, useFeeds } from "./feeds";
 import { draftTestsFor } from "./tests";
 import { feedback } from "@/commands/feedback";
 import { getCommand, kb, registerCommands, setCommandGuard, type Command } from "@/commands/registry";
@@ -393,6 +394,24 @@ export function registerDiscoveryCommands() {
       keywords: ["synthesize", "evidence", "sources", "qalam ai", "opportunities"],
       enabled: () => (useSources.getState().list.some((x) => x.quotes.length) ? (useSources.getState().busy ? "Qalam AI is still reading" : true) : "Add a source with quotes first"),
       run: () => void mapQuotes(),
+    },
+    {
+      id: "discovery.refresh-feeds",
+      label: "Bring in what's new for the feeds",
+      category: "discovery",
+      keywords: ["feeds", "watch", "refresh", "connectors", "intercom", "slack", "notion"],
+      enabled: () => {
+        const { list, news } = useFeeds.getState();
+        if (!list.some((f) => f.status === "on")) return "No feed watches for this board";
+        return list.some((f) => news[f.id]?.fresh) ? true : "Nothing new for its feeds (check each on its tile)";
+      },
+      run: () => {
+        const { list, news } = useFeeds.getState();
+        // One after another: each reads, files and proposes in the core.
+        void (async () => {
+          for (const f of list) if (f.status === "on" && news[f.id]?.fresh) await refreshFeed(f.id);
+        })();
+      },
     },
     {
       id: "discovery.accept-proposals",

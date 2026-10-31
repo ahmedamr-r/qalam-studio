@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import clsx from "clsx";
-import { ArrowLeft, Building2, ClipboardPaste, ExternalLink, FileText, Globe, MessagesSquare, NotebookPen, Plug, Plus, Quote, Trash2, Type, Upload, Users, X } from "lucide-react";
+import { ArrowLeft, Building2, ClipboardPaste, Radio, ExternalLink, FileText, Globe, MessagesSquare, NotebookPen, Plug, Plus, Quote, Trash2, Type, Upload, Users, X } from "lucide-react";
 import { studio, useStudio } from "@/doc/store";
 import type { Doc } from "@/doc/schema";
 import { newId } from "@/doc/factory";
@@ -26,6 +26,8 @@ import { addSources, mapQuotes, placeFromOrganization, placeSetup, readSources, 
 import { acceptAll, discardAll, useReview } from "./review";
 import { dragQuote, dragSource } from "./drop";
 import { openSource, removeSource, updateSource, useSources } from "./sources";
+import { addFeed } from "./feeds";
+import { connectorsDb, type ConnectorState } from "@/org/connectors";
 import { sourcesDb } from "@/discovery/db";
 import { SpeakersLine, SpeakersStep } from "./SpeakersStep";
 import { openBrainDump } from "./dump";
@@ -208,6 +210,55 @@ function FromOrganization() {
   );
 }
 
+/**
+ * A feed: a tool and what to look for there, kept and wired to the selected card (else the outcome).
+ * What's new for it shows on its tile in the lane; Refresh brings it in.
+ */
+function WatchTool() {
+  const [tools, setTools] = useState<ConnectorState[] | null>(null);
+  const [tool, setTool] = useState("");
+  const [words, setWords] = useState("");
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void connectorsDb
+      .list()
+      .then((v) => live && setTools(v.connectors.filter((c) => c.imports && (c.tone === "ok" || c.claudeCode?.status === "connected"))))
+      .catch(() => live && setTools([]));
+    return () => {
+      live = false;
+    };
+  }, []);
+  if (!tools) return <Spinner />;
+  if (!tools.length) return <p className="text-caption text-fg-muted">Connect a tool that brings material in (Intercom, Slack, Notion…) in Connections, then watch it from here.</p>;
+  const picked = tool || tools[0].id;
+  return (
+    <div className="flex flex-col gap-[6px]">
+      <Select ariaLabel="Tool to watch" value={picked} options={tools.map((t) => ({ value: t.id, label: t.label }))} onChange={setTool} />
+      <input className={r.fieldInput} aria-label="What to look for" placeholder="fare estimate" value={words} onChange={(e) => setWords(e.target.value)} />
+      <p className="text-micro text-fg-subtle">It watches for the selected card (else the outcome). What's new shows on its tile; nothing is read until you bring it in.</p>
+      <Button
+        size="sm"
+        className="self-start"
+        disabled={saving || words.trim().length < 2}
+        onClick={() => {
+          setSaving(true);
+          void addFeed(picked, words.trim())
+            .then((ok) => {
+              if (ok) {
+                setWords("");
+                useSources.setState({ adding: false });
+              }
+            })
+            .finally(() => setSaving(false));
+        }}
+      >
+        {saving ? "Keeping it…" : "Keep watching"}
+      </Button>
+    </div>
+  );
+}
+
 /** What the last run has to say, with what to do about it. */
 function Notice() {
   const notice = useSources((s) => s.notice);
@@ -289,7 +340,7 @@ function MapBar() {
 // ---------------------------------------------------------------------------
 // Adding a source
 
-type Mode = "file" | "url" | "paste" | "tool" | "org";
+type Mode = "file" | "url" | "paste" | "tool" | "org" | "watch";
 
 /** What a source can come from: files, a web page, pasted text, a connected tool. Shared with the start sheet. */
 export function AddSource({ onAdd, compact }: { onAdd?: (inputs: AddInput[]) => void; compact?: boolean }) {
@@ -312,8 +363,8 @@ export function AddSource({ onAdd, compact }: { onAdd?: (inputs: AddInput[]) => 
     { value: "url", label: "Page", icon: Globe },
     { value: "paste", label: "Text", icon: Type },
     ...(tools.length ? [{ value: "tool" as const, label: "Tool", icon: Plug }] : []),
-    // On a board: the organization's other sources (interviews another board read, say).
-    ...(onAdd ? [] : [{ value: "org" as const, label: "Organization", icon: Building2 }]),
+    // On a board: the organization's other sources (interviews another board read, say), and a feed to keep watching a tool.
+    ...(onAdd ? [] : [{ value: "org" as const, label: "Organization", icon: Building2 }, { value: "watch" as const, label: "Watch", icon: Radio }]),
   ];
   // Words where there's room for them all, else each mode's mark with its name on hover.
   const options = modes.map(({ value, label, icon: Icon }) => ({
@@ -331,6 +382,7 @@ export function AddSource({ onAdd, compact }: { onAdd?: (inputs: AddInput[]) => 
       <Segmented label="Add from" value={mode} options={options} onChange={setMode} />
       {mode === "file" && <DropZone onFiles={(files) => add(files.map((file) => ({ kind: "file", file })))} />}
       {mode === "org" && <FromOrganization />}
+      {mode === "watch" && <WatchTool />}
       {mode === "url" && (
         <form
           className="flex flex-col gap-[6px]"

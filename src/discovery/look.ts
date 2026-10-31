@@ -53,6 +53,9 @@ export const STATE = { dot: 3, room: 12, size: 11, weight: 500 } as const;
  */
 export const SOURCE = { w: 168, tile: 64, radius: 14, logo: 30, icon: 26, port: 4.5, labelGap: 10, titleSize: 12, titleLines: 2, lineSize: 10.5, lineGap: 2, h: 124 } as const;
 
+/** A feed's tile: its cords dashed (on, off), and its count of what's new in a badge on the tile's corner. */
+export const FEED = { dash: [5, 4], badge: 18, badgeSize: 10.5 } as const;
+
 /** Wires: their widths at rest and lit, the dot where one meets a card, how far a curve reaches, how faint what isn't lit gets. */
 export const WIRE = { width: 1.25, lit: 2, dot: 3, reach: 40, enter: 36, dim: 0.3, dimItem: 0.45 } as const;
 

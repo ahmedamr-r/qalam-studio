@@ -15,7 +15,8 @@ import { fromSource, quoteOf, type SourceRecord } from "./sources";
  * then they're spaced so none overlap. Sizes are code's.
  *
  * Each source is drawn as ./look.ts says a source looks (`SOURCE`): a tile with its mark and a port,
- * its title and where it's from under it.
+ * its title and where it's from under it. A feed watching for the tree's cards (a connector's saved
+ * search, src/feeds/feeds.ts) sits in the same column, its cords to them dashed (`FEED`).
  */
 
 /** An item's width: its words', the tile centred over them. */
@@ -43,6 +44,8 @@ export interface LaneItem {
   line: string;
   quotes: string[];
   cards: string[];
+  /** A feed (a connector's saved search) watching for these cards, not a source: what's new for it, and whether it stopped. */
+  feed?: { id: string; fresh?: number; off?: boolean };
   x: number;
   y: number;
   w: number;
@@ -55,6 +58,21 @@ export interface LaneEdge {
   /** A card. */
   to: string;
   quotes: string[];
+  /** A feed's: it watches for the card, its words aren't on it (drawn dashed). */
+  kind?: "feed";
+}
+
+/** A feed as the lane draws it (src/feeds/feeds.ts): its name, its tool's mark, and the cards on this board it's wired to. */
+export interface LaneFeed {
+  id: string;
+  title: string;
+  /** Its connector's id (its logo). */
+  mark: string;
+  /** "Intercom · 6 new", "Slack · watching". */
+  line: string;
+  cards: string[];
+  fresh?: number;
+  off?: boolean;
 }
 
 export interface Lane {
@@ -82,7 +100,7 @@ function partTitle(source: LaneSource, part: SetupDoc): string {
   return (source as { text?: string }).text?.slice(part.span[0], part.span[1]).replace(/\s+/g, " ").trim().slice(0, 120) || part.title;
 }
 
-export function laneOf(doc: Doc, sources: readonly (LaneSource & { text?: string })[], groups?: readonly LaneGroup[]): Lane {
+export function laneOf(doc: Doc, sources: readonly (LaneSource & { text?: string })[], groups?: readonly LaneGroup[], feeds: readonly LaneFeed[] = []): Lane {
   const byId = new Map(sources.map((s) => [s.id, s]));
   const items: LaneItem[] = [];
   const edges: LaneEdge[] = [];
@@ -120,6 +138,15 @@ export function laneOf(doc: Doc, sources: readonly (LaneSource & { text?: string
           if (q && !edge.quotes.includes(q.id)) edge.quotes.push(q.id);
         } else edges.push({ id: edgeId, from: key, to: id, quotes: q ? [q.id] : [] });
       }
+    }
+    // The feeds watching for this tree's cards: a tile each, a dashed cord to every card it's wired to.
+    const here = new Set(cards);
+    for (const f of feeds) {
+      const mine = f.cards.filter((id) => here.has(id) && doc.nodes[id]?.visible !== false && doc.nodes[id]);
+      if (!mine.length) continue;
+      const key = `${root}:feed:${f.id}`;
+      found.set(key, { key, root, sourceId: "", title: f.title, mark: f.mark, line: f.line, quotes: [], cards: mine, feed: { id: f.id, ...(f.fresh !== undefined ? { fresh: f.fresh } : {}), ...(f.off ? { off: true } : {}) }, at: mine.map((id) => { const b = worldBounds(doc, id); return b.y + b.h / 2; }) });
+      for (const id of mine) edges.push({ id: `${key}>${id}`, from: key, to: id, quotes: [], kind: "feed" });
     }
     if (!found.size) continue;
     // Each tile level with what it backs, in that order, spaced so none overlap.

@@ -18,6 +18,8 @@ import { listProjects } from "@/projects/library";
 import { glideToLayer, onCanvasReady } from "./canvas";
 import { registerDiscoveryCommands } from "./commands";
 import { useDiscovery, type DesignLink } from "./store";
+import { loadFeeds, useFeeds } from "./feeds";
+import { useGoals } from "@/goals/client";
 import { dropStaleEdit } from "./editing";
 import { scheduleBoardThumbnail } from "./thumbnail";
 import { ensureHandlers } from "./draft";
@@ -76,7 +78,13 @@ export function startDiscoveryStudio(p: Project): (doc: Doc) => void {
   startRecorder();
   ensureDumpHandlers();
   void loadSources(p.id).then(resumeDumps).then(linkEvidence).then(frameLane).then(thenFromUrl).then(openSourceFromUrl).then(() => loadPlacements(p.id)).then(reviewPlacedFromUrl);
+  // The feeds watching for its cards: in the lane, what's new for each counted where that's free.
+  useFeeds.setState({ board: p.id, list: [], news: {} });
+  void loadFeeds(p.id);
+  useFeeds.subscribe(() => studio().invalidate());
+  useGoals.subscribe((s, prev) => s.goals !== prev.goals && studio().invalidate());
   onOrgChange((c) => {
+    if (c.kind === "feed") void loadFeeds(p.id, false);
     if (c.kind === "source" && c.boards.includes(p.id)) void reloadSources(p.id);
     // Material added to the organization may have something for this board (it's on no board yet).
     if (c.kind === "placement" && c.board === p.id) void loadPlacements(p.id);

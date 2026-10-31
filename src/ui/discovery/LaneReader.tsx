@@ -6,6 +6,7 @@ import { Reader, readerWidth, type Back } from "../sources/Reader";
 import { glideToLayer, onCanvasReady } from "./canvas";
 import { useSources } from "./sources";
 import { useDiscovery } from "./store";
+import FeedReader from "./FeedReader";
 
 /*
  * A source from the board's sources lane, read in place of the right panel (src/ui/sources/Reader.tsx): what
@@ -26,6 +27,8 @@ export default function LaneReader() {
   useEffect(() => {
     if (key && !item) useDiscovery.setState({ reading: null });
   }, [key, item]);
+  // A feed's tile opens the feed, not a source.
+  if (item?.feed) return <FeedReader item={item} />;
   const source = item ? (list.find((s) => s.id === item.sourceId) ?? visiting.find((s) => s.id === item.sourceId)) : undefined;
   if (!item || !source || !lane) return null;
   const backs = lane.edges.flatMap((e): Back[] => {

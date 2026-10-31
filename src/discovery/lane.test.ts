@@ -63,6 +63,21 @@ describe("a board's sources lane", () => {
     expect(lane.edges.find((e) => e.to === goal)?.quotes).toEqual(["q1"]);
   });
 
+  it("puts a feed in the column too, its cords to the cards it watches dashed and carrying no quotes", () => {
+    const { doc, kids } = board();
+    const lane = laneOf(doc, [dump, notion], undefined, [
+      { id: "f1", title: "Fare chats", mark: "intercom", line: "Intercom · 6 new", cards: [kids, "gone"], fresh: 6 },
+      { id: "f2", title: "Elsewhere", mark: "slack", line: "Slack · watching", cards: ["other-board-card"] },
+    ]);
+    const feed = lane.items.find((i) => i.feed)!;
+    expect(feed).toMatchObject({ title: "Fare chats", mark: "intercom", line: "Intercom · 6 new", cards: [kids], feed: { id: "f1", fresh: 6 } });
+    expect(lane.edges.filter((e) => e.from === feed.key)).toEqual([{ id: `${feed.key}>${kids}`, from: feed.key, to: kids, quotes: [], kind: "feed" }]);
+    // None overlap, feeds and sources alike.
+    const ys = lane.items.map((i) => i.y).sort((a, b) => a - b);
+    for (let i = 1; i < ys.length; i++) expect(ys[i] - ys[i - 1]).toBeGreaterThanOrEqual(LANE_ITEM_H);
+    expect(lane.items.some((i) => i.title === "Elsewhere")).toBe(false);
+  });
+
   it("sits left of its tree, each source level with what it backs, none overlapping", () => {
     const { doc } = board();
     const lane = laneOf(doc, [dump, notion]);

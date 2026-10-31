@@ -2,7 +2,7 @@ import type { Canvas, CanvasKit, MaskFilter, Paint, Paragraph, Path } from "canv
 import { brandOn, logoFor } from "@/connectors/logos";
 import { iconDrawing } from "@/design-system/icons";
 import type { Lane, LaneItem } from "@/discovery/lane";
-import { SOURCE, sourceMark, sourceTile, WIRE, wireCurve } from "@/discovery/look";
+import { FEED, SOURCE, sourceMark, sourceTile, WIRE, wireCurve } from "@/discovery/look";
 import type { Doc } from "@/doc/schema";
 import { worldBounds } from "@/doc/geometry";
 import { getEngine, hexToColor } from "./canvaskit";
@@ -123,7 +123,12 @@ export class LanePainter {
       const built = path.detachAndDelete();
       this.stroke.setColor(color);
       this.stroke.setStrokeWidth((lit ? WIRE.lit : WIRE.width) / Math.min(1, zoom));
+      // A feed's cord: it watches for the card, its words aren't on it yet.
+      const dash = e.kind === "feed" ? this.ck.PathEffect.MakeDash(FEED.dash.map((d) => d / Math.min(1, zoom)), 0) : null;
+      this.stroke.setPathEffect(dash);
       canvas.drawPath(built, this.stroke);
+      this.stroke.setPathEffect(null);
+      dash?.delete();
       built.delete();
       // A dot where it meets the card (where it leaves, the source's port is drawn over it).
       this.fill.setColor(this.col(p.card));
@@ -166,7 +171,8 @@ export class LanePainter {
     const t = sourceTile(it);
     const R = SOURCE.radius;
     const tile = this.ck.RRectXY(this.ck.XYWHRect(t.x, t.y, t.s, t.s), R, R);
-    const layer = dim ? new this.ck.Paint() : null;
+    // A feed that stopped is drawn faint, like what isn't lit.
+    const layer = dim || it.feed?.off ? new this.ck.Paint() : null;
     if (layer) {
       layer.setAlphaf(WIRE.dimItem);
       canvas.saveLayer(layer);
@@ -198,6 +204,18 @@ export class LanePainter {
     canvas.drawCircle(t.port.x, t.port.y, SOURCE.port + 1.5, this.fill);
     this.fill.setColor(this.col(hot ? p.selection : p.line));
     canvas.drawCircle(t.port.x, t.port.y, SOURCE.port, this.fill);
+    // A feed's count of what's new, on the tile's corner.
+    if (it.feed?.fresh && !it.feed.off) {
+      const r = FEED.badge / 2;
+      const cx = t.x + t.s - 4;
+      const cy = t.y + 4;
+      this.fill.setColor(this.col(p.card));
+      canvas.drawCircle(cx, cy, r + 1.5, this.fill);
+      this.fill.setColor(this.col(p.selection));
+      canvas.drawCircle(cx, cy, r, this.fill);
+      const n = this.text(it.feed.fresh > 99 ? "99+" : String(it.feed.fresh), "#FFFFFF", FEED.badgeSize, 600, FEED.badge + 8);
+      canvas.drawParagraph(n, cx - (FEED.badge + 8) / 2, cy - n.getHeight() / 2);
+    }
     // Under it, centred: its title, then where it came from, in mono.
     const title = this.text(it.title, p.ink, SOURCE.titleSize, 500, it.w, SOURCE.titleLines);
     const ty = t.y + SOURCE.tile + SOURCE.labelGap;

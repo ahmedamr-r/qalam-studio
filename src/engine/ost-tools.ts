@@ -35,21 +35,33 @@ function noticedCards(list: Notice[]): ReadonlySet<string> {
 }
 import type { PointerInfo } from "./vector-tools";
 import { cardWork, type WorkStatus } from "@/connectors/work";
-import { laneOf, litBy, NO_LANE, type Lane, type LaneItem } from "@/discovery/lane";
+import { laneOf, litBy, NO_LANE, type Lane, type LaneFeed, type LaneItem } from "@/discovery/lane";
+import { useGoals } from "@/goals/client";
+import { useFeeds, wireFeed, wiredCards } from "@/ui/discovery/feeds";
 import { SOURCE, sourceTile } from "@/discovery/look";
 import { quotable, type SourceRecord } from "@/discovery/sources";
 import { sourceOf, useSources } from "@/ui/discovery/sources";
 import type { LaneRender } from "./lane-painter";
 import { openSource } from "@/ui/discovery/sources";
 
-/** The board's sources lane (kept while the document and its sources are the same; none with the view option off). */
-let laneMemo: { doc: Doc; list: SourceRecord[]; visiting: SourceRecord[]; lane: Lane } | null = null;
+/** The board's sources lane, its feeds among them (kept while the document, its sources and feeds are the same; none with the view option off). */
+let laneMemo: { doc: Doc; list: SourceRecord[]; visiting: SourceRecord[]; feeds: unknown; news: unknown; goals: unknown; lane: Lane } | null = null;
 export function boardLane(): Lane {
   const s = studio();
   if (!s.view.sources) return NO_LANE;
   const { list, visiting } = useSources.getState();
-  if (laneMemo?.doc === s.doc && laneMemo.list === list && laneMemo.visiting === visiting) return laneMemo.lane;
-  laneMemo = { doc: s.doc, list, visiting, lane: laneOf(s.doc, [...list, ...visiting]) };
+  const { list: feeds, news, board } = useFeeds.getState();
+  const goals = useGoals.getState().goals;
+  if (laneMemo?.doc === s.doc && laneMemo.list === list && laneMemo.visiting === visiting && laneMemo.feeds === feeds && laneMemo.news === news && laneMemo.goals === goals) return laneMemo.lane;
+  const laneFeeds: LaneFeed[] = board
+    ? feeds.map((f) => {
+        const n = news[f.id];
+        const off = f.status === "off";
+        const said = off ? "stopped" : n?.activity ? "reading what's new" : n?.checking ? "looking" : n?.fresh ? `${n.fresh} new` : n?.fresh === 0 ? "nothing new" : "watching";
+        return { id: f.id, title: f.title, mark: f.connector, line: `${f.label} · ${said}`, cards: wiredCards(f, board), ...(n?.fresh !== undefined ? { fresh: n.fresh } : {}), ...(off ? { off } : {}) };
+      })
+    : [];
+  laneMemo = { doc: s.doc, list, visiting, feeds, news, goals, lane: laneOf(s.doc, [...list, ...visiting], undefined, laneFeeds) };
   return laneMemo.lane;
 }
 
@@ -166,8 +178,12 @@ export function createOstTools(): CanvasDelegate {
   /** A cord being drawn from a source's port: where the pointer is, the card under it, and whether it can rest on the source's words. */
   let cord: { item: LaneItem; to: Pt; target: string | null; ok: boolean } | null = null;
 
-  /** Whether a card can rest on the cord's source's words (and isn't under Qalam AI's proposals). */
-  const takes = (item: LaneItem, card: string, world: Pt) => quotable(cardOf(studio().doc, card) ?? undefined, sourceOf(item.sourceId)?.kind) && !coveredAt(world);
+  /** Whether a card can rest on the cord's source's words, or a feed can watch for it (a goal or a problem); never under Qalam AI's proposals. */
+  const takes = (item: LaneItem, card: string, world: Pt) => {
+    if (coveredAt(world)) return false;
+    const c = cardOf(studio().doc, card);
+    return item.feed ? c?.kind === "outcome" || c?.kind === "opportunity" : quotable(c ?? undefined, sourceOf(item.sourceId)?.kind);
+  };
 
   /** Where the dragged cards would land with the pointer here. */
   const dropAt = (d: Drag, world: Pt): Drag["drop"] => {
@@ -351,9 +367,10 @@ export function createOstTools(): CanvasDelegate {
         const c = cord;
         cord = null;
         studio().invalidate();
-        // On a card that can take its words: pick which in the right panel.
-        if (c.target && c.ok) useDiscovery.setState({ cordPick: { key: c.item.key, card: c.target }, reading: null });
-        else if (c.target) feedback(sourceOf(c.item.sourceId)?.kind === "dump" ? "Your words back outcomes, problems and solutions" : "Quotes back problems and solutions", { id: "discovery.quote" });
+        // A feed's cord wires it to the card at once; a source's picks which of its words in the right panel.
+        if (c.target && c.ok && c.item.feed) void wireFeed(c.item.feed.id, c.target);
+        else if (c.target && c.ok) useDiscovery.setState({ cordPick: { key: c.item.key, card: c.target }, reading: null });
+        else if (c.target) feedback(c.item.feed ? "A feed watches for goals and problems" : sourceOf(c.item.sourceId)?.kind === "dump" ? "Your words back outcomes, problems and solutions" : "Quotes back problems and solutions", { id: "discovery.quote" });
         return true;
       }
       const d = drag;
