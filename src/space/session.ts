@@ -1,0 +1,400 @@
+import { create } from "zustand";
+import type { Doc } from "@/doc/schema";
+import { registerDocPass, studio, useStudio } from "@/doc/store";
+import { isOstCard } from "@/doc/board";
+import { laneOf } from "@/discovery/lane";
+import { ostPass } from "@/discovery/pass";
+import type { Bearing } from "@/goals/bearings";
+import { changeGoal, goalsNow } from "@/goals/client";
+import type { GoalTree } from "@/goals/types";
+import type { Notice } from "@/hub/checks";
+import type { RankedNeed } from "@/hub/needs";
+import { ConflictError, orgJson } from "@/org/client";
+import { onOrgChange } from "@/org/live";
+import { newProject, type Project } from "@/projects/model";
+import { useSources } from "@/ui/discovery/sources";
+import type { Space } from "@/ui/frame/spaces";
+import { keepOtherBoards } from "./arrange";
+import { assignBoards, isNewBoard, type Known } from "./assign";
+import { composeSpace, isProblemPage, type SpaceDoc } from "./compose";
+import { goalsLast, groupsOf, laneRows, layoutSpace } from "./layout";
+import { splitSpace, sameCard } from "./split";
+import { resetSpaceView, useSpaceView } from "./view";
+
+/*
+ * A space's canvas in this window (the home): its boards loaded, composed into one document the
+ * board's editing works on (./compose.ts), laid out after every edit, and saved back to the
+ * boards each change touched (./split.ts), all of them in one write. It stays open while this
+ * window moves between the space's pages, so coming back keeps the undo history; another space
+ * closes it (saving first). Changes made elsewhere come in as they happen: what came from goals.md
+ * or another window is composed in again, outside undo, and a board changed both here and there
+ * waits for a choice (`useSpaceConflict`).
+ */
+
+export interface SpaceInputs {
+  tree: GoalTree;
+  links: readonly Bearing[];
+  needs: readonly RankedNeed[] | null;
+  notices: readonly Notice[];
+  products: readonly { id: string; name: string }[];
+}
+
+interface Stored {
+  id: string;
+  name: string;
+  product: string | null;
+  version: string;
+  doc: Doc | null;
+}
+
+interface Open {
+  key: string;
+  space: Space;
+  stored: Map<string, Stored>;
+  /** The canvas as last saved or composed: a save writes what changed since. */
+  base: Doc;
+  known: Known;
+  composed: SpaceDoc;
+  inputs: SpaceInputs;
+}
+
+/** Boards changed here and elsewhere since they loaded: the save waits until the person chooses. */
+export const useSpaceConflict = create<{ boards: { id: string; name: string; doc: Doc | null; version: string }[] }>(() => ({ boards: [] }));
+
+/** Whether the canvas is loading its boards, and why it couldn't. */
+export const useSpaceStatus = create<{ key: string | null; loading: boolean; error: string | null }>(() => ({ key: null, loading: false, error: null }));
+
+let open: Open | null = null;
+let opening: { key: string; done: Promise<void> } | null = null;
+let unsaved = false;
+let timer: ReturnType<typeof setTimeout> | undefined;
+let saving: Promise<void> = Promise.resolve();
+/** The document this session last put in the studio (not an edit). */
+let quiet: Doc | null = null;
+let installed = false;
+let laneMemo: { sources: unknown; groups: unknown; rows: Map<string, number> } | null = null;
+
+export const spaceOpen = () => !!open;
+export const hasUnsavedSpace = () => unsaved;
+
+/** Open a space's canvas (or take new inputs for the one open). */
+export async function openSpace(org: string, space: Space, inputs: SpaceInputs): Promise<void> {
+  const key = `${org}:${space ?? "org"}`;
+  if (open?.key === key) return setSpaceInputs(inputs);
+  if (opening?.key === key) return opening.done;
+  const done = (async () => {
+    await closeSpace();
+    install();
+    useSpaceStatus.setState({ key, loading: true, error: null });
+    try {
+      const boards = await orgJson<Stored[]>(`/boards/docs${space ? `?space=${encodeURIComponent(space)}` : ""}`);
+      const stored = new Map(boards.map((b) => [b.id, b]));
+      await fixCopies(stored, inputs);
+      open = { key, space, stored, base: studio().doc, known: { boardOf: new Map(), anchors: new Set(), virtual: new Set() }, composed: composeSpace({ tree: inputs.tree, boards: [], space }), inputs };
+      unsaved = false;
+      compose({ fresh: true });
+      useSpaceStatus.setState({ loading: false });
+    } catch (e) {
+      useSpaceStatus.setState({ loading: false, error: e instanceof Error ? e.message : String(e) });
+    }
+  })();
+  opening = { key, done };
+  await done;
+  if (opening?.key === key) opening = null;
+}
+
+/** Save what's waiting and let the canvas go (another space opens next). */
+export async function closeSpace() {
+  if (!open) return;
+  await flushSpace();
+  open = null;
+  resetSpaceView();
+  useSpaceConflict.setState({ boards: [] });
+}
+
+/** What the canvas takes from its inputs, to tell a real change from the same things loaded again. */
+function signOf(i: SpaceInputs): string {
+  return JSON.stringify([
+    i.tree.goals,
+    i.tree.north,
+    i.links.map((l) => [l.need, l.goal, l.bears, l.by]),
+    (i.needs ?? []).map((n) => [n.topic, n.title, n.products, n.sources, n.quotes, n.newest, n.boards.map((b) => b.board)]),
+    i.notices.map((n) => [n.board, n.card, n.other?.board, n.other?.card, n.goal, n.topic]),
+    i.products.map((p) => [p.id, p.name]),
+  ]);
+}
+
+/** The goals, problems and notices the canvas is composed from changed: compose it again. */
+export function setSpaceInputs(inputs: SpaceInputs) {
+  if (!open) return;
+  const was = signOf(open.inputs);
+  open.inputs = inputs;
+  if (signOf(inputs) !== was) void recompose();
+}
+
+/** Compose again once anything waiting is saved (a change from elsewhere). */
+async function recompose() {
+  if (unsaved) await flushSpace();
+  if (!open || unsaved || useSpaceConflict.getState().boards.length) return;
+  compose({ fresh: false });
+}
+
+const known = (s: SpaceDoc): Known => ({
+  boardOf: s.boardOf,
+  anchors: new Set([...s.things].flatMap(([id, t]) => (t.type === "goal" && t.board ? [id] : []))),
+  virtual: new Set([...s.virtual].filter((id) => !isProblemPage(id))),
+});
+
+/** The canvas composed from the boards as stored and the inputs, put in the studio outside undo. */
+function compose(o: { fresh: boolean }) {
+  if (!open) return;
+  const s = composeSpace({ tree: open.inputs.tree, boards: [...open.stored.values()], space: open.space, links: open.inputs.links, needs: open.inputs.needs, notices: open.inputs.notices, products: open.inputs.products });
+  const before = open.base;
+  open.composed = s;
+  open.known = known(s);
+  useSpaceView.setState({
+    active: true,
+    space: open.space,
+    things: s.things,
+    boardOf: s.boardOf,
+    virtual: s.virtual,
+    faint: s.faint,
+    tags: s.tags,
+    noticed: s.noticed,
+    boards: new Map([...open.stored.values()].map((b) => [b.id, { name: b.name, product: b.product }])),
+  });
+  const doc = laidOut(s.doc);
+  open.base = doc;
+  quiet = doc;
+  if (o.fresh) {
+    studio().openDoc(doc);
+    return;
+  }
+  // What came from elsewhere goes into each step back too, when the cards are the same ones;
+  // when cards came or went elsewhere, the steps back would undo that, so they go.
+  const { past, future, selection } = useStudio.getState();
+  const same = sameCards(before, doc);
+  const keep = (d: Doc) => (same ? withContent(d, doc) : d);
+  useStudio.setState({ doc, past: same ? past.map(keep) : [], future: same ? future.map(keep) : [], selection: selection.filter((id) => !!doc.nodes[id]) });
+}
+
+/** Whether two canvases hold the same cards in the same places (problems' pages aside: they're never saved). */
+function sameCards(a: Doc, b: Doc): boolean {
+  const ids = Object.keys(b.nodes).filter((id) => isOstCard(b.nodes[id]) && !isProblemPage(id));
+  if (ids.length !== Object.keys(a.nodes).filter((id) => isOstCard(a.nodes[id]) && !isProblemPage(id)).length) return false;
+  const kids = (d: Doc, id: string) => d.nodes[id].children.filter((c) => !isProblemPage(c)).join();
+  return ids.every((id) => !!a.nodes[id] && a.nodes[id].parentId === b.nodes[id].parentId && kids(a, id) === kids(b, id));
+}
+
+/** A step back with each card's content as it is now. */
+function withContent(d: Doc, now: Doc): Doc {
+  let nodes: Doc["nodes"] | null = null;
+  for (const [id, n] of Object.entries(d.nodes)) {
+    const m = now.nodes[id];
+    if (!isOstCard(n) || !isOstCard(m) || sameCard(n.meta.ost, m.meta.ost)) continue;
+    nodes ??= { ...d.nodes };
+    nodes[id] = { ...n, name: m.name, meta: { ...n.meta, ost: m.meta.ost } };
+  }
+  return nodes ? { ...d, nodes } : d;
+}
+
+// ---------------------------------------------------------------------------
+// Layout: worked out after every edit, never saved.
+
+const isGoalCard = (id: string) => useSpaceView.getState().things.get(id)?.type === "goal";
+const inColumn = (id: string) => id.startsWith("topic:none:");
+
+/** Each goal's lane rows: worked out from the canvas and the space's sources. */
+function rowsFor(doc: Doc) {
+  const groups = groupsOf(doc, isGoalCard);
+  const sources = useSources.getState().list;
+  const rows = laneMemo && laneMemo.sources === sources && sameGroups(laneMemo.groups as typeof groups, groups) ? laneMemo.rows : laneRows(laneOf(doc, sources, groups).items);
+  laneMemo = { sources, groups, rows };
+  return { groups, rows };
+}
+const sameGroups = (a: { head: string; cards: string[] }[], b: { head: string; cards: string[] }[]) => a.length === b.length && a.every((g, i) => g.head === b[i].head && g.cards.join() === b[i].cards.join());
+
+function laidOut(doc: Doc): Doc {
+  const lanes = useStudio.getState().view.sources;
+  const { groups, rows } = lanes ? rowsFor(doc) : { groups: groupsOf(doc, isGoalCard), rows: undefined };
+  const { doc: laid, slots } = layoutSpace(doc, { column: inColumn, isGoal: isGoalCard, lanes: rows });
+  useSpaceView.setState({ groups, slots });
+  return laid;
+}
+
+/** After every edit on the canvas, in the same undo step: another board's cards kept, everything laid out. */
+function spacePass(prev: Doc, next: Doc): Doc {
+  if (!open || !useSpaceView.getState().active) return next;
+  const kept = keepOtherBoards(prev, next, (id) => open?.known.boardOf.get(id) ?? (open?.known.virtual.has(id) ? `new:${id}` : undefined));
+  return laidOut(goalsLast(kept, isGoalCard));
+}
+
+/** Again when the lane's sources change or the lane is switched (its columns). */
+export function relayoutSpace() {
+  if (!open) return;
+  const doc = studio().doc;
+  const laid = laidOut(doc);
+  if (laid === doc) return;
+  quiet = laid;
+  if (doc === open.base) open.base = laid;
+  useStudio.setState({ doc: laid });
+}
+
+function install() {
+  if (installed) return;
+  installed = true;
+  registerDocPass(ostPass);
+  registerDocPass(spacePass);
+  // An edit settles when its transaction does (a title typed letter by letter is one edit).
+  let last = studio().doc;
+  useStudio.subscribe((s) => {
+    if (!open || s.doc === last || s.txBase) return;
+    last = s.doc;
+    if (s.doc === quiet) {
+      quiet = null;
+      return;
+    }
+    unsaved = true;
+    clearTimeout(timer);
+    timer = setTimeout(() => void flushSpace(), 400);
+  });
+  useStudio.subscribe((s, prev) => s.view.sources !== prev.view.sources && relayoutSpace());
+  useSources.subscribe((s, prev) => s.list !== prev.list && relayoutSpace());
+  document.addEventListener("visibilitychange", () => document.visibilityState === "hidden" && void flushSpace());
+  window.addEventListener("pagehide", () => void flushSpace());
+  // Boards changed elsewhere (another window, the folder): load them again.
+  onOrgChange((c) => {
+    if (!open || c.kind !== "project") return;
+    if (open.stored.has(c.id) || !c.removed) void reloadBoards(c.id);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Saving
+
+/** Save the canvas's changes now (before leaving, or once edits settle). */
+export function flushSpace(o: { force?: boolean } = {}): Promise<void> {
+  clearTimeout(timer);
+  saving = saving.then(() => saveOnce(o)).catch(() => {});
+  return saving;
+}
+
+async function saveOnce(o: { force?: boolean }) {
+  if (!open || !unsaved) return;
+  if (useSpaceConflict.getState().boards.length && !o.force) return;
+  const s = open;
+  const now = studio().doc;
+  const before = assignBoards(s.base, s.known);
+  const after = assignBoards(now, s.known);
+  const stored = new Map([...s.stored].flatMap(([id, b]) => (b.doc ? [[id, b.doc] as const] : [])));
+  const r = splitSpace({ base: s.base, now, before, after, stored, anchors: s.known.anchors, virtual: s.known.virtual });
+  unsaved = false;
+  if (!r.writes.size && !r.create.length) {
+    s.base = now;
+    s.known = { ...s.known, boardOf: realBoards(after) };
+    return;
+  }
+  const tree = goalsNow();
+  const made = new Map<string, Project>();
+  for (const c of r.create) {
+    const goal = c.goal ? tree.goals.find((g) => g.id === c.goal) : undefined;
+    const top = c.doc.nodes[c.doc.roots[0]]?.meta.ost?.title.trim();
+    made.set(c.key, newProject("discovery", (goal?.title ?? top ?? "").slice(0, 80) || "Untitled board", { product: goal ? goal.product : s.space, discovery: { v: 1, stage: "ready" } }));
+  }
+  const conflicts = useSpaceConflict.getState().boards;
+  const body = {
+    writes: [...r.writes].map(([id, doc]) => ({ id, doc, ifMatch: o.force && conflicts.some((c) => c.id === id) ? conflicts.find((c) => c.id === id)!.version : s.stored.get(id)!.version, patch: { updatedAt: Date.now() } })),
+    create: r.create.map((c) => ({ record: made.get(c.key)!, doc: c.doc })),
+  };
+  try {
+    const res = await orgJson<{ versions: Record<string, string> }>("/boards/docs", { method: "PUT", json: body });
+    if (o.force) useSpaceConflict.setState({ boards: [] });
+    for (const [id, doc] of r.writes) s.stored.set(id, { ...s.stored.get(id)!, doc, version: res.versions[id] ?? s.stored.get(id)!.version });
+    const boards = new Map(after);
+    for (const c of r.create) {
+      const p = made.get(c.key)!;
+      s.stored.set(p.id, { id: p.id, name: p.name, product: p.product ?? null, version: res.versions[p.id] ?? "", doc: c.doc });
+      for (const [id, k] of after) if (k === c.key) boards.set(id, p.id);
+    }
+    if (s === open) {
+      s.base = now;
+      const virtual = new Set(s.known.virtual);
+      const anchors = new Set(s.known.anchors);
+      for (const c of r.create) if (c.goal) {
+        virtual.delete(c.goal);
+        anchors.add(c.goal);
+      }
+      s.known = { boardOf: realBoards(boards), anchors, virtual };
+      const v = useSpaceView.getState();
+      useSpaceView.setState({ boardOf: s.known.boardOf, virtual: new Set([...v.virtual].filter((id) => !r.create.some((c) => c.goal === id))), boards: new Map([...s.stored.values()].map((b) => [b.id, { name: b.name, product: b.product }])) });
+    }
+    // A goal whose board just started works on it: its card is the board's outcome.
+    for (const c of r.create) if (c.goal) await changeGoal(c.goal, { on: { board: made.get(c.key)!.id, card: c.goal } }).catch(() => {});
+  } catch (e) {
+    unsaved = true;
+    if (e instanceof ConflictError && Array.isArray(e.current)) {
+      const list = e.current as { id: string; version: string; doc: Doc | null }[];
+      useSpaceConflict.setState({ boards: list.map((c) => ({ ...c, name: s.stored.get(c.id)?.name ?? "A board" })) });
+    }
+  }
+}
+
+/** Real boards only: the new ones' keys are dropped until they're made. */
+const realBoards = (m: ReadonlyMap<string, string>) => new Map([...m].filter(([, b]) => !isNewBoard(b)));
+
+/**
+ * Boards changed both here and elsewhere: keep this window's (written over theirs), or take
+ * theirs (this window's edits to the other boards are saved first, its edits to these dropped).
+ */
+export async function resolveSpaceConflict(take: "mine" | "theirs") {
+  if (!open) return;
+  if (take === "mine") return flushSpace({ force: true });
+  const { boards } = useSpaceConflict.getState();
+  for (const c of boards) open.stored.set(c.id, { ...open.stored.get(c.id)!, doc: c.doc, version: c.version });
+  useSpaceConflict.setState({ boards: [] });
+  unsaved = false;
+  compose({ fresh: false });
+}
+
+/** A board changed elsewhere: load the space's boards again and compose what changed in. */
+async function reloadBoards(_id: string) {
+  if (!open) return;
+  const s = open;
+  const boards = await orgJson<Stored[]>(`/boards/docs${s.space ? `?space=${encodeURIComponent(s.space)}` : ""}`).catch(() => null);
+  if (!boards || s !== open) return;
+  const changed = boards.filter((b) => s.stored.get(b.id)?.version !== b.version);
+  const gone = [...s.stored.keys()].filter((id) => !boards.some((b) => b.id === id));
+  if (!changed.length && !gone.length) return;
+  if (unsaved) await flushSpace();
+  if (s !== open || useSpaceConflict.getState().boards.length) return;
+  for (const b of changed) s.stored.set(b.id, b);
+  for (const id of gone) s.stored.delete(id);
+  compose({ fresh: false });
+}
+
+/**
+ * Boards that had another board's card ids (a copy saved before copies got new ids) are saved
+ * once with ids of their own, and a goal working on one of those cards moves with it.
+ */
+async function fixCopies(stored: Map<string, Stored>, inputs: SpaceInputs) {
+  const s = composeSpace({ tree: inputs.tree, boards: [...stored.values()], space: null });
+  if (!s.fixes.size) return;
+  const writes = [...s.fixes].map(([id, f]) => ({ id, doc: f.doc, ifMatch: stored.get(id)!.version }));
+  const res = await orgJson<{ versions: Record<string, string> }>("/boards/docs", { method: "PUT", json: { writes, create: [] } }).catch(() => null);
+  if (!res) return;
+  for (const [id, f] of s.fixes) {
+    stored.set(id, { ...stored.get(id)!, doc: f.doc, version: res.versions[id] ?? stored.get(id)!.version });
+    for (const g of inputs.tree.goals) if (g.on?.board === id && f.ids.has(g.on.card)) await changeGoal(g.id, { on: { board: id, card: f.ids.get(g.on.card)! } }).catch(() => {});
+  }
+}
+
+/** For tests and the dev tools: what the canvas would save now. */
+export function pendingSpaceSave() {
+  if (!open) return null;
+  const now = studio().doc;
+  return splitSpace({ base: open.base, now, before: assignBoards(open.base, open.known), after: assignBoards(now, open.known), stored: new Map([...open.stored].flatMap(([id, b]) => (b.doc ? [[id, b.doc] as const] : []))), anchors: open.known.anchors, virtual: open.known.virtual });
+}
+
+if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
+  (window as unknown as { __space: unknown }).__space = { pending: pendingSpaceSave, unsaved: hasUnsavedSpace, open: spaceOpen, flush: flushSpace };
+}

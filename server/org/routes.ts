@@ -754,7 +754,7 @@ export function orgRoutes(): Hono<Env> {
     try {
       return c.json({ versions: await c.get("store").putDocs(writes, create, { tab: tabOf(c.req.raw.headers) }) });
     } catch (e) {
-      if (e instanceof BoardsConflictError) return c.json({ error: "conflict", message: e.message, conflicts: e.conflicts }, 409);
+      if (e instanceof BoardsConflictError) return c.json({ error: "conflict", message: e.message, current: e.conflicts }, 409);
       return failure(e);
     }
   });

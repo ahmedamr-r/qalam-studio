@@ -281,3 +281,19 @@ describe("deleting on the canvas", () => {
     expect(keepOtherBoards(s.doc, next, (id) => s.boardOf.get(id))).toBe(next);
   });
 });
+
+describe("the canvas's order", () => {
+  it("keeps a goal's own cards before the goals under it, as it was composed", async () => {
+    const { goalsLast } = await import("./layout");
+    const s = composeSpace({ tree, boards: [b1, b2, b3], space: null, links, needs, products });
+    const added = produce(s.doc, (d) => {
+      const n = makeCardNode(newCard("opportunity", { title: "New" }));
+      n.id = "n1";
+      addCardIn(d, n, "o1");
+    });
+    expect(added.nodes.o1.children).toEqual(["p1", "topic:r:fees", "o2", "o3", "n1"]);
+    const goals = new Set([...s.things].flatMap(([id, t]) => (t.type === "goal" ? [id] : [])));
+    expect(goalsLast(added, (id) => goals.has(id)).nodes.o1.children).toEqual(["p1", "n1", "topic:r:fees", "o2", "o3"]);
+    expect(goalsLast(s.doc, (id) => goals.has(id))).toBe(s.doc);
+  });
+});

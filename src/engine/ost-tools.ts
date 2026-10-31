@@ -19,10 +19,14 @@ import type { CanvasDelegate } from "./canvas-delegate";
 import type { OstRenderInput } from "./ost-painter";
 import type { Notice } from "@/hub/checks";
 import { currentProject } from "@/projects/session";
+import { useSpaceView } from "@/space/view";
 
 /** The board's cards that something needs a look at (kept while the notices are the same). */
 let noticedMemo: { from: Notice[]; board: string | undefined; set: Set<string> } | null = null;
 function noticedCards(list: Notice[]): ReadonlySet<string> {
+  // A space's canvas marks what its own notices name (src/space/compose.ts).
+  const space = useSpaceView.getState();
+  if (space.active) return space.noticed;
   const board = currentProject()?.id;
   if (noticedMemo?.from === list && noticedMemo.board === board) return noticedMemo.set;
   const set = new Set<string>();
@@ -45,14 +49,17 @@ import type { LaneRender } from "./lane-painter";
 import { openSource } from "@/ui/discovery/sources";
 
 /** The board's sources lane, its feeds among them (kept while the document, its sources and feeds are the same; none with the view option off). */
-let laneMemo: { doc: Doc; list: SourceRecord[]; visiting: SourceRecord[]; feeds: unknown; news: unknown; goals: unknown; lane: Lane } | null = null;
+let laneMemo: { doc: Doc; list: SourceRecord[]; visiting: SourceRecord[]; feeds: unknown; news: unknown; goals: unknown; groups: unknown; lane: Lane } | null = null;
 export function boardLane(): Lane {
   const s = studio();
   if (!s.view.sources) return NO_LANE;
   const { list, visiting } = useSources.getState();
   const { list: feeds, news, board } = useFeeds.getState();
   const goals = useGoals.getState().goals;
-  if (laneMemo?.doc === s.doc && laneMemo.list === list && laneMemo.visiting === visiting && laneMemo.feeds === feeds && laneMemo.news === news && laneMemo.goals === goals) return laneMemo.lane;
+  // A space's canvas: one lane per goal's own cards, in the column its layout kept for it.
+  const space = useSpaceView.getState();
+  const groups = space.active ? space.groups : undefined;
+  if (laneMemo?.doc === s.doc && laneMemo.list === list && laneMemo.visiting === visiting && laneMemo.feeds === feeds && laneMemo.news === news && laneMemo.goals === goals && laneMemo.groups === groups) return laneMemo.lane;
   const laneFeeds: LaneFeed[] = board
     ? feeds.map((f) => {
         const n = news[f.id];
@@ -61,7 +68,11 @@ export function boardLane(): Lane {
         return { id: f.id, title: f.title, mark: f.connector, line: `${f.label} · ${said}`, cards: wiredCards(f, board), ...(n?.fresh !== undefined ? { fresh: n.fresh } : {}), ...(off ? { off } : {}) };
       })
     : [];
-  laneMemo = { doc: s.doc, list, visiting, feeds, news, goals, lane: laneOf(s.doc, [...list, ...visiting], undefined, laneFeeds) };
+  const placed = groups?.map((g) => {
+    const slot = space.slots.get(g.head);
+    return slot ? { ...g, x: slot.x, top: slot.y } : g;
+  });
+  laneMemo = { doc: s.doc, list, visiting, feeds, news, goals, groups, lane: laneOf(s.doc, [...list, ...visiting], placed, laneFeeds) };
   return laneMemo.lane;
 }
 
@@ -83,17 +94,20 @@ function portAt(world: Pt): LaneItem | null {
 import type { OstCard } from "@/discovery/types";
 
 /** Each solution's furthest-along linked work (kept while the document and the statuses are the same). */
-let workMemo: { doc: unknown; from: Record<string, WorkStatus>; map: Map<string, { label: string; tone: "ok" | "warn" | "off" }> } | null = null;
+let workMemo: { doc: unknown; from: Record<string, WorkStatus>; tags: unknown; map: Map<string, { label: string; tone: "ok" | "warn" | "off" }> } | null = null;
 function workChips(statuses: Record<string, WorkStatus>) {
   const doc = studio().doc;
-  if (workMemo?.doc === doc && workMemo.from === statuses) return workMemo.map;
-  const map = new Map<string, { label: string; tone: "ok" | "warn" | "off" }>();
+  // A space's canvas says what a card is beyond its kind ("No board yet", a goal's product).
+  const space = useSpaceView.getState();
+  const tags = space.active ? space.tags : null;
+  if (workMemo?.doc === doc && workMemo.from === statuses && workMemo.tags === tags) return workMemo.map;
+  const map = new Map<string, { label: string; tone: "ok" | "warn" | "off" }>(tags ?? []);
   for (const [id, n] of Object.entries(doc.nodes)) {
     const card = isOstCard(n) ? (n.meta as { ost?: OstCard }).ost : undefined;
     const chip = card?.kind === "solution" ? cardWork(card.work, statuses) : null;
     if (chip) map.set(id, chip);
   }
-  workMemo = { doc, from: statuses, map };
+  workMemo = { doc, from: statuses, tags, map };
   return map;
 }
 
@@ -422,6 +436,7 @@ export function createOstTools(): CanvasDelegate {
         hoverToggle,
         noticed: noticedCards(ui.notices),
         work: workChips(ui.work),
+        faint: useSpaceView.getState().active ? useSpaceView.getState().faint : undefined,
       };
     },
   };

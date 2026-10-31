@@ -124,3 +124,56 @@ function hide(d: Doc, id: string) {
   if (n.visible) n.visible = false;
   for (const c of n.children) if (isOstCard(d.nodes[c])) hide(d, c);
 }
+
+/**
+ * Each goal's own cards (its board's and the problems behind it, not its sub-goals'), and each
+ * tree no goal heads: one sources lane each, at the head's column.
+ */
+export function groupsOf(doc: Doc, isGoal: (id: string) => boolean): { head: string; cards: string[] }[] {
+  const out: { head: string; cards: string[] }[] = [];
+  const own = (head: string) => {
+    const cards = [head];
+    const walk = (id: string) => {
+      for (const c of (doc.nodes[id] as FrameNode).children) {
+        if (!isOstCard(doc.nodes[c])) continue;
+        if (isGoal(c)) heads.push(c);
+        else {
+          cards.push(c);
+          walk(c);
+        }
+      }
+    };
+    walk(head);
+    out.push({ head, cards });
+  };
+  const heads = doc.roots.filter((id) => isOstCard(doc.nodes[id]));
+  while (heads.length) own(heads.shift()!);
+  return out;
+}
+
+/** How many sources each head's lane holds. */
+export function laneRows(items: readonly { root: string }[]): Map<string, number> {
+  const rows = new Map<string, number>();
+  for (const it of items) rows.set(it.root, (rows.get(it.root) ?? 0) + 1);
+  return rows;
+}
+
+/**
+ * Under a goal's card its own cards come first, then the problems no board has, then the goals
+ * under it, as the canvas is composed (./compose.ts): a card added under a goal joins its own.
+ */
+export function goalsLast(doc: Doc, isGoal: (id: string) => boolean): Doc {
+  const rank = (id: string) => (isGoal(id) ? 2 : id.startsWith("topic:") ? 1 : 0);
+  const wrong = Object.keys(doc.nodes).filter((id) => {
+    if (!isGoal(id)) return false;
+    const r = (doc.nodes[id] as FrameNode).children.map(rank);
+    return r.some((x, i) => i > 0 && x < r[i - 1]);
+  });
+  if (!wrong.length) return doc;
+  return produce(doc, (d) => {
+    for (const id of wrong) {
+      const n = d.nodes[id] as FrameNode;
+      n.children = [...n.children].map((c, i) => [c, i] as const).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(([c]) => c);
+    }
+  });
+}

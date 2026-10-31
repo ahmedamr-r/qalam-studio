@@ -1,24 +1,25 @@
 import { useEffect, useMemo, useState } from "react";
 import { PanelRight, X } from "lucide-react";
-import { laneOf, type LaneItem } from "@/discovery/lane";
+import type { LaneItem } from "@/discovery/lane";
 import type { Bearing } from "@/goals/bearings";
-import { layoutMap, mapOf } from "@/goals/map";
+import type { MapThing } from "@/goals/map";
 import type { Notice } from "@/hub/checks";
 import clsx from "clsx";
 import type { SourceRecord } from "@/discovery/sources";
+import { studio, useStudio } from "@/doc/store";
+import { boardLane } from "@/engine/ost-tools";
 import { useGoals } from "@/goals/client";
 import type { OrgRef } from "@/org/client";
 import { useOrgContext } from "@/org/context";
 import { browserProjectsToMove, moveBrowserProjects } from "@/org/import-browser";
 import { goalHref, placeHref, setupHref, spaceHref, type Project } from "@/projects/model";
 import { importLegacy } from "@/projects/library";
+import type { SpaceInputs } from "@/space/session";
+import { useSpaceView } from "@/space/view";
 import { Button, IconBtn } from "../controls";
-import { navigate } from "../nav";
-import { MapCanvas, MapWaiting, useEngine } from "../map/MapCanvas";
-import { hrefOf, PickedPanel } from "../map/MapPanel";
+import { PickedPanel } from "../map/MapPanel";
 import { MapReader } from "../map/MapReader";
 import { readerWidth } from "../sources/Reader";
-import { useBoardCards } from "../map/useBoardCards";
 import { r } from "../recipes";
 import { NeedsALook } from "../org/NeedsALook";
 import { AskBar } from "../org/AskBar";
@@ -33,23 +34,24 @@ import { useBearings } from "../goals/useBearings";
 import { useJobs } from "../goals/useJobs";
 import { inSpace } from "../frame/spaces";
 import { useSpace } from "../frame/useSpace";
+import { glideToLayer, onCanvasReady } from "../discovery/canvas";
+import { SpaceCanvas } from "../space/SpaceCanvas";
 import { useNeeds } from "./useNeeds";
 import { ProductsRow } from "./ProductsRow";
 import { homeGoals } from "./YourGoals";
 import { ContinueSetup, useFirstRunLeft } from "./ContinueSetup";
 
 /**
- * A space's home (the organization's, or with `product` that product's): the map, every goal in
- * the space with its board's problems, solutions and tests under it (./map, src/goals/map.ts), as
- * the biggest thing on the page, and a panel beside it. With nothing picked the panel picks up
- * the first run while it isn't finished here (./ContinueSetup.tsx), asks what the space knows,
- * and says what needs a look, under the goal it bears on; the organization's ends with its
- * products, each opening its own space. A card picked on the map takes the panel over. Editing
- * happens on the boards; everything is saved in the organization's folder.
+ * A space's home (the organization's, or with `product` that product's): its canvas, every goal
+ * in the space with its board's problems, solutions and tests under it (src/space), as the biggest
+ * thing on the page, where the trees are worked on in place, and a panel beside it. With nothing
+ * picked the panel picks up the first run while it isn't finished here (./ContinueSetup.tsx), asks
+ * what the space knows, and says what needs a look, under the goal it bears on; the organization's
+ * ends with its products, each opening its own space. A card picked on the canvas takes the panel
+ * over. Everything is saved in the organization's folder, each card on its own board.
  */
 
 const NONE: Bearing[] = [];
-const LANES_KEY = "qalam.map.lanes";
 
 export default function Home({ product: productId = null }: { product?: string | null }) {
   const { projects, legacy, sources, refresh } = useOrgData();
@@ -66,105 +68,52 @@ export default function Home({ product: productId = null }: { product?: string |
   const links = useBearings() ?? NONE;
   const jobs = useJobs() ?? [];
   const yours = homeGoals(goalTree, space);
-  const boards = useBoardCards();
-  const engine = useEngine();
 
-  const [picked, setPicked] = useState<string | null>(null);
-  const [folds, setFolds] = useState<ReadonlyMap<string, boolean>>(() => new Map());
-  const [lanes, setLanes] = useState(() => {
-    try {
-      return sessionStorage.getItem(LANES_KEY) === "1";
-    } catch {
-      return false;
-    }
-  });
+  const scoped = useMemo(() => (notices?.notices ?? []).filter((n) => inSpace(n.products, space)), [notices, space]);
+  // What the canvas is composed from (besides the boards): waits for the goals and the problems.
+  const inputs = useMemo<SpaceInputs | null>(() => (goalTree.loaded && needs !== undefined ? { tree: goalTree, links, needs: needs?.needs ?? null, notices: scoped, products } : null), [goalTree, links, needs, scoped, products]);
+
+  const things = useSpaceView((s) => s.things);
+  const boards = useSpaceView((s) => s.boards);
+  const selection = useStudio((s) => s.selection);
+  const doc = useStudio((s) => s.doc);
+  const picked = selection.length === 1 && things.has(selection[0]) ? selection[0] : null;
   const [reading, setReading] = useState<LaneItem | null>(null);
-  const [focus, setFocus] = useState<{ id: string; n: number } | null>(null);
   const [drawer, setDrawer] = useState(false);
+  const thing = picked ? mapThing(picked, things.get(picked)!) : undefined;
 
-  const map = useMemo(
-    () => (boards && goalTree.loaded ? mapOf({ tree: goalTree, boards, space, links, needs: needs?.needs ?? null, notices: (notices?.notices ?? []).filter((n) => inSpace(n.products, space)), products, folds }) : null),
-    [boards, goalTree, space, links, needs, notices, products, folds],
-  );
-  // Laid out once the engine measures text as the painter does; each goal's lane is worked out on the map as laid.
-  const laid = useMemo(() => {
-    if (!map || engine !== true) return null;
-    const rows = new Map<string, number>();
-    if (lanes) for (const it of laneOf(map.doc, sources, map.groups).items) rows.set(it.root, (rows.get(it.root) ?? 0) + 1);
-    const { doc, slots } = layoutMap(map, rows);
-    const lane = laneOf(
-      doc,
-      sources,
-      map.groups.map((g) => {
-        const s = slots.get(g.head);
-        return s ? { ...g, x: s.x, top: s.y } : g;
-      }),
-    );
-    return { doc, lane };
-  }, [map, engine, lanes, sources]);
-  const view = useMemo(() => (map && laid ? { doc: laid.doc, faint: map.faint, tags: map.tags, noticed: map.noticed, lane: lanes ? laid.lane : null } : null), [map, laid, lanes]);
-  const thing = picked ? map?.things.get(picked) : undefined;
-
-  // What was picked went (a board changed elsewhere, another space): let go of it.
   useEffect(() => {
-    if (picked && laid && !laid.doc.nodes[picked]) setPicked(null);
-  }, [picked, laid]);
+    if (picked) setDrawer(true);
+  }, [picked]);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || (e.target as HTMLElement | null)?.closest("input, textarea, [contenteditable=true], [role=dialog]")) return;
       if (reading) setReading(null);
-      else if (picked) setPicked(null);
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [reading, picked]);
+  }, [reading]);
 
   const show = (id: string | undefined) => {
-    if (!id) return;
-    setPicked(id);
-    setFocus({ id, n: Date.now() });
+    if (!id || !studio().doc.nodes[id]) return;
+    studio().select([id]);
+    onCanvasReady((c) => glideToLayer(c, id));
   };
   const showNotice = (n: Notice) => {
-    if (!map) return;
-    const topic = n.topic ? [...map.things].find(([, t]) => t.type === "problem" && t.topic === n.topic)?.[0] : undefined;
-    show((n.board && n.card ? map.byCard.get(`${n.board}:${n.card}`) : undefined) ?? (n.goal && map.things.has(`goal:${n.goal}`) ? `goal:${n.goal}` : undefined) ?? topic);
+    const v = useSpaceView.getState();
+    const card = (b?: string, c?: string) => (b && c && v.boardOf.get(c) === b ? c : undefined);
+    const goal = n.goal ? [...v.things].find(([, t]) => t.type === "goal" && t.goal === n.goal)?.[0] : undefined;
+    const topic = n.topic ? [...v.things].find(([, t]) => t.type === "problem" && t.topic === n.topic)?.[0] : undefined;
+    show(card(n.board, n.card) ?? card(n.other?.board, n.other?.card) ?? goal ?? topic);
   };
-  const boardName = (id: string) => projects?.find((p) => p.id === id)?.name ?? boards?.find((b) => b.id === id)?.name;
+  const boardName = (id: string) => projects?.find((p) => p.id === id)?.name ?? boards.get(id)?.name;
 
   return (
     <PageFrame place="home" space={space} fill>
       <div className="relative flex h-full min-h-0">
         <div className="relative min-w-0 flex-1">
-          {view && engine === true ? (
-            <MapCanvas
-              view={view}
-              picked={picked}
-              onPick={(id) => {
-                setPicked(id);
-                if (id) setDrawer(true);
-              }}
-              onOpen={(id) => {
-                const t = map?.things.get(id);
-                if (t) navigate(hrefOf(t));
-              }}
-              onFold={(id) => setFolds((m) => new Map(m).set(id, !view.doc.nodes[id]?.meta.ost?.collapsed))}
-              onSource={setReading}
-              focus={focus}
-              viewKey={`${org?.id ?? ""}:${space ?? "org"}`}
-              lanes={lanes}
-              onLanes={(on) => {
-                setLanes(on);
-                try {
-                  sessionStorage.setItem(LANES_KEY, on ? "1" : "0");
-                } catch {
-                  // Only this tab's view.
-                }
-              }}
-            />
-          ) : (
-            <MapWaiting failed={engine === "failed"} />
-          )}
-          {view && !view.doc.roots.length && <EmptyMap space={space} />}
+          <SpaceCanvas org={org?.id ?? null} space={space} inputs={inputs} sources={sources} />
+          {inputs && !doc.roots.length && <EmptyMap space={space} />}
           {!drawer && (
             <button type="button" onClick={() => setDrawer(true)} className={clsx(r.buttonSm, r.buttonSecondary, "absolute top-[12px] right-[12px] shadow-floating min-[1180px]:hidden")}>
               <PanelRight size={14} absoluteStrokeWidth strokeWidth={1.25} className="mr-[6px]" />
@@ -183,11 +132,11 @@ export default function Home({ product: productId = null }: { product?: string |
           // A source being read takes the panel over, wider for a document than a conversation.
           style={{ width: reading ? readerWidth(reading.part?.from ?? reading.mark) : 380 }}
         >
-          {reading && laid ? (
+          {reading ? (
             <MapReader
               item={reading}
-              lane={laid.lane}
-              doc={laid.doc}
+              lane={boardLane()}
+              doc={doc}
               sources={sources}
               onClose={() => setReading(null)}
               onPick={(id) => {
@@ -195,8 +144,8 @@ export default function Home({ product: productId = null }: { product?: string |
                 show(id);
               }}
             />
-          ) : thing && picked && map && laid ? (
-            <PickedPanel id={picked} thing={thing} doc={laid.doc} tree={goalTree} jobs={jobs} needs={needs?.needs ?? null} lane={laid.lane} boardName={boardName} onClose={() => setPicked(null)} onRead={setReading} />
+          ) : thing && picked ? (
+            <PickedPanel id={picked} thing={thing} doc={doc} tree={goalTree} jobs={jobs} needs={needs?.needs ?? null} lane={boardLane()} boardName={boardName} onClose={() => studio().select([])} onRead={setReading} />
           ) : (
             <div className="flex flex-col gap-[20px] px-[16px] py-[14px]">
               <div className="flex items-center justify-end min-[1180px]:hidden">
@@ -252,7 +201,14 @@ export default function Home({ product: productId = null }: { product?: string |
   );
 }
 
-/** Nothing on the map yet: where to begin. */
+/** A card on the canvas as the panel reads it. */
+function mapThing(id: string, t: import("@/space/compose").SpaceThing): MapThing {
+  if (t.type === "goal") return { type: "goal", goal: t.goal, ...(t.board ? { board: t.board, card: id } : {}) };
+  if (t.type === "card") return { type: "card", board: t.board, card: id, goal: t.goal };
+  return t;
+}
+
+/** Nothing on the canvas yet: where to begin. */
 function EmptyMap({ space }: { space: string | null }) {
   return (
     <div className="pointer-events-none absolute inset-0 grid place-items-center p-[24px]">
