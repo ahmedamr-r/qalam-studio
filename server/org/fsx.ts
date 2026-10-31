@@ -97,6 +97,11 @@ export function locked<T>(key: string, fn: () => Promise<T>): Promise<T> {
   return next;
 }
 
+/** Several keys held at once, taken in one order (sorted) so two callers never wait on each other. */
+export function lockedAll<T>(keys: string[], fn: () => Promise<T>): Promise<T> {
+  return [...new Set(keys)].sort().reduceRight<() => Promise<T>>((inner, key) => () => locked(key, inner), fn)();
+}
+
 /** A file name from a title: lowercase words joined by hyphens (Latin letters and digits; anything else falls back). */
 export function slugify(title: string, fallback = "untitled"): string {
   const s = title

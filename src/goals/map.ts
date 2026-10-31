@@ -1,18 +1,13 @@
-import { produce } from "immer";
-import type { Doc, FrameNode } from "@/doc/schema";
+import type { Doc } from "@/doc/schema";
 import { emptyDoc } from "@/doc/schema";
-import { isOstCard } from "@/doc/board";
 import type { Box } from "@/doc/geometry";
 import type { MapBoard } from "@/discovery/board-cards";
-import { GAPS, layoutTree, type LayoutNode } from "@/discovery/layout";
-import { LANE_GAP, LANE_ITEM_H, LANE_ROW_GAP, LANE_W } from "@/discovery/lane";
-import { cardBox } from "@/discovery/metrics";
 import { addCardIn, makeCardNode, newCard } from "@/discovery/ops";
-import { TREE_GAP } from "@/discovery/pass";
 import type { OstCard } from "@/discovery/types";
 import type { Notice } from "@/hub/checks";
 import type { RankedNeed } from "@/hub/needs";
 import { inSpace } from "@/ui/frame/spaces";
+import { layoutSpace } from "@/space/layout";
 import type { Bearing } from "./bearings";
 import { rankForGoal } from "./problems";
 import { ordered } from "./tree";
@@ -181,107 +176,17 @@ export function mapOf(o: MapInput): SpaceMap {
   return out;
 }
 
-/** What a goal's sources lane takes on its left, as the layout keeps room for it. */
-const LANE_ROOM = LANE_W + LANE_GAP - GAPS.tb.branchGap;
-/** The column of problems no goal covers: one under another. */
-const COLUMN_GAP = 24;
-
 /**
- * Where everything on the map goes: each tree laid out as a board lays its trees out (sizes from
- * the cards, the same tidy tree), the trees side by side from the left, the problems no goal
- * covers in a column on the right. With `lanes` (how many sources each goal's lane holds), each
- * goal keeps a column at the left of its own cards for its lane, so no lane lands on another
- * tree; `slots` says where each one is.
+ * Where everything on the map goes (src/space/layout.ts): the trees side by side, the problems no
+ * goal covers in a column on the right, each goal's lane in a column of its own (`slots`).
  */
 export function layoutMap(map: SpaceMap, lanes?: ReadonlyMap<string, number>): { doc: Doc; slots: Map<string, Box> } {
-  const slots = new Map<string, Box>();
-  const doc = produce(map.doc, (d) => {
-    const own = (id: string) => (d.nodes[id] as FrameNode).children.filter((c) => isOstCard(d.nodes[c]));
-    const sized = (id: string, kids: (id: string) => string[]): LayoutNode => {
-      const n = d.nodes[id] as FrameNode;
-      const box = cardBox(n.meta.ost!);
-      return { id, w: box.w, h: box.h, kids: n.meta.ost!.collapsed ? [] : kids(id).map((c) => sized(c, kids)) };
-    };
-    /** How deep a goal's own cards go (not its sub-goals'): its lane's column runs that far. */
-    const depthOf = (id: string) => {
-      const t = sized(id, (x) => own(x).filter((c) => x !== id || map.things.get(c)?.type !== "goal"));
-      const at = layoutTree(t, { orientation: "tb" });
-      let bottom = 0;
-      const walk = (n: LayoutNode) => {
-        bottom = Math.max(bottom, at.get(n.id)!.y + n.h);
-        n.kids.forEach(walk);
-      };
-      walk(t);
-      return bottom - t.h - GAPS.tb.levelGap;
-    };
-    const layoutNode = (id: string): LayoutNode => {
-      const n = d.nodes[id] as FrameNode;
-      const box = cardBox(n.meta.ost!);
-      const kids = n.meta.ost!.collapsed ? [] : own(id).map(layoutNode);
-      const rows = lanes?.get(id) ?? 0;
-      // The lane's column, first among its children: the goal's own cards start right of it.
-      if (rows && kids.length) kids.unshift({ id: `lane:${id}`, w: LANE_ROOM, h: Math.max(rows * (LANE_ITEM_H + LANE_ROW_GAP), depthOf(id)), kids: [] });
-      return { id, w: box.w, h: box.h, kids };
-    };
-    let x = 0;
-    const column: string[] = [];
-    for (const root of d.roots) {
-      const thing = map.things.get(root);
-      if (thing?.type === "problem" && !thing.goal) {
-        column.push(root);
-        continue;
-      }
-      const t = layoutNode(root);
-      const at = layoutTree(t, { orientation: "tb" });
-      let x0 = Infinity;
-      let x1 = -Infinity;
-      const span = (n: LayoutNode) => {
-        x0 = Math.min(x0, at.get(n.id)!.x);
-        x1 = Math.max(x1, at.get(n.id)!.x + n.w);
-        n.kids.forEach(span);
-      };
-      span(t);
-      const r = d.nodes[root] as FrameNode;
-      r.x = x - x0;
-      r.y = 0;
-      write(d, t, at, { x: 0, y: 0 }, null, slots, { x: r.x, y: r.y });
-      x += x1 - x0 + TREE_GAP;
-    }
-    let y = 0;
-    for (const id of column) {
-      const n = d.nodes[id] as FrameNode;
-      const box = cardBox(n.meta.ost!);
-      n.w = box.w;
-      n.h = box.h;
-      n.x = x;
-      n.y = y;
-      y += box.h + COLUMN_GAP;
-    }
+  return layoutSpace(map.doc, {
+    lanes,
+    column: (id) => {
+      const t = map.things.get(id);
+      return t?.type === "problem" && !t.goal;
+    },
+    isGoal: (id) => map.things.get(id)?.type === "goal",
   });
-  return { doc, slots };
-}
-
-/** Sizes, positions relative to each parent card, what's folded away hidden; a lane's column into `slots` (world). */
-function write(d: Doc, t: LayoutNode, at: Map<string, { x: number; y: number }>, abs: { x: number; y: number }, parentAbs: { x: number; y: number } | null, slots: Map<string, Box>, origin: { x: number; y: number }) {
-  const n = d.nodes[t.id] as FrameNode;
-  n.w = t.w;
-  n.h = t.h;
-  if (parentAbs) {
-    n.x = abs.x - parentAbs.x;
-    n.y = abs.y - parentAbs.y;
-  }
-  n.visible = true;
-  for (const k of t.kids) {
-    const p = at.get(k.id)!;
-    if (k.id.startsWith("lane:")) slots.set(k.id.slice(5), { x: origin.x + p.x, y: origin.y + p.y, w: LANE_W, h: k.h });
-    else write(d, k, at, p, abs, slots, origin);
-  }
-  // Everything under a fold is hidden (and keeps its last place).
-  if (n.meta.ost!.collapsed) for (const c of n.children) if (isOstCard(d.nodes[c])) hide(d, c);
-}
-
-function hide(d: Doc, id: string) {
-  const n = d.nodes[id] as FrameNode;
-  n.visible = false;
-  for (const c of n.children) if (isOstCard(d.nodes[c])) hide(d, c);
 }

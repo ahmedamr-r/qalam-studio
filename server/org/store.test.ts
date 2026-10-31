@@ -8,7 +8,7 @@ import type { Doc } from "@/doc/schema";
 import type { Filing } from "@/hub/topics";
 import type { SourceRecord } from "@/discovery/sources";
 import type { Project } from "@/projects/model";
-import { ConflictError, OrgStore, type OrgEvent } from "./store";
+import { BoardsConflictError, ConflictError, OrgStore, type OrgEvent } from "./store";
 
 let dir: string;
 let store: OrgStore;
@@ -51,6 +51,26 @@ describe("projects", () => {
     expect((await store.getDoc(board.id))?.version).toBe(v2);
     const file = JSON.parse(await readFile(path.join(dir, "boards", "reorders-q2.json"), "utf8"));
     expect(file.cards.c1.title).toBe("Reorders weekly");
+  });
+
+  it("saves several boards together, or none when one changed since it loaded", async () => {
+    const other: Project = { ...board, id: "b2abcdefgh", name: "Win-back" };
+    await store.putProject(board);
+    await store.putProject(other);
+    const v1 = await store.putDoc(board.id, doc("Reorders"));
+    const v2 = await store.putDoc(other.id, doc("Win back"));
+    const made: Project = { ...board, id: "b3abcdefgh", name: "Offices" };
+    events = [];
+    const versions = await store.putDocs([{ id: board.id, doc: doc("Reorders weekly"), ifMatch: v1 }, { id: other.id, doc: doc("Win back lapsed"), ifMatch: v2 }], [{ record: made, doc: doc("Offices reorder") }]);
+    expect(Object.keys(versions).sort()).toEqual([board.id, other.id, made.id].sort());
+    expect((await store.getDoc(made.id))?.doc).toEqual(doc("Offices reorder"));
+    expect(events.map((e) => e.kind === "project" && e.id).sort()).toEqual([board.id, other.id, made.id].sort());
+    // One of them changed meanwhile: neither is written.
+    await store.putDoc(other.id, doc("Changed elsewhere"), { ifMatch: versions[other.id] });
+    const err = await store.putDocs([{ id: board.id, doc: doc("Mine"), ifMatch: versions[board.id] }, { id: other.id, doc: doc("Mine too"), ifMatch: versions[other.id] }], []).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(BoardsConflictError);
+    expect((err as BoardsConflictError).conflicts.map((c) => c.id)).toEqual([other.id]);
+    expect((await store.getDoc(board.id))?.doc).toEqual(doc("Reorders weekly"));
   });
 
   it("patches fields without touching the document or other fields", async () => {

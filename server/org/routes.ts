@@ -13,7 +13,7 @@ import { orgGraph } from "@/hub/graph";
 import { filingShape, topicShape, type Topic } from "@/hub/topics";
 import { chooseFolder, createOrg, currentOrg, listOrgs, openFolder, qalamHome, rememberOrg, storeFor } from "./home";
 import { noticesNow } from "./notices";
-import { boardCards } from "./map";
+import { boardCards, spaceBoards } from "./map";
 import { needsNow } from "./needs";
 import { needSummary } from "@/hub/needs";
 import { quickCapture } from "../quick";
@@ -44,7 +44,7 @@ import { addRepo, answerFromCode, codeView, readRepo, removeRepo, type NewRepo }
 import { GOAL_LEVERS, type GoalLever } from "@/goals/types";
 import { meShape } from "@/org/you";
 import { orgShape } from "@/org/words";
-import { ConflictError, GoalCycleError, GoalInUseError, NotFoundError, type OrgEvent, type OrgStore } from "./store";
+import { BoardsConflictError, ConflictError, GoalCycleError, GoalInUseError, NotFoundError, type OrgEvent, type OrgStore } from "./store";
 
 /**
  * The org's files over HTTP (and over the desktop app's message port, which carries the same
@@ -733,6 +733,31 @@ export function orgRoutes(): Hono<Env> {
   });
   // Every board's cards, for the space's map.
   r.get("/api/org/:org/boards/cards", async (c) => c.json(await boardCards(c.get("store"))));
+  // A space's canvas: its boards' documents (?space=<product>, none for the organization's), and saving several at once.
+  r.get("/api/org/:org/boards/docs", async (c) => {
+    const space = c.req.query("space") || null;
+    if (space && !ID.test(space)) return bad("Not a space");
+    return c.json(await spaceBoards(c.get("store"), space));
+  });
+  r.get("/api/org/:org/boards/versions", async (c) => {
+    const store = c.get("store");
+    const out: Record<string, string> = {};
+    for (const p of store.listProjects()) if (p.type === "discovery") out[p.id] = (await store.getDoc(p.id))?.version ?? "";
+    return c.json(out);
+  });
+  r.put("/api/org/:org/boards/docs", async (c) => {
+    const body = (await c.req.json().catch(() => null)) as { writes?: { id: string; doc: Doc; ifMatch?: string; patch?: Record<string, unknown> }[]; create?: { record: Project; doc: Doc }[] } | null;
+    const isDoc = (d: Doc | undefined) => !!d && typeof d.nodes === "object" && Array.isArray(d.roots);
+    const writes = body?.writes ?? [];
+    const create = body?.create ?? [];
+    if (!Array.isArray(writes) || !Array.isArray(create) || !writes.every((w) => ID.test(w?.id ?? "") && isDoc(w.doc)) || !create.every((x) => x?.record?.type === "discovery" && ID.test(x.record.id ?? "") && isDoc(x.doc))) return bad("Not boards to save");
+    try {
+      return c.json({ versions: await c.get("store").putDocs(writes, create, { tab: tabOf(c.req.raw.headers) }) });
+    } catch (e) {
+      if (e instanceof BoardsConflictError) return c.json({ error: "conflict", message: e.message, conflicts: e.conflicts }, 409);
+      return failure(e);
+    }
+  });
   r.get("/api/org/:org/projects/:id/doc", async (c) => {
     const d = await c.get("store").getDoc(c.req.param("id"));
     return d ? c.json({ doc: d.doc }, 200, { etag: etag(d.version) }) : c.json({ error: "not_found" }, 404);

@@ -36,7 +36,7 @@ import type { Me } from "@/org/you";
 import type { OrgShape } from "@/org/words";
 import type { SolutionsFile } from "@/discovery/solutions";
 import { assetExt, assetType, decodeProject, decodeSource, docVersion, encodeProject, encodeSource, isLocalField, recordVersion, splitLocal, type LocalFields } from "./codecs";
-import { assetHash, atomicWrite, contentHash, inside, locked, readJson, slugify, stableStringify, uniqueName } from "./fsx";
+import { assetHash, atomicWrite, contentHash, inside, locked, lockedAll, readJson, slugify, stableStringify, uniqueName } from "./fsx";
 
 /**
  * One organization's folder: what's in it, kept in an index, and every change written as a whole
@@ -110,6 +110,13 @@ export class ConflictError extends Error {
 }
 
 export class NotFoundError extends Error {}
+
+/** Boards saved together where some changed since they were loaded: nothing was written. */
+export class BoardsConflictError extends Error {
+  constructor(readonly conflicts: { id: string; version: string; doc: Doc | null }[]) {
+    super("Changed since you last loaded them");
+  }
+}
 
 /** A goal a board works on can't be taken off: its outcome card is the goal on that board. */
 export class GoalInUseError extends Error {
@@ -493,6 +500,38 @@ export class OrgStore {
       const entry = await this.applyPatch(e, opts.patch ?? {}, doc);
       this.emit({ kind: "project", id, parts: opts.patch && Object.keys(opts.patch).some((k) => !isLocalField(k)) ? ["record", "doc"] : ["doc"], tab: opts.tab });
       return entry.docV;
+    });
+  }
+
+  /**
+   * Boards' documents saved together (a space's canvas, src/space): every board's version is
+   * checked before anything is written, so a change across boards lands whole or not at all. New
+   * boards are made in the same write. Answers each board's new document version.
+   */
+  putDocs(writes: { id: string; doc: Doc; ifMatch?: string; patch?: Record<string, unknown> }[], create: { record: Project; doc: Doc }[], opts: { tab?: string } = {}): Promise<Record<string, string>> {
+    const keys = [...writes.map((w) => `project:${w.id}`), ...create.map((c) => `project:${c.record.id}`)];
+    return lockedAll(keys, async () => {
+      const conflicts: { id: string; version: string; doc: Doc | null }[] = [];
+      for (const w of writes) {
+        const e = this.projects.get(w.id);
+        if (!e) throw new NotFoundError(w.id);
+        if (w.ifMatch && w.ifMatch !== e.docV) conflicts.push({ id: w.id, version: e.docV, doc: await this.readDoc(e) });
+      }
+      if (conflicts.length) throw new BoardsConflictError(conflicts);
+      const versions: Record<string, string> = {};
+      for (const c of create) {
+        if (this.projects.has(c.record.id)) continue;
+        const entry = await this.saveProject(c.record, c.doc, this.newProjectFile(c.record));
+        await this.setLocal(c.record.id, splitLocal(c.record).local);
+        versions[c.record.id] = entry.docV;
+      }
+      for (const w of writes) {
+        const entry = await this.applyPatch(this.projects.get(w.id)!, w.patch ?? {}, w.doc);
+        versions[w.id] = entry.docV;
+      }
+      for (const c of create) this.emit({ kind: "project", id: c.record.id, parts: ["record", "doc"], tab: opts.tab });
+      for (const w of writes) this.emit({ kind: "project", id: w.id, parts: w.patch && Object.keys(w.patch).some((k) => !isLocalField(k)) ? ["record", "doc"] : ["doc"], tab: opts.tab });
+      return versions;
     });
   }
 
