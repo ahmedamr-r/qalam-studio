@@ -20,6 +20,7 @@ import LaneReader, { useReaderWidth } from "../discovery/LaneReader";
 import CordPicker from "../discovery/CordPicker";
 import QuotePicker from "../discovery/QuotePicker";
 import { useDiscovery } from "../discovery/store";
+import { useReview } from "../discovery/review";
 import { SpaceCardPanel } from "../space/SpacePanel";
 import { show as showCard } from "../space/links";
 import { closePage, usePanelPage } from "../space/page";
@@ -98,6 +99,8 @@ export default function Home({ product: productId = null }: { product?: string |
   const things = useSpaceView((s) => s.things);
   const selection = useStudio((s) => s.selection);
   const empty = useStudio((s) => !s.doc.roots.length);
+  // Qalam AI's proposals drawn on an empty canvas: the start card steps aside until they're settled.
+  const proposing = useReview((s) => s.proposals.length > 0);
   // Cards picked on the canvas (all of them cards on it) take the panel over; a source read, or a cord's quotes picked, take it over too.
   const allCards = useStudio((s) => s.selection.length > 0 && s.selection.every((id) => isOstCard(s.doc.nodes[id])));
   const picked = allCards ? selection : null;
@@ -155,7 +158,7 @@ export default function Home({ product: productId = null }: { product?: string |
         {chatOpen && <CanvasChat space={space} over={!chatDocks} />}
         <div className="relative min-w-0 flex-1">
           <SpaceCanvas org={org?.id ?? null} space={space} inputs={inputs} sources={sources} />
-          {inputs && empty && <EmptyMap space={space} />}
+          {inputs && empty && !proposing && <EmptyMap space={space} />}
           {!chatOpen && <ChatPill />}
           <SpaceConflictBanner />
           {!drawer && (

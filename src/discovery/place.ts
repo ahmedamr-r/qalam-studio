@@ -69,6 +69,8 @@ export interface PlaceContext {
   has: (cardId: string, span: [number, number]) => boolean;
   /** The tree the dump was pasted beside: a note about nothing in particular goes by it. */
   anchor: string | null;
+  /** A problem may stand on its own (asked to find problems on the space's canvas, where one needs no goal yet). */
+  looseProblems?: boolean;
   /** Customers' quotes from the organization's knowledge the call was given, by their ids (k…). */
   hub?: Map<string, { quote: QuoteRef; span: [number, number] }>;
   /** The card already rests on these words of that source. */
@@ -193,8 +195,8 @@ export function sanitizePlace(raw: unknown, ctx: PlaceContext, ids: Map<string, 
     if (!parent && typeof x.parentNew === "string") parent = fresh.get(x.parentNew) ?? null;
     if (parent && !canHold(parent.kind, kind)) continue;
     parent = roomFor(parent, kind);
-    // Only an outcome starts a tree of its own.
-    if (!parent && kind !== "outcome") continue;
+    // Only an outcome starts a tree of its own (a problem too, when they asked for problems on the space's canvas).
+    if (!parent && kind !== "outcome" && !(kind === "opportunity" && ctx.looseProblems)) continue;
     const title = clip(x.title, L.title);
     const root = parent ? parent.root : `new:${ref}`;
     const inTree = treeTitles.get(root) ?? new Set<string>();

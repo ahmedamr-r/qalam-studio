@@ -181,6 +181,16 @@ describe("placing a brain dump", () => {
     expect(isAssumed({ ...both[0].card, evidence: [] })).toBe(true);
   });
 
+  it("lets a problem stand on its own only when they asked for problems on the space's canvas", () => {
+    const { ctx, doc, evidenceOf } = sample();
+    const need = { id: "n1", kind: "opportunity", parentCard: null, parentNew: null, title: "I run out of staples between shops", description: "", fragmentIds: ["f10"], answers: [], metric: null, assumptions: [], test: null, why: "" };
+    expect(ofKind(sanitizePlace({ cards: [need] }, ctx), "card")).toEqual([]);
+    const [p] = ofKind(sanitizePlace({ cards: [need] }, { ...ctx, looseProblems: true }), "card");
+    expect(p).toMatchObject({ parentId: null, card: { kind: "opportunity", title: "I run out of staples between shops" } });
+    const next = produce(doc, (d) => void expect(applyProposal(d, p, evidenceOf)).toBe(true));
+    expect(next.roots).toContain(p.cardId);
+  });
+
   it("doesn't propose again what the founder discarded", () => {
     const first = sample();
     const box = ofKind(first.proposals, "card").find((p) => p.card.title === "Staples subscription box")!;

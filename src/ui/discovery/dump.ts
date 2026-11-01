@@ -315,6 +315,7 @@ export async function placeDump(sourceId: string) {
       return !!c && hasQuote(c, sourceId, span);
     },
     anchor: session.anchor,
+    looseProblems: session.aim?.find === "problem",
   };
   // What the organization knows about what the dump says, beyond the board's cards and the dump itself.
   const org = session.sample ? null : await orgContext({ query: s.text.slice(0, 4000), product: packProduct(), budget: PLACE_BUDGET, exclude: [...boardCardRefs(studio().doc), ...s.quotes.map((q) => quotePiece(q.id))] });

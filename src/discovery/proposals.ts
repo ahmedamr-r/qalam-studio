@@ -171,7 +171,8 @@ export function applyProposal(d: Doc, p: Proposal, evidence: EvidenceOf, o: { pr
     }
     case "card": {
       const parent = p.parentId ? card(p.parentId) : null;
-      if (d.nodes[p.cardId] || (p.parentId ? !parent || !canHold(parent.kind, p.card.kind) : p.card.kind !== "outcome")) return false;
+      // A tree of its own starts with a goal, or a problem on its own (the space's canvas draws it on no goal yet).
+      if (d.nodes[p.cardId] || (p.parentId ? !parent || !canHold(parent.kind, p.card.kind) : p.card.kind !== "outcome" && p.card.kind !== "opportunity")) return false;
       const ev = resolve(p.backing, evidence);
       // Words it was to rest on are gone (their source was removed); only a need may rest on nothing (Assumed),
       // and a solution or test under a card, which rests on the card above it.
