@@ -46,7 +46,7 @@ In Qalam the model proposes, and code decides what's kept.
 
 For Apple silicon (M1 or later), macOS 13 or later.
 
-1. Download `Qalam-Studio-0.1.0-arm64.dmg` from the [latest release](https://github.com/ahmedamr-r/qalam-studio/releases/latest).
+1. Download the `.dmg` (`Qalam-Studio-<version>-arm64.dmg`) from the [latest release](https://github.com/ahmedamr-r/qalam-studio/releases/latest).
 2. Open it and drag **Qalam Studio** into **Applications**.
 3. Open it. It isn't notarized by Apple yet, so macOS stops it the first time: allow it once with **Open Anyway** in **System Settings ▸ Privacy & Security**. [docs/install-mac.md](docs/install-mac.md) walks you through it.
 
