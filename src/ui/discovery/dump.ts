@@ -1,4 +1,6 @@
 import { contextFor } from "@/org/context";
+import { useMarket } from "@/org/market";
+import { marketText } from "@/market/text";
 import { create } from "zustand";
 import { studio } from "@/doc/store";
 import { newId } from "@/doc/factory";
@@ -69,7 +71,7 @@ export const useDump = create<DumpUI>(() => ({ busy: null }));
 const runs = new Map<string, AbortController>();
 
 /** What the board's product (or the organization) is, then the board's own notes. */
-const product = () => [contextFor(canvasProduct() ?? undefined, boardGoalIds()), studio().doc.brief?.summary ?? ""].filter(Boolean).join("\n").slice(0, 3000);
+const product = () => [contextFor(canvasProduct() ?? undefined, boardGoalIds()), studio().doc.brief?.summary ?? ""].filter(Boolean).join("\n").slice(0, 2000);
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /** A dump's session (null when the source isn't a dump). */
@@ -95,7 +97,10 @@ const board = () => outlineOf(studio().doc);
 /** What a dump that answers "Help me find one", or reads a file for a card (named as the call names it), tells each of its calls. */
 function aimOf(s: DumpSession | undefined, cards: PlaceCard[]) {
   const card = s?.file && cards.find((c) => c.id === s.file!.card);
-  return { ...(s?.aim ? { aim: s.aim } : {}), ...(s?.file && card ? { file: { title: s.file.title.slice(0, 300), card: card.ref, ...(s.file.cut ? { cut: true } : {}) } } : {}) };
+  // Finding a goal or a problem, or reading a file for one: what's known about the market words the questions.
+  const m = useMarket.getState();
+  const market = (s?.aim || s?.file) && m.org ? marketText(m.market, { org: m.org, domain: true }) : "";
+  return { ...(s?.aim ? { aim: s.aim } : {}), ...(s?.file && card ? { file: { title: s.file.title.slice(0, 300), card: card.ref, ...(s.file.cut ? { cut: true } : {}) } } : {}), ...(market ? { market } : {}) };
 }
 
 /** What a call for a dump is doing, in words. */

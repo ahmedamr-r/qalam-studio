@@ -34,7 +34,7 @@ import { lab } from "@/lab";
 import { Dictated } from "../voice/MicButton";
 import { ParakeetInstall } from "../voice/ParakeetInstall";
 import { wordsFor } from "@/org/words";
-import { checkEngine, engineChanged, finishFirstRun, findCompetitors, goStep, keepCompetitors, keepFacts, lookAgain, noWebsite, skipCompetitors, openKeyField, pickDoor, pickShape, saveVoice, saveYou, saveYours, skipEngine, togglePick, useFirstRun } from "./flow";
+import { checkEngine, engineChanged, finishFirstRun, findCompetitors, goStep, keepCompetitors, keepFacts, lookAgain, noWebsite, skipCompetitors, startOnCanvas, takeAs, openKeyField, pickDoor, pickShape, saveVoice, saveYou, saveYours, skipEngine, togglePick, useFirstRun } from "./flow";
 import { useMarket } from "@/org/market";
 import { FIELD_LABEL, type Competitor, type MarketLine } from "@/market/types";
 import { lookForCompetitors } from "@/org/market";
@@ -242,6 +242,37 @@ function ChoicesPart({ data }: { data: PartData }) {
       );
     case "company":
       return <ReplyChips>{chip(data.solo ? "No link yet" : "No website yet", noWebsite)}</ReplyChips>;
+    case "start":
+      return (
+        <ReplyChips>
+          {chip(
+            <>
+              <QalamAIGlyph size={12} /> Help me find a goal
+            </>,
+            () => startOnCanvas("find-goal"),
+            true,
+          )}
+          {chip(
+            <>
+              <QalamAIGlyph size={12} /> Help me find a problem
+            </>,
+            () => startOnCanvas("find-problem"),
+          )}
+          {chip("I have one in mind", () => startOnCanvas("write"))}
+          {chip("I have customers' words", () => pickDoor("problems"))}
+          {lab("doors") && chip("I know our goals", () => pickDoor("know"))}
+          {lab("doors") && chip("An idea to test", () => pickDoor("idea"))}
+          {chip("Not now", () => startOnCanvas("later"))}
+        </ReplyChips>
+      );
+    case "take-as":
+      return (
+        <ReplyChips>
+          {chip("Take it as a goal", () => takeAs("goal"), true)}
+          {chip("Take it as a problem", () => takeAs("problem"))}
+          {chip("Paste customers' words instead", () => pickDoor("problems"))}
+        </ReplyChips>
+      );
     case "competitors":
       return (
         <ReplyChips>

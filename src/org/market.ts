@@ -11,13 +11,15 @@ import { onOrgChange } from "./live";
  */
 
 interface MarketState {
+  /** The organization's name, as the market file is about it. */
+  org: string;
   market: Market;
   session: MarketSession;
   loaded: boolean;
   error: string | null;
 }
 
-export const useMarket = create<MarketState>(() => ({ market: emptyMarket(), session: emptySession(), loaded: false, error: null }));
+export const useMarket = create<MarketState>(() => ({ org: "", market: emptyMarket(), session: emptySession(), loaded: false, error: null }));
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 let following: (() => void) | null = null;
@@ -27,8 +29,8 @@ export async function loadMarket(): Promise<void> {
     if (c.kind === "market") void loadMarket();
   });
   try {
-    const r = await orgJson<{ market: Market; session: MarketSession }>("/market");
-    useMarket.setState({ market: r.market, session: r.session, loaded: true, error: null });
+    const r = await orgJson<{ org: string; market: Market; session: MarketSession }>("/market");
+    useMarket.setState({ org: r.org, market: r.market, session: r.session, loaded: true, error: null });
   } catch (e) {
     useMarket.setState({ loaded: true, error: message(e) });
   }

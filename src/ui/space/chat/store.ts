@@ -14,6 +14,9 @@ import { chatKey, chatOf, emptyChat, withJob, withTurn, type CanvasChat, type Ch
 import { cardForPage, pageOf } from "@/space/pages";
 import { DUMP_WORDS, routeOf, titleFrom, wordsIn, type ChatMode } from "@/space/route";
 import { FIND_MIN, findRound, findText, type FindWhat } from "@/space/find";
+import type { PlanQuestion } from "@/ai/plan";
+import { knowsMarket } from "@/market/types";
+import { loadMarket, useMarket } from "@/org/market";
 import { useSpaceView } from "@/space/view";
 import { newId } from "@/doc/factory";
 import { docPart, docRef, guessVoice, joinParts, type SentDoc } from "../../chat/attach";
@@ -79,6 +82,8 @@ export async function openChat(space: string | null) {
   for (const c of ctrls.values()) c.abort();
   ctrls.clear();
   useCanvasChat.setState({ key, space, chat: emptyChat(), loaded: false, live: {} });
+  // What's known about the company and its domain words Help me find one's questions.
+  void loadMarket();
   const chat = await orgJson<unknown>(`/canvas-chat/${key}`).then(chatOf, () => emptyChat());
   if (st().key !== key) return;
   useCanvasChat.setState({ chat, loaded: true });
@@ -199,16 +204,28 @@ export function findWith(what: FindWhat, space: string | null) {
   const open = st().chat.turns.find((t) => t.job.kind === "find");
   if (open?.job.kind === "find" && open.job.what === what) return;
   if (open) dropTurn(open.id);
-  addTurn(FIND_SAID[what], { kind: "find", what });
+  // With the company and its domain known, Qalam AI asks from them; else code's own questions.
+  const known = knowsMarket(useMarket.getState().market);
+  const id = addTurn(FIND_SAID[what], { kind: "find", what, ...(known ? { loading: true as const } : {}) });
+  if (known) void askFrom(id, what);
 }
+
+/** Qalam AI's opening questions, from what's known (code's own stand in when it has none). */
+async function askFrom(id: string, what: FindWhat) {
+  const questions = await orgJson<{ questions: PlanQuestion[] }>("/find/questions", { method: "POST", json: { what } }).then((r) => r.questions, () => []);
+  change((c) => withJob(c, id, (j) => (j.kind === "find" ? { kind: "find", what: j.what, ...(questions.length ? { questions } : {}) } : j)));
+}
+
+/** The opening questions a find turn asks: Qalam AI's from the domain, else code's. */
+export const findQuestionsOf = (j: { what: FindWhat; questions?: PlanQuestion[] }) => (j.questions?.length ? j.questions : findRound(j.what));
 
 /** The opening round answered: their answers read as a brain dump that's asked for a goal or a problem. */
 export async function answerFind(id: string, answers: Readonly<Record<string, string>>) {
   const t = turnOf(id);
   if (t?.job.kind !== "find") return;
   const what = t.job.what;
-  const { text, asked, said } = findText(findRound(what), answers);
-  if (text.length < FIND_MIN) return change((c) => withJob(c, id, () => ({ kind: "find", what, error: "Say a little more in your answers, so there's something to go on." })));
+  const { text, asked, said } = findText(findQuestionsOf(t.job), answers);
+  if (text.length < FIND_MIN) return change((c) => withJob(c, id, (j) => (j.kind === "find" ? { ...j, error: "Say a little more in your answers, so there's something to go on." } : j)));
   const source = newId();
   change((c) => withJob(c, id, () => ({ kind: "dump", source, find: { what, said } })));
   try {

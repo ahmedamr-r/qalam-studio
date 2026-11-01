@@ -5,7 +5,10 @@ import { addCardIn, makeCardNode, newCard } from "@/discovery/ops";
 import { sameTopic } from "@/hub/topics";
 import { useSpaceView } from "@/space/view";
 import { glideToLayer, onCanvasReady } from "../discovery/canvas";
-import { sendToChat } from "./chat/store";
+import { findWith, sendToChat } from "./chat/store";
+import { composeIn } from "./chat/compose";
+import { takeWords } from "./handoff";
+import { currentSpace } from "../frame/useSpace";
 import { takeIdea } from "../discovery/idea";
 import { reviewPlacements, usePlacements } from "../discovery/placements";
 import { draftSolutionsFor, draftsFromUrl } from "../discovery/solutions";
@@ -26,9 +29,12 @@ import { addMaterial } from "./new";
  *   ?source=<id>          that source read
  *   ?idea=1               the first run's idea, read as a brain dump in the chat
  *   ?add=1                the sources open on adding what customers said (Evidence's old address)
+ *   ?find=goal|problem    the first run's "Help me find one", in the chat
+ *   ?write=1              the chat's box, for a goal or a problem they have in mind
+ *   ?take=goal|problem    their words from the first run, taken as a goal or a problem
  */
 
-const KEYS = ["card", "board", "then", "problem", "under", "review", "source", "idea", "add"];
+const KEYS = ["card", "board", "then", "problem", "under", "review", "source", "idea", "add", "find", "write", "take"];
 
 export async function consumeHomeParams() {
   const u = new URL(window.location.href);
@@ -43,6 +49,9 @@ export async function consumeHomeParams() {
   const review = get("review");
   const source = get("source");
   const idea = get("idea");
+  const find = get("find");
+  const take = get("take");
+  const write = get("write");
   if (get("add") === "1") addMaterial();
   for (const k of KEYS) p.delete(k);
   // The kept drafts read the address themselves (src/ui/discovery/solutions.ts).
@@ -73,6 +82,13 @@ export async function consumeHomeParams() {
   if (idea === "1") {
     const text = takeIdea();
     if (text) void sendToChat(text, "dump");
+  }
+  // From the first run's start: help finding one, the box for one in mind, or their words taken as one.
+  if (find === "goal" || find === "problem") findWith(find, currentSpace());
+  if (write === "1") composeIn({});
+  if (take === "goal" || take === "problem") {
+    const text = takeWords();
+    if (text) void sendToChat(text, take);
   }
 }
 

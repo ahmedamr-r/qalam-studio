@@ -6,11 +6,11 @@ import { asking, running, threadOf, type DumpOf } from "@/space/chat";
 import type { ChatMode } from "@/space/route";
 import { useSpaceView } from "@/space/view";
 import { QalamAIGlyph } from "../../brand/ai-glyph";
-import { IconBtn } from "../../controls";
+import { IconBtn, Spinner } from "../../controls";
 import { toQuestion } from "../../ai/plan";
 import { Questionnaire } from "../../ai/Questionnaire";
-import { initialFlow, type FlowState } from "../../ai/questionFlow";
-import { findRound, type FindWhat } from "@/space/find";
+import { initialFlow, summarize, type FlowState } from "../../ai/questionFlow";
+import type { FindWhat } from "@/space/find";
 import { r } from "../../recipes";
 import { answerRound, resumeDumps, saveRound, sessionOf, useDump } from "../../discovery/dump";
 import { useSources } from "../../discovery/sources";
@@ -22,7 +22,7 @@ import type { Space } from "../../frame/spaces";
 import { ASK_EVENT, takeAskNext } from "../../org/ask-next";
 import { PARTS } from "./parts";
 import { clearMode, useCompose } from "./compose";
-import { answerFind, ask, clearChat, findWith, openChat, send, stopTurn, useCanvasChat } from "./store";
+import { answerFind, ask, clearChat, findQuestionsOf, findWith, openChat, send, stopTurn, turnOf, useCanvasChat } from "./store";
 
 /*
  * Qalam AI's chat on the left of a space's canvas, as Figma keeps its panel there: one box for
@@ -174,16 +174,39 @@ export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
 }
 
 /** "Help me find one": code's opening questions, in place of the box until they're answered. */
+/** "Help me find one"'s opening round: Qalam AI's questions from what's known about the domain, once they're worked out, else code's own. */
 function FindRound({ turn, what }: { turn: string; what: FindWhat }) {
-  const questions = useMemo(() => findRound(what).map(toQuestion), [what]);
+  const job = useCanvasChat((s) => s.chat.turns.find((t) => t.id === turn)?.job);
+  const loading = job?.kind === "find" && !!job.loading;
+  if (loading)
+    return (
+      <p className={clsx(r.chatStatus, "px-[4px] py-[8px] text-fg-muted")}>
+        <Spinner size={12} /> <span className="q-shimmer-text">Qalam AI is working out what to ask, from what's known about it…</span>
+      </p>
+    );
+  return <FindForm key={job?.kind === "find" && job.questions ? "ai" : "code"} turn={turn} what={what} />;
+}
+
+function FindForm({ turn, what }: { turn: string; what: FindWhat }) {
+  const questions = useMemo(() => {
+    const j = turnOf(turn)?.job;
+    return findQuestionsOf(j?.kind === "find" ? j : { what }).map(toQuestion);
+  }, [turn, what]);
   const [form, setForm] = useState<FlowState>(() => initialFlow(questions));
+  // A choice is their answer in its own words; skipped and empty ones are left out.
+  const answerOf = (f: FlowState, q: (typeof questions)[number]) => {
+    const a = f.answers[q.id];
+    if (!a) return "";
+    const said = summarize(q, a);
+    return said === "Skipped" || said === "—" || said === "None" ? "" : said;
+  };
   return (
     <Questionnaire
       title={what === "goal" ? "To find a goal" : "To find a problem"}
       questions={questions}
       state={form}
       onChange={setForm}
-      onSubmit={(f) => void answerFind(turn, Object.fromEntries(questions.map((q) => [q.id, f.answers[q.id]?.kind === "text" ? (f.answers[q.id] as { text: string }).text : ""])))}
+      onSubmit={(f) => void answerFind(turn, Object.fromEntries(questions.map((q) => [q.id, answerOf(f, q)])))}
       review={{ submitLabel: "Send answers" }}
     />
   );

@@ -2,6 +2,7 @@ import type { DumpSession } from "@/discovery/dump";
 import type { AskAnswer } from "@/hub/ask";
 import type { SetupDoc } from "@/org/setup";
 import type { FindWhat } from "./find";
+import type { PlanQuestion } from "@/ai/plan";
 
 /*
  * Qalam AI's chat on the left of a space's canvas (src/ui/space/chat/), as it's kept: one file per
@@ -40,7 +41,7 @@ export type ChatJob =
    */
   | { kind: "dump"; source: string; error?: string; find?: { what: FindWhat; said: { question: string; answer: string }[] }; file?: { card: string; title: string; left?: true } }
   /** "Help me find one": code's opening questions, being answered (the box asks them). */
-  | { kind: "find"; what: FindWhat; error?: string };
+  | { kind: "find"; what: FindWhat; error?: string; /** Qalam AI's opening questions, from what's known about the company and its domain (none: code's own). */ questions?: PlanQuestion[]; /** Those being worked out. */ loading?: true };
 
 export interface ChatTurn {
   id: string;
@@ -63,6 +64,11 @@ function stopped(j: ChatJob): ChatJob {
   if (j.kind === "ask" && j.state === "asking") return { ...j, state: "failed", error: "It stopped when the page closed. Ask again." };
   // Capture goes on in the core: what was taken in shows up on the canvas and in its panel.
   if (j.kind === "take" && j.state === "taking") return { ...j, state: "failed", error: "The page closed while it was being taken in. What was kept is in the sources." };
+  // Questions still being worked out when the page went: code's own are asked instead.
+  if (j.kind === "find" && j.loading) {
+    const { loading: _gone, ...rest } = j;
+    return rest;
+  }
   return j;
 }
 

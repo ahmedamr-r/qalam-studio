@@ -32,7 +32,7 @@ import type { Hit as ConnectorHit } from "@/connectors/recipes";
 import { findProblems, goalPage, linkByHand } from "./goals";
 import { pictureFromFigma, pinByHand, placeQuotes } from "./steps";
 import { answerReading, dropReading, editSeen, seenEditShape, seenMaps, seenView, settleReading, startReading } from "./seen";
-import { lookForCompetitors, lookUpCompany, marketSession, settleCompany, settleCompetitors, stopLook, type FactDecision } from "./market";
+import { findQuestions, lookForCompetitors, lookUpCompany, marketSession, settleCompany, settleCompetitors, stopLook, type FactDecision } from "./market";
 import type { SeenAnswer, Shot } from "@/seen/types";
 import { CHAT_KEY, chatOf } from "@/space/chat";
 import { changeJob, noteForJob, onlineForJob, openJobs, planJobs, searchForJob, takeInForJob } from "./jobs";
@@ -902,7 +902,7 @@ export function orgRoutes(): Hono<Env> {
   // What's known about the company, its competitors and its domain, and the first run's lookups (./market.ts).
   r.get("/api/org/:org/market", async (c) => {
     const store = c.get("store");
-    return c.json({ market: await store.getMarket(), session: await marketSession(store) });
+    return c.json({ org: store.info.name, market: await store.getMarket(), session: await marketSession(store) });
   });
   r.post("/api/org/:org/market/company", async (c) => {
     if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't look the company up." }, 503);
@@ -928,6 +928,18 @@ export function orgRoutes(): Hono<Env> {
   r.delete("/api/org/:org/market/company", (c) => {
     stopLook(c.get("store"), "company");
     return c.json({ ok: true });
+  });
+  r.post("/api/org/:org/find/questions", async (c) => {
+    if (!aiConfigured()) return c.json({ questions: [] });
+    const b = (await c.req.json().catch(() => null)) as { what?: unknown } | null;
+    const what = b?.what === "goal" || b?.what === "problem" ? b.what : null;
+    if (!what) return bad("Ask for a goal or a problem");
+    try {
+      return c.json({ questions: await findQuestions(c.get("store"), what, c.req.raw.signal) });
+    } catch {
+      // Code's own opening questions stand in.
+      return c.json({ questions: [] });
+    }
   });
   const names = (v: unknown) => (Array.isArray(v) ? v : []).filter((n): n is string => typeof n === "string" && !!n.trim()).map((n) => n.trim().slice(0, 80)).slice(0, 8);
   r.post("/api/org/:org/market/competitors", async (c) => {

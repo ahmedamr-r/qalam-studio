@@ -60,7 +60,9 @@ const ChallengeIn = z.object({ kind: z.enum(CHALLENGE_KINDS), fragmentId: text(1
 const DumpAim = z.object({ find: z.enum(["goal", "problem"]), asked: z.array(text(300)).max(6) }).optional();
 /** A file they added for a card ("Add a file for it"): its title, the card (by the id the tree gives it), and whether its words were cut to fit. */
 const DumpFileIn = z.object({ title: text(300), card: text(12), cut: z.boolean().optional() }).optional();
-const DumpBase = { product: text(2000), dump: z.string().trim().min(40).max(DUMP_MAX_CHARS), tree: z.array(DumpCardIn).max(400), aim: DumpAim, file: DumpFileIn };
+/** What's known about the company's market (src/market/text.ts): read on the web, never what customers said. */
+const DumpMarketIn = text(3000).optional();
+const DumpBase = { product: text(2000), dump: z.string().trim().min(40).max(DUMP_MAX_CHARS), tree: z.array(DumpCardIn).max(400), aim: DumpAim, file: DumpFileIn, market: DumpMarketIn };
 const KId = z.string().regex(/^k\d{1,4}$/);
 /** What the organization already knows, packed for the call: pieces under ids, and which ids are customers' quotes. */
 export const ContextIn = z.object({ block: text(60_000), ids: z.array(KId).max(400), quotes: z.array(KId).max(400) }).optional();
@@ -670,6 +672,7 @@ function fileLine(f: NonNullable<DumpRequest["file"]>, tree: DumpRequest["tree"]
 
 const dumpMaterial = (b: DumpRequest) => [
   `The product: ${b.product.trim() || "(not described yet)"}`,
+  ...(b.market?.trim() ? ["", `What's known about its market, read on the web (context for your questions and wording; never what its customers said, and nothing a card rests on):\n${b.market.trim()}`] : []),
   "",
   b.tree.length ? "The board (id · kind · title — description [metric] {assumptions} (what backs it), each card under its parent):" : "The board is empty.",
   ...dumpOutline(b.tree),
@@ -722,8 +725,8 @@ export function dumpPlaceContent(b: Extract<DiscoveryRequest, { stage: "dump-pla
     "",
     b.aim
       ? b.aim.find === "goal"
-        ? "Propose 1 to 3 goals (outcome cards) from what they said, each resting on their words, the best first: under the goal it moves when the board has one, else as a tree of its own. Propose nothing else."
-        : "Propose 1 to 3 problems (opportunity cards) from what they said, each resting on their words, the best first: under the goal it bears on when the board has one, else as a tree of its own. Propose nothing else."
+        ? "Propose 1 to 3 goals (outcome cards) from what they said, each resting on their words, the best first: under the goal it moves when the board has one, else as a tree of its own. Word each as a proper goal, not a label: the change the team wants to see, for whom, in one short sentence (\"More households hand over their used oil every month\"), with its metric only from numbers they gave. Propose nothing else."
+        : "Propose 1 to 3 problems (opportunity cards) from what they said, each resting on their words, the best first: under the goal it bears on when the board has one, else as a tree of its own. Word each as a proper problem, not a label: a need, pain or wish in the customer's voice, in one short sentence (\"I never know when the collector will come\"). Propose nothing else."
       : b.file
         ? `Place what in the file bears on ${b.file.card}, only under it: when it's an outcome, the needs it shows (opportunities: pains and wishes of the people it's for) under it, and finer outcomes where it names them; when it's an opportunity, finer needs, solutions and tests under it. Attach the pieces that back ${b.file.card} or the cards under it. Change nothing elsewhere on the board.`
         : "Place the brain dump on the board.",

@@ -5,6 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MarketDeps } from "./market";
 import { OrgStore } from "./store";
 
+// Nothing here reaches the web or a model: every look gets its stand-ins.
+vi.mock("@/ai/server", () => ({
+  research: () => Promise.reject(new Error("No web in tests")),
+  structured: () => Promise.reject(new Error("No model in tests")),
+}));
 vi.mock("../index/registry", () => ({
   indexFor: () => {
     throw new Error("No index in tests");
@@ -72,8 +77,11 @@ describe("looking the company up in the first run", () => {
   it("writes what they keep (a fixed one in their words, as theirs) and fills the About's empty fields", async () => {
     await lookUpCompany(store, { site: "tagaddod.com" }, { deps: deps() });
     const [does, model] = (await settled()).company!.facts;
-    const s = await settleCompany(store, [{ id: does.id, keep: true, text: "Collects used cooking oil from homes and restaurants across Egypt." }, { id: model.id, keep: false }], ["Founded in 2016."]);
+    const s = await settleCompany(store, [{ id: does.id, keep: true, text: "Collects used cooking oil from homes and restaurants across Egypt." }, { id: model.id, keep: false }], ["Founded in 2016."], { deps: deps({ web: false }) });
     expect(s.company).toMatchObject({ state: "settled", kept: 2 });
+    // The domain is read once the facts are kept (no web here: it settles at once).
+    for (let i = 0; i < 300 && (await marketSession(store)).domain?.state !== "settled"; i++) await new Promise((r) => setTimeout(r, 10));
+    expect((await marketSession(store)).domain).toMatchObject({ state: "settled", noWeb: true });
     const m = await store.getMarket();
     expect(m.company.map((l) => [l.text, l.by])).toEqual([
       ["Collects used cooking oil from homes and restaurants across Egypt.", "you"],

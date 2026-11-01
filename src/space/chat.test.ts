@@ -107,6 +107,11 @@ describe("short statements and what came of them", () => {
     expect(running(withTurn(emptyChat(), turn("t", { kind: "take", state: "taking", sources: [], pages: [], quotes: 0 }, "")))?.id).toBe("t");
   });
 
+  it("asks code's own opening questions when Qalam AI's were still being worked out as the page went", () => {
+    const c = chatOf({ v: 1, turns: [turn("f", { kind: "find", what: "goal", loading: true }, "Help me find a goal")] });
+    expect(c.turns[0].job).toEqual({ kind: "find", what: "goal" });
+  });
+
   it("forgets a capture the page closed on, as it does an ask", () => {
     const c = chatOf({ v: 1, turns: [turn("t", { kind: "take", state: "taking", sources: [], pages: [], quotes: 0 }), turn("x", { kind: "made-up" } as never)] });
     expect(c.turns.map((t) => [t.id, t.job.kind === "take" && t.job.state])).toEqual([["t", "failed"]]);

@@ -22,6 +22,9 @@ import { changesThings, setupStep, stepAfter, welcomeMode, type SetupStep, type 
 import { engineShown, lab } from "@/lab";
 import { loadMarket, lookForCompetitors, lookUpCompany, settleCompany, settleCompetitors, useMarket } from "@/org/market";
 import { loadOrgContext } from "@/org/context";
+import { orgFetch } from "@/org/client";
+import { orgHref } from "@/projects/model";
+import { handWords } from "../space/handoff";
 
 /*
  * The first run as state, apart from the pages that show it: Qalam AI found and tested, the
@@ -317,6 +320,26 @@ export async function keepCompetitors(keep: string[]) {
 
 /** No competitors for now: on to the start. */
 export const skipCompetitors = () => goStep(stepAfter("competitors", useFirstRun.getState().shape) ?? "goals");
+
+// ---------------------------------------------------------------------------
+// Start: on to the canvas, where its chat helps with a first goal or problem
+
+/** Finish onto the canvas, its chat finding a goal or a problem, open for one they have in mind, or as it is. */
+export function startOnCanvas(how: "find-goal" | "find-problem" | "write" | "later") {
+  const q = how === "find-goal" ? "?find=goal" : how === "find-problem" ? "?find=problem" : how === "write" ? "?write=1" : "";
+  return finishFirstRun(`${orgHref()}${q}`);
+}
+
+/**
+ * What they sent at the problems door held nothing customers said: their words go to the canvas's
+ * chat, taken as a goal or a problem, and the sources kept from it (none of it customers') go.
+ */
+export async function takeAs(what: "goal" | "problem") {
+  const p = useFirstRun.getState().problems;
+  if (p.sent) handWords(p.sent);
+  for (const s of p.sources ?? []) if (s.sourceId) await orgFetch(`/sources/${encodeURIComponent(s.sourceId)}`, { method: "DELETE" }).catch(() => {});
+  await finishFirstRun(`${orgHref()}?take=${what}`);
+}
 
 export function goStep(step: SetupStep) {
   push({ step });

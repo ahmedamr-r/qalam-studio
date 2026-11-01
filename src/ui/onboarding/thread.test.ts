@@ -132,11 +132,11 @@ describe("talking instead of typing", () => {
 });
 
 describe("the goals", () => {
-  it("offers the two doors after the earlier steps", () => {
+  it("offers help with a first goal or problem after the earlier steps", () => {
     const i = base();
     const m = threadOf(i);
     expect(ids(m)).toEqual(["engine", "name:ask", "name:you", "you:ask", "you:you", "voice:ask", "voice:you", "goals:ask"]);
-    expect(choices(m.at(-1))).toEqual(["door"]);
+    expect(choices(m.at(-1))).toEqual(["start"]);
     expect(askOf(i)).toMatchObject({ kind: "none", key: "door" });
     const goals = stepsOf(i).find((s) => s.id === "goals")!;
     expect(goals.state).toBe("now");
@@ -230,8 +230,8 @@ describe("on your own", () => {
     const s = session({ phase: "done", proposal: { summary: "s", products: [], lines: [line("g1")] }, decided: { g1: "accepted" } });
     const at = (step: ThreadInput["step"]) => threadOf(solo({ step, find: { session: s, pending: false, error: null, open: 0, accepted: 1 } }));
     const ask = threadOf(solo()).find((x) => x.id === "goals:ask")!;
-    expect(ask.parts[0]).toEqual({ type: "text", text: "How do you want to start with Meal planner? An idea on its own is enough." });
-    expect(ask.parts.find((p) => p.type === "data")).toMatchObject({ data: { set: "door", solo: true } });
+    expect(ask.parts[0]).toEqual({ type: "text", text: "Want help with a first goal or problem for Meal planner? I'll ask a few questions, then suggest one in your words." });
+    expect(ask.parts.find((p) => p.type === "data")).toMatchObject({ data: { set: "start", solo: true } });
     const done = at("goals").find((x) => x.id === "goals:in")!;
     expect(done.parts[0]).toEqual({ type: "text", text: "1 line written to Meal planner. Next: what to connect." });
     expect(done.parts.find((p) => p.type === "data")).toMatchObject({ data: { set: "goals-in", solo: true } });
@@ -271,10 +271,16 @@ describe("the other ways in", () => {
     expect(ids(threadOf(base({ door: "problems", step: "connect", problems: filed.problems }))).some((x) => x.startsWith("yours:"))).toBe(false);
   });
 
-  it("says when nothing customers said was in it, and offers the ways in again", () => {
-    const m = threadOf(base({ door: "problems", problems: { sent: "My plan…", result: { pages: 0, quotes: 0 }, error: null } }));
+  it("says when nothing customers said was in it, and offers to take it to the canvas as a goal or a problem", () => {
+    const m = threadOf(base({ door: "problems", problems: { sent: "I want to increase the number of used cooking oil collected from customers", result: { pages: 0, quotes: 0 }, error: null } }));
     expect(m.at(-1)?.id).toBe("problems:none");
-    expect(choices(m.at(-1))).toEqual(["door"]);
+    expect(m.at(-1)?.parts[0]).toEqual({ type: "text", text: "That reads as your own thinking, not what customers said. I can take it to the canvas as a goal or a problem, and suggest how to word it." });
+    expect(choices(m.at(-1))).toEqual(["take-as"]);
+  });
+
+  it("starts from what companies like it aim for and face, once the company is known", () => {
+    const m = threadOf(base({ orgName: "Tagaddod", market: { session: { v: 1, company: { state: "settled", at: 1, steps: [], facts: [], kept: 3 }, domain: { state: "looking", at: 1, steps: [], aims: 0, struggles: 0 } }, noSite: false, error: null } }));
+    expect(m.find((x) => x.id === "goals:ask")?.parts[0]).toEqual({ type: "text", text: "Want help with a first goal or problem for Tagaddod? I'll start from what companies like Tagaddod usually aim for and face, which I'm still reading, and ask you about it." });
   });
 
   it("reads an idea in the chat, asks, has its lines reviewed, and opens its board only when they choose", () => {

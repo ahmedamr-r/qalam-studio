@@ -1,5 +1,9 @@
 import { NO_WEB } from "@/ai/abilities";
 import { companyCall, competitorsCall, domainCall } from "@/ai/market";
+import { findQuestionsCall } from "@/ai/find";
+import type { PlanQuestion } from "@/ai/plan";
+import { findQuestionsMaterial, sanitizeFindQuestions, type FindWhat } from "@/space/find";
+import { knowsMarket } from "@/market/types";
 import type { ResearchInfo, ResearchPurpose } from "@/ai/research-shared";
 import { research, structured } from "@/ai/server";
 import type { OutsidePage } from "@/goals/outside";
@@ -251,6 +255,19 @@ export async function lookUpDomain(store: OrgStore, opts: { deps?: MarketDeps } 
       if (!signal.aborted) await changeLook(store, "domain", (l) => ({ ...l, state: "failed", error: message(e) })).catch(() => {});
     }
   });
+}
+
+// ---------------------------------------------------------------------------
+// "Help me find one", from what's known about the company and its domain
+
+/** The opening questions for finding a goal or a problem, their choices drawn from the market; none when nothing's known. */
+export async function findQuestions(store: OrgStore, what: FindWhat, signal?: AbortSignal, deps: Pick<MarketDeps, "structured"> = realDeps): Promise<PlanQuestion[]> {
+  const market = await store.getMarket();
+  if (!knowsMarket(market)) return [];
+  const about = await store.getAbout();
+  const m = findQuestionsMaterial({ what, org: store.info.name, about: [about.context, about.audience].filter((x) => x.trim()).join(" "), market });
+  const { data } = await deps.structured<unknown>(findQuestionsCall(m), signal);
+  return sanitizeFindQuestions(data, m);
 }
 
 /** Stop a look running here. */

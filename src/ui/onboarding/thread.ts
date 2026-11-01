@@ -6,7 +6,6 @@ import type { KnowState } from "../setup/know-state";
 import type { VoiceChoice } from "@/voice/model";
 import type { MarketSession } from "@/market/session";
 import { stepAfter, stepShown, type SetupStep, type StepState, type WelcomeMode } from "../welcome/steps";
-import { lab } from "@/lab";
 
 /*
  * The first run as a conversation (pure): every message is read from state that's already kept
@@ -32,7 +31,7 @@ export interface ChatMessage {
 }
 
 /** Which buttons a `choices` part shows. */
-export type ChoiceSet = "shape" | "door" | "skip" | "know-skip" | "propose" | "proposal" | "know-review" | "goals-in" | "verify" | "idea-board" | "company" | "company-again" | "competitors" | "competitors-again";
+export type ChoiceSet = "shape" | "door" | "skip" | "know-skip" | "propose" | "proposal" | "know-review" | "goals-in" | "verify" | "idea-board" | "company" | "company-again" | "competitors" | "competitors-again" | "start" | "take-as";
 
 export type EngineState = "looking" | "testing" | "ready" | "problem" | "skipped" | "unknown";
 
@@ -253,14 +252,15 @@ export function threadOf(i: ThreadInput): ChatMessage[] {
   const door = doorOf(i);
   if (i.first && i.step !== "goals" && !door) out.push(ai("goals:had", text(i.goals ? `${org} has ${i.goals === 1 ? "a goal" : `${i.goals} goals`} already.` : "There are no goals yet: add them on the canvas any time.")));
   else {
-    // Three ways in: goals (known, or found in what they write), problems customers raise, or an idea to test.
-    // v0.1 (src/lab.ts) offers two ways in: the problems customers raise, and goals they know.
-    const ask = !lab("doors")
-      ? `How do you want to start with ${org}? From the problems customers raise, or from goals you know.`
-      : solo
-        ? `How do you want to start with ${org}? An idea on its own is enough.`
-        : `How do you want to start with ${org}? From its goals, from problems customers raise, or from an idea to test.`;
-    out.push(ai("goals:ask", text(ask), ...(door ? [] : [part("choices", { set: "door", solo })])));
+    // With the company and its domain known, help finding a first goal or problem starts from them (on the
+    // canvas, in its chat); one they have in mind goes there too, and what customers said is filed here.
+    const m = i.market.session;
+    const known = !!m.company && m.company.state === "settled";
+    const reading = m.domain?.state === "looking";
+    const ask = known
+      ? `Want help with a first goal or problem for ${org}? I'll start from what companies like ${org} usually aim for and face${reading ? ", which I'm still reading" : ""}, and ask you about it.`
+      : `Want help with a first goal or problem for ${org}? I'll ask a few questions, then suggest one in your words.`;
+    out.push(ai("goals:ask", text(ask), ...(door ? [] : [part("choices", { set: "start", solo })])));
     if (door) out.push(you("goals:door", text(DOOR_SAID[door])));
   }
 
@@ -269,8 +269,9 @@ export function threadOf(i: ThreadInput): ChatMessage[] {
     out.push(ai("problems:ask", text("Paste what customers tell you: support tickets, reviews, interview notes, or a link to them. I'll file it into problem pages and show which come up most.")));
     if (p.sent !== null) out.push(you("problems:said", ...said(p)));
     if (p.error && !i.busy) out.push(ai("problems:error", part("error", { text: p.error })));
+    // Nothing customers said: their own thinking, taken to the canvas as a goal or a problem in better words.
     if (p.result && !p.result.quotes && !i.busy)
-      out.push(ai("problems:none", text("I found nothing customers said in it. If it's your own thinking, start from an idea instead, or paste customers' own words."), part("choices", { set: "door", solo })));
+      out.push(ai("problems:none", text("That reads as your own thinking, not what customers said. I can take it to the canvas as a goal or a problem, and suggest how to word it."), part("choices", { set: "take-as", solo })));
   }
 
   if (door === "know") {
