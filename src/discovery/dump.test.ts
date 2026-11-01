@@ -5,6 +5,7 @@ import { toQuestion } from "@/ui/ai/plan";
 import { draftToDoc } from "./draft-doc";
 import { sanitizeDraft } from "./sanitize";
 import {
+  withLook,
   withRound,
   MAX_DUMP_ROUNDS,
   applyDumpFollowup,
@@ -163,6 +164,25 @@ describe("reading a brain dump", () => {
       ["h3", "How much do you collect today?"],
     ]);
     expect(withRound(text, [], [], 2).text).toBe(text);
+  });
+
+  it("adds a look on the web to the text under a heading saying whose words they are, each line with where it was read", () => {
+    const text = "Finding the problem to focus on.";
+    const look = { query: "why PMs drop new tools", lines: [{ id: "f1", text: "Most PMs drop a tool that doesn't fit their workflow.", url: "https://www.example.com/a", by: "qalam" as const, at: 1 }, { id: "f2", text: "Setup takes too long.", by: "qalam" as const, at: 1 }] };
+    const r = withLook(text, [{ kind: "h3", span: [0, 7] }], look);
+    expect(r.text).toBe("Finding the problem to focus on.\n\nQalam AI looked on the web for “why PMs drop new tools” (others' words, not yours or your customers'):\n- Most PMs drop a tool that doesn't fit their workflow. (example.com)\n- Setup takes too long.");
+    expect(r.blocks.map((b) => [b.kind, r.text.slice(...b.span)])).toEqual([
+      ["h3", "Finding"],
+      ["h2", "Qalam AI looked on the web for “why PMs drop new tools” (others' words, not yours or your customers'):"],
+    ]);
+    expect(withLook(text, [], { query: "x", lines: [] }).text).toBe(text);
+  });
+
+  it("hears what Qalam AI wants looked up before its next round, in words", () => {
+    const { cards } = read();
+    const c = cards.find((x) => x.title === "I forget to reorder until I've run out")!;
+    expect(sanitizeDumpFollowup({ look: `  why parents   forget ${c.ref} ` }, [], cards).look).toBe("why parents forget “I forget to reorder until I've run out”");
+    expect(sanitizeDumpFollowup({ questions: [] }, [], cards).look).toBe("");
   });
 
   it("says, for a file read for a card, when nothing in it bears on the card, and what file would help, in words", () => {

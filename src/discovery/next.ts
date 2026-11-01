@@ -9,7 +9,7 @@ import { lab } from "@/lab";
  * a step is picked (src/ui/discovery/next.ts). What v0.1 hides (src/lab.ts) isn't offered.
  */
 
-export type StepId = "draft-solutions" | "draft-tests" | "design-this" | "page" | "pass-line" | "next-job" | "find-problems" | "break-down" | "review-parts" | "others" | "find-backing" | "watch" | "connect" | "add-file" | "questions" | "draft-problems" | "review-problems";
+export type StepId = "draft-solutions" | "draft-tests" | "design-this" | "page" | "pass-line" | "next-job" | "find-problems" | "break-down" | "review-parts" | "others" | "find-backing" | "watch" | "connect" | "add-file" | "questions" | "draft-problems" | "review-problems" | "focus";
 
 export interface NextStep {
   id: StepId;
@@ -127,10 +127,12 @@ export function nextSteps(f: CardFacts): NextStep[] {
       const asking = !asks ? null : f.asking ? "Picks up your answers where you left them" : "Asks a few questions first";
       const parts: NextStep | null = !extras ? null : g.pending ? { id: "review-parts", label: `Review the ${plural(g.pending, "goal")} proposed under it`, hint: "From breaking it down" } : { id: "break-down", label: "Break it down", hint: asking ?? "Goals under it that make its number", ai: true, ...(asks ? { asks } : {}) };
       const drafted: NextStep | null = !extras ? null : g.drafted ? { id: "review-problems", label: `Review the ${plural(g.drafted, "problem")} drafted for it`, hint: "From drafting its problems" } : { id: "draft-problems", label: "Draft its problems", hint: asking ?? (g.behind ? "More problems that would move it" : "Problems that would move it, from your material"), ai: true, ...(asks ? { asks } : {}) };
-      // What waits to be decided first; then, while nothing is behind it, its problems (found among the pages when there are some, else drafted).
+      // The problem to focus on, found with them in the chat: it asks, looks on the web, then proposes problems under it.
+      const focus: NextStep = { id: "focus", label: "Find the problem to focus on", hint: "Qalam AI asks you and looks on the web", ai: true };
+      // What waits to be decided first; then the problem to focus on, then, while nothing is behind it, its problems (found among the pages when there are some, else drafted).
       const waiting = [g.pending ? parts : null, g.drafted ? drafted : null];
       const rest = [g.pending ? null : parts, find, g.drafted ? null : drafted];
-      push(...waiting, ...(g.behind ? rest : [rest[1], rest[2], rest[0]]), extras ? { id: "others", label: "What others aim for", hint: "Numbers others report · a minute or two", ai: true } : null, ground.watch, ground.file);
+      push(...waiting, focus, ...(g.behind ? rest : [rest[1], rest[2], rest[0]]), extras ? { id: "others", label: "What others aim for", hint: "Numbers others report · a minute or two", ai: true } : null, ground.watch, ground.file);
       if (g.job && extras) push({ id: "next-job", label: `Next: ${g.job}`, hint: "What we don't know yet" });
       break;
     }

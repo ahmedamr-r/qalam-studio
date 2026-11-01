@@ -39,6 +39,7 @@ import { changeJob, noteForJob, onlineForJob, openJobs, planJobs, searchForJob, 
 import { addFeed, changeFeed, checkFeed, feedsView, refreshFeed } from "./feeds";
 import { feedTarget, type FeedTarget } from "@/feeds/feeds";
 import { breakDown, decidePart, lookOutside } from "./outside";
+import { lookForGoal } from "./focus";
 import { decideProblem, draftProblems } from "./problems";
 import { decideSolution, draftSolutions, solutionsView, type SolutionsCard } from "./solutions";
 import { draftTests, type TestsRequest } from "./tests";
@@ -367,6 +368,17 @@ export function orgRoutes(): Hono<Env> {
     } catch (e) {
       return failure(e);
     }
+  });
+  // Finding the problem to focus on for a goal (server/org/focus.ts): a look on the web, and with `open`, the first questions to ask.
+  r.post("/api/org/:org/goals/:id/focus", async (c) => {
+    if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't look this up." }, 503);
+    if (rateLimited(c.req.raw)) return c.json({ error: "rate_limited", message: "Too many requests, try again in a few minutes." }, 429);
+    const b = ((await c.req.json().catch(() => ({}))) ?? {}) as { query?: unknown; said?: unknown; open?: unknown };
+    const store = c.get("store");
+    const id = c.req.param("id");
+    if (!goalById(await store.getGoals(), id)) return c.json({ error: "not_found", message: "No such goal" }, 404);
+    const words = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : undefined);
+    return streamed(c.req.raw.signal, (emit, signal) => lookForGoal(store, id, { query: words(b.query, 400), said: words(b.said, 4000), open: b.open === true }, emit, signal));
   });
   // Drafting a goal's problems (server/org/problems.ts): reviewed on the canvas under the goal's card, each decided in its work file.
   r.post("/api/org/:org/goals/:id/draft-problems", async (c) => {

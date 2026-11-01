@@ -10,11 +10,13 @@ import { askOrganization } from "@/org/ask";
 import { captureIngested } from "@/org/capture";
 import { orgFetch, orgJson } from "@/org/client";
 import type { Ingested } from "@/discovery/ingest/core";
-import { chatKey, chatOf, emptyChat, withJob, withTurn, type CanvasChat, type ChatDoc, type ChatJob, type ChatTurn, type FiledPage } from "@/space/chat";
+import { chatKey, chatOf, emptyChat, withJob, withTurn, type CanvasChat, type ChatDoc, type ChatJob, type ChatTurn, type FiledPage, type FocusGoal } from "@/space/chat";
 import { cardForPage, pageOf } from "@/space/pages";
 import { DUMP_WORDS, routeOf, titleFrom, wordsIn, type ChatMode } from "@/space/route";
 import { FIND_MIN, findRound, findText, findTranscript, type FindWhat } from "@/space/find";
 import type { PlanQuestion } from "@/ai/plan";
+import { focusRound, focusTranscript } from "@/goals/focus";
+import { lookForGoal } from "@/org/goal-work";
 import { knowsMarket } from "@/market/types";
 import { loadMarket, useMarket } from "@/org/market";
 import { useSpaceView } from "@/space/view";
@@ -216,8 +218,52 @@ async function askFrom(id: string, what: FindWhat) {
   change((c) => withJob(c, id, (j) => (j.kind === "find" ? { kind: "find", what: j.what, ...(questions.length ? { questions } : {}) } : j)));
 }
 
-/** The opening questions a find turn asks: Qalam AI's from the domain, else code's. */
-export const findQuestionsOf = (j: { what: FindWhat; questions?: PlanQuestion[] }) => (j.questions?.length ? j.questions : findRound(j.what));
+/** The opening questions a find turn asks: Qalam AI's from the domain (and, for a goal, what the web says gets in its way), else code's. */
+export const findQuestionsOf = (j: { what: FindWhat; questions?: PlanQuestion[]; goal?: FocusGoal }) => (j.questions?.length ? j.questions : j.goal ? focusRound() : findRound(j.what));
+
+// ---------------------------------------------------------------------------
+// The problem to focus on for a goal (its next steps' "Find the problem to focus on")
+
+/** A conversation for the goal still going in the chat: its questions, or its dump not placed yet. */
+function focusing(goal: string): ChatTurn | undefined {
+  const sources = useSources.getState().list;
+  return [...st().chat.turns].reverse().find((t) => {
+    if (t.job.kind === "find") return t.job.goal?.id === goal;
+    if (t.job.kind !== "dump" || t.job.find?.goal?.id !== goal || t.job.error) return false;
+    const phase = sources.find((x) => x.id === (t.job as { source: string }).source)?.dump?.phase;
+    return !!phase && phase !== "placed" && phase !== "failed";
+  });
+}
+
+/**
+ * Find the problem to focus on for a goal: Qalam AI looks on the web for what usually gets in the
+ * way of goals like it (server/org/focus.ts), asks from what it read, reads their answers as a brain
+ * dump aimed under the goal's card, looks again where their answers call for it, and proposes 1 to
+ * 3 problems under it. One conversation per goal at a time: an open one is carried on.
+ */
+export function focusWith(card: string, goal: string) {
+  toggleChat(true);
+  if (!st().loaded || focusing(goal)) return;
+  const title = goalById(goalsNow(), goal)?.title ?? cardTitle(card);
+  const g: FocusGoal = { card, id: goal, title };
+  const id = addTurn(`Find the problem to focus on for “${title}”`, { kind: "find", what: "problem", goal: g, loading: true });
+  void openFocus(id, g);
+}
+
+/** The opening look and the questions from it (none held, or no web here: code's own questions). */
+async function openFocus(id: string, g: FocusGoal) {
+  const ctrl = begin(id);
+  try {
+    const r = await lookForGoal(g.id, { open: true }, step(id), ctrl.signal);
+    change((c) => withJob(c, id, (j) => (j.kind === "find" ? { kind: "find", what: j.what, goal: j.goal, look: r.look, ...(r.questions.length ? { questions: r.questions } : {}) } : j)));
+  } catch (e) {
+    // Stopped, or it failed: code's own questions, and it says why (a turn let go is gone already).
+    const stopped = (e as Error).name === "AbortError" || ctrl.signal.aborted;
+    change((c) => withJob(c, id, (j) => (j.kind === "find" ? { kind: "find", what: j.what, goal: j.goal, error: stopped ? "You stopped the look, so I'll go by what you tell me." : `I couldn't look it up (${message(e)}), so I'll go by what you tell me.` } : j)));
+  } finally {
+    end(id);
+  }
+}
 
 /** The opening round answered: their answers read as a brain dump that's asked for a goal or a problem. */
 export async function answerFind(id: string, answers: Readonly<Record<string, string>>) {
@@ -228,11 +274,21 @@ export async function answerFind(id: string, answers: Readonly<Record<string, st
   const { text: words, asked, said } = findText(questions, answers);
   if (words.length < FIND_MIN) return change((c) => withJob(c, id, (j) => (j.kind === "find" ? { ...j, error: "Say a little more in your answers, so there's something to go on." } : j)));
   const source = newId();
-  change((c) => withJob(c, id, () => ({ kind: "dump", source, find: { what, said } })));
+  const { goal, look } = t.job;
+  change((c) => withJob(c, id, () => ({ kind: "dump", source, find: { what, said, ...(goal ? { goal } : {}) } })));
   try {
-    // The source reads on its own: each question asked and their answer, pieces from the answers alone.
-    const record = findTranscript(questions, answers, { what, org: useMarket.getState().org || undefined });
-    await startDump(record.text, { id: source, aim: { find: what, asked }, title: `Your answers: finding ${what === "goal" ? "a goal" : "a problem"}`, parts: record.parts });
+    // The source reads on its own: each question asked and their answer (for a goal, what the web said first), pieces from the answers alone.
+    const org = useMarket.getState().org || undefined;
+    const record = goal ? focusTranscript(questions, answers, { goal: goal.title, org, look }) : findTranscript(questions, answers, { what, org });
+    // A goal whose card went meanwhile: the problems go where problems go.
+    const under = goal && studio().doc.nodes[goal.card] ? goal : null;
+    await startDump(record.text, {
+      id: source,
+      aim: { find: what, asked, ...(under ? { goal: { card: under.card, id: under.id } } : {}) },
+      title: goal ? `Your answers: the problem to focus on for “${goal.title.slice(0, 80)}”` : `Your answers: finding ${what === "goal" ? "a goal" : "a problem"}`,
+      parts: record.parts,
+      ...(look ? { looks: [{ ...look, after: -1 }] } : {}),
+    });
     sourceCame(sourceOf(source)?.title ?? "Your answers");
   } catch (e) {
     change((c) => withJob(c, id, (j) => (j.kind === "dump" ? { ...j, error: message(e) } : j)));

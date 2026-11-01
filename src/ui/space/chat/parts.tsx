@@ -62,7 +62,7 @@ function WorkingPart({ data }: { data: PartData }) {
   const { org } = useWords();
   if (!live || !t) return null;
   const said = t.said.length > 60 ? `${t.said.slice(0, 59)}…` : t.said;
-  const first = t.job.kind === "take" ? "Taking in what customers said" : `Looking through the ${org} for “${said}”`;
+  const first = t.job.kind === "take" ? "Taking in what customers said" : t.job.kind === "find" ? "Looking on the web for what usually gets in the way of goals like it" : `Looking through the ${org} for “${said}”`;
   return (
     <div className="flex flex-col gap-[6px]">
       <Progress label={live.steps.at(-1) ?? first} started={live.started} tokens={0} />
@@ -294,12 +294,24 @@ function AnsweredPart({ data }: { data: PartData }) {
   return (
     <div className="flex flex-col gap-[8px]">
       <AnswersSummary questions={b.questions.map(toQuestion)} answers={b.form.answers} label={`Your answers · round ${Number(data.round) + 1}`} />
-      {b.analysis && (
+      {b.analysis && !data.bare && (
         <p className="text-body leading-[20px] text-fg" dir="auto">
           {b.analysis}
         </p>
       )}
     </div>
+  );
+}
+
+/** What Qalam AI took from a round, after what it looked up on the web for it. */
+function AnalysisPart({ data }: { data: PartData }) {
+  const d = useDumpOf(data.turn);
+  const analysis = d?.s.buckets[Number(data.round)]?.analysis;
+  if (!analysis) return null;
+  return (
+    <p className="text-body leading-[20px] text-fg" dir="auto">
+      {analysis}
+    </p>
   );
 }
 
@@ -521,6 +533,48 @@ function OpeningPart({ data }: { data: PartData }) {
   );
 }
 
+/**
+ * What Qalam AI read on the web while finding a goal's problem: what it looked up, and each line
+ * the pages bear out, with where (others' words, never what a card rests on). The opening look is
+ * the find turn's; the later ones are its dump's, after the round they followed.
+ */
+function LookedPart({ data }: { data: PartData }) {
+  const t = useTurn(data.turn);
+  const d = useDumpOf(data.turn);
+  const look = t?.job.kind === "find" ? t.job.look : data.look !== undefined ? d?.s.looks?.[Number(data.look)] : undefined;
+  if (!look) return null;
+  if (look.noWeb) return <p className="text-body leading-[20px] text-fg">I can&apos;t look on the web here, so I&apos;ll go by what you tell me.</p>;
+  const what = look.query ? `I looked up “${look.query}”` : "I looked on the web for what usually gets in the way of goals like this";
+  if (!look.lines.length) return <p className="text-body leading-[20px] text-fg">{what}, but nothing on the pages I read held up.</p>;
+  return (
+    <div className="flex flex-col gap-[8px]">
+      <p className="text-body leading-[20px] text-fg">{what}. What the pages say (others&apos; words, not your customers&apos;):</p>
+      <ul className="flex flex-col gap-[6px]">
+        {look.lines.map((l) => (
+          <li key={l.id} className={clsx(qr.inset, "flex flex-col gap-[2px] px-[10px] py-[8px]")}>
+            <span className="text-caption leading-[18px] text-fg" dir="auto">
+              {l.text}
+            </span>
+            {l.url && (
+              <a href={l.url} target="_blank" rel="noreferrer" className="truncate text-micro text-fg-subtle hover:text-fg" title={l.quote ? `“${l.quote}”` : l.url}>
+                {l.title || hostName(l.url)}
+              </a>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+const hostName = (url: string) => {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+};
+
 /** "Help me find one" let go before it's answered. */
 function CancelPart({ data }: { data: PartData }) {
   return (
@@ -694,6 +748,7 @@ export const PARTS: Record<string, PartComponent> = {
   dumping: DumpingPart,
   took: TookPart,
   answered: AnsweredPart,
+  analysis: AnalysisPart,
   skip: SkipPart,
   place: PlacePart,
   retry: RetryPart,
@@ -701,5 +756,6 @@ export const PARTS: Record<string, PartComponent> = {
   proposed: ProposedPart,
   placed: PlacedPart,
   opening: OpeningPart,
+  looked: LookedPart,
   cancel: CancelPart,
 };

@@ -1,6 +1,7 @@
 import { callAI } from "@/ai/client";
 import type { Breakdown, GoalWork } from "@/goals/breakdown";
 import type { ProblemsDrafted } from "@/goals/drafted";
+import type { FocusLooked } from "@/goals/focus";
 import type { Goal, GoalLever } from "@/goals/types";
 import { orgJson, orgPath } from "./client";
 import type { DraftWords } from "./solutions";
@@ -46,6 +47,9 @@ export const draftProblems = (goal: string, o: { cards: string[] } & DraftWords,
 
 /** A drafted problem taken (it's under the goal's card now) or left. */
 export const decideProblem = (goal: string, draft: string, decision: "accepted" | "discarded") => orgJson<{ ok: true }>(at(goal, `/problems/${encodeURIComponent(draft)}`), { method: "PUT", json: { decision } });
+
+/** Finding the problem to focus on: a look on the web for what gets in its way (`query`: what their answers called for), and with `open`, the first questions to ask. */
+export const lookForGoal = (goal: string, o: { query?: string; said?: string; open?: boolean }, onActivity?: (label: string) => void, signal?: AbortSignal) => run<FocusLooked>(at(goal, "/focus"), o, onActivity, signal);
 
 /** What others aim for, looked up on the web and checked on each page. */
 export const lookOutside = (goal: string, onActivity?: (label: string) => void, signal?: AbortSignal) => run<{ kept: number; read: number; error?: string }>(at(goal, "/outside"), {}, onActivity, signal);

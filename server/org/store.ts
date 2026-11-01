@@ -1007,7 +1007,7 @@ export class OrgStore {
 
   async getGoalWork(goal: string): Promise<GoalWork> {
     const j = await readJson<GoalWork & { qalam?: string }>(this.goalWorkFile(goal));
-    return j?.qalam === "goal-work/1" ? { ...(j.outside ? { outside: j.outside } : {}), ...(j.breakdown ? { breakdown: j.breakdown } : {}), ...(j.funnel ? { funnel: j.funnel } : {}), ...(j.problems ? { problems: j.problems } : {}) } : {};
+    return j?.qalam === "goal-work/1" ? { ...(j.outside ? { outside: j.outside } : {}), ...(j.breakdown ? { breakdown: j.breakdown } : {}), ...(j.funnel ? { funnel: j.funnel } : {}), ...(j.problems ? { problems: j.problems } : {}), ...(j.focus ? { focus: j.focus } : {}) } : {};
   }
 
   async changeGoalWork(goal: string, fn: (w: GoalWork) => GoalWork, opts: { tab?: string } = {}): Promise<GoalWork> {
@@ -1015,7 +1015,7 @@ export class OrgStore {
     let next: GoalWork = {};
     await locked(file, async () => {
       next = fn(await this.getGoalWork(goal));
-      if (next.outside || next.breakdown || next.funnel || next.problems) await this.write(file, stableStringify({ qalam: "goal-work/1", goal, ...next }));
+      if (next.outside || next.breakdown || next.funnel || next.problems || next.focus) await this.write(file, stableStringify({ qalam: "goal-work/1", goal, ...next }));
       else await rm(file, { force: true });
     });
     this.emit({ kind: "goalwork", goal, tab: opts.tab });

@@ -70,6 +70,10 @@ export async function runStep(card: string, step: NextStep, f: CardFacts, o: { l
     case "watch":
     case "add-file":
       return;
+    // Asked in the canvas's chat: it looks on the web, asks, then proposes problems under it.
+    case "focus":
+      if (f.goal) void import("../space/chat/store").then((m) => m.focusWith(card, f.goal!.id));
+      return;
     case "draft-solutions":
       return draftSolutionsFor(card);
     case "draft-tests":

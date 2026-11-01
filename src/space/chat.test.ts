@@ -92,6 +92,27 @@ describe("a brain dump in the canvas's chat", () => {
     expect(asking(c, () => session({ phase: "review" }))).toBeNull();
     expect(threadOf(c, () => session({ phase: "review" }))[1].parts.map((p) => (p.type === "data" ? p.name : "text"))).toEqual(["opening", "took", "answered", "proposed"]);
   });
+
+  it("finds the problem to focus on for a goal: looks on the web first (Stop stops it), asks, then shows each look after the round it followed", () => {
+    const goal = { card: "c1", id: "g1", title: "More PMs adopt Qalam" };
+    const look = { at: 1, query: "", lines: [], pages: [] };
+    const names = (cc: ReturnType<typeof emptyChat>, s: DumpSession | null = null) => threadOf(cc, () => s)[1].parts.map((p) => (p.type === "data" ? `${p.name}${p.data.look !== undefined ? `:${p.data.look}` : ""}` : "text"));
+    let c = withTurn(emptyChat(), turn("f", { kind: "find", what: "problem", goal, loading: true }, "Find the problem to focus on"));
+    expect(names(c)).toEqual(["working", "cancel"]);
+    expect(running(c)?.id).toBe("f");
+    c = withJob(c, "f", () => ({ kind: "find", what: "problem", goal, look }));
+    expect(running(c)).toBeNull();
+    expect(asking(c, () => null)).toMatchObject({ find: "problem" });
+    expect(names(c)).toEqual(["looked", "text", "cancel"]);
+    c = withJob(c, "f", () => ({ kind: "dump", source: "s1", find: { what: "problem", said: [{ question: "Who?", answer: "PMs" }], goal } }));
+    const two = session({ phase: "asking", buckets: [session({}).buckets[0], session({}).buckets[0]], looks: [{ ...look, after: -1 }, { ...look, query: "why PMs drop tools", after: 0 }] });
+    expect(names(c, two)).toEqual(["looked:0", "opening", "took", "answered", "looked:1", "text", "skip"]);
+    // What it took from that round, read with the look, comes after the look.
+    const read = { ...two, phase: "review" as const, buckets: two.buckets.map((b) => ({ ...b, analysis: "Cash at the door wins." })) };
+    expect(names(c, read)).toEqual(["looked:0", "opening", "took", "answered", "looked:1", "analysis", "answered", "proposed"]);
+    // A reload while it looked: code's own questions, no look.
+    expect(chatOf({ v: 1, turns: [turn("f", { kind: "find", what: "problem", goal, loading: true })] }).turns[0].job).toEqual({ kind: "find", what: "problem", goal });
+  });
 });
 
 describe("short statements and what came of them", () => {

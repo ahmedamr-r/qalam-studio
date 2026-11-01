@@ -2,6 +2,7 @@ import type { OstMetric } from "@/discovery/types";
 import { checkWords, sameTopic } from "@/hub/topics";
 import type { PackedPiece } from "@/org/pack";
 import type { DraftedProblems } from "./drafted";
+import type { FocusLook } from "./focus";
 import { metricLine } from "./goals-md";
 import type { Relation } from "./math";
 import type { Benchmark, Outside } from "./outside";
@@ -56,6 +57,8 @@ export interface GoalWork {
   breakdown?: Breakdown;
   funnel?: FunnelNumbers;
   problems?: DraftedProblems;
+  /** What the web said gets in its way, looked up while finding the problem to focus on (src/goals/focus.ts): the newest looks. */
+  focus?: { looks: FocusLook[] };
 }
 
 export const BREAKDOWN_LIMITS = { parts: 5, title: 100, why: 240 } as const;

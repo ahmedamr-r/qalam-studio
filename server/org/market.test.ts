@@ -51,7 +51,7 @@ const deps = (o: { web?: boolean; facts?: unknown } = {}): MarketDeps => ({
 
 /** Until the look running in the core settles down. */
 async function settled() {
-  for (let i = 0; i < 300; i++) {
+  for (const end = Date.now() + 10_000; Date.now() < end; ) {
     const s = await marketSession(store);
     if (s.company && s.company.state !== "looking") return s;
     await new Promise((r) => setTimeout(r, 10));
@@ -80,7 +80,7 @@ describe("looking the company up in the first run", () => {
     const s = await settleCompany(store, [{ id: does.id, keep: true, text: "Collects used cooking oil from homes and restaurants across Egypt." }, { id: model.id, keep: false }], ["Founded in 2016."], { deps: deps({ web: false }) });
     expect(s.company).toMatchObject({ state: "settled", kept: 2 });
     // The domain is read once the facts are kept (no web here: it settles at once).
-    for (let i = 0; i < 300 && (await marketSession(store)).domain?.state !== "settled"; i++) await new Promise((r) => setTimeout(r, 10));
+    for (const end = Date.now() + 10_000; Date.now() < end && (await marketSession(store)).domain?.state !== "settled"; ) await new Promise((r) => setTimeout(r, 10));
     expect((await marketSession(store)).domain).toMatchObject({ state: "settled", noWeb: true });
     const m = await store.getMarket();
     expect(m.company.map((l) => [l.text, l.by])).toEqual([
@@ -108,7 +108,7 @@ describe("competitors and the domain in the first run", () => {
     structured: vi.fn(async () => ({ data })) as MarketDeps["structured"],
   });
   async function until(look: "competitors" | "domain") {
-    for (let i = 0; i < 300; i++) {
+    for (const end = Date.now() + 10_000; Date.now() < end; ) {
       const s = await marketSession(store);
       if (s[look] && s[look]!.state !== "looking") return s;
       await new Promise((r) => setTimeout(r, 10));

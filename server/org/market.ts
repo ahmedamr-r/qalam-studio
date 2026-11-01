@@ -33,7 +33,7 @@ export interface MarketDeps {
   structured: <T>(call: Parameters<typeof structured>[0], signal?: AbortSignal) => Promise<{ data: T; model?: string }>;
 }
 
-const realDeps: MarketDeps = { research, read: readPage, structured };
+export const realDeps: MarketDeps = { research, read: readPage, structured };
 
 /** Lookups running in this process, by organization and look: one at a time each. */
 const running = new Map<string, AbortController>();
@@ -68,7 +68,7 @@ function stepper<K extends LookName>(store: OrgStore, look: K) {
 }
 
 /** The links the research step's notes cite, the company's own site first. */
-function linksOf(info: ResearchInfo | null, first: string | null): { url: string; title?: string }[] {
+export function linksOf(info: ResearchInfo | null, first: string | null): { url: string; title?: string }[] {
   const all = [...(first ? [{ url: first }] : []), ...(info?.sources ?? []).filter((s) => /^https?:\/\//i.test(s.url))];
   const seen = new Set<string>();
   return all.filter((l) => {
@@ -184,7 +184,7 @@ function startRun(store: OrgStore, look: LookName, run: (ctrl: AbortController) 
 }
 
 /** Pages a research step's notes link, read by code (the first ones that read). */
-async function readLinks(deps: MarketDeps, info: ResearchInfo | null, signal: AbortSignal): Promise<OutsidePage[]> {
+export async function readLinks(deps: MarketDeps, info: ResearchInfo | null, signal: AbortSignal): Promise<OutsidePage[]> {
   return (await Promise.all(linksOf(info, null).slice(0, MAX_PAGES + 2).map((l) => deps.read(l, signal)))).filter((p): p is OutsidePage => !!p).slice(0, MAX_PAGES);
 }
 

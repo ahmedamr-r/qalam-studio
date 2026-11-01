@@ -3,6 +3,7 @@ import type { AskAnswer } from "@/hub/ask";
 import type { SetupDoc } from "@/org/setup";
 import type { FindWhat } from "./find";
 import type { PlanQuestion } from "@/ai/plan";
+import type { FocusLook } from "@/goals/focus";
 
 /*
  * Qalam AI's chat on the left of a space's canvas (src/ui/space/chat/), as it's kept: one file per
@@ -43,9 +44,20 @@ export type ChatJob =
    * started; `find`: it answers "Help me find one", with what they said to code's questions;
    * `file`: a file added for a card, read against it, `left` once they left it out).
    */
-  | { kind: "dump"; source: string; error?: string; find?: { what: FindWhat; said: { question: string; answer: string }[] }; file?: { card: string; title: string; left?: true } }
-  /** "Help me find one": code's opening questions, being answered (the box asks them). */
-  | { kind: "find"; what: FindWhat; error?: string; /** Qalam AI's opening questions, from what's known about the company and its domain (none: code's own). */ questions?: PlanQuestion[]; /** Those being worked out. */ loading?: true };
+  | { kind: "dump"; source: string; error?: string; find?: { what: FindWhat; said: { question: string; answer: string }[]; goal?: FocusGoal }; file?: { card: string; title: string; left?: true } }
+  /**
+   * "Help me find one": the opening questions, being answered (the box asks them). `goal`: the
+   * problem to focus on for a goal on the canvas, its opening questions asked once Qalam AI has
+   * looked on the web for what usually gets in its way (`look`).
+   */
+  | { kind: "find"; what: FindWhat; error?: string; /** Qalam AI's opening questions, from what's known about the company and its domain (none: code's own). */ questions?: PlanQuestion[]; /** Those being worked out. */ loading?: true; goal?: FocusGoal; look?: FocusLook };
+
+/** The goal whose problem to focus on: its card on the canvas, its id in goals.md, its words. */
+export interface FocusGoal {
+  card: string;
+  id: string;
+  title: string;
+}
 
 export interface ChatTurn {
   id: string;
@@ -122,7 +134,10 @@ const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
 /** A dump's session by its source's id (null: not loaded, or gone). */
 export type DumpOf = (source: string) => DumpSession | null;
 
-/** A brain dump in the thread: what Qalam AI took from it, each round answered, then where it stands. */
+/** The looks on the web after a round (-1: before the first), as the thread shows them. */
+const looksAfter = (t: ChatTurn, s: DumpSession | null, round: number): ChatPart[] => (s?.looks ?? []).flatMap((l, i) => (l.after === round ? [part("looked", { turn: t.id, look: i })] : []));
+
+/** A brain dump in the thread: what Qalam AI took from it, each round answered (and what it looked up after), then where it stands. */
 function dumpReply(t: ChatTurn, s: DumpSession | null): ChatPart[] {
   const id = { turn: t.id };
   if (!s || s.phase === "reading") return [part("dumping", id)];
@@ -130,7 +145,11 @@ function dumpReply(t: ChatTurn, s: DumpSession | null): ChatPart[] {
   if (s.understanding || s.challenges.length) out.push(part("took", id));
   const last = s.buckets.length - 1;
   s.buckets.forEach((b, i) => {
-    if (i < last || s.phase !== "asking") out.push(part("answered", { turn: t.id, round: i }));
+    if (i >= last && s.phase === "asking") return;
+    // What it took from a round it looked something up after reads it with what the look found: the look first.
+    const looked = looksAfter(t, s, i);
+    if (looked.length && b.analysis) out.push(part("answered", { turn: t.id, round: i, bare: true }), ...looked, part("analysis", { turn: t.id, round: i }));
+    else out.push(part("answered", { turn: t.id, round: i }), ...looked);
   });
   switch (s.phase) {
     case "asking":
@@ -179,10 +198,16 @@ function replyTo(t: ChatTurn, dumpOf: DumpOf): ChatPart[] {
         ),
         ...(j.pages.length ? [part("pages", id)] : []),
       ];
-    case "dump":
+    case "dump": {
       if (j.file?.left) return [text(`You left “${j.file.title}” out.`)];
-      return [...(j.find ? [part("opening", id)] : []), ...(j.error ? [text(j.error)] : dumpReply(t, dumpOf(j.source)))];
+      const s = dumpOf(j.source);
+      return [...looksAfter(t, s, -1), ...(j.find ? [part("opening", id)] : []), ...(j.error ? [text(j.error)] : dumpReply(t, s))];
+    }
     case "find":
+      if (j.goal) {
+        if (j.loading) return [part("working", id), part("cancel", id)];
+        return [...(j.look ? [part("looked", id)] : []), text("A few questions first. I'll look things up where your answers call for it, then propose the problems to focus on. Skip any you can't answer."), ...(j.error ? [text(j.error)] : []), part("cancel", id)];
+      }
       return [text(`A few questions first, then I'll suggest ${j.what === "goal" ? "a goal" : "a problem"} from what you say. Skip any you can't answer.`), ...(j.error ? [text(j.error)] : []), part("cancel", id)];
   }
 }
@@ -202,7 +227,8 @@ export function asking(c: CanvasChat, dumpOf: DumpOf): ({ turn: ChatTurn } & ({ 
   return null;
 }
 
-const busy = (j: ChatJob) => (j.kind === "ask" && j.state === "asking") || (j.kind === "take" && j.state === "taking");
+// A goal's opening look runs here (the box offers Stop); the questions it works out are asked after.
+const busy = (j: ChatJob) => (j.kind === "ask" && j.state === "asking") || (j.kind === "take" && j.state === "taking") || (j.kind === "find" && !!j.goal && !!j.loading);
 
 /** What in the chat is still running (the composer offers Stop). */
 export const running = (c: CanvasChat): ChatTurn | null => [...c.turns].reverse().find((t) => busy(t.job)) ?? null;

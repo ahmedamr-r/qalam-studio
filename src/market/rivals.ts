@@ -33,11 +33,11 @@ export interface PagesSent {
   pages: Map<string, OutsidePage>;
 }
 
-function pagesBlock(pages: OutsidePage[]): Map<string, OutsidePage> {
+export function pagesBlock(pages: OutsidePage[]): Map<string, OutsidePage> {
   return new Map(pages.slice(0, MAX_PAGES).map((p, i) => [`w${i + 1}`, { ...p, ref: `w${i + 1}` }]));
 }
 
-const pageLines = (pages: Map<string, OutsidePage>) => [...pages.values()].flatMap((p) => [`<page id="${p.ref}" title="${one(p.title).replace(/"/g, "'")}" url="${p.url}">`, p.text.slice(0, PAGE_TEXT), "</page>"]);
+export const pageLines = (pages: Map<string, OutsidePage>) => [...pages.values()].flatMap((p) => [`<page id="${p.ref}" title="${one(p.title).replace(/"/g, "'")}" url="${p.url}">`, p.text.slice(0, PAGE_TEXT), "</page>"]);
 
 // ---------------------------------------------------------------------------
 // Competitors
@@ -72,7 +72,7 @@ export function competitorsMaterial(o: { org: string; facts: readonly MarketLine
 }
 
 /** A line about a competitor, or about the domain, kept only where its quote is on its page and its numbers are in the quote. */
-function checkedLine(x: Record<string, unknown>, pages: Map<string, OutsidePage>, o: { now: number; id: string }): MarketLine | null {
+export function checkedLine(x: Record<string, unknown>, pages: Map<string, OutsidePage>, o: { now: number; id: string }): MarketLine | null {
   const text = clip(x.text, MARKET_LIMITS.text);
   const page = typeof x.page === "string" ? pages.get(x.page.trim()) : undefined;
   const found = page && typeof x.quote === "string" ? findQuote(page.text, x.quote.slice(0, MARKET_LIMITS.quote)) : null;

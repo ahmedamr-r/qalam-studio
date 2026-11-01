@@ -173,7 +173,6 @@ export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
   );
 }
 
-/** "Help me find one": code's opening questions, in place of the box until they're answered. */
 /** "Help me find one"'s opening round: Qalam AI's questions from what's known about the domain, once they're worked out, else code's own. */
 function FindRound({ turn, what }: { turn: string; what: FindWhat }) {
   const job = useCanvasChat((s) => s.chat.turns.find((t) => t.id === turn)?.job);
@@ -188,6 +187,8 @@ function FindRound({ turn, what }: { turn: string; what: FindWhat }) {
 }
 
 function FindForm({ turn, what }: { turn: string; what: FindWhat }) {
+  const job = turnOf(turn)?.job;
+  const goal = job?.kind === "find" ? job.goal : undefined;
   const questions = useMemo(() => {
     const j = turnOf(turn)?.job;
     return findQuestionsOf(j?.kind === "find" ? j : { what }).map(toQuestion);
@@ -202,7 +203,7 @@ function FindForm({ turn, what }: { turn: string; what: FindWhat }) {
   };
   return (
     <Questionnaire
-      title={what === "goal" ? "To find a goal" : "To find a problem"}
+      title={goal ? "To find the problem to focus on" : what === "goal" ? "To find a goal" : "To find a problem"}
       questions={questions}
       state={form}
       onChange={setForm}

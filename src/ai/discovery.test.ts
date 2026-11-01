@@ -225,6 +225,27 @@ describe("brain dump requests", () => {
     expect((dumpReadSchema(["c1"]) as { required: string[] }).required).not.toContain("bears");
     expect(dumpPlaceContent({ stage: "dump-place", ...base, ...read, file, answers: [] })).toContain("Place what in the file bears on c2, only under it");
   });
+
+  it("finds the problem to focus on for a goal: aimed under its card, a look on the web asked for between rounds, problems placed only under it", () => {
+    const aim = { find: "problem" as const, asked: ["Who has to do something different for it to move?"], under: "c1" };
+    expect(DiscoveryBody.safeParse({ stage: "dump-read", ...base, aim }).success).toBe(true);
+    const text = dumpReadContent({ stage: "dump-read", ...base, aim });
+    expect(text).toContain("They asked you to help them find the problem to focus on to move c1 (outcome: More customers reorder every week)");
+    expect(text).toContain("what you read on the web, each under a heading that says so");
+    const round = { answers: [{ question: "Which goal?", answer: "Reorders" }] };
+    const looking = dumpFollowupContent({ stage: "dump-followup", ...base, ...read, aim, rounds: [round], last: false, look: true });
+    expect(looking).toContain("Before your next round, look on the web once when their answers name something others have faced");
+    expect(dumpFollowupContent({ stage: "dump-followup", ...base, ...read, aim, rounds: [round], last: true, look: true })).not.toContain("look on the web once");
+    const schema = dumpFollowupSchema(["c1"], ["f1"], true) as { required: string[] };
+    expect(schema.required[0]).toBe("look");
+    expect(openRequired(schema)).toEqual([]);
+    expect((dumpFollowupSchema(["c1"], ["f1"]) as { required: string[] }).required).not.toContain("look");
+    const place = dumpPlaceContent({ stage: "dump-place", ...base, ...read, aim, answers: [] });
+    expect(place).toContain("Propose 1 to 3 problems (opportunity cards) under c1, only there");
+    expect(place).toContain("the one to focus on first");
+    // Without a goal, a problem is placed where it fits.
+    expect(dumpPlaceContent({ stage: "dump-place", ...base, ...read, aim: { find: "problem", asked: [] }, answers: [] })).toContain("under the goal it bears on when the board has one");
+  });
 });
 describe("calls that carry what the organization knows", () => {
   const context = { block: "[k1] Pain Sara said in “Sara interview”\nThey swap it without asking\n[k2] A decision the team made: Dropped saved baskets", ids: ["k1", "k2"], quotes: ["k1"] };

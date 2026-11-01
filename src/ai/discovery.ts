@@ -56,8 +56,8 @@ const DumpCardIn = CardIn.extend({
 export type DumpCardInput = z.infer<typeof DumpCardIn>;
 const FragmentIn = z.object({ id: text(12), quote: text(1200), role: z.enum(DUMP_ROLES) });
 const ChallengeIn = z.object({ kind: z.enum(CHALLENGE_KINDS), fragmentId: text(12), cardId: text(12).nullable(), text: text(400) });
-/** A dump that answers the canvas chat's "Help me find one": what they asked for, and the questions their answers are to, in order. */
-const DumpAim = z.object({ find: z.enum(["goal", "problem"]), asked: z.array(text(300)).max(6) }).optional();
+/** A dump that answers the canvas chat's "Help me find one": what they asked for, the questions their answers are to, in order, and (`under`) the goal whose problem to focus on, by the id the tree gives it. */
+const DumpAim = z.object({ find: z.enum(["goal", "problem"]), asked: z.array(text(300)).max(6), under: text(12).optional() }).optional();
 /** A file they added for a card ("Add a file for it"): its title, the card (by the id the tree gives it), and whether its words were cut to fit. */
 const DumpFileIn = z.object({ title: text(300), card: text(12), cut: z.boolean().optional() }).optional();
 /** What's known about the company's market (src/market/text.ts): read on the web, never what customers said. */
@@ -84,6 +84,8 @@ export const DiscoveryBody = z
       rounds: z.array(z.object({ answers: z.array(QA).max(BUCKET_MAX), analysis: text(1500).optional() })).min(1).max(MAX_DUMP_ROUNDS),
       /** The last round allowed: Qalam AI is ready after it. */
       last: z.boolean(),
+      /** It may ask for a look on the web before its next questions (finding a goal's problem). */
+      look: z.boolean().optional(),
     }),
     z.object({ stage: z.literal("dump-place"), ...DumpBase, ...DumpRead, answers: z.array(Answer.extend({ id: text(12) })).max(MAX_DUMP_ROUNDS * BUCKET_MAX), context: ContextIn }),
     z.object({
@@ -563,9 +565,10 @@ export function dumpReadSchema(cardIds: string[], file = false) {
 }
 
 /** The follow-up schema: pieces are named by the ids the request gave them. */
-export function dumpFollowupSchema(cardIds: string[], fragmentIds: string[]) {
+export function dumpFollowupSchema(cardIds: string[], fragmentIds: string[], look = false) {
   const fragment = enm(ids(fragmentIds), "A piece's id");
   return obj({
+    ...(look ? { look: str("What to look up on the web before your next round, as a short search, when their answers name something others have faced or written about (then ask nothing this time). \"\" only when nothing is worth looking up") } : {}),
     analysis: str("2–4 plain sentences to the builder: what their answers settle, what each changes on the board, what's still open. No praise"),
     understanding: str("What you take from the dump now, with the answers: 2–4 sentences"),
     roles: arr(obj({ fragmentId: fragment, role: enm(DUMP_ROLES, ROLE_HINT) }), "Pieces whose role the answers change. [] when none"),
@@ -663,6 +666,16 @@ type DumpRequest = Extract<DiscoveryRequest, { stage: "dump-read" | "dump-follow
 /** What they asked for, when the dump answers "Help me find one". */
 const AIM_LINE = { goal: "a goal: an outcome the team is trying to move, said as a change it could see", problem: "a problem: a need, a pain or a wish of the people the product is for" } as const;
 
+/** What they asked for, in words: a goal or a problem, or the problem to focus on to move a goal on the board. */
+function aimLine(aim: NonNullable<DumpRequest["aim"]>, tree: DumpRequest["tree"]) {
+  if (!aim.under) return AIM_LINE[aim.find];
+  const goal = tree.find((c) => c.id === aim.under);
+  return `the problem to focus on to move ${aim.under}${goal ? ` (${goal.kind}: ${goal.title})` : ""}: what keeps it from moving, as a need, a pain or a wish of the people it depends on`;
+}
+
+/** Looks on the web in the brain dump (finding a goal's problem): what they are. */
+const WEB_LINE = "The brain dump also has what you read on the web, each under a heading that says so: others' words about goals like theirs, context for your questions and for which problem to focus on. Never their words or their customers', never quoted as a piece, nothing a card rests on.";
+
 /** What a file read for a card is: whatever they had, read against that card. */
 function fileLine(f: NonNullable<DumpRequest["file"]>, tree: DumpRequest["tree"]) {
   const card = tree.find((c) => c.id === f.card);
@@ -676,7 +689,7 @@ const dumpMaterial = (b: DumpRequest) => [
   "",
   b.tree.length ? "The board (id · kind · title — description [metric] {assumptions} (what backs it), each card under its parent):" : "The board is empty.",
   ...dumpOutline(b.tree),
-  ...(b.aim ? ["", `They asked you to help them find ${AIM_LINE[b.aim.find]}. They were asked these questions, and the brain dump has each one followed by their answer (one they skipped is left out). Only the answers are their words: quote pieces from the answers, never from a question.`, ...b.aim.asked.map((q) => `- ${q}`)] : []),
+  ...(b.aim ? ["", `They asked you to help them find ${aimLine(b.aim, b.tree)}. They were asked these questions, and the brain dump has each one followed by their answer (one they skipped is left out). Only the answers are their words: quote pieces from the answers, never from a question.`, ...b.aim.asked.map((q) => `- ${q}`), ...(b.aim.under ? [WEB_LINE] : [])] : []),
   ...(b.file ? ["", fileLine(b.file, b.tree)] : []),
   "",
   "The brain dump:",
@@ -711,6 +724,9 @@ export function dumpFollowupContent(b: Extract<DiscoveryRequest, { stage: "dump-
       "",
     ]),
     b.last ? "That was the last round: read the answers, and you're ready." : "Read the latest answers.",
+    ...(b.look && !b.last
+      ? ["", "Before your next round, look on the web once when their answers name something others have faced or written about (a rival or an informal buyer, a habit, a barrier, a price, why people like theirs give up on something like it): what others report sharpens your next questions and which problem to focus on. Then say what to look up in `look`, as a short search a person would type, and ask nothing this time: you'll read what it found, then ask. Leave `look` empty only when their answers leave nothing worth looking up."]
+      : []),
   ].join("\n");
 }
 
@@ -726,7 +742,9 @@ export function dumpPlaceContent(b: Extract<DiscoveryRequest, { stage: "dump-pla
     b.aim
       ? b.aim.find === "goal"
         ? "Propose 1 to 3 goals (outcome cards) from what they said, each resting on their words, the best first: under the goal it moves when the board has one, else as a tree of its own. Word each as a proper goal, not a label: the change the team wants to see, for whom, in one short sentence (\"More households hand over their used oil every month\"), with its metric only from numbers they gave. Propose nothing else."
-        : "Propose 1 to 3 problems (opportunity cards) from what they said, each resting on their words, the best first: under the goal it bears on when the board has one, else as a tree of its own. Word each as a proper problem, not a label: a need, pain or wish in the customer's voice, in one short sentence (\"I never know when the collector will come\"). Propose nothing else."
+        : b.aim.under
+          ? `Propose 1 to 3 problems (opportunity cards) under ${b.aim.under}, only there: what keeps it from moving, each resting on their words, the one to focus on first. Word each as a proper problem, not a label: a need, pain or wish in the voice of the people it depends on, in one short sentence ("I never know when the collector will come"). In each one's why, say why it's the one to focus on, from what they said (what you read on the web only as what others report). Propose nothing else.`
+          : "Propose 1 to 3 problems (opportunity cards) from what they said, each resting on their words, the best first: under the goal it bears on when the board has one, else as a tree of its own. Word each as a proper problem, not a label: a need, pain or wish in the customer's voice, in one short sentence (\"I never know when the collector will come\"). Propose nothing else."
       : b.file
         ? `Place what in the file bears on ${b.file.card}, only under it: when it's an outcome, the needs it shows (opportunities: pains and wishes of the people it's for) under it, and finer outcomes where it names them; when it's an opportunity, finer needs, solutions and tests under it. Attach the pieces that back ${b.file.card} or the cards under it. Change nothing elsewhere on the board.`
         : "Place the brain dump on the board.",

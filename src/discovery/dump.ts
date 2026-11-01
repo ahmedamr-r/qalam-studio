@@ -10,6 +10,7 @@ import type { QuoteKind, SourceQuote, TextBlock } from "./sources";
 import { allCards, childCards } from "./tree";
 import type { OstKind, OstMetric } from "./types";
 import type { Proposal } from "./proposals";
+import { lookHead, lookLines, type FocusLook } from "@/goals/focus";
 
 /*
  * A brain dump (pure): the builder's own thinking pasted onto the board as it comes (goals, needs,
@@ -101,8 +102,14 @@ export interface DumpSession {
   turn?: { chatId: string; turnId: string };
   sample?: boolean;
   model?: string;
-  /** It answers the chat's "Help me find one": what they asked for, and the questions their answers (the dump's text) are to. */
-  aim?: { find: "goal" | "problem"; asked: string[] };
+  /**
+   * It answers the chat's "Help me find one": what they asked for, and the questions their answers
+   * (the dump's text) are to; `goal`: the problem to focus on for a goal on the canvas (its card,
+   * and its id in goals.md), placed only under it.
+   */
+  aim?: { find: "goal" | "problem"; asked: string[]; goal?: { card: string; id: string } };
+  /** What Qalam AI looked up on the web while finding a goal's problem, each after the round it followed (-1: before the first). */
+  looks?: DumpLook[];
   /** A file added for a card (its next steps' "Add a file for it"): read against that card, and placed only under it. */
   file?: DumpFile;
   /** The parts of its text that are their words, when the rest is Qalam AI's questions (a find's answers): pieces only from these. */
@@ -110,6 +117,12 @@ export interface DumpSession {
   /** The file read as not bearing on its card: the kind of file that would help (in Qalam AI's words). */
   off?: { wanted: string };
 }
+
+/** A look on the web in a dump's conversation, after the round it followed (-1: before any). */
+export type DumpLook = FocusLook & { after: number };
+
+/** Looks on the web a goal's conversation makes after its opening one, at most. */
+export const MAX_LOOKS = 2;
 
 /** A file read for a card: its title, the card's id, and whether its words were cut to fit. */
 export interface DumpFile {
@@ -380,6 +393,8 @@ export interface DumpFollowup {
   challenges: DumpChallenge[];
   ready: boolean;
   questions: PlanQuestion[];
+  /** What it wants looked up on the web before its next round ("": nothing). */
+  look: string;
 }
 
 /** What Qalam AI made of a round of answers, checked: roles and pushback only on pieces that were sent. */
@@ -401,6 +416,7 @@ export function sanitizeDumpFollowup(raw: unknown, pieces: { ref: string; q: Sou
     // Ready means no more questions; questions without a round to put them in mean ready too.
     ready: r.ready === true || !questions.length,
     questions,
+    look: clip(readable(r.look, names), 200),
   };
 }
 
@@ -483,6 +499,16 @@ export function withRound(text: string, blocks: readonly TextBlock[], answers: r
   }
   if (out.length > DUMP_MAX_CHARS) return { text, blocks: [...blocks] };
   return { text: out, blocks: [...blocks, ...added] };
+}
+
+/** A look on the web goes onto the source's text after what's there, so it reads on its own: what was looked up, and what the pages say, each with where. */
+export function withLook(text: string, blocks: readonly TextBlock[], look: Pick<FocusLook, "query" | "lines">): { text: string; blocks: TextBlock[] } {
+  if (!look.lines.length) return { text, blocks: [...blocks] };
+  const head = lookHead(look);
+  const start = `${text.trimEnd()}\n\n`;
+  const out = `${start}${head}\n${lookLines(look).join("\n")}`;
+  if (out.length > DUMP_MAX_CHARS) return { text, blocks: [...blocks] };
+  return { text: out, blocks: [...blocks, { kind: "h2", span: [start.length, start.length + head.length] }] };
 }
 
 /** The answers as the builder's own words for the Library (Product context), ids `dump:<source>:<question>`. */
