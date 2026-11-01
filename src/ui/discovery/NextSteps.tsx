@@ -30,7 +30,6 @@ import { Questionnaire } from "../ai/Questionnaire";
 import { answerRound, cancelAsk, changeRound, draftNow, skipQuestions, startAsk, useAsk, type Ask } from "./ask";
 import { stopBusy, useBusy, type Busy, type Done } from "./busy";
 import { SPACE, addFeed, checkFeed, refreshFeed, useFeeds, wiredCards, type FeedNews } from "./feeds";
-import { addSources } from "./import";
 import { ACCEPT } from "./ingest";
 import { useSources } from "./sources";
 import { useTools, type Tool } from "./tools";
@@ -266,7 +265,8 @@ export default function NextSteps({ vp }: { vp: { w: number; h: number } }) {
         onChange={(e) => {
           const picked = [...(e.target.files ?? [])];
           e.target.value = "";
-          if (picked.length) void addSources(picked.map((file) => ({ kind: "file" as const, file })), { under: sel });
+          // Read in the chat, against the card (what customers said as their quotes, mapped under it).
+          if (picked.length) void import("../space/chat/store").then((m) => m.fileFor(sel, picked));
         }}
       />
     </div>

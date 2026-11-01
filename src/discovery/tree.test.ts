@@ -314,6 +314,9 @@ describe("evidence", () => {
     expect(isAssumed(need)).toBe(false);
     expect(tierOf(need)).toBe("answers");
     expect(evidenceLabel(need)).toBe("From your brain dump");
+    // A file they added for a card is read the same way, and says so.
+    expect(evidenceLabel(newCard("opportunity", { createdBy: "ai", evidence: [{ ...words, file: true }] }))).toBe("From your file");
+    expect(evidenceLabel(newCard("opportunity", { createdBy: "ai", evidence: [{ ...words, file: true }, { ...words, id: "e2" }] }))).toBe("From your brain dump");
     // Their own idea, named in the dump, isn't Qalam AI's.
     expect(isAIIdea(newCard("solution", { createdBy: "ai", evidence: [words] }))).toBe(false);
   });

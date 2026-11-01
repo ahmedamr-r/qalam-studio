@@ -44,10 +44,13 @@ export type AddInput =
   | { kind: "paste"; text: string; title?: string }
   | { kind: "connector"; connectors: string[]; request: string; label: string };
 
+/** What addSources takes: that, or something read already (a file the chat read first, to tell whose words it holds). */
+type Readable = AddInput | { kind: "read"; ingested: Ingested };
+
 const PATH = "/api/discovery";
 
-const titleOf = (i: AddInput) => (i.kind === "file" ? i.file.name : i.kind === "url" ? i.url : i.kind === "paste" ? i.title || "Pasted text" : `${i.label}: ${i.request}`);
-const kindOf = (i: AddInput): SourceKind => (i.kind === "file" ? "text" : i.kind === "url" ? "url" : i.kind === "paste" ? "paste" : "connector");
+const titleOf = (i: Readable) => (i.kind === "file" ? i.file.name : i.kind === "url" ? i.url : i.kind === "paste" ? i.title || "Pasted text" : i.kind === "read" ? i.ingested.title : `${i.label}: ${i.request}`);
+const kindOf = (i: Readable): SourceKind => (i.kind === "file" ? "text" : i.kind === "url" ? "url" : i.kind === "paste" ? "paste" : i.kind === "read" ? i.ingested.kind : "connector");
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /** Work in flight (reading, quoting, mapping): Stop stops all of it. */
@@ -72,7 +75,7 @@ export function stopSources() {
  * false). `under`: for one card, on its own board, mapped only on its branch (a card whose board
  * isn't made yet: the organization's, until its cards rest on it).
  */
-export async function addSources(inputs: AddInput[], opts: { map?: boolean; under?: string } = {}) {
+export async function addSources(inputs: Readable[], opts: { map?: boolean; under?: string } = {}) {
   const projectId = opts.under ? (boardOfCard(opts.under) ?? "") : canvasBoard();
   if (projectId === null || !inputs.length) return;
   const ctrl = begin();
@@ -83,7 +86,7 @@ export async function addSources(inputs: AddInput[], opts: { map?: boolean; unde
       const job = newId();
       setJob(job, { phase: "reading", title: titleOf(input), kind: kindOf(input) });
       try {
-        const read = input.kind === "file" ? [await ingestFile(input.file)] : input.kind === "url" ? [await ingestUrl(input.url, ctrl.signal)] : input.kind === "paste" ? [await ingestPaste(input.text, input.title)] : await fromTools(input, job, ctrl.signal);
+        const read = input.kind === "file" ? [await ingestFile(input.file)] : input.kind === "read" ? [input.ingested] : input.kind === "url" ? [await ingestUrl(input.url, ctrl.signal)] : input.kind === "paste" ? [await ingestPaste(input.text, input.title)] : await fromTools(input, job, ctrl.signal);
         for (const r of read) {
           const rec: SourceRecord = { v: 1, id: newId(), projectId, kind: r.kind, title: r.title, ...(r.origin ? { origin: r.origin } : {}), text: r.text, ...(r.pages ? { pages: r.pages } : {}), ...(r.blocks?.length ? { blocks: r.blocks } : {}), ...(r.truncated ? { truncated: true } : {}), ...(r.segments && r.transcript ? { segments: r.segments, transcript: r.transcript } : {}), addedAt: Date.now(), read: [], quotes: [], needs: [] };
           await addSourceRecord(rec);

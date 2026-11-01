@@ -58,7 +58,9 @@ const FragmentIn = z.object({ id: text(12), quote: text(1200), role: z.enum(DUMP
 const ChallengeIn = z.object({ kind: z.enum(CHALLENGE_KINDS), fragmentId: text(12), cardId: text(12).nullable(), text: text(400) });
 /** A dump that answers the canvas chat's "Help me find one": what they asked for, and the questions their answers are to, in order. */
 const DumpAim = z.object({ find: z.enum(["goal", "problem"]), asked: z.array(text(300)).max(6) }).optional();
-const DumpBase = { product: text(2000), dump: z.string().trim().min(40).max(DUMP_MAX_CHARS), tree: z.array(DumpCardIn).max(400), aim: DumpAim };
+/** A file they added for a card ("Add a file for it"): its title, the card (by the id the tree gives it), and whether its words were cut to fit. */
+const DumpFileIn = z.object({ title: text(300), card: text(12), cut: z.boolean().optional() }).optional();
+const DumpBase = { product: text(2000), dump: z.string().trim().min(40).max(DUMP_MAX_CHARS), tree: z.array(DumpCardIn).max(400), aim: DumpAim, file: DumpFileIn };
 const KId = z.string().regex(/^k\d{1,4}$/);
 /** What the organization already knows, packed for the call: pieces under ids, and which ids are customers' quotes. */
 export const ContextIn = z.object({ block: text(60_000), ids: z.array(KId).max(400), quotes: z.array(KId).max(400) }).optional();
@@ -531,10 +533,20 @@ const challengeItem = (fragment: Record<string, unknown>, cardIds: string[]) =>
     text: str("One or two sentences to the builder: what doesn't hold up, and what would settle it. Direct, never rude"),
   });
 
-/** The read schema: the reading streams first, then the pieces, the pushback and the first round. */
-export function dumpReadSchema(cardIds: string[]) {
+/** The read schema: the reading streams first, then the pieces, the pushback and the first round (a file read for a card: whether it bears on it first). */
+export function dumpReadSchema(cardIds: string[], file = false) {
   return obj({
-    understanding: str("2–4 plain sentences back to the builder: what you took from it (the goals, who it's for, the needs and ideas) and what's still unclear. No praise"),
+    ...(file
+      ? {
+          bears: { type: "boolean", description: "false only when nothing in the file bears on the card or on the people it's for: the wrong file" },
+          wanted: str("When it doesn't bear on the card: the kind of file that would help, in one short line (what it holds and from whom). Empty when it does"),
+        }
+      : {}),
+    understanding: str(
+      file
+        ? "2–4 plain sentences back to the builder: what the file is, what in it bears on the card (the needs, goals, numbers, ideas) and what's unclear. When it's the wrong file, what it is and why it doesn't bear on the card. No praise"
+        : "2–4 plain sentences back to the builder: what you took from it (the goals, who it's for, the needs and ideas) and what's still unclear. No praise",
+    ),
     fragments: arr(
       obj({
         id: str("f1, f2, …"),
@@ -649,12 +661,20 @@ type DumpRequest = Extract<DiscoveryRequest, { stage: "dump-read" | "dump-follow
 /** What they asked for, when the dump answers "Help me find one". */
 const AIM_LINE = { goal: "a goal: an outcome the team is trying to move, said as a change it could see", problem: "a problem: a need, a pain or a wish of the people the product is for" } as const;
 
+/** What a file read for a card is: whatever they had, read against that card. */
+function fileLine(f: NonNullable<DumpRequest["file"]>, tree: DumpRequest["tree"]) {
+  const card = tree.find((c) => c.id === f.card);
+  const named = card ? `${f.card} (${card.kind}: ${card.title})` : f.card;
+  return `They added a file for ${named}: “${f.title}”${f.cut ? " (its start: the rest didn't fit)" : ""}. The brain dump is the file's words. It can be anything: notes, a doc, a deck, a sheet, a report, an interview, an article. Read it against ${f.card}: what in it bears on that card and the people it's for. Ask what you need to place it under ${f.card}: whether you read it right, and the context it leaves out (who it's about, which part matters most for it).`;
+}
+
 const dumpMaterial = (b: DumpRequest) => [
   `The product: ${b.product.trim() || "(not described yet)"}`,
   "",
   b.tree.length ? "The board (id · kind · title — description [metric] {assumptions} (what backs it), each card under its parent):" : "The board is empty.",
   ...dumpOutline(b.tree),
   ...(b.aim ? ["", `They asked you to help them find ${AIM_LINE[b.aim.find]}. The brain dump is their answers to these questions, in order (an empty one they skipped):`, ...b.aim.asked.map((q) => `- ${q}`)] : []),
+  ...(b.file ? ["", fileLine(b.file, b.tree)] : []),
   "",
   "The brain dump:",
   `<brain_dump>\n${b.dump}\n</brain_dump>`,
@@ -673,7 +693,7 @@ export const dumpReadContent = (b: Extract<DiscoveryRequest, { stage: "dump-read
 
 /** Reading a brain dump, as the route streams it and the core's structured() runs it (a person's own notes taken in). */
 export function dumpReadCall(b: Extract<DiscoveryRequest, { stage: "dump-read" }>) {
-  return { kind: "dump-read" as const, system: DUMP_READ_SYSTEM, schema: dumpReadSchema(b.tree.map((c) => c.id)), effort: "high" as const, maxTokens: 16000, content: [{ type: "text" as const, text: dumpReadContent(b) }] };
+  return { kind: "dump-read" as const, system: DUMP_READ_SYSTEM, schema: dumpReadSchema(b.tree.map((c) => c.id), !!b.file), effort: "high" as const, maxTokens: 16000, content: [{ type: "text" as const, text: dumpReadContent(b) }] };
 }
 
 export function dumpFollowupContent(b: Extract<DiscoveryRequest, { stage: "dump-followup" }>) {
@@ -704,7 +724,9 @@ export function dumpPlaceContent(b: Extract<DiscoveryRequest, { stage: "dump-pla
       ? b.aim.find === "goal"
         ? "Propose 1 to 3 goals (outcome cards) from what they said, each resting on their words, the best first: under the goal it moves when the board has one, else as a tree of its own. Propose nothing else."
         : "Propose 1 to 3 problems (opportunity cards) from what they said, each resting on their words, the best first: under the goal it bears on when the board has one, else as a tree of its own. Propose nothing else."
-      : "Place the brain dump on the board.",
+      : b.file
+        ? `Place what in the file bears on ${b.file.card}, only under it: when it's an outcome, the needs it shows (opportunities: pains and wishes of the people it's for) under it, and finer outcomes where it names them; when it's an opportunity, finer needs, solutions and tests under it. Attach the pieces that back ${b.file.card} or the cards under it. Change nothing elsewhere on the board.`
+        : "Place the brain dump on the board.",
   ].join("\n");
 }
 

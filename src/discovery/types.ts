@@ -60,6 +60,8 @@ export interface OstEvidence {
   stance?: "against";
   /** A quote from people online (a public post or review), not the organization's own customers. */
   online?: boolean;
+  /** A brain dump's piece that's a file they added for a card (its next steps' "Add a file for it"). */
+  file?: true;
   addedBy: "user" | "ai";
   at: number;
 }

@@ -146,6 +146,16 @@ describe("reading a brain dump", () => {
     expect(f.questions[0].options[0].label).toBe("Under “I forget to reorder until I've run out”");
   });
 
+  it("says, for a file read for a card, when nothing in it bears on the card, and what file would help, in words", () => {
+    const { cards } = read();
+    const c = cards.find((x) => x.title === "I forget to reorder until I've run out")!;
+    const text = "Croissant 3.50. Pain au chocolat 3.80. Sourdough loaf 6.00. Open daily from seven until two.";
+    const off = sanitizeRead({ bears: false, wanted: `Notes from talks with people who say ${c.ref} (${c.ref}).`, understanding: "A price list and opening hours.", fragments: [] }, text, cards, 1);
+    expect(off).toMatchObject({ bears: false, wanted: "Notes from talks with people who say “I forget to reorder until I've run out”.", understanding: "A price list and opening hours.", fragments: [] });
+    // A read that says nothing about it bears (a brain dump's, or a file's that does).
+    expect(sanitizeRead({ fragments: [] }, text, cards, 1)).toMatchObject({ bears: true, wanted: "" });
+  });
+
   it("finds Arabic pieces whatever the hamza or the short vowels", () => {
     const text = "أنا شايف إن الأهالي بيكرهوا البدائل لما محدش يسألهم.";
     const r = sanitizeRead({ fragments: [{ id: "f1", quote: "انا شايف ان الاهالي بيكرهوا البدائل", role: "need" }] }, text, [], 1);

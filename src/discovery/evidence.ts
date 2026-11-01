@@ -103,7 +103,7 @@ export function evidenceLabel(card: Pick<OstCard, "kind" | "createdBy" | "eviden
   if (quotes) return `${quotes} ${quotes === 1 ? "quote" : "quotes"}${tail}`;
   // The answers to a card's questions are a source of the person's words too (src/discovery/questions.ts).
   if (n("answer") || ownBacking(card).some((e) => e.answerId?.startsWith("ask:"))) return `From your answers${tail}`;
-  if (n("dump")) return `From your brain dump${tail}`;
+  if (n("dump")) return `From your ${ownBacking(card).some((e) => e.kind === "dump" && !e.file) ? "brain dump" : "file"}${tail}`;
   if (n("note")) return `${n("note") === 1 ? "Your note" : `${n("note")} notes`}${tail}`;
   if (online) return `${online} ${online === 1 ? "post" : "posts"} online${tail}`;
   if (against) return `${against} against`;

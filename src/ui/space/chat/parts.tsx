@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import clsx from "clsx";
 import { Check, Quote, RotateCcw } from "lucide-react";
 import { nanoid } from "nanoid";
@@ -23,7 +23,8 @@ import { toQuestion } from "../../ai/plan";
 import { AnswersSummary, qr } from "../../ai/Questionnaire";
 import { QalamAIGlyph } from "../../brand/ai-glyph";
 import { getController } from "../../CanvasView";
-import { placeDump, retryDump, sessionOf, skipRest, useDump } from "../../discovery/dump";
+import { placeDump, readAnyway, retryDump, sessionOf, skipRest, useDump } from "../../discovery/dump";
+import { ACCEPT } from "../../discovery/ingest";
 import { REVIEW_TURN, acceptAll, acceptProposals, discardAll, discardProposals, startReview, useReview } from "../../discovery/review";
 import { openSource, sourceOf, useSources } from "../../discovery/sources";
 import { Button, Spinner, Tag, Tip } from "../../controls";
@@ -32,7 +33,7 @@ import { r } from "../../recipes";
 import { useTopics } from "../../topics/list";
 import { useWords } from "../../frame/store";
 import { show } from "../links";
-import { dropTurn, retake, turnOf, useCanvasChat } from "./store";
+import { anotherFile, dropTurn, leaveFile, retake, turnOf, useCanvasChat } from "./store";
 
 /*
  * What the messages in the canvas's chat draw (./CanvasChat.tsx): each part names its turn, and
@@ -238,7 +239,7 @@ function DumpingPart({ data }: { data: PartData }) {
   if (busy) return <Progress label={busy.label} started={busy.started} tokens={busy.tokens} />;
   return (
     <span className={clsx(r.chatStatus, "text-fg-muted")}>
-      <Spinner size={12} /> <span className="q-shimmer-text">{d?.s.phase === "placing" ? "Placing it on the canvas" : d?.s.phase === "analyzing" ? "Reading your answers" : "Reading your thinking"}…</span>
+      <Spinner size={12} /> <span className="q-shimmer-text">{d?.s.phase === "placing" ? "Placing it on the canvas" : d?.s.phase === "analyzing" ? "Reading your answers" : t?.job.kind === "dump" && t.job.file ? "Reading the file" : "Reading your thinking"}…</span>
     </span>
   );
 }
@@ -268,8 +269,8 @@ function TookPart({ data }: { data: PartData }) {
               {c.text}
             </p>
             {words && (
-              <button type="button" className="line-clamp-2 text-left text-micro text-fg-subtle hover:text-fg" dir="auto" title="Show in your text" onClick={() => openSource(d.source, words.id)}>
-                Your words: “{words.text}”
+              <button type="button" className="line-clamp-2 text-left text-micro text-fg-subtle hover:text-fg" dir="auto" title={d.s.file ? "Show in the file" : "Show in your text"} onClick={() => openSource(d.source, words.id)}>
+                {d.s.file ? "In the file" : "Your words"}: “{words.text}”
               </button>
             )}
             {card && (
@@ -309,6 +310,11 @@ function SkipPart({ data }: { data: PartData }) {
       <button type="button" className={r.replyChip} onClick={() => void skipRest(d.source)}>
         Skip, and place it now
       </button>
+      {d.s.file && (
+        <button type="button" className={r.replyChip} onClick={() => void leaveFile(String(data.turn))}>
+          Leave it out
+        </button>
+      )}
     </ReplyChips>
   );
 }
@@ -322,6 +328,43 @@ function PlacePart({ data }: { data: PartData }) {
         <QalamAIGlyph size={12} /> Place it on the canvas
       </button>
     </ReplyChips>
+  );
+}
+
+/** A file read for a card that doesn't bear on it: the kind of file that would help, another file, or read anyway. */
+function OffPart({ data }: { data: PartData }) {
+  const d = useDumpOf(data.turn);
+  const t = useTurn(data.turn);
+  const pick = useRef<HTMLInputElement>(null);
+  if (!d?.s.off || !t) return null;
+  const wanted = d.s.off.wanted.replace(/[\s.]+$/, "");
+  return (
+    <div className="flex flex-col items-start gap-[8px]">
+      <p className="text-body leading-[20px] text-fg">{wanted ? `It doesn't seem to be about it. A file that would help: ${wanted}.` : "It doesn't seem to be about it: another file would help more."}</p>
+      <ReplyChips>
+        <button type="button" className={r.replyChipPrimary} onClick={() => pick.current?.click()}>
+          Add another file
+        </button>
+        <button type="button" className={r.replyChip} onClick={() => void readAnyway(d.source)}>
+          <QalamAIGlyph size={12} /> Read it anyway
+        </button>
+        <button type="button" className={r.replyChip} onClick={() => void leaveFile(t.id)}>
+          Leave it out
+        </button>
+      </ReplyChips>
+      <input
+        ref={pick}
+        type="file"
+        multiple
+        accept={ACCEPT}
+        hidden
+        onChange={(e) => {
+          const picked = [...(e.target.files ?? [])];
+          e.target.value = "";
+          if (picked.length) void anotherFile(t.id, picked);
+        }}
+      />
+    </div>
   );
 }
 
@@ -390,6 +433,11 @@ function FoundList({ list }: { list: Proposal[] }) {
 }
 
 /** What the dump proposes on the canvas: accepted or discarded here, or one by one on the canvas. */
+const cardName = (id: string) => {
+  const n = studio().doc.nodes[id];
+  return (isOstCard(n) && n.meta.ost.title.trim()) || "the card";
+};
+
 function ProposedPart({ data }: { data: PartData }) {
   const d = useDumpOf(data.turn);
   const mine = useReview((v) => (d && v.origin?.kind === "dump" && v.origin.sourceId === d.source ? v.proposals : null));
@@ -409,7 +457,7 @@ function ProposedPart({ data }: { data: PartData }) {
   return (
     <div className="flex flex-col items-start gap-[8px]">
       <p className="text-body leading-[20px] text-fg">
-        I propose {proposedLine(list)}. {mine ? "They're drawn on the canvas where they'd go; nothing is kept until you accept it." : "They wait to be reviewed on the canvas."}
+        {d.s.file ? `From “${d.s.file.title}”, under “${cardName(d.s.file.card)}”: ` : ""}I propose {proposedLine(list)}. {mine ? "They're drawn on the canvas where they'd go; nothing is kept until you accept it." : "They wait to be reviewed on the canvas."}
       </p>
       {mine ? (
         <ReplyChips>
@@ -585,6 +633,7 @@ export const PARTS: Record<string, PartComponent> = {
   skip: SkipPart,
   place: PlacePart,
   retry: RetryPart,
+  off: OffPart,
   proposed: ProposedPart,
   placed: PlacedPart,
   opening: OpeningPart,

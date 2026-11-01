@@ -103,6 +103,17 @@ export interface DumpSession {
   model?: string;
   /** It answers the chat's "Help me find one": what they asked for, and the questions their answers (the dump's text) are to. */
   aim?: { find: "goal" | "problem"; asked: string[] };
+  /** A file added for a card (its next steps' "Add a file for it"): read against that card, and placed only under it. */
+  file?: DumpFile;
+  /** The file read as not bearing on its card: the kind of file that would help (in Qalam AI's words). */
+  off?: { wanted: string };
+}
+
+/** A file read for a card: its title, the card's id, and whether its words were cut to fit. */
+export interface DumpFile {
+  title: string;
+  card: string;
+  cut?: true;
 }
 
 /** The most text one brain dump takes (longer: add the rest as a source). */
@@ -230,7 +241,7 @@ export function sampleRaw<T>(raw: T, cards: PlaceCard[]): T {
 // ---------------------------------------------------------------------------
 // Read: what Qalam AI took from it, its pieces, its pushback, the first round of questions
 
-export const READ_LIMITS = { fragments: 60, fragmentChars: 600, challenges: 8, challenge: 300, understanding: 800 } as const;
+export const READ_LIMITS = { fragments: 60, fragmentChars: 600, challenges: 8, challenge: 300, understanding: 800, wanted: 240 } as const;
 
 export interface DumpRead {
   understanding: string;
@@ -240,6 +251,9 @@ export interface DumpRead {
   questions: PlanQuestion[];
   /** The id each piece kept was given, by the id the call named it with (f…). */
   refs: Record<string, string>;
+  /** A file read for a card: false when nothing in it bears on the card (the wrong file), with the kind of file that would help. */
+  bears: boolean;
+  wanted: string;
 }
 
 const quoteKind = (role: DumpRole): QuoteKind => (role === "idea" || role === "test" ? "idea" : "need");
@@ -325,6 +339,8 @@ export function sanitizeRead(raw: unknown, text: string, cards: PlaceCard[], now
     challenges: sanitizeChallenges(r.challenges, (ref) => kept.get(ref), cards, names),
     questions: readableQuestions(sanitizeQuestions(r.questions), names),
     refs: Object.fromEntries(kept),
+    bears: r.bears !== false,
+    wanted: clip(readable(r.wanted, names), READ_LIMITS.wanted),
   };
 }
 

@@ -11,7 +11,8 @@ import { quoteEvidence, hasQuote, type SourceRecord } from "./sources";
 import { isAssumed } from "./evidence";
 import { applyDumpFollowup, closeDumpRound, firstRound, fragmentRefs, outlineOf, roundAnswers, sampleRaw, sanitizeDumpFollowup, sanitizeRead, type DumpSession } from "./dump";
 import { partialPlace, sanitizePlace, type PlaceContext } from "./place";
-import { applyProposal, arrangeNew, proposalDoc, proposalKey, touchedRoots, withDependents, withNeeds, type EvidenceOf, type Proposal } from "./proposals";
+import { applyProposal, arrangeNew, proposalDoc, proposalKey, touchedRoots, underCard, withDependents, withNeeds, type EvidenceOf, type Proposal } from "./proposals";
+import { isDescendant } from "@/doc/geometry";
 
 /** A round answered with Qalam AI's picks, open questions in the founder's words. */
 function answered(s: DumpSession): FlowState {
@@ -237,6 +238,24 @@ describe("proposals on the board", () => {
     expect(notes).toHaveLength(2);
     const against = after.nodes[byTitle("I'm never sure when my order will arrive")].meta.ost!.evidence;
     expect(against.map((e) => e.stance ?? "for")).toEqual(["for", "for", "against"]);
+  });
+
+  it("keep, for a file read for a card, only what lands under it, whatever their order", () => {
+    const { doc, proposals, byTitle } = sample();
+    const card = byTitle("More customers reorder every week");
+    const kept = underCard(doc, card, proposals);
+    const inside = (id: string | null) => !!id && (id === card || isDescendant(doc, id, card));
+    const added = new Set(ofKind(kept, "card").map((p) => p.cardId));
+    expect(kept.length).toBeGreaterThan(0);
+    expect(kept.length).toBeLessThan(proposals.length);
+    for (const p of kept) {
+      expect(["note", "merge"]).not.toContain(p.kind);
+      if (p.kind === "card") expect(inside(p.parentId) || added.has(p.parentId ?? "")).toBe(true);
+      else expect(inside(p.cardId)).toBe(true);
+    }
+    // The new goal above it, and the move that hangs the card under that goal, aren't under it.
+    expect(kept.some((p) => p.kind === "move" && p.cardId === card)).toBe(false);
+    expect(new Set(underCard(doc, card, [...proposals].reverse()).map((p) => p.id))).toEqual(new Set(kept.map((p) => p.id)));
   });
 
   it("go to the right of the board when they start a tree, notes beside their card", () => {

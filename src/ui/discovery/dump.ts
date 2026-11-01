@@ -23,6 +23,7 @@ import {
   sanitizeDumpFollowup,
   sanitizeRead,
   withRoles,
+  type DumpFile,
   type DumpSession,
   type PlaceCard,
 } from "@/discovery/dump";
@@ -30,7 +31,7 @@ import { hasQuote, quotePiece, type SourceRecord } from "@/discovery/sources";
 import { orgContext } from "@/org/pack";
 import { cardOf } from "@/discovery/ops";
 import { KIND_LABEL } from "@/discovery/kinds";
-import { arrangeNew, type Proposal } from "@/discovery/proposals";
+import { arrangeNew, underCard, type Proposal } from "@/discovery/proposals";
 import { partialPlace, sanitizePlace, type PlaceContext } from "@/discovery/place";
 import { initialFlow, type FlowState } from "../ai/questionFlow";
 import { openTurn, patchTurn } from "../ai/chats";
@@ -91,8 +92,14 @@ export function openBrainDump(opts: { text?: string; sourceId?: string } = {}) {
 /** The board as a dump's calls see it, now. */
 const board = () => outlineOf(studio().doc);
 
-/** What a dump that answers "Help me find one" tells each of its calls. */
-const aimOf = (s: DumpSession | undefined) => (s?.aim ? { aim: s.aim } : {});
+/** What a dump that answers "Help me find one", or reads a file for a card (named as the call names it), tells each of its calls. */
+function aimOf(s: DumpSession | undefined, cards: PlaceCard[]) {
+  const card = s?.file && cards.find((c) => c.id === s.file!.card);
+  return { ...(s?.aim ? { aim: s.aim } : {}), ...(s?.file && card ? { file: { title: s.file.title.slice(0, 300), card: card.ref, ...(s.file.cut ? { cut: true } : {}) } } : {}) };
+}
+
+/** What a call for a dump is doing, in words. */
+const reading = (s: DumpSession) => (s.file ? `Qalam AI is reading “${s.file.title}”` : s.aim ? "Qalam AI is reading your answers" : "Qalam AI is reading your brain dump");
 
 /** A call for a dump, with its progress on the card and its turn, and Stop. */
 async function call(sourceId: string, label: string, body: unknown, recorded: () => unknown, ms: number, onDelta?: (d: AIDelta) => void): Promise<{ raw: unknown; sample: boolean; model?: string }> {
@@ -160,14 +167,17 @@ function readFields(s: SourceRecord, cards: PlaceCard[]) {
  * chat named it), read, and placed at once when Qalam AI has nothing to ask. Throws, in words, when
  * it can't start.
  */
-export async function startDump(text: string, opts: { sample?: boolean; id?: string; aim?: DumpSession["aim"] } = {}): Promise<string> {
-  const body = (opts.sample ? SAMPLE_DUMP_TEXT : text).trim();
-  if (body.length < 40) throw new Error("Write a few sentences more, so there's something to read.");
+export async function startDump(text: string, opts: { sample?: boolean; id?: string; aim?: DumpSession["aim"]; file?: DumpFile } = {}): Promise<string> {
+  let body = (opts.sample ? SAMPLE_DUMP_TEXT : text).trim();
+  if (body.length < 40) throw new Error(opts.file ? "There's too little in the file to read." : "Write a few sentences more, so there's something to read.");
+  // A file is read from its start when it's longer than a dump takes (the reading says so).
+  const cut = !!opts.file && body.length > DUMP_MAX_CHARS;
+  if (cut) body = body.slice(0, DUMP_MAX_CHARS);
   if (body.length > DUMP_MAX_CHARS) throw new Error(`That's more than one brain dump takes (${DUMP_MAX_CHARS.toLocaleString()} characters): add the rest as a source.`);
   if (!opts.sample && (await offline())) throw new Error("Qalam AI isn't set up here, so it can't read your text. Connections says how.");
   // The sample is about Basket: its tree goes on the board first if it isn't there.
   if (opts.sample && !studio().doc.roots.some((id) => studio().doc.nodes[id]?.meta.ost?.title === "More customers reorder every week")) placeSample();
-  const read = await ingestPaste(body, opts.sample ? "Basket founder, after the investor call" : undefined);
+  const read = await ingestPaste(body, opts.sample ? "Basket founder, after the investor call" : opts.file?.title);
   const s = studio();
   const rec: SourceRecord = {
     v: 1,
@@ -182,15 +192,16 @@ export async function startDump(text: string, opts: { sample?: boolean; id?: str
     read: [],
     quotes: [],
     needs: [],
-    dump: { v: 1, phase: "reading", understanding: "", challenges: [], buckets: [], anchor: treeFor(s.doc, s.selection), ...(opts.sample ? { sample: true } : {}), ...(opts.aim ? { aim: opts.aim } : {}) },
+    dump: { v: 1, phase: "reading", understanding: "", challenges: [], buckets: [], anchor: treeFor(s.doc, opts.file ? [opts.file.card] : s.selection), ...(opts.sample ? { sample: true } : {}), ...(opts.aim ? { aim: opts.aim } : {}), ...(opts.file ? { file: { ...opts.file, ...(cut ? { cut: true as const } : {}) } } : {}) },
   };
   const turn = openTurn("discovery", { text: `Brain dump · ${read.title}` });
   rec.dump!.turn = turn;
   await addSourceRecord(rec);
   patchTurn(turn.chatId, turn.turnId, { outcome: { kind: "discovery", action: "dump", sourceId: rec.id } });
   void readDump(rec.id).then(() => {
-    // Nothing to ask: Qalam AI places it straight away.
-    if (sessionOf(sourceOf(rec.id))?.phase === "ready") return placeDump(rec.id);
+    // Nothing to ask: Qalam AI places it straight away (a file that doesn't bear on its card waits on them).
+    const d = sessionOf(sourceOf(rec.id));
+    if (d?.phase === "ready" && !d.off) return placeDump(rec.id);
   });
   return rec.id;
 }
@@ -202,8 +213,13 @@ export async function readDump(sourceId: string) {
   await setSession(sourceId, (d) => ({ ...d, phase: "reading", failed: undefined }));
   const { tree, cards } = board();
   try {
-    const { raw, sample, model } = await call(sourceId, s.dump.aim ? "Qalam AI is reading your answers" : "Qalam AI is reading your brain dump", { stage: "dump-read", product: product(), dump: s.text, tree, ...aimOf(s.dump) }, () => sampleRaw(SAMPLE_DUMP_READ_RAW, cards), 3500);
+    const { raw, sample, model } = await call(sourceId, reading(s.dump), { stage: "dump-read", product: product(), dump: s.text, tree, ...aimOf(s.dump, cards) }, () => sampleRaw(SAMPLE_DUMP_READ_RAW, cards), 3500);
     const r = sanitizeRead(raw, s.text, cards);
+    // The wrong file: what it is, and the kind that would help (they add another, or have it read anyway).
+    if (s.dump.file && (!r.bears || !r.fragments.length)) {
+      await updateSource(sourceId, (x) => ({ ...x, quotes: r.fragments, dump: { ...x.dump!, phase: "ready", failed: undefined, understanding: r.understanding, challenges: [], buckets: [], off: { wanted: r.wanted }, ...(model ? { model } : {}) } }));
+      return turnDone(sourceId, { model, sample });
+    }
     if (!r.fragments.length) throw new AIError("parse", "Qalam AI found nothing in it to place on the canvas. Try again, or write a little more.");
     await updateSource(sourceId, (x) => ({
       ...x,
@@ -266,7 +282,7 @@ export async function readAnswers(sourceId: string) {
   const { tree, cards } = board();
   const { pieces, fields } = readFields(s, cards);
   const rounds = roundAnswers(session).map((answers, i) => ({ answers: answers.map((a) => ({ question: a.question.slice(0, 200), answer: a.answer })), ...(session.buckets[i]?.analysis ? { analysis: session.buckets[i].analysis!.slice(0, 1500) } : {}) }));
-  const body = { stage: "dump-followup", product: product(), dump: s.text, tree, ...aimOf(session), ...fields, rounds, last: session.buckets.length >= MAX_DUMP_ROUNDS };
+  const body = { stage: "dump-followup", product: product(), dump: s.text, tree, ...aimOf(session, cards), ...fields, rounds, last: session.buckets.length >= MAX_DUMP_ROUNDS };
   const recorded = () => sampleRaw(SAMPLE_DUMP_FOLLOWUP_RAW[Math.min(session.buckets.length, SAMPLE_DUMP_FOLLOWUP_RAW.length) - 1], cards);
   try {
     const { raw, sample, model } = await call(sourceId, "Qalam AI is reading your answers", body, recorded, 2500);
@@ -325,7 +341,7 @@ export async function placeDump(sourceId: string) {
     const c = cardOf(studio().doc, cardId);
     return !!c && hasQuote(c, q.sourceId, span, quotePiece(q.quoteId));
   };
-  const body = { stage: "dump-place", product: product(), dump: s.text, tree, ...aimOf(session), ...fields, answers: answers.map(({ ref, question, answer }) => ({ id: ref, question: question.slice(0, 400), answer })), ...(org ? { context: org.context } : {}) };
+  const body = { stage: "dump-place", product: product(), dump: s.text, tree, ...aimOf(session, cards), ...fields, answers: answers.map(({ ref, question, answer }) => ({ id: ref, question: question.slice(0, 400), answer })), ...(org ? { context: org.context } : {}) };
   const origin = placeFor(studio().doc, null);
   const ids = new Map<string, string>();
   const turn = session.turn ?? { chatId: "", turnId: `dump:${sourceId}` };
@@ -340,7 +356,9 @@ export async function placeDump(sourceId: string) {
   // Asked to find a goal or a problem, only cards of that kind are kept (under cards already there, or on their own).
   const want = session.aim ? (session.aim.find === "goal" ? "outcome" : "opportunity") : null;
   const keeps = (p: Proposal) => (want ? p.kind === "card" && p.card.kind === want && (p.parentId === null || !!studio().doc.nodes[p.parentId]) : p.kind !== "note");
-  const proposalsNow = (raw: unknown, partial: boolean) => arrangeNew(studio().doc, (partial ? partialPlace(raw, ctx, ids) : sanitizePlace(raw, ctx, ids)).filter(keeps), evidenceOf, origin);
+  // A file read for a card: only what lands under it.
+  const scoped = (list: Proposal[]) => (session.file ? underCard(studio().doc, session.file.card, list) : list);
+  const proposalsNow = (raw: unknown, partial: boolean) => arrangeNew(studio().doc, scoped((partial ? partialPlace(raw, ctx, ids) : sanitizePlace(raw, ctx, ids)).filter(keeps)), evidenceOf, origin);
   const show = () => {
     timer = undefined;
     const list = proposalsNow(parsePartial(buffer), true);
@@ -373,7 +391,7 @@ export async function placeDump(sourceId: string) {
     if (c && ghostIds.length) requestAnimationFrame(() => c.glideToFit(ghostIds));
   };
   try {
-    const { raw, sample, model } = await call(sourceId, session.aim ? `Qalam AI is finding ${session.aim.find === "goal" ? "a goal" : "a problem"} in what you said` : "Qalam AI is placing your brain dump", body, () => sampleRaw(SAMPLE_DUMP_PLACE_RAW, cards), 9000, onDelta);
+    const { raw, sample, model } = await call(sourceId, session.file ? `Qalam AI is placing what bears on it from “${session.file.title}”` : session.aim ? `Qalam AI is finding ${session.aim.find === "goal" ? "a goal" : "a problem"} in what you said` : "Qalam AI is placing your brain dump", body, () => sampleRaw(SAMPLE_DUMP_PLACE_RAW, cards), 9000, onDelta);
     clearTimeout(timer);
     clearGhosts(preview);
     const list = proposalsNow(raw, false);
@@ -402,6 +420,13 @@ export async function placeDump(sourceId: string) {
 
 export function stopDump(sourceId: string) {
   runs.get(sourceId)?.abort();
+}
+
+/** A file read as not bearing on its card, read for it anyway: placed with what was found in it. */
+export async function readAnyway(sourceId: string) {
+  if (!sessionOf(sourceOf(sourceId))?.off) return;
+  await setSession(sourceId, (d) => ({ ...d, off: undefined }));
+  await placeDump(sourceId);
 }
 
 /** Run the step that didn't finish again. */

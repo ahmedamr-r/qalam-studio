@@ -16,9 +16,10 @@ export function partOf(docs: readonly Pick<SetupDoc, "span">[], q: { span: reado
   return docs.findIndex((d) => !!d.span && at >= d.span[0] && at < d.span[1]);
 }
 
-/** A source's mark: a connector's id, else what it is ("said", "page", "computer", or the source's kind). */
-export function markOf(source: Pick<SourceRecord, "kind" | "origin">, part?: Pick<SetupDoc, "from"> | null): string {
+/** A source's mark: a connector's id, else what it is ("said", "page", "computer", or the source's kind; a file read for a card is this computer's). */
+export function markOf(source: Pick<SourceRecord, "kind" | "origin" | "dump">, part?: Pick<SetupDoc, "from"> | null): string {
   if (part) return part.from;
+  if (source.kind === "dump" && source.dump?.file) return "computer";
   return connectorOfOrigin(source.origin) ?? source.kind;
 }
 
@@ -35,7 +36,7 @@ export function partLine(doc: Pick<SetupDoc, "from" | "type" | "pages"> | undefi
 }
 
 /** A whole source in words: its connector's name, else its kind ("Interview", "PDF · 12 pages"). */
-export function sourceLine(source: Pick<SourceRecord, "kind" | "origin" | "pages" | "answers">): string {
+export function sourceLine(source: Pick<SourceRecord, "kind" | "origin" | "pages" | "answers" | "dump">): string {
   const via = connectorOfOrigin(source.origin);
   const pages = source.pages && source.pages.length > 1 ? `${source.pages.length} pages` : "";
   return [via ? (connectorDef(via)?.label ?? via) : sourceLabel(source), pages].filter(Boolean).join(" · ");

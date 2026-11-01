@@ -33,8 +33,12 @@ export type ChatJob =
   | { kind: "add"; what: "goal" | "problem"; card: string; under: string | null }
   /** What customers said, taken in as sources: filed into problem pages, placed where it fits. */
   | { kind: "take"; state: "taking" | "done" | "failed"; sources: string[]; pages: FiledPage[]; quotes: number; error?: string }
-  /** Their own thinking as a brain dump: its source's session is how it's going (`error`: it never started; `find`: it answers "Help me find one", with what they said to code's questions). */
-  | { kind: "dump"; source: string; error?: string; find?: { what: FindWhat; said: { question: string; answer: string }[] } }
+  /**
+   * Their own thinking as a brain dump: its source's session is how it's going (`error`: it never
+   * started; `find`: it answers "Help me find one", with what they said to code's questions;
+   * `file`: a file added for a card, read against it, `left` once they left it out).
+   */
+  | { kind: "dump"; source: string; error?: string; find?: { what: FindWhat; said: { question: string; answer: string }[] }; file?: { card: string; title: string; left?: true } }
   /** "Help me find one": code's opening questions, being answered (the box asks them). */
   | { kind: "find"; what: FindWhat; error?: string };
 
@@ -123,6 +127,8 @@ function dumpReply(t: ChatTurn, s: DumpSession | null): ChatPart[] {
     case "placing":
       return [...out, part("dumping", id)];
     case "ready":
+      // A file that doesn't bear on its card: what would help instead.
+      if (s.off) return [...out, part("off", id)];
       return [...out, text(s.skipped ? "I'll place it with what you've answered." : "I have what I need."), part("place", id)];
     case "review":
       return [...out, part("proposed", id)];
@@ -160,6 +166,7 @@ function replyTo(t: ChatTurn, dumpOf: DumpOf): ChatPart[] {
         ...(j.pages.length ? [part("pages", id)] : []),
       ];
     case "dump":
+      if (j.file?.left) return [text(`You left “${j.file.title}” out.`)];
       return [...(j.find ? [part("opening", id)] : []), ...(j.error ? [text(j.error)] : dumpReply(t, dumpOf(j.source)))];
     case "find":
       return [text(`A few questions first, then I'll suggest ${j.what === "goal" ? "a goal" : "a problem"} in your words. Skip any you can't answer.`), ...(j.error ? [text(j.error)] : []), part("cancel", id)];

@@ -114,6 +114,37 @@ export function withNeeds(ids: string[], all: Proposal[]): string[] {
   return all.filter((p) => out.has(p.id)).map((p) => p.id);
 }
 
+/**
+ * Only what lands under `card` (a file read for it): new cards under it or under one proposed
+ * there, and changes to it and the cards under it. A move stays only within it; a merge and a note
+ * go.
+ */
+export function underCard(doc: Doc, card: string, list: Proposal[]): Proposal[] {
+  const mine = (id: string | null) => !!id && (id === card || (!!doc.nodes[id] && isDescendant(doc, id, card)));
+  // New cards that hang under it, however deep (one under another proposed there too).
+  const added = new Set<string>();
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const p of list) if (p.kind === "card" && !added.has(p.cardId) && (mine(p.parentId) || added.has(p.parentId ?? ""))) added.add(p.cardId), (grew = true);
+  }
+  const keep = (p: Proposal) => {
+    switch (p.kind) {
+      case "card":
+        return added.has(p.cardId);
+      case "move":
+        return mine(p.cardId) && p.cardId !== card && (mine(p.parentId) || added.has(p.parentId ?? ""));
+      case "merge":
+      case "note":
+        return false;
+      case "goal":
+        return p.parentId === card;
+      default:
+        return mine(p.cardId);
+    }
+  };
+  return list.filter(keep);
+}
+
 /** These proposals and every one that waits on them (discarding a new card discards what goes under it). */
 export function withDependents(ids: string[], all: Proposal[]): string[] {
   const out = new Set(ids);

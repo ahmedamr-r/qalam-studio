@@ -212,6 +212,19 @@ describe("brain dump requests", () => {
     expect(follow).toContain("That was the last round");
     expect(dumpPlaceContent({ stage: "dump-place", ...base, ...read, answers: [{ id: "a1", question: "Which goal?", answer: "Reorders" }] })).toContain("- a1: Which goal?\n  Reorders");
   });
+
+  it("reads a file for a card against that card, asks whether it bears on it, and places it only under it", () => {
+    const file = { title: "Q3 board deck.pdf", card: "c2" };
+    expect(DiscoveryBody.safeParse({ stage: "dump-read", ...base, file }).success).toBe(true);
+    const text = dumpReadContent({ stage: "dump-read", ...base, file });
+    expect(text).toContain("They added a file for c2 (opportunity: I can't find what I ordered): “Q3 board deck.pdf”.");
+    expect(text).toContain("It can be anything");
+    const schema = dumpReadSchema(["c1", "c2"], true) as { required: string[] };
+    expect(schema.required.slice(0, 2)).toEqual(["bears", "wanted"]);
+    expect(openRequired(schema)).toEqual([]);
+    expect((dumpReadSchema(["c1"]) as { required: string[] }).required).not.toContain("bears");
+    expect(dumpPlaceContent({ stage: "dump-place", ...base, ...read, file, answers: [] })).toContain("Place what in the file bears on c2, only under it");
+  });
 });
 describe("calls that carry what the organization knows", () => {
   const context = { block: "[k1] Pain Sara said in “Sara interview”\nThey swap it without asking\n[k2] A decision the team made: Dropped saved baskets", ids: ["k1", "k2"], quotes: ["k1"] };

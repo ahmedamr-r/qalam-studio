@@ -84,7 +84,7 @@ function grounding(f: CardFacts): { find: NextStep | null; watch: NextStep | nul
     : tools.length ? { id: "watch", label: tools.length === 1 ? `Watch ${tools[0]} for it` : "Watch a tool for it", hint: f.feeds.length ? `Watched in ${f.feeds.join(", ")} already` : "What's new there, brought in under it" }
     : lab("connectors") ? { id: "connect", label: "Connect a tool", hint: "Intercom, Slack, Notion… in Connections" }
     : null;
-  const file: NextStep = { id: "add-file", label: "Add a file for it", hint: f.kind === "outcome" ? "Read, and its problems proposed under it" : "Read, and placed under it" };
+  const file: NextStep = { id: "add-file", label: "Add a file for it", hint: f.kind === "outcome" ? "Any file: Qalam AI asks about it, then proposes its problems" : "Any file: Qalam AI asks about it, then places it under it" };
   return { find, watch, file };
 }
 

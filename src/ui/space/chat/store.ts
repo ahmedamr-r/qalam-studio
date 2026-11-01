@@ -17,8 +17,10 @@ import { FIND_MIN, findRound, findText, type FindWhat } from "@/space/find";
 import { useSpaceView } from "@/space/view";
 import { newId } from "@/doc/factory";
 import { docPart, docRef, guessVoice, joinParts, type SentDoc } from "../../chat/attach";
-import { ingestPaste } from "../../discovery/ingest";
+import { ingestFile, ingestPaste } from "../../discovery/ingest";
 import { startDump, stopDump, useDump } from "../../discovery/dump";
+import { addSources } from "../../discovery/import";
+import { useSources } from "../../discovery/sources";
 import { placeFor, writeCard } from "../new";
 import { useCompose } from "./compose";
 import { toggleChat } from "../../frame/store";
@@ -212,6 +214,65 @@ export async function answerFind(id: string, answers: Readonly<Record<string, st
   } catch (e) {
     change((c) => withJob(c, id, (j) => (j.kind === "dump" ? { ...j, error: message(e) } : j)));
   }
+}
+
+// ---------------------------------------------------------------------------
+// A file for a card ("Add a file for it", the card's next steps)
+
+const cardTitle = (id: string) => {
+  const n = studio().doc.nodes[id];
+  return isOstCard(n) ? n.meta.ost.title.trim() : "";
+};
+
+/**
+ * Files added for a card. What customers said in their own words (an interview, who said what) is
+ * read as their quotes and mapped under the card, as before; any other file is read in the chat
+ * against the card, as a brain dump of the file's words: what Qalam AI took from it and its
+ * questions, then what bears on the card proposed under it. Or, when nothing in it does, the kind
+ * of file that would help.
+ */
+export async function fileFor(card: string, files: readonly File[]) {
+  if (!files.length || !studio().doc.nodes[card]) return;
+  toggleChat(true);
+  const read: { file: File; ing?: Ingested; error?: string }[] = await Promise.all(files.map((file) => ingestFile(file).then((ing) => ({ file, ing }), (e: unknown) => ({ file, error: message(e) }))));
+  const customers = read.filter((x) => x.ing && guessVoice({ kind: x.ing.kind, text: x.ing.text, title: x.ing.title }) === "customers");
+  if (customers.length) void addSources(customers.map((x) => ({ kind: "read" as const, ingested: x.ing! })), { under: card });
+  const title = cardTitle(card);
+  for (const x of read) {
+    if (customers.includes(x)) continue;
+    const name = x.ing?.title || x.file.name;
+    const said = title ? `A file for “${title}”` : "A file for this card";
+    const docs: ChatDoc[] = [{ from: "computer", title: name, at: new Date(x.file.lastModified).toISOString(), ...(x.ing?.pages?.length ? { pages: x.ing.pages.length } : {}), voice: "own" }];
+    const source = newId();
+    const id = addTurn(said, { kind: "dump", source, file: { card, title: name } }, docs);
+    try {
+      if (!x.ing) throw new Error(x.error ?? "It couldn't be read.");
+      await startDump(x.ing.text, { id: source, file: { title: name, card } });
+    } catch (e) {
+      change((c) => withJob(c, id, (j) => (j.kind === "dump" ? { ...j, error: message(e) } : j)));
+    }
+  }
+}
+
+/** A file read for a card, left out: its source goes (nothing rests on it yet). */
+export async function leaveFile(id: string) {
+  const j = turnOf(id)?.job;
+  if (j?.kind !== "dump" || !j.file) return;
+  stopTurn(id);
+  change((c) => withJob(c, id, (x) => (x.kind === "dump" && x.file ? { ...x, file: { ...x.file, left: true } } : x)));
+  await orgFetch(`/sources/${encodeURIComponent(j.source)}`, { method: "DELETE" }).then(
+    () => useSources.setState((st) => ({ list: st.list.filter((x) => x.id !== j.source) })),
+    () => {},
+  );
+}
+
+/** Another file in place of one that doesn't bear on its card. */
+export async function anotherFile(id: string, files: readonly File[]) {
+  const j = turnOf(id)?.job;
+  if (j?.kind !== "dump" || !j.file || !files.length) return;
+  const card = j.file.card;
+  await leaveFile(id);
+  await fileFor(card, files);
 }
 
 /** A turn taken out of the chat (what it made stays where it is). */

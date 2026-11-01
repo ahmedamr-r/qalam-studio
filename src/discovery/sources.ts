@@ -114,8 +114,8 @@ export interface SourceRecord {
   answers?: CardAnswers;
 }
 
-/** What a source is, for a person: its kind, or "Your answers" for the answers to a card's questions. */
-export const sourceLabel = (s: Pick<SourceRecord, "kind" | "answers">) => (s.answers ? "Your answers" : SOURCE_KIND_LABEL[s.kind]);
+/** What a source is, for a person: its kind, "Your answers" for the answers to a card's questions, or "Your file" for a file read for a card. */
+export const sourceLabel = (s: Pick<SourceRecord, "kind" | "answers"> & { dump?: { file?: unknown } }) => (s.answers ? "Your answers" : s.kind === "dump" && s.dump?.file ? "Your file" : SOURCE_KIND_LABEL[s.kind]);
 
 /** The most text a source keeps (characters). */
 export const MAX_SOURCE_TEXT = 1_000_000;
@@ -225,7 +225,7 @@ export function quoteOf(source: Pick<SourceRecord, "quotes">, e: Pick<OstEvidenc
   return e.span ? source.quotes.find((x) => x.span[0] === e.span![0] && x.span[1] === e.span![1]) : undefined;
 }
 
-export function quoteEvidence(source: Pick<SourceRecord, "id" | "title"> & { kind?: SourceKind; answers?: unknown }, q: SourceQuote, addedBy: "user" | "ai", opts: { against?: boolean; now?: number } = {}): OstEvidence {
+export function quoteEvidence(source: Pick<SourceRecord, "id" | "title"> & { kind?: SourceKind; answers?: unknown; dump?: { file?: unknown } }, q: SourceQuote, addedBy: "user" | "ai", opts: { against?: boolean; now?: number } = {}): OstEvidence {
   return {
     id: newId(),
     kind: source.kind === "dump" ? "dump" : "quote",
@@ -242,6 +242,7 @@ export function quoteEvidence(source: Pick<SourceRecord, "id" | "title"> & { kin
     ...(opts.against ? { stance: "against" as const } : {}),
     // Someone online said it: it backs a card, but never makes it more than Assumed alone.
     ...(source.kind === "post" ? { online: true } : {}),
+    ...(source.kind === "dump" && source.dump?.file ? { file: true as const } : {}),
     addedBy,
     at: opts.now ?? Date.now(),
   };

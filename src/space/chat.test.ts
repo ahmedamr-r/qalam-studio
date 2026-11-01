@@ -62,6 +62,16 @@ describe("a brain dump in the canvas's chat", () => {
     expect(names(session({ phase: "failed", failed: { at: "placing", error: "No engine" } }))).toEqual(["took", "answered", "text", "retry"]);
   });
 
+  it("reads a file for a card: what it took from it and the file that would help when it's the wrong one, or that they left it out", () => {
+    const file = { card: "c1", title: "Price list.pdf" };
+    const c = withTurn(emptyChat(), { ...dumpTurn("s1"), job: { kind: "dump", source: "s1", file } });
+    const names = (cc: typeof c, s: DumpSession | null) => threadOf(cc, () => s)[1].parts.map((p) => (p.type === "data" ? p.name : "text"));
+    expect(names(c, session({ phase: "ready", buckets: [], off: { wanted: "Notes from talks with regulars" } }))).toEqual(["took", "off"]);
+    expect(names(c, session({ phase: "ready", buckets: [] }))).toEqual(["took", "text", "place"]);
+    const left = withJob(c, "d", (j) => (j.kind === "dump" ? { ...j, file: { ...file, left: true } } : j));
+    expect(threadOf(left, () => null)[1].parts).toEqual([{ type: "text", text: "You left “Price list.pdf” out." }]);
+  });
+
   it("says when a dump never started", () => {
     const c = withTurn(emptyChat(), { ...dumpTurn("s1"), job: { kind: "dump", source: "s1", error: "Qalam AI isn't set up here." } });
     expect(threadOf(c)[1].parts).toEqual([{ type: "text", text: "Qalam AI isn't set up here." }]);
