@@ -60,6 +60,19 @@ jobs:
             exit 1
           fi
 
+      # The draft is made here, once, before anything uploads into it: left to electron-builder, the
+      # .dmg's and the .zip's uploads each found no release and each made one (v0.1.1 got two drafts).
+      - name: The draft release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "The release for $GITHUB_REF_NAME is there already."
+          else
+            gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "Qalam Studio ${GITHUB_REF_NAME#v}" --notes-file build/release-notes.md
+          fi
+
       - name: Build (and publish, for a tag)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
