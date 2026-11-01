@@ -30,8 +30,12 @@ export type ChatJob =
   | { kind: "ask"; state: "asking" | "answered" | "failed"; answer?: AskAnswer; secs?: number; error?: string }
   /** A short statement: is it a goal or a problem (or a question)? The chips say. */
   | { kind: "choose"; first: "goal" | "problem" }
-  /** Their words written on the canvas as a goal's or a problem's card. */
-  | { kind: "add"; what: "goal" | "problem"; card: string; under: string | null }
+  /**
+   * Their words as a goal's or a problem's card: Qalam AI's wording first (`suggesting`, then
+   * `suggested`, for them to use, edit or leave for their own words; none when it found none to
+   * suggest), then the card written (`card`).
+   */
+  | { kind: "add"; what: "goal" | "problem"; card: string; under: string | null; state?: "suggesting" | "suggested"; suggestion?: string; why?: string }
   /** What customers said, taken in as sources: filed into problem pages, placed where it fits. */
   | { kind: "take"; state: "taking" | "done" | "failed"; sources: string[]; pages: FiledPage[]; quotes: number; error?: string }
   /**
@@ -64,6 +68,8 @@ function stopped(j: ChatJob): ChatJob {
   if (j.kind === "ask" && j.state === "asking") return { ...j, state: "failed", error: "It stopped when the page closed. Ask again." };
   // Capture goes on in the core: what was taken in shows up on the canvas and in its panel.
   if (j.kind === "take" && j.state === "taking") return { ...j, state: "failed", error: "The page closed while it was being taken in. What was kept is in the sources." };
+  // A wording still being worked out when the page went: their own words, to add as they are.
+  if (j.kind === "add" && j.state === "suggesting") return { ...j, state: "suggested" };
   // Questions still being worked out when the page went: code's own are asked instead.
   if (j.kind === "find" && j.loading) {
     const { loading: _gone, ...rest } = j;
@@ -155,8 +161,10 @@ function replyTo(t: ChatTurn, dumpOf: DumpOf): ChatPart[] {
       if (j.state === "failed") return [text(`I couldn't answer that: ${j.error ?? "something went wrong"}`), part("switch", id)];
       return [part("answer", id), part("switch", id)];
     case "choose":
-      return [text("Is it a goal or a problem? I'll put it on the canvas in your words."), part("choose", id)];
+      return [text("Is it a goal or a problem? I'll suggest how to word it for the canvas."), part("choose", id)];
     case "add":
+      if (j.state === "suggesting") return [part("working", id)];
+      if (j.state === "suggested") return [part("statement", id)];
       return [part("added", id)];
     case "take":
       if (j.state === "taking") return [part("working", id)];
@@ -175,7 +183,7 @@ function replyTo(t: ChatTurn, dumpOf: DumpOf): ChatPart[] {
       if (j.file?.left) return [text(`You left “${j.file.title}” out.`)];
       return [...(j.find ? [part("opening", id)] : []), ...(j.error ? [text(j.error)] : dumpReply(t, dumpOf(j.source)))];
     case "find":
-      return [text(`A few questions first, then I'll suggest ${j.what === "goal" ? "a goal" : "a problem"} in your words. Skip any you can't answer.`), ...(j.error ? [text(j.error)] : []), part("cancel", id)];
+      return [text(`A few questions first, then I'll suggest ${j.what === "goal" ? "a goal" : "a problem"} from what you say. Skip any you can't answer.`), ...(j.error ? [text(j.error)] : []), part("cancel", id)];
   }
 }
 

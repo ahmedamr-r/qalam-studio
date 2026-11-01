@@ -1,6 +1,9 @@
 import { NO_WEB } from "@/ai/abilities";
 import { companyCall, competitorsCall, domainCall } from "@/ai/market";
 import { findQuestionsCall } from "@/ai/find";
+import { statementCall } from "@/ai/statement";
+import { marketText } from "@/market/text";
+import { sanitizeStatement, statementMaterial, type StatementWhat } from "@/space/statement";
 import type { PlanQuestion } from "@/ai/plan";
 import { findQuestionsMaterial, sanitizeFindQuestions, type FindWhat } from "@/space/find";
 import { knowsMarket } from "@/market/types";
@@ -268,6 +271,19 @@ export async function findQuestions(store: OrgStore, what: FindWhat, signal?: Ab
   const m = findQuestionsMaterial({ what, org: store.info.name, about: [about.context, about.audience].filter((x) => x.trim()).join(" "), market });
   const { data } = await deps.structured<unknown>(findQuestionsCall(m), signal);
   return sanitizeFindQuestions(data, m);
+}
+
+// ---------------------------------------------------------------------------
+// Their words as a proper goal or problem
+
+/** A statement for what they wrote, worded from what's known about the company (null: their own words stand). */
+export async function suggestStatement(store: OrgStore, o: { what: StatementWhat; said: string; above?: string | null }, signal?: AbortSignal, deps: Pick<MarketDeps, "structured"> = realDeps): Promise<{ statement: string; why: string } | null> {
+  const about = await store.getAbout();
+  const market = await store.getMarket();
+  const org = store.info.name;
+  const m = statementMaterial({ what: o.what, said: o.said, org, about: [about.context, about.audience].filter((x) => x.trim()).join(" "), market: marketText(market, { org, domain: false }), above: o.above });
+  const { data } = await deps.structured<unknown>(statementCall(m), signal);
+  return sanitizeStatement(data, m);
 }
 
 /** Stop a look running here. */

@@ -4,6 +4,7 @@ import { studio } from "@/doc/store";
 import { isOstCard } from "@/doc/board";
 import { addCardIn, makeCardNode, newCard } from "@/discovery/ops";
 import type { Topic } from "@/hub/topics";
+import type { OstEvidence } from "@/discovery/types";
 import { topicsDb } from "@/org/topics";
 import { topicHref } from "@/projects/model";
 import type { Space } from "../frame/spaces";
@@ -38,10 +39,10 @@ export function placeFor(kind: Written): string | null {
  * A goal or a problem written on the canvas: with `title` (their words, sent to the chat) it's
  * put there and shown; without, its title is typed in place (Esc takes it back). One undo step.
  */
-export function writeCard(kind: Written, o: { title?: string; under?: string | null } = {}): string {
+export function writeCard(kind: Written, o: { title?: string; under?: string | null; evidence?: OstEvidence[] } = {}): string {
   const s = studio();
   const under = o.under !== undefined ? o.under : placeFor(kind);
-  const node = makeCardNode(newCard(kind, o.title ? { title: o.title } : {}));
+  const node = makeCardNode(newCard(kind, { ...(o.title ? { title: o.title } : {}), ...(o.evidence?.length ? { evidence: o.evidence } : {}) }));
   if (!o.title) s.beginTx();
   s.mutate((d) => {
     const at = under && d.nodes[under] ? under : null;

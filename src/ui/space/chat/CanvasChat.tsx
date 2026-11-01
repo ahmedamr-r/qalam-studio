@@ -107,7 +107,7 @@ export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
             loaded && (
               <div className="flex flex-col gap-[10px] pt-[8px]">
                 <p className="text-body text-fg">Ask what your {org} knows, or bring something to the canvas.</p>
-                <p className="text-caption text-fg-muted">A question is answered from its problem pages, sources, boards and decisions. Your thinking is read and placed as cards; what customers said goes into problems&apos; pages; a goal or a problem goes on the canvas in your words.</p>
+                <p className="text-caption text-fg-muted">A question is answered from its problem pages, sources, boards and decisions. Your thinking is read and placed as cards; what customers said goes into problems&apos; pages; a goal or a problem is worded for the canvas, for you to use or change.</p>
                 <div className="flex flex-wrap gap-[6px]">
                   {(["goal", "problem"] as FindWhat[]).map((w) => (
                     <button key={w} type="button" className={r.replyChip} onClick={() => findWith(w, space)}>

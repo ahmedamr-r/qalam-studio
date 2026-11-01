@@ -100,6 +100,15 @@ describe("short statements and what came of them", () => {
     expect(threadOf(c)[1].parts.map((p) => (p.type === "data" ? p.name : "text"))).toEqual(["text", "choose"]);
   });
 
+  it("words a goal or a problem first, for them to use, edit or keep as they wrote it, then says where it went", () => {
+    const parts = (job: ChatTurn["job"]) => threadOf(withTurn(emptyChat(), turn("a", job, "more oil from homes")))[1].parts.map((p) => (p.type === "data" ? p.name : "text"));
+    expect(parts({ kind: "add", what: "goal", card: "", under: null, state: "suggesting" })).toEqual(["working"]);
+    expect(parts({ kind: "add", what: "goal", card: "", under: null, state: "suggested", suggestion: "More households hand over their used oil" })).toEqual(["statement"]);
+    expect(parts({ kind: "add", what: "goal", card: "c1", under: null })).toEqual(["added"]);
+    // A wording still being worked out as the page went: their own words, to add as they are.
+    expect(chatOf({ v: 1, turns: [turn("a", { kind: "add", what: "goal", card: "", under: null, state: "suggesting" })] }).turns[0].job).toMatchObject({ state: "suggested" });
+  });
+
   it("lists the pages what customers said went into, and says when none took it", () => {
     const took = (pages: number, quotes: number) => threadOf(withTurn(emptyChat(), turn("t", { kind: "take", state: "done", sources: ["a"], pages: Array.from({ length: pages }, (_, i) => ({ id: `p${i}`, title: `Page ${i}` })), quotes }, "")))[1].parts;
     expect(took(2, 5)).toEqual([{ type: "text", text: "I kept 1 source. 5 quotes from customers went into these problems' pages:" }, { type: "data", name: "pages", data: { turn: "t" } }]);

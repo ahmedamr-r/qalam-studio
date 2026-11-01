@@ -33,7 +33,8 @@ import { r } from "../../recipes";
 import { useTopics } from "../../topics/list";
 import { useWords } from "../../frame/store";
 import { show } from "../links";
-import { anotherFile, dropTurn, leaveFile, retake, turnOf, useCanvasChat } from "./store";
+import { anotherFile, dropTurn, leaveFile, placeStatement, retake, turnOf, useCanvasChat } from "./store";
+import { titleFrom } from "@/space/route";
 
 /*
  * What the messages in the canvas's chat draw (./CanvasChat.tsx): each part names its turn, and
@@ -449,7 +450,7 @@ function ProposedPart({ data }: { data: PartData }) {
     return (
       <div className="flex flex-col items-start gap-[8px]">
         <p className="text-body leading-[20px] text-fg">
-          From what you said, {list.length === 1 ? `here's ${d.s.aim.find === "goal" ? "a goal" : "a problem"}` : `here are ${list.length} ${d.s.aim.find === "goal" ? "goals" : "problems"}`}, in your words where it could. Each is drawn on the canvas where it would go.
+          From what you said, {list.length === 1 ? `here's ${d.s.aim.find === "goal" ? "a goal" : "a problem"}` : `here are ${list.length} ${d.s.aim.find === "goal" ? "goals" : "problems"}`}. Each is drawn on the canvas where it would go.
         </p>
         <FoundList list={list} />
       </div>
@@ -561,7 +562,7 @@ function AddedPart({ data }: { data: PartData }) {
   const above = j.under ? studio().doc.nodes[j.under]?.meta.ost?.title : null;
   return (
     <div className="flex flex-col items-start gap-[8px]">
-      <p className="text-body leading-[20px] text-fg">{there ? `I put it on the canvas as ${WHAT[j.what]}${above ? `, under “${above}”` : ""}, in your words.` : `It went on the canvas as ${WHAT[j.what]}, and isn't there any more.`}</p>
+      <p className="text-body leading-[20px] text-fg">{there ? `I put it on the canvas as ${WHAT[j.what]}${above ? `, under “${above}”` : ""}${studio().doc.nodes[j.card]?.meta.ost?.title === titleFrom(t.said) ? ", in your words" : ", with your words on it"}.` : `It went on the canvas as ${WHAT[j.what]}, and isn't there any more.`}</p>
       {there && (
         <ReplyChips>
           <button type="button" className={r.replyChip} onClick={() => show(j.card)}>
@@ -569,6 +570,68 @@ function AddedPart({ data }: { data: PartData }) {
           </button>
         </ReplyChips>
       )}
+    </div>
+  );
+}
+
+/** Qalam AI's wording of their goal or problem, before it's written: use it, edit it, or keep their words. */
+function StatementPart({ data }: { data: PartData }) {
+  const t = useTurn(data.turn);
+  const j = t?.job.kind === "add" && t.job.state === "suggested" ? t.job : null;
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(j?.suggestion ?? "");
+  if (!t || !j) return null;
+  const id = String(data.turn);
+  if (!j.suggestion)
+    return (
+      <div className="flex flex-col items-start gap-[8px]">
+        <p className="text-body leading-[20px] text-fg">I'd put it on the canvas as {WHAT[j.what]}, as you wrote it.</p>
+        <ReplyChips>
+          <button type="button" className={r.replyChipPrimary} onClick={() => placeStatement(id, t.said)}>
+            Add it
+          </button>
+        </ReplyChips>
+      </div>
+    );
+  return (
+    <div className="flex w-full flex-col items-start gap-[8px]">
+      <p className="text-body leading-[20px] text-fg">As {WHAT[j.what]}, I'd word it:</p>
+      {editing ? (
+        <textarea
+          aria-label={j.what === "goal" ? "The goal, in your words" : "The problem, in your words"}
+          rows={2}
+          dir="auto"
+          autoFocus
+          className={clsx(r.textarea, "text-body")}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && text.trim()) {
+              e.preventDefault();
+              placeStatement(id, text);
+            }
+            if (e.key === "Escape") setEditing(false);
+          }}
+        />
+      ) : (
+        <p className={clsx(qr.inset, "w-full px-[10px] py-[8px] text-body leading-[20px] font-medium text-fg")} dir="auto">
+          {j.suggestion}
+        </p>
+      )}
+      {j.why && !editing && <p className="text-caption leading-[18px] text-fg-muted">{j.why}</p>}
+      <ReplyChips>
+        <button type="button" disabled={editing && !text.trim()} className={r.replyChipPrimary} onClick={() => placeStatement(id, editing ? text : j.suggestion!)}>
+          {editing ? "Add this" : "Use it"}
+        </button>
+        {!editing && (
+          <button type="button" className={r.replyChip} onClick={() => setEditing(true)}>
+            Edit
+          </button>
+        )}
+        <button type="button" className={r.replyChip} onClick={() => placeStatement(id, t.said)}>
+          Keep my words
+        </button>
+      </ReplyChips>
     </div>
   );
 }
@@ -624,6 +687,7 @@ export const PARTS: Record<string, PartComponent> = {
   answer: AnswerPart,
   choose: ChoosePart,
   added: AddedPart,
+  statement: StatementPart,
   switch: SwitchPart,
   pages: PagesPart,
   docs: DocsPart,

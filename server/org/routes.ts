@@ -32,7 +32,7 @@ import type { Hit as ConnectorHit } from "@/connectors/recipes";
 import { findProblems, goalPage, linkByHand } from "./goals";
 import { pictureFromFigma, pinByHand, placeQuotes } from "./steps";
 import { answerReading, dropReading, editSeen, seenEditShape, seenMaps, seenView, settleReading, startReading } from "./seen";
-import { findQuestions, lookForCompetitors, lookUpCompany, marketSession, settleCompany, settleCompetitors, stopLook, type FactDecision } from "./market";
+import { findQuestions, suggestStatement, lookForCompetitors, lookUpCompany, marketSession, settleCompany, settleCompetitors, stopLook, type FactDecision } from "./market";
 import type { SeenAnswer, Shot } from "@/seen/types";
 import { CHAT_KEY, chatOf } from "@/space/chat";
 import { changeJob, noteForJob, onlineForJob, openJobs, planJobs, searchForJob, takeInForJob } from "./jobs";
@@ -928,6 +928,19 @@ export function orgRoutes(): Hono<Env> {
   r.delete("/api/org/:org/market/company", (c) => {
     stopLook(c.get("store"), "company");
     return c.json({ ok: true });
+  });
+  r.post("/api/org/:org/statement", async (c) => {
+    if (!aiConfigured()) return c.json({ statement: null });
+    const b = (await c.req.json().catch(() => null)) as { what?: unknown; said?: unknown; above?: unknown } | null;
+    const what = b?.what === "goal" || b?.what === "problem" ? b.what : null;
+    const said = typeof b?.said === "string" ? b.said.trim().slice(0, 1200) : "";
+    if (!what || !said) return bad("Send their words, and whether it's a goal or a problem");
+    try {
+      return c.json({ statement: await suggestStatement(c.get("store"), { what, said, above: typeof b?.above === "string" ? b.above.slice(0, 400) : null }, c.req.raw.signal) });
+    } catch {
+      // Their own words stand.
+      return c.json({ statement: null });
+    }
   });
   r.post("/api/org/:org/find/questions", async (c) => {
     if (!aiConfigured()) return c.json({ questions: [] });

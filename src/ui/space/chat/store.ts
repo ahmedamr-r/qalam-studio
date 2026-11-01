@@ -308,11 +308,32 @@ export function dropTurn(id: string) {
 // ---------------------------------------------------------------------------
 // Writing it on the canvas
 
-function addCard(at: string | null, said: string, what: "goal" | "problem") {
+/** Their words as a goal or a problem: Qalam AI's wording first, for them to use, edit or leave (no engine: their words, at once). */
+async function addCard(at: string | null, said: string, what: "goal" | "problem") {
   const kind = what === "goal" ? "outcome" : "opportunity";
   const under = placeFor(kind);
-  const card = writeCard(kind, { title: titleFrom(said), under });
-  jobAt(at, said, { kind: "add", what, card, under });
+  if (!(await aiStatus()).ai) return void jobAt(at, said, { kind: "add", what, card: writeCard(kind, { title: titleFrom(said), under }), under });
+  const id = jobAt(at, said, { kind: "add", what, card: "", under, state: "suggesting" });
+  const n = under ? studio().doc.nodes[under] : undefined;
+  const above = isOstCard(n) ? n.meta.ost.title : null;
+  const r = await orgJson<{ statement: { statement: string; why: string } | null }>("/statement", { method: "POST", json: { what, said, above } }).catch(() => ({ statement: null }));
+  change((c) => withJob(c, id, (j) => (j.kind === "add" && j.state === "suggesting" ? { ...j, state: "suggested", ...(r.statement ? { suggestion: r.statement.statement, why: r.statement.why } : {}) } : j)));
+}
+
+/**
+ * The card written in the words they chose (Qalam AI's, edited or not, or their own), under where
+ * it was to go; their own words stay on it as a note when the title isn't them.
+ */
+export function placeStatement(id: string, title: string) {
+  const t = turnOf(id);
+  if (t?.job.kind !== "add" || t.job.state !== "suggested") return;
+  const j = t.job;
+  const kind = j.what === "goal" ? "outcome" : "opportunity";
+  const words = title.replace(/\s+/g, " ").trim() || titleFrom(t.said);
+  const under = j.under && studio().doc.nodes[j.under] ? j.under : placeFor(kind);
+  const theirs = titleFrom(t.said);
+  const card = writeCard(kind, { title: words, under, ...(words !== theirs ? { evidence: [{ id: newId(), kind: "note", text: t.said.slice(0, 1200), addedBy: "user", at: Date.now() }] } : {}) });
+  change((c) => withJob(c, id, () => ({ kind: "add", what: j.what, card, under })));
 }
 
 // ---------------------------------------------------------------------------
