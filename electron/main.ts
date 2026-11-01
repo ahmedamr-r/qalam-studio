@@ -182,13 +182,17 @@ function createWindow() {
     if (!HIDDEN) win.show();
   });
   // Edits save 400 ms after they settle: give the page a moment to finish before the window goes.
+  // Holding the close back cancels a quit under way, so Quit asks again once the window's gone.
   let closing = false;
   win.on("close", (e) => {
     if (closing) return;
     closing = true;
     e.preventDefault();
     const flushed = win.webContents.executeJavaScript("window.__qalamBeforeClose ? window.__qalamBeforeClose() : null", true).catch(() => {});
-    void Promise.race([flushed, new Promise((r) => setTimeout(r, 3000))]).finally(() => win.destroy());
+    void Promise.race([flushed, new Promise((r) => setTimeout(r, 3000))]).finally(() => {
+      win.destroy();
+      if (quitting) app.quit();
+    });
   });
   void win.loadURL(DEV_URL ?? `${ORIGIN}/`);
 }
