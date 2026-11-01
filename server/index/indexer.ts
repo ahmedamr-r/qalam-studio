@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
-import { boardPieces, contextPieces, decisionPieces, goalPieces, mapPieces, meaningText, seenPieces, sourcePieces, topicPieces, type Built, type HubPiece, type Names } from "@/hub/pieces";
+import { boardPieces, contextPieces, decisionPieces, goalPieces, mapPieces, marketPieces, meaningText, seenPieces, sourcePieces, topicPieces, type Built, type HubPiece, type Names } from "@/hub/pieces";
 import { fold } from "@/hub/words";
 import type { Models } from "../models/client";
 import { contentHash, stableStringify } from "../org/fsx";
@@ -149,6 +149,7 @@ export class OrgIndex {
     else if (e.kind === "relation") this.queue.add("relations");
     else if (e.kind === "about" || e.kind === "org") this.queue.add("context:org");
     else if (e.kind === "goal") this.queue.add("goals");
+    else if (e.kind === "market" && !e.session) this.queue.add("market");
     else if (e.kind === "map") this.queue.add(`map:${e.key}`);
     else if (e.kind === "seen" && !e.reading) this.queue.add(`seen:${e.key}`);
     // A product's name is in the lines of everything for it: look at everything again.
@@ -175,7 +176,7 @@ export class OrgIndex {
   }
 
   private async keys(): Promise<Set<string>> {
-    const keys = new Set<string>(["decisions", "context:org", "relations", "goals"]);
+    const keys = new Set<string>(["decisions", "context:org", "relations", "goals", "market"]);
     for (const p of this.store.listProjects()) if (p.type === "discovery") keys.add(`board:${p.id}`);
     for (const s of await this.store.listSources()) keys.add(`source:${s.id}`);
     for (const p of await this.store.listProducts()) keys.add(`context:${p.id}`);
@@ -209,6 +210,11 @@ export class OrgIndex {
       case "topic": {
         const t = await store.getTopic(id);
         return t ? topicPieces(t, names) : null;
+      }
+      case "market": {
+        const m = await store.getMarket();
+        const built = marketPieces(m, store.info.name);
+        return built.pieces.length ? built : null;
       }
       case "goals": {
         const t = await store.getGoals();

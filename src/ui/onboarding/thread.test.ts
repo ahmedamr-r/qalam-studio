@@ -23,6 +23,7 @@ const base = (over: Partial<ThreadInput> = {}): ThreadInput => ({
   problems: { sent: null, result: null, error: null },
   busy: null,
   picked: 0,
+  market: { session: { v: 1 }, noSite: false, error: null },
   ...over,
 });
 
@@ -38,7 +39,7 @@ describe("the welcome", () => {
     const i = base({ route: "welcome", engine: "looking" });
     expect(ids(threadOf(i))).toEqual(["engine"]);
     expect(askOf(i)).toMatchObject({ kind: "none", key: "engine" });
-    expect(stepsOf(i).map((s) => s.state)).toEqual(["now", "next", "next", "next", "next", "next", "next"]);
+    expect(stepsOf(i).map((s) => s.state)).toEqual(["now", "next", "next", "next", "next", "next", "next", "next"]);
   });
 
   it("asks who it's for once Qalam AI is ready or left for later, and takes nothing until they pick", () => {
@@ -48,7 +49,7 @@ describe("the welcome", () => {
       expect(ids(m)).toEqual(["engine", "shape:ask"]);
       expect(choices(m.at(-1))).toEqual(["shape"]);
       expect(askOf(i)).toMatchObject({ kind: "none", key: "shape" });
-      expect(stepsOf(i).map((s) => s.state)).toEqual(["done", "now", "next", "next", "next", "next", "next"]);
+      expect(stepsOf(i).map((s) => s.state)).toEqual(["done", "now", "next", "next", "next", "next", "next", "next"]);
     }
   });
 
@@ -60,7 +61,7 @@ describe("the welcome", () => {
     const solo = base({ route: "welcome", shape: "solo" });
     expect(threadOf(solo).at(-1)?.parts[0]).toEqual({ type: "text", text: "What's the project you have in mind? Just name it, or tell me what you'd like to call it." });
     expect(askOf(solo)).toMatchObject({ kind: "name", submit: "enter" });
-    expect(stepsOf(solo).map((s) => s.id)).toEqual(["engine", "name", "you", "voice", "goals", "connect"]);
+    expect(stepsOf(solo).map((s) => s.id)).toEqual(["engine", "name", "you", "voice", "company", "goals", "connect"]);
   });
 
   it("shows the name sent while the organization is made", () => {
@@ -88,6 +89,7 @@ describe("who they are", () => {
       ["name", "done"],
       ["you", "now"],
       ["voice", "next"],
+      ["company", "next"],
       ["goals", "next"],
       ["yours", "next"],
       ["connect", "next"],
@@ -239,6 +241,7 @@ describe("on your own", () => {
       ["name", "done"],
       ["you", "done"],
       ["voice", "done"],
+      ["company", "done"],
       ["goals", "done"],
       ["connect", "now"],
     ]);
@@ -354,10 +357,69 @@ describe("the first run with what v0.1 hides left out (src/lab.ts)", () => {
   it("asks only for Qalam AI, a name and a start, and ends on Finish once the goals are in", () => {
     setLab([]);
     const i = base({ shape: "team", door: "know", know: { ...base().know, phase: "added", added: 2 } });
-    expect(stepsOf(i).map((s) => s.id)).toEqual(["engine", "name", "goals"]);
+    expect(stepsOf(i).map((s) => s.id)).toEqual(["engine", "name", "company", "goals"]);
     const m = threadOf(i);
     expect(ids(m)).not.toContain("you:ask");
     expect(ids(m)).not.toContain("voice:ask");
     expect(m.find((x) => x.id === "goals:in")?.parts[0]).toEqual({ type: "text", text: "Your 2 goals are in. That's the setup: Finish takes you to it." });
+  });
+});
+
+describe("the company, before any goal or problem", () => {
+  const fact = { id: "f1", text: "Collects used cooking oil from homes in Cairo.", field: "does" as const, url: "https://tagaddod.com/", by: "qalam" as const, at: 1 };
+  const company = (look: Partial<NonNullable<ThreadInput["market"]["session"]["company"]>> | null, over: Partial<ThreadInput["market"]> = {}) =>
+    base({ step: "company", orgName: "Tagaddod", market: { session: { v: 1, ...(look ? { company: { state: "ready", at: 1, steps: [], facts: [], ...look } } : {}) }, noSite: false, error: null, ...over } });
+  const own = (m: ChatMessage[]) => m.filter((x) => x.id.startsWith("company"));
+
+  it("asks for its website first, with No website yet, and takes an address", () => {
+    const i = company(null);
+    const m = own(threadOf(i));
+    expect(ids(m)).toEqual(["company:ask"]);
+    expect(choices(m[0])).toEqual(["company"]);
+    expect(askOf(i)).toMatchObject({ kind: "company", placeholder: "example.com" });
+  });
+
+  it("asks for a line about it when there's no website", () => {
+    const i = company(null, { noSite: true });
+    expect(ids(own(threadOf(i)))).toEqual(["company:ask", "company:nosite", "company:line"]);
+    expect(askOf(i).placeholder).toMatch(/cooking oil/);
+  });
+
+  it("says what it's doing, then lists the facts to keep, fix or drop", () => {
+    const looking = company({ state: "looking", site: "tagaddod.com", steps: ["Starting", "Searched the web: Tagaddod"] });
+    expect(own(threadOf(looking)).map((x) => [x.id, x.parts])).toEqual([
+      ["company:ask", [{ type: "text", text: "What's Tagaddod's website? I'll look it up and check with you what I find." }]],
+      ["company:you", [{ type: "text", text: "tagaddod.com" }]],
+      ["company:looking", [{ type: "data", name: "working", data: { label: "Searched the web: Tagaddod" } }]],
+    ]);
+    expect(askOf(looking)).toMatchObject({ kind: "none" });
+    const ready = company({ site: "tagaddod.com", facts: [fact] });
+    expect(own(threadOf(ready)).at(-1)?.parts.at(-1)).toEqual({ type: "data", name: "facts", data: { open: true } });
+    expect(askOf(ready)).toMatchObject({ kind: "none", key: "company:check" });
+  });
+
+  it("asks in words when nothing was found, or there's no web search here", () => {
+    const none = company({ site: "tagaddod.com" });
+    expect(own(threadOf(none)).at(-1)?.parts[0]).toEqual({ type: "text", text: "I couldn't find Tagaddod on the web at tagaddod.com. Then tell me in a line or two what Tagaddod does and who it's for." });
+    expect(askOf(none).kind).toBe("company");
+    expect(own(threadOf(company({ noWeb: true }))).at(-1)?.parts[0]).toMatchObject({ text: expect.stringContaining("I can't search the web from this computer.") });
+  });
+
+  it("keeps what they settled in the thread once the setup moves on to the start", () => {
+    const m = threadOf({ ...company({ state: "settled", site: "tagaddod.com", facts: [fact], kept: 1 }), step: "goals" });
+    expect(ids(own(m))).toEqual(["company:ask", "company:you", "company:found", "company:kept"]);
+    expect(m.some((x) => x.id === "goals:ask")).toBe(true);
+    expect(stepsOf({ ...base(), step: "company" }).find((s) => s.id === "company")?.state).toBe("now");
+  });
+});
+
+describe("the company, in their own words", () => {
+  it("asks for a line in place of what was found, once they'd rather tell it", () => {
+    const fact = { id: "f1", text: "Collects used cooking oil.", field: "does" as const, by: "qalam" as const, at: 1 };
+    const i = base({ step: "company", orgName: "Tagaddod", market: { session: { v: 1, company: { state: "ready", at: 1, steps: [], facts: [fact], site: "tagaddod.com" } }, noSite: true, error: null } });
+    const m = threadOf(i).filter((x) => x.id.startsWith("company"));
+    expect(m.map((x) => x.id)).toEqual(["company:ask", "company:you", "company:found", "company:mine", "company:line"]);
+    expect(m[2].parts.at(-1)).toEqual({ type: "data", name: "facts", data: { open: false } });
+    expect(askOf(i).kind).toBe("company");
   });
 });

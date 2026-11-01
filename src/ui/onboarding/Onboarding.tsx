@@ -21,11 +21,12 @@ import { r } from "../recipes";
 import Toasts from "../toast";
 import { answerKnown, readKnown, saveKnownForm, useKnow } from "../setup/know";
 import { answerSetupRound, saveSetupRound, startSetup, stopSetup, useSetup } from "../setup/setup";
-import { nameOrg, sendProblems, startSetupPage, startWelcome, useFirstRun, type FirstRun } from "./flow";
+import { nameOrg, sendCompany, sendProblems, startSetupPage, startWelcome, useFirstRun, type FirstRun } from "./flow";
 import { PARTS } from "./parts";
 import { CanvasPage } from "./CanvasPage";
 import { ReviewPill, StepsProgress } from "./TopBarParts";
 import { useWide } from "../chat/Panels";
+import { useMarket } from "@/org/market";
 import { askOf, isAddress, stepsOf, threadOf, type EngineState, type ThreadInput } from "./thread";
 
 /*
@@ -55,6 +56,7 @@ function useThreadInput(): ThreadInput {
   const yourName = useYou((y) => y.name);
   const voice = useVoice((v) => v.view);
   const session = setup.source?.setup ?? null;
+  const market = useMarket();
   return {
     route: fr.route,
     mode: fr.mode,
@@ -81,6 +83,7 @@ function useThreadInput(): ThreadInput {
     problems: fr.problems,
     busy: setup.busy ? { label: setup.busy.label } : fr.working,
     picked: (fr.picked ?? mine).length,
+    market: { session: market.session, noSite: fr.noSite, error: market.error },
   };
 }
 
@@ -189,7 +192,7 @@ export function Onboarding({ route }: { route: "welcome" | "setup" }) {
     ) : (
       <ChatComposer
         label={
-          ask.kind === "name" ? (fr.shape === "solo" ? "The project's name" : "The organization's name") : ask.kind === "outline" ? "Your goals" : ask.kind === "dump" ? (fr.shape === "solo" ? "About the idea" : "About the company") : ask.kind === "problems" ? "What customers said" : ask.kind === "idea" ? "The idea" : "Message"
+          ask.kind === "name" ? (fr.shape === "solo" ? "The project's name" : "The organization's name") : ask.kind === "company" ? (fr.shape === "solo" ? "About the project" : "Its website, or what it does") : ask.kind === "outline" ? "Your goals" : ask.kind === "dump" ? (fr.shape === "solo" ? "About the idea" : "About the company") : ask.kind === "problems" ? "What customers said" : ask.kind === "idea" ? "The idea" : "Message"
         }
         placeholder={ask.placeholder}
         submit={ask.submit}
@@ -206,6 +209,7 @@ export function Onboarding({ route }: { route: "welcome" | "setup" }) {
         hint={ask.kind === "outline" ? "Tab puts a goal under the one above · ⌘↵ sends" : ask.kind === "dump" || ask.kind === "problems" ? "A web address alone reads the page · ⌘↵ sends" : ask.kind === "idea" ? "⌘↵ sends" : null}
         check={(t) => {
           if (ask.kind === "name") return t.trim().length > 80 ? "Keep it under 80 characters." : null;
+          if (ask.kind === "company") return t.trim().length > 1200 ? "Keep it to a few lines." : !isAddress(t) && t.trim().split(/\s+/).length < 3 ? "Give its website, or a few words about what it does." : null;
           if (ask.kind === "outline") return readOutline(t).length ? null : "Write a goal first.";
           if (ask.kind === "dump" || ask.kind === "problems" || ask.kind === "idea") {
             if (t.length > DUMP_MAX_CHARS) return `That's over ${DUMP_MAX_CHARS.toLocaleString()} characters: paste the most useful part.`;
@@ -219,6 +223,10 @@ export function Onboarding({ route }: { route: "welcome" | "setup" }) {
         }}
         onSend={async (t) => {
           if (ask.kind === "name") return nameOrg(t.trim());
+          if (ask.kind === "company") {
+            void sendCompany(t);
+            return true;
+          }
           if (ask.kind === "outline") {
             void readKnown(t);
             return true;

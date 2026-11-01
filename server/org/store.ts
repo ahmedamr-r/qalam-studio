@@ -22,6 +22,9 @@ import { mapFromMarkdown, mapToMarkdown, type CodeRepo, type ProductMap } from "
 import { seenFromMarkdown, seenToMarkdown } from "@/seen/seen-md";
 import { SEEN_KEY, type SeenMap, type SeenReading } from "@/seen/types";
 import { CHAT_KEY, chatOf, type CanvasChat } from "@/space/chat";
+import { marketFromMarkdown, marketToMarkdown } from "@/market/market-md";
+import type { Market } from "@/market/types";
+import type { MarketSession } from "@/market/session";
 import type { FeedLog } from "@/feeds/feeds";
 import type { JobLog } from "@/goals/jobs";
 import { sameTopic } from "@/hub/topics";
@@ -83,6 +86,8 @@ export type OrgEvent = { tab?: string } & (
   | { kind: "solutions"; topic: string }
   /** What a product does today, from its code, changed (hub/maps/<key>.md). */
   | { kind: "map"; key: string; removed?: boolean }
+  /** What's known about the company, its competitors and its domain changed (hub/market.md), or the first run's lookups moved on (`session`). */
+  | { kind: "market"; session?: boolean }
   /** What people see in a product changed (hub/seen/<key>.md), or a reading of screenshots moved on (`reading`). */
   | { kind: "seen"; key: string; removed?: boolean; reading?: boolean }
   | { kind: "notice" }
@@ -98,6 +103,8 @@ export type OrgEvent = { tab?: string } & (
 
 /** The goal tree's file, at the organization's root. */
 export const GOALS = "goals.md";
+/** What's known about the company, its competitors and its domain. */
+export const MARKET = "hub/market.md";
 /** How long taking a change to a goal back counts as undoing it (as on a board). */
 const GOAL_UNDO_WINDOW = 10 * 60_000;
 
@@ -926,6 +933,41 @@ export class OrgStore {
 
   // Qalam AI's chat beside each canvas (src/space/chat.ts): this computer's, out of Git.
 
+  // What's known about the company, its competitors and its domain (hub/market.md), and the first
+  // run's lookups on their way there (chats/market/session.json: this computer's, out of Git).
+
+  async getMarket(): Promise<Market> {
+    return marketFromMarkdown(await readFile(this.abs(MARKET), "utf8").catch(() => ""));
+  }
+
+  /** Change what's known under its lock (as written now, a person's edits in it). */
+  async changeMarket(fn: (m: Market) => Market, opts: { tab?: string } = {}): Promise<Market> {
+    const file = this.abs(MARKET);
+    const next = await locked(file, async () => {
+      const m = fn(marketFromMarkdown(await readFile(file, "utf8").catch(() => "")));
+      await this.write(file, marketToMarkdown(m, { org: this.info.name }));
+      return m;
+    });
+    this.emit({ kind: "market", tab: opts.tab });
+    return next;
+  }
+
+  getMarketSession(): Promise<MarketSession | null> {
+    return readJson<MarketSession>(this.abs("chats/market/session.json"));
+  }
+
+  /** Change the first run's lookups under their lock; every change is announced, so the window follows along. */
+  async changeMarketSession(fn: (s: MarketSession) => MarketSession, opts: { tab?: string } = {}): Promise<MarketSession> {
+    const file = this.abs("chats/market/session.json");
+    const next = await locked(file, async () => {
+      const s = fn((await readJson<MarketSession>(file)) ?? { v: 1 });
+      await atomicWrite(file, stableStringify(s));
+      return s;
+    });
+    this.emit({ kind: "market", session: true, tab: opts.tab });
+    return next;
+  }
+
   private canvasChatFile(key: string) {
     if (!CHAT_KEY.test(key)) throw new NotFoundError("No such canvas");
     return this.abs(`chats/canvas/${key}.json`);
@@ -1699,6 +1741,8 @@ export class OrgStore {
       this.emit({ kind: "map", key: path.basename(rel, ".md"), ...(bytes ? {} : { removed: true }) });
     } else if (parts[0] === "hub" && parts[1] === "seen" && parts.length === 3 && rel.endsWith(".md")) {
       this.emit({ kind: "seen", key: path.basename(rel, ".md"), ...(bytes ? {} : { removed: true }) });
+    } else if (rel === MARKET) {
+      this.emit({ kind: "market" });
     } else if (rel === "about.md") {
       this.emit({ kind: "about" });
     } else if (rel === GOALS) {

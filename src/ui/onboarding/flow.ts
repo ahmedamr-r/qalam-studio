@@ -20,6 +20,8 @@ import { openKnow, useKnow } from "../setup/know";
 import { openSetup, useSetup } from "../setup/setup";
 import { changesThings, setupStep, stepAfter, welcomeMode, type SetupStep, type WelcomeMode } from "../welcome/steps";
 import { engineShown, lab } from "@/lab";
+import { loadMarket, lookUpCompany, settleCompany, useMarket } from "@/org/market";
+import { loadOrgContext } from "@/org/context";
 
 /*
  * The first run as state, apart from the pages that show it: Qalam AI found and tested, the
@@ -59,6 +61,8 @@ export interface FirstRun {
   problems: { sent: string | null; docs?: DocRef[]; result: { pages: number; quotes: number; needs?: { id: string; title: string }[] } | null; error: string | null; sources?: ProblemSource[] };
   /** What a door is doing while it reads or makes something. */
   working: { label: string } | null;
+  /** They said there's no website yet: the company step asks for a line about it instead (this tab). */
+  noSite: boolean;
 }
 
 export const useFirstRun = create<FirstRun>(() => ({
@@ -77,6 +81,7 @@ export const useFirstRun = create<FirstRun>(() => ({
   gh: undefined,
   problems: { sent: null, result: null, error: null },
   working: null,
+  noSite: false,
 }));
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -173,6 +178,7 @@ export async function startSetupPage(search: string) {
   const org = await currentOrg().catch(() => null);
   useFirstRun.setState({ org, shape: org?.shape ?? null });
   if (org) openKnow(org.id);
+  void loadMarket();
   void loadYou().catch(() => {});
   void loadVoice();
   // The engine as it was last tested here: never a new call just to show it.
@@ -238,6 +244,37 @@ export async function sendProblems(text: string, docs: SentDoc[] = []) {
   } finally {
     useFirstRun.setState({ working: null });
   }
+}
+
+// ---------------------------------------------------------------------------
+// The company: what the web says about it, checked with them (src/org/market.ts runs it in the core)
+
+/** No website yet: the step asks for a line about it instead. */
+export const noWebsite = () => useFirstRun.setState({ noSite: true });
+
+/** Their website, or their line about it (with the website they gave before, if any): looked up in the core. */
+export function sendCompany(text: string) {
+  const t = text.trim();
+  const look = useMarket.getState().session.company;
+  // In their words instead of what was found: theirs, kept as it is, with nothing looked up again.
+  if (look?.state === "ready" && look.facts.length && useFirstRun.getState().noSite) return keepFacts(look.facts.map((f) => ({ id: f.id, keep: false })), [t]);
+  if (isAddress(t)) return lookUpCompany({ site: t });
+  return lookUpCompany({ said: t, ...(look?.site && !useFirstRun.getState().noSite ? { site: look.site } : {}) });
+}
+
+/** The same look again, after it failed. */
+export function lookAgain() {
+  const look = useMarket.getState().session.company;
+  if (look?.site || look?.said) void lookUpCompany({ ...(look.site ? { site: look.site } : {}), ...(look.said ? { said: look.said } : {}) });
+}
+
+/** What they kept, fixed and dropped of the company's facts, then on to the next step. */
+export async function keepFacts(decisions: { id: string; keep: boolean; text?: string }[], added: string[] = []) {
+  await settleCompany(decisions, added);
+  if (useMarket.getState().error) return;
+  // The About's empty fields were filled from them: the canvas's About place shows it.
+  void loadOrgContext();
+  goStep(stepAfter("company", useFirstRun.getState().shape) ?? "goals");
 }
 
 export function goStep(step: SetupStep) {

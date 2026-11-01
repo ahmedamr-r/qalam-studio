@@ -34,7 +34,9 @@ import { lab } from "@/lab";
 import { Dictated } from "../voice/MicButton";
 import { ParakeetInstall } from "../voice/ParakeetInstall";
 import { wordsFor } from "@/org/words";
-import { checkEngine, engineChanged, finishFirstRun, goStep, openKeyField, pickDoor, pickShape, saveVoice, saveYou, saveYours, skipEngine, togglePick, useFirstRun } from "./flow";
+import { checkEngine, engineChanged, finishFirstRun, goStep, keepFacts, lookAgain, noWebsite, openKeyField, pickDoor, pickShape, saveVoice, saveYou, saveYours, skipEngine, togglePick, useFirstRun } from "./flow";
+import { useMarket } from "@/org/market";
+import { FIELD_LABEL, type MarketLine } from "@/market/types";
 import { treeRows } from "./places";
 import { reviewNext } from "./dock";
 
@@ -230,6 +232,15 @@ function ChoicesPart({ data }: { data: PartData }) {
         <ReplyChips>
           {chip("Start the idea's board", () => startIdeaBoard(), true)}
           {data.first ? nextChip(data.solo, false) : null}
+        </ReplyChips>
+      );
+    case "company":
+      return <ReplyChips>{chip(data.solo ? "No link yet" : "No website yet", noWebsite)}</ReplyChips>;
+    case "company-again":
+      return (
+        <ReplyChips>
+          {chip("Look again", lookAgain, true)}
+          {chip("Tell it in my words", noWebsite)}
         </ReplyChips>
       );
     case "verify":
@@ -709,7 +720,133 @@ function ProblemsPart() {
   );
 }
 
+// ---------------------------------------------------------------------------
+// The company: each fact found, kept, fixed or dropped
+
+const hostOf = (url: string) => {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+};
+
+/** One fact: what it's about, its sentence (theirs once fixed), the page it was read on, and Keep, Fix or Drop. */
+function FactRow({ f, kept, text, editing, open, onKeep, onEdit, onText }: { f: MarketLine; kept: boolean; text: string; editing: boolean; open: boolean; onKeep: (on: boolean) => void; onEdit: (on: boolean) => void; onText: (t: string) => void }) {
+  return (
+    <li className={clsx(qr.inset, "flex flex-col gap-[4px] px-[10px] py-[8px]", !kept && "opacity-60")}>
+      <span className="flex items-center gap-[6px] text-micro text-fg-subtle">
+        <span>{f.field ? FIELD_LABEL[f.field] : "About it"}</span>
+        {f.url ? (
+          <a href={f.url} target="_blank" rel="noreferrer" className="inline-flex min-w-0 items-center gap-[3px] hover:text-fg" title={f.quote ? `“${f.quote}”` : f.url}>
+            <Link2 size={11} {...ICON} />
+            <span className="truncate">{hostOf(f.url)}</span>
+          </a>
+        ) : f.by === "you" ? (
+          <span>· your words</span>
+        ) : null}
+      </span>
+      {editing ? (
+        <textarea
+          aria-label="The fact, in your words"
+          rows={2}
+          dir="auto"
+          className={clsx(r.textarea, "text-body")}
+          value={text}
+          autoFocus
+          onChange={(e) => onText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              onEdit(false);
+            }
+            if (e.key === "Escape") onEdit(false);
+          }}
+        />
+      ) : (
+        <p className={clsx("text-body leading-[20px] text-fg", !kept && "line-through")} dir="auto">
+          {text}
+        </p>
+      )}
+      {open && (
+        <span className="flex gap-[6px]">
+          {kept ? (
+            <>
+              <button type="button" className={r.replyChip} onClick={() => onEdit(!editing)}>
+                {editing ? "Done" : "Fix"}
+              </button>
+              <button type="button" className={r.replyChip} onClick={() => onKeep(false)}>
+                Drop
+              </button>
+            </>
+          ) : (
+            <button type="button" className={r.replyChip} onClick={() => onKeep(true)}>
+              Keep
+            </button>
+          )}
+        </span>
+      )}
+    </li>
+  );
+}
+
+function FactsPart({ data }: { data: PartData }) {
+  const look = useMarket((m) => m.session.company);
+  const known = useMarket((m) => m.market.company);
+  const [dropped, setDropped] = useState<Set<string>>(new Set());
+  const [texts, setTexts] = useState<Record<string, string>>({});
+  const [editing, setEditing] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const open = !!data.open && look?.state === "ready";
+  // Settled: what's kept now (their fixes in it).
+  const facts = open ? (look?.facts ?? []) : known.length ? known : (look?.facts ?? []);
+  if (!facts.length) return null;
+  const kept = facts.filter((f) => !dropped.has(f.id)).length;
+  return (
+    <div className="flex w-full flex-col gap-[8px]">
+      <ul className="flex w-full flex-col gap-[6px]">
+        {facts.map((f) => (
+          <FactRow
+            key={f.id}
+            f={f}
+            open={open}
+            kept={!open || !dropped.has(f.id)}
+            text={texts[f.id] ?? f.text}
+            editing={open && editing === f.id}
+            onKeep={(on) => setDropped((d) => (on ? new Set([...d].filter((x) => x !== f.id)) : new Set([...d, f.id])))}
+            onEdit={(on) => setEditing(on ? f.id : null)}
+            onText={(t) => setTexts((x) => ({ ...x, [f.id]: t }))}
+          />
+        ))}
+      </ul>
+      {open && (
+        <ReplyChips>
+          <button
+            type="button"
+            disabled={saving}
+            className={r.replyChipPrimary}
+            onClick={async () => {
+              setSaving(true);
+              try {
+                await keepFacts(facts.map((f) => ({ id: f.id, keep: !dropped.has(f.id), ...(texts[f.id] !== undefined && texts[f.id].trim() !== f.text ? { text: texts[f.id] } : {}) })));
+              } finally {
+                setSaving(false);
+              }
+            }}
+          >
+            {kept ? (kept === facts.length ? "That's right" : `Keep these ${kept}`) : "None of these"}
+          </button>
+          <button type="button" disabled={saving} className={r.replyChip} onClick={noWebsite}>
+            Tell it in my words
+          </button>
+        </ReplyChips>
+      )}
+    </div>
+  );
+}
+
 export const PARTS: Record<string, PartComponent> = {
+  facts: FactsPart,
   problems: ProblemsPart,
   engine: EnginePart,
   verify: VerifyPart,

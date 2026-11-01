@@ -9,13 +9,15 @@ import { lab } from "@/lab";
  * theirs": every goal is yours.
  */
 
-export type WelcomeStep = "engine" | "name" | "you" | "voice" | "goals" | "yours" | "connect";
+export type WelcomeStep = "engine" | "name" | "you" | "voice" | "company" | "goals" | "yours" | "connect";
 
 export const WELCOME_STEPS: readonly { id: WelcomeStep; label: string }[] = [
   { id: "engine", label: "Qalam AI" },
   { id: "name", label: "Name it" },
   { id: "you", label: "You" },
   { id: "voice", label: "Voice" },
+  // What the web says about it, checked with them (src/market/), before any goal or problem.
+  { id: "company", label: "The company" },
   { id: "goals", label: "Start" },
   { id: "yours", label: "Yours" },
   { id: "connect", label: "Connect" },
@@ -48,10 +50,10 @@ export function stepStates(at: WelcomeStep): Record<WelcomeStep, StepState> {
 }
 
 /** The setup page's steps, as its address names them (`?step=`): the goals unless it says. */
-export type SetupStep = Extract<WelcomeStep, "you" | "voice" | "goals" | "yours" | "connect">;
+export type SetupStep = Extract<WelcomeStep, "you" | "voice" | "company" | "goals" | "yours" | "connect">;
 export const setupStep = (search: string): SetupStep => {
   const s = new URLSearchParams(search).get("step");
-  return s === "you" || s === "voice" || s === "yours" || s === "connect" ? s : "goals";
+  return s === "you" || s === "voice" || s === "company" || s === "yours" || s === "connect" ? s : "goals";
 };
 
 /** What the first run left behind here, read from what's kept (nothing about where they stopped is saved but Finish). */
@@ -60,6 +62,8 @@ export interface FirstRunKept {
   you: boolean;
   /** How this Mac talks instead of typing is settled, or there's nothing to choose. */
   voice: boolean;
+  /** What the company does was checked with them (unknown: taken as done). */
+  company?: boolean;
   /** Goals in the organization's tree. */
   goals: number;
   /** A brain dump about the organization is still being set up. */
@@ -76,7 +80,7 @@ export interface FirstRunKept {
 export function firstRunLeft(k: FirstRunKept): { step: SetupStep; done: number; of: number } | null {
   if (k.finished) return null;
   const shown = (s: WelcomeStep) => stepShown(s, k.shape);
-  const step: SetupStep = !k.you && shown("you") ? "you" : !k.voice && shown("voice") ? "voice" : k.settingUp || !k.goals ? "goals" : !k.picked && shown("yours") ? "yours" : shown("connect") ? "connect" : "goals";
+  const step: SetupStep = !k.you && shown("you") ? "you" : !k.voice && shown("voice") ? "voice" : k.company === false && shown("company") ? "company" : k.settingUp || !k.goals ? "goals" : !k.picked && shown("yours") ? "yours" : shown("connect") ? "connect" : "goals";
   const steps = stepsFor(k.shape);
   return { step, done: steps.findIndex((s) => s.id === step), of: steps.length };
 }

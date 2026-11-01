@@ -1,0 +1,92 @@
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { MarketDeps } from "./market";
+import { OrgStore } from "./store";
+
+vi.mock("../index/registry", () => ({
+  indexFor: () => {
+    throw new Error("No index in tests");
+  },
+}));
+
+const { lookUpCompany, marketSession, settleCompany } = await import("./market");
+
+let dir: string;
+let store: OrgStore;
+
+beforeEach(async () => {
+  dir = path.join(await mkdtemp(path.join(tmpdir(), "qalam-market-")), "Tagaddod");
+  store = await OrgStore.create(dir, { id: "org1", name: "Tagaddod", createdAt: 1 });
+});
+afterEach(async () => {
+  store.dispose();
+  await rm(path.dirname(dir), { recursive: true, force: true });
+});
+
+const site = { url: "https://tagaddod.com/", title: "Tagaddod", text: "Tagaddod collects used cooking oil from homes and restaurants in Cairo and Giza, and turns it into biodiesel. Households get points they spend in our partner shops for every litre they hand in. ".repeat(2) };
+
+const deps = (o: { web?: boolean; facts?: unknown } = {}): MarketDeps => ({
+  research: vi.fn(async (_req, emit) => {
+    emit("Searched the web: Tagaddod");
+    return o.web === false ? null : { notes: "- Tagaddod collects used oil [Tagaddod](https://tagaddod.com/)", sources: [{ title: "Tagaddod", url: "https://tagaddod.com/" }], steps: [] };
+  }),
+  read: vi.fn(async (l) => (l.url.startsWith("https://tagaddod.com") ? { ref: "", ...site } : null)),
+  structured: vi.fn(async () => ({
+    data: o.facts ?? {
+      facts: [
+        { text: "Collects used cooking oil from homes and restaurants in Cairo and Giza.", field: "does", quote: "collects used cooking oil from homes and restaurants in Cairo and Giza", page: "w1" },
+        { text: "Gives households points for each litre.", field: "model", quote: "Households get points they spend in our partner shops for every litre", page: "w1" },
+        { text: "Operates in Alexandria.", field: "where", quote: "operates in Alexandria", page: "w1" },
+      ],
+    },
+  })) as MarketDeps["structured"],
+});
+
+/** Until the look running in the core settles down. */
+async function settled() {
+  for (let i = 0; i < 300; i++) {
+    const s = await marketSession(store);
+    if (s.company && s.company.state !== "looking") return s;
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  throw new Error("still looking");
+}
+
+describe("looking the company up in the first run", () => {
+  it("reads its site and what the web says, keeps the facts found on the page, and leaves them to check", async () => {
+    const d = deps();
+    const started = await lookUpCompany(store, { site: "tagaddod.com" }, { deps: d });
+    expect(started.company).toMatchObject({ state: "looking", site: "tagaddod.com" });
+    const s = await settled();
+    expect(s.company).toMatchObject({ state: "ready", pages: [{ url: "https://tagaddod.com/" }] });
+    expect(s.company!.facts.map((f) => [f.text, f.by, f.url])).toEqual([
+      ["Collects used cooking oil from homes and restaurants in Cairo and Giza.", "qalam", "https://tagaddod.com/"],
+      ["Gives households points for each litre.", "qalam", "https://tagaddod.com/"],
+    ]);
+    expect(s.company!.steps).toContain("Searched the web: Tagaddod");
+    expect(d.read).toHaveBeenCalledTimes(1);
+  });
+
+  it("writes what they keep (a fixed one in their words, as theirs) and fills the About's empty fields", async () => {
+    await lookUpCompany(store, { site: "tagaddod.com" }, { deps: deps() });
+    const [does, model] = (await settled()).company!.facts;
+    const s = await settleCompany(store, [{ id: does.id, keep: true, text: "Collects used cooking oil from homes and restaurants across Egypt." }, { id: model.id, keep: false }], ["Founded in 2016."]);
+    expect(s.company).toMatchObject({ state: "settled", kept: 2 });
+    const m = await store.getMarket();
+    expect(m.company.map((l) => [l.text, l.by])).toEqual([
+      ["Collects used cooking oil from homes and restaurants across Egypt.", "you"],
+      ["Founded in 2016.", "you"],
+    ]);
+    expect(await readFile(path.join(dir, "hub/market.md"), "utf8")).toContain("([Tagaddod](https://tagaddod.com/))");
+    expect((await store.getAbout()).context).toBe("Collects used cooking oil from homes and restaurants across Egypt. Founded in 2016.");
+  });
+
+  it("with no web search here, asks for their own words; their line is read as theirs", async () => {
+    await lookUpCompany(store, { site: "nowhere.example" }, { deps: deps({ web: false }) });
+    expect((await settled()).company).toMatchObject({ state: "ready", noWeb: true, facts: [] });
+    await lookUpCompany(store, { said: "We collect used cooking oil from homes in Cairo." }, { deps: deps({ web: false, facts: { facts: [{ text: "Collects used cooking oil from homes in Cairo.", field: "does", quote: "We collect used cooking oil from homes in Cairo.", page: "you" }] } }) });
+    expect((await settled()).company!.facts).toMatchObject([{ text: "Collects used cooking oil from homes in Cairo.", by: "you" }]);
+  });
+});

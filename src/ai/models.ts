@@ -23,6 +23,7 @@ export const TIER_OF = {
   reader: "read",
   research: "read",
   "seen-read": "read",
+  market: "read",
   // Deciding: proposing, asking, pushing back, judging.
   synthesize: "decide",
   draft: "decide",
@@ -44,6 +45,8 @@ export const TIER_OF = {
   ask: "decide",
   steps: "decide",
   "seen-place": "decide",
+  "find-questions": "decide",
+  statement: "decide",
   // Fetching: the tool-runner makes the calls code planned.
   connector: "fetch",
   numbers: "fetch",

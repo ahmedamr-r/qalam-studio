@@ -26,7 +26,7 @@ describe("the model each call runs on", () => {
   it('sends every read to the read tier with "balanced", and with "best" only the reads that held there in the eval', () => {
     const reads = (Object.keys(TIER_OF) as CallKind[]).filter((k) => TIER_OF[k] === "read");
     expect(reads.map((k) => tierFor(k, "balanced"))).toEqual(reads.map(() => "read"));
-    expect(Object.fromEntries(reads.map((k) => [k, tierFor(k, "best")]))).toEqual({ extract: "decide", topics: "decide", "setup-shape": "read", claims: "read", reader: "decide", research: "decide", "seen-read": "decide" });
+    expect(Object.fromEntries(reads.map((k) => [k, tierFor(k, "best")]))).toEqual({ extract: "decide", topics: "decide", "setup-shape": "read", claims: "read", reader: "decide", research: "decide", "seen-read": "decide", market: "decide" });
     expect([...READS_THAT_HOLD].every((k) => TIER_OF[k] === "read")).toBe(true);
     // Deciding and fetching stay where they are with either mix; a call with no kind decides.
     for (const mix of ["balanced", "best"] as const) expect([tierFor("synthesize", mix), tierFor("connector", mix), tierFor(undefined, mix)]).toEqual(["decide", "fetch", "decide"]);
@@ -53,9 +53,9 @@ describe("the model each call runs on", () => {
 
   it("gives every kind of call a tier, as the plan has it", () => {
     const by = (t: Tier) => (Object.keys(TIER_OF) as CallKind[]).filter((k) => TIER_OF[k] === t).sort();
-    expect(by("read")).toEqual(["claims", "extract", "reader", "research", "seen-read", "setup-shape", "topics"]);
+    expect(by("read")).toEqual(["claims", "extract", "market", "reader", "research", "seen-read", "setup-shape", "topics"]);
     expect(by("fetch")).toEqual(["connector", "numbers"]);
-    expect(by("decide")).toEqual(["ask", "bearings", "breakdown", "card-questions", "draft", "draft-problems", "dump-followup", "dump-place", "dump-read", "followups", "jobs", "review", "seen-place", "setup-followup", "setup-place", "setup-read", "solutions", "steps", "synthesize", "tests"]);
+    expect(by("decide")).toEqual(["ask", "bearings", "breakdown", "card-questions", "draft", "draft-problems", "dump-followup", "dump-place", "dump-read", "find-questions", "followups", "jobs", "review", "seen-place", "setup-followup", "setup-place", "setup-read", "solutions", "statement", "steps", "synthesize", "tests"]);
     expect(tierOf(undefined)).toBe("decide");
     expect([isCallKind("extract"), isCallKind("toString"), isCallKind(3)]).toEqual([true, false, false]);
   });

@@ -32,6 +32,7 @@ import type { Hit as ConnectorHit } from "@/connectors/recipes";
 import { findProblems, goalPage, linkByHand } from "./goals";
 import { pictureFromFigma, pinByHand, placeQuotes } from "./steps";
 import { answerReading, dropReading, editSeen, seenEditShape, seenMaps, seenView, settleReading, startReading } from "./seen";
+import { lookUpCompany, marketSession, settleCompany, stopLook, type FactDecision } from "./market";
 import type { SeenAnswer, Shot } from "@/seen/types";
 import { CHAT_KEY, chatOf } from "@/space/chat";
 import { changeJob, noteForJob, onlineForJob, openJobs, planJobs, searchForJob, takeInForJob } from "./jobs";
@@ -898,6 +899,37 @@ export function orgRoutes(): Hono<Env> {
       return failure(e);
     }
   });
+  // What's known about the company, its competitors and its domain, and the first run's lookups (./market.ts).
+  r.get("/api/org/:org/market", async (c) => {
+    const store = c.get("store");
+    return c.json({ market: await store.getMarket(), session: await marketSession(store) });
+  });
+  r.post("/api/org/:org/market/company", async (c) => {
+    if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't look the company up." }, 503);
+    const b = (await c.req.json().catch(() => null)) as { site?: unknown; said?: unknown } | null;
+    const site = typeof b?.site === "string" ? b.site.trim().slice(0, 300) : "";
+    const said = typeof b?.said === "string" ? b.said.trim().slice(0, 1200) : "";
+    if (!site && !said) return bad("Give its website, or a line about what it does");
+    return c.json(await lookUpCompany(c.get("store"), { site, said }, { tab: tabOf(c.req.raw.headers) }));
+  });
+  r.put("/api/org/:org/market/company", async (c) => {
+    const b = (await c.req.json().catch(() => null)) as { decisions?: unknown; added?: unknown } | null;
+    const decisions: FactDecision[] = (Array.isArray(b?.decisions) ? b.decisions : []).flatMap((x) => {
+      const d = x as Record<string, unknown>;
+      return typeof d?.id === "string" && typeof d.keep === "boolean" ? [{ id: d.id.slice(0, 40), keep: d.keep, ...(typeof d.text === "string" ? { text: d.text.slice(0, 300) } : {}) }] : [];
+    });
+    const added = (Array.isArray(b?.added) ? b.added : []).filter((t): t is string => typeof t === "string").slice(0, 6);
+    try {
+      return c.json(await settleCompany(c.get("store"), decisions, added, { tab: tabOf(c.req.raw.headers) }));
+    } catch (e) {
+      return bad(e instanceof Error ? e.message : String(e));
+    }
+  });
+  r.delete("/api/org/:org/market/company", (c) => {
+    stopLook(c.get("store"), "company");
+    return c.json({ ok: true });
+  });
+
   r.post("/api/org/:org/seen/:key/read", async (c) => {
     if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't read screenshots." }, 503);
     const b = (await c.req.json().catch(() => null)) as { shots?: unknown } | null;

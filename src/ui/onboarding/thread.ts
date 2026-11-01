@@ -4,6 +4,7 @@ import { wordsFor, type OrgShape } from "@/org/words";
 import type { DocRef, SourceFit } from "../chat/attach";
 import type { KnowState } from "../setup/know-state";
 import type { VoiceChoice } from "@/voice/model";
+import type { MarketSession } from "@/market/session";
 import { stepAfter, stepShown, type SetupStep, type StepState, type WelcomeMode } from "../welcome/steps";
 import { lab } from "@/lab";
 
@@ -17,7 +18,7 @@ import { lab } from "@/lab";
 /** The way in: goals they know or want found, problems they hear about, or an idea to test. */
 export type Door = "know" | "find" | "problems" | "idea";
 
-export type PartName = "engine" | "verify" | "choices" | "outline" | "said" | "took" | "pushback" | "answers" | "you" | "voice" | "yours" | "connect" | "allSet" | "error" | "working" | "problems" | "docs";
+export type PartName = "engine" | "verify" | "choices" | "outline" | "said" | "took" | "pushback" | "answers" | "you" | "voice" | "yours" | "connect" | "allSet" | "error" | "working" | "problems" | "docs" | "facts";
 
 /** Small values only: a part's renderer reads the rest from the stores. */
 export type PartData = Record<string, string | number | boolean | null>;
@@ -31,7 +32,7 @@ export interface ChatMessage {
 }
 
 /** Which buttons a `choices` part shows. */
-export type ChoiceSet = "shape" | "door" | "skip" | "know-skip" | "propose" | "proposal" | "know-review" | "goals-in" | "verify";
+export type ChoiceSet = "shape" | "door" | "skip" | "know-skip" | "propose" | "proposal" | "know-review" | "goals-in" | "verify" | "idea-board" | "company" | "company-again";
 
 export type EngineState = "looking" | "testing" | "ready" | "problem" | "skipped" | "unknown";
 
@@ -70,6 +71,8 @@ export interface ThreadInput {
   busy: { label: string } | null;
   /** Goals picked as theirs, once they moved on from Yours. */
   picked: number;
+  /** What the web says about the company, on its way to being checked (src/market/session.ts); `noSite`: they said there's no website yet. */
+  market: { session: MarketSession; noSite: boolean; error: string | null };
 }
 
 const text = (t: string): ChatPart => ({ type: "text", text: t });
@@ -123,6 +126,48 @@ function roundOpen(s: SetupSession): boolean {
   return s.phase === "asking" && !!last && !last.form.submitted;
 }
 
+/** The company's part of the thread: its website (or their line), the look, the facts to check, what they kept. */
+function companyThread(i: ThreadInput, org: string, out: ChatMessage[]) {
+  const solo = i.shape === "solo";
+  const look = i.market.session.company;
+  const now = i.step === "company";
+  out.push(
+    ai(
+      "company:ask",
+      text(solo ? `Is there a link for ${org}? A site, an app's page or a doc: I'll look it up and check with you what I find.` : `What's ${org}'s website? I'll look it up and check with you what I find.`),
+      ...(!look && !i.market.noSite && now ? [part("choices", { set: "company", solo })] : []),
+    ),
+  );
+  const own = solo ? `Then tell me in a line or two what ${org} is and who it's for.` : `Then tell me in a line or two what ${org} does and who it's for.`;
+  if (i.market.noSite && (!look || !look.site)) {
+    out.push(you("company:nosite", text(solo ? "No link yet" : "No website yet")));
+    if (!look) out.push(ai("company:line", text(own)));
+  }
+  if (look) out.push(you("company:you", text(look.site && !look.said ? look.site : look.said ?? look.site ?? "")));
+  if (i.market.error && now) out.push(ai("company:error", part("error", { text: i.market.error })));
+  if (!look) return;
+  if (look.state === "looking") return void out.push(ai("company:looking", part("working", { label: look.steps[look.steps.length - 1] ?? "Looking it up" })));
+  if (look.state === "failed") return void out.push(ai("company:failed", text(`I couldn't finish looking ${org} up: ${look.error ?? "something went wrong"}`), ...(now ? [part("choices", { set: "company-again" })] : [])));
+  if (!look.facts.length) {
+    const why = look.noWeb ? "I can't search the web from this computer." : look.site ? `I couldn't find ${org} on the web at ${look.site}.` : `I couldn't find ${org} on the web.`;
+    out.push(ai("company:none", text(`${why} ${look.said ? "Tell me a little more about it." : own}`)));
+    return;
+  }
+  if (look.state === "ready") {
+    // Their own words instead of what was found: a line or two, kept as theirs.
+    if (i.market.noSite) {
+      out.push(ai("company:found", text(`Here's what I found about ${org}.`), part("facts", { open: false })));
+      out.push(you("company:mine", text("I'll tell it in my words")));
+      out.push(ai("company:line", text(own)));
+      return;
+    }
+    return void out.push(ai("company:found", text(`Here's what I found about ${org}. Keep what's right, fix what's off, drop the rest.`), part("facts", { open: now })));
+  }
+  const kept = look.kept ?? 0;
+  out.push(ai("company:found", text(`Here's what I found about ${org}.`), part("facts", { open: false })));
+  out.push(you("company:kept", text(kept ? `${kept === 1 ? "That one is right" : `These ${kept} are right`}` : "None of them")));
+}
+
 export function threadOf(i: ThreadInput): ChatMessage[] {
   const out: ChatMessage[] = [];
   const solo = i.shape === "solo";
@@ -172,6 +217,12 @@ export function threadOf(i: ThreadInput): ChatMessage[] {
     }
   }
   if (!i.opened) return out;
+
+  // The company: what the web says about it, checked with them, before any goal or problem.
+  if (i.first && stepShown("company") && (i.step === "company" || i.market.session.company)) {
+    companyThread(i, org, out);
+    if (i.step === "company") return out;
+  }
 
   // Goals: a way in, then either door. Picked up past them (from the home, or another window), the goals are the tree's.
   const door = doorOf(i);
@@ -286,7 +337,7 @@ export function threadOf(i: ThreadInput): ChatMessage[] {
 
 export interface Ask {
   /** `problems`: what customers said, to file · `idea`: the idea, for a board. */
-  kind: "name" | "dump" | "outline" | "questions" | "problems" | "idea" | "none";
+  kind: "name" | "dump" | "outline" | "questions" | "problems" | "idea" | "company" | "none";
   /** Whose questions take the composer's place. */
   scope?: "know" | "find";
   placeholder: string;
@@ -311,6 +362,14 @@ export function askOf(i: ThreadInput): Ask {
   if (i.first && i.step === "you") return none(i.shape === "solo" ? "Fill in your name above" : "Fill in your name and position above", "you");
   if (i.first && i.step === "voice") return none("Choose above, then on to the goals", "voice");
   if (!i.opened) return none("", "opening");
+  if (i.first && i.step === "company") {
+    const look = i.market.session.company;
+    if (look?.state === "looking") return none("Qalam AI is looking it up…", "company:looking");
+    if (look && look.facts.length && look.state !== "failed" && !i.market.noSite) return none("Keep, fix or drop each fact above", "company:check");
+    // Their website first; their own line once there's none, or nothing was found.
+    const line = i.market.noSite || (!!look && (look.state !== "failed" || !look.site));
+    return { kind: "company", placeholder: line ? (i.shape === "solo" ? "A planner that builds the week's meals for busy parents" : "We collect used cooking oil from homes and restaurants in Cairo") : "example.com", submit: "enter", key: `company:${line ? "line" : "site"}:${look?.at ?? 0}` };
+  }
   if (i.step === "yours") return none("Pick your goals above, then Next", "yours");
   if (i.step === "connect") return none("Connect what you need, then Finish", "connect");
   const door = doorOf(i);
@@ -387,7 +446,7 @@ export function stepsOf(i: ThreadInput): StepItem[] {
   const welcome = i.route === "welcome";
   const at = welcome ? (engineDone(i) ? "name" : "engine") : i.step;
   // On your own there's no "Yours": every goal is. v0.1 asks only for Qalam AI, a name and a start (src/lab.ts).
-  const order = (["engine", "name", "you", "voice", "goals", "yours", "connect"] as const).filter((s) => stepShown(s, i.shape)) as readonly string[];
+  const order = (["engine", "name", "you", "voice", "company", "goals", "yours", "connect"] as const).filter((s) => stepShown(s, i.shape)) as readonly string[];
   const k = order.indexOf(at);
   const state = (id: string): StepState => (order.indexOf(id) < k ? "done" : order.indexOf(id) === k ? "now" : "next");
   return [
@@ -395,6 +454,7 @@ export function stepsOf(i: ThreadInput): StepItem[] {
     { id: "name", label: "Name it", state: state("name") },
     { id: "you", label: "You", state: state("you") },
     { id: "voice", label: "Voice", state: state("voice") },
+    { id: "company", label: i.shape === "solo" ? "The project" : "The company", state: state("company") },
     { id: "goals", label: "Start", state: state("goals"), ...(at === "goals" ? { sub: goalSubs(i) } : {}) },
     { id: "yours", label: "Yours", state: state("yours") },
     { id: "connect", label: "Connect", state: state("connect") },

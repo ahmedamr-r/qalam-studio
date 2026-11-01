@@ -1,6 +1,7 @@
 import type { Doc } from "@/doc/schema";
 import type { ProductMap } from "@/code/map";
 import type { SeenMap } from "@/seen/types";
+import type { Market } from "@/market/types";
 import { dayOf, type Decision } from "@/decisions/model";
 import { metricText } from "@/discovery/dump";
 import { KIND_LABEL, stageLabel } from "@/discovery/kinds";
@@ -267,6 +268,28 @@ export function contextPieces(owner: { product: string | null; name: string; at:
     if (!text.trim()) continue;
     pieces.push({ ref: `hub:context:${owner.product ?? "org"}:${sub}:${factHash(text)}`, type: "context", sub, text: text.trim(), line, title: owner.name, product: owner.product, at: owner.at });
   }
+  return { pieces, edges: [], entities: [] };
+}
+
+// ---------------------------------------------------------------------------
+// What's known about the company, its competitors and its domain (hub/market.md): each line a
+// piece, saying where it was read (never customers' words)
+
+export const marketRef = (id: string) => `hub:market:${id}`;
+
+export function marketPieces(m: Market, orgName: string): Built {
+  const pieces: HubPiece[] = [];
+  const whose = (by: string, url?: string) => (by === "you" ? "as the team says" : url ? "read on the web" : "from the web");
+  for (const l of m.company) pieces.push({ ref: marketRef(l.id), type: "context", sub: "market", text: l.text, line: `About ${orgName}, ${whose(l.by, l.url)}`, title: orgName, product: null, at: l.at });
+  for (const c of m.competitors) {
+    const text = [c.name, ...c.lines.map((l) => l.text)].join(": ");
+    pieces.push({ ref: marketRef(c.id), type: "context", sub: "competitor", text, line: `A competitor of ${orgName}, ${whose(c.by, c.url)}`, title: c.name, product: null, at: c.at });
+  }
+  for (const [list, what] of [
+    [m.aims, `What companies like ${orgName} aim for`],
+    [m.struggles, `What customers of companies like ${orgName} struggle with`],
+  ] as const)
+    for (const l of list) pieces.push({ ref: marketRef(l.id), type: "context", sub: "domain", text: l.text, line: `${what}, ${whose(l.by, l.url)}`, title: orgName, product: null, at: l.at });
   return { pieces, edges: [], entities: [] };
 }
 

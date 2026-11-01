@@ -34,15 +34,16 @@ describe("with everything hidden (v0.1)", () => {
 
   it("asks only for Qalam AI, a name and a start, then finishes", () => {
     setLab([]);
-    expect(stepsFor("team").map((s) => s.id)).toEqual(["engine", "name", "goals"]);
-    expect(stepAfter("name", "team")).toBe("goals");
+    expect(stepsFor("team").map((s) => s.id)).toEqual(["engine", "name", "company", "goals"]);
+    expect(stepAfter("name", "team")).toBe("company");
+    expect(stepAfter("company", "team")).toBe("goals");
     expect(stepAfter("goals", "team")).toBeNull();
     // Picked up from the home: still the goals, never a step that isn't asked.
-    expect(firstRunLeft({ you: false, voice: false, goals: 2, settingUp: false, picked: false, finished: false, shape: "team" })).toEqual({ step: "goals", done: 2, of: 3 });
+    expect(firstRunLeft({ you: false, voice: false, goals: 2, settingUp: false, picked: false, finished: false, shape: "team" })).toEqual({ step: "goals", done: 3, of: 4 });
   });
 
   it("asks every step with everything on, and no Yours on your own", () => {
-    expect(stepsFor("team").map((s) => s.id)).toEqual(["engine", "name", "you", "voice", "goals", "yours", "connect"]);
+    expect(stepsFor("team").map((s) => s.id)).toEqual(["engine", "name", "you", "voice", "company", "goals", "yours", "connect"]);
     expect(stepAfter("goals", "solo")).toBe("connect");
     expect(stepAfter("goals", "team")).toBe("yours");
   });
