@@ -13,7 +13,7 @@ import type { Ingested } from "@/discovery/ingest/core";
 import { chatKey, chatOf, emptyChat, withJob, withTurn, type CanvasChat, type ChatDoc, type ChatJob, type ChatTurn, type FiledPage } from "@/space/chat";
 import { cardForPage, pageOf } from "@/space/pages";
 import { DUMP_WORDS, routeOf, titleFrom, wordsIn, type ChatMode } from "@/space/route";
-import { FIND_MIN, findRound, findText, type FindWhat } from "@/space/find";
+import { FIND_MIN, findRound, findText, findTranscript, type FindWhat } from "@/space/find";
 import type { PlanQuestion } from "@/ai/plan";
 import { knowsMarket } from "@/market/types";
 import { loadMarket, useMarket } from "@/org/market";
@@ -224,12 +224,15 @@ export async function answerFind(id: string, answers: Readonly<Record<string, st
   const t = turnOf(id);
   if (t?.job.kind !== "find") return;
   const what = t.job.what;
-  const { text, asked, said } = findText(findQuestionsOf(t.job), answers);
-  if (text.length < FIND_MIN) return change((c) => withJob(c, id, (j) => (j.kind === "find" ? { ...j, error: "Say a little more in your answers, so there's something to go on." } : j)));
+  const questions = findQuestionsOf(t.job);
+  const { text: words, asked, said } = findText(questions, answers);
+  if (words.length < FIND_MIN) return change((c) => withJob(c, id, (j) => (j.kind === "find" ? { ...j, error: "Say a little more in your answers, so there's something to go on." } : j)));
   const source = newId();
   change((c) => withJob(c, id, () => ({ kind: "dump", source, find: { what, said } })));
   try {
-    await startDump(text, { id: source, aim: { find: what, asked } });
+    // The source reads on its own: each question asked and their answer, pieces from the answers alone.
+    const record = findTranscript(questions, answers, { what, org: useMarket.getState().org || undefined });
+    await startDump(record.text, { id: source, aim: { find: what, asked }, title: `Your answers: finding ${what === "goal" ? "a goal" : "a problem"}`, parts: record.parts });
     sourceCame(sourceOf(source)?.title ?? "Your answers");
   } catch (e) {
     change((c) => withJob(c, id, (j) => (j.kind === "dump" ? { ...j, error: message(e) } : j)));

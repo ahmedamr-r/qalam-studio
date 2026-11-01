@@ -52,6 +52,21 @@ function changeLook<K extends LookName>(store: OrgStore, look: K, fn: (l: NonNul
   return store.changeMarketSession((s) => (s[look] ? { ...s, [look]: fn(s[look]!) } : s));
 }
 
+/** What a look is doing, written in order as it goes; `written` waits for the last of it, so nothing lands after the look ends. */
+function stepper<K extends LookName>(store: OrgStore, look: K) {
+  let chain: Promise<unknown> = Promise.resolve();
+  return {
+    step: (label: string) => {
+      chain = chain.then(() => changeLook(store, look, (l) => ({ ...l, steps: [...l.steps, label].slice(-STEPS) }))).catch(() => {});
+    },
+    /** The look's last word (ready, settled, failed), once what it was doing is written. */
+    end: async (fn: (l: NonNullable<MarketSession[K]>) => NonNullable<MarketSession[K]>) => {
+      await chain;
+      return changeLook(store, look, fn);
+    },
+  };
+}
+
 /** The links the research step's notes cite, the company's own site first. */
 function linksOf(info: ResearchInfo | null, first: string | null): { url: string; title?: string }[] {
   const all = [...(first ? [{ url: first }] : []), ...(info?.sources ?? []).filter((s) => /^https?:\/\//i.test(s.url))];
@@ -86,7 +101,7 @@ export async function lookUpCompany(store: OrgStore, o: { site?: string | null; 
 
 async function runCompany(store: OrgStore, site: string | null, said: string | undefined, deps: MarketDeps, ctrl: AbortController) {
   const { signal } = ctrl;
-  const step = (label: string) => void changeLook(store, "company", (l) => ({ ...l, steps: [...l.steps, label].slice(-STEPS) })).catch(() => {});
+  const { step, end } = stepper(store, "company");
   try {
     const org = store.info.name;
     const task = companyTask({ org, site, said, solo: store.info.shape === "solo" });
@@ -97,7 +112,7 @@ async function runCompany(store: OrgStore, site: string | null, said: string | u
     const pages = (await Promise.all(linksOf(info, site).slice(0, MAX_PAGES).map((l) => deps.read(l, signal)))).filter((p): p is OutsidePage => !!p);
     if (signal.aborted) return;
     if (!pages.length && !said) {
-      await changeLook(store, "company", (l) => ({ ...l, state: "ready", facts: [], ...(noWeb ? { noWeb: true, error: NO_WEB } : {}), pages: [] }));
+      await end((l) => ({ ...l, state: "ready", facts: [], ...(noWeb ? { noWeb: true, error: NO_WEB } : {}), pages: [] }));
       return;
     }
     step("Qalam AI is checking each fact on its page");
@@ -109,10 +124,10 @@ async function runCompany(store: OrgStore, site: string | null, said: string | u
     await store
       .putTrace({ id: nanoid(10), projectId: "market", kind: "company", at: now, ...(model ? { model } : {}), pages: [...m.pages.values()].map((p) => ({ ref: p.ref, url: p.url })), answer: data, kept: facts.length, dropped } as { id: string; projectId: string })
       .catch(() => {});
-    await changeLook(store, "company", (l) => ({ ...l, state: "ready", facts, ...(noWeb ? { noWeb: true } : {}), pages: pages.map((p) => ({ title: p.title, url: p.url })) }));
+    await end((l) => ({ ...l, state: "ready", facts, ...(noWeb ? { noWeb: true } : {}), pages: pages.map((p) => ({ title: p.title, url: p.url })) }));
   } catch (e) {
     if (signal.aborted) return;
-    await changeLook(store, "company", (l) => ({ ...l, state: "failed", error: message(e) })).catch(() => {});
+    await end((l) => ({ ...l, state: "failed", error: message(e) })).catch(() => {});
   }
 }
 
@@ -182,7 +197,7 @@ export async function lookForCompetitors(store: OrgStore, named: string[], opts:
   const s = await store.changeMarketSession((x) => ({ ...x, competitors: { state: "looking", at: Date.now(), steps: ["Starting"], named: names, found: [] } }), opts);
   const deps = opts.deps ?? realDeps;
   startRun(store, "competitors", async ({ signal }) => {
-    const step = (label: string) => void changeLook(store, "competitors", (l) => ({ ...l, steps: [...l.steps, label].slice(-STEPS) })).catch(() => {});
+    const { step, end } = stepper(store, "competitors");
     try {
       const org = store.info.name;
       const market = await store.getMarket();
@@ -201,9 +216,9 @@ export async function lookForCompetitors(store: OrgStore, named: string[], opts:
         found = sanitizeCompetitors(data, m, { org, now, id: () => `c${nanoid(8)}`, gone: market.gone }, (why, item) => dropped.push({ why, item }));
         await store.putTrace({ id: nanoid(10), projectId: "market", kind: "competitors", at: now, ...(model ? { model } : {}), answer: data, kept: found.length, dropped } as { id: string; projectId: string }).catch(() => {});
       } else found = names.map((n) => ({ id: `c${nanoid(8)}`, name: n, lines: [], by: "you", at: Date.now() }));
-      await changeLook(store, "competitors", (l) => ({ ...l, state: "ready", found, ...(info ? {} : { noWeb: true }), pages: pages.map((p) => ({ title: p.title, url: p.url })) }));
+      await end((l) => ({ ...l, state: "ready", found, ...(info ? {} : { noWeb: true }), pages: pages.map((p) => ({ title: p.title, url: p.url })) }));
     } catch (e) {
-      if (!signal.aborted) await changeLook(store, "competitors", (l) => ({ ...l, state: "failed", error: message(e) })).catch(() => {});
+      if (!signal.aborted) await end((l) => ({ ...l, state: "failed", error: message(e) })).catch(() => {});
     }
   });
   return s;
@@ -235,7 +250,7 @@ export async function lookUpDomain(store: OrgStore, opts: { deps?: MarketDeps } 
   const deps = opts.deps ?? realDeps;
   await store.changeMarketSession((x) => ({ ...x, domain: { state: "looking", at: Date.now(), steps: ["Starting"], aims: 0, struggles: 0 } }));
   startRun(store, "domain", async ({ signal }) => {
-    const step = (label: string) => void changeLook(store, "domain", (l) => ({ ...l, steps: [...l.steps, label].slice(-STEPS) })).catch(() => {});
+    const { step, end } = stepper(store, "domain");
     try {
       const org = store.info.name;
       const market = await store.getMarket();
@@ -243,7 +258,7 @@ export async function lookUpDomain(store: OrgStore, opts: { deps?: MarketDeps } 
       if (signal.aborted) return;
       const pages = await readLinks(deps, info, signal);
       if (signal.aborted) return;
-      if (!pages.length) return void (await changeLook(store, "domain", (l) => ({ ...l, state: "settled", ...(info ? {} : { noWeb: true }) })));
+      if (!pages.length) return void (await end((l) => ({ ...l, state: "settled", ...(info ? {} : { noWeb: true }) })));
       step("Qalam AI is checking each point on its page");
       const m = domainMaterial({ org, facts: market.company, notes: info?.notes ?? "", pages });
       const { data, model } = await deps.structured<unknown>(domainCall(m), signal);
@@ -253,9 +268,9 @@ export async function lookUpDomain(store: OrgStore, opts: { deps?: MarketDeps } 
       await store.putTrace({ id: nanoid(10), projectId: "market", kind: "domain", at: now, ...(model ? { model } : {}), answer: data, kept: d.aims.length + d.struggles.length, dropped } as { id: string; projectId: string }).catch(() => {});
       // Qalam AI's own lines give way to these; a person's stay.
       await store.changeMarket((x) => ({ ...x, aims: [...x.aims.filter((l) => l.by === "you"), ...d.aims], struggles: [...x.struggles.filter((l) => l.by === "you"), ...d.struggles] }));
-      await changeLook(store, "domain", (l) => ({ ...l, state: "settled", aims: d.aims.length, struggles: d.struggles.length, pages: pages.map((p) => ({ title: p.title, url: p.url })) }));
+      await end((l) => ({ ...l, state: "settled", aims: d.aims.length, struggles: d.struggles.length, pages: pages.map((p) => ({ title: p.title, url: p.url })) }));
     } catch (e) {
-      if (!signal.aborted) await changeLook(store, "domain", (l) => ({ ...l, state: "failed", error: message(e) })).catch(() => {});
+      if (!signal.aborted) await end((l) => ({ ...l, state: "failed", error: message(e) })).catch(() => {});
     }
   });
 }

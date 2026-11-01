@@ -676,7 +676,7 @@ const dumpMaterial = (b: DumpRequest) => [
   "",
   b.tree.length ? "The board (id · kind · title — description [metric] {assumptions} (what backs it), each card under its parent):" : "The board is empty.",
   ...dumpOutline(b.tree),
-  ...(b.aim ? ["", `They asked you to help them find ${AIM_LINE[b.aim.find]}. The brain dump is their answers to these questions, in order (an empty one they skipped):`, ...b.aim.asked.map((q) => `- ${q}`)] : []),
+  ...(b.aim ? ["", `They asked you to help them find ${AIM_LINE[b.aim.find]}. They were asked these questions, and the brain dump has each one followed by their answer (one they skipped is left out). Only the answers are their words: quote pieces from the answers, never from a question.`, ...b.aim.asked.map((q) => `- ${q}`)] : []),
   ...(b.file ? ["", fileLine(b.file, b.tree)] : []),
   "",
   "The brain dump:",

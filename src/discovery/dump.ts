@@ -6,7 +6,7 @@ import type { PlanQuestion } from "@/ai/plan";
 import { answerText, sanitizeQuestions, toQuestion, type PlanBucket } from "@/ui/ai/plan";
 import { OTHER, initialFlow, resolvedAnswers, type Answer, type FlowState, type Question } from "@/ui/ai/questionFlow";
 import { quoteFinder } from "./quotes";
-import type { QuoteKind, SourceQuote } from "./sources";
+import type { QuoteKind, SourceQuote, TextBlock } from "./sources";
 import { allCards, childCards } from "./tree";
 import type { OstKind, OstMetric } from "./types";
 import type { Proposal } from "./proposals";
@@ -105,6 +105,8 @@ export interface DumpSession {
   aim?: { find: "goal" | "problem"; asked: string[] };
   /** A file added for a card (its next steps' "Add a file for it"): read against that card, and placed only under it. */
   file?: DumpFile;
+  /** The parts of its text that are their words, when the rest is Qalam AI's questions (a find's answers): pieces only from these. */
+  within?: [number, number][];
   /** The file read as not bearing on its card: the kind of file that would help (in Qalam AI's words). */
   off?: { wanted: string };
 }
@@ -310,7 +312,7 @@ function sanitizeChallenges(raw: unknown, pieceOf: (ref: string) => string | und
 }
 
 /** What Qalam AI read in a brain dump, kept only where it holds: each piece found in the builder's words. */
-export function sanitizeRead(raw: unknown, text: string, cards: PlaceCard[], now = Date.now()): DumpRead {
+export function sanitizeRead(raw: unknown, text: string, cards: PlaceCard[], now = Date.now(), within?: readonly [number, number][]): DumpRead {
   const r = rec(raw);
   const find = quoteFinder(text);
   const kept = new Map<string, string>();
@@ -320,6 +322,8 @@ export function sanitizeRead(raw: unknown, text: string, cards: PlaceCard[], now
     if (fragments.length >= READ_LIMITS.fragments || typeof f.quote !== "string") continue;
     const m = find(f.quote);
     if (!m || m.words.length > READ_LIMITS.fragmentChars) continue;
+    // Only their words: a piece of a question Qalam AI asked isn't theirs.
+    if (within && !within.some(([a, b]) => m.span[0] >= a && m.span[1] <= b)) continue;
     // Pieces never overlap: the first one written keeps the words.
     if (fragments.some((x) => x.span[0] < m.span[1] && m.span[0] < x.span[1])) continue;
     const role: DumpRole = isRole(f.role) ? f.role : "context";
@@ -430,12 +434,22 @@ function typed(q: Question, a: Answer): string {
   return "";
 }
 
+/** What they said to a question: the choice they picked (its label, never its description) or what they typed. */
+function picked(q: Question, a: Answer): string {
+  if (a.kind === "text") return a.text.trim();
+  if (a.kind === "single" && q.kind === "single") return a.value === OTHER ? (a.other?.trim() ?? "") : (q.options.find((o) => o.value === a.value)?.label ?? "");
+  if (a.kind === "multi" && q.kind === "multi") return [...q.groups.flatMap((g) => g.options.filter((o) => a.values.includes(o.value)).map((o) => o.label)), ...a.custom].join("; ");
+  return "";
+}
+
 /** One answer of a round: its question, the answer in words, and the words the builder typed. */
 export interface DumpAnswer {
   questionId: string;
   question: string;
   answer: string;
   words: string;
+  /** What they said, in their words or the choice they picked (for the source's text). */
+  said?: string;
 }
 
 /** Each round's answers (the round being asked included, once answered). */
@@ -445,8 +459,30 @@ export function roundAnswers(s: Pick<Rounds, "buckets">): DumpAnswer[][] {
     // A round counts once it was sent; one left half-way (Skip) counts for what was answered.
     const asked = b.form.submitted ? qs : qs.filter((q) => b.form.answers[q.id]);
     const answers = resolvedAnswers(qs, b.form.answers);
-    return asked.map((q) => ({ questionId: q.id, question: q.title, answer: answerText(q, answers[q.id]).slice(0, 600), words: typed(q, answers[q.id]).slice(0, 600) }));
+    return asked.map((q) => ({ questionId: q.id, question: q.title, answer: answerText(q, answers[q.id]).slice(0, 600), words: typed(q, answers[q.id]).slice(0, 600), said: picked(q, answers[q.id]).slice(0, 600) }));
   });
+}
+
+/**
+ * A round's questions and their answers, added to the end of the dump's text so the source reads
+ * on its own (what Qalam AI asked, under a heading, then each question and its answer); nothing is
+ * added past what a dump takes. Its pieces stay where they were.
+ */
+export function withRound(text: string, blocks: readonly TextBlock[], answers: readonly DumpAnswer[], round: number): { text: string; blocks: TextBlock[] } {
+  const said = answers.map((a) => ({ question: a.question, text: (a.said ?? a.answer).trim() })).filter((a) => a.text && a.text !== "No preference");
+  if (!said.length) return { text, blocks: [...blocks] };
+  const head = `Qalam AI asked, and you answered (round ${round}):`;
+  let out = `${text.trimEnd()}\n\n`;
+  const added: TextBlock[] = [{ kind: "h2", span: [out.length, out.length + head.length] }];
+  out += head;
+  for (const a of said) {
+    const q = a.question.replace(/\s+/g, " ").trim();
+    out += `\n\n${q}\n`;
+    added.push({ kind: "h3", span: [out.length - q.length - 1, out.length - 1] });
+    out += a.text;
+  }
+  if (out.length > DUMP_MAX_CHARS) return { text, blocks: [...blocks] };
+  return { text: out, blocks: [...blocks, ...added] };
 }
 
 /** The answers as the builder's own words for the Library (Product context), ids `dump:<source>:<question>`. */

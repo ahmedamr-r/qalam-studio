@@ -36,6 +36,39 @@ export function findText(questions: readonly PlanQuestion[], answers: Readonly<R
   return { text: said.map((s) => s.answer).filter(Boolean).join("\n\n"), asked: said.map((s) => s.question), said: said.filter((s) => s.answer) };
 }
 
+/**
+ * Their answers as a source that reads on its own: what they asked for, then each question asked
+ * and their answer (skipped ones left out). Only the answers are theirs (`theirs`), so the dump's
+ * pieces come from those alone; the headings are the text's shape (`heads`).
+ */
+export function findTranscript(questions: readonly PlanQuestion[], answers: Readonly<Record<string, string>>, o: { what: FindWhat; org?: string }): { text: string; parts: TextPart[] } {
+  const one = (s: string) => s.replace(/\s+/g, " ").trim();
+  const head = `Finding ${o.what === "goal" ? "a goal" : "a problem"}${o.org ? ` for ${one(o.org)}` : ""}: Qalam AI asked, and you answered.`;
+  const pairs = questions.map((q) => ({ q: one(q.title), a: (answers[q.id] ?? "").trim() })).filter((p) => p.a);
+  const parts: TextPart[] = [{ words: head, theirs: false }, ...pairs.flatMap((p) => [{ words: p.q, theirs: false }, { words: p.a, theirs: true }])];
+  return { text: [head, ...pairs.map((p) => `${p.q}\n${p.a}`)].join("\n\n"), parts };
+}
+
+/** A part of a text, in order: their words, or Qalam AI's (a heading, a question). */
+export interface TextPart {
+  words: string;
+  theirs: boolean;
+}
+
+/** Where each part is in `text`, found in order (one it doesn't have is left out): their parts, and the rest as headings. */
+export function partSpans(text: string, parts: readonly TextPart[]): { theirs: [number, number][]; heads: [number, number][] } {
+  const out = { theirs: [] as [number, number][], heads: [] as [number, number][] };
+  let from = 0;
+  for (const p of parts) {
+    const words = p.words.replace(/\s+/g, " ").trim();
+    const at = words ? text.indexOf(words, from) : -1;
+    if (at < 0) continue;
+    (p.theirs ? out.theirs : out.heads).push([at, at + words.length]);
+    from = at + words.length;
+  }
+  return out;
+}
+
 /** Enough to go on: Qalam AI reads at least 40 characters of their words. */
 export const FIND_MIN = 40;
 

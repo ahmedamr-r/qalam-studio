@@ -1,4 +1,5 @@
 import { contextFor } from "@/org/context";
+import { partSpans, type TextPart } from "@/space/find";
 import { useMarket } from "@/org/market";
 import { marketText } from "@/market/text";
 import { create } from "zustand";
@@ -25,6 +26,7 @@ import {
   sanitizeDumpFollowup,
   sanitizeRead,
   withRoles,
+  withRound,
   type DumpFile,
   type DumpSession,
   type PlaceCard,
@@ -172,7 +174,7 @@ function readFields(s: SourceRecord, cards: PlaceCard[]) {
  * chat named it), read, and placed at once when Qalam AI has nothing to ask. Throws, in words, when
  * it can't start.
  */
-export async function startDump(text: string, opts: { sample?: boolean; id?: string; aim?: DumpSession["aim"]; file?: DumpFile } = {}): Promise<string> {
+export async function startDump(text: string, opts: { sample?: boolean; id?: string; aim?: DumpSession["aim"]; file?: DumpFile; title?: string; parts?: TextPart[] } = {}): Promise<string> {
   let body = (opts.sample ? SAMPLE_DUMP_TEXT : text).trim();
   if (body.length < 40) throw new Error(opts.file ? "There's too little in the file to read." : "Write a few sentences more, so there's something to read.");
   // A file is read from its start when it's longer than a dump takes (the reading says so).
@@ -182,7 +184,11 @@ export async function startDump(text: string, opts: { sample?: boolean; id?: str
   if (!opts.sample && (await offline())) throw new Error("Qalam AI isn't set up here, so it can't read your text. Connections says how.");
   // The sample is about Basket: its tree goes on the board first if it isn't there.
   if (opts.sample && !studio().doc.roots.some((id) => studio().doc.nodes[id]?.meta.ost?.title === "More customers reorder every week")) placeSample();
-  const read = await ingestPaste(body, opts.sample ? "Basket founder, after the investor call" : opts.file?.title);
+  const read = await ingestPaste(body, opts.sample ? "Basket founder, after the investor call" : (opts.title ?? opts.file?.title));
+  // Their parts of the text (the rest Qalam AI's questions, as headings), found where the text has them.
+  const spans = opts.parts ? partSpans(read.text, opts.parts) : null;
+  const within = spans?.theirs;
+  const heads = (spans?.heads ?? []).map((span) => ({ kind: "h3" as const, span }));
   const s = studio();
   const rec: SourceRecord = {
     v: 1,
@@ -193,11 +199,12 @@ export async function startDump(text: string, opts: { sample?: boolean; id?: str
     kind: "dump",
     title: read.title,
     text: read.text,
+    ...(heads.length ? { blocks: heads } : {}),
     addedAt: Date.now(),
     read: [],
     quotes: [],
     needs: [],
-    dump: { v: 1, phase: "reading", understanding: "", challenges: [], buckets: [], anchor: treeFor(s.doc, opts.file ? [opts.file.card] : s.selection), ...(opts.sample ? { sample: true } : {}), ...(opts.aim ? { aim: opts.aim } : {}), ...(opts.file ? { file: { ...opts.file, ...(cut ? { cut: true as const } : {}) } } : {}) },
+    dump: { v: 1, ...(within ? { within } : {}), phase: "reading", understanding: "", challenges: [], buckets: [], anchor: treeFor(s.doc, opts.file ? [opts.file.card] : s.selection), ...(opts.sample ? { sample: true } : {}), ...(opts.aim ? { aim: opts.aim } : {}), ...(opts.file ? { file: { ...opts.file, ...(cut ? { cut: true as const } : {}) } } : {}) },
   };
   const turn = openTurn("discovery", { text: `Brain dump · ${read.title}` });
   rec.dump!.turn = turn;
@@ -219,7 +226,7 @@ export async function readDump(sourceId: string) {
   const { tree, cards } = board();
   try {
     const { raw, sample, model } = await call(sourceId, reading(s.dump), { stage: "dump-read", product: product(), dump: s.text, tree, ...aimOf(s.dump, cards) }, () => sampleRaw(SAMPLE_DUMP_READ_RAW, cards), 3500);
-    const r = sanitizeRead(raw, s.text, cards);
+    const r = sanitizeRead(raw, s.text, cards, Date.now(), s.dump.within);
     // The wrong file: what it is, and the kind that would help (they add another, or have it read anyway).
     if (s.dump.file && (!r.bears || !r.fragments.length)) {
       await updateSource(sourceId, (x) => ({ ...x, quotes: r.fragments, dump: { ...x.dump!, phase: "ready", failed: undefined, understanding: r.understanding, challenges: [], buckets: [], off: { wanted: r.wanted }, ...(model ? { model } : {}) } }));
@@ -262,10 +269,23 @@ function fileAnswers(sourceId: string) {
   );
 }
 
+/** The round just answered goes onto the source's text, so it reads on its own: what Qalam AI asked, and their answers. */
+async function keepRound(sourceId: string) {
+  await updateSource(sourceId, (x) => {
+    const d = x.dump;
+    if (!d?.buckets.length) return x;
+    const n = d.buckets.length;
+    // Numbered as the chat numbers them ("Your answers · round 1").
+    const r = withRound(x.text, x.blocks ?? [], roundAnswers(d)[n - 1] ?? [], n);
+    return r.text === x.text ? x : { ...x, text: r.text, blocks: r.blocks };
+  });
+}
+
 /** The builder answered the round: Qalam AI reads the answers. */
 export async function answerRound(sourceId: string, form: FlowState) {
   clearTimeout(saving);
   await setSession(sourceId, (s) => closeDumpRound(s, form, "analyzing"));
+  await keepRound(sourceId);
   fileAnswers(sourceId);
   await readAnswers(sourceId);
 }
@@ -274,6 +294,7 @@ export async function answerRound(sourceId: string, form: FlowState) {
 export async function skipRest(sourceId: string, form?: FlowState) {
   clearTimeout(saving);
   await setSession(sourceId, (s) => closeDumpRound(s, form ?? s.buckets[s.buckets.length - 1]?.form ?? initialFlow([]), "skipped"));
+  await keepRound(sourceId);
   fileAnswers(sourceId);
   await placeDump(sourceId);
 }

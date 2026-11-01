@@ -5,6 +5,7 @@ import { toQuestion } from "@/ui/ai/plan";
 import { draftToDoc } from "./draft-doc";
 import { sanitizeDraft } from "./sanitize";
 import {
+  withRound,
   MAX_DUMP_ROUNDS,
   applyDumpFollowup,
   briefFromDump,
@@ -144,6 +145,24 @@ describe("reading a brain dump", () => {
     ]);
     const f = sanitizeDumpFollowup({ questions: [question] }, fragmentRefs(r.fragments), cards);
     expect(f.questions[0].options[0].label).toBe("Under “I forget to reorder until I've run out”");
+  });
+
+  it("takes pieces only from their parts of the text, never from a question Qalam AI asked", () => {
+    const { cards } = read();
+    const text = "Which outcome matters most?\nMore restaurants hand over oil every week";
+    const r = sanitizeRead({ fragments: [{ id: "f1", quote: "Which outcome matters most?", role: "goal" }, { id: "f2", quote: "More restaurants hand over oil every week", role: "goal" }] }, text, cards, 1, [[28, text.length]]);
+    expect(r.fragments.map((f) => f.text)).toEqual(["More restaurants hand over oil every week"]);
+  });
+
+  it("adds a round's questions and answers to the text, under a heading, its pieces where they were", () => {
+    const text = "Collect more oil from restaurants.";
+    const r = withRound(text, [], [{ questionId: "q1", question: "How much do you collect today?", answer: "About 100 tons a month", words: "About 100 tons a month" }, { questionId: "q2", question: "By when?", answer: "", words: "" }], 2);
+    expect(r.text).toBe("Collect more oil from restaurants.\n\nQalam AI asked, and you answered (round 2):\n\nHow much do you collect today?\nAbout 100 tons a month");
+    expect(r.blocks.map((b) => [b.kind, r.text.slice(...b.span)])).toEqual([
+      ["h2", "Qalam AI asked, and you answered (round 2):"],
+      ["h3", "How much do you collect today?"],
+    ]);
+    expect(withRound(text, [], [], 2).text).toBe(text);
   });
 
   it("says, for a file read for a card, when nothing in it bears on the card, and what file would help, in words", () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findQuestionsMaterial, findRound, findText, sanitizeFindQuestions } from "./find";
+import { findQuestionsMaterial, findRound, findText, findTranscript, partSpans, sanitizeFindQuestions } from "./find";
 
 describe("Help me find one", () => {
   it("opens with code's own questions, open and skippable, about what's looked for", () => {
@@ -53,5 +53,22 @@ describe("Help me find one, from what's known about the domain", () => {
       ["who", [], false],
     ]);
     expect(qs[0].recommended).toEqual(["litres"]);
+  });
+});
+
+describe("a find's source, readable on its own", () => {
+  it("keeps each question with their answer, and finds their parts in order even where a question has their words", () => {
+    const qs = [
+      { id: "who", title: "Who sells you the most oil, households or restaurants?", why: "", multi: false, options: [], recommended: [], allowOther: false },
+      { id: "skip", title: "Anything else?", why: "", multi: false, options: [], recommended: [], allowOther: false },
+      { id: "num", title: "Which number would you watch?", why: "", multi: false, options: [], recommended: [], allowOther: false },
+    ];
+    const r = findTranscript(qs, { who: "restaurants", skip: "", num: "Tons collected per month" }, { what: "goal", org: "Tagaddod" });
+    expect(r.text).toBe("Finding a goal for Tagaddod: Qalam AI asked, and you answered.\n\nWho sells you the most oil, households or restaurants?\nrestaurants\n\nWhich number would you watch?\nTons collected per month");
+    const s = partSpans(r.text, r.parts);
+    expect(s.theirs.map(([a, b]) => r.text.slice(a, b))).toEqual(["restaurants", "Tons collected per month"]);
+    // The answer after its question, not the same word inside the question.
+    expect(s.theirs[0][0]).toBeGreaterThan(r.text.indexOf("restaurants?"));
+    expect(s.heads.map(([a, b]) => r.text.slice(a, b))).toEqual(["Finding a goal for Tagaddod: Qalam AI asked, and you answered.", "Who sells you the most oil, households or restaurants?", "Which number would you watch?"]);
   });
 });
