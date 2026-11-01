@@ -39,7 +39,7 @@ describe("the welcome", () => {
     const i = base({ route: "welcome", engine: "looking" });
     expect(ids(threadOf(i))).toEqual(["engine"]);
     expect(askOf(i)).toMatchObject({ kind: "none", key: "engine" });
-    expect(stepsOf(i).map((s) => s.state)).toEqual(["now", "next", "next", "next", "next", "next", "next", "next"]);
+    expect(stepsOf(i).map((s) => s.state)).toEqual(["now", "next", "next", "next", "next", "next", "next", "next", "next"]);
   });
 
   it("asks who it's for once Qalam AI is ready or left for later, and takes nothing until they pick", () => {
@@ -49,7 +49,7 @@ describe("the welcome", () => {
       expect(ids(m)).toEqual(["engine", "shape:ask"]);
       expect(choices(m.at(-1))).toEqual(["shape"]);
       expect(askOf(i)).toMatchObject({ kind: "none", key: "shape" });
-      expect(stepsOf(i).map((s) => s.state)).toEqual(["done", "now", "next", "next", "next", "next", "next", "next"]);
+      expect(stepsOf(i).map((s) => s.state)).toEqual(["done", "now", "next", "next", "next", "next", "next", "next", "next"]);
     }
   });
 
@@ -61,7 +61,7 @@ describe("the welcome", () => {
     const solo = base({ route: "welcome", shape: "solo" });
     expect(threadOf(solo).at(-1)?.parts[0]).toEqual({ type: "text", text: "What's the project you have in mind? Just name it, or tell me what you'd like to call it." });
     expect(askOf(solo)).toMatchObject({ kind: "name", submit: "enter" });
-    expect(stepsOf(solo).map((s) => s.id)).toEqual(["engine", "name", "you", "voice", "company", "goals", "connect"]);
+    expect(stepsOf(solo).map((s) => s.id)).toEqual(["engine", "name", "you", "voice", "company", "competitors", "goals", "connect"]);
   });
 
   it("shows the name sent while the organization is made", () => {
@@ -90,6 +90,7 @@ describe("who they are", () => {
       ["you", "now"],
       ["voice", "next"],
       ["company", "next"],
+      ["competitors", "next"],
       ["goals", "next"],
       ["yours", "next"],
       ["connect", "next"],
@@ -242,6 +243,7 @@ describe("on your own", () => {
       ["you", "done"],
       ["voice", "done"],
       ["company", "done"],
+      ["competitors", "done"],
       ["goals", "done"],
       ["connect", "now"],
     ]);
@@ -357,7 +359,7 @@ describe("the first run with what v0.1 hides left out (src/lab.ts)", () => {
   it("asks only for Qalam AI, a name and a start, and ends on Finish once the goals are in", () => {
     setLab([]);
     const i = base({ shape: "team", door: "know", know: { ...base().know, phase: "added", added: 2 } });
-    expect(stepsOf(i).map((s) => s.id)).toEqual(["engine", "name", "company", "goals"]);
+    expect(stepsOf(i).map((s) => s.id)).toEqual(["engine", "name", "company", "competitors", "goals"]);
     const m = threadOf(i);
     expect(ids(m)).not.toContain("you:ask");
     expect(ids(m)).not.toContain("voice:ask");
@@ -421,5 +423,35 @@ describe("the company, in their own words", () => {
     expect(m.map((x) => x.id)).toEqual(["company:ask", "company:you", "company:found", "company:mine", "company:line"]);
     expect(m[2].parts.at(-1)).toEqual({ type: "data", name: "facts", data: { open: false } });
     expect(askOf(i).kind).toBe("company");
+  });
+});
+
+describe("the competitors", () => {
+  const rival = { id: "c1", name: "Oilio", url: "https://oilio.example/", lines: [], by: "qalam" as const, at: 1 };
+  const at = (look: Partial<NonNullable<ThreadInput["market"]["session"]["competitors"]>> | null, added: string[] = []) =>
+    base({ step: "competitors", orgName: "Tagaddod", market: { session: { v: 1, ...(look ? { competitors: { state: "ready", at: 1, steps: [], named: [], found: [], ...look } } : {}) }, noSite: false, error: null, added } });
+  const own = (m: ChatMessage[]) => m.filter((x) => x.id.startsWith("competitors"));
+
+  it("asks who they compete with, or to find them, and takes names", () => {
+    const i = at(null);
+    const m = own(threadOf(i));
+    expect(ids(m)).toEqual(["competitors:ask"]);
+    expect(choices(m[0])).toEqual(["competitors"]);
+    expect(askOf(i)).toMatchObject({ kind: "competitors", placeholder: "Their names, like Oilio, Recycly" });
+  });
+
+  it("lists what it found to keep or take off, and takes one more by name meanwhile", () => {
+    const i = at({ found: [rival] });
+    const m = own(threadOf(i));
+    expect(ids(m)).toEqual(["competitors:ask", "competitors:you", "competitors:found"]);
+    expect(m[1].parts[0]).toEqual({ type: "text", text: "Find them for me" });
+    expect(m[2].parts.at(-1)).toEqual({ type: "data", name: "rivals", data: { open: true } });
+    expect(askOf(i)).toMatchObject({ kind: "competitors", placeholder: "Add one by name" });
+  });
+
+  it("says when none was found, and moves on once they're kept", () => {
+    expect(own(threadOf(at({ named: [] }))).at(-1)?.id).toBe("competitors:none");
+    const m = threadOf({ ...at({ state: "settled", found: [rival], kept: 1, named: ["Oilio"] }), step: "goals" });
+    expect(ids(own(m))).toEqual(["competitors:ask", "competitors:you", "competitors:found", "competitors:kept"]);
   });
 });

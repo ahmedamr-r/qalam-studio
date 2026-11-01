@@ -9,7 +9,7 @@ import { lab } from "@/lab";
  * theirs": every goal is yours.
  */
 
-export type WelcomeStep = "engine" | "name" | "you" | "voice" | "company" | "goals" | "yours" | "connect";
+export type WelcomeStep = "engine" | "name" | "you" | "voice" | "company" | "competitors" | "goals" | "yours" | "connect";
 
 export const WELCOME_STEPS: readonly { id: WelcomeStep; label: string }[] = [
   { id: "engine", label: "Qalam AI" },
@@ -18,6 +18,7 @@ export const WELCOME_STEPS: readonly { id: WelcomeStep; label: string }[] = [
   { id: "voice", label: "Voice" },
   // What the web says about it, checked with them (src/market/), before any goal or problem.
   { id: "company", label: "The company" },
+  { id: "competitors", label: "Competitors" },
   { id: "goals", label: "Start" },
   { id: "yours", label: "Yours" },
   { id: "connect", label: "Connect" },
@@ -50,10 +51,10 @@ export function stepStates(at: WelcomeStep): Record<WelcomeStep, StepState> {
 }
 
 /** The setup page's steps, as its address names them (`?step=`): the goals unless it says. */
-export type SetupStep = Extract<WelcomeStep, "you" | "voice" | "company" | "goals" | "yours" | "connect">;
+export type SetupStep = Extract<WelcomeStep, "you" | "voice" | "company" | "competitors" | "goals" | "yours" | "connect">;
 export const setupStep = (search: string): SetupStep => {
   const s = new URLSearchParams(search).get("step");
-  return s === "you" || s === "voice" || s === "company" || s === "yours" || s === "connect" ? s : "goals";
+  return s === "you" || s === "voice" || s === "company" || s === "competitors" || s === "yours" || s === "connect" ? s : "goals";
 };
 
 /** What the first run left behind here, read from what's kept (nothing about where they stopped is saved but Finish). */

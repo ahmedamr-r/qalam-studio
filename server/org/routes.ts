@@ -32,7 +32,7 @@ import type { Hit as ConnectorHit } from "@/connectors/recipes";
 import { findProblems, goalPage, linkByHand } from "./goals";
 import { pictureFromFigma, pinByHand, placeQuotes } from "./steps";
 import { answerReading, dropReading, editSeen, seenEditShape, seenMaps, seenView, settleReading, startReading } from "./seen";
-import { lookUpCompany, marketSession, settleCompany, stopLook, type FactDecision } from "./market";
+import { lookForCompetitors, lookUpCompany, marketSession, settleCompany, settleCompetitors, stopLook, type FactDecision } from "./market";
 import type { SeenAnswer, Shot } from "@/seen/types";
 import { CHAT_KEY, chatOf } from "@/space/chat";
 import { changeJob, noteForJob, onlineForJob, openJobs, planJobs, searchForJob, takeInForJob } from "./jobs";
@@ -928,6 +928,21 @@ export function orgRoutes(): Hono<Env> {
   r.delete("/api/org/:org/market/company", (c) => {
     stopLook(c.get("store"), "company");
     return c.json({ ok: true });
+  });
+  const names = (v: unknown) => (Array.isArray(v) ? v : []).filter((n): n is string => typeof n === "string" && !!n.trim()).map((n) => n.trim().slice(0, 80)).slice(0, 8);
+  r.post("/api/org/:org/market/competitors", async (c) => {
+    if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't look for competitors." }, 503);
+    const b = (await c.req.json().catch(() => null)) as { named?: unknown } | null;
+    return c.json(await lookForCompetitors(c.get("store"), names(b?.named), { tab: tabOf(c.req.raw.headers) }));
+  });
+  r.put("/api/org/:org/market/competitors", async (c) => {
+    const b = (await c.req.json().catch(() => null)) as { keep?: unknown; added?: unknown } | null;
+    const keep = (Array.isArray(b?.keep) ? b.keep : []).filter((k): k is string => typeof k === "string").slice(0, 12);
+    try {
+      return c.json(await settleCompetitors(c.get("store"), keep, names(b?.added), { tab: tabOf(c.req.raw.headers) }));
+    } catch (e) {
+      return bad(e instanceof Error ? e.message : String(e));
+    }
   });
 
   r.post("/api/org/:org/seen/:key/read", async (c) => {

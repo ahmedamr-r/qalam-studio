@@ -21,7 +21,7 @@ import { r } from "../recipes";
 import Toasts from "../toast";
 import { answerKnown, readKnown, saveKnownForm, useKnow } from "../setup/know";
 import { answerSetupRound, saveSetupRound, startSetup, stopSetup, useSetup } from "../setup/setup";
-import { nameOrg, sendCompany, sendProblems, startSetupPage, startWelcome, useFirstRun, type FirstRun } from "./flow";
+import { nameOrg, sendCompany, sendCompetitors, sendProblems, startSetupPage, startWelcome, useFirstRun, type FirstRun } from "./flow";
 import { PARTS } from "./parts";
 import { CanvasPage } from "./CanvasPage";
 import { ReviewPill, StepsProgress } from "./TopBarParts";
@@ -83,7 +83,7 @@ function useThreadInput(): ThreadInput {
     problems: fr.problems,
     busy: setup.busy ? { label: setup.busy.label } : fr.working,
     picked: (fr.picked ?? mine).length,
-    market: { session: market.session, noSite: fr.noSite, error: market.error },
+    market: { session: market.session, noSite: fr.noSite, error: market.error, added: fr.rivalsAdded },
   };
 }
 
@@ -192,7 +192,7 @@ export function Onboarding({ route }: { route: "welcome" | "setup" }) {
     ) : (
       <ChatComposer
         label={
-          ask.kind === "name" ? (fr.shape === "solo" ? "The project's name" : "The organization's name") : ask.kind === "company" ? (fr.shape === "solo" ? "About the project" : "Its website, or what it does") : ask.kind === "outline" ? "Your goals" : ask.kind === "dump" ? (fr.shape === "solo" ? "About the idea" : "About the company") : ask.kind === "problems" ? "What customers said" : ask.kind === "idea" ? "The idea" : "Message"
+          ask.kind === "name" ? (fr.shape === "solo" ? "The project's name" : "The organization's name") : ask.kind === "company" ? (fr.shape === "solo" ? "About the project" : "Its website, or what it does") : ask.kind === "competitors" ? "Competitors' names" : ask.kind === "outline" ? "Your goals" : ask.kind === "dump" ? (fr.shape === "solo" ? "About the idea" : "About the company") : ask.kind === "problems" ? "What customers said" : ask.kind === "idea" ? "The idea" : "Message"
         }
         placeholder={ask.placeholder}
         submit={ask.submit}
@@ -225,6 +225,10 @@ export function Onboarding({ route }: { route: "welcome" | "setup" }) {
           if (ask.kind === "name") return nameOrg(t.trim());
           if (ask.kind === "company") {
             void sendCompany(t);
+            return true;
+          }
+          if (ask.kind === "competitors") {
+            void sendCompetitors(t);
             return true;
           }
           if (ask.kind === "outline") {

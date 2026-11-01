@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { marketPieces } from "@/hub/pieces";
 import { aboutFromFacts, companyMaterial, sanitizeFacts, siteUrl } from "./facts";
 import { marketFromMarkdown, marketToMarkdown } from "./market-md";
+import { competitorsMaterial, domainMaterial, sanitizeCompetitors, sanitizeDomain } from "./rivals";
 import { sessionOf } from "./session";
 import { emptyMarket, type Market } from "./types";
 
@@ -94,5 +95,49 @@ describe("the first run's lookups", () => {
     expect(s.company).toMatchObject({ state: "failed" });
     expect(sessionOf({ v: 1, company: { state: "looking", at: 1, steps: [], facts: [] } }, () => true).company?.state).toBe("looking");
     expect(sessionOf(null)).toEqual({ v: 1 });
+  });
+});
+
+describe("competitors and the domain", () => {
+  const oilio = { ref: "", url: "https://oilio.example/", title: "Oilio", text: "Oilio buys used cooking oil from restaurants across Alexandria and pays 12 pounds a litre. ".repeat(3) };
+  const report = { ref: "", url: "https://report.example/uco", title: "UCO collection in MENA", text: "Collectors track litres collected per household each month. Households say pickups are hard to schedule. Recycly also collects from homes in Cairo. ".repeat(2) };
+  let n = 0;
+  const id = () => `x${++n}`;
+
+  it("keeps one they named under their name, and a found one only where its name is on a page and a line about it holds", () => {
+    const m = competitorsMaterial({ org: "Tagaddod", facts: [], named: ["oilio"], notes: "", pages: [oilio, report] });
+    const raw = {
+      competitors: [
+        { name: "Oilio", page: "w1", lines: [{ text: "Buys used oil from restaurants in Alexandria for 12 pounds a litre.", quote: "buys used cooking oil from restaurants across Alexandria and pays 12 pounds a litre", page: "w1" }] },
+        { name: "Recycly", page: "none", lines: [{ text: "Collects from homes in Cairo.", quote: "Recycly also collects from homes in Cairo", page: "w2" }] },
+        { name: "GreenFuel", page: "none", lines: [{ text: "Makes biodiesel.", quote: "makes biodiesel", page: "w2" }] },
+        { name: "Tagaddod", page: "none", lines: [] },
+        { name: "Recycly", page: "none", lines: [] },
+      ],
+    };
+    const dropped: string[] = [];
+    const out = sanitizeCompetitors(raw, m, { org: "Tagaddod", now: 1, id, gone: [] }, (why) => dropped.push(why));
+    expect(out.map((c) => [c.name, c.by, c.url ?? null, c.lines.map((l) => l.text)])).toEqual([
+      ["oilio", "you", "https://oilio.example/", ["Buys used oil from restaurants in Alexandria for 12 pounds a litre."]],
+      ["Recycly", "qalam", "https://report.example/uco", ["Collects from homes in Cairo."]],
+    ]);
+    expect(dropped).toEqual(["its name isn't on a page read", "the company itself", "there twice"]);
+    // One they took off before stays off.
+    expect(sanitizeCompetitors(raw, m, { org: "Tagaddod", now: 1, id, gone: ["recycly"] }, () => {}).map((c) => c.name)).toEqual(["oilio"]);
+  });
+
+  it("keeps a named one the call left out, as theirs", () => {
+    const m = competitorsMaterial({ org: "Tagaddod", facts: [], named: ["Oilio", "Zeit Co"], notes: "", pages: [oilio] });
+    expect(sanitizeCompetitors({ competitors: [] }, m, { org: "Tagaddod", now: 1, id, gone: [] }).map((c) => [c.name, c.by])).toEqual([
+      ["Oilio", "you"],
+      ["Zeit Co", "you"],
+    ]);
+  });
+
+  it("keeps what companies like it aim for and what their customers struggle with, each on its page", () => {
+    const m = domainMaterial({ org: "Tagaddod", facts: [], notes: "", pages: [report] });
+    const d = sanitizeDomain({ aims: [{ text: "Collectors watch litres collected per household each month.", quote: "Collectors track litres collected per household each month", page: "w1" }, { text: "They aim for 30% growth.", quote: "Collectors track litres", page: "w1" }], struggles: [{ text: "Households find pickups hard to schedule.", quote: "Households say pickups are hard to schedule", page: "w1" }] }, m, { now: 1, id });
+    expect(d.aims.map((l) => l.text)).toEqual(["Collectors watch litres collected per household each month."]);
+    expect(d.struggles).toMatchObject([{ text: "Households find pickups hard to schedule.", url: "https://report.example/uco", by: "qalam" }]);
   });
 });

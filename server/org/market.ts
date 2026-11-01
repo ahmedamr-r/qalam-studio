@@ -1,11 +1,12 @@
 import { NO_WEB } from "@/ai/abilities";
-import { companyCall } from "@/ai/market";
+import { companyCall, competitorsCall, domainCall } from "@/ai/market";
 import type { ResearchInfo, ResearchPurpose } from "@/ai/research-shared";
 import { research, structured } from "@/ai/server";
 import type { OutsidePage } from "@/goals/outside";
 import { aboutFromFacts, companyMaterial, companyTask, MAX_PAGES, sanitizeFacts, siteUrl } from "@/market/facts";
-import { sessionOf, type CompanyLook, type LookName, type MarketSession } from "@/market/session";
-import type { MarketLine } from "@/market/types";
+import { competitorsMaterial, competitorsTask, domainMaterial, domainTask, sanitizeCompetitors, sanitizeDomain } from "@/market/rivals";
+import { sessionOf, type CompanyLook, type CompetitorsLook, type LookName, type MarketSession } from "@/market/session";
+import type { Competitor, MarketLine } from "@/market/types";
 import { nanoid } from "nanoid";
 import { readPage } from "./pages";
 import type { OrgStore } from "./store";
@@ -121,7 +122,7 @@ export interface FactDecision {
  * theirs), the About's empty fields are filled from them, and the look is settled. A person's own
  * lines already in the file stay; Qalam AI's from an earlier look give way to these.
  */
-export async function settleCompany(store: OrgStore, decisions: FactDecision[], added: string[], opts: { tab?: string } = {}): Promise<MarketSession> {
+export async function settleCompany(store: OrgStore, decisions: FactDecision[], added: string[], opts: { tab?: string; deps?: MarketDeps } = {}): Promise<MarketSession> {
   const s = await marketSession(store);
   const look = s.company;
   if (!look || look.state === "looking") throw new Error("Nothing about the company is waiting to be checked.");
@@ -143,7 +144,113 @@ export async function settleCompany(store: OrgStore, decisions: FactDecision[], 
   const about = await store.getAbout();
   const fill = aboutFromFacts(kept, about);
   if (fill.context || fill.audience) await store.putAbout({ ...about, ...fill }, opts);
-  return store.changeMarketSession((x) => (x.company ? { ...x, company: { ...x.company, state: "settled", kept: kept.length } } : x), opts);
+  const settled = await store.changeMarketSession((x) => (x.company ? { ...x, company: { ...x.company, state: "settled", kept: kept.length } } : x), opts);
+  // What companies like it aim for and face, read in the background while they name competitors.
+  if (kept.length) void lookUpDomain(store, { deps: opts.deps });
+  return settled;
+}
+
+/** One look's run: started here (one at a time each), its progress announced, its end its own. */
+function startRun(store: OrgStore, look: LookName, run: (ctrl: AbortController) => Promise<void>) {
+  const key = runKey(store, look);
+  running.get(key)?.abort();
+  const ctrl = new AbortController();
+  running.set(key, ctrl);
+  void run(ctrl).finally(() => {
+    if (running.get(key) === ctrl) running.delete(key);
+  });
+}
+
+/** Pages a research step's notes link, read by code (the first ones that read). */
+async function readLinks(deps: MarketDeps, info: ResearchInfo | null, signal: AbortSignal): Promise<OutsidePage[]> {
+  return (await Promise.all(linksOf(info, null).slice(0, MAX_PAGES + 2).map((l) => deps.read(l, signal)))).filter((p): p is OutsidePage => !!p).slice(0, MAX_PAGES);
+}
+
+// ---------------------------------------------------------------------------
+// Competitors: the ones they name, or found, checked with them
+
+/** Look for the competitors: the ones they named (each one's site and what it does), or the main ones when they named none. */
+export async function lookForCompetitors(store: OrgStore, named: string[], opts: { tab?: string; deps?: MarketDeps } = {}): Promise<MarketSession> {
+  const names = [...new Set(named.map((n) => n.replace(/\s+/g, " ").trim()).filter(Boolean))].slice(0, 6);
+  const s = await store.changeMarketSession((x) => ({ ...x, competitors: { state: "looking", at: Date.now(), steps: ["Starting"], named: names, found: [] } }), opts);
+  const deps = opts.deps ?? realDeps;
+  startRun(store, "competitors", async ({ signal }) => {
+    const step = (label: string) => void changeLook(store, "competitors", (l) => ({ ...l, steps: [...l.steps, label].slice(-STEPS) })).catch(() => {});
+    try {
+      const org = store.info.name;
+      const market = await store.getMarket();
+      const info = await deps.research({ purpose: "competitors", task: competitorsTask({ org, facts: market.company, named: names }), connectors: ["web"] }, step, signal);
+      if (signal.aborted) return;
+      step("Reading the pages it found");
+      const pages = await readLinks(deps, info, signal);
+      if (signal.aborted) return;
+      let found: Competitor[] = [];
+      if (pages.length) {
+        step("Qalam AI is checking each one on its page");
+        const m = competitorsMaterial({ org, facts: market.company, named: names, notes: info?.notes ?? "", pages });
+        const { data, model } = await deps.structured<unknown>(competitorsCall(m), signal);
+        const now = Date.now();
+        const dropped: { why: string; item: unknown }[] = [];
+        found = sanitizeCompetitors(data, m, { org, now, id: () => `c${nanoid(8)}`, gone: market.gone }, (why, item) => dropped.push({ why, item }));
+        await store.putTrace({ id: nanoid(10), projectId: "market", kind: "competitors", at: now, ...(model ? { model } : {}), answer: data, kept: found.length, dropped } as { id: string; projectId: string }).catch(() => {});
+      } else found = names.map((n) => ({ id: `c${nanoid(8)}`, name: n, lines: [], by: "you", at: Date.now() }));
+      await changeLook(store, "competitors", (l) => ({ ...l, state: "ready", found, ...(info ? {} : { noWeb: true }), pages: pages.map((p) => ({ title: p.title, url: p.url })) }));
+    } catch (e) {
+      if (!signal.aborted) await changeLook(store, "competitors", (l) => ({ ...l, state: "failed", error: message(e) })).catch(() => {});
+    }
+  });
+  return s;
+}
+
+/** The competitors they keep (and any they add by name) go into hub/market.md; those taken off are never proposed again. */
+export async function settleCompetitors(store: OrgStore, keep: string[], added: string[], opts: { tab?: string } = {}): Promise<MarketSession> {
+  const s = await marketSession(store);
+  const look: CompetitorsLook | undefined = s.competitors;
+  if (!look || look.state === "looking") throw new Error("No competitors are waiting to be checked.");
+  const now = Date.now();
+  const kept = look.found.filter((c) => keep.includes(c.id));
+  const off = look.found.filter((c) => !keep.includes(c.id)).map((c) => c.name.toLowerCase());
+  const mine = added
+    .map((n) => n.replace(/\s+/g, " ").trim().slice(0, 80))
+    .filter((n) => n && !kept.some((c) => c.name.toLowerCase() === n.toLowerCase()))
+    .map((name): Competitor => ({ id: `c${nanoid(8)}`, name, lines: [], by: "you", at: now }));
+  await store.changeMarket((m) => {
+    const names = new Set([...kept, ...mine].map((c) => c.name.toLowerCase()));
+    return { ...m, competitors: [...m.competitors.filter((c) => c.by === "you" && !names.has(c.name.toLowerCase())), ...kept, ...mine], gone: [...new Set([...m.gone, ...off])] };
+  }, opts);
+  return store.changeMarketSession((x) => (x.competitors ? { ...x, competitors: { ...x.competitors, state: "settled", kept: kept.length + mine.length } } : x), opts);
+}
+
+// ---------------------------------------------------------------------------
+// The domain: what companies like it aim for, and what their customers struggle with
+
+export async function lookUpDomain(store: OrgStore, opts: { deps?: MarketDeps } = {}): Promise<void> {
+  const deps = opts.deps ?? realDeps;
+  await store.changeMarketSession((x) => ({ ...x, domain: { state: "looking", at: Date.now(), steps: ["Starting"], aims: 0, struggles: 0 } }));
+  startRun(store, "domain", async ({ signal }) => {
+    const step = (label: string) => void changeLook(store, "domain", (l) => ({ ...l, steps: [...l.steps, label].slice(-STEPS) })).catch(() => {});
+    try {
+      const org = store.info.name;
+      const market = await store.getMarket();
+      const info = await deps.research({ purpose: "domain", task: domainTask({ org, facts: market.company, competitors: market.competitors.map((c) => c.name) }), connectors: ["web"] }, step, signal);
+      if (signal.aborted) return;
+      const pages = await readLinks(deps, info, signal);
+      if (signal.aborted) return;
+      if (!pages.length) return void (await changeLook(store, "domain", (l) => ({ ...l, state: "settled", ...(info ? {} : { noWeb: true }) })));
+      step("Qalam AI is checking each point on its page");
+      const m = domainMaterial({ org, facts: market.company, notes: info?.notes ?? "", pages });
+      const { data, model } = await deps.structured<unknown>(domainCall(m), signal);
+      const now = Date.now();
+      const dropped: { why: string; item: unknown }[] = [];
+      const d = sanitizeDomain(data, m, { now, id: () => `d${nanoid(8)}` }, (why, item) => dropped.push({ why, item }));
+      await store.putTrace({ id: nanoid(10), projectId: "market", kind: "domain", at: now, ...(model ? { model } : {}), answer: data, kept: d.aims.length + d.struggles.length, dropped } as { id: string; projectId: string }).catch(() => {});
+      // Qalam AI's own lines give way to these; a person's stay.
+      await store.changeMarket((x) => ({ ...x, aims: [...x.aims.filter((l) => l.by === "you"), ...d.aims], struggles: [...x.struggles.filter((l) => l.by === "you"), ...d.struggles] }));
+      await changeLook(store, "domain", (l) => ({ ...l, state: "settled", aims: d.aims.length, struggles: d.struggles.length, pages: pages.map((p) => ({ title: p.title, url: p.url })) }));
+    } catch (e) {
+      if (!signal.aborted) await changeLook(store, "domain", (l) => ({ ...l, state: "failed", error: message(e) })).catch(() => {});
+    }
+  });
 }
 
 /** Stop a look running here. */

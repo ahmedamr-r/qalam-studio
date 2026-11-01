@@ -34,9 +34,10 @@ import { lab } from "@/lab";
 import { Dictated } from "../voice/MicButton";
 import { ParakeetInstall } from "../voice/ParakeetInstall";
 import { wordsFor } from "@/org/words";
-import { checkEngine, engineChanged, finishFirstRun, goStep, keepFacts, lookAgain, noWebsite, openKeyField, pickDoor, pickShape, saveVoice, saveYou, saveYours, skipEngine, togglePick, useFirstRun } from "./flow";
+import { checkEngine, engineChanged, finishFirstRun, findCompetitors, goStep, keepCompetitors, keepFacts, lookAgain, noWebsite, skipCompetitors, openKeyField, pickDoor, pickShape, saveVoice, saveYou, saveYours, skipEngine, togglePick, useFirstRun } from "./flow";
 import { useMarket } from "@/org/market";
-import { FIELD_LABEL, type MarketLine } from "@/market/types";
+import { FIELD_LABEL, type Competitor, type MarketLine } from "@/market/types";
+import { lookForCompetitors } from "@/org/market";
 import { treeRows } from "./places";
 import { reviewNext } from "./dock";
 
@@ -236,6 +237,26 @@ function ChoicesPart({ data }: { data: PartData }) {
       );
     case "company":
       return <ReplyChips>{chip(data.solo ? "No link yet" : "No website yet", noWebsite)}</ReplyChips>;
+    case "competitors":
+      return (
+        <ReplyChips>
+          {chip(
+            <>
+              <QalamAIGlyph size={12} /> Find them for me
+            </>,
+            findCompetitors,
+            true,
+          )}
+          {chip("Skip this", skipCompetitors)}
+        </ReplyChips>
+      );
+    case "competitors-again":
+      return (
+        <ReplyChips>
+          {chip("Look again", () => lookForCompetitors(useMarket.getState().session.competitors?.named ?? []), true)}
+          {chip("Skip this", skipCompetitors)}
+        </ReplyChips>
+      );
     case "company-again":
       return (
         <ReplyChips>
@@ -845,8 +866,87 @@ function FactsPart({ data }: { data: PartData }) {
   );
 }
 
+/** A competitor found (its site, what it does) or named by them: kept, or taken off. */
+function RivalRow({ c, kept, open, onKeep }: { c: Competitor; kept: boolean; open: boolean; onKeep?: (on: boolean) => void }) {
+  return (
+    <li className={clsx(qr.inset, "flex flex-col gap-[4px] px-[10px] py-[8px]", !kept && "opacity-60")}>
+      <span className="flex min-w-0 items-center gap-[6px]">
+        <span className={clsx("truncate text-body font-medium text-fg", !kept && "line-through")}>{c.name}</span>
+        {c.url ? (
+          <a href={c.url} target="_blank" rel="noreferrer" className="inline-flex min-w-0 items-center gap-[3px] text-micro text-fg-subtle hover:text-fg">
+            <Link2 size={11} {...ICON} />
+            <span className="truncate">{hostOf(c.url)}</span>
+          </a>
+        ) : c.by === "you" ? (
+          <span className="text-micro text-fg-subtle">you named it</span>
+        ) : null}
+      </span>
+      {c.lines.slice(0, 2).map((l) => (
+        <p key={l.id} className="text-caption leading-[18px] text-fg-muted" dir="auto" title={l.quote ? `“${l.quote}”` : undefined}>
+          {l.text}
+        </p>
+      ))}
+      {open && onKeep && (
+        <span className="flex gap-[6px]">
+          <button type="button" className={r.replyChip} onClick={() => onKeep(!kept)}>
+            {kept ? "Take it off" : "Keep"}
+          </button>
+        </span>
+      )}
+    </li>
+  );
+}
+
+function RivalsPart({ data }: { data: PartData }) {
+  const look = useMarket((m) => m.session.competitors);
+  const known = useMarket((m) => m.market.competitors);
+  const added = useFirstRun((f) => f.rivalsAdded);
+  const [off, setOff] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState(false);
+  const open = !!data.open && look?.state === "ready";
+  const found = open ? (look?.found ?? []) : known.length ? known : (look?.found ?? []);
+  const mine: Competitor[] = open ? added.map((name, i) => ({ id: `added:${i}`, name, lines: [], by: "you", at: 0 })) : [];
+  if (!found.length && !mine.length) return null;
+  const kept = found.filter((c) => !off.has(c.id)).length + mine.length;
+  return (
+    <div className="flex w-full flex-col gap-[8px]">
+      <ul className="flex w-full flex-col gap-[6px]">
+        {found.map((c) => (
+          <RivalRow key={c.id} c={c} open={open} kept={!open || !off.has(c.id)} onKeep={(on) => setOff((d) => (on ? new Set([...d].filter((x) => x !== c.id)) : new Set([...d, c.id])))} />
+        ))}
+        {mine.map((c) => (
+          <RivalRow key={c.id} c={c} open={false} kept />
+        ))}
+      </ul>
+      {open && (
+        <ReplyChips>
+          <button
+            type="button"
+            disabled={saving}
+            className={r.replyChipPrimary}
+            onClick={async () => {
+              setSaving(true);
+              try {
+                await keepCompetitors(found.filter((c) => !off.has(c.id)).map((c) => c.id));
+              } finally {
+                setSaving(false);
+              }
+            }}
+          >
+            {kept ? (kept === 1 ? "Keep this one" : `Keep these ${kept}`) : "None of these"}
+          </button>
+          <button type="button" disabled={saving} className={r.replyChip} onClick={skipCompetitors}>
+            Skip this
+          </button>
+        </ReplyChips>
+      )}
+    </div>
+  );
+}
+
 export const PARTS: Record<string, PartComponent> = {
   facts: FactsPart,
+  rivals: RivalsPart,
   problems: ProblemsPart,
   engine: EnginePart,
   verify: VerifyPart,

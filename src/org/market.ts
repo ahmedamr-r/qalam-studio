@@ -52,3 +52,9 @@ export const lookUpCompany = (o: { site?: string; said?: string }) => send("/mar
 export const settleCompany = (decisions: { id: string; keep: boolean; text?: string }[], added: string[] = []) => send("/market/company", { method: "PUT", json: { decisions, added } });
 
 export const stopCompany = () => send("/market/company", { method: "DELETE" });
+
+/** Look for the competitors they named (none: the main ones). */
+export const lookForCompetitors = (named: string[]) => send("/market/competitors", { method: "POST", json: { named } });
+
+/** The competitors they keep (by id), and any they add by name. */
+export const settleCompetitors = (keep: string[], added: string[] = []) => send("/market/competitors", { method: "PUT", json: { keep, added } });

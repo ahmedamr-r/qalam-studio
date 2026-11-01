@@ -53,6 +53,8 @@ function nextLine(step: SetupStep, org: string, waiting: boolean, solo: boolean)
       return solo ? "Next: your name, so Qalam AI knows who it's talking to." : `Next: who you are at ${org}, so Qalam AI asks you the right questions.`;
     case "voice":
       return "Next: talking instead of typing. It runs on this Mac, and nothing you say leaves it.";
+    case "competitors":
+      return `Next: who ${org} competes with. Name them, or Qalam AI finds them.`;
     case "company":
       return solo ? `Next: what ${org} is. Qalam AI looks it up and checks what it finds with you.` : `Next: what ${org} does. Qalam AI looks it up and checks what it finds with you.`;
     case "goals":

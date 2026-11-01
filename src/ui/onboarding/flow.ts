@@ -20,7 +20,7 @@ import { openKnow, useKnow } from "../setup/know";
 import { openSetup, useSetup } from "../setup/setup";
 import { changesThings, setupStep, stepAfter, welcomeMode, type SetupStep, type WelcomeMode } from "../welcome/steps";
 import { engineShown, lab } from "@/lab";
-import { loadMarket, lookUpCompany, settleCompany, useMarket } from "@/org/market";
+import { loadMarket, lookForCompetitors, lookUpCompany, settleCompany, settleCompetitors, useMarket } from "@/org/market";
 import { loadOrgContext } from "@/org/context";
 
 /*
@@ -63,6 +63,8 @@ export interface FirstRun {
   working: { label: string } | null;
   /** They said there's no website yet: the company step asks for a line about it instead (this tab). */
   noSite: boolean;
+  /** Competitors they added by name while checking the ones found (this tab). */
+  rivalsAdded: string[];
 }
 
 export const useFirstRun = create<FirstRun>(() => ({
@@ -82,6 +84,7 @@ export const useFirstRun = create<FirstRun>(() => ({
   problems: { sent: null, result: null, error: null },
   working: null,
   noSite: false,
+  rivalsAdded: [],
 }));
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -276,6 +279,44 @@ export async function keepFacts(decisions: { id: string; keep: boolean; text?: s
   void loadOrgContext();
   goStep(stepAfter("company", useFirstRun.getState().shape) ?? "goals");
 }
+
+// ---------------------------------------------------------------------------
+// Competitors: the ones they name, or found, checked with them
+
+/** Names, as typed: "Oilio, Recycly and GreenOil" is three. */
+export const namesIn = (t: string) =>
+  t
+    .split(/\s*(?:,|;|\n|\band\b|&)\s*/i)
+    .map((n) => n.trim().replace(/^[-•*]\s*/, ""))
+    .filter((n) => n.length > 1 && n.length <= 80)
+    .slice(0, 6);
+
+/** The names they gave (looked for), or, while they check what was found, one more of theirs. */
+export function sendCompetitors(text: string) {
+  const look = useMarket.getState().session.competitors;
+  if (look?.state === "ready") {
+    const add = namesIn(text).filter((n) => !useFirstRun.getState().rivalsAdded.some((a) => a.toLowerCase() === n.toLowerCase()));
+    return void useFirstRun.setState((s) => ({ rivalsAdded: [...s.rivalsAdded, ...add] }));
+  }
+  useFirstRun.setState({ rivalsAdded: [] });
+  return lookForCompetitors(namesIn(text));
+}
+
+export const findCompetitors = () => {
+  useFirstRun.setState({ rivalsAdded: [] });
+  return lookForCompetitors([]);
+};
+
+/** The ones they keep, and the ones they added, then on to the start. */
+export async function keepCompetitors(keep: string[]) {
+  await settleCompetitors(keep, useFirstRun.getState().rivalsAdded);
+  if (useMarket.getState().error) return;
+  useFirstRun.setState({ rivalsAdded: [] });
+  goStep(stepAfter("competitors", useFirstRun.getState().shape) ?? "goals");
+}
+
+/** No competitors for now: on to the start. */
+export const skipCompetitors = () => goStep(stepAfter("competitors", useFirstRun.getState().shape) ?? "goals");
 
 export function goStep(step: SetupStep) {
   push({ step });
