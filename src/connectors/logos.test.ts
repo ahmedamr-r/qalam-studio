@@ -2,7 +2,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { CATALOG } from "./catalog";
 import { wcagContrast } from "culori";
-import { brandOn, connectorOfOrigin, glyphTone, logoFor, TILE } from "./logos";
+import { ENGINE_KINDS } from "@/ai/engine-kinds";
+import { brandOn, connectorOfOrigin, engineLogo, glyphTone, logoFor, tileColor, TILE } from "./logos";
 
 describe("connector logos", () => {
   it("draws a brand colour on the tile, and one too pale for it in ink", () => {
@@ -15,7 +16,28 @@ describe("connector logos", () => {
     expect(glyphTone("FFFFFF")).toBe("ink");
     expect(glyphTone("not a colour")).toBe("ink");
     expect(logoFor("intercom")).toMatchObject({ kind: "mark", title: "Intercom", hex: "6AFDEF", tone: "ink" });
-    expect(logoFor("notion")).toMatchObject({ kind: "mark", title: "Notion", hex: "000000", tone: "brand" });
+    expect(logoFor("notion")).toMatchObject({ kind: "mark", title: "Notion", hex: "000000", tone: "brand", color: "#000000" });
+  });
+
+  it("draws a brand colour only a shade too pale a shade deeper, keeping its hue", () => {
+    // Claude's #D97757 is 2.8:1 on the tile; one step deeper reads. Intercom's aqua would have to turn teal.
+    const claude = tileColor("D97757")!;
+    expect(claude).not.toBe("#D97757");
+    expect(wcagContrast(claude, TILE)).toBeGreaterThanOrEqual(3);
+    expect(glyphTone("D97757")).toBe("brand");
+    expect(tileColor("6AFDEF")).toBeNull();
+    expect(logoFor("claude")).toMatchObject({ kind: "mark", title: "Claude", hex: "D97757", tone: "brand", color: claude });
+  });
+
+  it("gives every engine its maker's mark, OpenAI's in one colour", () => {
+    for (const kind of ENGINE_KINDS) expect(engineLogo(kind)).toMatchObject({ kind: "mark", path: expect.stringMatching(/^[Mm]/) });
+    expect(engineLogo("cli")).toMatchObject({ title: "Claude" });
+    expect(engineLogo("api")).toMatchObject({ title: "Claude" });
+    expect(engineLogo("codex")).toMatchObject({ title: "OpenAI", hex: "000000", tone: "brand" });
+    expect(engineLogo("openai")).toMatchObject({ title: "OpenAI" });
+    expect(engineLogo("gemini")).toMatchObject({ title: "Google Gemini" });
+    // OpenRouter's slate is too pale and too grey to deepen: ink.
+    expect(engineLogo("openrouter")).toMatchObject({ title: "OpenRouter", tone: "ink" });
   });
 
   it("keeps a brand's hue on a board's dark tile, lighter where it wouldn't read, and draws a near-grey one in ink", () => {

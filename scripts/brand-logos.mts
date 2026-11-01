@@ -1,7 +1,11 @@
-// Writes src/connectors/logos.json: each connector's mark as one 24×24 path, with its brand colour
-// and name. Most come from Simple Icons (CC0-1.0). Slack (which Simple Icons dropped) and Amplitude
-// (which it never had) come from their own media kits, kept in scripts/brand-logos/. Call recordings
-// have no one brand and draw lucide's AudioLines instead (src/ui/brand/ConnectorLogo.tsx).
+// Writes src/connectors/logos.json: each connector's mark, and the mark of each engine's maker
+// (Claude, OpenAI, Gemini, OpenRouter, Ollama, LM Studio; src/ai/engine-kinds.ts says which engine
+// wears which), as one 24×24 path with its brand colour and name. Most come from Simple Icons
+// (CC0-1.0). Slack (which Simple Icons dropped), Amplitude and OpenAI (which it doesn't have) come
+// from their own media kits, kept in scripts/brand-logos/. OpenAI's file keeps its clear space
+// around the Blossom, so the mark is cropped to itself (its tile gives it room); its guidelines ask
+// for it in one colour and never bigger than Qalam's own mark. Call recordings have no one brand
+// and draw lucide's AudioLines instead (src/ui/brand/ConnectorLogo.tsx).
 // Simple Icons is 16 MB, so it isn't a dependency: the pinned version is packed into a scratch
 // folder and only its data and SVG files are read (none of its code runs). Pass the folder of an
 // unpacked copy to skip the download. Run after changing a connector or the version:
@@ -27,12 +31,24 @@ const SIMPLE: Record<string, string> = {
   figma: "figma",
   posthog: "posthog",
   mixpanel: "mixpanel",
+  claude: "claude",
+  gemini: "googlegemini",
+  openrouter: "openrouter",
+  ollama: "ollama",
+  lmstudio: "lmstudio",
 };
 
-/** Connector → its media kit's mark, as kept here, and the colour its guidelines give a one-colour mark. */
-const OWN: Record<string, { file: string; title: string; hex: string; from: string }> = {
+/** The engines' makers, beside the connectors. */
+const ENGINE_MARKS = ["claude", "openai", "gemini", "openrouter", "ollama", "lmstudio"];
+
+/**
+ * A mark from its media kit, as kept here, and the colour its guidelines give a one-colour mark.
+ * `crop`: the file keeps clear space around the mark, so the mark is measured and cropped to itself.
+ */
+const OWN: Record<string, { file: string; title: string; hex: string; from: string; crop?: boolean }> = {
   slack: { file: "slack.svg", title: "Slack", hex: "000000", from: "Slack Media Kit Logos (slack.com/media-kit): SLA-Slack-icon-black-RGB.svg" },
   amplitude: { file: "amplitude.svg", title: "Amplitude", hex: "0052F2", from: "Amplitude brand site (brand.amplitude.com/visual-direction/logo): Amplitude Logo.zip, Mark/Circle/logo_amplitude_mark-circle_black_RGB.svg" },
+  openai: { file: "openai.svg", title: "OpenAI", hex: "000000", from: "OpenAI design guidelines (openai.com/brand): openai-logos.zip, SVGs/OAI_OpenAI-Blossom_Black.svg", crop: true },
 };
 
 /** No logo of its own (see above). */
@@ -111,16 +127,49 @@ function transformPath(d: string, k: number, dx: number, dy: number): string {
     .join("");
 }
 
-function ownMark(file: string): string {
+/** Where a path draws: its points, with curves sampled (their control points lie outside them). */
+function pathBox(d: string): [number, number, number, number] {
+  const xs: number[] = [];
+  const ys: number[] = [];
+  let [x, y, sx, sy] = [0, 0, 0, 0];
+  for (const [cmd, a] of parsePath(d)) {
+    const c = cmd.toLowerCase();
+    const rel = cmd === c;
+    const X = (v: number) => (rel ? x + v : v);
+    const Y = (v: number) => (rel ? y + v : v);
+    if (c === "z") [x, y] = [sx, sy];
+    else if (c === "h") x = X(a[0]);
+    else if (c === "v") y = Y(a[0]);
+    else if (c === "m" || c === "l") {
+      [x, y] = [X(a[0]), Y(a[1])];
+      if (c === "m") [sx, sy] = [x, y];
+    } else if (c === "c") {
+      const [x1, y1, x2, y2, x3, y3] = [X(a[0]), Y(a[1]), X(a[2]), Y(a[3]), X(a[4]), Y(a[5])];
+      for (let i = 1; i < 32; i++) {
+        const t = i / 32;
+        const [p, q, r, s] = [(1 - t) ** 3, 3 * (1 - t) ** 2 * t, 3 * (1 - t) * t * t, t ** 3];
+        xs.push(p * x + q * x1 + r * x2 + s * x3);
+        ys.push(p * y + q * y1 + r * y2 + s * y3);
+      }
+      [x, y] = [x3, y3];
+    } else throw new Error(`Measuring a path: ${cmd} isn't handled`);
+    xs.push(x);
+    ys.push(y);
+  }
+  const [x0, y0] = [Math.min(...xs), Math.min(...ys)];
+  return [x0, y0, Math.max(...xs) - x0, Math.max(...ys) - y0];
+}
+
+function ownMark(file: string, crop = false): string {
   const svg = readFileSync(file, "utf8").replace(/<!--[\s\S]*?-->/g, "");
   const unsupported = /<(circle|ellipse|rect|polygon|polyline|line|use|image|text)\b|\btransform=/.exec(svg);
   if (unsupported) throw new Error(`${file}: ${unsupported[0]} isn't handled; turn it into plain paths first.`);
   const vb = /viewBox="([^"]+)"/.exec(svg)?.[1].trim().split(/[\s,]+/).map(Number);
   if (!vb || vb.length !== 4) throw new Error(`${file}: no viewBox`);
-  const [x0, y0, w, h] = vb;
-  const k = 24 / Math.max(w, h);
   const paths = [...svg.matchAll(/<path\b[^>]*\sd="([^"]+)"/g)].map((m) => m[1]);
   if (!paths.length) throw new Error(`${file}: no paths`);
+  const [x0, y0, w, h] = crop ? pathBox(paths.join("")) : vb;
+  const k = 24 / Math.max(w, h);
   return paths.map((d) => transformPath(d, k, -x0 * k + (24 - w * k) / 2, -y0 * k + (24 - h * k) / 2)).join("");
 }
 
@@ -133,24 +182,24 @@ if (version !== VERSION) console.warn(`Simple Icons ${version}, not the pinned $
 
 const logos: Record<string, Logo> = {};
 const missing: string[] = [];
-for (const c of CATALOG) {
-  if (NONE.has(c.id)) continue;
-  const slug = SIMPLE[c.id];
+for (const id of [...CATALOG.map((c) => c.id), ...ENGINE_MARKS]) {
+  if (NONE.has(id)) continue;
+  const slug = SIMPLE[id];
   if (slug) {
     const entry = data.find((e) => e.slug === slug);
     const svg = readFileSync(join(si.dir, "icons", `${slug}.svg`), "utf8");
     const path = /<path d="([^"]+)"/.exec(svg)?.[1];
     if (!entry || !path || !svg.includes('viewBox="0 0 24 24"')) throw new Error(`Simple Icons ${version} has no usable "${slug}"`);
-    logos[c.id] = { path, hex: entry.hex.toUpperCase(), title: entry.title };
+    logos[id] = { path, hex: entry.hex.toUpperCase(), title: entry.title };
     continue;
   }
-  const own = OWN[c.id];
+  const own = OWN[id];
   const file = own && new URL(`./brand-logos/${own.file}`, import.meta.url).pathname;
   if (!own || !existsSync(file)) {
-    missing.push(c.id);
+    missing.push(id);
     continue;
   }
-  logos[c.id] = { path: ownMark(file), hex: own.hex, title: own.title };
+  logos[id] = { path: ownMark(file, own.crop), hex: own.hex, title: own.title };
 }
 si.done();
 

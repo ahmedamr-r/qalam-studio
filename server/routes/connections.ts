@@ -1,5 +1,6 @@
 import { Hono } from "hono";
-import { chooseBase, chooseEngine, chooseModels, chooseTiers, engineModels, engineView, forgetKey, forgetTavily, liveTest, saveKey, saveTavily } from "../engine";
+import { chooseBase, chooseEngine, chooseModels, chooseTiers, engineModels, engineView, ensureEngine, forgetKey, forgetTavily, liveTest, saveKey, saveTavily } from "../engine";
+import { planLimits } from "../limits";
 import { adapterFor } from "@/ai/engines";
 import { ENGINE_LABEL, isEngineKind, isKeyed, type EngineKind } from "@/ai/engine-kinds";
 import { fixHealth, healthNow } from "../health";
@@ -20,8 +21,8 @@ import { nameShape } from "@/org/you";
 
 /**
  * Connections' API: the engine Qalam AI runs on (which one, who pays, a test, a key kept in the
- * Keychain, the models its calls run on), what it used this week, and This Mac's health. Keys only ever come in; the last four
- * characters are all that goes out.
+ * Keychain, the models its calls run on), what it used this week, its plan's limits, and This Mac's
+ * health. Keys only ever come in; the last four characters are all that goes out.
  */
 export function connectionsRoutes(): Hono {
   const r = new Hono();
@@ -91,6 +92,11 @@ export function connectionsRoutes(): Hono {
     return c.json(await engineView());
   });
   r.get("/api/engine/usage", async (c) => c.json(await recentUsage(Date.now(), Math.min(31, Math.max(1, Number(c.req.query("days") ?? 7) || 7)))));
+  // The plan's limits, as Claude Code or Codex says (null: a key or a model on this computer, or it didn't say).
+  r.get("/api/engine/limits", async (c) => {
+    await ensureEngine();
+    return c.json({ limits: await planLimits(c.req.query("fresh") === "1") });
+  });
   // Who's on this Mac: their name, from the first run.
   r.get("/api/you", async (c) => c.json({ name: (await readSettings()).you?.name ?? null }));
   r.put("/api/you", async (c) => {

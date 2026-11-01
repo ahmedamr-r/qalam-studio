@@ -39,6 +39,10 @@ export function workDir() {
   return dir;
 }
 
+// The last rate-limit line a call streamed (the plan's windows, and whether it stops calls), one per process.
+const kept = globalThis as { __qalamClaudeLimit?: { info: unknown; at: number } };
+export const lastRateLimit = () => kept.__qalamClaudeLimit ?? null;
+
 export interface CliResult {
   subtype: string;
   is_error?: boolean;
@@ -131,6 +135,7 @@ export function streamViaCli(opts: CallOpts, model: string): Response {
             send({ type: "progress", tokens: Math.round(chars / 4) });
           }
         } else if (ev.type === "assistant" && ev.error) apiError = ev.error;
+        else if (ev.type === "rate_limit_event" && ev.rate_limit_info) kept.__qalamClaudeLimit = { info: ev.rate_limit_info, at: Date.now() };
         else if (ev.type === "result") result = ev;
       });
 

@@ -1,4 +1,5 @@
 import type { ModelMix, Tier } from "@/ai/models";
+import type { PlanLimits } from "@/ai/limits";
 import type { UsageSummary } from "@/ai/usage-shared";
 import type { HealthRow } from "@/health/doctor";
 import { resetAIStatus } from "@/ai/client";
@@ -111,6 +112,8 @@ export const engineDb = {
   saveTavily: (key: string) => send("/api/engine/tavily", "PUT", { key }).then((r) => json<EngineView>(r)).then(changed),
   forgetTavily: () => send("/api/engine/tavily", "DELETE").then((r) => json<EngineView>(r)).then(changed),
   usage: (days = 7) => fetch(`/api/engine/usage?days=${days}`).then((r) => json<UsageSummary>(r)),
+  /** The plan's limits, as Claude Code or Codex says (null: no plan, or it didn't say). `fresh`: asked again now. */
+  limits: (fresh = false) => fetch(`/api/engine/limits${fresh ? "?fresh=1" : ""}`).then((r) => json<{ limits: PlanLimits | null }>(r)).then((x) => x.limits),
 };
 
 export const healthDb = {

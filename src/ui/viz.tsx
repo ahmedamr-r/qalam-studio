@@ -6,12 +6,12 @@ import clsx from "clsx";
  * (saffron is for Generate only); a status dot takes the semantic tones.
  */
 
-/** How full something is (0–1), as a short bar. */
-export function Meter({ value, label, className }: { value: number; label: string; className?: string }) {
+/** How full something is (0–1), as a short bar; `tone` when how full it is is a warning (a plan's limit near or reached). */
+export function Meter({ value, label, tone, className }: { value: number; label: string; tone?: "warn" | "bad"; className?: string }) {
   const v = Math.max(0, Math.min(1, value));
   return (
     <span role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={1} aria-valuenow={Number(v.toFixed(2))} className={clsx("relative block h-[6px] overflow-hidden rounded-full bg-active", className)}>
-      <span className="absolute inset-y-0 left-0 rounded-full bg-fg-muted" style={{ width: `${v * 100}%` }} />
+      <span className={clsx("absolute inset-y-0 left-0 rounded-full", tone === "bad" ? "bg-danger" : tone === "warn" ? "bg-warning" : "bg-fg-muted")} style={{ width: `${v * 100}%` }} />
     </span>
   );
 }

@@ -14,7 +14,7 @@ import type { RankedNeed } from "@/hub/needs";
 import { needsDb } from "@/org/needs";
 import { feedback } from "@/commands/feedback";
 import { QalamAIGlyph } from "../brand/ai-glyph";
-import { ConnectorLogo } from "../brand/ConnectorLogo";
+import { ConnectorLogo, EngineLogo } from "../brand/ConnectorLogo";
 import { Button, Checkbox, Spinner, Tag } from "../controls";
 import { toQuestion } from "../ai/plan";
 import { qr, Radio } from "../ai/Questionnaire";
@@ -81,9 +81,9 @@ function EnginePart({ data }: { data: PartData }) {
   const ok = !!test?.ok;
   const who = v ? whoLine(v) : "";
   if (data.compact)
-    return who ? (
+    return who && v ? (
       <p className="flex items-center gap-[6px] text-caption text-fg-muted">
-        <StatusDot tone={ok || v?.ready ? "ok" : "bad"} /> {who}
+        <StatusDot tone={ok || v.ready ? "ok" : "bad"} /> <EngineLogo kind={v.kind} size={16} decorative /> {who}
       </p>
     ) : null;
   const word = e.checking ? (v ? "Making a short call" : "Looking") : ok ? "Ready" : e.skipped ? "Later" : (test?.word ?? v?.word ?? "Not set up");
@@ -99,7 +99,12 @@ function EnginePart({ data }: { data: PartData }) {
             <span className={clsx(e.checking && "q-shimmer-text")}>{word}</span>
             {ok && test && <span className="text-fg-subtle tnum">· {(test.ms / 1000).toFixed(1)} s</span>}
           </p>
-          {who && <p className="truncate text-body text-fg">{who}</p>}
+          {who && v && (
+            <p className="flex min-w-0 items-center gap-[8px] text-body text-fg">
+              <EngineLogo kind={v.kind} size={20} decorative />
+              <span className="truncate">{who}</span>
+            </p>
+          )}
           {detail && <p className="text-caption text-fg-muted">{detail}</p>}
           {(e.error || error) && <p className="text-caption text-danger">{e.error ?? error}</p>}
         </div>

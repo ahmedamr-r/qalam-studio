@@ -1,25 +1,29 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { Fragment, useCallback, useEffect, useState, type FormEvent } from "react";
 import clsx from "clsx";
-import { Copy } from "lucide-react";
+import { Copy, RotateCw } from "lucide-react";
 import { feedback } from "@/commands/feedback";
+import type { PlanLimits } from "@/ai/limits";
 import { modelFamily, type CallKind, type ModelMix, type Tier } from "@/ai/models";
 import { shortCount, type UsageSummary } from "@/ai/usage-shared";
 import { engineDb, type EngineKind, type EngineOption, type EngineTest, type EngineView } from "@/org/engine";
 import { ENGINE_LABEL, isKeyed, isLocal, type KeyedKind } from "@/ai/engine-kinds";
 import { engineShown } from "@/lab";
-import { QalamAIGlyph } from "../brand";
+import { EngineLogo, QalamAIGlyph } from "../brand";
 import { Button, Segmented, Select, Tip } from "../controls";
 import { r } from "../recipes";
-import { Sparkline, StatusDot } from "../viz";
+import { upcoming } from "../time";
+import { Meter, Sparkline, StatusDot } from "../viz";
 import { refreshHealth } from "../frame/useHealth";
 
 /*
  * The engine behind Qalam AI, on one card: which one is live and whether it's ready (a dot and a
- * word), whose account pays, a Test that makes a short real call, which engine (Claude Code on this
- * computer, a model on this computer through Ollama or LM Studio, or a key for Claude, OpenAI,
- * Gemini or OpenRouter, tested before it's kept in the Keychain), which models its calls run on
- * (Claude: Balanced or Best; any other: the models picked from its own list), and what Qalam AI used
- * this week, by model and by job. "Claude Code" names the engine; Qalam's own AI is Qalam AI.
+ * word), what it runs on (its maker's logo) and whose account pays, a Test that makes a short real
+ * call, which engine (Claude Code on this computer, a model on this computer through Ollama or LM
+ * Studio, or a key for Claude, OpenAI, Gemini or OpenRouter, tested before it's kept in the
+ * Keychain), which models its calls run on (Claude: Balanced or Best; any other: the models picked
+ * from its own list), the plan's limits (a Claude or ChatGPT plan's windows, how full, when each
+ * starts over, and what carries calls past them), and what Qalam AI used this week, by model and by
+ * job. "Claude Code" names the engine; Qalam's own AI is Qalam AI.
  */
 
 export const PLAN: Record<string, string> = { max: "Max", pro: "Pro", team: "Team", enterprise: "Enterprise" };
@@ -76,12 +80,12 @@ const STATE_WORD: Record<EngineOption["state"], string | null> = { ready: null, 
 const KEY_WORD: Record<KeyedKind, string> = { api: "Claude API key", openai: "OpenAI API key", gemini: "Gemini API key", openrouter: "OpenRouter key" };
 const article = (w: string) => `${/^[AEIOU]/.test(w) ? "an" : "a"} ${w}`;
 
-/** Who runs Qalam AI and who pays, in one line: the Claude plan, the key's last four, or this computer. */
-export function whoLine(view: EngineView): string {
+/** Who runs Qalam AI and who pays, in one line: the Claude plan, the key's last four, or this computer. `plan`: the ChatGPT plan Codex's limits named. */
+export function whoLine(view: EngineView, plan?: string): string {
   const a = view.claude.account;
   if (view.kind === "cli") return ["Claude Code on this computer", a?.plan ? `${PLAN[a.plan] ?? a.plan} plan` : null, a?.email ?? null].filter(Boolean).join(" · ");
   if (isKeyed(view.kind)) return view.key ? `${KEY_WORD[view.kind]} ending ${view.key.last4} · ${view.key.from === "keychain" ? "in the Keychain" : "from the environment"}` : KEY_WORD[view.kind];
-  if (view.kind === "codex") return ["Codex on this computer", view.codex?.method === "chatgpt" ? "your ChatGPT plan" : view.codex?.method === "api-key" ? "signed in with an OpenAI API key" : null].filter(Boolean).join(" · ");
+  if (view.kind === "codex") return ["Codex on this computer", view.codex?.method === "chatgpt" ? (plan ? `ChatGPT ${plan} plan` : "your ChatGPT plan") : view.codex?.method === "api-key" ? "signed in with an OpenAI API key" : null].filter(Boolean).join(" · ");
   if (isLocal(view.kind)) return `${view.label ?? ENGINE_LABEL[view.kind]} on this computer · nothing leaves it`;
   return view.label ?? ENGINE_LABEL[view.kind];
 }
@@ -93,11 +97,30 @@ export function EngineCard() {
   const [test, setTest] = useState<EngineTest | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  /** The plan's limits: undefined while Claude Code or Codex is asked, null when there are none to show. */
+  const [limits, setLimits] = useState<PlanLimits | null | undefined>(undefined);
+
   const load = useCallback(() => {
     void engineDb.view().then(setView, (e: unknown) => setError(e instanceof Error ? e.message : String(e)));
     void engineDb.usage(7).then(setUsage, () => {});
   }, []);
   useEffect(load, [load]);
+
+  // Asked at once, while the card learns its engine: the server keeps the answer a minute.
+  useEffect(() => void engineDb.limits().catch(() => {}), []);
+  // Read whenever the engine changes; a plan's limits are Claude Code's or Codex's to say.
+  const kind = view?.kind;
+  useEffect(() => {
+    if (!kind) return;
+    let live = true;
+    setLimits(undefined);
+    void engineDb.limits().then(
+      (l) => live && setLimits(l),
+      () => live && setLimits(null),
+    );
+    return () => void (live = false);
+  }, [kind]);
+  const refreshLimits = () => engineDb.limits(true).then(setLimits, () => {});
 
   const runTest = async (kind?: EngineKind) => {
     setTesting(true);
@@ -105,6 +128,7 @@ export function EngineCard() {
     try {
       setTest(await engineDb.test(kind));
       load();
+      void refreshLimits();
       void refreshHealth();
     } finally {
       setTesting(false);
@@ -132,6 +156,9 @@ export function EngineCard() {
   const detail = shown && !shown.ok ? shown.detail : view.ready ? undefined : view.detail;
   const a = view.claude.account;
   const claude = view.kind === "cli" || view.kind === "api";
+  const planned = view.kind === "cli" || view.kind === "codex";
+  // The plan stops calls now: the card says so, and when they can go on.
+  const reached = ready && limits?.reached ? limits.reached : null;
 
   return (
     <section aria-label="Qalam AI" className="flex flex-col gap-[14px] rounded-lg bg-panel p-[16px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
@@ -143,13 +170,16 @@ export function EngineCard() {
           <p className="flex items-center gap-[8px] text-body font-medium text-fg">
             Qalam AI
             <span className="inline-flex items-center gap-[6px] text-caption font-normal text-fg-muted">
-              <StatusDot tone={ready ? "ok" : "bad"} />
-              {word}
-              {shown?.ok && <span className="text-fg-subtle tnum">· {(shown.ms / 1000).toFixed(1)} s</span>}
+              <StatusDot tone={!ready ? "bad" : reached ? "warn" : "ok"} />
+              {reached ? "Limit reached" : word}
+              {shown?.ok && !reached && <span className="text-fg-subtle tnum">· {(shown.ms / 1000).toFixed(1)} s</span>}
             </span>
           </p>
-          <p className="truncate text-caption text-fg-subtle">{whoLine(view)}</p>
-          {detail && <p className="pt-[2px] text-caption text-fg-muted">{detail}</p>}
+          <p className="flex min-w-0 items-center gap-[8px] pt-[2px] text-caption text-fg-subtle">
+            <EngineLogo kind={view.kind} size={20} decorative />
+            <span className="truncate">{whoLine(view, limits?.plan)}</span>
+          </p>
+          {reached ? <p className="pt-[2px] text-caption text-fg-muted">{`${reached.why}. Qalam AI can call again ${reached.until ? upcoming(reached.until, Date.now(), true) : "once it starts over"}.`}</p> : detail && <p className="pt-[2px] text-caption text-fg-muted">{detail}</p>}
           {view.kind === "cli" && a?.apiKeySource && <p className="pt-[2px] text-caption text-warning">{a.apiKeySource} is set on this computer. Qalam leaves it out, so your sign-in is what's used.</p>}
         </div>
         <div className="flex shrink-0 items-center gap-[6px]">
@@ -181,6 +211,8 @@ export function EngineCard() {
       )}
       {error && <p className="text-caption text-danger">{error}</p>}
 
+      {planned && limits === undefined && <p className="q-shimmer-text border-t border-line-subtle pt-[12px] text-caption text-fg-subtle">Asking {view.kind === "cli" ? "Claude Code" : "Codex"} for the plan's limits…</p>}
+      {planned && limits && <Limits l={limits} onRefresh={refreshLimits} />}
       {usage && <Usage u={usage} kind={view.kind} />}
     </section>
   );
@@ -443,6 +475,75 @@ function Usage({ u, kind }: { u: UsageSummary; kind: EngineKind }) {
         <Tip label={kind === "cli" ? "Claude Code's own estimate, at API prices. Your Claude plan covers these calls." : isLocal(kind) ? "Calls on this computer cost nothing." : "As the calls reported it."}>
           <span className="text-caption text-fg-subtle tnum">≈ ${u.cost.toFixed(2)}</span>
         </Tip>
+      )}
+    </div>
+  );
+}
+
+const LIMITS_TIP = {
+  cli: "Your Claude plan allows so much use in each 5-hour session and each week, and Qalam AI's calls count toward it as your chats and Claude Code do. On a Team or Enterprise plan each seat has its own, and each teammate's Qalam runs on theirs.",
+  codex: "Your ChatGPT plan allows so much Codex use in each window, and Qalam AI's calls count toward it as Codex's own do. In a workspace each member has their own, and its owner can set a spend cap.",
+};
+const CREDITS_TIP = {
+  cli: "Usage credits keep calls going past your plan's limits, paid at API prices. Without them, Qalam AI waits until a limit starts over.",
+  codex: "Credits keep Codex going past your plan's limits. Without them, Qalam AI waits until a limit starts over.",
+};
+
+/**
+ * What the plan allows, as Claude Code or Codex says: each window, how full (warning and danger as
+ * the engine reads them), when it starts over; what carries calls past them; on a team's plan, that
+ * these are this person's seat's own. Asked again with the arrow.
+ */
+function Limits({ l, onRefresh }: { l: PlanLimits; onRefresh: () => Promise<void> }) {
+  const [asking, setAsking] = useState(false);
+  const now = Date.now();
+  const refresh = async () => {
+    setAsking(true);
+    try {
+      await onRefresh();
+    } finally {
+      setAsking(false);
+    }
+  };
+  return (
+    <div className="flex flex-col gap-[8px] border-t border-line-subtle pt-[12px]">
+      <div className="flex items-center gap-[8px]">
+        <Tip label={LIMITS_TIP[l.engine]}>
+          <span className="text-micro font-medium text-fg-subtle">Plan limits</span>
+        </Tip>
+        {l.seat && <span className="text-caption text-fg-subtle">· your seat's own</span>}
+        <a href={l.manage} target="_blank" rel="noreferrer" className="ml-auto text-caption text-fg-muted hover:text-fg hover:underline">
+          See it on {l.engine === "cli" ? "claude.ai" : "chatgpt.com"}
+        </a>
+        <Tip label="Ask again">
+          <button type="button" aria-label="Ask for the plan's limits again" className={r.iconButtonSm} disabled={asking} onClick={() => void refresh()}>
+            <RotateCw size={12} className={clsx(asking && "motion-safe:animate-spin")} />
+          </button>
+        </Tip>
+      </div>
+      {l.rows.length > 0 && (
+        <div className="grid grid-cols-[auto_minmax(80px,320px)_auto_1fr] items-center gap-x-[12px] gap-y-[8px]">
+          {l.rows.map((row) => {
+            const pct = Math.round(row.percent);
+            return (
+              <Fragment key={row.label}>
+                <span className="text-caption text-fg-muted">{row.label}</span>
+                <Meter value={row.percent / 100} label={`${row.label}: ${pct}% used`} tone={row.tone === "critical" ? "bad" : row.tone === "warning" ? "warn" : undefined} />
+                <span className={clsx("text-right text-caption tnum", row.tone === "critical" ? "text-danger" : row.tone === "warning" ? "text-warning" : "text-fg")}>{pct}%</span>
+                <span className="text-caption text-fg-subtle tnum">{row.resetsAt ? `Resets ${upcoming(row.resetsAt, now)}` : ""}</span>
+              </Fragment>
+            );
+          })}
+        </div>
+      )}
+      {l.credits && (
+        <p className="flex items-center gap-[6px] text-caption text-fg-muted">
+          <StatusDot tone={l.credits.on ? "ok" : "off"} hollow={!l.credits.on} />
+          <Tip label={CREDITS_TIP[l.engine]}>
+            <span>{l.credits.label}</span>
+          </Tip>
+          <span className="text-fg-subtle">{l.credits.line}</span>
+        </p>
       )}
     </div>
   );

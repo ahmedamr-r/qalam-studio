@@ -21,6 +21,18 @@ export const ENGINE_LABEL: Record<EngineKind, string> = {
   lmstudio: "LM Studio",
 };
 
+/** Whose mark each engine wears in Connections (src/connectors/logos.json). */
+export const ENGINE_MAKER: Record<EngineKind, string> = {
+  cli: "claude",
+  api: "claude",
+  codex: "openai",
+  openai: "openai",
+  gemini: "gemini",
+  openrouter: "openrouter",
+  ollama: "ollama",
+  lmstudio: "lmstudio",
+};
+
 /** Engines that speak OpenAI's chat API: a key, or a server on this computer. */
 export const COMPAT_KINDS = ["openai", "gemini", "openrouter", "ollama", "lmstudio"] as const;
 export type CompatKind = (typeof COMPAT_KINDS)[number];
