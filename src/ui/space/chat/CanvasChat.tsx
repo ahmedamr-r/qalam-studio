@@ -118,7 +118,8 @@ export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
               </div>
             )
           }
-          pinned={!waiting}
+          // The box stays at the bottom wherever it shows (with Stop while a goal's look runs before its questions); a round of questions flows after the thread.
+          pinned={!waiting || !!busy}
           footer={
             waiting && !busy ? (
               "find" in waiting ? (

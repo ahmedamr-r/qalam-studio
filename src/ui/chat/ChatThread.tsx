@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ComponentType, type DragEvent, type KeyboardEvent, type ReactNode } from "react";
 import clsx from "clsx";
 import { ArrowDown, ArrowUp } from "lucide-react";
-import { AssistantRuntimeProvider, ComposerPrimitive, MessagePrimitive, ThreadPrimitive, useAui, useExternalStoreRuntime, type ThreadMessageLike } from "@assistant-ui/react";
+import { AssistantRuntimeProvider, ComposerPrimitive, MessagePrimitive, ThreadPrimitive, useAui, useExternalStoreRuntime, useThreadViewport, type ThreadMessageLike } from "@assistant-ui/react";
 import { formatKeys } from "@/commands/registry";
 import { QalamAIGlyph } from "../brand/ai-glyph";
 import { Kbd } from "../controls";
@@ -23,6 +23,23 @@ const toLike = (m: ChatMessage): ThreadMessageLike => ({
   role: m.role,
   content: m.parts.map((p) => (p.type === "text" ? { type: "text" as const, text: p.text } : { type: "data" as const, name: p.name, data: p.data })),
 });
+
+/**
+ * Down to the newest when they send something (a message of theirs comes in), never when Qalam AI
+ * starts its next call: a brain dump's calls start one after another, and each would pull the
+ * thread back down from where they scrolled to. While they're at the bottom it follows anyway.
+ */
+function FollowYou({ messages }: { messages: ChatMessage[] }) {
+  const scrollToBottom = useThreadViewport((s) => s.scrollToBottom);
+  const yours = [...messages].reverse().find((m) => m.role === "user")?.id;
+  const seen = useRef(yours);
+  useEffect(() => {
+    if (yours === seen.current) return;
+    seen.current = yours;
+    if (yours) scrollToBottom({ behavior: "auto" });
+  }, [yours, scrollToBottom]);
+  return null;
+}
 
 function Text({ text }: { text: string }) {
   return (
@@ -49,7 +66,8 @@ export function ChatThread({ messages, running, onCancel, parts, footer, pinned 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <ThreadPrimitive.Root className="relative flex h-full min-h-0 flex-col">
-        <ThreadPrimitive.Viewport className={r.chatViewport}>
+        <ThreadPrimitive.Viewport className={r.chatViewport} scrollToBottomOnRunStart={false}>
+          <FollowYou messages={messages} />
           {!messages.length && empty}
           <ThreadPrimitive.Messages>
             {({ message }) =>
