@@ -55,7 +55,7 @@ export function ChatThread({ messages, running, onCancel, parts, footer, pinned 
             {({ message }) =>
               message.role === "user" ? (
                 <MessagePrimitive.Root className="q-rise flex flex-col">
-                  <div className={r.chatYou}>
+                  <div className={r.chatYou} data-chat-you>
                     <MessagePrimitive.Parts components={components} />
                   </div>
                 </MessagePrimitive.Root>

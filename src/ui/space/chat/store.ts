@@ -20,7 +20,8 @@ import { docPart, docRef, guessVoice, joinParts, type SentDoc } from "../../chat
 import { ingestFile, ingestPaste } from "../../discovery/ingest";
 import { startDump, stopDump, useDump } from "../../discovery/dump";
 import { addSources } from "../../discovery/import";
-import { useSources } from "../../discovery/sources";
+import { sourceOf, useSources } from "../../discovery/sources";
+import { sourceCame } from "../flights";
 import { placeFor, writeCard } from "../new";
 import { useCompose } from "./compose";
 import { toggleChat } from "../../frame/store";
@@ -179,6 +180,7 @@ async function dumpIt(at: string | null, said: string, docs: readonly SentDoc[])
   const text = joinParts([...(said ? [{ body: said }] : []), ...docs.map((d) => docPart({ via: d.via, title: d.title, text: d.ingested.text, blocks: d.ingested.blocks, voice: d.voice }))]).text;
   try {
     await startDump(text, { id: source });
+    sourceCame(sourceOf(source)?.title ?? "Your thinking");
   } catch (e) {
     change((c) => withJob(c, id, (j) => (j.kind === "dump" ? { ...j, error: message(e) } : j)));
   }
@@ -211,6 +213,7 @@ export async function answerFind(id: string, answers: Readonly<Record<string, st
   change((c) => withJob(c, id, () => ({ kind: "dump", source, find: { what, said } })));
   try {
     await startDump(text, { id: source, aim: { find: what, asked } });
+    sourceCame(sourceOf(source)?.title ?? "Your answers");
   } catch (e) {
     change((c) => withJob(c, id, (j) => (j.kind === "dump" ? { ...j, error: message(e) } : j)));
   }
@@ -236,7 +239,10 @@ export async function fileFor(card: string, files: readonly File[]) {
   toggleChat(true);
   const read: { file: File; ing?: Ingested; error?: string }[] = await Promise.all(files.map((file) => ingestFile(file).then((ing) => ({ file, ing }), (e: unknown) => ({ file, error: message(e) }))));
   const customers = read.filter((x) => x.ing && guessVoice({ kind: x.ing.kind, text: x.ing.text, title: x.ing.title }) === "customers");
-  if (customers.length) void addSources(customers.map((x) => ({ kind: "read" as const, ingested: x.ing! })), { under: card });
+  if (customers.length) {
+    void addSources(customers.map((x) => ({ kind: "read" as const, ingested: x.ing! })), { under: card });
+    for (const x of customers) sourceCame(x.ing!.title);
+  }
   const title = cardTitle(card);
   for (const x of read) {
     if (customers.includes(x)) continue;
@@ -248,6 +254,7 @@ export async function fileFor(card: string, files: readonly File[]) {
     try {
       if (!x.ing) throw new Error(x.error ?? "It couldn't be read.");
       await startDump(x.ing.text, { id: source, file: { title: name, card } });
+      sourceCame(name);
     } catch (e) {
       change((c) => withJob(c, id, (j) => (j.kind === "dump" ? { ...j, error: message(e) } : j)));
     }
@@ -311,7 +318,9 @@ async function takeIn(at: string | null, said: string, docs: readonly SentDoc[])
   let quotes = 0;
   try {
     for (const p of parts) {
-      const r = await captureIngested(await p.ing(), { product: st().space, own: p.own, onActivity: step(id), signal: ctrl.signal });
+      const ing = await p.ing();
+      sourceCame(ing.title);
+      const r = await captureIngested(ing, { product: st().space, own: p.own, onActivity: step(id), signal: ctrl.signal });
       sources.push(r.sourceId);
       quotes += r.quotes;
       for (const f of r.filed?.pages ?? []) if (f.kind === "need") pages.set(f.id, { id: f.id, title: f.title });

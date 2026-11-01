@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import { Cable, FileText, Maximize, Minus, Plus } from "lucide-react";
 import { visibleCards } from "@/doc/board";
@@ -20,6 +20,7 @@ import { useAddress } from "../nav";
 import { SourcesDock } from "./SourcesDock";
 import { showDock, useDock } from "./dock";
 import { writeCard } from "./new";
+import { FreshCount, SourceFlights, seenSources } from "./flights";
 
 /*
  * A space's canvas on its home: the board's own canvas (its painter, gestures, card bar and
@@ -71,6 +72,11 @@ export function SpaceCanvas({ org, space, inputs, sources }: { org: string | nul
   const lanes = useStudio((s) => s.view.sources);
   const key = `qalam.space.view.${org ?? ""}:${space ?? "org"}`;
   const dock = useDock((s) => s.open);
+  // What the chat took in flies to the Sources button, which counts it until the sources are opened (./flights.tsx).
+  const sourcesButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (dock) seenSources();
+  }, [dock]);
 
   // The organization's sources (a product's space: its own and the whole organization's); the lane draws the ones a card rests on.
   useEffect(() => useSources.setState({ projectId: null, loaded: true, list: sources.filter((s) => !s.product || !space || s.product === space).sort((a, b) => a.addedAt - b.addedAt) }), [sources, space]);
@@ -131,14 +137,18 @@ export function SpaceCanvas({ org, space, inputs, sources }: { org: string | nul
         <CanvasView />
         <div className="absolute bottom-[12px] left-[12px] z-[8] flex items-center gap-[2px] rounded-lg bg-raised p-[2px] shadow-floating">
           <button
+            ref={sourcesButton}
             type="button"
             aria-pressed={dock}
+            data-sources-button
             onClick={() => showDock(!dock)}
             className={clsx("q-item flex h-[24px] items-center gap-[6px] rounded-md px-[8px] text-caption", dock ? "bg-selection-subtle text-selection-label" : "text-fg-muted hover:bg-hover hover:text-fg")}
           >
             <FileText size={13} {...ICON} />
             Sources
+            <FreshCount />
           </button>
+          <SourceFlights target={sourcesButton} />
           {/* Written on the canvas: under the goal picked, else at the top (../space/new.ts). */}
           <Tip label="A goal, typed on the canvas (under the goal picked)">
             <button type="button" onClick={() => writeCard("outcome")} className="q-item flex h-[24px] items-center gap-[6px] rounded-md px-[8px] text-caption text-fg-muted hover:bg-hover hover:text-fg">
