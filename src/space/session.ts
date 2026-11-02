@@ -74,6 +74,8 @@ export const useSpaceStatus = create<{ key: string | null; loading: boolean; err
 
 let open: Open | null = null;
 let opening: { key: string; done: Promise<void> } | null = null;
+/** The newest inputs that came while the space was opening (the problems' links often do): taken in as it opens. */
+let cameOpening: SpaceInputs | null = null;
 let unsaved = false;
 let timer: ReturnType<typeof setTimeout> | undefined;
 let saving: Promise<void> = Promise.resolve();
@@ -89,7 +91,11 @@ export const hasUnsavedSpace = () => unsaved;
 export async function openSpace(org: string, space: Space, inputs: SpaceInputs): Promise<void> {
   const key = `${org}:${space ?? "org"}`;
   if (open?.key === key) return setSpaceInputs(inputs);
-  if (opening?.key === key) return opening.done;
+  if (opening?.key === key) {
+    cameOpening = inputs;
+    return opening.done;
+  }
+  cameOpening = null;
   const done = (async () => {
     await closeSpace();
     install();
@@ -106,6 +112,8 @@ export async function openSpace(org: string, space: Space, inputs: SpaceInputs):
       unsaved = false;
       compose({ fresh: true });
       useSpaceStatus.setState({ loading: false });
+      if (cameOpening) setSpaceInputs(cameOpening);
+      cameOpening = null;
     } catch (e) {
       useSpaceStatus.setState({ loading: false, error: e instanceof Error ? e.message : String(e) });
     }
