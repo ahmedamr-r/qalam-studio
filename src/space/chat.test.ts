@@ -157,4 +157,28 @@ describe("short statements and what came of them", () => {
     const c = chatOf({ v: 1, turns: [turn("t", { kind: "take", state: "taking", sources: [], pages: [], quotes: 0 }), turn("x", { kind: "made-up" } as never)] });
     expect(c.turns.map((t) => [t.id, t.job.kind === "take" && t.job.state])).toEqual([["t", "failed"]]);
   });
+
+  describe("the goal a problem could move", () => {
+    const job = (over: Partial<Extract<ChatTurn["job"], { kind: "goalfor" }>>): ChatTurn["job"] => ({ kind: "goalfor", card: "c1", title: "Never start", step: "looking", ...over });
+    const parts = (j: ChatTurn["job"]) => threadOf({ v: 1, turns: [turn("a", j)] })[1].parts.map((p) => (p.type === "data" ? p.name : "text"));
+
+    it("draws each step, and asks the number in the box", () => {
+      expect(parts(job({}))).toEqual(["working"]);
+      expect(parts(job({ step: "fits" }))).toEqual(["goalFits"]);
+      expect(parts(job({ step: "ideas" }))).toEqual(["goalIdeas"]);
+      expect(parts(job({ step: "suggested" }))).toEqual(["goalOn", "goalNumber"]);
+      expect(parts(job({ step: "done" }))).toEqual(["goalDone"]);
+      const c = { v: 1 as const, turns: [turn("a", job({ step: "asking" }))] };
+      expect(asking(c, () => null)).toMatchObject({ turn: { id: "a" }, number: true });
+      expect(running(c)).toBeNull();
+    });
+
+    it("offers Stop while it looks or works out a number, and a reload ends both", () => {
+      expect(running({ v: 1, turns: [turn("a", job({}))] })?.id).toBe("a");
+      expect(running({ v: 1, turns: [turn("a", job({ step: "suggesting" }))] })?.id).toBe("a");
+      const c = chatOf({ v: 1, turns: [turn("a", job({})), turn("b", job({ step: "suggesting" }))] });
+      expect(c.turns[0].job).toMatchObject({ step: "failed" });
+      expect(c.turns[1].job).toMatchObject({ step: "suggested", suggestion: null });
+    });
+  });
 });

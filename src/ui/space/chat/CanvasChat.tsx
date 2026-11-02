@@ -22,7 +22,7 @@ import type { Space } from "../../frame/spaces";
 import { ASK_EVENT, takeAskNext } from "../../org/ask-next";
 import { PARTS } from "./parts";
 import { clearMode, useCompose } from "./compose";
-import { answerFind, ask, clearChat, findQuestionsOf, findWith, openChat, send, stopTurn, turnOf, useCanvasChat } from "./store";
+import { answerFind, answerNumber, ask, clearChat, findQuestionsOf, findWith, numberQuestions, openChat, send, stopTurn, turnOf, useCanvasChat } from "./store";
 
 /*
  * Qalam AI's chat on the left of a space's canvas, as Figma keeps its panel there: one box for
@@ -122,7 +122,9 @@ export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
           pinned={!waiting || !!busy}
           footer={
             waiting && !busy ? (
-              "find" in waiting ? (
+              "number" in waiting ? (
+                <NumberRound key={waiting.turn.id} turn={waiting.turn.id} />
+              ) : "find" in waiting ? (
                 <FindRound key={`${waiting.turn.id}:${waiting.find}`} turn={waiting.turn.id} what={waiting.find} />
               ) : (
                 <DumpRound key={`${waiting.source}:${dumpOf(waiting.source)?.buckets.length}`} source={waiting.source} dumpOf={dumpOf} />
@@ -212,6 +214,19 @@ function FindForm({ turn, what }: { turn: string; what: FindWhat }) {
       review={{ submitLabel: "Send answers" }}
     />
   );
+}
+
+/** A goal's number, asked once a problem's goal is picked: what's left out is suggested. */
+function NumberRound({ turn }: { turn: string }) {
+  const questions = useMemo(() => numberQuestions(turn).map(toQuestion), [turn]);
+  const [form, setForm] = useState<FlowState>(() => initialFlow(questions));
+  const answerOf = (f: FlowState, q: (typeof questions)[number]) => {
+    const a = f.answers[q.id];
+    if (!a) return "";
+    const said = summarize(q, a);
+    return said === "Skipped" || said === "—" || said === "None" ? "" : said;
+  };
+  return <Questionnaire title="Its number" questions={questions} state={form} onChange={setForm} onSubmit={(f) => void answerNumber(turn, Object.fromEntries(questions.map((q) => [q.id, answerOf(f, q)])))} review={{ submitLabel: "Send answers" }} />;
 }
 
 /** A brain dump's round of questions, in place of the box until it's answered (or skipped, in the thread). */
