@@ -11,7 +11,8 @@ import { loadYou, setYourName, type Me } from "@/org/you";
 import { voiceSettled, type VoiceChoice } from "@/voice/model";
 import { firstRunDb } from "@/org/first-run";
 import { setupHref } from "@/projects/model";
-import { captureIngested } from "@/org/capture";
+import type { FoundGoal } from "@/goals/found";
+import { captureIngested, decideFoundGoal } from "@/org/capture";
 import { ingestPaste, ingestUrl } from "../discovery/ingest";
 import { docRef, type DocRef, type SentDoc } from "../chat/attach";
 import type { ProblemPart } from "./canvas";
@@ -61,7 +62,7 @@ export interface FirstRun {
   /** Who this Mac's GitHub CLI is (or Qalam's own sign-in); null: neither. */
   gh: string | null | undefined;
   /** The problems door: what they sent (words and docs), and what was filed from it (for this tab): the problem pages it went into. */
-  problems: { sent: string | null; docs?: DocRef[]; result: { pages: number; quotes: number; needs?: { id: string; title: string }[] } | null; error: string | null; sources?: ProblemSource[] };
+  problems: { sent: string | null; docs?: DocRef[]; result: { pages: number; quotes: number; needs?: { id: string; title: string }[] } | null; error: string | null; found?: { source: string; goal: FoundGoal }[]; sources?: ProblemSource[] };
   /** What a door is doing while it reads or makes something. */
   working: { label: string } | null;
   /** They said there's no website yet: the company step asks for a line about it instead (this tab). */
@@ -232,19 +233,21 @@ export async function sendProblems(text: string, docs: SentDoc[] = []) {
     const typed = words ? [isAddress(words) ? await ingestUrl(words) : await ingestPaste(text)] : [];
     const all = [...typed.map((ing) => ({ ing, doc: isAddress(words) ? { from: "page", title: ing.title, ...(ing.origin ? { origin: ing.origin } : {}) } : { from: "said", title: "Your words" } })), ...docs.map((d) => ({ ing: d.ingested, doc: docRef(d) }))];
     let quotes = 0;
+    const found: { source: string; goal: FoundGoal }[] = [];
     const needs = new Map<string, { id: string; title: string }>();
     // Every part shows on the canvas at once, each filled in as it's taken in.
     const sources: ProblemSource[] = all.map(({ doc }) => ({ doc, sourceId: "", pages: [] }));
     useFirstRun.setState((s) => ({ problems: { ...s.problems, sources: [...sources] } }));
     for (const [i, { ing, doc }] of all.entries()) {
-      const r = await captureIngested(ing, { onActivity: working });
+      const r = await captureIngested(ing, { proposeGoals: true, onActivity: working });
+      found.push(...(r.foundGoals ?? []).map((goal) => ({ source: r.sourceId, goal })));
       quotes += r.quotes;
       const pages = (r.filed?.pages ?? []).filter((p) => p.kind === "need").map(({ id, title }) => ({ id, title }));
       for (const p of pages) needs.set(p.id, p);
       sources[i] = { doc, sourceId: r.sourceId, pages };
       useFirstRun.setState((s) => ({ problems: { ...s.problems, sources: [...sources] } }));
     }
-    useFirstRun.setState((s) => ({ problems: { ...s.problems, result: { pages: needs.size, quotes, needs: [...needs.values()] } } }));
+    useFirstRun.setState((s) => ({ problems: { ...s.problems, result: { pages: needs.size, quotes, needs: [...needs.values()] }, found } }));
   } catch (e) {
     useFirstRun.setState((s) => ({ problems: { ...s.problems, error: `Qalam couldn't take it in: ${message(e)}` } }));
   } finally {
@@ -254,6 +257,12 @@ export async function sendProblems(text: string, docs: SentDoc[] = []) {
 
 // ---------------------------------------------------------------------------
 // The company: what the web says about it, checked with them (src/org/market.ts runs it in the core)
+
+/** A goal what they sent pointed to, accepted (its problems come under it) or left out. */
+export async function decideGoal(source: string, id: string, accept: boolean) {
+  const r = await decideFoundGoal(source, id, accept);
+  useFirstRun.setState((s) => ({ problems: { ...s.problems, found: s.problems.found?.map((f) => (f.goal.id === id ? { ...f, goal: { ...f.goal, state: accept ? ("accepted" as const) : ("left" as const), ...(r.goal ? { goal: r.goal } : {}) } } : f)) } }));
+}
 
 /** No website yet: the step asks for a line about it instead. */
 export const noWebsite = () => useFirstRun.setState({ noSite: true });

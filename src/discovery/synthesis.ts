@@ -1,3 +1,4 @@
+import { sanitizeFoundGoals, type FoundGoal } from "@/goals/found";
 import { newId } from "@/doc/factory";
 import { quoteFinder } from "./quotes";
 import { heldBasis, isBasis } from "./basis";
@@ -55,19 +56,21 @@ export interface Extracted {
   about: { sourceId: string; text: string }[];
   /** A number a measured point states for a goal the call was sent. */
   goalNumbers: { sourceId: string; number: GoalNumber }[];
+  /** Goals it points to, where the call was asked (src/goals/found.ts). */
+  foundGoals: { sourceId: string; goal: FoundGoal }[];
 }
 
 /**
  * The quotes and needs one extract call returned, kept only where code finds them. `taken` holds
  * the spans each source already has quotes at (an overlapping quote isn't kept twice).
  */
-export function sanitizeExtract(raw: unknown, chunks: CallChunk[], taken: Map<string, [number, number][]> = new Map(), now = Date.now(), goals: ReadonlyMap<string, string> = new Map()): Extracted {
+export function sanitizeExtract(raw: unknown, chunks: CallChunk[], taken: Map<string, [number, number][]> = new Map(), now = Date.now(), goals: ReadonlyMap<string, string> = new Map(), known: readonly string[] = []): Extracted {
   const r = rec(raw);
   const byRef = new Map(chunks.map((c) => [c.ref, { c, find: quoteFinder(c.text) }]));
   const spans = new Map([...taken].map(([k, v]) => [k, [...v]]));
   const perChunk = new Map<string, number>();
   const kept = new Map<string, { sourceId: string; id: string }>();
-  const out: Extracted = { quotes: [], needs: [], about: [], goalNumbers: [] };
+  const out: Extracted = { quotes: [], needs: [], about: [], goalNumbers: [], foundGoals: [] };
 
   for (const a of items(r.about)) {
     const ch = byRef.get(typeof a.chunkId === "string" ? a.chunkId : "");
@@ -118,6 +121,16 @@ export function sanitizeExtract(raw: unknown, chunks: CallChunk[], taken: Map<st
     const q = at && out.quotes.find((x) => x.quote.id === at.id);
     if (!goal || !q || q.quote.basis !== "measured" || typeof n.value !== "number" || !valuesIn(q.quote.text).includes(n.value) || out.goalNumbers.some((x) => x.number.goal === goal)) continue;
     out.goalNumbers.push({ sourceId: q.sourceId, number: { goal, value: n.value, quote: q.quote.id } });
+  }
+
+  // Goals it points to, each under the source its first point is in.
+  const points = new Map([...kept].flatMap(([ref, at]) => {
+    const q = out.quotes.find((x) => x.quote.id === at.id)?.quote;
+    return q ? [[ref, { id: q.id, text: q.text, ...(q.basis ? { basis: q.basis } : {}) }] as const] : [];
+  }));
+  for (const goal of sanitizeFoundGoals(r.goals, points, known, newId)) {
+    const sourceId = out.quotes.find((x) => x.quote.id === goal.cites[0])?.sourceId;
+    if (sourceId) out.foundGoals.push({ sourceId, goal });
   }
 
   // Needs: each with the kept quotes that show it, filed under the source(s) the quotes are from.

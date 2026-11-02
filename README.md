@@ -24,6 +24,7 @@ Everything happens on one canvas per organization, with Qalam AI's chat on its l
    - **Your own thinking** is a brain dump, as is a document that holds only that. Qalam AI says what it took from it, pushes back where it won't hold up, asks a few rounds of questions, and proposes cards for the canvas.
    - **A goal or a problem in your words** is worded as a proper statement for you to use, edit, or replace with your own words.
    - **A question** is answered from everything you added, with each quote checked.
+   Where a document states an aim or clearly tracks a number, Qalam AI also proposes it as a goal, for you to accept or leave out. An accepted goal keeps the document's number, and the problems that bear on it link under it.
 5. **Problems, ranked.** Beside the canvas, the problems are ranked by what backs them: sources first, then points, then the newest. Interviews, metrics and studies all count; what you read elsewhere comes after them. A problem's page says what you know, what you believe, what speaks against it and what's still open.
 6. **Goals.** Pick a goal on the canvas and choose **Find the problem to focus on**. Qalam AI looks on the web for what usually keeps goals like it from moving and asks you about it. Where your answers call for it, it looks again, then proposes the one to three problems to work on first. **Find its problems** links the problem pages that already bear on it.
 7. **Solutions.** On a problem, **Draft solutions** proposes two to four, each with its riskiest assumptions and one test of the riskiest.

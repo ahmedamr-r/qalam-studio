@@ -7,7 +7,7 @@ import { KIND_LABEL } from "@/discovery/kinds";
 import { changeGoal, goalsNow } from "@/goals/client";
 import { goalById } from "@/goals/tree";
 import { askOrganization } from "@/org/ask";
-import { captureIngested, setSourceBasis } from "@/org/capture";
+import { captureIngested, decideFoundGoal, setSourceBasis } from "@/org/capture";
 import { orgFetch, orgJson } from "@/org/client";
 import type { Ingested } from "@/discovery/ingest/core";
 import { chatKey, chatOf, emptyChat, withJob, withTurn, type CanvasChat, type ChatDoc, type ChatJob, type ChatTurn, type FiledPage, type FocusGoal, type TakenDoc } from "@/space/chat";
@@ -425,14 +425,14 @@ async function takeIn(at: string | null, said: string, docs: readonly SentDoc[])
     for (const p of parts) {
       const ing = await p.ing();
       sourceCame(ing.title);
-      const r = await captureIngested(ing, { product: st().space, own: p.own, ...(p.basis ? { basis: p.basis } : {}), holdOwn: !!p.doc && !p.basis, onActivity: step(id), signal: ctrl.signal });
+      const r = await captureIngested(ing, { product: st().space, own: p.own, ...(p.basis ? { basis: p.basis } : {}), holdOwn: !!p.doc && !p.basis, proposeGoals: !!p.doc, onActivity: step(id), signal: ctrl.signal });
       if (r.heldOwn) {
         held.push(p.doc!);
         continue;
       }
       sources.push(r.sourceId);
       quotes += r.quotes;
-      taken.push({ source: r.sourceId, title: r.title, ...(r.about ? { about: r.about } : {}), points: r.points ?? {}, ...(p.basis ? { basis: p.basis } : {}), ...numbersOf(r) });
+      taken.push({ source: r.sourceId, title: r.title, ...(r.about ? { about: r.about } : {}), points: r.points ?? {}, ...(p.basis ? { basis: p.basis } : {}), ...numbersOf(r), ...(r.foundGoals?.length ? { found: r.foundGoals } : {}) });
       for (const f of r.filed?.pages ?? []) if (f.kind === "need") pages.set(f.id, { id: f.id, title: f.title });
       change((c) => withJob(c, id, (j) => (j.kind === "take" ? { ...j, sources: [...sources], pages: [...pages.values()], quotes, docs: [...taken] } : j)));
     }
@@ -462,6 +462,12 @@ export async function takeGoalNumber(turn: string, doc: TakenDoc, n: NonNullable
   if (!g?.metric) return;
   await changeGoal(n.goal, { metric: { ...g.metric, current: n.value, source: { connector: "document", ref: doc.source, label: doc.title }, readAt: Date.now() } });
   change((c) => withJob(c, turn, (j) => (j.kind === "take" && j.docs ? { ...j, docs: j.docs.map((d) => (d.source === doc.source ? { ...d, numbers: d.numbers?.map((x) => (x.goal === n.goal ? { ...x, used: true as const } : x)) } : d)) } : j)));
+}
+
+/** A goal a document pointed to, accepted (it goes on the canvas, its problems under it) or left out. */
+export async function decideDocGoal(turn: string, source: string, found: string, accept: boolean) {
+  const r = await decideFoundGoal(source, found, accept);
+  change((c) => withJob(c, turn, (j) => (j.kind === "take" && j.docs ? { ...j, docs: j.docs.map((d) => (d.source === source ? { ...d, found: d.found?.map((g) => (g.id === found ? { ...g, state: accept ? ("accepted" as const) : ("left" as const), ...(r.goal ? { goal: r.goal } : {}) } : g)) } : d)) } : j)));
 }
 
 /** What a document they took in rests on, as they say: its points go by that, and the page lines citing them move. */

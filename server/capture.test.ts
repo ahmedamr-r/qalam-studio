@@ -39,7 +39,7 @@ vi.mock("@/ai/server", () => ({
   },
 }));
 process.env.QALAM_NO_MODELS = "1";
-const { captureSource, changeBasis, fileSources, readAsOwn } = await import("./capture");
+const { captureSource, changeBasis, decideFoundGoal, fileSources, readAsOwn } = await import("./capture");
 const { startInbox } = await import("./inbox");
 
 const fts5 = (() => {
@@ -162,6 +162,26 @@ describe.skipIf(!fts5)("capture, in the core", () => {
     expect(own.heldOwn).toBe(true);
     expect(await store.getSource(own.sourceId)).toBeNull();
     expect(await store.getSource(r.sourceId)).not.toBeNull();
+  });
+
+  it("writes a goal a document points to only once it's accepted, and stands by what was left out", async () => {
+    const r = await captureSource(store, { kind: "paste", title: "Sara interview", text: "Sara: I can't plan bath time around a four-hour window." });
+    const s = (await store.getSource(r.sourceId))!;
+    const q = s.quotes[0];
+    const found = (id: string, title: string) => ({ id, title, metric: { name: "Weekly orders", direction: "increase" as const, baseline: null, current: 5780, target: null }, cites: [q.id] });
+    await store.putSource({ ...s, foundGoals: [found("g1", "More orders each week"), found("g2", "Fewer late deliveries")] });
+    expect((await store.getGoals()).goals).toEqual([]);
+    const { goal } = await decideFoundGoal(store, s.id, "g1", true);
+    const made = (await store.getGoals()).goals.find((g) => g.id === goal)!;
+    expect(made).toMatchObject({ title: "More orders each week", by: "qalam", metric: { current: 5780, source: { connector: "document", ref: s.id } } });
+    expect(made.cites).toEqual([`hub:quote:${q.id}`]);
+    await decideFoundGoal(store, s.id, "g2", false);
+    expect((await store.getGoals()).goals).toHaveLength(1);
+    // Deciding again changes nothing.
+    expect(await decideFoundGoal(store, s.id, "g1", true)).toEqual({ goal });
+    expect((await store.getGoals()).goals).toHaveLength(1);
+    expect((await store.getSource(s.id))?.foundGoals?.map((g) => g.state)).toEqual(["accepted", "left"]);
+    await expect(decideFoundGoal(store, s.id, "nope", true)).rejects.toThrow("No such goal");
   });
 
   it("goes by what the person says a source rests on, and moves the lines citing it", async () => {

@@ -34,7 +34,8 @@ import { r } from "../../recipes";
 import { useTopics } from "../../topics/list";
 import { useWords } from "../../frame/store";
 import { show } from "../links";
-import { anotherFile, changeDocBasis, dropTurn, leaveFile, placeStatement, retake, takeAsBasis, turnOf, takeGoalNumber, useCanvasChat } from "./store";
+import { FoundGoalRow } from "../../chat/FoundGoalRow";
+import { anotherFile, changeDocBasis, decideDocGoal, dropTurn, leaveFile, placeStatement, retake, takeAsBasis, turnOf, takeGoalNumber, useCanvasChat } from "./store";
 import { titleFrom } from "@/space/route";
 
 /*
@@ -759,6 +760,7 @@ function TakenPart({ data }: { data: PartData }) {
                 )}
               </p>
             ))}
+            {d.found?.map((g) => <FoundGoalRow key={g.id} goal={g} onDecide={(accept) => void decideDocGoal(t.id, d.source, g.id, accept)} />)}
             <BasisSelect label={d.basis ? `You said: ${BASIS_LABEL[d.basis]}. Change it` : main ? `${NOT_THAT[main]} Change it` : "Say what it is"} value="" options={BASES} onPick={(b) => void changeDocBasis(t.id, d.source, b)} />
           </li>
         );

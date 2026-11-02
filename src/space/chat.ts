@@ -1,3 +1,4 @@
+import type { FoundGoal } from "@/goals/found";
 import type { Basis, BasisCounts } from "@/discovery/basis";
 import type { DumpSession } from "@/discovery/dump";
 import type { AskAnswer } from "@/hub/ask";
@@ -30,6 +31,8 @@ export interface TakenDoc {
   basis?: Basis;
   /** Numbers it measured for goals, each `used` once they took it. */
   numbers?: { goal: string; title: string; value: number; used?: true }[];
+  /** Goals it points to, for them to accept or leave out. */
+  found?: FoundGoal[];
 }
 
 /** A problem page material went into. */

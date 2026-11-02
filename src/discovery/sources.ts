@@ -1,3 +1,4 @@
+import type { FoundGoal } from "@/goals/found";
 import { basisOf, type Basis } from "./basis";
 import { newId } from "@/doc/factory";
 import type { OstCard, OstEvidence } from "./types";
@@ -122,6 +123,8 @@ export interface SourceRecord {
   filed?: string[];
   /** A goal's number this source measured, read from a point of it, for the person to use or not. */
   goalNumbers?: GoalNumber[];
+  /** Goals it points to, for the person to accept or leave out (src/goals/found.ts). */
+  foundGoals?: FoundGoal[];
   /** A brain dump: what Qalam AI made of it, the questions asked and answered, its proposals. */
   dump?: DumpSession;
   /** A brain dump about the organization, setting it up: its About and products, line by line (src/org/setup.ts). */

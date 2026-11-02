@@ -17,7 +17,7 @@ import { stepAfter, stepShown, type SetupStep, type StepState, type WelcomeMode 
 /** The way in: goals they know or want found, problems they hear about, or an idea to test. */
 export type Door = "know" | "find" | "problems" | "idea";
 
-export type PartName = "engine" | "verify" | "choices" | "outline" | "said" | "took" | "pushback" | "answers" | "you" | "voice" | "yours" | "connect" | "allSet" | "error" | "working" | "problems" | "docs" | "facts" | "rivals";
+export type PartName = "engine" | "verify" | "choices" | "outline" | "said" | "took" | "pushback" | "answers" | "you" | "voice" | "yours" | "connect" | "allSet" | "error" | "working" | "problems" | "foundGoals" | "docs" | "facts" | "rivals";
 
 /** Small values only: a part's renderer reads the rest from the stores. */
 export type PartData = Record<string, string | number | boolean | null>;
@@ -65,7 +65,7 @@ export interface ThreadInput {
     accepted: number;
   };
   /** The problems door: what they sent (their words, and the docs that went with them), and what was filed from it (the problem pages it went into, the customers' quotes it held). */
-  problems: { sent: string | null; docs?: DocRef[]; result: { pages: number; quotes: number } | null; error: string | null };
+  problems: { sent: string | null; docs?: DocRef[]; result: { pages: number; quotes: number } | null; error: string | null; found?: readonly unknown[] };
   /** A Qalam AI call running. */
   busy: { label: string } | null;
   /** Goals picked as theirs, once they moved on from Yours. */
@@ -329,7 +329,9 @@ export function threadOf(i: ThreadInput): ChatMessage[] {
     // Problems in, no goals yet: on to what to connect (there are no goals to pick as theirs).
     const r = i.problems.result!;
     const said = `Filed ${r.quotes === 1 ? "1 point" : `${r.quotes} points`} into ${r.pages === 1 ? "1 problem page" : `${r.pages} problem pages`}. Each page shows how strong it is and drafts solutions for it.`;
-    out.push(ai("goals:in", text(said), part("problems"), ...(i.first && i.step === "goals" ? [part("choices", { set: "goals-in", solo: true })] : [])));
+    const found = i.problems.found?.length ?? 0;
+    const offer = found ? (found === 1 ? "It also points to a goal. Keep it if it's one you're working toward." : `It also points to ${found} goals. Keep the ones you're working toward.`) : "None of it states a goal. I can help you find one on the canvas.";
+    out.push(ai("goals:in", text(said), part("problems"), text(offer), ...(found ? [part("foundGoals")] : []), ...(i.first && i.step === "goals" ? [part("choices", { set: "goals-in", solo: true, findGoal: !found })] : [])));
     if (!i.first) out.push(ai("all-set", text("All set."), part("allSet")));
   } else if (goalsSettled(i) && door === "idea") {
     // The idea's board, when they choose: it reads the idea and places it under the problems it solves.

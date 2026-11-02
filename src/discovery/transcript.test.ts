@@ -190,6 +190,7 @@ describe("finishInterviewQuotes", () => {
       {
         about: [],
         goalNumbers: [],
+        foundGoals: [],
         quotes: [
           { sourceId: "iv", quote: keep },
           { sourceId: "iv", quote: drop },

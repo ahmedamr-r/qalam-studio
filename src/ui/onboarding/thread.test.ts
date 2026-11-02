@@ -259,8 +259,14 @@ describe("the other ways in", () => {
     const filed = base({ door: "problems", problems: { sent: "Tickets…", result: { pages: 3, quotes: 12 }, error: null } });
     const m = threadOf(filed);
     expect(ids(m).slice(-3)).toEqual(["problems:ask", "problems:said", "goals:in"]);
-    expect(m.at(-1)?.parts.map((p) => (p.type === "data" ? p.name : "text"))).toEqual(["text", "problems", "choices"]);
-    expect(m.at(-1)?.parts.find((p) => p.type === "data" && p.name === "choices")).toMatchObject({ data: { set: "goals-in", solo: true } });
+    expect(m.at(-1)?.parts.map((p) => (p.type === "data" ? p.name : "text"))).toEqual(["text", "problems", "text", "choices"]);
+    // None of it states a goal: it says so, and offers to help find one.
+    expect(m.at(-1)?.parts[2]).toEqual({ type: "text", text: "None of it states a goal. I can help you find one on the canvas." });
+    expect(m.at(-1)?.parts.find((p) => p.type === "data" && p.name === "choices")).toMatchObject({ data: { set: "goals-in", solo: true, findGoal: true } });
+    // It points to some: they're offered, to accept or leave out.
+    const pointed = threadOf(base({ door: "problems", problems: { ...filed.problems, found: [{}, {}] } })).at(-1);
+    expect(pointed?.parts.map((p) => (p.type === "data" ? p.name : "text"))).toEqual(["text", "problems", "text", "foundGoals", "choices"]);
+    expect(pointed?.parts[2]).toEqual({ type: "text", text: "It also points to 2 goals. Keep the ones you're working toward." });
     expect(askOf(filed).kind).toBe("none");
     expect(stepsOf(filed).find((s) => s.id === "goals")?.sub?.map((s) => [s.label, s.state])).toEqual([
       ["Way in", "done"],

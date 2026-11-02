@@ -34,7 +34,8 @@ import { lab } from "@/lab";
 import { Dictated } from "../voice/MicButton";
 import { ParakeetInstall } from "../voice/ParakeetInstall";
 import { wordsFor } from "@/org/words";
-import { checkEngine, engineChanged, finishFirstRun, findCompetitors, goStep, keepCompetitors, keepFacts, lookAgain, noWebsite, skipCompetitors, startOnCanvas, takeAs, openKeyField, pickDoor, pickShape, saveVoice, saveYou, saveYours, skipEngine, togglePick, useFirstRun } from "./flow";
+import { FoundGoalRow } from "../chat/FoundGoalRow";
+import { checkEngine, decideGoal, engineChanged, finishFirstRun, findCompetitors, goStep, keepCompetitors, keepFacts, lookAgain, noWebsite, skipCompetitors, startOnCanvas, takeAs, openKeyField, pickDoor, pickShape, saveVoice, saveYou, saveYours, skipEngine, togglePick, useFirstRun } from "./flow";
 import { useMarket } from "@/org/market";
 import { FIELD_LABEL, type Competitor, type MarketLine } from "@/market/types";
 import { lookForCompetitors } from "@/org/market";
@@ -232,7 +233,19 @@ function ChoicesPart({ data }: { data: PartData }) {
         </ReplyChips>
       );
     case "goals-in":
-      return <ReplyChips>{nextChip(data.solo, true)}</ReplyChips>;
+      return (
+        <ReplyChips>
+          {data.findGoal ? (
+            chip(
+              <>
+                <QalamAIGlyph size={12} /> Help me find a goal
+              </>,
+              () => startOnCanvas("find-goal"),
+            )
+          ) : null}
+          {nextChip(data.solo, !data.findGoal)}
+        </ReplyChips>
+      );
     case "idea-board":
       return (
         <ReplyChips>
@@ -750,6 +763,19 @@ function WorkingPart({ data }: { data: PartData }) {
 }
 
 /** The problems door's end: the problem pages what they sent went into, the best-backed first, each opening its page (where solutions are drafted). */
+function FoundGoalsPart() {
+  const found = useFirstRun((s) => s.problems.found);
+  return (
+    <ul className="flex flex-col gap-[6px]">
+      {found?.map((f) => (
+        <li key={f.goal.id}>
+          <FoundGoalRow goal={f.goal} onDecide={(accept) => void decideGoal(f.source, f.goal.id, accept)} />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function ProblemsPart() {
   const filed = useFirstRun((s) => s.problems.result?.needs);
   const [ranked, setRanked] = useState<RankedNeed[] | null>(null);
@@ -984,6 +1010,7 @@ export const PARTS: Record<string, PartComponent> = {
   facts: FactsPart,
   rivals: RivalsPart,
   problems: ProblemsPart,
+  foundGoals: FoundGoalsPart,
   engine: EnginePart,
   verify: VerifyPart,
   choices: ChoicesPart,

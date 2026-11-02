@@ -19,7 +19,10 @@ import { contextText } from "@/org/context-md";
 import { wordsFor } from "@/org/words";
 import { contextOf, type OrgContext, type PackRequest } from "@/org/pack";
 import { splitSetup } from "@/org/setup-split";
+import { FOUND_LIMITS } from "@/goals/found";
 import { isEvidence } from "@/hub/topics";
+import { locked } from "./org/fsx";
+import { linkProblems } from "./org/goals";
 import { indexFor } from "./index/registry";
 import { packedPieces, packFor } from "./index/search";
 import { NotFoundError, type OrgStore } from "./org/store";
@@ -46,6 +49,8 @@ export interface CaptureOpts {
   basis?: Basis;
   /** Nothing in it but the team's own thinking: keep nothing and say so, for the chat's brain dump to read it. */
   holdOwn?: boolean;
+  /** The reader may propose goals it points to, for someone there to accept. */
+  proposeGoals?: boolean;
   /**
    * Where it's placed: only these boards, each only under these cards (a feed's wiring), or nowhere
    * (`{}`). Left out: every board of its product.
@@ -157,6 +162,8 @@ async function readIn(store: OrgStore, deps: FilingDeps, s: SourceRecord, o: Cap
   // The goals a measured point could give a number to, under ids the call uses.
   const goals = (await store.getGoals()).goals.filter((g) => g.status === "active" && g.metric?.name).slice(0, 12);
   const goalIds = new Map(goals.map((g, i) => [`g${i + 1}`, g.id]));
+  // What it shouldn't propose again: the goals there are, and what other documents proposed.
+  const known = o.proposeGoals ? [...(await store.getGoals()).goals.map((g) => g.title), ...(await store.listSources()).flatMap((x) => (x.foundGoals ?? []).map((g) => g.title))].slice(0, 60) : [];
   let cur = s;
   for (const [i, call] of calls.entries()) {
     if (o.signal?.aborted) break;
@@ -167,16 +174,18 @@ async function readIn(store: OrgStore, deps: FilingDeps, s: SourceRecord, o: Cap
       product,
       chunks: chunks.map((c) => ({ id: c.ref, source: cur.title.slice(0, 300), kind: SOURCE_KIND_LABEL[cur.kind], text: c.text, ...(cur.transcript ? { speakers: speakerNote(cur.transcript) } : {}) })),
       ...(org ? { context: org.context } : {}),
+      ...(o.proposeGoals ? { propose: known.map((t) => t.slice(0, 300)) } : {}),
       ...(goals.length ? { goals: goals.map((g, i) => ({ id: `g${i + 1}`, title: g.title.slice(0, 300), metric: g.metric!.name.slice(0, 200) })) } : {}),
     };
     const { data } = await structured<unknown>(extractCall(body));
-    const got = finishExtracted(sanitizeExtract(data, chunks, new Map([[cur.id, cur.quotes.map((q) => q.span)]]), Date.now(), goalIds), () => cur);
+    const got = finishExtracted(sanitizeExtract(data, chunks, new Map([[cur.id, cur.quotes.map((q) => q.span)]]), Date.now(), goalIds, [...known, ...(cur.foundGoals ?? []).map((g) => g.title)]), () => cur);
     cur = {
       ...cur,
       read: [...new Set([...cur.read, ...call.map((c) => c.index)])],
       quotes: [...cur.quotes, ...got.quotes.map((q) => q.quote)].sort((a, b) => a.span[0] - b.span[0]),
       needs: [...cur.needs, ...got.needs.map((n) => n.need)],
       ...(cur.about ? {} : { about: got.about[0]?.text }),
+      ...(got.foundGoals.length ? { foundGoals: [...(cur.foundGoals ?? []), ...got.foundGoals.map((g) => g.goal)].slice(0, FOUND_LIMITS.perSource) } : {}),
       ...(got.goalNumbers.length ? { goalNumbers: [...(cur.goalNumbers ?? []).filter((n) => !got.goalNumbers.some((x) => x.number.goal === n.goal)), ...got.goalNumbers.map((n) => n.number)] } : {}),
     };
     await store.putSource(cur);
@@ -279,7 +288,7 @@ export async function captureSource(store: OrgStore, ing: Ingested, o: CaptureOp
   };
   emit(`Keeping “${s.title}” in the ${wordsFor(store.info.shape).org}`);
   await store.putSource(s);
-  const result = (filed?: FilingTotals, placed: CaptureResult["placed"] = []): CaptureResult => ({ sourceId: s.id, title: s.title, quotes: s.quotes.length, needs: s.needs.length, ...(s.about ? { about: s.about } : {}), points: basisCounts(s), ...(s.goalNumbers?.length ? { goalNumbers: s.goalNumbers } : {}), ...(filed ? { filed } : {}), placed });
+  const result = (filed?: FilingTotals, placed: CaptureResult["placed"] = []): CaptureResult => ({ sourceId: s.id, title: s.title, quotes: s.quotes.length, needs: s.needs.length, ...(s.about ? { about: s.about } : {}), points: basisCounts(s), ...(s.goalNumbers?.length ? { goalNumbers: s.goalNumbers } : {}), ...(s.foundGoals?.length ? { foundGoals: s.foundGoals } : {}), ...(filed ? { filed } : {}), placed });
   // Their own thinking: read as what they believe, never as what customers said.
   if (o.own) return { ...result(), ...(await readAsOwn(store, s.id, emit)) };
   if (awaitingRoles(s)) return { ...result(), waiting: "roles" };
@@ -336,4 +345,27 @@ export async function changeBasis(store: OrgStore, id: string, basis: Basis): Pr
     return movedLines(t.lines, (r) => refs.has(r), (r) => (refs.has(r) ? reachesKnow(basis) : other(r)));
   });
   return { moved };
+}
+
+/**
+ * A goal a document pointed to, as the person decides: accepted, it goes in goals.md, resting on the
+ * document's points with the number it gave as a read, and the problems there are get linked to it.
+ */
+export const decideFoundGoal = (store: OrgStore, sourceId: string, id: string, accept: boolean): Promise<{ goal?: string }> => locked(`found:${store.dir}:${sourceId}`, () => decided(store, sourceId, id, accept));
+
+async function decided(store: OrgStore, sourceId: string, id: string, accept: boolean): Promise<{ goal?: string }> {
+  const s = await store.getSource(sourceId);
+  const found = s?.foundGoals?.find((g) => g.id === id);
+  if (!s || !found) throw new NotFoundError("No such goal");
+  if (found.state) return found.goal ? { goal: found.goal } : {};
+  let goal: string | undefined;
+  if (accept) {
+    const m = found.metric;
+    const metric = m ? { ...m, ...(m.current !== null ? { source: { connector: "document", ref: s.id, label: s.title }, readAt: Date.now() } : {}) } : undefined;
+    goal = (await store.createGoal({ title: found.title, ...(metric ? { metric } : {}), cites: found.cites.map(quotePiece), by: "qalam" })).goal.id;
+    // Asked of Qalam AI in the background: the goal is there at once, its problems come under it.
+    void linkProblems(store, { targets: [goal], replace: false }).catch(() => {});
+  }
+  await store.putSource({ ...s, foundGoals: s.foundGoals!.map((g) => (g.id === id ? { ...g, state: accept ? ("accepted" as const) : ("left" as const), ...(goal ? { goal } : {}) } : g)) });
+  return goal ? { goal } : {};
 }

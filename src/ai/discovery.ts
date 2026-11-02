@@ -74,7 +74,7 @@ export const DiscoveryBody = z
   .discriminatedUnion("stage", [
     z.object({ stage: z.literal("followups"), answers: z.array(Answer).min(1).max(12) }),
     z.object({ stage: z.literal("draft"), answers: z.array(Answer).min(1).max(12), followUps: z.array(Answer).max(3).optional(), context: ContextIn }),
-    z.object({ stage: z.literal("extract"), product: text(2000), chunks: z.array(ChunkIn).min(1).max(8), goals: z.array(z.object({ id: text(12), title: text(300), metric: text(200) })).max(12).optional(), context: ContextIn }),
+    z.object({ stage: z.literal("extract"), product: text(2000), chunks: z.array(ChunkIn).min(1).max(8), goals: z.array(z.object({ id: text(12), title: text(300), metric: text(200) })).max(12).optional(), propose: z.array(text(300)).max(60).optional(), context: ContextIn }),
     z.object({ stage: z.literal("synthesize"), product: text(2000), tree: z.array(CardIn).min(1).max(400), quotes: z.array(QuoteIn).min(1).max(150), needs: z.array(NeedIn).max(60), context: ContextIn }),
     z.object({ stage: z.literal("import"), request: z.string().trim().min(3).max(1000), connectors: z.array(z.string().max(64)).min(1).max(8) }),
     z.object({ stage: z.literal("dump-read"), ...DumpBase }),
@@ -270,7 +270,7 @@ const BASIS_HINT = "said (people speaking for themselves: customers or users in 
 const ids = (list: string[]) => (list.length ? list : ["none"]);
 
 /** The extract schema: what each document is, and points that name the part of the material they're from. */
-export function extractSchema(chunkIds: string[], goalIds: string[] = []) {
+export function extractSchema(chunkIds: string[], goalIds: string[] = [], propose = false) {
   return obj({
     about: arr(obj({ chunkId: enm(ids(chunkIds), "A part of the document"), text: str("What the document is, one plain line (\"A funnel report for checkout, Q3\")") }), "What each document is, once per document"),
     quotes: arr(
@@ -296,6 +296,18 @@ export function extractSchema(chunkIds: string[], goalIds: string[] = []) {
           goalNumbers: arr(
             obj({ goal: enm(goalIds, "The goal"), value: { type: "number", description: "Its number now, exactly as a measured point above states it" }, quoteId: str("The id of that point") }),
             "Where a measured point states the number a goal tracks, as of now. Only the very thing the goal measures, never a near one. [] when none",
+          ),
+        }
+      : {}),
+    ...(propose
+      ? {
+          goals: arr(
+            obj({
+              title: str("The change the team is after, in a plain line, at most 14 words (\"More shoppers place an order every week\"). Never a task, a project or a feature"),
+              metric: nullable(obj({ name: str("The number that shows it moving, in the document's words; empty when it has none"), current: nullable({ type: "number", description: "Where it stands now, as a point above states it" }), target: nullable({ type: "number", description: "What the team aims for, as a point above states it" }), direction: enm(["increase", "decrease"], "Which way it should move") })),
+              quoteIds: strs("The ids of the points above it rests on: at least one the team's own (own) or measured (measured)"),
+            }),
+            "Goals this document points to: an aim the team states, a target, or a number it clearly tracks as how the company is doing. Never what a customer wishes for (that's a problem), never what a report says of others, never one of the goals they have already. Most documents have none or one: [] when none",
           ),
         }
       : {}),
@@ -366,6 +378,7 @@ export const extractContent = (b: Extract<DiscoveryRequest, { stage: "extract" }
     ...b.chunks.map((c) => `<part id="${c.id}" source="${c.source.replace(/"/g, "'")} (${c.kind})"${c.speakers ? ` speakers="${c.speakers.replace(/"/g, "'")}"` : ""}>\n${c.text}\n</part>`),
     "",
     ...(b.goals?.length ? ["", "The goals they're moving (id · goal · the number it tracks):", ...b.goals.map((g) => `- ${g.id} · ${g.title} · ${g.metric}`)] : []),
+    ...(b.propose?.length ? ["", "Goals they have already, or that were proposed already (don't propose these again):", ...b.propose.map((t) => `- ${t}`)] : []),
     "",
     "Say what each document is, and pick out what it states.",
   ].join("\n");
@@ -420,7 +433,7 @@ export function synthesizeIds(b: Extract<DiscoveryRequest, { stage: "synthesize"
 export const extractCall = (b: Extract<DiscoveryRequest, { stage: "extract" }>) => ({
   kind: "extract" as const,
   system: withKnowledge(EXTRACT_SYSTEM, b.context, EXTRACT_KNOWLEDGE),
-  schema: withPieceReliance(extractSchema(b.chunks.map((c) => c.id), (b.goals ?? []).map((g) => g.id)), b.context),
+  schema: withPieceReliance(extractSchema(b.chunks.map((c) => c.id), (b.goals ?? []).map((g) => g.id), !!b.propose), b.context),
   effort: "medium" as const,
   maxTokens: 24000,
   content: [{ type: "text" as const, text: extractContent(b) }],

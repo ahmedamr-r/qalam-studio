@@ -1,3 +1,4 @@
+import type { FoundGoal } from "@/goals/found";
 import type { GoalNumber } from "./sources";
 import type { BasisCounts } from "./basis";
 import type { FilingTotals } from "@/hub/filing";
@@ -17,6 +18,8 @@ export interface CaptureResult {
   points?: BasisCounts;
   /** Numbers it measured for goals, for the person to use or not. */
   goalNumbers?: GoalNumber[];
+  /** Goals it points to, for the person to accept or leave out. */
+  foundGoals?: FoundGoal[];
   /** Nothing in it but the team's own thinking, and the caller said it would read that itself: nothing was kept. */
   heldOwn?: true;
   filed?: FilingTotals;

@@ -20,7 +20,7 @@ import { quickCapture } from "../quick";
 import { reviewOrg } from "./review";
 import { askOrg } from "../ask";
 import { isBasis } from "@/discovery/basis";
-import { captureSource, changeBasis, fileSources, readAsOwn, splitSetupSource } from "../capture";
+import { captureSource, changeBasis, decideFoundGoal, fileSources, readAsOwn, splitSetupSource } from "../capture";
 import type { Ingested } from "@/discovery/ingest/core";
 import type { Proposal } from "@/discovery/proposals";
 import { MAX_SOURCE_TEXT, SOURCE_KIND_LABEL, type SourceRecord, type TextBlock } from "@/discovery/sources";
@@ -669,7 +669,7 @@ export function orgRoutes(): Hono<Env> {
   r.post("/api/org/:org/capture", async (c) => {
     if (!aiConfigured()) return c.json({ error: "no_key", message: "Qalam AI isn't set up here." }, 501);
     if (rateLimited(c.req.raw)) return c.json({ error: "rate_limited", message: "Too many requests, try again in a few minutes." }, 429);
-    const b = (await c.req.json().catch(() => null)) as { ingested?: unknown; product?: unknown; job?: unknown; own?: unknown; basis?: unknown; holdOwn?: unknown } | null;
+    const b = (await c.req.json().catch(() => null)) as { ingested?: unknown; product?: unknown; job?: unknown; own?: unknown; basis?: unknown; holdOwn?: unknown; proposeGoals?: unknown } | null;
     const ing = ingestedShape(b?.ingested);
     if (!ing) return bad("Not something to add");
     const product = typeof b?.product === "string" && ID.test(b.product) ? b.product : null;
@@ -677,7 +677,7 @@ export function orgRoutes(): Hono<Env> {
     const job = typeof b?.job === "string" && ID.test(b.job) ? b.job : null;
     const store = c.get("store");
     return streamed(c.req.raw.signal, async (emit, signal) => {
-      const r = await captureSource(store, ing, { product, emit, signal, own: b?.own === true, ...(isBasis(b?.basis) ? { basis: b.basis } : {}), holdOwn: b?.holdOwn === true });
+      const r = await captureSource(store, ing, { product, emit, signal, own: b?.own === true, ...(isBasis(b?.basis) ? { basis: b.basis } : {}), holdOwn: b?.holdOwn === true, proposeGoals: b?.proposeGoals === true });
       return job ? { ...r, linked: await noteForJob(store, job, r, emit) } : r;
     });
   });
@@ -687,6 +687,12 @@ export function orgRoutes(): Hono<Env> {
     const b = (await c.req.json().catch(() => null)) as { basis?: unknown } | null;
     if (!isBasis(b?.basis)) return bad("Not something a source can rest on");
     return c.json(await changeBasis(c.get("store"), c.req.param("id"), b.basis));
+  });
+  /** A goal a document pointed to, as the person decides. */
+  r.put("/api/org/:org/sources/:id/goals/:found", async (c) => {
+    if (!ID.test(c.req.param("id")) || !ID.test(c.req.param("found"))) return bad("No such goal");
+    const b = (await c.req.json().catch(() => null)) as { accept?: unknown } | null;
+    return c.json(await decideFoundGoal(c.get("store"), c.req.param("id"), c.req.param("found"), b?.accept === true));
   });
   /** A source that held no customers' words, read again as the person's own thinking (filed as what they believe). */
   r.post("/api/org/:org/sources/:id/own", async (c) => {
