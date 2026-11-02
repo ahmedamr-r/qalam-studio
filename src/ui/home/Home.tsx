@@ -294,7 +294,7 @@ function EmptyMap({ space }: { space: string | null }) {
         <p className="text-center text-caption text-fg-subtle">
           Or paste your thinking in the chat, or{" "}
           <button type="button" onClick={addMaterial} className="text-fg-muted underline decoration-fg/20 underline-offset-2 hover:text-fg">
-            add what customers said
+            add what you have
           </button>
           .
         </p>

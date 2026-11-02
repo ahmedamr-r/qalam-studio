@@ -35,8 +35,8 @@ export function FilingBanner({ sources, onFiled }: { sources: SourceRecord[]; on
       <div role="status" className="flex flex-wrap items-center justify-between gap-[12px] rounded-lg bg-raised px-[12px] py-[10px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
         <p className="text-body text-fg-muted">
           {step
-            ? `Qalam AI is filing what customers said into the pages${step.of > 1 ? `: ${Math.min(step.done + 1, step.of)} of ${step.of}` : ""}…`
-            : `${plural(waiting.length, "quote")} in ${plural(fromSources, "source")} ${waiting.length === 1 ? "isn't" : "aren't"} on the topic pages yet.`}
+            ? `Qalam AI is filing what your sources state into the pages${step.of > 1 ? `: ${Math.min(step.done + 1, step.of)} of ${step.of}` : ""}…`
+            : `${plural(waiting.length, "point")} in ${plural(fromSources, "source")} ${waiting.length === 1 ? "isn't" : "aren't"} on the topic pages yet.`}
         </p>
         {step ? (
           <Button variant="secondary" size="sm" onClick={stopFiling}>
@@ -62,7 +62,7 @@ export function TopicsList({ topics, sources, products, onFiled, banner = true }
       <div className="flex flex-col gap-[12px]">
         {banner && <FilingBanner sources={sources} onFiled={onFiled} />}
         <p className="text-body text-fg-muted">
-          No pages yet. Qalam AI keeps one for each problem customers have, each segment and each product: what you know, what you believe, what speaks against it and what nobody knows yet, each line resting on what customers said.{" "}
+          No pages yet. Qalam AI keeps one for each problem, each segment and each product: what you know, what you believe, what speaks against it and what nobody knows yet, each line resting on what your sources state.{" "}
           {waiting.length ? "Update pages starts them from your sources." : "Add a source, and Qalam AI starts them."}
         </p>
       </div>

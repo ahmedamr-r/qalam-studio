@@ -1,16 +1,16 @@
 # Qalam Studio
 
-An open-source, Arabic-first second brain for product makers. You bring what customers said, and Qalam turns it into the problems worth solving, ranked by how many customers raised them. Every line rests on words a customer said, which code finds word for word in the source.
+An open-source, Arabic-first second brain for product makers. Bring what you have (analytics and reports, research, interviews, tickets, market studies, strategy docs), and Qalam turns it into the problems worth solving, ranked by what backs them. Every line rests on a source's own words, which code finds word for word, and says what kind of evidence they are.
 
-Qalam keeps what your organization knows as readable files on your own computer: its goals, what customers said, the problems behind it, and what you decided. Qalam AI runs on your own Claude Code or Codex, so there is no Qalam account and no Qalam server.
+Qalam keeps what your organization knows as readable files on your own computer: its goals, what its sources state, the problems behind them, and what you decided. Qalam AI runs on your own Claude Code or Codex, so there is no Qalam account and no Qalam server.
 
 Qalam Studio is built by Ahmed Amr.
 
 ## Status: v0.1
 
-v0.1 is the first version for people to try. It's for a founder or PM on their own, or a team of two or three, with a pile of customer conversations and no time to read them twice. It shows one loop (below) and hides everything else Qalam can do behind a switch ([What v0.1 hides](#what-v01-hides)).
+v0.1 is the first version for people to try. It's for a founder or PM on their own, or a team of two or three, with a pile of material about their product and customers, and no time to read it twice. It shows one loop (below) and hides everything else Qalam can do behind a switch ([What v0.1 hides](#what-v01-hides)).
 
-Expect rough edges and slow AI calls: looking up a company, or reading a long interview, takes a minute or two. Issues and pull requests are welcome.
+Expect rough edges and slow AI calls: looking up a company, or reading a long document, takes a minute or two. Issues and pull requests are welcome.
 
 ## What it does
 
@@ -18,13 +18,13 @@ Everything happens on one canvas per organization, with Qalam AI's chat on its l
 
 1. **Open Qalam.** It finds Claude Code or Codex on your computer, and you name your organization (a company or team, or just you with an idea).
 2. **It learns the company.** Give it your website, or a line about what you do. Qalam AI looks it up on the web, and you check each fact it found, row by row: keep it, fix it or drop it. Then your competitors: name them, or let it find them. While you work, it reads what companies like yours usually aim for and what their customers struggle with.
-3. **Start.** Qalam AI offers to help you find a first goal or problem from what companies like yours face, to take one you have in mind, or to start from your customers' words.
+3. **Start.** Qalam AI offers to help you find a first goal or problem from what companies like yours face, to take one you have in mind, or to start from documents or notes you have.
 4. **Bring anything to the chat.**
-   - **What customers said** (interviews, tickets, survey answers; pasted, or as PDF, Word, Markdown, CSV or XLSX files) goes into one page per problem. Each doc's chip says whose words it holds.
-   - **Your own thinking** is a brain dump. Qalam AI says what it took from it, pushes back where it won't hold up, asks a few rounds of questions, and proposes cards for the canvas.
+   - **Any document** (pasted, or as PDF, Word, Markdown, CSV or XLSX files) is read for what it states. Qalam AI says what it is and marks each point: people said, measured, studied, read elsewhere, or your own thinking. It files them into one page per problem, and you can correct what it decided.
+   - **Your own thinking** is a brain dump, as is a document that holds only that. Qalam AI says what it took from it, pushes back where it won't hold up, asks a few rounds of questions, and proposes cards for the canvas.
    - **A goal or a problem in your words** is worded as a proper statement for you to use, edit, or replace with your own words.
    - **A question** is answered from everything you added, with each quote checked.
-5. **Problems, ranked.** Beside the canvas, the problems are ranked by the customers behind them: sources first, then quotes, then the newest. A problem's page says what you know, what you believe, what speaks against it and what's still open.
+5. **Problems, ranked.** Beside the canvas, the problems are ranked by what backs them: sources first, then points, then the newest. Interviews, metrics and studies all count; what you read elsewhere comes after them. A problem's page says what you know, what you believe, what speaks against it and what's still open.
 6. **Goals.** Pick a goal on the canvas and choose **Find the problem to focus on**. Qalam AI looks on the web for what usually keeps goals like it from moving and asks you about it. Where your answers call for it, it looks again, then proposes the one to three problems to work on first. **Find its problems** links the problem pages that already bear on it.
 7. **Solutions.** On a problem, **Draft solutions** proposes two to four, each with its riskiest assumptions and one test of the riskiest.
 
@@ -33,10 +33,10 @@ You can also drop files into the organization's `inbox/` folder from Finder whil
 ## How it keeps the AI honest
 
 In Qalam the model proposes, and code decides what's kept.
-- **Quotes:** a customer's quote is kept only where code finds it word for word in the source.
-- **Numbers:** a number is kept only where the source has it.
-- **What you only believe:** a line resting only on the team's words stays under **We believe** until customers or a test show it.
-- **The web:** what Qalam AI reads on the web is kept only where its words are on the page it names. It's never counted as customer evidence.
+- **Words:** a point is kept only where code finds it word for word in the source.
+- **Numbers:** a number is kept only where the source has it, and a measured point must have one.
+- **What you know:** "We know" takes what people said, what you measured or studied, and what a test showed. Someone else's report and the team's own thinking stay under **We believe**.
+- **The web:** what Qalam AI reads on the web is kept only where its words are on the page it names. It's never counted as your own evidence.
 - **Your words:** Qalam AI never rewrites a line you wrote. It says what speaks against it instead.
 - **Answers:** when you ask your organization a question, code finds each quote in the answer where Qalam AI says it is, and marks the claims it can't back.
 
@@ -148,6 +148,7 @@ pnpm dist:mac:adhoc # package the Mac app into release/dist, signed ad hoc as re
 - **Five first users:** watch five people use v0.1 on their own material, then turn hidden features back on one at a time, starting with what they ask for.
 - **A sample project**, so someone with no material at hand sees the loop in a minute.
 - **A notarized Mac app**, which installs its own updates and comes with a Homebrew cask, and an npm package for `npx qalam-studio`.
+- **Charts and tables in PDFs:** numbers inside a chart's picture can't be read today, and a PDF table's cells lose their columns.
 - **Interview recordings:** drop in audio or video and get an Arabic or English transcript to quote from.
 
 ## License

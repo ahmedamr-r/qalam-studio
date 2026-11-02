@@ -88,7 +88,7 @@ function SourceList() {
     <div className="flex flex-col gap-[12px] px-[12px] pt-[4px] pb-[16px]">
       {empty && (
         <p className="text-caption leading-[18px] text-fg-muted">
-          Bring in what customers said: interview notes, transcripts, support tickets, survey answers, a web page. Qalam AI picks out their words, code checks each quote against the source, and Qalam AI maps them to your tree for you to accept.
+          Bring in what you have: reports, analytics, research, interview notes, support tickets, a web page. Qalam AI picks out what each states, code checks the words against the source, and Qalam AI maps them to your tree for you to accept.
         </p>
       )}
       {(adding || empty) && (toOrg ? <AddToOrg product={space ?? null} /> : <AddSource />)}
@@ -432,7 +432,7 @@ export function AddSource({ onAdd, compact }: { onAdd?: (inputs: AddInput[]) => 
       )}
       {mode === "paste" && (
         <div className="flex flex-col gap-[6px]">
-          <textarea aria-label="Text to add" className={clsx(r.textarea, "text-body")} rows={compact ? 4 : 6} value={text} placeholder="Paste interview notes, a transcript, survey answers…" onChange={(e) => setText(e.target.value)} />
+          <textarea aria-label="Text to add" className={clsx(r.textarea, "text-body")} rows={compact ? 4 : 6} value={text} placeholder="Paste a report, interview notes, survey answers…" onChange={(e) => setText(e.target.value)} />
           <Button
             size="sm"
             className="self-start"
@@ -598,13 +598,13 @@ function SourceView({ source, focus }: { source: SourceRecord; focus?: string })
           if (t === "quotes") useSources.setState((s) => (s.open ? { open: { id: s.open.id } } : {}));
         }}
       />
-      {quoting && <p className="q-shimmer-text text-caption text-fg-muted">Qalam AI is picking out what customers said…</p>}
+      {quoting && <p className="q-shimmer-text text-caption text-fg-muted">Qalam AI is reading what it says…</p>}
       {tab === "quotes" ? (
         <div className="flex flex-col gap-[8px]">
           {quotes.length > 0 && <p className="text-micro text-fg-subtle">{dump ? "Your own words, by what they are to the tree. Drag one onto a card to rest it on them." : "Drag a quote onto a problem or a solution to back it."}</p>}
           {!quotes.length && !quoting && !awaitingRoles(source) && (
             <p className="text-caption text-fg-muted">
-              {dump ? "No pieces yet. Select words in the text to keep them yourself." : <>No quotes yet. {source.read.length ? "Qalam AI found no customer's words in what it read." : ""} Select words in the text to quote them yourself.</>}
+              {dump ? "No pieces yet. Select words in the text to keep them yourself." : <>No points yet. {source.read.length ? "Qalam AI found nothing to go on in what it read." : ""} Select words in the text to quote them yourself.</>}
             </p>
           )}
           {quotes.map((q) => (

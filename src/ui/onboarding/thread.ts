@@ -95,7 +95,7 @@ export function goalsSettled(i: Pick<ThreadInput, "door" | "find" | "know" | "pr
   return door === "know" ? i.know.phase === "added" : reads(door) ? i.find.session?.phase === "done" : door === "problems" ? !!i.problems.result?.quotes : false;
 }
 
-const DOOR_SAID: Record<Door, string> = { know: "I know our goals", find: "Help me find our goals", problems: "Problems we hear about", idea: "An idea to test" };
+const DOOR_SAID: Record<Door, string> = { know: "I know our goals", find: "Help me find our goals", problems: "I have documents or notes", idea: "An idea to test" };
 
 const ENGINE_LINE: Record<EngineState, string> = {
   looking: "Looking for an engine on this computer…",
@@ -266,12 +266,12 @@ export function threadOf(i: ThreadInput): ChatMessage[] {
 
   if (door === "problems") {
     const p = i.problems;
-    out.push(ai("problems:ask", text("Paste what customers tell you: support tickets, reviews, interview notes, or a link to them. I'll file it into problem pages and show which come up most.")));
+    out.push(ai("problems:ask", text("Bring what you have: analytics or reports, research, support tickets, interview notes, or a link to them. I'll say what each one is, file what it states into problem pages and show which are best backed.")));
     if (p.sent !== null) out.push(you("problems:said", ...said(p)));
     if (p.error && !i.busy) out.push(ai("problems:error", part("error", { text: p.error })));
-    // Nothing customers said: their own thinking, taken to the canvas as a goal or a problem in better words.
+    // Nothing to go on in it: their own thinking, taken to the canvas as a goal or a problem in better words.
     if (p.result && !p.result.quotes && !i.busy)
-      out.push(ai("problems:none", text("That reads as your own thinking, not what customers said. I can take it to the canvas as a goal or a problem, and suggest how to word it."), part("choices", { set: "take-as", solo })));
+      out.push(ai("problems:none", text("I found nothing in that to file, so it reads as your own thinking. I can take it to the canvas as a goal or a problem, and suggest how to word it."), part("choices", { set: "take-as", solo })));
   }
 
   if (door === "know") {
@@ -328,7 +328,7 @@ export function threadOf(i: ThreadInput): ChatMessage[] {
   if (goalsSettled(i) && door === "problems") {
     // Problems in, no goals yet: on to what to connect (there are no goals to pick as theirs).
     const r = i.problems.result!;
-    const said = `Filed ${r.quotes === 1 ? "1 thing customers said" : `${r.quotes} things customers said`} into ${r.pages === 1 ? "1 problem page" : `${r.pages} problem pages`}. Each page shows how strong it is and drafts solutions for it.`;
+    const said = `Filed ${r.quotes === 1 ? "1 point" : `${r.quotes} points`} into ${r.pages === 1 ? "1 problem page" : `${r.pages} problem pages`}. Each page shows how strong it is and drafts solutions for it.`;
     out.push(ai("goals:in", text(said), part("problems"), ...(i.first && i.step === "goals" ? [part("choices", { set: "goals-in", solo: true })] : [])));
     if (!i.first) out.push(ai("all-set", text("All set."), part("allSet")));
   } else if (goalsSettled(i) && door === "idea") {
@@ -409,7 +409,7 @@ export function askOf(i: ThreadInput): Ask {
   if (!door) return none("Pick a way in above", "door");
   if (door === "problems") {
     if (i.problems.result?.quotes) return none("", "problems:done");
-    return { kind: "problems", placeholder: "Paste tickets, reviews or interview notes, or a link to them", submit: "ctrlEnter", key: `problems:${i.problems.sent !== null ? "again" : "first"}`, sources: "customers" };
+    return { kind: "problems", placeholder: "Paste a report, tickets or interview notes, or a link to them", submit: "ctrlEnter", key: `problems:${i.problems.sent !== null ? "again" : "first"}`, sources: "customers" };
   }
   if (door === "know") {
     const k = i.know;

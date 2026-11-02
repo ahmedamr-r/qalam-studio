@@ -115,7 +115,7 @@ export function bearingMaterial(o: { tree: GoalTree; targets: string[]; problems
     const tid = `t${problems.size + 1}`;
     problems.set(tid, t);
     const e = o.evidence.get(t.id);
-    const ev = e ? `${e.quotes} quotes · ${e.sources} sources${e.against ? ` · ${e.against} against` : ""}` : "no customer words yet";
+    const ev = e ? `${e.quotes} quotes · ${e.sources} sources${e.against ? ` · ${e.against} against` : ""}` : "nothing outside the team yet";
     out.push(`<problem id="${tid}" title="${one(t.title).replace(/"/g, "'")}" evidence="${ev}">`);
     const all = [...t.lines.filter((l) => l.section === "know"), ...t.lines.filter((l) => l.section === "believe")];
     const place = (i: number) => o.near?.get(topicLineRef(t.id, all[i].id)) ?? Infinity;

@@ -166,7 +166,7 @@ export function jobMaterial(o: { tree: GoalTree; goal: Goal; gaps: Gap[]; proble
 
   out.push("", "The problems behind it, with what their pages say:");
   for (const p of o.problems.slice(0, JOB_LIMITS.problems)) {
-    out.push(`<problem title="${attr(p.title)}" bears="${p.bears}" evidence="${p.quotes ? `${p.quotes} quotes · ${p.sources} sources` : "no customer words yet"}">`);
+    out.push(`<problem title="${attr(p.title)}" bears="${p.bears}" evidence="${p.quotes ? `${p.quotes} quotes · ${p.sources} sources` : "nothing outside the team yet"}">`);
     if (p.how) out.push(`How it moves the goal: ${one(p.how)}`);
     const lines = o.topics.get(p.topic)?.lines ?? [];
     for (const l of [...lines.filter((l) => l.section === "know"), ...lines.filter((l) => l.section === "believe"), ...lines.filter((l) => l.section === "open")].slice(0, JOB_LIMITS.lines)) out.push(`- ${SECTION_HEADING[l.section]}: ${one(l.text)}`);

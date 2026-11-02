@@ -259,7 +259,7 @@ function ChoicesPart({ data }: { data: PartData }) {
             () => startOnCanvas("find-problem"),
           )}
           {chip("I have one in mind", () => startOnCanvas("write"))}
-          {chip("I have customers' words", () => pickDoor("problems"))}
+          {chip("I have documents or notes", () => pickDoor("problems"))}
           {lab("doors") && chip("I know our goals", () => pickDoor("know"))}
           {lab("doors") && chip("An idea to test", () => pickDoor("idea"))}
           {chip("Not now", () => startOnCanvas("later"))}
@@ -270,7 +270,7 @@ function ChoicesPart({ data }: { data: PartData }) {
         <ReplyChips>
           {chip("Take it as a goal", () => takeAs("goal"), true)}
           {chip("Take it as a problem", () => takeAs("problem"))}
-          {chip("Paste customers' words instead", () => pickDoor("problems"))}
+          {chip("Bring something else", () => pickDoor("problems"))}
         </ReplyChips>
       );
     case "competitors":
@@ -706,7 +706,7 @@ function AllSetPart() {
       {inbox && (
         <div className={clsx(qr.inset, "flex items-center gap-[10px] px-[12px] py-[8px]")}>
           <span className="flex min-w-0 flex-1 flex-col">
-            <span className="text-body text-fg">Drop interviews and notes in the inbox</span>
+            <span className="text-body text-fg">Drop reports, interviews and notes in the inbox</span>
             <span className="truncate font-mono text-micro text-fg-subtle">{inbox}</span>
           </span>
           <Button size="sm" variant="secondary" onClick={() => void navigator.clipboard.writeText(inbox).then(() => feedback("Copied the inbox's path", { kind: "success", id: "setup.inbox" }), () => {})}>

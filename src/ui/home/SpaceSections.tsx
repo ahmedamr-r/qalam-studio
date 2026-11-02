@@ -70,7 +70,7 @@ export function SpaceProblems({ space, needs, links, tree, sources, onFiled }: {
       ) : shown.length ? (
         <ProblemsList needs={shown} links={links} goals={tree.goals} limit={8} />
       ) : (
-        <p className="text-caption text-fg-muted">{scoped.length ? "None here." : "No problems yet. Bring what customers said to the chat (or Sources on the canvas), and Qalam AI files it into one page per problem."}</p>
+        <p className="text-caption text-fg-muted">{scoped.length ? "None here." : "No problems yet. Bring what you have to the chat (or Sources on the canvas): reports, research, interviews, tickets. Qalam AI files what it states into one page per problem."}</p>
       )}
     </section>
   );

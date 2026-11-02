@@ -254,7 +254,7 @@ describe("the other ways in", () => {
   it("files what customers said through the problems door, then shows what comes up most and moves on to connecting", () => {
     const asking = base({ door: "problems" });
     expect(ids(threadOf(asking)).slice(-2)).toEqual(["goals:door", "problems:ask"]);
-    expect(threadOf(asking).find((x) => x.id === "goals:door")?.parts).toEqual([{ type: "text", text: "Problems we hear about" }]);
+    expect(threadOf(asking).find((x) => x.id === "goals:door")?.parts).toEqual([{ type: "text", text: "I have documents or notes" }]);
     expect(askOf(asking)).toMatchObject({ kind: "problems", submit: "ctrlEnter" });
     const filed = base({ door: "problems", problems: { sent: "Tickets…", result: { pages: 3, quotes: 12 }, error: null } });
     const m = threadOf(filed);
@@ -274,7 +274,7 @@ describe("the other ways in", () => {
   it("says when nothing customers said was in it, and offers to take it to the canvas as a goal or a problem", () => {
     const m = threadOf(base({ door: "problems", problems: { sent: "I want to increase the number of used cooking oil collected from customers", result: { pages: 0, quotes: 0 }, error: null } }));
     expect(m.at(-1)?.id).toBe("problems:none");
-    expect(m.at(-1)?.parts[0]).toEqual({ type: "text", text: "That reads as your own thinking, not what customers said. I can take it to the canvas as a goal or a problem, and suggest how to word it." });
+    expect(m.at(-1)?.parts[0]).toEqual({ type: "text", text: "I found nothing in that to file, so it reads as your own thinking. I can take it to the canvas as a goal or a problem, and suggest how to word it." });
     expect(choices(m.at(-1))).toEqual(["take-as"]);
   });
 
