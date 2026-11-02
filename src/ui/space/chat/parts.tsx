@@ -34,7 +34,7 @@ import { r } from "../../recipes";
 import { useTopics } from "../../topics/list";
 import { useWords } from "../../frame/store";
 import { show } from "../links";
-import { anotherFile, changeDocBasis, dropTurn, leaveFile, placeStatement, retake, takeAsBasis, turnOf, useCanvasChat } from "./store";
+import { anotherFile, changeDocBasis, dropTurn, leaveFile, placeStatement, retake, takeAsBasis, turnOf, takeGoalNumber, useCanvasChat } from "./store";
 import { titleFrom } from "@/space/route";
 
 /*
@@ -745,6 +745,18 @@ function TakenPart({ data }: { data: PartData }) {
               {d.about || `“${d.title}”`}
             </p>
             <p className="text-caption text-fg-muted">{line || "I kept it, but found nothing in it to go on."}</p>
+            {d.numbers?.map((n) => (
+              <p key={n.goal} className="flex flex-wrap items-center gap-x-[6px] text-caption text-fg-muted">
+                It says {n.value.toLocaleString()} for “{n.title}”.
+                {n.used ? (
+                  <span className="text-fg-subtle">Used.</span>
+                ) : (
+                  <button type="button" className="text-fg underline decoration-fg/30 underline-offset-2" onClick={() => void takeGoalNumber(t.id, d, n)}>
+                    Use it
+                  </button>
+                )}
+              </p>
+            ))}
             <BasisSelect label={d.basis ? `You said: ${BASIS_LABEL[d.basis]}. Change it` : main ? `Not ${BASIS_LABEL[main].toLowerCase()}? Change it` : "Say what it is"} value="" options={BASES} onPick={(b) => void changeDocBasis(t.id, d.source, b)} />
           </li>
         );

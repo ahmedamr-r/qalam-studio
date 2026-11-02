@@ -161,3 +161,20 @@ describe("what a card rests on, with more than customers' words", () => {
     expect(backingLine(facts({ read: 1 }))).toBe("Only read elsewhere: 1");
   });
 });
+
+describe("a goal's number from a document", () => {
+  const text = "Checkout, Q3. Step: Payment · Users: 4,200 · Left: 41%. We think payment is confusing.";
+  const chunks = [{ ref: "c1", sourceId: "a", start: 0, text, kind: "text" as const }];
+  const raw = (goalNumbers: unknown[], basis = "measured") => ({ quotes: [{ id: "q1", chunkId: "c1", text: "Step: Payment · Users: 4,200 · Left: 41%.", kind: "finding", basis }], goalNumbers });
+  const got = (r: unknown) => sanitizeExtract(r, chunks, new Map(), 1, new Map([["g1", "goal-a"]])).goalNumbers;
+
+  it("keeps it only for a goal it was sent, on a measured point that has that number", () => {
+    expect(got(raw([{ goal: "g1", value: 4200, quoteId: "q1" }]))).toMatchObject([{ sourceId: "a", number: { goal: "goal-a", value: 4200 } }]);
+    expect(got(raw([{ goal: "g1", value: 41, quoteId: "q1" }]))).toHaveLength(1);
+    expect(got(raw([{ goal: "g1", value: 9999, quoteId: "q1" }]))).toEqual([]);
+    expect(got(raw([{ goal: "g9", value: 4200, quoteId: "q1" }]))).toEqual([]);
+    expect(got(raw([{ goal: "g1", value: 4200, quoteId: "q9" }]))).toEqual([]);
+    expect(got(raw([{ goal: "g1", value: 4200, quoteId: "q1" }], "read"))).toEqual([]);
+    expect(got(raw([{ goal: "g1", value: 4200, quoteId: "q1" }, { goal: "g1", value: 41, quoteId: "q1" }]))).toHaveLength(1);
+  });
+});

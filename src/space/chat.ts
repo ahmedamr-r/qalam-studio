@@ -28,6 +28,8 @@ export interface TakenDoc {
   about?: string;
   points: BasisCounts;
   basis?: Basis;
+  /** Numbers it measured for goals, each `used` once they took it. */
+  numbers?: { goal: string; title: string; value: number; used?: true }[];
 }
 
 /** A problem page material went into. */

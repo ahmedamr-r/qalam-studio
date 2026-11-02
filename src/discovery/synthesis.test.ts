@@ -89,8 +89,8 @@ describe("sanitizeExtract", () => {
   });
 
   it("survives output that isn't what was asked for", () => {
-    expect(sanitizeExtract(null, chunks)).toEqual({ quotes: [], needs: [], about: [] });
-    expect(sanitizeExtract({ quotes: "lots", needs: [{ quoteIds: "q1" }] }, chunks)).toEqual({ quotes: [], needs: [], about: [] });
+    expect(sanitizeExtract(null, chunks)).toEqual({ quotes: [], needs: [], about: [], goalNumbers: [] });
+    expect(sanitizeExtract({ quotes: "lots", needs: [{ quoteIds: "q1" }] }, chunks)).toEqual({ quotes: [], needs: [], about: [], goalNumbers: [] });
   });
 });
 

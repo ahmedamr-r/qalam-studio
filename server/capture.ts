@@ -154,6 +154,9 @@ async function readIn(store: OrgStore, deps: FilingDeps, s: SourceRecord, o: Cap
   if (!calls.length) return s;
   const product = deps.productLine(s.product ?? null).slice(0, 2000);
   const org = await deps.pack({ query: [product, s.title].join("\n"), product: s.product ?? undefined, budget: 1200, types: ["need", "card", "page"] });
+  // The goals a measured point could give a number to, under ids the call uses.
+  const goals = (await store.getGoals()).goals.filter((g) => g.status === "active" && g.metric?.name).slice(0, 12);
+  const goalIds = new Map(goals.map((g, i) => [`g${i + 1}`, g.id]));
   let cur = s;
   for (const [i, call] of calls.entries()) {
     if (o.signal?.aborted) break;
@@ -164,15 +167,17 @@ async function readIn(store: OrgStore, deps: FilingDeps, s: SourceRecord, o: Cap
       product,
       chunks: chunks.map((c) => ({ id: c.ref, source: cur.title.slice(0, 300), kind: SOURCE_KIND_LABEL[cur.kind], text: c.text, ...(cur.transcript ? { speakers: speakerNote(cur.transcript) } : {}) })),
       ...(org ? { context: org.context } : {}),
+      ...(goals.length ? { goals: goals.map((g, i) => ({ id: `g${i + 1}`, title: g.title.slice(0, 300), metric: g.metric!.name.slice(0, 200) })) } : {}),
     };
     const { data } = await structured<unknown>(extractCall(body));
-    const got = finishExtracted(sanitizeExtract(data, chunks, new Map([[cur.id, cur.quotes.map((q) => q.span)]])), () => cur);
+    const got = finishExtracted(sanitizeExtract(data, chunks, new Map([[cur.id, cur.quotes.map((q) => q.span)]]), Date.now(), goalIds), () => cur);
     cur = {
       ...cur,
       read: [...new Set([...cur.read, ...call.map((c) => c.index)])],
       quotes: [...cur.quotes, ...got.quotes.map((q) => q.quote)].sort((a, b) => a.span[0] - b.span[0]),
       needs: [...cur.needs, ...got.needs.map((n) => n.need)],
       ...(cur.about ? {} : { about: got.about[0]?.text }),
+      ...(got.goalNumbers.length ? { goalNumbers: [...(cur.goalNumbers ?? []).filter((n) => !got.goalNumbers.some((x) => x.number.goal === n.goal)), ...got.goalNumbers.map((n) => n.number)] } : {}),
     };
     await store.putSource(cur);
   }
@@ -274,7 +279,7 @@ export async function captureSource(store: OrgStore, ing: Ingested, o: CaptureOp
   };
   emit(`Keeping “${s.title}” in the ${wordsFor(store.info.shape).org}`);
   await store.putSource(s);
-  const result = (filed?: FilingTotals, placed: CaptureResult["placed"] = []): CaptureResult => ({ sourceId: s.id, title: s.title, quotes: s.quotes.length, needs: s.needs.length, ...(s.about ? { about: s.about } : {}), points: basisCounts(s), ...(filed ? { filed } : {}), placed });
+  const result = (filed?: FilingTotals, placed: CaptureResult["placed"] = []): CaptureResult => ({ sourceId: s.id, title: s.title, quotes: s.quotes.length, needs: s.needs.length, ...(s.about ? { about: s.about } : {}), points: basisCounts(s), ...(s.goalNumbers?.length ? { goalNumbers: s.goalNumbers } : {}), ...(filed ? { filed } : {}), placed });
   // Their own thinking: read as what they believe, never as what customers said.
   if (o.own) return { ...result(), ...(await readAsOwn(store, s.id, emit)) };
   if (awaitingRoles(s)) return { ...result(), waiting: "roles" };

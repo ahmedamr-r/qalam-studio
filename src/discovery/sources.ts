@@ -78,6 +78,13 @@ export interface TextBlock {
   kind: "h1" | "h2" | "h3" | "li";
 }
 
+/** A number a measured point states for a goal (by its id in goals.md). */
+export interface GoalNumber {
+  goal: string;
+  value: number;
+  quote: string;
+}
+
 export interface SourceRecord {
   v: 1;
   id: string;
@@ -113,6 +120,8 @@ export interface SourceRecord {
   needs: SourceNeed[];
   /** Quotes the organization's topic pages have seen (Qalam AI filed them; src/hub/topics.ts). */
   filed?: string[];
+  /** A goal's number this source measured, read from a point of it, for the person to use or not. */
+  goalNumbers?: GoalNumber[];
   /** A brain dump: what Qalam AI made of it, the questions asked and answered, its proposals. */
   dump?: DumpSession;
   /** A brain dump about the organization, setting it up: its About and products, line by line (src/org/setup.ts). */

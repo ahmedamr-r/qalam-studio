@@ -4,7 +4,7 @@ import { aiStatus } from "@/ai/client";
 import { studio } from "@/doc/store";
 import { isOstCard } from "@/doc/board";
 import { KIND_LABEL } from "@/discovery/kinds";
-import { goalsNow } from "@/goals/client";
+import { changeGoal, goalsNow } from "@/goals/client";
 import { goalById } from "@/goals/tree";
 import { askOrganization } from "@/org/ask";
 import { captureIngested, setSourceBasis } from "@/org/capture";
@@ -432,7 +432,7 @@ async function takeIn(at: string | null, said: string, docs: readonly SentDoc[])
       }
       sources.push(r.sourceId);
       quotes += r.quotes;
-      taken.push({ source: r.sourceId, title: r.title, ...(r.about ? { about: r.about } : {}), points: r.points ?? {}, ...(p.basis ? { basis: p.basis } : {}) });
+      taken.push({ source: r.sourceId, title: r.title, ...(r.about ? { about: r.about } : {}), points: r.points ?? {}, ...(p.basis ? { basis: p.basis } : {}), ...numbersOf(r) });
       for (const f of r.filed?.pages ?? []) if (f.kind === "need") pages.set(f.id, { id: f.id, title: f.title });
       change((c) => withJob(c, id, (j) => (j.kind === "take" ? { ...j, sources: [...sources], pages: [...pages.values()], quotes, docs: [...taken] } : j)));
     }
@@ -445,6 +445,23 @@ async function takeIn(at: string | null, said: string, docs: readonly SentDoc[])
   }
   // What reads as their own thinking gets a brain dump's conversation: in this turn when it's all there was.
   for (const [i, d] of held.entries()) void dumpIt(i === 0 && !taken.length ? id : null, i === 0 && !taken.length ? said : `“${d.title}”`, [d], true);
+}
+
+/** The numbers a document measured for goals, by the goals' words (a goal since gone is left out). */
+function numbersOf(r: { goalNumbers?: { goal: string; value: number }[] }): { numbers?: NonNullable<TakenDoc["numbers"]> } {
+  const numbers = (r.goalNumbers ?? []).flatMap((n) => {
+    const g = goalById(goalsNow(), n.goal);
+    return g ? [{ goal: n.goal, title: g.title, value: n.value }] : [];
+  });
+  return numbers.length ? { numbers } : {};
+}
+
+/** A number a document measured, taken as its goal's: as a read from a tool is, so it isn't a decision. */
+export async function takeGoalNumber(turn: string, doc: TakenDoc, n: NonNullable<TakenDoc["numbers"]>[number]) {
+  const g = goalById(goalsNow(), n.goal);
+  if (!g?.metric) return;
+  await changeGoal(n.goal, { metric: { ...g.metric, current: n.value, source: { connector: "document", ref: doc.source, label: doc.title }, readAt: Date.now() } });
+  change((c) => withJob(c, turn, (j) => (j.kind === "take" && j.docs ? { ...j, docs: j.docs.map((d) => (d.source === doc.source ? { ...d, numbers: d.numbers?.map((x) => (x.goal === n.goal ? { ...x, used: true as const } : x)) } : d)) } : j)));
 }
 
 /** What a document they took in rests on, as they say: its points go by that, and the page lines citing them move. */

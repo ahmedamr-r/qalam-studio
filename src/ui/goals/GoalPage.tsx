@@ -472,7 +472,7 @@ function NumberBlock({ goal }: { goal: Goal }) {
         {field("Target", draft.target === null ? "" : String(draft.target), (v) => save({ ...draft, target: num(v) }))}
       </div>
       <div className="grid grid-cols-6 gap-[10px] @max-[560px]:grid-cols-3">{field("By when", draft.timeframe ?? "", (v) => save({ ...draft, ...(v.trim() ? { timeframe: v.trim() } : { timeframe: undefined }) }), true)}</div>
-      {m?.source?.label && <span className="text-micro text-fg-subtle">Now is read from {m.source.connector === "posthog" ? "PostHog" : m.source.connector}: {m.source.label}</span>}
+      {m?.source?.label && <span className="text-micro text-fg-subtle">Now is read from {m.source.connector === "posthog" ? "PostHog" : m.source.connector === "document" ? "a document" : m.source.connector}: {m.source.label}</span>}
     </section>
   );
 }

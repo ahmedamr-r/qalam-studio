@@ -1,7 +1,8 @@
 import { newId } from "@/doc/factory";
 import { quoteFinder } from "./quotes";
 import { heldBasis, isBasis } from "./basis";
-import { QUOTE_KINDS, pageAt, quotable, type QuoteKind, type SourceKind, type SourceNeed, type SourceQuote } from "./sources";
+import { valuesIn } from "@/hub/topics";
+import { QUOTE_KINDS, pageAt, quotable, type GoalNumber, type QuoteKind, type SourceKind, type SourceNeed, type SourceQuote } from "./sources";
 import { newCard } from "./ops";
 import { canHold } from "./kinds";
 import type { Proposal, QuoteRef } from "./proposals";
@@ -52,19 +53,21 @@ export interface Extracted {
   needs: { sourceId: string; need: SourceNeed }[];
   /** What each document is, in a line, the first the call says of it. */
   about: { sourceId: string; text: string }[];
+  /** A number a measured point states for a goal the call was sent. */
+  goalNumbers: { sourceId: string; number: GoalNumber }[];
 }
 
 /**
  * The quotes and needs one extract call returned, kept only where code finds them. `taken` holds
  * the spans each source already has quotes at (an overlapping quote isn't kept twice).
  */
-export function sanitizeExtract(raw: unknown, chunks: CallChunk[], taken: Map<string, [number, number][]> = new Map(), now = Date.now()): Extracted {
+export function sanitizeExtract(raw: unknown, chunks: CallChunk[], taken: Map<string, [number, number][]> = new Map(), now = Date.now(), goals: ReadonlyMap<string, string> = new Map()): Extracted {
   const r = rec(raw);
   const byRef = new Map(chunks.map((c) => [c.ref, { c, find: quoteFinder(c.text) }]));
   const spans = new Map([...taken].map(([k, v]) => [k, [...v]]));
   const perChunk = new Map<string, number>();
   const kept = new Map<string, { sourceId: string; id: string }>();
-  const out: Extracted = { quotes: [], needs: [], about: [] };
+  const out: Extracted = { quotes: [], needs: [], about: [], goalNumbers: [] };
 
   for (const a of items(r.about)) {
     const ch = byRef.get(typeof a.chunkId === "string" ? a.chunkId : "");
@@ -106,6 +109,15 @@ export function sanitizeExtract(raw: unknown, chunks: CallChunk[], taken: Map<st
     const ref = clip(q.id, 24);
     if (ref && !kept.has(ref)) kept.set(ref, { sourceId: ch.c.sourceId, id: quote.id });
     out.quotes.push({ sourceId: ch.c.sourceId, quote });
+  }
+
+  // A goal's number: only a goal it was sent, on a measured point, and only where the point has that number.
+  for (const n of items(r.goalNumbers)) {
+    const goal = goals.get(typeof n.goal === "string" ? n.goal : "");
+    const at = kept.get(clip(n.quoteId, 24));
+    const q = at && out.quotes.find((x) => x.quote.id === at.id);
+    if (!goal || !q || q.quote.basis !== "measured" || typeof n.value !== "number" || !valuesIn(q.quote.text).includes(n.value) || out.goalNumbers.some((x) => x.number.goal === goal)) continue;
+    out.goalNumbers.push({ sourceId: q.sourceId, number: { goal, value: n.value, quote: q.quote.id } });
   }
 
   // Needs: each with the kept quotes that show it, filed under the source(s) the quotes are from.
