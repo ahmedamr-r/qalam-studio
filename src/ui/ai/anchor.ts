@@ -19,6 +19,18 @@ export function toScreenBox(b: Box, cam: Cam): Box {
 }
 
 /**
+ * The camera that brings back a box the viewport's right side cuts off (a panel opened beside the
+ * canvas), moving no further than its left edge; null when it's in, or can't come in any further.
+ */
+export function cameraKeeping(b: Box, cam: Cam, width: number, margin = 24): Cam | null {
+  const s = toScreenBox(b, cam);
+  const over = s.x + s.w + margin - width;
+  if (over <= 0) return null;
+  const by = Math.min(over, s.x - margin);
+  return by > 0 ? { ...cam, x: cam.x + by / cam.zoom } : null;
+}
+
+/**
  * Put a fixed-size card beside `box`: right of it if it fits, else left, top-aligned with it,
  * and always clamped inside the viewport so it stays reachable when the screens are off-screen.
  */

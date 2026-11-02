@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import clsx from "clsx";
-import { ChevronRight, Frame, Palette, Plus } from "lucide-react";
+import { ChevronRight, CircleDot, CircleEllipsis, Eye, Frame, ListChecks, Palette, Plus, Users, type LucideIcon } from "lucide-react";
 import { changeGoal, type GoalsNow } from "@/goals/client";
 import type { Bearing } from "@/goals/bearings";
 import type { SourceRecord } from "@/discovery/sources";
@@ -21,16 +21,45 @@ import { newTopic } from "../space/new";
 import { lab } from "@/lab";
 
 /*
- * What a space's panel shows with nothing picked, besides Ask and Needs a look (./Home.tsx): the
- * problems customers raise, ranked by what backs them (each opening its page in the panel), the
- * segment and product pages, goals that feed no goal yet, and the lab's own parts (design work,
- * what people see, what the code does) where they're on.
+ * What a space's panel can show with nothing picked, one at a time, each opened by its button over
+ * the canvas (./Home.tsx), besides Needs a look: the problems customers raise, ranked by what backs
+ * them (each opening its page in the panel), the segment and product pages, goals that feed no goal
+ * yet, and the lab's own parts (design work, what people see, what the code does) where they're on.
  */
 
 const ICON = { size: 14, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 
+export type SpaceSection = "setup" | "problems" | "needs" | "pages" | "more";
+
+const SECTION_ICON: Record<SpaceSection, LucideIcon> = { setup: ListChecks, problems: CircleDot, needs: Eye, pages: Users, more: CircleEllipsis };
+
+export interface SectionButton {
+  id: SpaceSection;
+  label: string;
+  count?: number;
+}
+
+/** The panel's sections as buttons on the canvas, so it stays closed until one's asked for. */
+export function SectionButtons({ buttons, open, onPick, children }: { buttons: SectionButton[]; open: SpaceSection | null; onPick: (s: SpaceSection) => void; /** Before them: what can't wait to be opened. */ children?: ReactNode }) {
+  return (
+    <div className="absolute top-[12px] right-[12px] z-[8] flex max-w-[calc(100%-24px)] flex-wrap items-center justify-end gap-[2px] rounded-lg bg-raised p-[2px] shadow-floating">
+      {children}
+      {buttons.map((b) => {
+        const Icon = SECTION_ICON[b.id];
+        return (
+          <button key={b.id} type="button" aria-pressed={open === b.id} onClick={() => onPick(b.id)} className={clsx("q-item flex h-[24px] items-center gap-[6px] rounded-md px-[8px] text-caption whitespace-nowrap", open === b.id ? "bg-selection-subtle text-selection-label" : "text-fg-muted hover:bg-hover hover:text-fg")}>
+            <Icon size={13} absoluteStrokeWidth strokeWidth={1.5} />
+            {b.label}
+            {!!b.count && <span className={clsx("tnum", open !== b.id && "text-fg-subtle")}>{b.count}</span>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /** The space's problems, the best-backed first, filtered by the goal they bear on; what customers said that no page has taken in waits on top. */
-export function SpaceProblems({ space, needs, links, tree, sources, onFiled }: { space: Space; needs: NeedsNow | null; links: Bearing[]; tree: GoalsNow; sources: SourceRecord[]; onFiled: () => void }) {
+export function SpaceProblems({ space, needs, links, tree, sources, onFiled, close }: { space: Space; needs: NeedsNow | null; links: Bearing[]; tree: GoalsNow; sources: SourceRecord[]; onFiled: () => void; close?: ReactNode }) {
   const [goal, setGoal] = useState("all");
   const scoped = (needs?.needs ?? []).filter((n) => inSpace(n.products, space));
   const shown = scoped.filter((n) => {
@@ -45,10 +74,13 @@ export function SpaceProblems({ space, needs, links, tree, sources, onFiled }: {
           Problems
           {needs && scoped.length > 0 && <span className="ml-[6px] text-caption font-normal text-fg-subtle tnum">{scoped.length}</span>}
         </h2>
-        <Button size="sm" variant="ghost" onClick={() => void newTopic("need", space)}>
-          <Plus {...ICON} className="mr-[4px]" />
-          New
-        </Button>
+        <span className="flex shrink-0 items-center gap-[4px]">
+          <Button size="sm" variant="ghost" onClick={() => void newTopic("need", space)}>
+            <Plus {...ICON} className="mr-[4px]" />
+            New
+          </Button>
+          {close}
+        </span>
       </div>
       {!!tree.goals.length && scoped.length > 0 && (
         <Select
@@ -77,7 +109,7 @@ export function SpaceProblems({ space, needs, links, tree, sources, onFiled }: {
 }
 
 /** The segment and product pages: who the customers are, and what each product does for them. */
-export function SpacePages({ space, topics, sources, products, onFiled }: { space: Space; topics: TopicInfo[] | null; sources: SourceRecord[]; products: Product[]; onFiled: () => void }) {
+export function SpacePages({ space, topics, sources, products, onFiled, close }: { space: Space; topics: TopicInfo[] | null; sources: SourceRecord[]; products: Product[]; onFiled: () => void; close?: ReactNode }) {
   const pages = topics?.filter((t) => t.kind !== "need" && inSpace(t.products, space)) ?? [];
   if (!pages.length) return null;
   return (
@@ -86,10 +118,13 @@ export function SpacePages({ space, topics, sources, products, onFiled }: { spac
         <h2 id="space-pages" className="text-title font-medium">
           Who and what
         </h2>
-        <Button size="sm" variant="ghost" onClick={() => void newTopic("segment", space)}>
-          <Plus {...ICON} className="mr-[4px]" />
-          Segment
-        </Button>
+        <span className="flex shrink-0 items-center gap-[4px]">
+          <Button size="sm" variant="ghost" onClick={() => void newTopic("segment", space)}>
+            <Plus {...ICON} className="mr-[4px]" />
+            Segment
+          </Button>
+          {close}
+        </span>
       </div>
       <TopicsList topics={pages} sources={sources.filter((s) => inSpace(s.product, space))} products={products} onFiled={onFiled} banner={false} />
     </section>

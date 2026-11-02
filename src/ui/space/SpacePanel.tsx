@@ -35,7 +35,7 @@ const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
 export function SpaceCardPanel({ ids, things, tree, jobs, needs }: { ids: string[]; things: ReadonlyMap<string, SpaceThing>; tree: GoalsNow; jobs: Job[]; needs: RankedNeed[] | null }) {
   const thing = ids.length === 1 ? things.get(ids[0]) : undefined;
   const close = (
-    <IconBtn size="sm" label="Back to the space" onClick={() => studio().select([])}>
+    <IconBtn size="sm" label="Close" onClick={() => studio().select([])}>
       <X size={14} absoluteStrokeWidth strokeWidth={1.5} />
     </IconBtn>
   );

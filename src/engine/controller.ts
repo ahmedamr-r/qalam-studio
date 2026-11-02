@@ -1373,7 +1373,7 @@ export class Controller {
   }
 
   /** Where the camera is heading (mid-glide) or is: repeated zoom keys build on the target, not the frame in flight. */
-  private get cameraGoal(): Camera {
+  get cameraGoal(): Camera {
     const cam = studio().camera;
     return this.panAnim && this.panGoal && cam === this.panLast ? this.panGoal : cam;
   }

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { PanelRight, X } from "lucide-react";
+import { X } from "lucide-react";
 import type { Bearing } from "@/goals/bearings";
 import type { Notice } from "@/hub/checks";
 import clsx from "clsx";
@@ -15,7 +15,7 @@ import { importLegacy } from "@/projects/library";
 import type { SpaceInputs } from "@/space/session";
 import { useSpaceView } from "@/space/view";
 import { cardForPage } from "@/space/pages";
-import { Button, IconBtn } from "../controls";
+import { Button, IconBtn, Tip } from "../controls";
 import LaneReader, { useReaderWidth } from "../discovery/LaneReader";
 import CordPicker from "../discovery/CordPicker";
 import QuotePicker from "../discovery/QuotePicker";
@@ -30,7 +30,7 @@ import { useMoves } from "../nav";
 import { SpaceConflictBanner } from "../space/ConflictBanner";
 import { r } from "../recipes";
 import { NeedsALook } from "../org/NeedsALook";
-import { LabSections, SpacePages, SpaceProblems, UnplacedGoals } from "./SpaceSections";
+import { LabSections, SectionButtons, SpacePages, SpaceProblems, UnplacedGoals, type SectionButton, type SpaceSection } from "./SpaceSections";
 import { addMaterial, writeCard } from "../space/new";
 import { CanvasChat, ChatPill } from "../space/chat/CanvasChat";
 import { findWith } from "../space/chat/store";
@@ -46,7 +46,7 @@ import { useBearings } from "../goals/useBearings";
 import { useJobs } from "../goals/useJobs";
 import { inSpace } from "../frame/spaces";
 import { useSpace } from "../frame/useSpace";
-import { glideToLayer, onCanvasReady } from "../discovery/canvas";
+import { glideToLayer, keepInView, onCanvasReady } from "../discovery/canvas";
 import { SpaceCanvas } from "../space/SpaceCanvas";
 import { useWide, WIDE } from "../chat/Panels";
 import { useNeeds } from "./useNeeds";
@@ -58,12 +58,13 @@ import { ContinueSetup, useFirstRunLeft } from "./ContinueSetup";
  * A space's home (the organization's, or with `product` that product's): its canvas, every goal
  * in the space with its board's problems, solutions and tests under it (src/space), as the biggest
  * thing on the page, where the trees are worked on in place; Qalam AI's chat on its left
- * (../space/chat/), and a panel on its right. With nothing picked the panel picks up the first run
- * while it isn't finished here (./ContinueSetup.tsx) and shows what the space holds: its problems,
- * what needs a look under the goal it bears on, its pages. A card picked on the canvas takes the
- * panel over, and a goal's or a problem's page opens in it (?goal=, ?page=; picking a card lies
- * over it, and letting the card go shows it again). Everything is saved in the organization's
- * folder, each card on its own board.
+ * (../space/chat/). A panel on its right shows only when something asks for it, so the canvas has
+ * the room otherwise: a card picked on the canvas, a goal's or a problem's page (?goal=, ?page=;
+ * picking a card lies over it, and letting the card go shows it again), a source being read, or one
+ * of the buttons over the canvas (./SpaceSections.tsx), each a section of what the space holds: the
+ * first run while it isn't finished here (./ContinueSetup.tsx), its problems, what needs a look
+ * under the goal it bears on, its pages. Everything is saved in the organization's folder, each
+ * card on its own board.
  */
 
 const NONE: Bearing[] = [];
@@ -75,6 +76,9 @@ const TopicView = lazy(() => import("../topics/TopicPage"));
 const PAGE_W = 480;
 /** Below this the chat lies over the canvas instead of beside it. */
 const CHAT_DOCKS = 900;
+
+/** The panel's section an address asks for as the canvas opens (the first run's Problems door). */
+const askedSection = (): SpaceSection | null => (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("panel") === "problems" ? "problems" : null);
 
 export default function Home({ product: productId = null }: { product?: string | null }) {
   const { projects, legacy, sources, refresh } = useOrgData();
@@ -113,7 +117,6 @@ export default function Home({ product: productId = null }: { product?: string |
   const cordPick = useDiscovery((s) => !!s.cordPick);
   const quotePick = useDiscovery((s) => !!s.quotePick);
   const readerW = useReaderWidth();
-  const [drawer, setDrawer] = useState(false);
   const aside = useRef<HTMLElement>(null);
 
   // A page opened (or asked for again): it takes the panel, its card comes into view without being picked.
@@ -123,25 +126,75 @@ export default function Home({ product: productId = null }: { product?: string |
   useEffect(() => {
     if (!open) return;
     studio().select([]);
-    setDrawer(true);
     const card = cardForPage(open.ref, useSpaceView.getState().things);
     if (card) showCard(card, { select: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- per page opened, and per move to it
   }, [openKey, moves]);
-  useEffect(() => {
-    if (aside.current) aside.current.scrollTop = 0;
-  }, [openKey]);
   const showsPage = !!open && !cordPick && !quotePick && !reading && !picked;
 
+  // The panel's sections, as buttons over the canvas; none is open until one's clicked.
+  const [asked, setAsked] = useState<SpaceSection | null>(askedSection);
+  const [toMove, setToMove] = useState<Project[]>([]);
+  useEffect(() => void browserProjectsToMove().then(setToMove, () => {}), []);
+  const pendingSetup = sources.filter((s) => s.setup && s.setup.phase !== "done").sort((a, b) => b.addedAt - a.addedAt)[0];
+  const blank = loaded && !products.length && !about.audience.trim() && !about.context.trim() && !goalCount && !about.segments.length;
+  // Starting from a brain dump is one of the doors v0.1 hides (src/lab.ts); one half done still picks up.
+  const setupNote = left === null && !!org && (!!pendingSetup || (blank && lab("doors")));
+  const unplaced = goalTree.north ? goalTree.goals.filter((g) => !g.parent && g.id !== goalTree.north && inSpace(g.product, space)).length : 0;
+  const buttons: SectionButton[] = [
+    ...(org && left ? [{ id: "setup" as const, label: `Setup · ${left.done} of ${left.of}` }] : setupNote ? [{ id: "setup" as const, label: "Setup" }] : []),
+    { id: "problems", label: "Problems", count: (needs?.needs ?? []).filter((n) => inSpace(n.products, space)).length },
+    { id: "needs", label: "Needs a look", count: scoped.length + (unplaced ? 1 : 0) + (toMove.length ? 1 : 0) + (legacy ? 1 : 0) },
+    ...(topics?.some((t) => t.kind !== "need" && inSpace(t.products, space)) ? [{ id: "pages" as const, label: "Who and what" }] : []),
+    ...(lab("design") || lab("seen") || lab("code") ? [{ id: "more" as const, label: "More" }] : []),
+  ];
+  const section = buttons.some((b) => b.id === asked) ? asked : null;
+  const covered = !!(picked || reading || cordPick || quotePick || open);
+  const panelOpen = covered || !!section;
+  // A section over what's on the panel: that goes (and shows the section); again on the one showing closes it.
+  const pickSection = (s: SpaceSection) => {
+    setAsked(section === s && !covered ? null : s);
+    if (!covered) return;
+    studio().select([]);
+    useDiscovery.setState({ reading: null, cordPick: null, quotePick: null });
+    if (open) closePage();
+  };
+  const closeSection = (
+    <IconBtn size="sm" label="Close the panel" onClick={() => setAsked(null)}>
+      <X size={14} absoluteStrokeWidth strokeWidth={1.5} />
+    </IconBtn>
+  );
   useEffect(() => {
-    if (picked || reading || cordPick || quotePick) setDrawer(true);
-  }, [picked, reading, cordPick, quotePick]);
+    if (aside.current) aside.current.scrollTop = 0;
+  }, [openKey, section]);
+
+  // The panel opening takes the canvas's right side, which may have held the card just picked: it
+  // comes back once the press is let go, so a card being dragged doesn't move under the pointer.
+  const one = picked?.length === 1 ? picked[0] : null;
+  const pressed = useRef(false);
+  useEffect(() => {
+    const up = () => void (pressed.current = false);
+    window.addEventListener("pointerup", up, true);
+    window.addEventListener("pointercancel", up, true);
+    return () => {
+      window.removeEventListener("pointerup", up, true);
+      window.removeEventListener("pointercancel", up, true);
+    };
+  }, []);
+  useEffect(() => {
+    if (!one) return;
+    if (!pressed.current) return keepInView(one);
+    const letGo = () => keepInView(one);
+    window.addEventListener("pointerup", letGo, { once: true });
+    return () => window.removeEventListener("pointerup", letGo);
+  }, [one]);
+
   // A narrow window's panel lies over the canvas: what's drawn beside a card keeps out of it.
   const wide = useWide(WIDE);
   const chatOpen = useFrame((s) => s.chat);
   const chatDocks = useWide(CHAT_DOCKS);
   const panelW = reading && readerW ? readerW : showsPage ? PAGE_W : 380;
-  const over = !wide && (drawer || !!reading) ? panelW : 0;
+  const over = !wide && panelOpen ? panelW : 0;
   useEffect(() => useDiscovery.setState({ inset: over }), [over]);
   useEffect(() => () => useDiscovery.setState({ inset: 0 }), []);
 
@@ -161,102 +214,119 @@ export default function Home({ product: productId = null }: { product?: string |
     <PageFrame place="home" space={space} fill>
       <div className="relative flex h-full min-h-0">
         {chatOpen && <CanvasChat space={space} over={!chatDocks} />}
-        <div className="relative min-w-0 flex-1">
+        <div
+          className="relative min-w-0 flex-1"
+          onPointerDownCapture={() => {
+            pressed.current = true;
+          }}
+        >
           <SpaceCanvas org={org?.id ?? null} space={space} inputs={inputs} sources={sources} />
           {inputs && empty && !proposing && !working && !drawing && <EmptyMap space={space} />}
           {!chatOpen && <ChatPill />}
           <SpaceConflictBanner />
-          {!drawer && (
-            <button type="button" onClick={() => setDrawer(true)} className={clsx(r.buttonSm, r.buttonSecondary, "absolute top-[12px] right-[12px] shadow-floating min-[1180px]:hidden")}>
-              <PanelRight size={14} absoluteStrokeWidth strokeWidth={1.25} className="mr-[6px]" />
-              {notices?.notices.length ? `Needs a look · ${notices.notices.filter((n) => inSpace(n.products, space)).length}` : "More"}
-            </button>
-          )}
+          <SectionButtons buttons={buttons} open={covered ? null : section} onPick={pickSection}>
+            <EngineNotice />
+          </SectionButtons>
         </div>
 
-        <aside
-          ref={aside}
-          aria-label={reading ? "Reading a source" : picked ? "The picked card" : showsPage ? "A page" : "This space"}
-          // Esc closes a page (not while a field or a menu takes it).
-          onKeyDown={(e) => {
-            if (!showsPage || e.key !== "Escape" || e.defaultPrevented || (e.target as HTMLElement).closest("input, textarea, [contenteditable=true]")) return;
-            e.stopPropagation();
-            closePage();
-          }}
-          className={clsx(
-            "flex shrink-0 flex-col overflow-y-auto border-l border-line-subtle bg-app",
-            "max-[1179px]:absolute max-[1179px]:inset-y-0 max-[1179px]:right-0 max-[1179px]:z-30 max-[1179px]:max-w-full max-[1179px]:shadow-floating",
-            !drawer && !reading && "max-[1179px]:hidden",
-          )}
-          // A source being read takes the panel over, wider for a document than a conversation.
-          style={{ width: panelW }}
-        >
-          {cordPick ? (
-            <CordPicker />
-          ) : quotePick ? (
-            <QuotePicker />
-          ) : reading ? (
-            <LaneReader />
-          ) : picked ? (
-            <SpaceCardPanel ids={picked} things={things} tree={goalTree} jobs={jobs} needs={needs?.needs ?? null} />
-          ) : open ? (
-            <Suspense fallback={<div className={clsx(r.skeleton, "m-[16px] h-[120px] rounded-lg")} aria-hidden />}>
-              {"goal" in open.ref ? <GoalView key={open.ref.goal} id={open.ref.goal} space={space} at={open.at} /> : <TopicView key={open.ref.page} id={open.ref.page} space={space} />}
-            </Suspense>
-          ) : (
-            <div className="flex flex-col gap-[20px] px-[16px] py-[14px]">
-              <div className="flex items-center justify-end min-[1180px]:hidden">
-                <IconBtn size="sm" label="Close the panel" onClick={() => setDrawer(false)}>
-                  <X size={14} absoluteStrokeWidth strokeWidth={1.5} />
-                </IconBtn>
-              </div>
-              <EngineNotice />
-              <MoveFromBrowser org={org} onMoved={refresh} />
+        {panelOpen && (
+          <aside
+            ref={aside}
+            aria-label={reading ? "Reading a source" : picked ? "The picked card" : showsPage ? "A page" : "This space"}
+            // Esc closes a page (not while a field or a menu takes it).
+            onKeyDown={(e) => {
+              if ((!showsPage && covered) || e.key !== "Escape" || e.defaultPrevented || (e.target as HTMLElement).closest("input, textarea, [contenteditable=true]")) return;
+              e.stopPropagation();
+              if (showsPage) closePage();
+              else setAsked(null);
+            }}
+            className={clsx("flex shrink-0 flex-col overflow-y-auto border-l border-line-subtle bg-app", "max-[1179px]:absolute max-[1179px]:inset-y-0 max-[1179px]:right-0 max-[1179px]:z-30 max-[1179px]:max-w-full max-[1179px]:shadow-floating")}
+            // A source being read takes the panel over, wider for a document than a conversation.
+            style={{ width: panelW }}
+          >
+            {cordPick ? (
+              <CordPicker />
+            ) : quotePick ? (
+              <QuotePicker />
+            ) : reading ? (
+              <LaneReader />
+            ) : picked ? (
+              <SpaceCardPanel ids={picked} things={things} tree={goalTree} jobs={jobs} needs={needs?.needs ?? null} />
+            ) : open ? (
+              <Suspense fallback={<div className={clsx(r.skeleton, "m-[16px] h-[120px] rounded-lg")} aria-hidden />}>
+                {"goal" in open.ref ? <GoalView key={open.ref.goal} id={open.ref.goal} space={space} at={open.at} /> : <TopicView key={open.ref.page} id={open.ref.page} space={space} />}
+              </Suspense>
+            ) : (
+              <div className="flex flex-col gap-[20px] px-[16px] py-[14px]">
+                {section === "setup" && (
+                  <section aria-labelledby="space-setup" className="flex flex-col gap-[10px]">
+                    <div className="flex items-center justify-between gap-[8px]">
+                      <h2 id="space-setup" className="text-title font-medium">
+                        Setup
+                      </h2>
+                      {closeSection}
+                    </div>
+                    {org && left ? <ContinueSetup org={org} left={left} sources={sources} stacked /> : <SetupNotice org={org} pending={pendingSetup} />}
+                  </section>
+                )}
 
-              {legacy && (
-                <div role="status" className="flex flex-wrap items-center justify-between gap-[12px] rounded-lg bg-raised px-[12px] py-[10px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
-                  <p className="text-body text-fg-muted">An older tab saved changes to your first project after it moved here.</p>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() =>
-                      void importLegacy().then((p) => {
-                        if (p) refresh();
-                      })
-                    }
+                {section === "problems" && <SpaceProblems space={space} needs={needs} links={links} tree={goalTree} sources={sources} onFiled={refresh} close={closeSection} />}
+
+                {section === "needs" && (
+                  <NeedsALook
+                    now={notices}
+                    scope={(n) => inSpace(n.products, space)}
+                    projects={projects ?? []}
+                    topics={topics}
+                    groups={yours.goals.map((g) => ({ id: g.id, title: g.title, href: goalHref(g.id) }))}
+                    onShow={showNotice}
+                    close={closeSection}
                   >
-                    Import as a new project
-                  </Button>
-                </div>
-              )}
+                    <MoveFromBrowser
+                      org={org}
+                      waiting={toMove}
+                      onMoved={() => {
+                        setToMove([]);
+                        refresh();
+                      }}
+                    />
+                    {legacy && (
+                      <div role="status" className="flex flex-wrap items-center justify-between gap-[12px] rounded-lg bg-raised px-[12px] py-[10px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
+                        <p className="text-body text-fg-muted">An older tab saved changes to your first project after it moved here.</p>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() =>
+                            void importLegacy().then((p) => {
+                              if (p) refresh();
+                            })
+                          }
+                        >
+                          Import as a new project
+                        </Button>
+                      </div>
+                    )}
+                    <UnplacedGoals tree={goalTree} space={space} />
+                  </NeedsALook>
+                )}
 
-              {org && left ? (
-                <ContinueSetup org={org} left={left} sources={sources} stacked />
-              ) : (
-                left === null && <SetupNotice org={org} sources={sources} empty={loaded && !products.length && !about.audience.trim() && !about.context.trim() && !goalCount && !about.segments.length} />
-              )}
+                {section === "pages" && <SpacePages space={space} topics={topics} sources={sources} products={products} onFiled={refresh} close={closeSection} />}
 
-              <UnplacedGoals tree={goalTree} space={space} />
+                {section === "more" && (
+                  <>
+                    <div className="flex items-center justify-between gap-[8px]">
+                      <h2 className="text-title font-medium">More</h2>
+                      {closeSection}
+                    </div>
+                    <LabSections space={space} products={products} projects={projects ?? []} onChanged={refresh} />
+                  </>
+                )}
 
-              <SpaceProblems space={space} needs={needs} links={links} tree={goalTree} sources={sources} onFiled={refresh} />
-
-              <NeedsALook
-                now={notices}
-                scope={(n) => inSpace(n.products, space)}
-                projects={projects ?? []}
-                topics={topics}
-                groups={yours.goals.map((g) => ({ id: g.id, title: g.title, href: goalHref(g.id) }))}
-                onShow={showNotice}
-              />
-
-              <SpacePages space={space} topics={topics} sources={sources} products={products} onFiled={refresh} />
-
-              <LabSections space={space} products={products} projects={projects ?? []} onChanged={refresh} />
-
-              <p className="text-caption text-fg-subtle">{org ? `Saved in ${org.name}, at ${org.dir}.` : "Saved in your organization's folder."}</p>
-            </div>
-          )}
-        </aside>
+                <p className="text-caption text-fg-subtle">{org ? `Saved in ${org.name}, at ${org.dir}.` : "Saved in your organization's folder."}</p>
+              </div>
+            )}
+          </aside>
+        )}
       </div>
     </PageFrame>
   );
@@ -303,33 +373,24 @@ function EmptyMap({ space }: { space: string | null }) {
   );
 }
 
-/** Qalam AI can't run here: one line saying why, and where to fix it (Connections). */
+/** Qalam AI can't run here: on the canvas whether the panel's open or not, saying why, and leading to where to fix it (Connections). */
 function EngineNotice() {
   const { rows } = useHealth();
   const engine = rows?.find((x) => x.id === "engine");
   if (!engine) return null;
   return (
-    <div role="status" className="flex items-center justify-between gap-[12px] rounded-lg bg-raised px-[12px] py-[8px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
-      <p className="flex items-center gap-[8px] text-body text-fg">
+    <Tip label="Fix in Connections">
+      <a href={placeHref("connections")} role="status" className="q-item flex h-[24px] items-center gap-[6px] rounded-md px-[8px] text-caption whitespace-nowrap text-fg hover:bg-hover">
         <StatusDot tone="bad" />
         Qalam AI <span className="text-fg-muted">· {engine.word}</span>
-      </p>
-      <a href={placeHref("connections")} className={clsx(r.buttonSm, r.buttonSecondary)}>
-        Fix in Connections
       </a>
-    </div>
+    </Tip>
   );
 }
 
-/**
- * Projects saved in this browser before Qalam saved to disk: offered once, at the address they
- * were made at, and moved into the organization (the browser keeps its copy).
- */
 /** An organization with nothing about it yet can start from a brain dump about the company; one half set up picks up where it was. */
-function SetupNotice({ org, sources, empty }: { org: OrgRef | null; sources: SourceRecord[]; empty: boolean }) {
-  const pending = sources.filter((s) => s.setup && s.setup.phase !== "done").sort((a, b) => b.addedAt - a.addedAt)[0];
-  // Starting from a brain dump is one of the doors v0.1 hides (src/lab.ts); one half done still picks up.
-  if (!org || (!pending && (!empty || !lab("doors")))) return null;
+function SetupNotice({ org, pending }: { org: OrgRef | null; pending?: SourceRecord }) {
+  if (!org) return null;
   return (
     <div role="status" className="flex flex-wrap items-center justify-between gap-[12px] rounded-lg bg-raised px-[12px] py-[10px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
       <p className="text-body text-fg-muted">
@@ -342,18 +403,19 @@ function SetupNotice({ org, sources, empty }: { org: OrgRef | null; sources: Sou
   );
 }
 
-function MoveFromBrowser({ org, onMoved }: { org: OrgRef | null; onMoved: () => void }) {
-  const [waiting, setWaiting] = useState<Project[]>([]);
+/**
+ * Projects saved in this browser before Qalam saved to disk: offered once, at the address they
+ * were made at, and moved into the organization (the browser keeps its copy).
+ */
+function MoveFromBrowser({ org, waiting, onMoved }: { org: OrgRef | null; waiting: Project[]; onMoved: () => void }) {
   const [step, setStep] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
-  useEffect(() => void browserProjectsToMove().then(setWaiting, () => {}), []);
   if (!org || (!waiting.length && !done)) return null;
   const move = async () => {
     setStep("Starting");
     try {
       const r = await moveBrowserProjects(setStep);
       setDone(`Moved ${r.projects} ${r.projects === 1 ? "project" : "projects"} into ${org.name}${r.systems ? `, with ${r.systems} design ${r.systems === 1 ? "system" : "systems"}` : ""}.`);
-      setWaiting([]);
       onMoved();
     } catch (e) {
       setDone(`Couldn't move them: ${e instanceof Error ? e.message : String(e)}`);
