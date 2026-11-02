@@ -34,6 +34,8 @@ import { SpeakersLine, SpeakersStep } from "./SpeakersStep";
 import { openBrainDump } from "./dump";
 import { lab } from "@/lab";
 import { MarkedText } from "./MarkedText";
+import { pictureAt } from "@/discovery/ingest/pictures";
+import { PicturesNote } from "../sources/PicturesNote";
 import { orgFetch } from "@/org/client";
 import { AddToOrg } from "../org/AddToOrg";
 
@@ -624,7 +626,7 @@ function SourceView({ source, focus }: { source: SourceRecord; focus?: string })
 }
 
 function QuoteCard({ source, q, cards, onShow }: { source: SourceRecord; q: SourceQuote; cards: { id: string; title: string; against: boolean }[]; onShow: () => void }) {
-  const meta: ReactNode[] = [q.time ? clock(q.time[0]) : null, q.speaker, q.page ? `p. ${q.page}` : null, q.addedBy === "user" ? "Picked by you" : null].filter(Boolean);
+  const meta: ReactNode[] = [q.time ? clock(q.time[0]) : null, q.speaker, q.page ? `p. ${q.page}` : null, pictureAt(source.pictures, q.span) ? "Read from a picture" : null, q.addedBy === "user" ? "Picked by you" : null].filter(Boolean);
   return (
     <figure
       draggable
@@ -713,6 +715,7 @@ const SourceText = memo(function SourceText({ source, focus }: { source: SourceR
 
   return (
     <div className="relative">
+      <PicturesNote pictures={source.pictures} />
       <MarkedText ref={ref} text={source.text} segments={segments} focus={focus} onMouseUp={onSelect} onKeyUp={onSelect} blocks={source.blocks} />
       {pick && (
         <button

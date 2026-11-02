@@ -45,6 +45,7 @@ export default function LaneReader() {
       quotes={source.quotes}
       pages={item.part ? undefined : source.pages}
       blocks={source.blocks}
+      pictures={item.part ? undefined : source.pictures}
       range={item.part?.span}
       backs={backs}
       onClose={() => useDiscovery.setState({ reading: null })}

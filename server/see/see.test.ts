@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { diagnose, type HealthFacts } from "@/health/doctor";
-import { prepShot, readShots, seeAvailable } from ".";
+import { drawPdfPages, prepShot, readRegions, readShots, seeAvailable } from ".";
 
 // A stand-in for native/see: answers check, and reads each file as one line named after it, or
 // says it can't read one named "broken…". Each run's arguments go to FAKE_SEE_LOG.
@@ -22,6 +22,15 @@ if (cmd === "read") {
     if (name.startsWith("broken")) say({ file, error: "This Mac can't open it as a picture." });
     else say({ file, w: 1179, h: 2556, dhash: "c080018b010000b4", lines: [{ text: name, box: [0.05, 0.03, 0.3, 0.03], conf: 1 }, { text: "سلة التسوق", box: [0.85, 0.24, 0.11, 0.02], conf: 1 }] });
   }
+  process.exit(0);
+}
+if (cmd === "regions") {
+  for (const box of files.slice(1)) say(box === "9,9,9,9" ? { box, error: "Not a box." } : { box: box.split(",").map(Number), lines: [{ text: "4.1%", box: [0.2, 0.3, 0.05, 0.01], conf: 1 }, { text: "unsure", box: "nope", conf: 1 }] });
+  process.exit(0);
+}
+if (cmd === "pdf") {
+  const [, out, , ...pages] = files;
+  for (const page of pages) say(page === "9" ? { page: 9, error: "It has no such page." } : { page: Number(page), file: require("node:path").join(out, "page-" + page + ".png"), w: 10, h: 10 });
   process.exit(0);
 }
 process.stderr.write("usage\\n");
@@ -136,6 +145,28 @@ describe.skipIf(process.platform === "win32")("reading the words on screenshots"
   });
 });
 
+describe("a PDF's pages", () => {
+  it("draws the pages it can, by page number", async () => {
+    const got = await drawPdfPages(path.join(dir, "doc.pdf"), dir, 2200, [2, 9]);
+    expect([...got.keys()]).toEqual([2]);
+    expect(got.get(2)?.file).toBe(path.join(dir, "page-2.png"));
+    const last = (await runs()).at(-1)!;
+    expect(last.slice(0, 1).concat(last.slice(3))).toEqual(["pdf", "2200", "2", "9"]);
+  });
+
+  it("reads each box on its own, keeping only the lines it can use", async () => {
+    const got = await readRegions(path.join(dir, "page.png"), [[0.1, 0.2, 0.3, 0.4], [9, 9, 9, 9]]);
+    expect(got).toEqual([[{ text: "4.1%", box: [0.2, 0.3, 0.05, 0.01], conf: 1 }]]);
+  });
+
+  it("does nothing with no reader here", async () => {
+    process.env.QALAM_SEE_BIN = path.join(dir, "nowhere");
+    expect((await drawPdfPages("x.pdf", dir, 100, [1])).size).toBe(0);
+    expect(await readRegions("x.png", [[0, 0, 1, 1]])).toEqual([]);
+    process.env.QALAM_SEE_BIN = bin;
+  });
+});
+
 describe.skipIf(process.platform === "win32")("the copies Qalam AI is sent", () => {
   it("sends the original when sips can't read it", async () => {
     const notes = path.join(dir, "notes.txt");
@@ -168,5 +199,32 @@ describe.runIf(REAL)("this Mac's reader", () => {
     const read = (await readShots(org, [{ hash: "icon", file: ICON }])).get("icon");
     expect(read).toMatchObject({ w: 1024, h: 1024, dhash: expect.stringMatching(/^[0-9a-f]{16}$/) });
     expect(Array.isArray(read?.lines)).toBe(true);
+  }, 60_000);
+
+  it("draws a PDF's page, turned as it's meant to be read, and reads its words, whole and in a box", async () => {
+    process.env.QALAM_SEE_BIN = REAL;
+    const content = "BT /F1 40 Tf 72 700 Td (Churn rose) Tj ET";
+    const objs = ["<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>", "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Rotate 90 /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>", `<< /Length ${content.length} >>\nstream\n${content}\nendstream`, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"];
+    let pdf = "%PDF-1.4\n";
+    const at = objs.map((o, i) => {
+      const here = pdf.length;
+      pdf += `${i + 1} 0 obj\n${o}\nendobj\n`;
+      return here;
+    });
+    const xref = pdf.length;
+    pdf += `xref\n0 6\n0000000000 65535 f \n${at.map((o) => `${String(o).padStart(10, "0")} 00000 n \n`).join("")}trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+    const file = path.join(dir, "real.pdf");
+    await writeFile(file, pdf, "latin1");
+    const page = (await drawPdfPages(file, dir, 1200, [1, 2])).get(1)!;
+    const read = (await readShots(org, [{ hash: "realpdf", file: page.file }])).get("realpdf");
+    // Rotated a quarter turn: wider than it's tall, and its words upright.
+    expect(read).toMatchObject({ w: 1200, h: expect.any(Number) });
+    expect(read!.h).toBeLessThan(read!.w);
+    expect(read!.lines.map((l) => l.text).join(" ")).toContain("Churn rose");
+    const box = read!.lines[0].box;
+    const [inBox] = await readRegions(page.file, [[Math.max(0, box[0] - 0.02), Math.max(0, box[1] - 0.02), box[2] + 0.04, box[3] + 0.04]]);
+    expect(inBox[0].text).toContain("Churn");
+    // Placed on the whole page, close to where the whole page's reading has it.
+    expect(Math.abs(inBox[0].box[0] - box[0])).toBeLessThan(0.02);
   }, 60_000);
 });

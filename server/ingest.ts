@@ -3,6 +3,8 @@ import path from "node:path";
 import { DOCX, fromBytes, IngestError, MAX_FILE, XLSX, type Ingested, type Readers } from "@/discovery/ingest/core";
 import { pdfText } from "@/discovery/ingest/pdf";
 import { cleanText, htmlText } from "@/discovery/ingest/text";
+import type { OrgStore } from "./org/store";
+import { picturesOn, readPdfPictures } from "./pictures";
 
 /*
  * Reading files in the core (the inbox folder, with no window open): the same reading as the
@@ -28,13 +30,16 @@ const node: Readers = {
   html: async (text) => htmlText(text),
 };
 
+/** With an organization to keep them in, a PDF's pictures are read too (lab: pictures). */
+const readersFor = (store?: OrgStore): Readers => (store ? { ...node, pdf: async (bytes) => ((await picturesOn()) ? readPdfPictures(store, bytes) : node.pdf(bytes)) } : node);
+
 const TYPES: Record<string, string> = { pdf: "application/pdf", docx: DOCX, xlsx: XLSX, md: "text/markdown", markdown: "text/markdown", txt: "text/plain", text: "text/plain", csv: "text/csv", tsv: "text/tab-separated-values", vtt: "text/vtt", srt: "application/x-subrip", html: "text/html", htm: "text/html", json: "application/json" };
 
 /** Whether a file is one Qalam reads (by its name). */
 export const readable = (name: string) => !!TYPES[name.split(".").pop()?.toLowerCase() ?? ""];
 
 /** A file in the organization's folder as a source's text, named by `name` (its name as it was dropped in, when it has moved since). */
-export async function ingestPath(file: string, name = path.basename(file)): Promise<Ingested> {
+export async function ingestPath(file: string, name = path.basename(file), store?: OrgStore): Promise<Ingested> {
   const type = TYPES[name.split(".").pop()?.toLowerCase() ?? ""];
   // Only what Qalam reads: anything else in the folder is left alone.
   if (!type) throw new IngestError(`${name}: Qalam reads PDF, Word (.docx), spreadsheets (.xlsx, .csv), Markdown, web pages, captions and text files.`);
@@ -42,8 +47,8 @@ export async function ingestPath(file: string, name = path.basename(file)): Prom
   if (st.size > MAX_FILE) throw new IngestError(`${name} is over 40 MB.`);
   const buf = await readFile(file);
   const bytes = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
-  return fromBytes(bytes, type, name, name, node);
+  return fromBytes(bytes, type, name, name, readersFor(store));
 }
 
 /** Bytes that came from elsewhere (a file Google Drive gave), read like a file of that type and name. */
-export const ingestBytes = (bytes: ArrayBuffer, type: string, name: string, origin: string): Promise<Ingested> => fromBytes(bytes, type, name, origin, node);
+export const ingestBytes = (bytes: ArrayBuffer, type: string, name: string, origin: string, store?: OrgStore): Promise<Ingested> => fromBytes(bytes, type, name, origin, readersFor(store));

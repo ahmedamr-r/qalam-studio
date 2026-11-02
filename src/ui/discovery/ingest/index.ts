@@ -1,4 +1,5 @@
 import { fromBytes, fromPaste, IngestError, MAX_FILE, type Ingested, type Readers } from "@/discovery/ingest/core";
+import { lab } from "@/lab";
 
 /*
  * Bringing material in, in the browser (src/discovery/ingest/core.ts): its readers load only when
@@ -8,8 +9,26 @@ import { fromBytes, fromPaste, IngestError, MAX_FILE, type Ingested, type Reader
 
 export { ACCEPT, IngestError, type Ingested } from "@/discovery/ingest/core";
 
+/**
+ * A PDF read in the core, which can draw its pages and check what's in its pictures (lab: pictures):
+ * null when no organization or no core answers, for the window to read it. What the core says of
+ * the file itself (a scan with nothing to read it here) stands.
+ */
+async function pdfInCore(bytes: ArrayBuffer): Promise<Awaited<ReturnType<Readers["pdf"]>> | null> {
+  try {
+    const { orgPath } = await import("@/org/client");
+    const res = await fetch(await orgPath("/pdf"), { method: "POST", headers: { "content-type": "application/pdf" }, body: bytes });
+    if (res.ok) return (await res.json()) as Awaited<ReturnType<Readers["pdf"]>>;
+    if (res.status !== 422) return null;
+    throw new IngestError(((await res.json().catch(() => null)) as { message?: string } | null)?.message ?? "This PDF couldn't be read.");
+  } catch (e) {
+    if (e instanceof IngestError) throw e;
+    return null;
+  }
+}
+
 const browser: Readers = {
-  pdf: async (bytes) => (await import("./pdf")).readPdf(bytes),
+  pdf: async (bytes) => (lab("pictures") && (await pdfInCore(bytes))) || (await import("./pdf")).readPdf(bytes),
   docx: async (bytes) => (await import("./docx")).readDocx(bytes),
   html: async (text) => (await import("./html")).htmlToText(text),
 };

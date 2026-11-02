@@ -163,7 +163,7 @@ class Inbox {
     if (!file) return;
     try {
       // Named as it was dropped in (a claimed copy may carry a number to keep it apart).
-      await captureSource(this.store, await ingestPath(file, name));
+      await captureSource(this.store, await ingestPath(file, name, this.store));
       await this.move(file, "added");
     } catch (e) {
       const to = await this.move(file, "not-read");

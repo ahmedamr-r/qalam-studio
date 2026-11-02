@@ -38,7 +38,7 @@ function said(r: Result): string {
   if (!r.quotes) return "Kept, but Qalam AI found nothing in it to go on.";
   const pages = r.filed ? r.filed.pages.length : 0;
   const linked = r.linked ? (r.linked.added ? `${plural(r.linked.added, "new link")} from problems to goals` : "no new link to a goal") : "";
-  return [r.points ? countsLine(r.points) : `${plural(r.quotes, "quote")} picked out`, pages ? `filed into ${plural(pages, "topic page")}` : "", linked, r.placed.length ? r.placed.map((p) => `${plural(p.count, "proposal")} for ${p.name}`).join(", ") : "no board it fits yet"].filter(Boolean).join(" · ");
+  return [r.points ? countsLine(r.points) : `${plural(r.quotes, "quote")} picked out`, r.pictures ?? "", pages ? `filed into ${plural(pages, "topic page")}` : "", linked, r.placed.length ? r.placed.map((p) => `${plural(p.count, "proposal")} for ${p.name}`).join(", ") : "no board it fits yet"].filter(Boolean).join(" · ");
 }
 
 export function AddToOrg({ product, job, hint = "Reports, research, interviews, tickets, notes, pages. Qalam AI says what each is, files what it states and proposes where it fits." }: { product: string | null; job?: string; hint?: string }) {

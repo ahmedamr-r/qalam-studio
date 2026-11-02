@@ -1,4 +1,5 @@
 import type { TextBlock } from "../sources";
+import { pageFacts, type PageFacts } from "./page-facts";
 import { cleanText } from "./text";
 
 /*
@@ -8,10 +9,12 @@ import { cleanText } from "./text";
  * bullet or number, and a paragraph's wrapped lines joined back into one. The words stay as they
  * are; the shape is kept beside them (`blocks`) for the reader to draw. Pages are kept: each page's
  * text in order, and where each starts, so a quote can say which page it's on. A PDF with no text
- * (a scan) says so: there's no OCR.
+ * (a scan) says so, unless what's in its pictures is being read too (`facts`, server/pictures.ts).
  */
 
-type PdfJs = Pick<typeof import("pdfjs-dist"), "getDocument">;
+type PdfJs = Pick<typeof import("pdfjs-dist"), "getDocument"> & Partial<Pick<typeof import("pdfjs-dist"), "OPS">>;
+
+export const NO_TEXT = "This PDF has no text to read (it may be scanned pages). Qalam can't read scans: export it with text, or paste what it says.";
 
 /** A line as it sits on the page: its words, its size, where it starts and its baseline (PDF space: y grows up). */
 export interface PdfLine {
@@ -111,18 +114,32 @@ function linesOf(items: readonly unknown[]): PdfLine[] {
   return out;
 }
 
-export async function pdfText(pdfjs: PdfJs, data: ArrayBuffer): Promise<{ text: string; pages: number[]; blocks: TextBlock[]; title?: string }> {
+export interface PdfRead {
+  text: string;
+  pages: number[];
+  blocks: TextBlock[];
+  title?: string;
+  /** Each page's pictures and drawn paths, when asked for. */
+  facts?: PageFacts[];
+}
+
+export async function pdfText(pdfjs: PdfJs, data: ArrayBuffer, o: { facts?: boolean } = {}): Promise<PdfRead> {
   const task = pdfjs.getDocument({ data: new Uint8Array(data) });
   try {
     const doc = await task.promise;
     const parts: string[] = [];
     const pages: number[] = [];
     const blocks: TextBlock[] = [];
+    const facts: PageFacts[] = [];
     let at = 0;
     for (let i = 1; i <= doc.numPages; i++) {
       const page = await doc.getPage(i);
       const content = await page.getTextContent();
       const shaped = shapeLines(linesOf(content.items));
+      if (o.facts && pdfjs.OPS) {
+        const view = page.getViewport({ scale: 1 });
+        facts.push({ page: i, chars: shaped.text.replace(/\s+/g, "").length, ...pageFacts(await page.getOperatorList(), pdfjs.OPS, { transform: view.transform, width: view.width, height: view.height }) });
+      }
       page.cleanup();
       // Pages are separated by a blank line; each records where it starts.
       if (parts.length) at += 2;
@@ -132,10 +149,10 @@ export async function pdfText(pdfjs: PdfJs, data: ArrayBuffer): Promise<{ text: 
       at += shaped.text.length;
     }
     const text = parts.join("\n\n");
-    if (!text.replace(/\s+/g, "").length) throw new Error("This PDF has no text to read (it may be scanned pages). Qalam can't read scans: export it with text, or paste what it says.");
+    if (!o.facts && !text.replace(/\s+/g, "").length) throw new Error(NO_TEXT);
     const meta = await doc.getMetadata().catch(() => null);
     const title = (meta?.info as { Title?: unknown } | undefined)?.Title;
-    return { text, pages, blocks, ...(typeof title === "string" && title.trim() ? { title: title.trim() } : {}) };
+    return { text, pages, blocks, ...(o.facts ? { facts } : {}), ...(typeof title === "string" && title.trim() ? { title: title.trim() } : {}) };
   } finally {
     void task.destroy();
   }

@@ -3,6 +3,7 @@ import { driveFileHits, driveFolder, driveType, driveWords } from "@/connectors/
 import type { Hit } from "@/connectors/recipes";
 import { IngestError, MAX_FILE, type Ingested } from "@/discovery/ingest/core";
 import { ingestBytes } from "../ingest";
+import type { OrgStore } from "../org/store";
 import { NoSecretStore, secrets } from "../secrets";
 import { readSettings, writeSettings } from "../settings";
 import { listen, openInBrowser } from "./loopback";
@@ -239,7 +240,7 @@ const EXPORT: Record<string, { mime: string; ext: string }> = {
 };
 
 /** A Drive file's words, read here the way a file dropped in is (PDF, Word, sheets), or exported by Google for its own files. */
-export function readDriveFile(hit: Pick<Hit, "id" | "title" | "url">, f: FetchFn = fetch): Promise<Ingested> {
+export function readDriveFile(hit: Pick<Hit, "id" | "title" | "url">, f: FetchFn = fetch, store?: OrgStore): Promise<Ingested> {
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(hit.id)) return Promise.reject(new IngestError("That isn't a Drive file."));
   return withToken(async (token) => {
     const meta = (await (await driveCall(token, `/files/${hit.id}?fields=id,name,mimeType,size&supportsAllDrives=true`, f)).json()) as { name?: string; mimeType?: string; size?: string };
@@ -251,6 +252,6 @@ export function readDriveFile(hit: Pick<Hit, "id" | "title" | "url">, f: FetchFn
     const res = await driveCall(token, ex ? `/files/${hit.id}/export?mimeType=${encodeURIComponent(ex.mime)}` : `/files/${hit.id}?alt=media&supportsAllDrives=true`, f);
     const bytes = await res.arrayBuffer();
     if (bytes.byteLength > MAX_FILE) throw new IngestError(`${name} is over 40 MB.`);
-    return ingestBytes(bytes, ex?.mime ?? mime, ex ? `${name}.${ex.ext}` : name, hit.url ?? `drive:${hit.id}`);
+    return ingestBytes(bytes, ex?.mime ?? mime, ex ? `${name}.${ex.ext}` : name, hit.url ?? `drive:${hit.id}`, store);
   }, f);
 }

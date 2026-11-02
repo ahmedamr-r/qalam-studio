@@ -144,6 +144,34 @@ export async function readShots(orgDir: string, shots: { hash: string; file: str
   return out;
 }
 
+/**
+ * Each box of a picture read on its own (0..1, from the top left), its lines placed on the whole
+ * picture. A chart's small labels are often lost when the whole page is read at once.
+ */
+export async function readRegions(file: string, boxes: readonly (readonly [number, number, number, number])[]): Promise<ShotLine[][]> {
+  const bin = boxes.length ? seeBin() : null;
+  if (!bin) return [];
+  const out: ShotLine[][] = [];
+  await run(bin, ["regions", path.resolve(file), ...boxes.map((b) => b.join(","))], 30_000 + 10_000 * boxes.length, (o) => {
+    if (Array.isArray(o.lines)) out.push(o.lines.map(lineOf).filter((l): l is ShotLine => !!l));
+  });
+  return out;
+}
+
+/**
+ * Pages of a PDF drawn as pictures in `dir`, their longer side `side` pixels, by page number. Empty
+ * with no reader here; a page this Mac couldn't draw is left out.
+ */
+export async function drawPdfPages(file: string, dir: string, side: number, pages: readonly number[]): Promise<Map<number, { file: string }>> {
+  const out = new Map<number, { file: string }>();
+  const bin = pages.length ? seeBin() : null;
+  if (!bin) return out;
+  await run(bin, ["pdf", path.resolve(file), path.resolve(dir), String(side), ...pages.map(String)], 30_000 + 5_000 * pages.length, (o) => {
+    if (num(o.page) && typeof o.file === "string" && !("error" in o)) out.set(o.page, { file: o.file });
+  });
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // The copies Qalam AI is sent
 

@@ -206,14 +206,14 @@ const readingLabel = (label: string, hits: Hit[]) => `Reading ${hits.length === 
 const originOf = hitOrigin;
 
 /** The picked items as material, read and not taken in: the chat box holds them until it sends. */
-export async function readItems(id: string, hits: Hit[], emit: (label: string) => void): Promise<ReadItem[]> {
+export async function readItems(id: string, hits: Hit[], emit: (label: string) => void, store?: OrgStore): Promise<ReadItem[]> {
   // Drive's own files read here as files are (a PDF keeps its pages), each on its own.
   if ((await how(id)).via === "google") {
     emit(readingLabel(connectorDef(id)?.label ?? id, hits));
     return Promise.all(
       hits.map(async (hit): Promise<ReadItem> => {
         try {
-          const ing = await readDriveFile(hit);
+          const ing = await readDriveFile(hit, fetch, store);
           return { id: hit.id, title: hit.title, ingested: { ...ing, kind: "connector", title: hit.title, origin: originOf(id, hit) } };
         } catch (e) {
           if (e instanceof SignInAgain) throw e;
@@ -236,7 +236,7 @@ export async function importItems(store: OrgStore, id: string, hits: Hit[], emit
   // Drive's files read here as files are, so a PDF keeps its pages and a Doc its headings; the rest as words.
   const google = (await how(id)).via === "google";
   const reads: (Omit<Ingested, "kind" | "title" | "origin"> | null)[] = google
-    ? (emit(readingLabel(connectorDef(id)?.label ?? id, hits)), await Promise.all(hits.map((x) => readDriveFile(x).catch((e: unknown) => (e instanceof SignInAgain ? Promise.reject(e) : null)))))
+    ? (emit(readingLabel(connectorDef(id)?.label ?? id, hits)), await Promise.all(hits.map((x) => readDriveFile(x, fetch, store).catch((e: unknown) => (e instanceof SignInAgain ? Promise.reject(e) : null)))))
     : (await readTexts(id, hits, emit)).map((t) => (t?.trim() ? { text: t.trim() } : null));
   const texts = reads.map((r) => r?.text ?? null);
   const out: ImportResult & { sources: string[]; pages: string[] } = { added: [], skipped: [], failed: [], sources: [], pages: [] };

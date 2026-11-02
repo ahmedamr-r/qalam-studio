@@ -35,6 +35,8 @@ export const LAB_FEATURES = [
   "online",
   /** What people see: screens and flows read from screenshots. */
   "seen",
+  /** What's inside a PDF's pictures: charts, tables set as images, scanned pages (server/pictures.ts). */
+  "pictures",
   /** Needs a look's Review now (code's checks stay). */
   "review",
   /** Draft its tests on a solution (Draft solutions already gives each one a test). */

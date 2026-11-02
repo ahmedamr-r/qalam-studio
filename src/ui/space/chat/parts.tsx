@@ -748,6 +748,7 @@ function TakenPart({ data }: { data: PartData }) {
               {d.about || `“${d.title}”`}
             </p>
             <p className="text-caption text-fg-muted">{line || "I kept it, but found nothing in it to go on."}</p>
+            {d.pictures && <p className="text-caption text-fg-muted">{d.pictures}.</p>}
             {d.numbers?.map((n) => (
               <p key={n.goal} className="flex flex-wrap items-center gap-x-[6px] text-caption text-fg-muted">
                 It says {n.value.toLocaleString()} for “{n.title}”.

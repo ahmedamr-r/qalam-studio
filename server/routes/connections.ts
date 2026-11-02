@@ -192,11 +192,12 @@ export function connectionsRoutes(): Hono {
     }
   });
   r.post("/api/org/:org/connectors/:id/read", async (c) => {
-    if (!(await storeFor(c.req.param("org")))) return c.json({ error: "not_found", message: "No such organization." }, 404);
+    const store = await storeFor(c.req.param("org"));
+    if (!store) return c.json({ error: "not_found", message: "No such organization." }, 404);
     const { hits } = (await c.req.json().catch(() => ({}))) as { hits?: unknown };
     const picked = pickedHits(hits);
     if (!picked.length) return c.json({ error: "bad_request", message: "Pick something to read." }, 400);
-    return ndjson(async (emit) => ({ items: await readItems(c.req.param("id"), picked, emit) }));
+    return ndjson(async (emit) => ({ items: await readItems(c.req.param("id"), picked, emit, store) }));
   });
   r.post("/api/org/:org/connectors/:id/import", async (c) => {
     const store = await storeFor(c.req.param("org"));

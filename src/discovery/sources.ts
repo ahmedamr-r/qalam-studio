@@ -79,6 +79,34 @@ export interface TextBlock {
   kind: "h1" | "h2" | "h3" | "li";
 }
 
+/** Why something a picture was read as stayed out of the source: not printed on its page, only on a chart's scale, used more often than it's printed, or read off a shape. */
+export type PictureLeftWhy = "not-printed" | "scale" | "twice" | "shape";
+
+export interface PictureLeft {
+  words: string;
+  why: PictureLeftWhy;
+}
+
+/** A picture in a PDF that was read (src/discovery/ingest/pictures.ts). */
+export interface SourcePicture {
+  /** Its page, from 1. */
+  page: number;
+  kind: "scan" | "chart" | "table" | "figure" | "words";
+  /** Where its words are in the text; none when nothing in it could be kept. */
+  span?: [number, number];
+  /** The page as a picture: an asset's hash. */
+  asset?: string;
+  left?: PictureLeft[];
+}
+
+/** Why pictures weren't read: no reader on this computer, over the limit, an engine that can't see them, a call that failed. */
+export type PictureUnreadWhy = "no-reader" | "limit" | "no-vision" | "failed";
+
+export interface SourcePictures {
+  read: SourcePicture[];
+  unread?: { pages: number[]; why: PictureUnreadWhy }[];
+}
+
 /** A number a measured point states for a goal (by its id in goals.md). */
 export interface GoalNumber {
   goal: string;
@@ -109,6 +137,8 @@ export interface SourceRecord {
   pages?: number[];
   /** Its shape, read from a PDF's layout: where its headings and list items are (the rest is paragraphs, a blank line apart). The reader draws it; the words stay as they are. */
   blocks?: TextBlock[];
+  /** A PDF's pictures: which were read into the text, what was left out of them, which weren't read. */
+  pictures?: SourcePictures;
   /** Only the start of a longer text was kept. */
   truncated?: boolean;
   /** Interviews: where each stretch of speech sits in `text` and when it was said, and who spoke. */

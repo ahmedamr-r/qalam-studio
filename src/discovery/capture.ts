@@ -20,6 +20,8 @@ export interface CaptureResult {
   goalNumbers?: GoalNumber[];
   /** Goals it points to, for the person to accept or leave out. */
   foundGoals?: FoundGoal[];
+  /** What came of its pictures, in a line. */
+  pictures?: string;
   /** Nothing in it but the team's own thinking, and the caller said it would read that itself: nothing was kept. */
   heldOwn?: true;
   filed?: FilingTotals;

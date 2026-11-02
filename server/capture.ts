@@ -6,6 +6,7 @@ import { structured } from "@/ai/server";
 import { topicsCall } from "@/ai/topics";
 import type { CaptureResult } from "@/discovery/capture";
 import type { Ingested } from "@/discovery/ingest/core";
+import { picturesLine } from "@/discovery/ingest/pictures";
 import type { Proposal } from "@/discovery/proposals";
 import { hasQuote, packCalls, quotePiece, SOURCE_KIND_LABEL, unread, type SourceRecord } from "@/discovery/sources";
 import { forBoard, inScope, isUnder, sanitizeExtract, sanitizeSynthesis, synthCardsOf, type CallChunk, type SynthCard, type SynthQuote } from "@/discovery/synthesis";
@@ -279,6 +280,7 @@ export async function captureSource(store: OrgStore, ing: Ingested, o: CaptureOp
     text: ing.text,
     ...(ing.pages ? { pages: ing.pages } : {}),
     ...(ing.blocks?.length ? { blocks: ing.blocks } : {}),
+    ...(ing.pictures ? { pictures: ing.pictures } : {}),
     ...(ing.truncated ? { truncated: true } : {}),
     ...(ing.segments && ing.transcript ? { segments: ing.segments, transcript: ing.transcript } : {}),
     addedAt: Date.now(),
@@ -288,7 +290,7 @@ export async function captureSource(store: OrgStore, ing: Ingested, o: CaptureOp
   };
   emit(`Keeping “${s.title}” in the ${wordsFor(store.info.shape).org}`);
   await store.putSource(s);
-  const result = (filed?: FilingTotals, placed: CaptureResult["placed"] = []): CaptureResult => ({ sourceId: s.id, title: s.title, quotes: s.quotes.length, needs: s.needs.length, ...(s.about ? { about: s.about } : {}), points: basisCounts(s), ...(s.goalNumbers?.length ? { goalNumbers: s.goalNumbers } : {}), ...(s.foundGoals?.length ? { foundGoals: s.foundGoals } : {}), ...(filed ? { filed } : {}), placed });
+  const result = (filed?: FilingTotals, placed: CaptureResult["placed"] = []): CaptureResult => ({ sourceId: s.id, title: s.title, quotes: s.quotes.length, needs: s.needs.length, ...(s.about ? { about: s.about } : {}), points: basisCounts(s), ...(s.goalNumbers?.length ? { goalNumbers: s.goalNumbers } : {}), ...(s.foundGoals?.length ? { foundGoals: s.foundGoals } : {}), ...(picturesLine(s.pictures) ? { pictures: picturesLine(s.pictures)! } : {}), ...(filed ? { filed } : {}), placed });
   // Their own thinking: read as what they believe, never as what customers said.
   if (o.own) return { ...result(), ...(await readAsOwn(store, s.id, emit)) };
   if (awaitingRoles(s)) return { ...result(), waiting: "roles" };

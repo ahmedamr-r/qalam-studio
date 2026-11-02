@@ -11,6 +11,11 @@ import Vision
  *                    a box is [x, y, w, h] from 0 to 1 with the origin top left; lines go top to bottom,
  *                    a row's left to right. The dhash is 64 bits in 16 hex: the picture in 9×8 grays,
  *                    each bit whether a gray is lighter than the one to its right, row by row.
+ *   regions <file> <x,y,w,h>…   per box (0 to 1, from the top left), as each is read: {"box", "lines"} with its
+ *                    lines' boxes on the whole picture. A chart's small labels are often lost when the
+ *                    whole page is read at once, and found when its own box is.
+ *   pdf <file> <dir> <side> <page>…   per page, as each is drawn: {"page", "file", "w", "h"}, a PNG on white in
+ *                    <dir>, its longer side <side> pixels; or {"page", "error"}. Page numbers start at 1.
  * Anything else goes to stderr. Nothing leaves this Mac.
  */
 
@@ -24,7 +29,7 @@ func emit(_ o: [String: Any]) {
 }
 
 func usage() -> Never {
-  FileHandle.standardError.write(Data("usage: qalam-see check | qalam-see read <file>…\n".utf8))
+  FileHandle.standardError.write(Data("usage: qalam-see check | qalam-see read <file>… | qalam-see regions <file> <x,y,w,h>… | qalam-see pdf <file> <dir> <side> <page>…\n".utf8))
   exit(2)
 }
 
@@ -140,6 +145,57 @@ func read(_ path: String) -> [String: Any] {
   ]
 }
 
+/// The lines Vision reads in one image, each box as Vision gives it, from the top left.
+func linesIn(_ image: CGImage) throws -> [Line] {
+  let request = readingRequest()
+  try VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
+  return (request.results ?? []).compactMap { o in
+    guard let best = o.topCandidates(1).first, !best.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+    let b = o.boundingBox
+    return Line(text: best.string, x: b.minX, y: 1 - b.maxY, w: b.width, h: b.height, conf: best.confidence)
+  }
+}
+
+/// One box of a picture read on its own, its lines placed on the whole picture.
+func readRegion(_ image: CGImage, _ box: [CGFloat]) -> [String: Any] {
+  let (iw, ih) = (CGFloat(image.width), CGFloat(image.height))
+  let rect = CGRect(x: box[0] * iw, y: box[1] * ih, width: box[2] * iw, height: box[3] * ih).integral.intersection(CGRect(x: 0, y: 0, width: iw, height: ih))
+  guard !rect.isEmpty, let crop = image.cropping(to: rect), let lines = try? linesIn(crop) else { return ["box": box.map { rounded($0) }, "error": "This Mac couldn't read that part of it."] }
+  return [
+    "box": box.map { rounded($0) },
+    "lines": reading(lines).map { l in
+      ["text": l.text, "box": [rounded((rect.minX + l.x * rect.width) / iw), rounded((rect.minY + l.y * rect.height) / ih), rounded(l.w * rect.width / iw), rounded(l.h * rect.height / ih)], "conf": rounded(CGFloat(l.conf), 3)] as [String: Any]
+    },
+  ]
+}
+
+/// One page of a PDF drawn on white with its rotation applied, its longer side `side` pixels, as a PNG in `dir`.
+func drawPage(_ doc: CGPDFDocument, _ number: Int, _ dir: URL, _ side: Int) -> [String: Any] {
+  guard let page = doc.page(at: number) else { return ["page": number, "error": "It has no such page."] }
+  let box = page.getBoxRect(.cropBox)
+  let turned = abs(page.rotationAngle) % 180 == 90
+  let (pw, ph) = turned ? (box.height, box.width) : (box.width, box.height)
+  guard pw > 0, ph > 0 else { return ["page": number, "error": "The page has no size."] }
+  let scale = CGFloat(side) / max(pw, ph)
+  let (w, h) = (max(1, Int((pw * scale).rounded())), max(1, Int((ph * scale).rounded())))
+  guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else {
+    return ["page": number, "error": "This Mac couldn't draw the page."]
+  }
+  ctx.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+  ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+  ctx.interpolationQuality = .high
+  ctx.scaleBy(x: scale, y: scale)
+  // At a scale of one this only places and turns the page; scaling up is done above, as it never does.
+  ctx.concatenate(page.getDrawingTransform(.cropBox, rect: CGRect(x: 0, y: 0, width: pw, height: ph), rotate: 0, preserveAspectRatio: true))
+  ctx.drawPDFPage(page)
+  guard let image = ctx.makeImage() else { return ["page": number, "error": "This Mac couldn't draw the page."] }
+  let out = dir.appendingPathComponent("page-\(number).png")
+  guard let dest = CGImageDestinationCreateWithURL(out as CFURL, "public.png" as CFString, 1, nil) else { return ["page": number, "error": "This Mac couldn't write the picture."] }
+  CGImageDestinationAddImage(dest, image, nil)
+  guard CGImageDestinationFinalize(dest) else { return ["page": number, "error": "This Mac couldn't write the picture."] }
+  return ["page": number, "file": out.path, "w": w, "h": h]
+}
+
 let args = Array(CommandLine.arguments.dropFirst())
 switch args.first {
 case "check":
@@ -148,6 +204,25 @@ case "read":
   let files = args.dropFirst()
   if files.isEmpty { usage() }
   for f in files { autoreleasepool { emit(read(f)) } }
+case "regions":
+  guard args.count >= 3 else { usage() }
+  guard let image = upright(URL(fileURLWithPath: args[1])) else {
+    FileHandle.standardError.write(Data("This Mac can't open it as a picture.\n".utf8))
+    exit(1)
+  }
+  for arg in args.dropFirst(2) {
+    let box = arg.split(separator: ",").compactMap { Double($0) }.map { CGFloat($0) }
+    autoreleasepool { emit(box.count == 4 ? readRegion(image, box) : ["box": arg, "error": "Not a box."]) }
+  }
+case "pdf":
+  guard args.count >= 5, let side = Int(args[3]), side > 0, side <= 8000 else { usage() }
+  let pages = args.dropFirst(4).compactMap { Int($0) }
+  guard let doc = CGPDFDocument(URL(fileURLWithPath: args[1]) as CFURL), doc.isUnlocked else {
+    for p in pages { emit(["page": p, "error": "This Mac can't open it as a PDF."]) }
+    break
+  }
+  let dir = URL(fileURLWithPath: args[2])
+  for p in pages { autoreleasepool { emit(drawPage(doc, p, dir, side)) } }
 default:
   usage()
 }

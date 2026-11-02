@@ -19,3 +19,10 @@ export function webVia(kind: EngineKind, tavily: boolean): WebVia {
   if (kind === "ollama" || kind === "lmstudio") return tavily ? "tavily" : null;
   return "built-in";
 }
+
+/**
+ * Whether this engine's models take pictures. A model on this computer may not, and may answer as if
+ * it had seen one, so those engines get a picture's printed words only. Any other engine that turns
+ * a picture away says so (`no_vision`), and the words stay the same way.
+ */
+export const seesPictures = (kind: EngineKind): boolean => kind !== "ollama" && kind !== "lmstudio";

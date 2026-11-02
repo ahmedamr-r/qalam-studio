@@ -119,6 +119,15 @@ describe.skipIf(!fts5)("capture, in the core", () => {
     expect(steps).toEqual(["Keeping “Sara interview” in the organization", "Reading what it says", "Filing it into the topic pages", "Finding where it fits on 2 boards"]);
   });
 
+  it("keeps what came of a PDF's pictures on the source, and says it in a line", async () => {
+    const text = "Chart on page 1: Churn\n\nChurn · Jan · 4.1%";
+    const r = await captureSource(store, { kind: "pdf", title: "Report", text, pages: [0], pictures: { read: [{ page: 1, kind: "chart", span: [0, text.length], left: [{ words: "Apr · 6%", why: "shape" }] }] } });
+    expect(r.pictures).toBe("Read the pictures on 1 page · 1 left out, not printed");
+    expect((await store.getSource(r.sourceId))?.pictures?.read[0]).toMatchObject({ page: 1, kind: "chart", span: [0, text.length] });
+    const plain = await captureSource(store, { kind: "paste", title: "Notes", text: "Sara: I can't plan bath time around a four-hour window." });
+    expect(plain.pictures).toBeUndefined();
+  });
+
   it("places a feed's material only on the boards it's wired to, under their cards, and nowhere when it's wired to none", async () => {
     const steps: string[] = [];
     const text = "Sara: I can't plan bath time around a four-hour window. Then I order anyway.";

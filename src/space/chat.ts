@@ -33,6 +33,8 @@ export interface TakenDoc {
   numbers?: { goal: string; title: string; value: number; used?: true }[];
   /** Goals it points to, for them to accept or leave out. */
   found?: FoundGoal[];
+  /** What came of its pictures, in a line. */
+  pictures?: string;
 }
 
 /** A problem page material went into. */

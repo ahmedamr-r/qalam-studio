@@ -37,6 +37,7 @@ const JOB: Record<CallKind | "other", string> = {
   claims: "Checking outside numbers",
   reader: "Reading code",
   research: "Looking things up",
+  "pdf-pictures": "Reading pictures in PDFs",
   "seen-read": "Reading screenshots",
   market: "Checking what the web says about the company",
   synthesize: "Placing quotes on boards",
