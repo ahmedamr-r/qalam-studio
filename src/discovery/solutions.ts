@@ -3,6 +3,7 @@ import { wordsHold, withoutIds } from "@/goals/said";
 import { checkWords, cleanLine, sameTopic, sameWords, SECTION_HEADING, type TopicSection } from "@/hub/topics";
 import { quoteFinder } from "./quotes";
 import { ASSUMPTION_CATEGORIES } from "./kinds";
+import { withCompany } from "@/market/text";
 import { newCard } from "./ops";
 import type { Backing, QuoteRef } from "./proposals";
 import type { AssumptionCategory, OstAssumption, OstCard, OstEvidence } from "./types";
@@ -36,6 +37,8 @@ export interface SolutionsInput {
   cards: { title: string; kind: "solution" | "test" }[];
   /** The person's own ideas (a brain dump's ideas). */
   ideas: { ref: string; text: string; source: string | null; label: string }[];
+  /** What's known about the company and its competitors: words a draft, never what it rests on. */
+  company?: string;
 }
 
 type Line = SolutionsInput["lines"][number];
@@ -176,7 +179,7 @@ export function solutionsMaterial(o: SolutionsInput): SolutionsSent {
   if (cards.length) out.push("", "On the board under it already (don't propose these again):", ...cards.map((c) => `- ${c.kind === "solution" ? "Solution" : "Test"}: ${one(c.title)}`));
   const text = out.join("\n");
   // What words and numbers may come from: the material without its ids ("q5" isn't a 5 anyone said).
-  return { text, lines, pieces, goals, claims, steps, ideas, cards, hay: text.replace(/(^|\s)[lqgcmi]\d+ ·/gm, "$1") };
+  return { text: withCompany(text, o.company), lines, pieces, goals, claims, steps, ideas, cards, hay: text.replace(/(^|\s)[lqgcmi]\d+ ·/gm, "$1") };
 }
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});

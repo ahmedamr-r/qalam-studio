@@ -10,7 +10,7 @@ import { lab } from "@/lab";
  * a step is picked (src/ui/discovery/next.ts). What v0.1 hides (src/lab.ts) isn't offered.
  */
 
-export type StepId = "draft-solutions" | "draft-tests" | "design-this" | "page" | "pass-line" | "next-job" | "find-problems" | "break-down" | "review-parts" | "others" | "find-backing" | "watch" | "connect" | "add-file" | "questions" | "draft-problems" | "review-problems" | "focus";
+export type StepId = "draft-solutions" | "draft-tests" | "design-this" | "page" | "pass-line" | "next-job" | "find-problems" | "break-down" | "review-parts" | "others" | "find-backing" | "watch" | "connect" | "add-file" | "questions" | "draft-problems" | "review-problems" | "focus" | "find-goal";
 
 export interface NextStep {
   id: StepId;
@@ -33,6 +33,8 @@ export interface CardFacts {
   page: { topic: string; strength: Strength; quotes: number; sources: number; mix?: BasisCounts } | null;
   /** What's under it already. */
   under: { solutions: number; tests: number };
+  /** A goal is above it on the canvas. */
+  underGoal?: boolean;
   /** A goal's number in a line (null: none yet), the problems behind it, its next job, and what was proposed for it not decided yet: goals under it, problems behind it. */
   goal?: { id: string; number: string | null; behind: number; job: string | null; pending: number; drafted: number };
   /** Problem pages there are (what Find its problems reads). */
@@ -103,9 +105,11 @@ export function nextSteps(f: CardFacts): NextStep[] {
       const asks = lab("questions") && (bare || !!f.asking);
       const draft: NextStep = { id: "draft-solutions", label: "Draft solutions", hint: asks && f.asking ? "Picks up your answers where you left them" : asks ? "Asks a few questions first" : f.under.solutions ? "More ways to solve it, each with a test" : "Ways to solve it, each with a test", ai: true, ...(asks ? { asks } : {}) };
       const page: NextStep | null = f.page ? { id: "page", label: "Its page", hint: "Everything known about it" } : null;
+      // No goal above it: which one solving it would move, its own or one found, and that goal's number.
+      const goal: NextStep | null = f.underGoal ? null : { id: "find-goal", label: "Find the goal it could move", hint: "Your goals first, then the web, then its number", ai: true };
       // Nothing behind it yet: what the organization has first, when it has something.
-      if ((asks || bare) && ground.find) push(ground.find, draft, ground.watch, ground.file, page);
-      else push(draft, ground.find, ground.watch, ground.file, page, asks || !lab("questions") ? null : QUESTIONS);
+      if ((asks || bare) && ground.find) push(ground.find, draft, goal, ground.watch, ground.file, page);
+      else push(draft, goal, ground.find, ground.watch, ground.file, page, asks || !lab("questions") ? null : QUESTIONS);
       break;
     }
     case "solution":

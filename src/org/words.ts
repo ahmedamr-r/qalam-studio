@@ -18,10 +18,12 @@ export interface OrgWords {
   ours: string;
   /** "only the team says so" or "only you say so". */
   onlyUs: string;
+  /** "Company" or "Project": what the canvas knows about. */
+  company: string;
 }
 
-const TEAM: OrgWords = { org: "organization", whole: "The whole organization", ours: "the team's", onlyUs: "only the team says so" };
-const SOLO: OrgWords = { org: "project", whole: "The whole project", ours: "your", onlyUs: "only you say so" };
+const TEAM: OrgWords = { org: "organization", whole: "The whole organization", ours: "the team's", onlyUs: "only the team says so", company: "Company" };
+const SOLO: OrgWords = { org: "project", whole: "The whole project", ours: "your", onlyUs: "only you say so", company: "Project" };
 
 /** The words for an organization's shape; one made before shapes is a team's. */
 export const wordsFor = (shape?: OrgShape | null): OrgWords => (shape === "solo" ? SOLO : TEAM);

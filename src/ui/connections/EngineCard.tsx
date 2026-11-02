@@ -35,6 +35,8 @@ const JOB: Record<CallKind | "other", string> = {
   topics: "Filing into topic pages",
   "setup-shape": "Shaping the organization",
   claims: "Checking outside numbers",
+  "goal-ideas": "Finding the goal a problem could move",
+  "goal-number": "Suggesting a goal's number",
   reader: "Reading code",
   research: "Looking things up",
   "pdf-pictures": "Reading pictures in PDFs",

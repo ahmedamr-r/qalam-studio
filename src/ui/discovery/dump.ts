@@ -99,14 +99,14 @@ export function openBrainDump(opts: { text?: string; sourceId?: string } = {}) {
 /** The board as a dump's calls see it, now. */
 const board = () => outlineOf(studio().doc);
 
-/** What a dump that answers "Help me find one", or reads a file for a card (named as the call names it), tells each of its calls. */
+/** What a dump tells each of its calls: what's known about the market, and what it answers ("Help me find one") or reads a file for (a card, named as the call names it). */
 function aimOf(s: DumpSession | undefined, cards: PlaceCard[]) {
   const card = s?.file && cards.find((c) => c.id === s.file!.card);
   // The problem to focus on for a goal: its card, by the id the call gives it.
   const goal = s?.aim?.goal && cards.find((c) => c.id === s.aim!.goal!.card);
-  // Finding a goal or a problem, or reading a file for one: what's known about the market words the questions.
+  // What's known about the market words the questions.
   const m = useMarket.getState();
-  const market = (s?.aim || s?.file) && m.org ? marketText(m.market, { org: m.org, domain: true }) : "";
+  const market = m.org ? marketText(m.market, { org: m.org, domain: true }) : "";
   return {
     ...(s?.aim ? { aim: { find: s.aim.find, asked: s.aim.asked, ...(goal ? { under: goal.ref } : {}) } } : {}),
     ...(s?.file && card ? { file: { title: s.file.title.slice(0, 300), card: card.ref, ...(s.file.cut ? { cut: true } : {}) } } : {}),

@@ -35,8 +35,10 @@ import { useTopics } from "../../topics/list";
 import { useWords } from "../../frame/store";
 import { show } from "../links";
 import { FoundGoalRow } from "../../chat/FoundGoalRow";
-import { anotherFile, changeDocBasis, decideDocGoal, dropTurn, leaveFile, placeStatement, retake, takeAsBasis, turnOf, takeGoalNumber, useCanvasChat } from "./store";
+import { anotherFile, changeDocBasis, decideDocGoal, dropTurn, leaveFile, leaveFit, lookPastFits, placeStatement, retake, retryGoalFor, settleNumber, takeAsBasis, takeFit, takeIdea, turnOf, takeGoalNumber, useCanvasChat } from "./store";
 import { titleFrom } from "@/space/route";
+import { goalNumberLine, withUnit } from "@/goals/moves";
+import type { Benchmark } from "@/goals/outside";
 
 /*
  * What the messages in the canvas's chat draw (./CanvasChat.tsx): each part names its turn, and
@@ -64,7 +66,7 @@ function WorkingPart({ data }: { data: PartData }) {
   const { org } = useWords();
   if (!live || !t) return null;
   const said = t.said.length > 60 ? `${t.said.slice(0, 59)}…` : t.said;
-  const first = t.job.kind === "take" ? "Reading what it says" : t.job.kind === "find" ? "Looking on the web for what usually gets in the way of goals like it" : `Looking through the ${org} for “${said}”`;
+  const first = t.job.kind === "take" ? "Reading what it says" : t.job.kind === "find" ? "Looking on the web for what usually gets in the way of goals like it" : t.job.kind === "goalfor" ? (t.job.step === "suggesting" ? "Working out a number that's realistic" : "Checking it against your goals") : `Looking through the ${org} for “${said}”`;
   return (
     <div className="flex flex-col gap-[6px]">
       <Progress label={live.steps.at(-1) ?? first} started={live.started} tokens={0} />
@@ -802,6 +804,219 @@ function PagesPart({ data }: { data: PartData }) {
   );
 }
 
+/** What others report, each with the page it's on (its words on hover). */
+function OthersReport({ list }: { list: readonly Benchmark[] }) {
+  if (!list.length) return null;
+  return (
+    <ul className="flex flex-col gap-[4px]">
+      {list.map((b) => (
+        <li key={`${b.url}:${b.what}:${b.value}`} className="flex flex-col text-caption leading-[18px] text-fg-muted">
+          <span dir="auto">
+            {b.what}: <span className="font-medium text-fg">{withUnit(b.value, b.unit)}</span>
+          </span>
+          <a href={b.url} target="_blank" rel="noreferrer" className="truncate text-micro text-fg-subtle hover:text-fg" title={`“${b.quote}”`}>
+            {b.who || hostName(b.url)}
+          </a>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** The goals on the canvas it would move, each to take or leave out. */
+function GoalFitsPart({ data }: { data: PartData }) {
+  const t = useTurn(data.turn);
+  const j = t?.job.kind === "goalfor" ? t.job : null;
+  if (!t || !j) return null;
+  return (
+    <div className="flex w-full flex-col items-start gap-[8px]">
+      <p className="text-body leading-[20px] text-fg">{j.fits?.length === 1 ? "It would move a goal you already have:" : "It would move goals you already have:"}</p>
+      <ul className="flex w-full flex-col gap-[6px]">
+        {j.fits?.map((f) => (
+          <li key={f.goal} className={clsx(qr.inset, "flex flex-col gap-[6px] px-[10px] py-[8px]")}>
+            <p className="text-body leading-[20px] font-medium text-fg" dir="auto">
+              {f.title}
+            </p>
+            <p className="text-caption leading-[18px] text-fg-muted" dir="auto">
+              {f.how}
+            </p>
+            <ReplyChips>
+              <button type="button" className={r.replyChipPrimary} onClick={() => takeFit(t.id, f.goal)}>
+                Put it under this goal
+              </button>
+              <button type="button" className={r.replyChip} onClick={() => leaveFit(t.id, f.goal)}>
+                Not this one
+              </button>
+            </ReplyChips>
+          </li>
+        ))}
+      </ul>
+      <ReplyChips>
+        <button type="button" className={r.replyChip} onClick={() => lookPastFits(t.id)}>
+          Look for another goal
+        </button>
+      </ReplyChips>
+    </div>
+  );
+}
+
+/** The goals proposed for it: one to take, with what others report for each, and whether a page backs it. */
+function GoalIdeasPart({ data }: { data: PartData }) {
+  const t = useTurn(data.turn);
+  const j = t?.job.kind === "goalfor" ? t.job : null;
+  if (!t || !j) return null;
+  const pages = j.looked?.pages.length ?? 0;
+  const lead = j.looked?.goals ? "None of your goals fits." : "You have no goals here yet.";
+  if (!j.ideas?.length)
+    return (
+      <div className="flex flex-col items-start gap-[8px]">
+        <p className="text-body leading-[20px] text-fg">I couldn't find a goal for it that holds up. You can write one on the canvas and put this problem under it.</p>
+        <ReplyChips>
+          <button type="button" className={r.replyChip} onClick={() => dropTurn(t.id)}>
+            Never mind
+          </button>
+        </ReplyChips>
+      </div>
+    );
+  return (
+    <div className="flex w-full flex-col items-start gap-[8px]">
+      <p className="text-body leading-[20px] text-fg">{lead} {j.looked?.noWeb ? "I can't look on the web here, so from what I know of companies like yours, it could move:" : pages ? "From what I read about companies like yours, it could move:" : "The web had nothing that held up, so from what I know of companies like yours, it could move:"}</p>
+      <ul className="flex w-full flex-col gap-[6px]">
+        {j.ideas.map((g, i) => (
+          <li key={g.id} className={clsx(qr.inset, "flex flex-col gap-[6px] px-[10px] py-[8px]")}>
+            <p className="text-body leading-[20px] font-medium text-fg" dir="auto">
+              {g.title}
+            </p>
+            <p className="text-caption text-fg-muted" dir="auto">
+              Measured by {g.metric.name}
+              {g.metric.unit ? ` (${g.metric.unit})` : ""}
+            </p>
+            {g.why && (
+              <p className="text-caption leading-[18px] text-fg-muted" dir="auto">
+                {g.why}
+              </p>
+            )}
+            <OthersReport list={g.others} />
+            <ReplyChips>
+              <button type="button" className={i === 0 ? r.replyChipPrimary : r.replyChip} onClick={() => takeIdea(t.id, g.id)}>
+                Use this goal
+              </button>
+            </ReplyChips>
+          </li>
+        ))}
+      </ul>
+      <ReplyChips>
+        <button type="button" className={r.replyChip} onClick={() => dropTurn(t.id)}>
+          None of these
+        </button>
+      </ReplyChips>
+    </div>
+  );
+}
+
+/** Which goal it's going under, as it's settled. */
+function GoalOnPart({ data }: { data: PartData }) {
+  const t = useTurn(data.turn);
+  const j = t?.job.kind === "goalfor" ? t.job : null;
+  if (!j?.on) return null;
+  return (
+    <p className="text-body leading-[20px] text-fg" dir="auto">
+      I put it under “{j.on.title}”.
+    </p>
+  );
+}
+
+/** The number suggested for its goal: to use, change or leave. A number only Qalam AI's knowledge rests on says so. */
+function GoalNumberPart({ data }: { data: PartData }) {
+  const t = useTurn(data.turn);
+  const j = t?.job.kind === "goalfor" ? t.job : null;
+  const s = j?.suggestion;
+  const [text, setText] = useState(s?.target !== null && s?.target !== undefined ? String(s.target) : "");
+  if (!t || !j) return null;
+  const value = Number(text.replace(/,/g, "").trim());
+  const ok = text.trim() !== "" && Number.isFinite(value);
+  const unit = j.on?.metric?.unit;
+  const label = j.on?.metric?.name ?? "the number";
+  const known = !!s && !s.others.length;
+  return (
+    <div className="flex w-full flex-col items-start gap-[8px]">
+      {!s ? (
+        <p className="text-body leading-[20px] text-fg">{j.error ? `I couldn't work out a number (${j.error}).` : "I couldn't work out a number I could stand behind."} What would you aim for?</p>
+      ) : s.target === null ? (
+        <p className="text-body leading-[20px] text-fg">
+          I'd aim to move {label} by {s.move}%. Where it stands today decides what that is in your number: what would that be?
+        </p>
+      ) : (
+        <p className="text-body leading-[20px] text-fg">
+          I'd aim for {withUnit(s.target, unit)}
+          {j.on?.now !== null && j.on?.now !== undefined ? ` from ${withUnit(j.on.now, unit)}` : ""}
+          {s.timeframe ? `, ${s.timeframe}` : ""}.
+        </p>
+      )}
+      {s?.why && (
+        <p className="text-caption leading-[18px] text-fg-muted" dir="auto">
+          {s.why}
+        </p>
+      )}
+      {s && <OthersReport list={s.others} />}
+      {known && <p className="text-caption leading-[18px] text-fg-subtle">Only what I know of the industry: I couldn't check it on a page, so treat it as a starting point.</p>}
+      <label className="flex items-center gap-[6px] text-caption text-fg-muted">
+        Target
+        <input aria-label={`The target for ${label}`} inputMode="decimal" value={text} onChange={(e) => setText(e.target.value)} className={clsx(r.field, "w-[96px] outline-none")} />
+        {unit}
+      </label>
+      <ReplyChips>
+        <button type="button" disabled={!ok} className={r.replyChipPrimary} onClick={() => settleNumber(t.id, value, s?.timeframe)}>
+          {s?.target !== null && s?.target !== undefined && value === s.target ? "Use it" : "Use this number"}
+        </button>
+        <button type="button" className={r.replyChip} onClick={() => settleNumber(t.id, null)}>
+          No target yet
+        </button>
+      </ReplyChips>
+    </div>
+  );
+}
+
+/** Where it ended up: the goal, its number, and the card to look at. */
+function GoalDonePart({ data }: { data: PartData }) {
+  const t = useTurn(data.turn);
+  const j = t?.job.kind === "goalfor" ? t.job : null;
+  const metric = useStudio((s) => {
+    const n = j?.on ? s.doc.nodes[j.on.card] : undefined;
+    return isOstCard(n) ? n.meta.ost.metric : undefined;
+  });
+  const there = useStudio((s) => !!j?.on && !!s.doc.nodes[j.on.card]);
+  if (!j?.on) return null;
+  const line = goalNumberLine(metric);
+  return (
+    <div className="flex flex-col items-start gap-[8px]">
+      <p className="text-body leading-[20px] text-fg" dir="auto">
+        “{j.title}” is under “{j.on.title}” now{line ? ` (${line})` : ""}.
+      </p>
+      {there && (
+        <ReplyChips>
+          <button type="button" className={r.replyChip} onClick={() => show(j.on!.card)}>
+            Show the goal
+          </button>
+        </ReplyChips>
+      )}
+    </div>
+  );
+}
+
+function GoalRetryPart({ data }: { data: PartData }) {
+  return (
+    <ReplyChips>
+      <button type="button" className={r.replyChip} onClick={() => retryGoalFor(String(data.turn))}>
+        Try again
+      </button>
+      <button type="button" className={r.replyChip} onClick={() => dropTurn(String(data.turn))}>
+        Never mind
+      </button>
+    </ReplyChips>
+  );
+}
+
 /** The docs a message carried, under it. */
 function DocsPart({ data }: { data: PartData }) {
   const t = useTurn(data.turn);
@@ -832,4 +1047,10 @@ export const PARTS: Record<string, PartComponent> = {
   opening: OpeningPart,
   looked: LookedPart,
   cancel: CancelPart,
+  goalFits: GoalFitsPart,
+  goalIdeas: GoalIdeasPart,
+  goalOn: GoalOnPart,
+  goalNumber: GoalNumberPart,
+  goalDone: GoalDonePart,
+  goalRetry: GoalRetryPart,
 };

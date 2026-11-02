@@ -100,6 +100,7 @@ export function useCardFacts(id: string | null): CardFacts | null {
       evidence: evidenceSummary(card),
       page: need ? { topic: need.topic, strength: strengthOf(need), quotes: need.quotes, sources: need.sources, mix: need.mix } : null,
       under: { solutions: kids.filter((k) => k === "solution").length, tests: kids.filter((k) => k === "test").length },
+      underGoal: hasGoalAbove(doc, id),
       ...(goal && inputs
         ? {
             goal: {
@@ -126,6 +127,15 @@ export function useCardFacts(id: string | null): CardFacts | null {
       busyElsewhere: !!busy && busy.card !== id,
     };
   }, [id, node, doc, inputs, thing, busy, reviewing, rows, jobs, pending, tools, material, feeds, asked]);
+}
+
+/** Whether a goal is above a card on the canvas. */
+function hasGoalAbove(doc: ReturnType<typeof studio>["doc"], id: string): boolean {
+  for (let p = doc.nodes[id]?.parentId; p; p = doc.nodes[p]?.parentId ?? null) {
+    const n = doc.nodes[p];
+    if (isOstCard(n) && n.meta.ost.kind === "outcome") return true;
+  }
+  return false;
 }
 
 /** The feeds watching for a card, on. */

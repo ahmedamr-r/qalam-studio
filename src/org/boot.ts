@@ -1,3 +1,4 @@
+import { loadMarket } from "./market";
 import { hydrateSystems, reloadSystems } from "@/design-system/registry";
 import { loadGoals } from "@/goals/client";
 import { setLinkOrg } from "@/projects/model";
@@ -19,7 +20,7 @@ export function bootOrg(orgId: string | null = null): Promise<OrgRef> {
     const org = await currentOrg();
     setLinkOrg(org.id);
     void rememberOrg(org.id);
-    await Promise.all([hydrateSystems(org.id), hydrateNaming(), loadOrgContext(), loadGoals().catch(() => {})]);
+    await Promise.all([hydrateSystems(org.id), hydrateNaming(), loadOrgContext(), loadGoals().catch(() => {}), loadMarket()]);
     startLive();
     onOrgChange((c) => {
       if (c.kind === "system") void reloadSystems();

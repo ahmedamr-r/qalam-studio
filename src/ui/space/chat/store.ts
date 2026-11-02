@@ -4,19 +4,23 @@ import { aiStatus } from "@/ai/client";
 import { studio } from "@/doc/store";
 import { isOstCard } from "@/doc/board";
 import { KIND_LABEL } from "@/discovery/kinds";
+import { backing } from "@/discovery/evidence";
+import { addCardIn, makeCardNode, moveCardsIn, newCard, updateCardIn } from "@/discovery/ops";
+import type { OstMetric } from "@/discovery/types";
 import { changeGoal, goalsNow } from "@/goals/client";
 import { goalById } from "@/goals/tree";
 import { askOrganization } from "@/org/ask";
 import { captureIngested, decideFoundGoal, setSourceBasis } from "@/org/capture";
 import { orgFetch, orgJson } from "@/org/client";
 import type { Ingested } from "@/discovery/ingest/core";
-import { chatKey, chatOf, emptyChat, withJob, withTurn, type CanvasChat, type ChatDoc, type ChatJob, type ChatTurn, type FiledPage, type FocusGoal, type TakenDoc } from "@/space/chat";
+import { chatKey, chatOf, emptyChat, withJob, withTurn, type CanvasChat, type ChatDoc, type ChatJob, type ChatTurn, type FiledPage, type FocusGoal, type GoalForJob, type GoalForOn, type TakenDoc } from "@/space/chat";
 import { cardForPage, pageOf } from "@/space/pages";
 import { DUMP_WORDS, routeOf, titleFrom, wordsIn, type ChatMode } from "@/space/route";
 import { FIND_MIN, findRound, findText, findTranscript, type FindWhat } from "@/space/find";
 import type { PlanQuestion } from "@/ai/plan";
 import { focusRound, focusTranscript } from "@/goals/focus";
-import { lookForGoal } from "@/org/goal-work";
+import { nowFrom, numberRound, targetFrom } from "@/goals/moves";
+import { goalsForProblem, lookForGoal, suggestGoalNumber } from "@/org/goal-work";
 import { knowsMarket } from "@/market/types";
 import { loadMarket, useMarket } from "@/org/market";
 import { useSpaceView } from "@/space/view";
@@ -29,6 +33,7 @@ import { startDump, stopDump, useDump } from "../../discovery/dump";
 import { addSources } from "../../discovery/import";
 import { sourceOf, useSources } from "../../discovery/sources";
 import { sourceCame } from "../flights";
+import { show } from "../links";
 import { placeFor, writeCard } from "../new";
 import { useCompose } from "./compose";
 import { toggleChat } from "../../frame/store";
@@ -298,6 +303,169 @@ export async function answerFind(id: string, answers: Readonly<Record<string, st
   } catch (e) {
     change((c) => withJob(c, id, (j) => (j.kind === "dump" ? { ...j, error: message(e) } : j)));
   }
+}
+
+// ---------------------------------------------------------------------------
+// The goal a problem could move (its next steps' "Find the goal it could move")
+
+const goalJob = (id: string, fn: (j: GoalForJob) => GoalForJob) => change((c) => withJob(c, id, (j) => (j.kind === "goalfor" ? fn(j) : j)));
+const goalForOf = (id: string): GoalForJob | null => {
+  const j = turnOf(id)?.job;
+  return j?.kind === "goalfor" ? j : null;
+};
+
+/** The goals' cards on the canvas now: each goal's id, by its card. */
+function goalsOnCanvas(): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const [card, t] of useSpaceView.getState().things) if (t.type === "goal" && studio().doc.nodes[card]) out.set(t.goal, card);
+  return out;
+}
+
+/** The problem's own words: what backs its card. */
+function backingOf(card: string): string[] {
+  const n = studio().doc.nodes[card];
+  return isOstCard(n) ? backing(n.meta.ost).map((e) => e.text) : [];
+}
+
+/**
+ * Find the goal a problem could move: the goals on the canvas first (server/org/moves.ts), then the
+ * web when none fits, then that goal's number, theirs or one suggested. One conversation per problem
+ * at a time: an open one is carried on.
+ */
+export function goalWith(card: string, topic?: string) {
+  toggleChat(true);
+  if (!st().loaded) return;
+  const open = st().chat.turns.some((t) => t.job.kind === "goalfor" && t.job.card === card && t.job.step !== "done" && t.job.step !== "failed");
+  if (open) return;
+  const title = cardTitle(card);
+  const id = addTurn(`Find the goal “${title}” could move`, { kind: "goalfor", card, title, ...(topic ? { topic } : {}), step: "looking" });
+  void lookForGoals(id, false);
+}
+
+/** Look for the goals it could move (`look`: the ones on the canvas are ruled out, so the web). */
+async function lookForGoals(id: string, look: boolean) {
+  const j = goalForOf(id);
+  if (!j) return;
+  goalJob(id, (x) => ({ ...x, step: "looking", error: undefined }));
+  const ctrl = begin(id);
+  try {
+    const r = await goalsForProblem({ title: j.title, ...(j.topic ? { topic: j.topic } : {}), words: backingOf(j.card), goals: [...goalsOnCanvas().keys()], look, product: st().space }, step(id), ctrl.signal);
+    goalJob(id, (x) => ({ ...x, step: r.fits.length ? "fits" : "ideas", fits: r.fits, ideas: r.ideas, looked: r.looked }));
+  } catch (e) {
+    const stopped = (e as Error).name === "AbortError" || ctrl.signal.aborted;
+    goalJob(id, (x) => ({ ...x, step: "failed", error: stopped ? "You stopped it." : message(e) }));
+  } finally {
+    end(id);
+  }
+}
+
+/** Look for it again, after it failed. */
+export const retryGoalFor = (id: string) => void lookForGoals(id, !!goalForOf(id)?.fits);
+
+/** None of the goals it fits is the one: on to the web. */
+export const lookPastFits = (id: string) => void lookForGoals(id, true);
+
+/** The problem's card under a goal's card, one undo step with whatever else `also` does. */
+function hangUnder(card: string, goalCard: string) {
+  studio().mutate((d) => {
+    if (!d.nodes[card] || !d.nodes[goalCard]) return;
+    delete d.nodes[goalCard].meta.ost!.collapsed;
+    moveCardsIn(d, [card], goalCard);
+  });
+  show(card, { select: false });
+}
+
+/** A goal on the canvas it fits, taken: the problem goes under it, then its number if it lacks one. */
+export function takeFit(id: string, goal: string) {
+  const j = goalForOf(id);
+  const fit = j?.fits?.find((f) => f.goal === goal);
+  const goalCard = goalsOnCanvas().get(goal);
+  if (!j || !fit || !goalCard) return;
+  hangUnder(j.card, goalCard);
+  if (j.topic) void orgFetch("/bearings", { method: "POST", json: { need: j.topic, goal, on: true, how: fit.how, bears: fit.bears } }).catch(() => {});
+  const m = goalById(goalsNow(), goal)?.metric;
+  const on: GoalForOn = { card: goalCard, title: fit.title, goal, ...(m?.name ? { metric: { name: m.name, ...(m.unit ? { unit: m.unit } : {}), direction: m.direction } } : {}), now: m?.current ?? m?.baseline ?? null };
+  askNumber(id, on);
+}
+
+/** A goal it fits, left out: a person's word stands (Qalam AI won't link them again). With none left, on to the web. */
+export function leaveFit(id: string, goal: string) {
+  const j = goalForOf(id);
+  if (!j) return;
+  if (j.topic) void orgFetch("/bearings", { method: "POST", json: { need: j.topic, goal, on: false } }).catch(() => {});
+  const fits = (j.fits ?? []).filter((f) => f.goal !== goal);
+  goalJob(id, (x) => ({ ...x, fits }));
+  if (!fits.length) void lookForGoals(id, true);
+}
+
+/** A goal proposed for it, taken: written on the canvas with the problem under it, then its number. */
+export function takeIdea(id: string, idea: string) {
+  const j = goalForOf(id);
+  const g = j?.ideas?.find((x) => x.id === idea);
+  if (!j || !g) return;
+  const node = makeCardNode(newCard("outcome", { title: g.title, metric: { ...g.metric, baseline: null, current: null, target: null } }));
+  studio().mutate((d) => {
+    addCardIn(d, node, null);
+    if (d.nodes[j.card]) moveCardsIn(d, [j.card], node.id);
+  });
+  show(node.id, { select: false });
+  askNumber(id, { card: node.id, title: g.title, metric: g.metric, now: null, others: g.others });
+}
+
+/** What the box asks about the goal's number; nothing to ask: it's done. */
+function askNumber(id: string, on: GoalForOn) {
+  const n = studio().doc.nodes[on.card];
+  const asked = numberRound(isOstCard(n) ? n.meta.ost.metric : undefined);
+  goalJob(id, (x) => ({ ...x, on, step: asked.length ? "asking" : "done" }));
+}
+
+/** The questions the box asks now, for a goal's number. */
+export function numberQuestions(id: string): PlanQuestion[] {
+  const on = goalForOf(id)?.on;
+  const n = on && studio().doc.nodes[on.card];
+  return numberRound(isOstCard(n) ? n.meta.ost.metric : on?.metric ? { name: on.metric.name } : undefined);
+}
+
+/** A goal's card given its number (it reaches goals.md as the canvas settles). */
+function writeNumber(card: string, patch: Partial<OstMetric>) {
+  studio().mutate((d) => updateCardIn(d, card, (c) => void (c.metric = { name: "", direction: "increase", baseline: null, current: null, target: null, ...c.metric, ...patch })));
+}
+
+/** Their answers about the number: what they gave goes on the goal; with no number in mind, one's suggested. */
+export async function answerNumber(id: string, answers: Readonly<Record<string, string>>) {
+  const j = goalForOf(id);
+  const on = j?.on;
+  if (!j || !on || !studio().doc.nodes[on.card]) return;
+  const name = answers.name?.trim().slice(0, 80);
+  const metric = on.metric ?? (name ? { name, direction: "increase" as const } : undefined);
+  // Nothing to measure it by: it stays without a number.
+  if (!metric) return goalJob(id, (x) => ({ ...x, step: "done" }));
+  const now = answers.now ? nowFrom(answers.now) : (on.now ?? null);
+  const said = answers.target ? targetFrom(answers.target, { now, unit: metric.unit, direction: metric.direction }) : null;
+  writeNumber(on.card, { ...metric, ...(now !== null ? { current: now, baseline: now } : {}), ...(said?.target !== null && said?.target !== undefined ? { target: said.target } : {}) });
+  const placed: GoalForOn = { ...on, metric, now };
+  if (said?.target !== null && said?.target !== undefined) return goalJob(id, (x) => ({ ...x, on: placed, step: "done" }));
+  // “Up 20%” with nothing to apply it to: theirs, and only where it stands is missing.
+  if (said?.move) return goalJob(id, (x) => ({ ...x, on: placed, step: "suggested", suggestion: { target: null, move: said.move, why: "", others: [] } }));
+  goalJob(id, (x) => ({ ...x, on: placed, step: "suggesting" }));
+  const ctrl = begin(id);
+  try {
+    const r = await suggestGoalNumber({ goal: on.title, ...(on.goal ? { goalId: on.goal } : {}), metric, now, problem: j.title, others: on.others ?? [] }, step(id), ctrl.signal);
+    goalJob(id, (x) => ({ ...x, step: "suggested", suggestion: r.suggestion }));
+  } catch (e) {
+    const stopped = (e as Error).name === "AbortError" || ctrl.signal.aborted;
+    goalJob(id, (x) => ({ ...x, step: "suggested", suggestion: null, error: stopped ? undefined : message(e) }));
+  } finally {
+    end(id);
+  }
+}
+
+/** The number they chose, suggested or their own, as the goal's target (none: it stays without one). */
+export function settleNumber(id: string, target: number | null, timeframe?: string) {
+  const on = goalForOf(id)?.on;
+  if (!on) return;
+  if (target !== null && studio().doc.nodes[on.card]) writeNumber(on.card, { target, ...(timeframe ? { timeframe } : {}) });
+  goalJob(id, (x) => ({ ...x, step: "done" }));
 }
 
 // ---------------------------------------------------------------------------

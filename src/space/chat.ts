@@ -6,6 +6,9 @@ import type { SetupDoc } from "@/org/setup";
 import type { FindWhat } from "./find";
 import type { PlanQuestion } from "@/ai/plan";
 import type { FocusLook } from "@/goals/focus";
+import type { GoalFit, GoalIdea, MovesFound, SuggestedNumber } from "@/goals/moves";
+import type { Benchmark } from "@/goals/outside";
+import type { OstMetric } from "@/discovery/types";
 
 /*
  * Qalam AI's chat on the left of a space's canvas (src/ui/space/chat/), as it's kept: one file per
@@ -68,7 +71,40 @@ export type ChatJob =
    * problem to focus on for a goal on the canvas, its opening questions asked once Qalam AI has
    * looked on the web for what usually gets in its way (`look`).
    */
-  | { kind: "find"; what: FindWhat; error?: string; /** Qalam AI's opening questions, from what's known about the company and its domain (none: code's own). */ questions?: PlanQuestion[]; /** Those being worked out. */ loading?: true; goal?: FocusGoal; look?: FocusLook };
+  | { kind: "find"; what: FindWhat; error?: string; /** Qalam AI's opening questions, from what's known about the company and its domain (none: code's own). */ questions?: PlanQuestion[]; /** Those being worked out. */ loading?: true; goal?: FocusGoal; look?: FocusLook }
+  | GoalForJob;
+
+/**
+ * The goal a problem could move (src/goals/moves.ts): `looking` at the goals on the canvas, then the
+ * web; `fits` or `ideas` for them to pick; `asking` its number in the box; `suggesting` then
+ * `suggested` when they have none in mind; `done` with the problem under the goal.
+ */
+export interface GoalForJob {
+  kind: "goalfor";
+  /** The problem's card, its words, its page. */
+  card: string;
+  title: string;
+  topic?: string;
+  step: "looking" | "fits" | "ideas" | "asking" | "suggesting" | "suggested" | "done" | "failed";
+  fits?: GoalFit[];
+  ideas?: GoalIdea[];
+  looked?: MovesFound["looked"];
+  /** The goal picked: its card on the canvas, its words and number. */
+  on?: GoalForOn;
+  suggestion?: SuggestedNumber | null;
+  error?: string;
+}
+
+export interface GoalForOn {
+  card: string;
+  title: string;
+  /** In goals.md already (a goal on the canvas), not one just written. */
+  goal?: string;
+  metric?: Pick<OstMetric, "name" | "unit" | "direction">;
+  now?: number | null;
+  /** What others report for it, found when it was looked for. */
+  others?: Benchmark[];
+}
 
 /** The goal whose problem to focus on: its card on the canvas, its id in goals.md, its words. */
 export interface FocusGoal {
@@ -105,10 +141,13 @@ function stopped(j: ChatJob): ChatJob {
     const { loading: _gone, ...rest } = j;
     return rest;
   }
+  if (j.kind === "goalfor" && j.step === "looking") return { ...j, step: "failed", error: "It stopped when the page closed." };
+  // A number still being worked out when the page went: theirs to type.
+  if (j.kind === "goalfor" && j.step === "suggesting") return { ...j, step: "suggested", suggestion: null };
   return j;
 }
 
-const KINDS = new Set(["ask", "choose", "add", "take", "dump", "find"]);
+const KINDS = new Set(["ask", "choose", "add", "take", "dump", "find", "goalfor"]);
 
 /** A chat as read from its file (what it doesn't know is left out). */
 export function chatOf(raw: unknown): CanvasChat {
@@ -232,6 +271,24 @@ function replyTo(t: ChatTurn, dumpOf: DumpOf): ChatPart[] {
         return [...(j.look ? [part("looked", id)] : []), text("A few questions first. I'll look things up where your answers call for it, then propose the problems to focus on. Skip any you can't answer."), ...(j.error ? [text(j.error)] : []), part("cancel", id)];
       }
       return [text(`A few questions first, then I'll suggest ${j.what === "goal" ? "a goal" : "a problem"} from what you say. Skip any you can't answer.`), ...(j.error ? [text(j.error)] : []), part("cancel", id)];
+    case "goalfor":
+      switch (j.step) {
+        case "looking":
+        case "suggesting":
+          return [...(j.on ? [part("goalOn", id)] : []), part("working", id)];
+        case "fits":
+          return [part("goalFits", id)];
+        case "ideas":
+          return [part("goalIdeas", id)];
+        case "asking":
+          return [part("goalOn", id), text("Now its number, so we can tell if it's realistic.")];
+        case "suggested":
+          return [part("goalOn", id), part("goalNumber", id)];
+        case "done":
+          return [part("goalDone", id)];
+        case "failed":
+          return [...(j.on ? [part("goalOn", id)] : []), text(`I couldn't finish: ${j.error ?? "something went wrong"}`), part("goalRetry", id)];
+      }
   }
 }
 
@@ -241,8 +298,9 @@ export function threadOf(c: CanvasChat, dumpOf: DumpOf = () => null): ChatMessag
 }
 
 /** Whose questions the box asks now: the newest "Help me find one" or brain dump waiting on its answers. */
-export function asking(c: CanvasChat, dumpOf: DumpOf): ({ turn: ChatTurn } & ({ source: string } | { find: FindWhat })) | null {
+export function asking(c: CanvasChat, dumpOf: DumpOf): ({ turn: ChatTurn } & ({ source: string } | { find: FindWhat } | { number: true })) | null {
   for (const t of [...c.turns].reverse()) {
+    if (t.job.kind === "goalfor" && t.job.step === "asking") return { turn: t, number: true };
     if (t.job.kind === "find") return { turn: t, find: t.job.what };
     if (t.job.kind !== "dump" || t.job.error) continue;
     if (dumpOf(t.job.source)?.phase === "asking") return { turn: t, source: t.job.source };
@@ -251,7 +309,7 @@ export function asking(c: CanvasChat, dumpOf: DumpOf): ({ turn: ChatTurn } & ({ 
 }
 
 // A goal's opening look runs here (the box offers Stop); the questions it works out are asked after.
-const busy = (j: ChatJob) => (j.kind === "ask" && j.state === "asking") || (j.kind === "take" && j.state === "taking") || (j.kind === "find" && !!j.goal && !!j.loading);
+const busy = (j: ChatJob) => (j.kind === "ask" && j.state === "asking") || (j.kind === "take" && j.state === "taking") || (j.kind === "find" && !!j.goal && !!j.loading) || (j.kind === "goalfor" && (j.step === "looking" || j.step === "suggesting"));
 
 /** What in the chat is still running (the composer offers Stop). */
 export const running = (c: CanvasChat): ChatTurn | null => [...c.turns].reverse().find((t) => busy(t.job)) ?? null;

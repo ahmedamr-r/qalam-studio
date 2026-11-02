@@ -3,7 +3,7 @@ import { setLab } from "@/lab";
 import { backingLine, nextSteps, type CardFacts } from "./next";
 
 const none = { quotes: 0, sources: 0, ours: 0, online: 0, against: 0, who: [], from: [] };
-const facts = (over: Partial<CardFacts> = {}): CardFacts => ({ kind: "opportunity", evidence: none, page: null, under: { solutions: 0, tests: 0 }, pages: 0, search: false, material: false, tools: null, feeds: [], answered: false, ai: true, reviewing: false, busyElsewhere: false, ...over });
+const facts = (over: Partial<CardFacts> = {}): CardFacts => ({ kind: "opportunity", evidence: none, page: null, under: { solutions: 0, tests: 0 }, underGoal: true, pages: 0, search: false, material: false, tools: null, feeds: [], answered: false, ai: true, reviewing: false, busyElsewhere: false, ...over });
 const goal = (over: Partial<NonNullable<CardFacts["goal"]>> = {}) => ({ id: "g1", number: null, behind: 0, job: null, pending: 0, drafted: 0, ...over });
 const ids = (f: CardFacts) => nextSteps(f).map((s) => s.id);
 
@@ -11,6 +11,13 @@ describe("a card's next steps", () => {
   it("lead a problem with drafting its solutions, then its page", () => {
     expect(ids(facts())).toEqual(["draft-solutions", "add-file"]);
     expect(ids(facts({ page: { topic: "late-orders", strength: "thin", quotes: 2, sources: 1 } }))).toEqual(["draft-solutions", "add-file", "page", "questions"]);
+  });
+
+  it("offer a problem with no goal above it the goal it could move, Qalam AI's to run", () => {
+    const loose = { underGoal: false };
+    expect(ids(facts(loose))).toEqual(["draft-solutions", "find-goal", "add-file"]);
+    expect(nextSteps(facts(loose)).find((s) => s.id === "find-goal")).toMatchObject({ label: "Find the goal it could move", ai: true });
+    expect(nextSteps(facts({ ...loose, ai: false })).find((s) => s.id === "find-goal")?.blocked).toBe("Qalam AI isn't ready here");
   });
 
   it("lead a solution with its tests, then designing it", () => {

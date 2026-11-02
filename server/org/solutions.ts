@@ -1,5 +1,6 @@
 import { evidenceBasis, pieceBasis, reachesKnow } from "@/discovery/basis";
 import { nanoid } from "nanoid";
+import { companyContext } from "./company";
 import { solutionsCall } from "@/ai/solutions";
 import { structured } from "@/ai/server";
 import { isOstCard } from "@/doc/board";
@@ -150,7 +151,7 @@ export async function draftSolutions(store: OrgStore, req: { topic?: string; car
   if (!topic && !req.card?.title.trim()) throw new NotFoundError("No problem to draft for");
   emit?.("Reading what the problem rests on");
   const input = await solutionsInput(store, topic, req.card ?? null, { answers: req.answers, found: req.found });
-  const m = solutionsMaterial(input);
+  const m = solutionsMaterial({ ...input, company: await companyContext(store) });
   emit?.("Qalam AI is drafting ways to solve it");
   const { data, model } = await structured<unknown>(solutionsCall(m), opts.signal);
   const now = Date.now();

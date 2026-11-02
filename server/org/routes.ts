@@ -1,3 +1,4 @@
+import { MARKET_SECTIONS, type MarketEdit } from "@/market/edit";
 import { createReadStream } from "node:fs";
 import { Readable } from "node:stream";
 import { Hono } from "hono";
@@ -35,7 +36,7 @@ import type { Hit as ConnectorHit } from "@/connectors/recipes";
 import { findProblems, goalPage, linkByHand } from "./goals";
 import { pictureFromFigma, pinByHand, placeQuotes } from "./steps";
 import { answerReading, dropReading, editSeen, seenEditShape, seenMaps, seenView, settleReading, startReading } from "./seen";
-import { findQuestions, suggestStatement, lookForCompetitors, lookUpCompany, marketSession, settleCompany, settleCompetitors, stopLook, type FactDecision } from "./market";
+import { editKnown, findQuestions, suggestStatement, lookForCompetitors, lookUpCompany, marketSession, settleCompany, settleCompetitors, stopLook, type FactDecision } from "./market";
 import type { SeenAnswer, Shot } from "@/seen/types";
 import { CHAT_KEY, chatOf } from "@/space/chat";
 import { changeJob, noteForJob, onlineForJob, openJobs, planJobs, searchForJob, takeInForJob } from "./jobs";
@@ -43,6 +44,8 @@ import { addFeed, changeFeed, checkFeed, feedsView, refreshFeed } from "./feeds"
 import { feedTarget, type FeedTarget } from "@/feeds/feeds";
 import { breakDown, decidePart, lookOutside } from "./outside";
 import { lookForGoal } from "./focus";
+import { goalsForProblem, suggestGoalNumber } from "./moves";
+import type { Benchmark } from "@/goals/outside";
 import { decideProblem, draftProblems } from "./problems";
 import { decideSolution, draftSolutions, solutionsView, type SolutionsCard } from "./solutions";
 import { draftTests, type TestsRequest } from "./tests";
@@ -382,6 +385,34 @@ export function orgRoutes(): Hono<Env> {
     if (!goalById(await store.getGoals(), id)) return c.json({ error: "not_found", message: "No such goal" }, 404);
     const words = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : undefined);
     return streamed(c.req.raw.signal, (emit, signal) => lookForGoal(store, id, { query: words(b.query, 400), said: words(b.said, 4000), open: b.open === true }, emit, signal));
+  });
+  // The goal a problem could move (server/org/moves.ts): the goals on the canvas first, then the web; and a number suggested when they have none in mind.
+  r.post("/api/org/:org/problems/goals", async (c) => {
+    if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't look for a goal." }, 503);
+    if (rateLimited(c.req.raw)) return c.json({ error: "rate_limited", message: "Too many requests, try again in a few minutes." }, 429);
+    const b = ((await c.req.json().catch(() => ({}))) ?? {}) as { title?: unknown; topic?: unknown; words?: unknown; goals?: unknown; look?: unknown; product?: unknown };
+    if (typeof b.title !== "string" || !b.title.trim()) return bad("Name the problem");
+    const strings = (v: unknown, max: number, each: number) => (Array.isArray(v) ? v : []).filter((x): x is string => typeof x === "string" && !!x.trim()).map((x) => x.trim().slice(0, each)).slice(0, max);
+    const asked = { title: b.title.trim().slice(0, 300), ...(typeof b.topic === "string" && ID.test(b.topic) ? { topic: b.topic } : {}), words: strings(b.words, 12, 600), goals: strings(b.goals, 100, 64), look: b.look === true, product: typeof b.product === "string" ? b.product : null };
+    const store = c.get("store");
+    return streamed(c.req.raw.signal, (emit, signal) => goalsForProblem(store, asked, emit, signal));
+  });
+  r.post("/api/org/:org/problems/goal-number", async (c) => {
+    if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't suggest a number." }, 503);
+    if (rateLimited(c.req.raw)) return c.json({ error: "rate_limited", message: "Too many requests, try again in a few minutes." }, 429);
+    const b = ((await c.req.json().catch(() => ({}))) ?? {}) as { goal?: unknown; goalId?: unknown; metric?: { name?: unknown; unit?: unknown; direction?: unknown }; now?: unknown; problem?: unknown; others?: unknown };
+    if (typeof b.goal !== "string" || !b.goal.trim() || typeof b.metric?.name !== "string" || !b.metric.name.trim()) return bad("Name the goal and its number");
+    const asked = {
+      goal: b.goal.trim().slice(0, 300),
+      ...(typeof b.goalId === "string" && ID.test(b.goalId) ? { goalId: b.goalId } : {}),
+      metric: { name: b.metric.name.trim().slice(0, 80), ...(typeof b.metric.unit === "string" && b.metric.unit.trim() ? { unit: b.metric.unit.trim().slice(0, 24) } : {}), direction: b.metric.direction === "decrease" ? ("decrease" as const) : ("increase" as const) },
+      now: typeof b.now === "number" && Number.isFinite(b.now) ? b.now : null,
+      problem: typeof b.problem === "string" ? b.problem.slice(0, 300) : "",
+      // What others report, as the look that found them kept them: checked on their pages there.
+      others: (Array.isArray(b.others) ? b.others : []).slice(0, 8) as Benchmark[],
+    };
+    const store = c.get("store");
+    return streamed(c.req.raw.signal, (emit, signal) => suggestGoalNumber(store, asked, emit, signal));
   });
   // Drafting a goal's problems (server/org/problems.ts): reviewed on the canvas under the goal's card, each decided in its work file.
   r.post("/api/org/:org/goals/:id/draft-problems", async (c) => {
@@ -968,6 +999,16 @@ export function orgRoutes(): Hono<Env> {
   });
   r.delete("/api/org/:org/market/company", (c) => {
     stopLook(c.get("store"), "company");
+    return c.json({ ok: true });
+  });
+  r.put("/api/org/:org/market/lines", async (c) => {
+    const b = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
+    const id = typeof b?.id === "string" ? b.id.slice(0, 40) : "";
+    const text = typeof b?.text === "string" ? b.text : "";
+    const section = MARKET_SECTIONS.find((s) => s === b?.section);
+    const edit: MarketEdit | null = b?.kind === "remove" && id ? { kind: "remove", id } : b?.kind === "fix" && id && text.trim() ? { kind: "fix", id, text } : b?.kind === "add" && section && text.trim() ? { kind: "add", section, text } : null;
+    if (!edit) return bad("Say which line, and its words");
+    await editKnown(c.get("store"), edit, { tab: tabOf(c.req.raw.headers) });
     return c.json({ ok: true });
   });
   r.post("/api/org/:org/statement", async (c) => {

@@ -170,7 +170,7 @@ function ChoicesPart({ data }: { data: PartData }) {
     if (next === "yours") return chip("Next: which are yours", () => goStep("yours"), primary);
     if (next === "connect") return chip("Next: what to connect", () => goStep("connect"), primary);
     // In through the problems they hear about: Finish opens the canvas, its panel ranking them by what customers said.
-    return chip("Finish", () => finishFirstRun(useFirstRun.getState().door === "problems" ? orgHref() : firstGoalHref()), primary);
+    return chip("Finish", () => finishFirstRun(useFirstRun.getState().door === "problems" ? `${orgHref()}?panel=problems` : firstGoalHref()), primary);
   };
   const n = Number(data.n ?? 0);
   switch (data.set) {

@@ -32,9 +32,10 @@ import { addMaterial } from "./new";
  *   ?find=goal|problem    the first run's "Help me find one", in the chat
  *   ?write=1              the chat's box, for a goal or a problem they have in mind
  *   ?take=goal|problem    their words from the first run, taken as a goal or a problem
+ *   ?panel=problems       the panel open on that section (read by ../home/Home.tsx as it opens)
  */
 
-const KEYS = ["card", "board", "then", "problem", "under", "review", "source", "idea", "add", "find", "write", "take"];
+const KEYS = ["card", "board", "then", "problem", "under", "review", "source", "idea", "add", "find", "write", "take", "panel"];
 
 export async function consumeHomeParams() {
   const u = new URL(window.location.href);

@@ -49,7 +49,7 @@ export interface NoticeGroup {
 /** How many of a group's notices show before "Show all". */
 const PER_GROUP = 3;
 
-export function NeedsALook({ now, scope, projects, topics, groups, onShow }: { now: NoticesNow | null; scope: (n: Notice) => boolean; projects: Project[]; topics: TopicInfo[] | null; groups?: NoticeGroup[]; /** Show what it's about (the space's map glides to its card). */ onShow?: (n: Notice) => void }) {
+export function NeedsALook({ now, scope, projects, topics, groups, onShow, close, children }: { now: NoticesNow | null; scope: (n: Notice) => boolean; projects: Project[]; topics: TopicInfo[] | null; groups?: NoticeGroup[]; /** Show what it's about (the space's map glides to its card). */ onShow?: (n: Notice) => void; /** Closing the panel it's in. */ close?: ReactNode; /** What else wants attention, under the heading. */ children?: ReactNode }) {
   const [all, setAll] = useState(false);
   const [open, setOpen] = useState<Set<string>>(() => new Set());
   const toggle = (key: string) =>
@@ -94,12 +94,16 @@ export function NeedsALook({ now, scope, projects, topics, groups, onShow }: { n
           {list.length > 0 && <span className="ml-[6px] text-caption font-normal text-fg-subtle">{list.length}</span>}
           {fresh > 0 && <span className="ml-[6px] text-caption font-normal text-fg-muted">· {fresh} new since your last visit</span>}
         </h2>
-        {lab("review") && (
-          <Button variant="secondary" size="sm" disabled={review.running} onClick={() => void reviewNow()}>
-            {review.running ? "Reviewing…" : "Review now"}
-          </Button>
-        )}
+        <span className="flex shrink-0 items-center gap-[4px]">
+          {lab("review") && (
+            <Button variant="secondary" size="sm" disabled={review.running} onClick={() => void reviewNow()}>
+              {review.running ? "Reviewing…" : "Review now"}
+            </Button>
+          )}
+          {close}
+        </span>
       </div>
+      {children}
       {review.note && <p className="text-caption text-fg-muted">{review.note}</p>}
       {now === null ? (
         <p className="text-body text-fg-muted">Looking…</p>

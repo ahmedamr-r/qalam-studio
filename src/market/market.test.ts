@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
+import { solutionsMaterial } from "@/discovery/solutions";
+import { testsMaterial } from "@/discovery/tests";
+import { problemsMaterial } from "@/goals/drafted";
 import { marketPieces } from "@/hub/pieces";
-import { aboutFromFacts, companyMaterial, sanitizeFacts, siteUrl } from "./facts";
+import { editMarket } from "./edit";
+import { aboutAfterFact, aboutFromFacts, companyMaterial, sanitizeFacts, siteUrl } from "./facts";
 import { marketFromMarkdown, marketToMarkdown } from "./market-md";
 import { competitorsMaterial, domainMaterial, sanitizeCompetitors, sanitizeDomain } from "./rivals";
 import { sessionOf } from "./session";
-import { emptyMarket, type Market } from "./types";
+import { marketContext } from "./text";
+import { emptyMarket, MARKET_LIMITS, type Market, type MarketLine } from "./types";
 
 const page = { ref: "", url: "https://tagaddod.com/about", title: "About Tagaddod", text: "Tagaddod collects used cooking oil from more than 50,000 households in Cairo and Giza and turns it into biodiesel. Households earn points for every litre." };
 
@@ -139,5 +144,71 @@ describe("competitors and the domain", () => {
     const d = sanitizeDomain({ aims: [{ text: "Collectors watch litres collected per household each month.", quote: "Collectors track litres collected per household each month", page: "w1" }, { text: "They aim for 30% growth.", quote: "Collectors track litres", page: "w1" }], struggles: [{ text: "Households find pickups hard to schedule.", quote: "Households say pickups are hard to schedule", page: "w1" }] }, m, { now: 1, id });
     expect(d.aims.map((l) => l.text)).toEqual(["Collectors watch litres collected per household each month."]);
     expect(d.struggles).toMatchObject([{ text: "Households find pickups hard to schedule.", url: "https://report.example/uco", by: "qalam" }]);
+  });
+});
+
+describe("what's known, as the canvas edits it and calls hear it", () => {
+  const line = (id: string, text: string, o: Partial<MarketLine> = {}): MarketLine => ({ id, text, by: "qalam", at: 1, url: "https://x.com/", title: "X", quote: text, ...o });
+  const known = (): Market => ({ ...emptyMarket(), company: [line("f1", "Collects used oil in Cairo")], competitors: [{ id: "c1", name: "Delta Oil", lines: [line("l1", "Sells recycled oil")], by: "qalam", at: 1 }], aims: [line("d1", "More repeat collections")] });
+  const at = { now: 5, id: (p: string) => `${p}new` };
+
+  it("a line fixed is theirs, with its link and without the page's words", () => {
+    const m = editMarket(known(), { kind: "fix", id: "f1", text: "  Collects  used oil in Giza " }, at);
+    expect(m.company[0]).toEqual({ id: "f1", text: "Collects used oil in Giza", url: "https://x.com/", title: "X", by: "you", at: 5 });
+    const inRival = editMarket(known(), { kind: "fix", id: "l1", text: "Sells oil" }, at);
+    expect(inRival.competitors[0].lines[0]).toMatchObject({ text: "Sells oil", by: "you" });
+  });
+
+  it("the same words, or no words, change nothing", () => {
+    const m = known();
+    expect(editMarket(m, { kind: "fix", id: "f1", text: "Collects used oil in Cairo" }, at)).toBe(m);
+    expect(editMarket(m, { kind: "fix", id: "f1", text: "  " }, at)).toBe(m);
+    expect(editMarket(m, { kind: "add", section: "aims", text: " " }, at)).toBe(m);
+  });
+
+  it("a competitor taken off is never proposed again, until they add it back", () => {
+    const off = editMarket(known(), { kind: "remove", id: "c1" }, at);
+    expect(off.competitors).toEqual([]);
+    expect(off.gone).toEqual(["delta oil"]);
+    const back = editMarket(off, { kind: "add", section: "competitors", text: "Delta Oil" }, at);
+    expect(back.competitors[0]).toMatchObject({ id: "cnew", name: "Delta Oil", by: "you" });
+    expect(back.gone).toEqual([]);
+    expect(editMarket(back, { kind: "add", section: "competitors", text: "delta oil" }, at)).toBe(back);
+  });
+
+  it("adds each kind in their words, up to its limit", () => {
+    const m = editMarket(known(), { kind: "add", section: "company", text: "Founded in 2013" }, at);
+    expect(m.company[1]).toEqual({ id: "fnew", text: "Founded in 2013", field: "does", by: "you", at: 5 });
+    const full = { ...emptyMarket(), aims: Array.from({ length: MARKET_LIMITS.domain }, (_, i) => line(`d${i}`, `Aim ${i}`)) };
+    expect(editMarket(full, { kind: "add", section: "aims", text: "One more" }, at)).toBe(full);
+  });
+
+  it("the About loses or changes a fact's sentence only where it's still word for word", () => {
+    const about = { audience: "", context: "Collects used oil in Cairo. Founded in 2013." };
+    expect(aboutAfterFact(about, "Collects used oil in Cairo", null)).toEqual({ context: "Founded in 2013." });
+    expect(aboutAfterFact(about, "Collects used oil in Cairo", "Collects oil in Giza")).toEqual({ context: "Collects oil in Giza. Founded in 2013." });
+    expect(aboutAfterFact({ audience: "", context: "We rewrote this ourselves." }, "Collects used oil in Cairo", null)).toEqual({});
+  });
+
+  it("calls hear the facts the About doesn't hold, and the competitors", () => {
+    const text = marketContext(known(), { org: "Tagaddod" });
+    expect(text).toContain("- Collects used oil in Cairo");
+    expect(text).toContain("Delta Oil (Sells recycled oil)");
+    expect(text).toContain("never what its customers said");
+    expect(marketContext(known(), { org: "Tagaddod", told: "Context: Collects used oil in Cairo." })).not.toContain("- Collects used oil");
+    expect(marketContext(emptyMarket(), { org: "Tagaddod" })).toBe("");
+  });
+
+  it("what's known words a draft, and no number or quote can come from it", () => {
+    const company = "Delta Oil has 40 branches";
+    const solutions = solutionsMaterial({ problem: { title: "Late pickups", topic: null }, lines: [], pieces: [], goals: [], claims: [], steps: [], cards: [], ideas: [], company });
+    expect(solutions.text).toContain(company);
+    expect(solutions.hay).not.toContain("40 branches");
+    const problems = problemsMaterial({ goal: { title: "More pickups", metric: null }, above: [], behind: [], pages: [], pieces: [], company });
+    expect(problems.text).toContain(company);
+    expect(problems.hay).not.toContain("40 branches");
+    const tests = testsMaterial({ solution: { title: "Reminders", description: "", assumptions: [], tests: [] }, problem: null, goal: null, pieces: [], company });
+    expect(tests.text).toContain(company);
+    expect(tests.hay).not.toContain("40 branches");
   });
 });

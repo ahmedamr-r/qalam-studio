@@ -14,6 +14,7 @@ export const PAGE_TEXT = 3500;
 export const MAX_PAGES = 5;
 
 const one = (s: string) => s.replace(/\s+/g, " ").trim();
+const sentence = (t: string) => (/[.!?]$/.test(t) ? t : `${t}.`);
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 const clip = (v: unknown, max: number) => (typeof v === "string" ? one(v).slice(0, max) : "");
 const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
@@ -103,9 +104,23 @@ export function sanitizeFacts(raw: unknown, m: FactsSent, o: { now: number; id: 
 
 /** The About's empty fields, filled from the facts kept: what it does (with where, its model and stage), and who it's for. */
 export function aboutFromFacts(facts: readonly MarketLine[], about: { audience: string; context: string }): { audience?: string; context?: string } {
-  const sentence = (t: string) => (/[.!?]$/.test(t) ? t : `${t}.`);
   const join = (fields: FactField[]) => facts.filter((f) => f.field && fields.includes(f.field)).map((f) => sentence(f.text)).join(" ").slice(0, 1200);
   const context = about.context.trim() ? "" : join(["does", "where", "model", "stage", "product"]);
   const audience = about.audience.trim() ? "" : join(["for"]);
   return { ...(context ? { context } : {}), ...(audience ? { audience } : {}) };
+}
+
+/**
+ * The About once a fact it was filled from is fixed (`now`) or taken off (null): the sentence goes
+ * with it, so Qalam AI stops hearing it. A field they rewrote no longer has it word for word, and stays.
+ */
+export function aboutAfterFact(about: { audience: string; context: string }, was: string, now: string | null): { audience?: string; context?: string } {
+  const change = (field: string) => {
+    const at = field.indexOf(sentence(was));
+    if (at < 0) return null;
+    return `${field.slice(0, at)}${now ? sentence(now) : ""}${field.slice(at + sentence(was).length)}`.replace(/ {2,}/g, " ").trim();
+  };
+  const context = change(about.context);
+  const audience = change(about.audience);
+  return { ...(context !== null ? { context } : {}), ...(audience !== null ? { audience } : {}) };
 }

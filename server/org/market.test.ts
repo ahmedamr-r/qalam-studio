@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MarketDeps } from "./market";
+import { companyContext } from "./company";
 import { OrgStore } from "./store";
 
 // Nothing here reaches the web or a model: every look gets its stand-ins.
@@ -16,7 +17,7 @@ vi.mock("../index/registry", () => ({
   },
 }));
 
-const { lookForCompetitors, lookUpCompany, lookUpDomain, marketSession, settleCompany, settleCompetitors } = await import("./market");
+const { editKnown, lookForCompetitors, lookUpCompany, lookUpDomain, marketSession, settleCompany, settleCompetitors } = await import("./market");
 
 let dir: string;
 let store: OrgStore;
@@ -163,5 +164,54 @@ describe("competitors and the domain in the first run", () => {
   it("still says a look stopped when nothing runs it and its file stays looking", async () => {
     await store.changeMarketSession((x) => ({ ...x, domain: { state: "looking", at: 1, steps: ["Starting"], aims: 0, struggles: 0 } }));
     expect((await marketSession(store)).domain).toMatchObject({ state: "failed", error: "It stopped before it finished: look again." });
+  });
+});
+
+describe("a person's edits from the canvas", () => {
+  const fact = { id: "f1", text: "Collects used oil in Cairo", field: "does" as const, by: "qalam" as const, at: 1, url: "https://tagaddod.com/", title: "Tagaddod", quote: "Collects used oil in Cairo" };
+
+  beforeEach(async () => {
+    await store.changeMarket((m) => ({ ...m, company: [fact] }));
+    await store.putAbout({ ...(await store.getAbout()), context: "Collects used oil in Cairo. Founded in 2013." });
+  });
+
+  it("a fact fixed is theirs in the file, and in the About", async () => {
+    await editKnown(store, { kind: "fix", id: "f1", text: "Collects used oil in Giza" });
+    expect((await store.getMarket()).company[0]).toMatchObject({ id: "f1", text: "Collects used oil in Giza", by: "you" });
+    expect((await store.getAbout()).context).toBe("Collects used oil in Giza. Founded in 2013.");
+  });
+
+  it("a fact taken off leaves the file and the About", async () => {
+    await editKnown(store, { kind: "remove", id: "f1" });
+    expect((await store.getMarket()).company).toEqual([]);
+    expect((await store.getAbout()).context).toBe("Founded in 2013.");
+  });
+
+  it("what's added goes in the file, and the About stays as it was", async () => {
+    await editKnown(store, { kind: "add", section: "competitors", text: "Delta Oil" });
+    expect(await readFile(path.join(dir, "hub/market.md"), "utf8")).toContain("Delta Oil");
+    expect((await store.getAbout()).context).toBe("Collects used oil in Cairo. Founded in 2013.");
+  });
+});
+
+describe("what a draft hears about the company", () => {
+  it("its About, then only what the About doesn't hold, and its competitors", async () => {
+    await store.putAbout({ ...(await store.getAbout()), context: "Collects used oil in Cairo." });
+    await store.changeMarket((m) => ({
+      ...m,
+      company: [
+        { id: "f1", text: "Collects used oil in Cairo", by: "qalam", at: 1 },
+        { id: "f2", text: "Founded in 2013", by: "you", at: 1 },
+      ],
+      competitors: [{ id: "c1", name: "Delta Oil", lines: [], by: "you", at: 1 }],
+    }));
+    const text = await companyContext(store);
+    expect(text.match(/Collects used oil in Cairo/g)).toHaveLength(1);
+    expect(text).toContain("- Founded in 2013");
+    expect(text).toContain("Tagaddod's competitors: Delta Oil.");
+  });
+
+  it("says nothing when nothing's known", async () => {
+    expect(await companyContext(store)).toBe("");
   });
 });

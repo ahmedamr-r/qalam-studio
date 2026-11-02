@@ -1,5 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { placeCard } from "./anchor";
+import { cameraKeeping, placeCard } from "./anchor";
+
+describe("keeping a box in view", () => {
+  const box = { x: 900, y: 0, w: 200, h: 100 };
+
+  it("leaves one that's in view", () => {
+    expect(cameraKeeping(box, { x: 0, y: 0, zoom: 1 }, 1200)).toBeNull();
+  });
+
+  it("moves one the right side cuts off just far enough, at the camera's zoom", () => {
+    expect(cameraKeeping(box, { x: 0, y: 0, zoom: 1 }, 1000)).toEqual({ x: 124, y: 0, zoom: 1 });
+    expect(cameraKeeping(box, { x: 0, y: 0, zoom: 0.5 }, 500)).toEqual({ x: 148, y: 0, zoom: 0.5 });
+  });
+
+  it("keeps the left edge of one wider than the viewport", () => {
+    expect(cameraKeeping({ x: 100, y: 0, w: 800, h: 100 }, { x: 0, y: 0, zoom: 1 }, 400)).toEqual({ x: 76, y: 0, zoom: 1 });
+    expect(cameraKeeping({ x: 10, y: 0, w: 800, h: 100 }, { x: 0, y: 0, zoom: 1 }, 400)).toBeNull();
+  });
+});
 
 const vp = { w: 1200, h: 800 };
 const card = { w: 340, h: 400 };

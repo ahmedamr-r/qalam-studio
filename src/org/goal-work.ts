@@ -2,6 +2,9 @@ import { callAI } from "@/ai/client";
 import type { Breakdown, GoalWork } from "@/goals/breakdown";
 import type { ProblemsDrafted } from "@/goals/drafted";
 import type { FocusLooked } from "@/goals/focus";
+import type { MovesFound, SuggestedNumber } from "@/goals/moves";
+import type { Benchmark } from "@/goals/outside";
+import type { OstMetric } from "@/discovery/types";
 import type { Goal, GoalLever } from "@/goals/types";
 import { orgJson, orgPath } from "./client";
 import type { DraftWords } from "./solutions";
@@ -50,6 +53,12 @@ export const decideProblem = (goal: string, draft: string, decision: "accepted" 
 
 /** Finding the problem to focus on: a look on the web for what gets in its way (`query`: what their answers called for), and with `open`, the first questions to ask. */
 export const lookForGoal = (goal: string, o: { query?: string; said?: string; open?: boolean }, onActivity?: (label: string) => void, signal?: AbortSignal) => run<FocusLooked>(at(goal, "/focus"), o, onActivity, signal);
+
+/** The goal a problem could move: the goals on the canvas first, then (none fits, or `look`) the web. */
+export const goalsForProblem = (o: { title: string; topic?: string; words: string[]; goals: string[]; look?: boolean; product?: string | null }, onActivity?: (label: string) => void, signal?: AbortSignal) => run<MovesFound>("/problems/goals", o, onActivity, signal);
+
+/** A number suggested for a goal they have none in mind for. */
+export const suggestGoalNumber = (o: { goal: string; goalId?: string; metric: { name: string; unit?: string; direction: OstMetric["direction"] }; now: number | null; problem: string; others: Benchmark[] }, onActivity?: (label: string) => void, signal?: AbortSignal) => run<{ suggestion: SuggestedNumber | null }>("/problems/goal-number", o, onActivity, signal);
 
 /** What others aim for, looked up on the web and checked on each page. */
 export const lookOutside = (goal: string, onActivity?: (label: string) => void, signal?: AbortSignal) => run<{ kept: number; read: number; error?: string }>(at(goal, "/outside"), {}, onActivity, signal);

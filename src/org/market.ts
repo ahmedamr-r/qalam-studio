@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { MarketEdit } from "@/market/edit";
 import { emptyMarket, type Market } from "@/market/types";
 import { emptySession, type MarketSession } from "@/market/session";
 import { orgFetch, orgJson } from "./client";
@@ -46,6 +47,9 @@ async function send(path: string, init: { method: string; json?: unknown }): Pro
     useMarket.setState({ error: message(e) });
   }
 }
+
+/** A person's edit from the canvas's Company section: a line fixed, taken off or added. */
+export const editKnown = (edit: MarketEdit) => send("/market/lines", { method: "PUT", json: edit });
 
 /** Look the company up: its website, or their own line about it. */
 export const lookUpCompany = (o: { site?: string; said?: string }) => send("/market/company", { method: "POST", json: o });
