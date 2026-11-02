@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { isEvidence } from "@/hub/topics";
 import { basisCounts, basisOf, basisSub, countsLine, evidenceBasis, heldBasis, mainBasis, movedLines, pieceBasis, reachesKnow } from "./basis";
-import { whose } from "./solutions";
+import { solutionsMaterial, whose } from "./solutions";
 import { quoteEvidence, type SourceQuote } from "./sources";
 import { evidenceLabel, evidenceSummary, isAssumed } from "./evidence";
 import { sanitizeExtract } from "./synthesis";
@@ -95,6 +95,8 @@ describe("reading any document", () => {
     const about = (t: string) => sanitizeExtract({ about: [{ chunkId: "c1", text: t }, { chunkId: "c1", text: "Second" }] }, chunks).about.map((a) => a.text);
     expect(about("A report on 41% leaving")).toEqual(["A report on 41% leaving"]);
     expect(about("A report on 77% leaving")).toEqual(["Second"]);
+    // A full stop after a number isn't part of it.
+    expect(about("A funnel report, 4,200.")).toEqual(["A funnel report, 4,200."]);
   });
 
   it("treats a fetched page's numbers as someone else's", () => {
@@ -176,5 +178,27 @@ describe("a goal's number from a document", () => {
     expect(got(raw([{ goal: "g1", value: 4200, quoteId: "q9" }]))).toEqual([]);
     expect(got(raw([{ goal: "g1", value: 4200, quoteId: "q1" }], "read"))).toEqual([]);
     expect(got(raw([{ goal: "g1", value: 4200, quoteId: "q1" }, { goal: "g1", value: 41, quoteId: "q1" }]))).toHaveLength(1);
+  });
+});
+
+describe("a draft's material", () => {
+  it("says whose each piece is, a metric never customers'", () => {
+    const m = solutionsMaterial({
+      problem: { title: "Leaving at payment", topic: null },
+      lines: [],
+      pieces: [
+        { ref: "a", text: "Payment: 41% left", label: "Funnel", source: "s", evidence: true, basis: "measured" },
+        { ref: "b", text: "I gave up", label: "Mona", source: "m", evidence: true, basis: "said" },
+        { ref: "c", text: "62% abandon", label: "Northwind", source: "n", evidence: false, basis: "read" },
+      ],
+      goals: [],
+      claims: [],
+      steps: [],
+      cards: [],
+      ideas: [],
+    } as never);
+    expect(m.text).toContain("· measured · Funnel");
+    expect(m.text).toContain("· customers · Mona");
+    expect(m.text).toContain("· read elsewhere · Northwind");
   });
 });

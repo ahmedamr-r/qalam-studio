@@ -714,6 +714,8 @@ function SwitchPart({ data }: { data: PartData }) {
   );
 }
 
+const NOT_THAT: Record<Basis, string> = { said: "Not what people said?", measured: "Not measured?", studied: "Not a study?", read: "Not from elsewhere?", own: "Not your thinking?" };
+
 /** What a document is, as a person can set it: its label reads as a link. */
 function BasisSelect({ label, value, options, onPick }: { label: string; value: Basis | ""; options: readonly Basis[]; onPick: (b: Basis) => void }) {
   return (
@@ -757,7 +759,7 @@ function TakenPart({ data }: { data: PartData }) {
                 )}
               </p>
             ))}
-            <BasisSelect label={d.basis ? `You said: ${BASIS_LABEL[d.basis]}. Change it` : main ? `Not ${BASIS_LABEL[main].toLowerCase()}? Change it` : "Say what it is"} value="" options={BASES} onPick={(b) => void changeDocBasis(t.id, d.source, b)} />
+            <BasisSelect label={d.basis ? `You said: ${BASIS_LABEL[d.basis]}. Change it` : main ? `${NOT_THAT[main]} Change it` : "Say what it is"} value="" options={BASES} onPick={(b) => void changeDocBasis(t.id, d.source, b)} />
           </li>
         );
       })}

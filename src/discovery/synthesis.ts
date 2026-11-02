@@ -73,7 +73,7 @@ export function sanitizeExtract(raw: unknown, chunks: CallChunk[], taken: Map<st
     const ch = byRef.get(typeof a.chunkId === "string" ? a.chunkId : "");
     const text = clip(a.text, EXTRACT_LIMITS.about);
     if (!ch || !text || out.about.some((x) => x.sourceId === ch.c.sourceId)) continue;
-    if ((text.match(/\d[\d.,]*/g) ?? []).every((n) => ch.c.text.includes(n))) out.about.push({ sourceId: ch.c.sourceId, text });
+    if ((text.match(/\d+(?:[.,]\d+)*/g) ?? []).every((n) => ch.c.text.includes(n))) out.about.push({ sourceId: ch.c.sourceId, text });
   }
 
   for (const q of items(r.quotes)) {

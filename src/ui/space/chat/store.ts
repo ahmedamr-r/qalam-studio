@@ -189,7 +189,7 @@ async function dumpIt(at: string | null, said: string, docs: readonly SentDoc[],
   // A doc that read as their thinking can be longer than a dump takes: its start, and the reply says so.
   const cut = asOwn && whole.length > DUMP_MAX_CHARS;
   const text = cut ? whole.slice(0, DUMP_MAX_CHARS) : whole;
-  const id = jobAt(at, said, { kind: "dump", source, ...(asOwn ? { asOwn: { title: docs[0]?.title ?? "It", ...(cut ? { cut: true as const } : {}) } } : {}) }, docs.map(docRef));
+  const id = jobAt(at, said, { kind: "dump", source, ...(asOwn ? { asOwn: { title: docs[0]?.ingested.title ?? docs[0]?.title ?? "It", ...(cut ? { cut: true as const } : {}) } } : {}) }, docs.map(docRef));
   try {
     await startDump(text, { id: source });
     sourceCame(sourceOf(source)?.title ?? "Your thinking");
