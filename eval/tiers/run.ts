@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
@@ -16,6 +16,7 @@ import { claimsCall } from "@/ai/outside";
 import { streamStructured, type CallOpts } from "@/ai/server";
 import { SetupBody, setupCall, type SetupRequest } from "@/ai/setup";
 import { TopicsBody, topicsCall } from "@/ai/topics";
+import { basisOf } from "@/discovery/basis";
 import { packCalls, SOURCE_KIND_LABEL, unread, type SourceRecord } from "@/discovery/sources";
 import { sanitizeExtract, type CallChunk } from "@/discovery/synthesis";
 import { readOutline, sanitizeShaped } from "@/goals/outline";
@@ -26,6 +27,7 @@ import { filingSize, type Filing } from "@/hub/topics";
 import { contextText } from "@/org/context-md";
 import { findClaude } from "../../server/claude";
 import { ensureEngine } from "../../server/engine";
+import { ingestPath, readable } from "../../server/ingest";
 import { readSettings } from "../../server/settings";
 import { loadEnvFiles } from "../../server/env";
 import { secrets } from "../../server/secrets";
@@ -33,12 +35,18 @@ import { buildBasket, SOURCES } from "../retrieval/basket";
 import { ANSWERS, OUTLINE, OUTSIDE_NOTES, OUTSIDE_PAGES, OUTSIDE_TASK, PROBLEM, SHAPE_PRODUCTS } from "./sample";
 
 /**
- * pnpm eval:tiers: should reading run on Sonnet? The read tier's calls (extract, filing into topic
- * pages, the setup's shape, outside claims) run on the Basket sample three ways: Opus 5.5 at each
- * call's effort (the baseline), Sonnet 5.5 at the same effort, and Opus one effort lower (the
- * cheaper way to compare with). For each kind of call: tokens, cost at API prices, seconds, what
- * the model returned and what the app's own checks keep of it. Each case's outputs are written
- * side by side to a scratch folder.
+ * pnpm eval:tiers: should reading run on a cheaper model? The read tier's calls (extract, filing
+ * into topic pages, the setup's shape, outside claims) run on the Basket sample four ways: Opus 5.5
+ * at each call's effort (the baseline), Sonnet 5.5 and Haiku 5.5 at the same effort, and Opus one
+ * effort lower (the cheaper way to compare with). For each kind of call: tokens, cost at API prices,
+ * seconds, what the model returned and what the app's own checks keep of it. Each case's outputs are
+ * written side by side to a scratch folder.
+ *
+ * The Basket sample is mostly interviews. --docs <folder> also reads each file in it as a capture
+ * does ("documents"), so reports, tables and notes count. On a read, keeping as many isn't keeping
+ * the same: it also says how many of Opus's points each model found, and how many of those it marked
+ * with the same basis. With --runs 2 or more, Opus against its own last run shows how much of that
+ * is noise.
  *
  * With --engine <another engine> it asks instead whether that engine's model can take a tier: it
  * runs Claude's Opus 5.5 (the baseline, on Claude Code or a key: --baseline cli|api) beside the
@@ -48,21 +56,21 @@ import { ANSWERS, OUTLINE, OUTSIDE_NOTES, OUTSIDE_PAGES, OUTSIDE_TASK, PROBLEM, 
  *
  * It spends real tokens (on Claude Code or Codex, the plan's limits), so it only estimates unless asked:
  *   pnpm eval:tiers                 the plan and the estimate, no model calls (also --dry)
- *   pnpm eval:tiers --yes           run it (--engine api|cli, --runs N, --only extract,claims, --out dir)
+ *   pnpm eval:tiers --yes           run it (--engine api|cli, --runs N, --only extract,claims, --docs dir, --out dir)
  *   pnpm eval:tiers --engine codex --yes                    Codex's model beside Claude's
  *   pnpm eval:tiers --engine openai --model gpt-… --yes    a key's model beside Claude's
  */
 
-type Kind = "extract" | "topics" | "shape" | "claims" | "solutions";
+type Kind = "extract" | "documents" | "topics" | "shape" | "claims" | "solutions";
 type Effort = CallOpts["effort"];
-const KINDS: Kind[] = ["extract", "topics", "shape", "claims", "solutions"];
+const KINDS: Kind[] = ["extract", "documents", "topics", "shape", "claims", "solutions"];
 /** The read tier's calls (the rest decide). */
-const READS: Kind[] = ["extract", "topics", "shape", "claims"];
+const READS: Kind[] = ["extract", "documents", "topics", "shape", "claims"];
 /** What another engine's model must keep of the baseline's to take a tier. */
 const HOLDS = 0.9;
 
 interface Config {
-  id: "opus" | "sonnet" | "opus-lower" | "engine";
+  id: "opus" | "sonnet" | "haiku" | "opus-lower" | "engine";
   name: string;
   tier: Tier;
   lower: boolean;
@@ -72,6 +80,7 @@ interface Config {
 const DEFAULT_CONFIGS: Config[] = [
   { id: "opus", name: "Opus 5.5, its effort", tier: "decide", lower: false },
   { id: "sonnet", name: "Sonnet 5.5, its effort", tier: "read", lower: false },
+  { id: "haiku", name: "Haiku 5.5, its effort", tier: "fetch", lower: false },
   { id: "opus-lower", name: "Opus 5.5, one lower", tier: "decide", lower: true },
 ];
 const LOWER: Record<Effort, Effort | null> = { xhigh: "high", high: "medium", medium: "low", low: null };
@@ -80,11 +89,12 @@ const LOWER: Record<Effort, Effort | null> = { xhigh: "high", high: "medium", me
 const PRICE: Record<string, { in: number; out: number; read: number; write: number }> = {
   Opus: { in: 4, out: 20, read: 0.2, write: 5 },
   Sonnet: { in: 2, out: 10, read: 0.2, write: 2.5 },
+  Haiku: { in: 0.1, out: 0.5, read: 0.01, write: 0.125 },
 };
 /** What a call writes, thinking included, for the estimate (the run measures it). */
-const OUT_GUESS: Record<Kind, number> = { extract: 2500, topics: 5000, shape: 1800, claims: 1500, solutions: 3500 };
+const OUT_GUESS: Record<Kind, number> = { extract: 2500, documents: 2500, topics: 5000, shape: 1800, claims: 1500, solutions: 3500 };
 const LOWER_OUT = 0.7;
-const SECONDS_GUESS: Record<Kind, number> = { extract: 35, topics: 70, shape: 25, claims: 25, solutions: 60 };
+const SECONDS_GUESS: Record<Kind, number> = { extract: 35, documents: 35, topics: 70, shape: 25, claims: 25, solutions: 60 };
 /** Characters a token, roughly, for prompts and JSON schemas. */
 const CHARS_PER_TOKEN = 3.5;
 
@@ -103,6 +113,13 @@ interface Scored {
   kept: number;
   /** What code kept, for people. */
   items: string[];
+  /** On a read: the points kept, to compare with Opus's. */
+  points?: Point[];
+}
+
+interface Point {
+  text: string;
+  basis: string;
 }
 
 interface Case {
@@ -124,8 +141,37 @@ interface Tally {
   kept: number;
   errors: number;
   models: Set<string>;
+  /** Of Opus's points (this run's; for Opus, its last run's): how many, how many found, how many of those with the same basis. */
+  of: number;
+  found: number;
+  sameBasis: number;
 }
-const tally = (): Tally => ({ calls: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, seconds: 0, returned: 0, kept: 0, errors: 0, models: new Set() });
+const tally = (): Tally => ({ calls: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, seconds: 0, returned: 0, kept: 0, errors: 0, models: new Set(), of: 0, found: 0, sameBasis: 0 });
+
+const wordsIn = (s: string) => new Set(s.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []);
+
+/** The same point in both, however much of it each quoted: most of the shorter one's words are in the other. */
+function samePoint(a: Set<string>, b: Set<string>) {
+  const [small, big] = a.size <= b.size ? [a, b] : [b, a];
+  if (!small.size) return false;
+  return [...small].filter((w) => big.has(w)).length / small.size >= 0.7;
+}
+
+/** How many of the baseline's points another answer has, each matched once. */
+function compare(base: Point[], got: Point[]) {
+  const left = got.map((p) => ({ basis: p.basis, words: wordsIn(p.text) }));
+  let found = 0;
+  let sameBasis = 0;
+  for (const p of base) {
+    const words = wordsIn(p.text);
+    const i = left.findIndex((g) => samePoint(words, g.words));
+    if (i < 0) continue;
+    found++;
+    if (left[i].basis === p.basis) sameBasis++;
+    left.splice(i, 1);
+  }
+  return { of: base.length, found, sameBasis };
+}
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 const list = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? v.map(rec) : []);
@@ -135,7 +181,7 @@ const one = (s: string) => s.replace(/\s+/g, " ").trim();
 // The cases, built from the sample the way the app builds each call
 
 /** Builds the cases; `problems` hears a request the routes would refuse (the core doesn't check, so the eval does). */
-async function casesFor(dir: string, problems: string[]): Promise<{ cases: Case[]; dispose: () => void }> {
+async function casesFor(dir: string, problems: string[], docs?: string): Promise<{ cases: Case[]; dispose: () => void }> {
   const store = await buildBasket(dir);
   const [about, products, goals] = await Promise.all([store.getAbout(), store.listProducts(), store.getGoals()]);
   const names = new Map(products.map((p) => [p.id, p.name]));
@@ -148,31 +194,48 @@ async function casesFor(dir: string, problems: string[]): Promise<{ cases: Case[
   const cases: Case[] = [];
 
   // Extract: each source read from the start, in the parts a capture sends (a brain dump isn't read).
-  for (const s of sources) {
+  const reading = (kind: "extract" | "documents", s: SourceRecord, product: string) => {
     const fresh = { ...s, read: [], quotes: [], needs: [] };
     const calls = packCalls(unread(fresh));
     for (const [i, part] of calls.entries()) {
-      const chunks: CallChunk[] = part.map((c, j) => ({ ref: `c${j + 1}`, sourceId: s.id, start: c.start, text: s.text.slice(c.start, c.end) }));
+      const chunks: CallChunk[] = part.map((c, j) => ({ ref: `c${j + 1}`, sourceId: s.id, start: c.start, text: s.text.slice(c.start, c.end), kind: s.kind, ...(s.pages ? { pages: s.pages } : {}) }));
       const body = {
         stage: "extract" as const,
-        product: productLine(s.product ?? null).slice(0, 2000),
+        product,
         chunks: chunks.map((c) => ({ id: c.ref, source: s.title.slice(0, 300), kind: SOURCE_KIND_LABEL[s.kind], text: c.text })),
       };
       if (!DiscoveryBody.safeParse(body).success) problems.push(`extract · ${s.title}: the route would refuse this request`);
       cases.push({
-        kind: "extract",
+        kind,
         label: calls.length > 1 ? `${s.title} (part ${i + 1})` : s.title,
         run: async (ask) => {
           const raw = await ask(extractCall(body));
           const got = sanitizeExtract(raw, chunks);
+          const basis = (q: { basis?: Parameters<typeof basisOf>[1]["basis"] }) => basisOf(s, q);
           return {
             raw: [raw],
             returned: list(rec(raw).quotes).length + list(rec(raw).needs).length,
             kept: got.quotes.length + got.needs.length,
-            items: [...got.quotes.map((q) => `“${one(q.quote.text)}” (${q.quote.kind})`), ...got.needs.map((n) => `Need: ${one(n.need.title)}`)],
+            items: [...got.about.map((a) => `It is: ${one(a.text)}`), ...got.quotes.map((q) => `“${one(q.quote.text)}” (${q.quote.kind} · ${basis(q.quote)})`), ...got.needs.map((n) => `Need: ${one(n.need.title)}`)],
+            points: got.quotes.map((q) => ({ text: q.quote.text, basis: basis(q.quote) })),
           };
         },
       });
+    }
+  };
+  for (const s of sources) reading("extract", s, productLine(s.product ?? null).slice(0, 2000));
+
+  // Documents: any file, as a capture reads it, for an organization that has nothing yet.
+  if (docs) {
+    for (const name of (await readdir(docs)).sort()) {
+      if (!readable(name)) continue;
+      try {
+        const ing = await ingestPath(path.join(docs, name));
+        if (ing.text.trim()) reading("documents", { v: 1, id: `doc-${cases.length}`, projectId: "", boards: [], product: null, kind: ing.kind, title: ing.title, text: ing.text, ...(ing.origin ? { origin: ing.origin } : {}), ...(ing.pages ? { pages: ing.pages } : {}), addedAt: 0, read: [], quotes: [], needs: [] }, "");
+        else problems.push(`documents · ${name}: no text in it, so nothing to read`);
+      } catch (e) {
+        problems.push(`documents · ${name}: ${e instanceof Error ? e.message : String(e)}`);
+      }
     }
   }
 
@@ -362,7 +425,7 @@ function printEstimate(sent: Awaited<ReturnType<typeof plan>>, runs: number, eng
     if (!s) continue;
     const cells = CONFIGS.map((c) => {
       if (c.lower && !LOWER[s.effort]) return lpad("n/a (already low)", 24);
-      const p = c.tier === "read" ? PRICE.Sonnet : PRICE.Opus;
+      const p = c.tier === "read" ? PRICE.Sonnet : c.tier === "fetch" ? PRICE.Haiku : PRICE.Opus;
       const out = OUT_GUESS[kind] * (c.lower ? LOWER_OUT : 1);
       const cost = c.via ? 0 : (s.calls * runs * (s.input / s.calls) * p.in + s.calls * runs * out * p.out) / 1e6;
       const t = totals.get(c.id)!;
@@ -375,7 +438,7 @@ function printEstimate(sent: Awaited<ReturnType<typeof plan>>, runs: number, eng
     console.log(`${pad(kind, 9)}${lpad(String(s.calls * runs), 6)}${lpad(s.effort, 8)}${lpad(k(s.input / s.calls), 9)}${lpad(k(OUT_GUESS[kind]), 10)}${cells.join("")}`);
   }
   const all = [...totals.values()];
-  const ways = CONFIGS.length === 2 ? "two ways" : "three ways";
+  const ways = `${CONFIGS.length} ways`;
   console.log(`${pad("All", 9)}${lpad("", 33)}${CONFIGS.map((c) => lpad(c.via ? "" : usd(totals.get(c.id)!.cost), 24)).join("")}`);
   console.log(`\n${all.reduce((n, t) => n + t.calls, 0)} calls across the ${ways}.`);
   const dollars = all.reduce((n, t) => n + t.cost, 0);
@@ -390,7 +453,7 @@ function printEstimate(sent: Awaited<ReturnType<typeof plan>>, runs: number, eng
 
 async function main() {
   const { values } = parseArgs({
-    options: { dry: { type: "boolean" }, yes: { type: "boolean" }, engine: { type: "string" }, model: { type: "string" }, baseline: { type: "string" }, runs: { type: "string" }, only: { type: "string" }, out: { type: "string" } },
+    options: { dry: { type: "boolean" }, yes: { type: "boolean" }, docs: { type: "string" }, engine: { type: "string" }, model: { type: "string" }, baseline: { type: "string" }, runs: { type: "string" }, only: { type: "string" }, out: { type: "string" } },
   });
   loadEnvFiles(process.cwd());
   const runs = Math.max(1, Math.min(5, Number(values.runs ?? 1) || 1));
@@ -405,7 +468,7 @@ async function main() {
   const CONFIGS: Config[] = other ? [{ id: "opus", name: "Claude: Opus 5.5", tier: "decide", lower: false }, { id: "engine", name: `${other}: ${otherModel || "its own"}`.slice(0, 23), tier: "decide", lower: false, via: other }] : DEFAULT_CONFIGS;
   const dir = path.join(await mkdtemp(path.join(tmpdir(), "qalam-eval-tiers-")), "Basket");
   const problems: string[] = [];
-  const { cases: every, dispose } = await casesFor(dir, problems);
+  const { cases: every, dispose } = await casesFor(dir, problems, values.docs ? path.resolve(values.docs) : undefined);
   // Drafting is a decide call: it runs when another engine is asked about, or when named.
   const cases = every.filter((c) => (only ? only.has(c.kind) : c.kind !== "solutions" || !!other));
   try {
@@ -433,6 +496,7 @@ async function main() {
     const t = (kind: Kind, id: string) => totals.get(`${kind} ${id}`) ?? (totals.set(`${kind} ${id}`, tally()).get(`${kind} ${id}`) as Tally);
     const side: string[] = ["# Tier eval: outputs side by side", "", `Engine: ${engine === "api" ? "API key" : "Claude Code"}${other ? ` beside ${ENGINE_LABEL[other]} (${otherModel || "its own model"})` : ""} · ${new Date().toISOString()}`, ""];
     let n = 0;
+    const lastOpus = new Map<string, Point[]>();
     for (let run = 1; run <= runs; run++) {
       for (const c of cases) {
         n++;
@@ -473,6 +537,28 @@ async function main() {
             }
           }),
         );
+        // Each model's points against Opus's in this run, and Opus's against its own last run (the noise).
+        const opus = results.find((r) => r.cfg.id === "opus" && r.ok);
+        const basePoints = opus && "points" in opus ? (opus.points as Point[] | undefined) : undefined;
+        if (basePoints) {
+          for (const r of results) {
+            if (r.cfg.id === "opus" || !r.ok || !("points" in r) || !r.points) continue;
+            const row = t(c.kind, r.cfg.id);
+            const got = compare(basePoints, r.points as Point[]);
+            row.of += got.of;
+            row.found += got.found;
+            row.sameBasis += got.sameBasis;
+          }
+          const before = lastOpus.get(c.label);
+          if (before) {
+            const row = t(c.kind, "opus");
+            const got = compare(before, basePoints);
+            row.of += got.of;
+            row.found += got.found;
+            row.sameBasis += got.sameBasis;
+          }
+          lastOpus.set(c.label, basePoints);
+        }
         const slug = `${String(n).padStart(2, "0")}-${c.kind}-${c.label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40)}`;
         await mkdir(path.join(out, c.kind), { recursive: true });
         await writeFile(path.join(out, c.kind, `${slug}.json`), JSON.stringify({ kind: c.kind, label: c.label, run, configs: Object.fromEntries(results.map((r) => [r.cfg.id, { ...r, cfg: undefined }])) }, null, 2));
@@ -543,17 +629,25 @@ function report(totals: Map<string, Tally>, out: string, CONFIGS: Config[], othe
         `${pad(kind, 9)}${pad(c.name, 24)}${lpad(String(r.calls), 6)}${lpad(k(r.input + r.cacheRead + r.cacheWrite), 8)}${lpad(k(r.output), 8)}${lpad(usd(r.cost), 9)}${lpad(r.calls ? usd(r.cost / r.calls) : "—", 9)}${lpad(r.calls ? (r.seconds / r.calls).toFixed(0) : "—", 8)}${lpad(String(r.returned), 10)}${lpad(String(r.kept), 6)}${lpad(vs, 9)}${r.errors ? `  ${r.errors} failed` : ""}`,
       );
     }
-    // The rule (the read calls only): Sonnet keeps checked items within 5% of the baseline, and costs less a call than Opus one effort lower.
+    // The rule (the read calls only): a cheaper model keeps checked items within 5% of the baseline, and costs less a call than Opus one effort lower.
     if (other || !READS.includes(kind)) continue;
-    const sonnet = get(kind, "sonnet");
     const lower = get(kind, "opus-lower");
-    const quality = !sonnet.errors && sonnet.kept >= base.kept * 0.95;
-    const cheaper = !lower.calls || (sonnet.calls > 0 && sonnet.cost / sonnet.calls < lower.cost / lower.calls);
-    if (!quality || !cheaper) balanced = false;
     const lowerHolds = lower.calls > 0 && !lower.errors && lower.kept >= base.kept * 0.95;
-    verdicts.push(
-      `${kind}: Sonnet kept ${sonnet.kept} of Opus's ${base.kept} (${quality ? "within" : "not within"} 5%)${lower.calls ? `, ${cheaper ? "cheaper" : "not cheaper"} a call than Opus one lower` : ""}${lowerHolds && !cheaper ? "; Opus one lower holds too, and costs less" : ""}.`,
-    );
+    for (const [id, name] of [["sonnet", "Sonnet"], ["haiku", "Haiku"]] as const) {
+      const m = get(kind, id);
+      const quality = !m.errors && m.kept >= base.kept * 0.95;
+      const cheaper = !lower.calls || (m.calls > 0 && m.cost / m.calls < lower.cost / lower.calls);
+      if (id === "sonnet" && (!quality || !cheaper)) balanced = false;
+      verdicts.push(
+        `${kind}: ${name} kept ${m.kept} of Opus's ${base.kept} (${quality ? "within" : "not within"} 5%)${lower.calls ? `, ${cheaper ? "cheaper" : "not cheaper"} a call than Opus one lower` : ""}${lowerHolds && !cheaper ? "; Opus one lower holds too, and costs less" : ""}.`,
+      );
+    }
+  }
+  const pct = (n: number, of: number) => (of ? `${((n / of) * 100).toFixed(0)}%` : "—");
+  const compared = KINDS.flatMap((kind) => CONFIGS.flatMap((c) => (get(kind, c.id).of ? [{ kind, c, r: get(kind, c.id) }] : [])));
+  if (compared.length) {
+    console.log(`\nThe same points as Opus (Opus: against its own last run)\n${pad("Call", 11)}${pad("Config", 24)}${lpad("Of", 6)}${lpad("Found", 7)}${lpad("", 6)}${lpad("Same basis", 12)}${lpad("", 6)}`);
+    for (const { kind, c, r } of compared) console.log(`${pad(kind, 11)}${pad(c.name, 24)}${lpad(String(r.of), 6)}${lpad(String(r.found), 7)}${lpad(pct(r.found, r.of), 6)}${lpad(String(r.sameBasis), 12)}${lpad(pct(r.sameBasis, r.found), 6)}`);
   }
   if (other) return reportEngine(get, out, other);
   console.log(`\n${verdicts.join("\n")}`);
