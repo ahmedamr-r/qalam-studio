@@ -9,6 +9,7 @@ import { fromCliResult, reportUsage } from "@/ai/usage";
 import { sourcesIn, verifyAnswer, type AskAnswer, type Found } from "@/hub/ask";
 import { sectionCounts } from "@/hub/topics";
 import { goalsText } from "@/goals/text";
+import { marketContext } from "@/market/text";
 import { contextText, readFrontMatter } from "@/org/context-md";
 import { orgHref, projectHref, seenHref, topicHref } from "@/projects/model";
 import type { OrgIndex, PieceRow } from "./index/indexer";
@@ -159,6 +160,8 @@ async function guide(store: OrgStore, q: AskRequest): Promise<Guide> {
   const name = (id: string | null | undefined) => (id ? (products.find((p) => p.id === id)?.name ?? id) : "the whole organization");
   const topics = await store.listTopics();
   const out: string[] = ["The organization:", contextText(await store.getAbout(), `${store.info.name}:`) || `${store.info.name} (not described yet)`, ...products.map((p) => contextText(p, `${p.name} (a product):`)).filter(Boolean)];
+  const known = marketContext(await store.getMarket(), { org: store.info.name, told: out.join("\n") });
+  if (known) out.push("", `${known} (in hub/market.md)`);
   const aims = goalsText(await store.getGoals(), { productName: (id) => products.find((p) => p.id === id)?.name, label: `Goals (in ${GOALS})` });
   if (aims) out.push("", aims);
   if (q.product) out.push("", `The team is looking at ${name(q.product)}.`);

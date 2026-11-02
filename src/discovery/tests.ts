@@ -1,5 +1,6 @@
 import type { Basis } from "./basis";
 import { sameWords } from "@/hub/topics";
+import { withCompany } from "@/market/text";
 import { ASSUMPTION_CATEGORIES } from "./kinds";
 import { newCard } from "./ops";
 import type { Proposal } from "./proposals";
@@ -21,6 +22,8 @@ export interface TestsInput {
   solution: { title: string; description: string; assumptions: string[]; tests: string[] };
   problem: { title: string } | null;
   goal: { title: string; metric: string | null } | null;
+  /** What's known about the company and its competitors: words a test, never what it rests on. */
+  company?: string;
   /** The words the solution and its problem rest on: customers', people online's and the team's. */
   pieces: { ref: string; text: string; label: string; evidence: boolean; online?: boolean; basis?: Basis }[];
 }
@@ -62,7 +65,7 @@ export function testsMaterial(o: TestsInput): TestsSent {
   if (existing.length) out.push("", "What it assumes already (don't propose these again):", ...existing.map((a) => `- ${one(a)}`));
   if (o.solution.tests.length) out.push("", "Its tests already:", ...o.solution.tests.slice(0, TEST_LIMITS.existing).map((t) => `- ${one(t)}`));
   const text = out.join("\n");
-  return { text, pieces, existing, hay: text.replace(/(^|\s)q\d+ ·/gm, "$1") };
+  return { text: withCompany(text, o.company), pieces, existing, hay: text.replace(/(^|\s)q\d+ ·/gm, "$1") };
 }
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});

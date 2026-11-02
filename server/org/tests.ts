@@ -1,3 +1,4 @@
+import { companyContext } from "./company";
 import { evidenceBasis, reachesKnow } from "@/discovery/basis";
 import { nanoid } from "nanoid";
 import { structured } from "@/ai/server";
@@ -32,7 +33,7 @@ export async function draftTests(store: OrgStore, req: TestsRequest, emit?: (lab
     if (pieces.some((p) => p.ref === ref || p.text === e.text)) continue;
     pieces.push({ ref, text: e.text, label: e.sourceTitle ?? (e.kind === "quote" ? "A source" : "The team's words"), evidence: reachesKnow(evidenceBasis(e)), basis: evidenceBasis(e), ...(e.online ? { online: true } : {}) });
   }
-  const m = testsMaterial({ solution: req.solution, problem: req.problem ? { title: req.problem.title } : null, goal: req.goal, pieces });
+  const m = testsMaterial({ solution: req.solution, problem: req.problem ? { title: req.problem.title } : null, goal: req.goal, pieces, company: await companyContext(store) });
   emit?.("Qalam AI is drafting its tests");
   const { data, model } = await structured<unknown>(testsCall(m), signal);
   const now = Date.now();

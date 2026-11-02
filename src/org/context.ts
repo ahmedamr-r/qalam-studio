@@ -3,7 +3,9 @@ import { create } from "zustand";
 import { goalsNow } from "@/goals/client";
 import { goalsText } from "@/goals/text";
 import { contextText, emptyContext, type ContextFields, type Product } from "./context-md";
+import { marketContext } from "@/market/text";
 import { orgFetch, orgJson } from "./client";
+import { useMarket } from "./market";
 
 /**
  * What the organization and its products are (about.md, products/*.md), loaded when a window
@@ -46,13 +48,15 @@ export async function saveAbout(about: ContextFields) {
 
 /**
  * What Qalam AI is told about a board's product (and the organization around it), or about the
- * organization alone, with the goals: a board's own goals (`goals`) and every goal above them, or
- * the product's.
+ * organization alone, with the goals (a board's own goals, `goals`, and every goal above them, or
+ * the product's) and what's known about the company and its competitors.
  */
 export function contextFor(productId: string | null | undefined, goals?: string[]): string {
   const { about, products } = useOrgContext.getState();
   const p = productOf(productId);
   const names = new Map(products.map((x) => [x.id, x.name]));
   const aims = goalsText(goalsNow(), { product: productId ?? null, goals, productName: (id) => names.get(id) });
-  return [p ? contextText(p, `The product (${p.name}):`) : "", contextText(about, "The organization:"), aims].filter(Boolean).join("\n\n");
+  const said = contextText(about, "The organization:");
+  const market = useMarket.getState();
+  return [p ? contextText(p, `The product (${p.name}):`) : "", said, aims, market.org ? marketContext(market.market, { org: market.org, told: said }) : ""].filter(Boolean).join("\n\n");
 }

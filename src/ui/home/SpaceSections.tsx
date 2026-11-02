@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import clsx from "clsx";
-import { ChevronRight, CircleDot, CircleEllipsis, Eye, Frame, ListChecks, Palette, Plus, Users, type LucideIcon } from "lucide-react";
+import { Building2, ChevronRight, CircleDot, CircleEllipsis, Eye, Frame, ListChecks, Palette, Plus, Users, type LucideIcon } from "lucide-react";
 import { changeGoal, type GoalsNow } from "@/goals/client";
 import type { Bearing } from "@/goals/bearings";
 import type { SourceRecord } from "@/discovery/sources";
@@ -23,15 +23,16 @@ import { lab } from "@/lab";
 /*
  * What a space's panel can show with nothing picked, one at a time, each opened by its button over
  * the canvas (./Home.tsx), besides Needs a look: the problems customers raise, ranked by what backs
- * them (each opening its page in the panel), the segment and product pages, goals that feed no goal
+ * them (each opening its page in the panel), what's known about the company (../org/CompanySection),
+ * the segment and product pages, goals that feed no goal
  * yet, and the lab's own parts (design work, what people see, what the code does) where they're on.
  */
 
 const ICON = { size: 14, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 
-export type SpaceSection = "setup" | "problems" | "needs" | "pages" | "more";
+export type SpaceSection = "setup" | "problems" | "needs" | "company" | "pages" | "more";
 
-const SECTION_ICON: Record<SpaceSection, LucideIcon> = { setup: ListChecks, problems: CircleDot, needs: Eye, pages: Users, more: CircleEllipsis };
+const SECTION_ICON: Record<SpaceSection, LucideIcon> = { setup: ListChecks, problems: CircleDot, needs: Eye, company: Building2, pages: Users, more: CircleEllipsis };
 
 export interface SectionButton {
   id: SpaceSection;

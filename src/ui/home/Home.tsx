@@ -29,6 +29,7 @@ import { closePage, usePanelPage } from "../space/page";
 import { useMoves } from "../nav";
 import { SpaceConflictBanner } from "../space/ConflictBanner";
 import { r } from "../recipes";
+import { CompanySection } from "../org/CompanySection";
 import { NeedsALook } from "../org/NeedsALook";
 import { LabSections, SectionButtons, SpacePages, SpaceProblems, UnplacedGoals, type SectionButton, type SpaceSection } from "./SpaceSections";
 import { addMaterial, writeCard } from "../space/new";
@@ -39,7 +40,7 @@ import { useOrgData } from "../org/useOrgData";
 import { useNotices } from "../notices/useNotices";
 import { useTopics } from "../topics/list";
 import { PageFrame } from "../frame/PageFrame";
-import { useCurrentOrg, useFrame } from "../frame/store";
+import { useCurrentOrg, useFrame, useWords } from "../frame/store";
 import { useHealth } from "../frame/useHealth";
 import { StatusDot } from "../viz";
 import { useBearings } from "../goals/useBearings";
@@ -77,13 +78,17 @@ const PAGE_W = 480;
 /** Below this the chat lies over the canvas instead of beside it. */
 const CHAT_DOCKS = 900;
 
-/** The panel's section an address asks for as the canvas opens (the first run's Problems door). */
-const askedSection = (): SpaceSection | null => (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("panel") === "problems" ? "problems" : null);
+/** The panel's section an address asks for as the canvas opens (the first run's Problems door, a page's link to the company). */
+const askedSection = (): SpaceSection | null => {
+  const asked = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("panel") : null;
+  return asked === "problems" || asked === "company" ? asked : null;
+};
 
 export default function Home({ product: productId = null }: { product?: string | null }) {
   const { projects, legacy, sources, refresh } = useOrgData();
   const goalTree = useGoals();
   const org = useCurrentOrg();
+  const words = useWords();
   const { space } = useSpace(productId, "home");
   const notices = useNotices();
   const needs = useNeeds();
@@ -145,6 +150,7 @@ export default function Home({ product: productId = null }: { product?: string |
     ...(org && left ? [{ id: "setup" as const, label: `Setup · ${left.done} of ${left.of}` }] : setupNote ? [{ id: "setup" as const, label: "Setup" }] : []),
     { id: "problems", label: "Problems", count: (needs?.needs ?? []).filter((n) => inSpace(n.products, space)).length },
     { id: "needs", label: "Needs a look", count: scoped.length + (unplaced ? 1 : 0) + (toMove.length ? 1 : 0) + (legacy ? 1 : 0) },
+    { id: "company", label: words.company },
     ...(topics?.some((t) => t.kind !== "need" && inSpace(t.products, space)) ? [{ id: "pages" as const, label: "Who and what" }] : []),
     ...(lab("design") || lab("seen") || lab("code") ? [{ id: "more" as const, label: "More" }] : []),
   ];
@@ -309,6 +315,8 @@ export default function Home({ product: productId = null }: { product?: string |
                     <UnplacedGoals tree={goalTree} space={space} />
                   </NeedsALook>
                 )}
+
+                {section === "company" && <CompanySection close={closeSection} />}
 
                 {section === "pages" && <SpacePages space={space} topics={topics} sources={sources} products={products} onFiled={refresh} close={closeSection} />}
 

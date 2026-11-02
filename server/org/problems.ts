@@ -1,5 +1,6 @@
 import { pieceBasis } from "@/discovery/basis";
 import { nanoid } from "nanoid";
+import { companyContext } from "./company";
 import { problemsCall } from "@/ai/problems";
 import { structured } from "@/ai/server";
 import { foldBearings, problemsInScope } from "@/goals/bearings";
@@ -41,6 +42,7 @@ export async function draftProblems(store: OrgStore, goalId: string, req: { card
   for (const p of pack?.pieces ?? [])
     if (p.type === "quote" && !pieces.some((x) => x.ref === p.ref)) pieces.push({ ref: p.ref, text: p.text, label: p.title ?? "", source: p.source, evidence: isEvidence(p), basis: pieceBasis(p), ...(isOnline(p) ? { online: true } : {}) });
   const m = problemsMaterial({
+    company: await companyContext(store),
     goal: { title: goal.title, metric: numberOf(goal) },
     above: chainOf(tree, goalId).slice(1).map((g) => ({ title: g.title, metric: numberOf(g) })),
     behind,

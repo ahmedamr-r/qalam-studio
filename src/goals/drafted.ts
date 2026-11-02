@@ -2,6 +2,7 @@ import type { Basis } from "@/discovery/basis";
 import { whose } from "@/discovery/solutions";
 import type { QuoteRef } from "@/discovery/proposals";
 import { checkWords, cleanLine, sameTopic } from "@/hub/topics";
+import { withCompany } from "@/market/text";
 import { titleOf } from "@/org/setup-groups";
 import { withoutIds } from "./said";
 
@@ -18,6 +19,8 @@ export const PROBLEM_LIMITS = { problems: 4, enough: 2, pieces: 24, pages: 30, b
 
 export interface ProblemsInput {
   goal: { title: string; metric: string | null };
+  /** What's known about the company and its competitors: words a draft, never what it rests on. */
+  company?: string;
   /** The goals it feeds, nearest first. */
   above: { title: string; metric: string | null }[];
   /** The problems behind it already: its cards under it, and the pages linked to it. */
@@ -92,7 +95,7 @@ export function problemsMaterial(o: ProblemsInput): ProblemsSent {
   if (!pieces.size) out.push("(no words yet)");
   const text = out.join("\n");
   // What words and numbers may come from: the material without its ids ("q5" isn't a 5 anyone said).
-  return { text, pieces, known: [...behind, ...pages], hay: text.replace(/(^|\s)q\d+ ·/gm, "$1") };
+  return { text: withCompany(text, o.company), pieces, known: [...behind, ...pages], hay: text.replace(/(^|\s)q\d+ ·/gm, "$1") };
 }
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});

@@ -10,7 +10,8 @@ import { knowsMarket } from "@/market/types";
 import type { ResearchInfo, ResearchPurpose } from "@/ai/research-shared";
 import { research, structured } from "@/ai/server";
 import type { OutsidePage } from "@/goals/outside";
-import { aboutFromFacts, companyMaterial, companyTask, MAX_PAGES, sanitizeFacts, siteUrl } from "@/market/facts";
+import { editMarket, type MarketEdit } from "@/market/edit";
+import { aboutAfterFact, aboutFromFacts, companyMaterial, companyTask, MAX_PAGES, sanitizeFacts, siteUrl } from "@/market/facts";
 import { competitorsMaterial, competitorsTask, domainMaterial, domainTask, sanitizeCompetitors, sanitizeDomain } from "@/market/rivals";
 import { lookingUnrun, sessionOf, type CompanyLook, type CompetitorsLook, type LookName, type MarketSession } from "@/market/session";
 import type { Competitor, MarketLine } from "@/market/types";
@@ -247,6 +248,21 @@ export async function settleCompetitors(store: OrgStore, keep: string[], added: 
     return { ...m, competitors: [...m.competitors.filter((c) => c.by === "you" && !names.has(c.name.toLowerCase())), ...kept, ...mine], gone: [...new Set([...m.gone, ...off])] };
   }, opts);
   return store.changeMarketSession((x) => (x.competitors ? { ...x, competitors: { ...x.competitors, state: "settled", kept: kept.length + mine.length } } : x), opts);
+}
+
+/**
+ * A person's edit from the canvas's Company section. A company fact fixed or taken off changes the
+ * sentence the About was filled with too, so Qalam AI doesn't go on hearing the old one.
+ */
+export async function editKnown(store: OrgStore, edit: MarketEdit, opts: { tab?: string } = {}): Promise<void> {
+  const before = await store.getMarket();
+  const next = await store.changeMarket((m) => editMarket(m, edit, { now: Date.now(), id: (p) => `${p}${nanoid(8)}` }), opts);
+  if (edit.kind === "add") return;
+  const was = before.company.find((l) => l.id === edit.id);
+  if (!was) return;
+  const about = await store.getAbout();
+  const fill = aboutAfterFact(about, was.text, next.company.find((l) => l.id === edit.id)?.text ?? null);
+  if (fill.context !== undefined || fill.audience !== undefined) await store.putAbout({ ...about, ...fill }, opts);
 }
 
 // ---------------------------------------------------------------------------

@@ -1,3 +1,4 @@
+import { marketContext } from "@/market/text";
 import { basisCounts, basisOf, movedLines, reachesKnow, type Basis } from "@/discovery/basis";
 import { nanoid } from "nanoid";
 import { dumpReadCall, extractCall, synthesizeCall } from "@/ai/discovery";
@@ -93,6 +94,7 @@ export async function coreDeps(store: OrgStore): Promise<FilingDeps> {
   const products = await store.listProducts();
   const about = await store.getAbout();
   const goals = await store.getGoals();
+  const market = await store.getMarket();
   const names = new Map(products.map((p) => [p.id, p.name]));
   const ix = indexOf(store);
   const pack = async (r: PackRequest): Promise<OrgContext | null> => {
@@ -106,7 +108,7 @@ export async function coreDeps(store: OrgStore): Promise<FilingDeps> {
     about,
     productLine: (id) => {
       const p = products.find((x) => x.id === id);
-      return [p ? contextText(p, `The product (${p.name}):`) : "", contextText(about, "The organization:"), goalsText(goals, { product: id ?? null, productName: (x) => names.get(x) })].filter(Boolean).join("\n\n");
+      return [p ? contextText(p, `The product (${p.name}):`) : "", contextText(about, "The organization:"), goalsText(goals, { product: id ?? null, productName: (x) => names.get(x) }), marketContext(market, { org: store.info.name, told: contextText(about, "") })].filter(Boolean).join("\n\n");
     },
     listTopics: () => store.listTopics(),
     pack,

@@ -1,3 +1,4 @@
+import { MARKET_SECTIONS, type MarketEdit } from "@/market/edit";
 import { createReadStream } from "node:fs";
 import { Readable } from "node:stream";
 import { Hono } from "hono";
@@ -33,7 +34,7 @@ import type { Hit as ConnectorHit } from "@/connectors/recipes";
 import { findProblems, goalPage, linkByHand } from "./goals";
 import { pictureFromFigma, pinByHand, placeQuotes } from "./steps";
 import { answerReading, dropReading, editSeen, seenEditShape, seenMaps, seenView, settleReading, startReading } from "./seen";
-import { findQuestions, suggestStatement, lookForCompetitors, lookUpCompany, marketSession, settleCompany, settleCompetitors, stopLook, type FactDecision } from "./market";
+import { editKnown, findQuestions, suggestStatement, lookForCompetitors, lookUpCompany, marketSession, settleCompany, settleCompetitors, stopLook, type FactDecision } from "./market";
 import type { SeenAnswer, Shot } from "@/seen/types";
 import { CHAT_KEY, chatOf } from "@/space/chat";
 import { changeJob, noteForJob, onlineForJob, openJobs, planJobs, searchForJob, takeInForJob } from "./jobs";
@@ -983,6 +984,16 @@ export function orgRoutes(): Hono<Env> {
   });
   r.delete("/api/org/:org/market/company", (c) => {
     stopLook(c.get("store"), "company");
+    return c.json({ ok: true });
+  });
+  r.put("/api/org/:org/market/lines", async (c) => {
+    const b = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
+    const id = typeof b?.id === "string" ? b.id.slice(0, 40) : "";
+    const text = typeof b?.text === "string" ? b.text : "";
+    const section = MARKET_SECTIONS.find((s) => s === b?.section);
+    const edit: MarketEdit | null = b?.kind === "remove" && id ? { kind: "remove", id } : b?.kind === "fix" && id && text.trim() ? { kind: "fix", id, text } : b?.kind === "add" && section && text.trim() ? { kind: "add", section, text } : null;
+    if (!edit) return bad("Say which line, and its words");
+    await editKnown(c.get("store"), edit, { tab: tabOf(c.req.raw.headers) });
     return c.json({ ok: true });
   });
   r.post("/api/org/:org/statement", async (c) => {
