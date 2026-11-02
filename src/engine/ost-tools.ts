@@ -446,6 +446,7 @@ export function createOstTools(): CanvasDelegate {
         noticed: noticedCards(ui.notices),
         work: workChips(ui.work),
         faint: useSpaceView.getState().active ? useSpaceView.getState().faint : undefined,
+        fainter: useSpaceView.getState().active ? useSpaceView.getState().fainter : undefined,
       };
     },
   };

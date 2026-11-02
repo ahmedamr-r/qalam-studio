@@ -1,3 +1,4 @@
+import { PAGE_CARD } from "@/discovery/look";
 import type { Canvas, CanvasKit, Image as CkImage, MaskFilter, Paint, Paragraph, Path, PathEffect, Surface } from "canvaskit-wasm";
 import type { Doc, Effect, FrameNode, Gradient, PathNode, SceneNode, TextNode } from "@/doc/schema";
 import type { Camera, ViewOptions } from "@/doc/store";
@@ -639,7 +640,7 @@ export class Renderer {
     const faded = dragged || !!input.ost?.faint?.has(n.id);
     if (faded) {
       const lp = new this.ck.Paint();
-      lp.setAlphaf(dragged ? 0.3 : 0.6);
+      lp.setAlphaf(dragged ? 0.3 : input.ost?.fainter?.has(n.id) ? PAGE_CARD.fainter : PAGE_CARD.faint);
       canvas.saveLayer(lp);
       lp.delete();
     }

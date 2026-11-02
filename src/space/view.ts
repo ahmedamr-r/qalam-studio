@@ -21,6 +21,7 @@ export interface SpaceView {
   /** Cards on no board: goals with no board yet, problems' pages. */
   virtual: ReadonlySet<string>;
   faint: ReadonlySet<string>;
+  fainter: ReadonlySet<string>;
   tags: ReadonlyMap<string, SpaceTag>;
   noticed: ReadonlySet<string>;
   /** Each goal's own cards, for its sources lane; `slots` says where its lane goes. */
@@ -30,7 +31,7 @@ export interface SpaceView {
   boards: ReadonlyMap<string, { name: string; product: string | null }>;
 }
 
-const EMPTY: SpaceView = { active: false, space: null, things: new Map(), boardOf: new Map(), virtual: new Set(), faint: new Set(), tags: new Map(), noticed: new Set(), groups: [], slots: new Map(), boards: new Map() };
+const EMPTY: SpaceView = { active: false, space: null, things: new Map(), boardOf: new Map(), virtual: new Set(), faint: new Set(), fainter: new Set(), tags: new Map(), noticed: new Set(), groups: [], slots: new Map(), boards: new Map() };
 
 export const useSpaceView = create<SpaceView>(() => EMPTY);
 export const resetSpaceView = () => useSpaceView.setState(EMPTY, true);

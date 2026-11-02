@@ -64,6 +64,8 @@ export interface SpaceDoc {
   virtual: Set<string>;
   /** Drawn faint: problems no board has. */
   faint: Set<string>;
+  /** Of those, fainter still: fewer than two sources behind it. */
+  fainter: Set<string>;
   /** A word after a card's kind ("No board yet", a product's name). */
   tags: Map<string, SpaceTag>;
   /** Cards something needs a look at. */
@@ -77,13 +79,14 @@ export interface SpaceDoc {
   fixes: Map<string, { doc: Doc; ids: Map<string, string> }>;
 }
 
-export const SPACE_LIMITS = { behind: 3, uncovered: 8 } as const;
+/** Every problem is drawn, the weaker ones fainter; these only keep a very large organization's canvas from growing without end. */
+export const SPACE_LIMITS = { behind: 100, uncovered: 200 } as const;
 
 export const isProblemPage = (id: string) => id.startsWith("topic:");
 
 export function composeSpace(o: SpaceInput, makeId: () => string = newId): SpaceDoc {
   const doc = emptyDoc();
-  const out: SpaceDoc = { doc, things: new Map(), boardOf: new Map(), virtual: new Set(), faint: new Set(), tags: new Map(), noticed: new Set(), groups: [], fixes: new Map() };
+  const out: SpaceDoc = { doc, things: new Map(), boardOf: new Map(), virtual: new Set(), faint: new Set(), fainter: new Set(), tags: new Map(), noticed: new Set(), groups: [], fixes: new Map() };
   const tree = ordered(o.tree);
   const goals = tree.goals.filter((g) => inSpace(g.product, o.space));
   const here = new Set(goals.map((g) => g.id));
@@ -142,10 +145,11 @@ export function composeSpace(o: SpaceInput, makeId: () => string = newId): Space
     }
   };
 
-  const addProblem = (id: string, need: Pick<RankedNeed, "topic" | "title">, by: Bearing["by"] | null, parent: string | null, goal: string | null, tag: string) => {
+  const addProblem = (id: string, need: Pick<RankedNeed, "topic" | "title" | "sources">, by: Bearing["by"] | null, parent: string | null, goal: string | null, tag: string) => {
     add(id, newCard("opportunity", { title: need.title, createdBy: by === "qalam" ? "ai" : "user" }), parent, { type: "problem", topic: need.topic, goal });
     out.virtual.add(id);
     out.faint.add(id);
+    if (need.sources < 2) out.fainter.add(id);
     out.tags.set(id, { label: tag, tone: "off" });
     topics.set(need.topic, [...(topics.get(need.topic) ?? []), id]);
   };
@@ -203,8 +207,8 @@ export function composeSpace(o: SpaceInput, makeId: () => string = newId): Space
     }
   }
 
-  // What customers keep raising (two sources or more) that no goal is linked to and no board has.
-  const uncovered = (o.needs ?? []).filter((n) => inSpace(n.products, o.space) && n.sources >= 2 && !n.boards.length && !o.links?.some((l) => l.need === n.topic));
+  // Every problem no goal is linked to and no board has, best backed first.
+  const uncovered = (o.needs ?? []).filter((n) => inSpace(n.products, o.space) && !n.boards.length && !o.links?.some((l) => l.need === n.topic));
   for (const n of uncovered.slice(0, SPACE_LIMITS.uncovered)) addProblem(`topic:none:${n.topic}`, n, null, null, null, "No goal yet");
 
   const shown = (board: string, card: string) => {

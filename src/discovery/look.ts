@@ -57,6 +57,9 @@ export const SOURCE = { w: 168, tile: 64, radius: 14, logo: 30, icon: 26, port: 
 /** A feed's tile: its cords dashed (on, off), and its count of what's new in a badge on the tile's corner. */
 export const FEED = { dash: [5, 4], badge: 18, badgeSize: 10.5 } as const;
 
+/** A problem's page drawn on the canvas with no board yet: how faint it is, and how faint with under two sources behind it. */
+export const PAGE_CARD = { faint: 0.6, fainter: 0.42 } as const;
+
 /** A connected tool on the setup's canvas: a source's tile, faint until it brings something in. */
 export const TOOL = { faint: 0.6 } as const;
 

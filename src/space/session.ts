@@ -187,6 +187,7 @@ function compose(o: { fresh: boolean }) {
     boardOf: s.boardOf,
     virtual: s.virtual,
     faint: s.faint,
+    fainter: s.fainter,
     tags: s.tags,
     noticed: s.noticed,
     boards: new Map([...open.stored.values()].map((b) => [b.id, { name: b.name, product: b.product }])),

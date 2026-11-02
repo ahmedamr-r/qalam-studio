@@ -41,6 +41,8 @@ export interface OstRenderInput {
   lane?: LaneRender | null;
   /** Cards drawn faint (the space's map: problems not on a board yet). */
   faint?: ReadonlySet<string>;
+  /** Of those, fainter still: little behind them yet. */
+  fainter?: ReadonlySet<string>;
 }
 
 export interface OstFrame {

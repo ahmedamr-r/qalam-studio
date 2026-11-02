@@ -298,6 +298,25 @@ describe("the canvas's order", () => {
   });
 });
 
+describe("every problem on the canvas", () => {
+  const many = Array.from({ length: 9 }, (_, i) => need(`n${i}`, `A problem of its own number ${i}`, { sources: i < 5 ? 2 : i === 8 ? 0 : 1, quotes: i === 8 ? 0 : 2 }));
+  const m = composeSpace({ tree, boards: [], space: null, links: [], needs: many, products });
+
+  it("draws those no goal has, however little backs them, the weaker ones fainter", () => {
+    const ids = many.map((n) => `topic:none:${n.topic}`);
+    expect(ids.every((id) => m.things.has(id))).toBe(true);
+    expect(ids.filter((id) => m.fainter.has(id))).toEqual(ids.slice(5));
+    expect(ids.every((id) => m.faint.has(id))).toBe(true);
+  });
+
+  it("draws every one linked to a goal too, not only its best", () => {
+    const linked = many.map((n) => ({ goal: "r", need: n.topic, bears: "direct", by: "qalam" })) as never[];
+    const g = composeSpace({ tree, boards: [], space: null, links: linked, needs: many, products });
+    expect(many.every((n) => g.things.has(`topic:r:${n.topic}`))).toBe(true);
+    expect(many.some((n) => g.things.has(`topic:none:${n.topic}`))).toBe(false);
+  });
+});
+
 describe("composed as the map was", () => {
   const m = composeSpace({ tree, boards: [b1, b2], space: null, links, needs, products });
 
