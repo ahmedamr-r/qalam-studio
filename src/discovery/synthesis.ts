@@ -1,6 +1,7 @@
 import { newId } from "@/doc/factory";
 import { quoteFinder } from "./quotes";
-import { QUOTE_KINDS, pageAt, quotable, type QuoteKind, type SourceNeed, type SourceQuote } from "./sources";
+import { heldBasis, isBasis } from "./basis";
+import { QUOTE_KINDS, pageAt, quotable, type QuoteKind, type SourceKind, type SourceNeed, type SourceQuote } from "./sources";
 import { newCard } from "./ops";
 import { canHold } from "./kinds";
 import type { Proposal, QuoteRef } from "./proposals";
@@ -12,9 +13,10 @@ import { allCards, childCards } from "./tree";
 
 /*
  * What Qalam AI makes of a board's sources, made safe (pure). The model proposes; code decides:
- *   - extract: a quote is kept only if code finds it in the chunk it names, word for word, and it
- *     stores the source's words and where they sit; a speaker only if the source names them; a
- *     need only if a kept quote shows it;
+ *   - extract: a point is kept only if code finds it in the chunk it names, word for word, and it
+ *     stores the source's words and where they sit; what it rests on as far as code can hold it
+ *     (./basis.ts); a speaker only if the source names them; a need only if a kept point shows it;
+ *     what the document is only if its numbers are in what was read;
  *   - synthesize: a quote can back (or speak against) an opportunity or a solution that exists;
  *     a new opportunity must rest on at least one kept quote, under the outcome or an opportunity,
  *     not repeating a card already there. Nothing lands on the board until it's accepted: until
@@ -29,7 +31,7 @@ const key = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim
 // ---------------------------------------------------------------------------
 // Extract
 
-export const EXTRACT_LIMITS = { quotesPerChunk: 40, quoteChars: 600, needsPerCall: 12, needTitle: 90, speaker: 60 } as const;
+export const EXTRACT_LIMITS = { quotesPerChunk: 40, quoteChars: 600, needsPerCall: 12, needTitle: 90, speaker: 60, about: 160 } as const;
 
 /** A chunk as one call shows it to Qalam AI. */
 export interface CallChunk {
@@ -41,11 +43,15 @@ export interface CallChunk {
   text: string;
   /** The source's page starts (PDF). */
   pages?: number[];
+  /** Its source's kind: what a point can be held to (./basis.ts). */
+  kind?: SourceKind;
 }
 
 export interface Extracted {
   quotes: { sourceId: string; quote: SourceQuote }[];
   needs: { sourceId: string; need: SourceNeed }[];
+  /** What each document is, in a line, the first the call says of it. */
+  about: { sourceId: string; text: string }[];
 }
 
 /**
@@ -58,7 +64,14 @@ export function sanitizeExtract(raw: unknown, chunks: CallChunk[], taken: Map<st
   const spans = new Map([...taken].map(([k, v]) => [k, [...v]]));
   const perChunk = new Map<string, number>();
   const kept = new Map<string, { sourceId: string; id: string }>();
-  const out: Extracted = { quotes: [], needs: [] };
+  const out: Extracted = { quotes: [], needs: [], about: [] };
+
+  for (const a of items(r.about)) {
+    const ch = byRef.get(typeof a.chunkId === "string" ? a.chunkId : "");
+    const text = clip(a.text, EXTRACT_LIMITS.about);
+    if (!ch || !text || out.about.some((x) => x.sourceId === ch.c.sourceId)) continue;
+    if ((text.match(/\d[\d.,]*/g) ?? []).every((n) => ch.c.text.includes(n))) out.about.push({ sourceId: ch.c.sourceId, text });
+  }
 
   for (const q of items(r.quotes)) {
     const ch = byRef.get(typeof q.chunkId === "string" ? q.chunkId : "");
@@ -77,6 +90,7 @@ export function sanitizeExtract(raw: unknown, chunks: CallChunk[], taken: Map<st
     const speaker = named && !/^(null|none|unknown|n\/a)$/i.test(named) ? ch.find(named, 2)?.words : undefined;
     const kind: QuoteKind = QUOTE_KINDS.includes(q.kind as QuoteKind) ? (q.kind as QuoteKind) : "need";
     const page = pageAt(ch.c.pages, span[0]);
+    const basis = isBasis(q.basis) ? heldBasis(q.basis, m.words, ch.c.kind) : undefined;
     const quote: SourceQuote = {
       id: newId(),
       text: m.words,
@@ -85,6 +99,7 @@ export function sanitizeExtract(raw: unknown, chunks: CallChunk[], taken: Map<st
       ...(page ? { page } : {}),
       ...(speaker ? { speaker } : {}),
       kind,
+      ...(basis && basis !== "said" ? { basis } : {}),
       addedBy: "ai",
       at: now,
     };

@@ -1,3 +1,4 @@
+import { pieceBasis } from "@/discovery/basis";
 import { studio } from "@/doc/store";
 import { cardOf } from "@/discovery/ops";
 import { cardRef } from "@/hub/pieces";
@@ -38,7 +39,8 @@ export async function backingFor(cardId: string, words = ""): Promise<FoundQuote
     const s = h ? sourceOf(h.quote.sourceId) : undefined;
     const q = s?.quotes.find((x) => x.id === h?.quote.quoteId);
     if (!h || !s || !q) return [];
-    const whose = (p.sub ?? "").startsWith("online:") ? "online" : (p.sub ?? "").startsWith("dump:") || s.kind === "dump" ? "yours" : "customers";
+    const basis = pieceBasis(p);
+    const whose = (p.sub ?? "").startsWith("online:") ? "online" : basis === "own" ? "yours" : basis === "said" ? "customers" : basis;
     return [{ sourceId: s.id, quoteId: q.id, text: q.text, speaker: q.speaker ?? null, from: s.title, whose }];
   });
 }

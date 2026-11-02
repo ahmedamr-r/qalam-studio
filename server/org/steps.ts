@@ -1,3 +1,4 @@
+import { pieceBasis } from "@/discovery/basis";
 import { nanoid } from "nanoid";
 import { stepsCall } from "@/ai/steps";
 import { structured } from "@/ai/server";
@@ -53,8 +54,8 @@ async function quotesFor(store: OrgStore, goal: Goal, flow: MapFlow): Promise<St
   return refs
     .flatMap((ref): StepQuote[] => {
       const r = rows.get(ref);
-      // A customer's words only: a brain dump's pieces are the team's.
-      if (!r || r.type !== "quote" || r.sub?.startsWith("dump:")) return [];
+      // What people said only: a step is about what happens there, in their words.
+      if (!r || r.type !== "quote" || r.sub?.startsWith("dump:") || (pieceBasis(r) !== "said" && !r.sub?.startsWith("online:"))) return [];
       const who = whoOf(r);
       return [{ ref, text: r.text, ...(who ? { who } : {}) }];
     })

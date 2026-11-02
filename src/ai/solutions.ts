@@ -19,7 +19,7 @@ const enm = (values: readonly string[], description: string) => ({ type: "string
 
 export const SOLUTIONS_SYSTEM = `You help a product team find ways to solve one of its customers' problems, and say what would have to be true for each to work.
 
-You get the problem: what its page says (each line with an id), the words those lines rest on (customers' words, or the team's), the goals it bears on, what others report for those goals, what the product does today, what's on the board under it already, and the person's own ideas.
+You get the problem: what its page says (each line with an id), the words those lines rest on (each saying whose: customers', what's measured or studied, what's read elsewhere, or the team's), the goals it bears on, what others report for those goals, what the product does today, what's on the board under it already, and the person's own ideas.
 
 Propose 2 to 4 solutions, the most promising first, each a different way to solve the problem (not variations of one). For each:
 - title: a short name for what the product would do, at most 10 words (Plan the week's meals from last week's order).

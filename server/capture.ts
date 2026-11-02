@@ -1,3 +1,4 @@
+import { basisOf } from "@/discovery/basis";
 import { nanoid } from "nanoid";
 import { dumpReadCall, extractCall, synthesizeCall } from "@/ai/discovery";
 import { DUMP_MAX_CHARS, sanitizeRead } from "@/discovery/dump";
@@ -56,7 +57,7 @@ export interface CaptureOpts {
 export async function readAsOwn(store: OrgStore, sourceId: string, emit: (label: string) => void = () => {}): Promise<{ own: number; filed?: FilingTotals }> {
   const s = await store.getSource(sourceId);
   if (!s) throw new NotFoundError("No such source");
-  if (s.quotes.length && s.kind !== "dump") throw new Error("Customers' words were taken from it already.");
+  if (s.kind !== "dump" && s.quotes.some((q) => basisOf(s, q) !== "own")) throw new Error("What it states was taken in already.");
   const text = s.text.slice(0, DUMP_MAX_CHARS);
   emit("Qalam AI is reading it as your own thinking");
   const deps = await coreDeps(store);
@@ -151,8 +152,8 @@ async function readIn(store: OrgStore, deps: FilingDeps, s: SourceRecord, o: Cap
   let cur = s;
   for (const [i, call] of calls.entries()) {
     if (o.signal?.aborted) break;
-    o.emit?.(calls.length > 1 ? `Picking out what customers said (part ${i + 1} of ${calls.length})` : "Picking out what customers said");
-    const chunks: CallChunk[] = call.map((c, j) => ({ ref: `c${j + 1}`, sourceId: cur.id, start: c.start, text: cur.text.slice(c.start, c.end), ...(cur.pages ? { pages: cur.pages } : {}) }));
+    o.emit?.(calls.length > 1 ? `Reading what it says (part ${i + 1} of ${calls.length})` : "Reading what it says");
+    const chunks: CallChunk[] = call.map((c, j) => ({ ref: `c${j + 1}`, sourceId: cur.id, start: c.start, text: cur.text.slice(c.start, c.end), kind: cur.kind, ...(cur.pages ? { pages: cur.pages } : {}) }));
     const body = {
       stage: "extract" as const,
       product,
@@ -166,6 +167,7 @@ async function readIn(store: OrgStore, deps: FilingDeps, s: SourceRecord, o: Cap
       read: [...new Set([...cur.read, ...call.map((c) => c.index)])],
       quotes: [...cur.quotes, ...got.quotes.map((q) => q.quote)].sort((a, b) => a.span[0] - b.span[0]),
       needs: [...cur.needs, ...got.needs.map((n) => n.need)],
+      ...(cur.about ? {} : { about: got.about[0]?.text }),
     };
     await store.putSource(cur);
   }
@@ -182,7 +184,9 @@ interface BoardTree {
 
 /** Where the source's quotes fit on the boards of its product (every board, for the whole organization's): proposals for each. */
 export async function placeIn(store: OrgStore, deps: FilingDeps, s: SourceRecord, o: CaptureOpts): Promise<Record<string, Proposal[]>> {
-  if (s.kind === "dump" || !s.quotes.length) return {};
+  // The team's own thinking in a document is filed as what it believes, never placed as what backs a card.
+  const points = s.quotes.filter((q) => basisOf(s, q) !== "own").slice(0, 150);
+  if (s.kind === "dump" || !points.length) return {};
   const boards: BoardTree[] = [];
   let next = 1;
   for (const p of store.listProjects()) {
@@ -198,7 +202,7 @@ export async function placeIn(store: OrgStore, deps: FilingDeps, s: SourceRecord
   }
   if (!boards.length) return {};
   o.emit?.(`Finding where it fits on ${boards.length === 1 ? `“${boards[0].name}”` : `${boards.length} boards`}`);
-  const quotes: SynthQuote[] = s.quotes.slice(0, 150).map((q, i) => ({ ref: `q${i + 1}`, sourceId: s.id, quoteId: q.id, span: q.span }));
+  const quotes: SynthQuote[] = points.map((q, i) => ({ ref: `q${i + 1}`, sourceId: s.id, quoteId: q.id, span: q.span }));
   const refByQuote = new Map(quotes.map((q) => [q.quoteId, q.ref]));
   const product = deps.productLine(s.product ?? null).slice(0, 2000);
   const org = await deps.pack({ query: boards.flatMap((b) => b.cards.slice(0, 30).map((c) => c.title)).join("\n"), product: s.product ?? undefined, budget: 1500, types: ["page", "decision", "need", "assumption", "context"] });
@@ -208,7 +212,7 @@ export async function placeIn(store: OrgStore, deps: FilingDeps, s: SourceRecord
     tree: boards.flatMap((b) =>
       b.cards.map((c) => ({ id: c.ref, parent: c.parentRef, kind: c.kind, title: c.title.slice(0, 400), quotes: cardOf(b.doc, c.id)?.evidence.filter((e) => e.kind === "quote").length ?? 0, ...(c.parentRef ? {} : { board: b.name }) })),
     ),
-    quotes: s.quotes.slice(0, 150).map((q, i) => ({ id: `q${i + 1}`, text: q.text.slice(0, 1200), source: s.title.slice(0, 300), speaker: q.speaker?.slice(0, 80) ?? null, kind: q.kind })),
+    quotes: points.map((q, i) => ({ id: `q${i + 1}`, text: q.text.slice(0, 1200), source: s.title.slice(0, 300), speaker: q.speaker?.slice(0, 80) ?? null, kind: q.kind, basis: basisOf(s, q) })),
     needs: s.needs
       .map((n) => ({ title: n.title.slice(0, 200), quoteIds: n.quoteIds.map((id) => refByQuote.get(id)).filter((x): x is string => !!x).slice(0, 30) }))
       .filter((n) => n.quoteIds.length)

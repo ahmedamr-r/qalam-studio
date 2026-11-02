@@ -95,7 +95,7 @@ describe("Sources requests", () => {
   it("schemas require every property and stream quotes before needs, mappings before new cards", () => {
     expect(openRequired(extractSchema(["c1"]))).toEqual([]);
     expect(openRequired(synthesizeSchema(["c2"], ["c1"], ["q1"]))).toEqual([]);
-    expect(Object.keys(extractSchema(["c1"]).properties)).toEqual(["quotes", "needs"]);
+    expect(Object.keys(extractSchema(["c1"]).properties)).toEqual(["about", "quotes", "needs"]);
     expect(Object.keys(synthesizeSchema(["c2"], ["c1"], ["q1"]).properties)).toEqual(["mappings", "newOpportunities", "contradictions"]);
   });
 
@@ -138,7 +138,7 @@ describe("Sources requests", () => {
     expect(DiscoveryBody.safeParse({ stage: "extract", product: "", chunks: [{ ...interview, speakers: "x".repeat(401) }] }).success).toBe(false);
     const outline = synthesizeContent({ stage: "synthesize", product: "", tree, quotes, needs: [{ title: "Arrival times", quoteIds: ["q1"] }] });
     expect(outline).toContain("- c1 · outcome · More weekly reorders\n  - c2 · opportunity · I can't tell when my order arrives (2 quotes)\n    - c3 · solution · Live tracking");
-    expect(outline).toContain("- q1 · pain · Interviews.pdf · P3: “I never know when the driver will turn up”");
+    expect(outline).toContain("- q1 · customers · pain · Interviews.pdf · P3: “I never know when the driver will turn up”");
     expect(outline).toContain("- Arrival times (q1)");
   });
 });

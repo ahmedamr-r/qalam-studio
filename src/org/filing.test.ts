@@ -33,7 +33,7 @@ describe("the filing call", () => {
       { id: "t2", kind: "product", title: "Grocery", lines: 0, made: false },
     ],
     pages: [{ topic: "t1", lines: [{ id: "l1", section: "know", text: "Parents get swaps they didn't ask for.", by: "qalam", disputed: [] }] }],
-    material: [{ id: "q1", text: "I can't plan bath time around a four-hour window.", source: "Sara interview", speaker: "Sara", kind: "pain", team: false }],
+    material: [{ id: "q1", text: "I can't plan bath time around a four-hour window.", source: "Sara interview", speaker: "Sara", kind: "pain", basis: "said" }],
     needs: [{ title: "Delivery windows are too wide", quoteIds: ["q1"] }],
     context: { block: "[k1] A quote from Support tickets: Late or missed delivery: 131 tickets.", ids: ["k1"], quotes: ["k1"] },
   };
@@ -52,7 +52,7 @@ describe("the filing call", () => {
     const text = topicsContent(body);
     expect(text).toContain("- t2 · product · Grocery · no page yet");
     expect(text).toContain("- l1 · We know · qalam: Parents get swaps they didn't ask for.");
-    expect(text).toContain("- q1 · pain · Sara interview · Sara: “I can't plan bath time around a four-hour window.”");
+    expect(text).toContain("- q1 · customers · pain · Sara interview · Sara: “I can't plan bath time around a four-hour window.”");
     expect(text).toContain("<organization>");
   });
 });

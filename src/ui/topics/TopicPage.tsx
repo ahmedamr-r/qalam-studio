@@ -1,3 +1,4 @@
+import { pieceBasis, type Basis } from "@/discovery/basis";
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import clsx from "clsx";
 import { MoreHorizontal, Plus, Quote } from "lucide-react";
@@ -408,12 +409,16 @@ function hrefOf(p: CitedPiece, view: TopicView): string | null {
   return null;
 }
 
-/** Customers' own words (a brain dump's pieces are the team's). */
-const customers = (p: CitedPiece) => p.type === "quote" && !p.sub?.startsWith("dump:");
+/** Words from outside the team (a brain dump's pieces are the team's). */
+const customers = (p: CitedPiece) => p.type === "quote" && pieceBasis(p) !== "own";
+
+/** What a quote piece rests on, as its label says it (people's words say who, the rest what they are). */
+const FROM: Partial<Record<Basis, string>> = { own: "The team", measured: "Measured", studied: "Studied", read: "Read elsewhere" };
 
 function labelOf(p: CitedPiece, view: TopicView): string {
   const source = p.source ? (view.sources[p.source]?.title ?? p.title) : p.title;
-  if (p.type === "quote" && !customers(p)) return `The team · ${source ?? "a brain dump"}`;
+  const from = p.type === "quote" ? FROM[pieceBasis(p)] : undefined;
+  if (from) return `${from} · ${source ?? "a brain dump"}`;
   if (p.type === "quote") return [p.speaker, source].filter(Boolean).join(" · ") || "A quote";
   if (p.type === "decision") return `Decision · ${p.title ?? ""}`.trim();
   if (p.type === "need") return `Need in ${source ?? "a source"}`;

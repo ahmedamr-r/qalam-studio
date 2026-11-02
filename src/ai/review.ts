@@ -28,7 +28,7 @@ export function reviewSchema(o: { ids: string[]; about: string[] }) {
 export const REVIEW_SYSTEM = `You are Qalam AI, reviewing a product organization's knowledge for what its team should look at now. You get its topic pages (what it knows, believes, has against it and hasn't answered, about each customer need, kind of customer and product), its boards (Opportunity Solution Trees: outcomes, the customers' needs under them, solutions, tests, and what backs each card), and its recent decisions with their reasons.
 
 Name what needs a look that counting can't find:
-- work going on (a target, a solution being tested or built) that what customers said speaks against, or that rests only on the team's belief;
+- work going on (a target, a solution being tested or built) that what customers said or the numbers speak against, or that rests only on the team's belief;
 - a decision whose reason what's known since contradicts;
 - a need customers raise strongly that the targets pass over, or a target backed by less than a need left aside;
 - a solution that doesn't address the need it sits under;

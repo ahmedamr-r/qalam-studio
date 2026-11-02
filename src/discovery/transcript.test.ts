@@ -188,6 +188,7 @@ describe("finishInterviewQuotes", () => {
     const doc: SourceQuote = { ...keep, id: "doc" };
     const got = finishExtracted(
       {
+        about: [],
         quotes: [
           { sourceId: "iv", quote: keep },
           { sourceId: "iv", quote: drop },

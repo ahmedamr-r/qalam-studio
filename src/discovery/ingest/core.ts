@@ -102,20 +102,19 @@ export async function fromBytes(bytes: ArrayBuffer, type: string, name: string, 
     return capped("docx", stem(name), origin, r.text);
   }
   if (ext === "doc") throw new IngestError(`${name} is an old Word file (.doc). Save it as .docx, then add it.`);
-  // A spreadsheet of people's answers: each row one voice (./rows.ts).
+  // A spreadsheet: people's answers, each row one voice, or a table, each row with its columns' names (./rows.ts).
   if (type === XLSX || ext === "xlsx") {
     const rows = await xlsxRows(bytes).catch(() => {
       throw new IngestError(`${name} couldn't be read as a spreadsheet.`);
     });
-    const { rowsText } = await import("./rows");
-    const said = rowsText(rows);
-    return capped("text", stem(name), origin, said ?? rows.map((r) => r.join(" · ")).join("\n"));
+    const { sheetText } = await import("./rows");
+    return capped("text", stem(name), origin, sheetText(rows) ?? rows.map((r) => r.join(" · ")).join("\n"));
   }
   const text = decodeText(bytes, type);
   if (type === "text/csv" || type === "text/tab-separated-values" || ext === "csv" || ext === "tsv") {
-    const { parseDelimited, rowsText } = await import("./rows");
-    const said = rowsText(parseDelimited(text, ext === "tsv" || type === "text/tab-separated-values" ? "\t" : ","));
-    if (said) return capped("text", stem(name), origin, said);
+    const { parseDelimited, sheetText } = await import("./rows");
+    const sheet = sheetText(parseDelimited(text, ext === "tsv" || type === "text/tab-separated-values" ? "\t" : ","));
+    if (sheet) return capped("text", stem(name), origin, sheet);
   }
   if (type === "text/vtt" || ext === "vtt" || /^﻿?WEBVTT/.test(text)) return fromCaptions(text, name, origin, "vtt");
   if (ext === "srt" || type === "application/x-subrip") return fromCaptions(text, name, origin, "srt");

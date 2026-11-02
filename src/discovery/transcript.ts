@@ -333,5 +333,5 @@ export function finishExtracted(got: Extracted, sourceOf: (id: string) => Interv
   });
   const kept = new Set(quotes.map((x) => x.quote.id));
   const needs = got.needs.map((n) => ({ ...n, need: { ...n.need, quoteIds: n.need.quoteIds.filter((id) => kept.has(id)) } })).filter((n) => n.need.quoteIds.length);
-  return { quotes, needs };
+  return { quotes, needs, about: got.about };
 }

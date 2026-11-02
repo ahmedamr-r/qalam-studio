@@ -18,7 +18,7 @@ export interface FoundQuote {
   speaker: string | null;
   /** The source's title. */
   from: string;
-  whose: "customers" | "online" | "yours";
+  whose: "customers" | "online" | "yours" | "measured" | "studied" | "read";
 }
 
 export interface DesignLink {

@@ -1,3 +1,4 @@
+import type { Basis } from "./basis";
 import { sameWords } from "@/hub/topics";
 import { ASSUMPTION_CATEGORIES } from "./kinds";
 import { newCard } from "./ops";
@@ -21,7 +22,7 @@ export interface TestsInput {
   problem: { title: string } | null;
   goal: { title: string; metric: string | null } | null;
   /** The words the solution and its problem rest on: customers', people online's and the team's. */
-  pieces: { ref: string; text: string; label: string; evidence: boolean; online?: boolean }[];
+  pieces: { ref: string; text: string; label: string; evidence: boolean; online?: boolean; basis?: Basis }[];
 }
 
 type Piece = TestsInput["pieces"][number];

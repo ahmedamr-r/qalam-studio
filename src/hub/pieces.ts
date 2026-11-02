@@ -1,3 +1,4 @@
+import { basisOf, basisSub, pieceBasis, type Basis } from "@/discovery/basis";
 import type { Doc } from "@/doc/schema";
 import type { ProductMap } from "@/code/map";
 import type { SeenMap } from "@/seen/types";
@@ -122,14 +123,18 @@ export function sourcePieces(s: SourceRecord, n: Names): Built {
     const ref = quotePiece(quote.id);
     const dump = s.kind === "dump";
     const online = s.kind === "post";
-    const what = dump
+    const basis = basisOf(s, quote);
+    const held = !online && basis !== "said" && (!dump || basis !== "own");
+    const what = held
+      ? POINT_WHAT[basis]
+      : dump
       ? `${quote.role ? `${/^[aeiou]/i.test(quote.role) ? "An" : "A"} ${quote.role}` : "A piece"} from the brain dump`
       : `${QUOTE_KIND_LABEL[quote.kind] ?? "A quote"}${quote.speaker ? ` ${quote.speaker} said` : online ? " someone online said" : " a customer said"}${online ? " in public" : ""}`;
     pieces.push({
       ref,
       type: "quote",
-      // A brain dump's pieces are the team's words, never a customer's; a post's are people online's: their kind says so.
-      sub: dump ? `dump:${quote.role ?? "piece"}` : online ? `online:${quote.kind}` : quote.kind,
+      // A brain dump's pieces are the team's words, never a customer's; a post's are people online's; the rest say what they rest on.
+      sub: held ? basisSub(basis, quote.kind) : dump ? `dump:${quote.role ?? "piece"}` : online ? `online:${quote.kind}` : quote.kind,
       text: quote.text,
       line: join(`${what} in ${where}`, forProduct(product, n)),
       title: s.title,
@@ -153,6 +158,9 @@ export function sourcePieces(s: SourceRecord, n: Names): Built {
 // Boards: cards, the evidence written on them, and solutions' assumptions
 
 type Node = { parentId?: string | null; meta?: { ost?: OstCard } };
+
+/** A point that isn't people's words, as a line says what it is. */
+const POINT_WHAT: Record<Basis, string> = { said: "A quote", measured: "A measured finding", studied: "A finding from a study", read: "Something read elsewhere", own: "The team's thinking" };
 
 const EVIDENCE_WHAT: Record<OstEvidence["kind"], string> = { answer: "The team's answer", note: "A note", quote: "A quote", dump: "The team's words from a brain dump" };
 
@@ -427,7 +435,8 @@ export function meaningText(p: Pick<HubPiece, "line" | "text" | "type" | "sub"> 
   if (p.type === "page") return `${sectionOf(p.sub) ?? "Topic page"}, about ${q(p.title ?? "")}: ${p.text}`;
   const team = p.type === "quote" && p.sub?.startsWith("dump:");
   const online = p.type === "quote" && p.sub?.startsWith("online:");
-  const what = team ? `The team's ${p.sub!.slice(5)}` : online ? `Someone online's ${p.sub!.slice(7)}` : p.type === "quote" ? `A customer ${p.sub ?? "quote"}` : p.type === "card" ? (p.sub ?? "card") : p.type;
+  const basis = p.type === "quote" && !team && !online ? pieceBasis(p) : "said";
+  const what = basis !== "said" ? POINT_WHAT[basis] : team ? `The team's ${p.sub!.slice(5)}` : online ? `Someone online's ${p.sub!.slice(7)}` : p.type === "quote" ? `A customer ${p.sub ?? "quote"}` : p.type === "card" ? (p.sub ?? "card") : p.type;
   return `${what}. ${topics.length ? `About ${topics.map(q).join(", ")}. ` : ""}${p.text}`;
 }
 

@@ -71,6 +71,33 @@ export function rowsText(rows: string[][], max = 400): string | null {
   return out.length && width > 0 ? out.join("\n\n") : null;
 }
 
+const FIGURE = /^[\s(]*[-+]?[\d٠-٩][\d٠-٩.,\s]*(%|k|m|bn)?[\s)]*$/i;
+
+/** Mostly numbers: figures to read as a table, whatever its columns are called. */
+export function isFigures(rows: string[][]): boolean {
+  const cells = rows.slice(1).flat().map(clean).filter(Boolean);
+  return cells.length > 0 && cells.filter((c) => FIGURE.test(c)).length / cells.length >= 0.5;
+}
+
+/**
+ * The rows as a table's: each row with its columns' names, so it means the same on its own, wherever
+ * a long sheet is cut, and its words can be found. Null when there's no table to read.
+ */
+export function tableText(rows: string[][], max = 400): string | null {
+  if (rows.length < 2) return null;
+  const head = rows[0].map(clean);
+  const lines = rows.slice(1, max + 1).flatMap((r) => {
+    const cells = head.flatMap((h, c) => (clean(r[c] ?? "") && !PRIVATE.test(h) ? [h ? `${h}: ${clean(r[c])}` : clean(r[c])] : []));
+    return cells.length ? [cells.join(" · ")] : [];
+  });
+  if (!lines.length) return null;
+  const left = rows.length - 1 - max;
+  return [...lines, ...(left > 0 ? [`(${left.toLocaleString("en-US")} more rows not read)`] : [])].join("\n");
+}
+
+/** A sheet as text: figures as a table, else who said what, else a table. */
+export const sheetText = (rows: string[][]): string | null => (isFigures(rows) ? tableText(rows) : (rowsText(rows) ?? tableText(rows)));
+
 /** An XLSX's first sheet as rows: its cells read from the sheet's own XML (shared strings and inline text). */
 export function xlsxSheetRows(sheetXml: string, sharedXml: string | null): string[][] {
   const decode = (s: string) => s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");

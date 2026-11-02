@@ -1,3 +1,4 @@
+import { evidenceBasis, pieceBasis, reachesKnow } from "@/discovery/basis";
 import { nanoid } from "nanoid";
 import { solutionsCall } from "@/ai/solutions";
 import { structured } from "@/ai/server";
@@ -61,7 +62,7 @@ export async function wordsPieces(store: OrgStore, w: DraftWords, have: Readonly
         if (row.type !== "quote" || seen.has(ref)) continue;
         seen.add(ref);
         const src = row.source ? await store.getSource(row.source) : null;
-        out.push({ ref, text: row.text, label: src?.title ?? row.title ?? "", source: row.source, evidence: isEvidence(row), ...(isOnline(row) ? { online: true } : {}) });
+        out.push({ ref, text: row.text, label: src?.title ?? row.title ?? "", source: row.source, evidence: isEvidence(row), basis: pieceBasis(row), ...(isOnline(row) ? { online: true } : {}) });
       }
     } catch {
       // No index here: their answers alone.
@@ -83,7 +84,7 @@ async function solutionsInput(store: OrgStore, topic: Topic | null, card: Soluti
       for (const [ref, row] of ix.piecesByRef(refs)) {
         if (row.type !== "quote" && row.type !== "evidence") continue;
         const s = row.source ? await store.getSource(row.source) : null;
-        pieces.push({ ref, text: row.text, label: s?.title ?? row.title ?? "", source: row.source, evidence: isEvidence(row), ...(isOnline(row) ? { online: true } : {}) });
+        pieces.push({ ref, text: row.text, label: s?.title ?? row.title ?? "", source: row.source, evidence: isEvidence(row), basis: pieceBasis(row), ...(isOnline(row) ? { online: true } : {}) });
       }
       // What its boards have under it already.
       for (const shown of showsUp(ix, topic.title, refs).filter((x) => x.kind === "opportunity")) {
@@ -101,7 +102,7 @@ async function solutionsInput(store: OrgStore, topic: Topic | null, card: Soluti
     }
   } else
     for (const [i, e] of (card?.evidence ?? []).entries())
-      pieces.push({ ref: e.piece ?? `card:${i}`, text: e.text, label: e.sourceTitle ?? (e.kind === "quote" ? "A source" : "The team's words"), source: e.sourceId ?? null, evidence: e.kind === "quote" && !e.online, ...(e.online ? { online: true } : {}) });
+      pieces.push({ ref: e.piece ?? `card:${i}`, text: e.text, label: e.sourceTitle ?? (e.kind === "quote" ? "A source" : "The team's words"), source: e.sourceId ?? null, evidence: reachesKnow(evidenceBasis(e)), basis: evidenceBasis(e), ...(e.online ? { online: true } : {}) });
   // What they told us when asked, and what was found on their words: page or no page.
   const said = await wordsPieces(store, w, new Set(pieces.map((p) => p.ref)));
   pieces.push(...said);

@@ -1,3 +1,4 @@
+import { evidenceBasis, reachesKnow } from "@/discovery/basis";
 import { nanoid } from "nanoid";
 import { structured } from "@/ai/server";
 import { testsCall } from "@/ai/tests";
@@ -29,7 +30,7 @@ export async function draftTests(store: OrgStore, req: TestsRequest, emit?: (lab
   for (const e of [...req.solution.evidence, ...(req.problem?.evidence ?? [])]) {
     const ref = e.piece ?? `card:${pieces.length}`;
     if (pieces.some((p) => p.ref === ref || p.text === e.text)) continue;
-    pieces.push({ ref, text: e.text, label: e.sourceTitle ?? (e.kind === "quote" ? "A source" : "The team's words"), evidence: e.kind === "quote" && !e.online, ...(e.online ? { online: true } : {}) });
+    pieces.push({ ref, text: e.text, label: e.sourceTitle ?? (e.kind === "quote" ? "A source" : "The team's words"), evidence: reachesKnow(evidenceBasis(e)), basis: evidenceBasis(e), ...(e.online ? { online: true } : {}) });
   }
   const m = testsMaterial({ solution: req.solution, problem: req.problem ? { title: req.problem.title } : null, goal: req.goal, pieces });
   emit?.("Qalam AI is drafting its tests");

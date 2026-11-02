@@ -16,7 +16,7 @@ import { useDiscovery, type FoundQuote } from "./store";
  */
 
 const ICON = { size: 13, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
-const WHOSE: Record<FoundQuote["whose"], string> = { customers: "Customers", online: "People online", yours: "Your words" };
+const WHOSE: Record<FoundQuote["whose"], string> = { customers: "Customers", online: "People online", yours: "Your words", measured: "Measured", studied: "Studied", read: "Read elsewhere" };
 const keyOf = (q: Pick<FoundQuote, "sourceId" | "quoteId">) => `${q.sourceId}:${q.quoteId}`;
 
 export default function QuotePicker() {

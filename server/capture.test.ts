@@ -20,7 +20,7 @@ vi.mock("@/ai/server", () => ({
       calls.list.push("dump-read");
       return { data: { understanding: "A founder's plan.", fragments: [{ id: "f1", role: "idea", quote: "a button to copy last week's basket" }, { id: "f2", role: "need", quote: "parents rebuild the basket every Sunday" }, { id: "f3", role: "need", quote: "Words that aren't in the notes." }], challenges: [], questions: [] } };
     }
-    if (opts.system.includes("pick out what customers said")) {
+    if (opts.system.includes("pick out what it states")) {
       calls.list.push("extract");
       return { data: { quotes: [{ id: "q1", chunkId: "c1", text: "I can't plan bath time around a four-hour window.", speaker: "Sara", kind: "pain" }, { id: "q2", chunkId: "c1", text: "Words that aren't in the material.", speaker: null, kind: "pain" }], needs: [{ title: "Delivery windows are too wide", quoteIds: ["q1"] }] } };
     }
@@ -116,7 +116,7 @@ describe.skipIf(!fts5)("capture, in the core", () => {
     expect((await store.placementsFor("delivery"))[s.id]).toMatchObject([{ kind: "attach", cardId: "n", quote: { sourceId: s.id, quoteId: s.quotes[0].id } }]);
     expect(s.filed).toEqual([s.quotes[0].id]);
     expect((await store.listTopics()).map((t) => t.title)).toEqual(["Delivery windows are too wide"]);
-    expect(steps).toEqual(["Keeping “Sara interview” in the organization", "Picking out what customers said", "Filing it into the topic pages", "Finding where it fits on 2 boards"]);
+    expect(steps).toEqual(["Keeping “Sara interview” in the organization", "Reading what it says", "Filing it into the topic pages", "Finding where it fits on 2 boards"]);
   });
 
   it("places a feed's material only on the boards it's wired to, under their cards, and nowhere when it's wired to none", async () => {
@@ -151,7 +151,7 @@ describe.skipIf(!fts5)("capture, in the core", () => {
 
   it("reads material with no customers' words in it as their own thinking after, but never what customers said", async () => {
     const r = await captureSource(store, { kind: "paste", title: "Sara interview", text: "Sara: I can't plan bath time around a four-hour window." });
-    await expect(readAsOwn(store, r.sourceId)).rejects.toThrow("Customers' words were taken from it already.");
+    await expect(readAsOwn(store, r.sourceId)).rejects.toThrow("What it states was taken in already.");
   });
 
   it("takes in what's dropped in the inbox, and sets aside what it can't read", async () => {

@@ -1,3 +1,4 @@
+import { pieceBasis, reachesKnow } from "@/discovery/basis";
 import { quoteFinder } from "@/discovery/quotes";
 
 /**
@@ -102,7 +103,7 @@ export interface Citable {
   text: string;
   /** What a reader sees it as: its source's or board's name. */
   label: string;
-  /** Customers' own words, or a test's result. */
+  /** What people said, what's measured or studied, or a test's result. */
   evidence: boolean;
   product: string | null;
 }
@@ -110,11 +111,11 @@ export interface Citable {
 const DONE_TESTS = new Set(["passed", "failed", "inconclusive"]);
 
 /**
- * Customers' own words, or a test's result: what "We know" and "Against" rest on. A brain dump's
- * pieces are the team's; a post's are people online's (they back a need, below its customers').
+ * What "We know" and "Against" rest on: what people said, what's measured or studied, or a test's
+ * result. A brain dump's pieces are the team's; what's read elsewhere backs a need, below these.
  */
 export function isEvidence(p: { type: string; sub?: string | null; stage?: string | null }): boolean {
-  if (p.type === "quote") return !(p.sub ?? "").startsWith("dump:") && !isOnline(p);
+  if (p.type === "quote") return reachesKnow(pieceBasis(p));
   if (p.type === "evidence") return p.sub === "quote";
   if (p.type === "card") return p.sub === "test" && DONE_TESTS.has(p.stage ?? "");
   return false;
@@ -300,7 +301,7 @@ export function sanitizeFiling(raw: unknown, sent: FilingSent, o: { products?: s
     if (have.includes(sameWords(text)) || have.length >= TOPIC_LIMITS.linesPerTopic) continue;
     have.push(sameWords(text));
     linesOn.set(where, have);
-    // Knowing, or speaking against, takes customers' words or a test's result; the team's words alone are a belief.
+    // Knowing, or speaking against, takes what people said, what's measured or studied, or a test's result; anything less is a belief.
     const placed: TopicSection = (section === "know" || section === "against") && !cited.some((c) => c.evidence) ? "believe" : section;
     out.add.push({ topic: where, section: placed, ...words(text, cited) });
   }

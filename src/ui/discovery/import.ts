@@ -1,3 +1,4 @@
+import { basisOf } from "@/discovery/basis";
 import { contextFor } from "@/org/context";
 import { newId } from "@/doc/factory";
 import { studio } from "@/doc/store";
@@ -184,7 +185,7 @@ export async function readSources(ids: string[], given?: AbortController): Promi
       if (ctrl.signal.aborted || failure) return;
       const chunks: CallChunk[] = call.map((c, i) => {
         const s = sourceOf(c.sourceId)!;
-        return { ref: `c${i + 1}`, sourceId: c.sourceId, start: c.start, text: s.text.slice(c.start, c.end), ...(s.pages ? { pages: s.pages } : {}) };
+        return { ref: `c${i + 1}`, sourceId: c.sourceId, start: c.start, text: s.text.slice(c.start, c.end), kind: s.kind, ...(s.pages ? { pages: s.pages } : {}) };
       });
       try {
         const part = (c: CallChunk) => {
@@ -197,13 +198,14 @@ export async function readSources(ids: string[], given?: AbortController): Promi
         const got = finishExtracted(sanitizeExtract(data, chunks, taken), sourceOf);
         found += got.quotes.length;
         const titles = [...new Set(chunks.map((c) => sourceOf(c.sourceId)?.title ?? ""))].filter(Boolean);
-        recordCall({ title: `Picked out what customers said in ${titles.map((t) => `“${t}”`).join(", ")}`, org, raw: data, model, produced: { refs: got.quotes.map((q) => quotePiece(q.quote.id)) } });
+        recordCall({ title: `Read ${titles.map((t) => `“${t}”`).join(", ")}`, org, raw: data, model, produced: { refs: got.quotes.map((q) => quotePiece(q.quote.id)) } });
         for (const id of new Set(call.map((c) => c.sourceId)))
           await updateSource(id, (s) => ({
             ...s,
             read: [...new Set([...s.read, ...call.filter((c) => c.sourceId === id).map((c) => c.index)])],
             quotes: [...s.quotes, ...got.quotes.filter((q) => q.sourceId === id).map((q) => q.quote)].sort((a, b) => a.span[0] - b.span[0]),
             needs: [...s.needs, ...got.needs.filter((n) => n.sourceId === id).map((n) => n.need)],
+            ...(s.about ? {} : { about: got.about.find((a) => a.sourceId === id)?.text }),
           }));
       } catch (e) {
         if ((e as Error).name !== "AbortError") failure ??= message(e);
@@ -213,7 +215,7 @@ export async function readSources(ids: string[], given?: AbortController): Promi
     for (const id of touched) setJob(id, null);
     if (!given) end(ctrl);
   }
-  // What customers said goes on the organization's topic pages too (in the background).
+  // What it states goes on the organization's topic pages too (in the background).
   if (found > 0 && !ctrl.signal.aborted) void fileAfterReading([...touched], canvasProduct());
   const left = ids.map(sourceOf).filter((s): s is SourceRecord => !!s && !awaitingRoles(s)).reduce((n, s) => n + unread(s).length, 0);
   if (failure) useSources.setState({ notice: { text: `Qalam AI couldn't read everything: ${failure}`, action: "read" } });
@@ -265,9 +267,10 @@ export function synthesizeInput(doc: Doc, given: SourceRecord[], elsewhere: { s:
   const mine = new Set(synthCards.filter((c) => !under || c.id === under || isUnder(doc, c.id, under)).map((c) => c.ref));
   // Quotes no card has yet first, then the rest, up to what one call takes.
   const on = new Set(cards.flatMap(({ card }) => card.evidence.flatMap((e) => [...(e.kind === "quote" && e.sourceId && e.span ? [`${e.sourceId}:${e.span[0]}:${e.span[1]}`] : []), ...(e.piece ? [e.piece] : [])])));
-  const all = sources.flatMap((s) => s.quotes.map((q) => ({ s, q })));
+  // The team's own thinking in a document is filed as what it believes, never placed as what backs a card.
+  const all = sources.flatMap((s) => s.quotes.filter((q) => s.kind === "dump" || basisOf(s, q) !== "own").map((q) => ({ s, q })));
   const placed = (x: (typeof all)[number]) => on.has(`${x.s.id}:${x.q.span[0]}:${x.q.span[1]}`) || on.has(quotePiece(x.q.id));
-  const fromElsewhere = elsewhere.filter((x) => x.s.kind !== "dump" && !placed(x) && !all.some((y) => y.q.id === x.q.id));
+  const fromElsewhere = elsewhere.filter((x) => x.s.kind !== "dump" && basisOf(x.s, x.q) !== "own" && !placed(x) && !all.some((y) => y.q.id === x.q.id));
   const picked = [...all.filter((x) => !placed(x)), ...fromElsewhere, ...all.filter(placed)].slice(0, MAX_QUOTES);
   const quotes: SynthQuote[] = picked.map((x, i) => ({ ref: `q${i + 1}`, sourceId: x.s.id, quoteId: x.q.id, span: x.q.span, ...(x.q.dismissed?.length ? { dismissed: x.q.dismissed } : {}) }));
   const refByQuote = new Map(picked.map((x, i) => [x.q.id, `q${i + 1}`]));
@@ -276,7 +279,7 @@ export function synthesizeInput(doc: Doc, given: SourceRecord[], elsewhere: { s:
     stage: "synthesize" as const,
     product: productLine(doc),
     tree: synthCards.map((c) => ({ id: c.ref, parent: c.parentRef, kind: c.kind, title: c.title.slice(0, 400), quotes: cardOf(doc, c.id)?.evidence.filter((e) => e.kind === "quote").length ?? 0 })),
-    quotes: picked.map((x, i) => ({ id: `q${i + 1}`, text: x.q.text.slice(0, 1200), source: x.s.title.slice(0, 300), speaker: x.q.speaker?.slice(0, 80) ?? null, kind: x.q.kind })),
+    quotes: picked.map((x, i) => ({ id: `q${i + 1}`, text: x.q.text.slice(0, 1200), source: x.s.title.slice(0, 300), speaker: x.q.speaker?.slice(0, 80) ?? null, kind: x.q.kind, basis: basisOf(x.s, x.q) })),
     needs: sources
       .flatMap((s) => s.needs.map((n) => ({ title: n.title.slice(0, 200), quoteIds: n.quoteIds.map((id) => refByQuote.get(id)).filter((x): x is string => !!x).slice(0, 30) })))
       .filter((n) => n.quoteIds.length)

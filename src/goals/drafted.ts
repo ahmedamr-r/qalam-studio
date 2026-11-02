@@ -1,3 +1,5 @@
+import type { Basis } from "@/discovery/basis";
+import { whose } from "@/discovery/solutions";
 import type { QuoteRef } from "@/discovery/proposals";
 import { checkWords, cleanLine, sameTopic } from "@/hub/topics";
 import { titleOf } from "@/org/setup-groups";
@@ -23,7 +25,7 @@ export interface ProblemsInput {
   /** The organization's problem pages in its scope: what Find its problems links, never proposed again. */
   pages: string[];
   /** The words a problem may rest on: customers', people online's, and the team's. */
-  pieces: { ref: string; text: string; label: string; source: string | null; evidence: boolean; online?: boolean }[];
+  pieces: { ref: string; text: string; label: string; source: string | null; evidence: boolean; online?: boolean; basis?: Basis }[];
 }
 
 type Piece = ProblemsInput["pieces"][number];
@@ -69,7 +71,6 @@ export interface ProblemsDrafted {
 }
 
 const one = (s: string) => s.replace(/\s+/g, " ").trim();
-const whose = (p: Pick<Piece, "evidence" | "online">) => (p.evidence ? "customers" : p.online ? "people online" : "the team");
 const numbered = (g: { title: string; metric: string | null }) => `“${one(g.title)}” · ${g.metric ? `its number: ${one(g.metric)}` : "no number yet"}`;
 
 /** The material: the goal under the goals it feeds, what's there already, and the words (q…), customers' first. */

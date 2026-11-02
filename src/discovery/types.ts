@@ -1,3 +1,4 @@
+import type { Basis } from "./basis";
 import type { BriefTopic } from "@/doc/schema";
 import type { FollowUp } from "@/design-system/interview/sanitize";
 import type { FlowState } from "@/ui/ai/questionFlow";
@@ -56,6 +57,8 @@ export interface OstEvidence {
   speaker?: string;
   /** Interviews: when the words were said ([start, end) seconds). */
   time?: [number, number];
+  /** What the words rest on (./basis.ts). None: what its kind has always meant. */
+  basis?: Basis;
   /** The words speak against the card (they don't back it). */
   stance?: "against";
   /** A quote from people online (a public post or review), not the organization's own customers. */

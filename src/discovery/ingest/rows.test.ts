@@ -1,7 +1,7 @@
 import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
 import { fromBytes, XLSX, type Readers } from "./core";
-import { parseDelimited, rowsText, xlsxSheetRows } from "./rows";
+import { isFigures, parseDelimited, rowsText, sheetText, tableText, xlsxSheetRows } from "./rows";
 
 describe("spreadsheets of people's answers", () => {
   it("reads CSV and TSV, quotes and lines inside cells included", () => {
@@ -54,5 +54,35 @@ describe("spreadsheets of people's answers", () => {
       ["Name", "Feedback"],
       ["Sara", "", "Too many steps & fees"],
     ]);
+  });
+});
+
+describe("a sheet of figures", () => {
+  const funnel = [
+    ["Step", "Users", "Left", "Owner email"],
+    ["Basket", "6,100", "12%", "a@b.co"],
+    ["Payment", "4,200", "41%", "a@b.co"],
+  ];
+
+  it("reads each row with its columns' names, never a private column", () => {
+    expect(tableText(funnel)).toBe("Step: Basket · Users: 6,100 · Left: 12%\nStep: Payment · Users: 4,200 · Left: 41%");
+  });
+
+  it("says how many rows it left unread", () => {
+    expect(tableText([["A"], ["1"], ["2"], ["3"]], 2)).toBe("A: 1\nA: 2\n(1 more rows not read)");
+  });
+
+  it("reads figures as a table whatever a column is called, and people's answers as who said what", () => {
+    expect(isFigures(funnel)).toBe(true);
+    const figures = [
+      ["Week", "Problem count", "Note"],
+      ["1", "120", "12%"],
+      ["2", "98", "9%"],
+    ];
+    expect(isFigures(figures)).toBe(true);
+    expect(sheetText(figures)).toBe("Week: 1 · Problem count: 120 · Note: 12%\nWeek: 2 · Problem count: 98 · Note: 9%");
+    expect(sheetText([["Name", "Why did you cancel?"], ["Mona", "Fees were higher than the shop"]])).toBe("Mona: Fees were higher than the shop");
+    // No column of people's words, and not mostly numbers: still a table.
+    expect(sheetText(funnel)).toBe(tableText(funnel));
   });
 });

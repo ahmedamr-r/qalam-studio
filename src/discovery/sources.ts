@@ -1,3 +1,4 @@
+import { basisOf, type Basis } from "./basis";
 import { newId } from "@/doc/factory";
 import type { OstCard, OstEvidence } from "./types";
 import { clock, type TranscriptMeta, type TranscriptSegment } from "./transcript";
@@ -30,13 +31,13 @@ export const SOURCE_KIND_LABEL: Record<SourceKind, string> = {
   post: "People online",
 };
 
-/** What a quote shows about the customer. */
-export const QUOTE_KINDS = ["pain", "need", "desire", "behavior", "idea"] as const;
+/** What a point shows: about the customer (a pain, a need…), or `finding`: what a measurement, a study or a report states. */
+export const QUOTE_KINDS = ["pain", "need", "desire", "behavior", "idea", "finding"] as const;
 export type QuoteKind = (typeof QUOTE_KINDS)[number];
 
-export const QUOTE_KIND_LABEL: Record<QuoteKind, string> = { pain: "Pain", need: "Need", desire: "Desire", behavior: "Behaviour", idea: "Idea" };
+export const QUOTE_KIND_LABEL: Record<QuoteKind, string> = { pain: "Pain", need: "Need", desire: "Desire", behavior: "Behaviour", idea: "Idea", finding: "Finding" };
 
-/** A customer's words in a source, found there by code. */
+/** A point in a source: its words, found there by code. */
 export interface SourceQuote {
   id: string;
   /** The source's own words (parts joined by " … " where the quote leaves words out). */
@@ -53,6 +54,8 @@ export interface SourceQuote {
   turnIds?: string[];
   time?: [number, number];
   kind: QuoteKind;
+  /** What it rests on (./basis.ts). None: what its source's kind has always meant. */
+  basis?: Basis;
   /** A brain dump's piece: what it is to the tree (a goal, a need, an idea…). */
   role?: DumpRole;
   /** Picked by Qalam AI, or selected by hand. */
@@ -86,6 +89,10 @@ export interface SourceRecord {
   product?: string | null;
   kind: SourceKind;
   title: string;
+  /** What it is, in a line, as Qalam AI read it. */
+  about?: string;
+  /** What it rests on, as the person says: it wins over what the reader said of each point. */
+  basis?: Basis;
   /** Where it came from: a file's name, a page's address, the tool and what was asked of it. */
   origin?: string;
   /** The raw text, as read. Quotes are checked against it. */
@@ -225,7 +232,8 @@ export function quoteOf(source: Pick<SourceRecord, "quotes">, e: Pick<OstEvidenc
   return e.span ? source.quotes.find((x) => x.span[0] === e.span![0] && x.span[1] === e.span![1]) : undefined;
 }
 
-export function quoteEvidence(source: Pick<SourceRecord, "id" | "title"> & { kind?: SourceKind; answers?: unknown; dump?: { file?: unknown } }, q: SourceQuote, addedBy: "user" | "ai", opts: { against?: boolean; now?: number } = {}): OstEvidence {
+export function quoteEvidence(source: Pick<SourceRecord, "id" | "title"> & { kind?: SourceKind; basis?: Basis; answers?: unknown; dump?: { file?: unknown } }, q: SourceQuote, addedBy: "user" | "ai", opts: { against?: boolean; now?: number } = {}): OstEvidence {
+  const basis = basisOf(source, q);
   return {
     id: newId(),
     kind: source.kind === "dump" ? "dump" : "quote",
@@ -241,7 +249,7 @@ export function quoteEvidence(source: Pick<SourceRecord, "id" | "title"> & { kin
     ...(q.time ? { time: [q.time[0], q.time[1]] as [number, number] } : {}),
     ...(opts.against ? { stance: "against" as const } : {}),
     // Someone online said it: it backs a card, but never makes it more than Assumed alone.
-    ...(source.kind === "post" ? { online: true } : {}),
+    ...(source.kind === "post" ? { online: true } : basis === "said" || (source.kind === "dump" && basis === "own") ? {} : { basis }),
     ...(source.kind === "dump" && source.dump?.file ? { file: true as const } : {}),
     addedBy,
     at: opts.now ?? Date.now(),

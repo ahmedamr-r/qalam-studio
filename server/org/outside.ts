@@ -1,3 +1,4 @@
+import { BASIS_LABEL, basisSub, pieceBasis } from "@/discovery/basis";
 import { NO_WEB } from "@/ai/abilities";
 import { nanoid } from "nanoid";
 import { breakdownCall } from "@/ai/breakdown";
@@ -86,9 +87,9 @@ function withWords(pack: { block: string; pieces: PackedPiece[] } | null, said: 
   const base = pack?.pieces ?? [];
   const more = said
     .filter((p) => !base.some((b) => b.ref === p.ref))
-    .map((p, i): PackedPiece => ({ k: `k${base.length + i + 1}`, ref: p.ref, whole: true, type: "quote", sub: p.label === "Their answers" ? "dump:answer" : null, text: p.text, title: p.label, product, source: p.source, speaker: null, board: null, card: null, stage: null }));
+    .map((p, i): PackedPiece => ({ k: `k${base.length + i + 1}`, ref: p.ref, whole: true, type: "quote", sub: p.label === "Their answers" ? "dump:answer" : p.basis && p.basis !== "said" ? basisSub(p.basis, "finding") : null, text: p.text, title: p.label, product, source: p.source, speaker: null, board: null, card: null, stage: null }));
   if (!base.length && !more.length) return null;
-  const lines = more.map((p) => `[${p.k}] ${p.sub ? "Their answer, when asked" : `Customers' words, ${p.title}`}: ${p.text.replace(/\s+/g, " ").trim()}`);
+  const lines = more.map((p) => `[${p.k}] ${p.sub?.startsWith("dump:") ? "Their answer, when asked" : p.sub ? `${BASIS_LABEL[pieceBasis(p)]}, ${p.title}` : `Customers' words, ${p.title}`}: ${p.text.replace(/\s+/g, " ").trim()}`);
   return { block: [pack?.block ?? "", ...lines].filter(Boolean).join("\n"), pieces: [...base, ...more] };
 }
 

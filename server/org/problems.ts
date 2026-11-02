@@ -1,3 +1,4 @@
+import { pieceBasis } from "@/discovery/basis";
 import { nanoid } from "nanoid";
 import { problemsCall } from "@/ai/problems";
 import { structured } from "@/ai/server";
@@ -38,7 +39,7 @@ export async function draftProblems(store: OrgStore, goalId: string, req: { card
   const deps = await coreDeps(store);
   const pack = await deps.pack({ query: [goal.title, goal.metric?.name, ...answers.map((a) => a.text)].filter(Boolean).join(" · ").slice(0, 2000), product: goal.product ?? undefined, budget: 1800, types: ["quote"] }).catch(() => null);
   for (const p of pack?.pieces ?? [])
-    if (p.type === "quote" && !pieces.some((x) => x.ref === p.ref)) pieces.push({ ref: p.ref, text: p.text, label: p.title ?? "", source: p.source, evidence: isEvidence(p), ...(isOnline(p) ? { online: true } : {}) });
+    if (p.type === "quote" && !pieces.some((x) => x.ref === p.ref)) pieces.push({ ref: p.ref, text: p.text, label: p.title ?? "", source: p.source, evidence: isEvidence(p), basis: pieceBasis(p), ...(isOnline(p) ? { online: true } : {}) });
   const m = problemsMaterial({
     goal: { title: goal.title, metric: numberOf(goal) },
     above: chainOf(tree, goalId).slice(1).map((g) => ({ title: g.title, metric: numberOf(g) })),
