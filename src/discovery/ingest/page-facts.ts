@@ -38,6 +38,7 @@ export const PICTURE_LIMITS = {
   /** The most words of a page a call is sent. */
   words: 6000,
   title: 160,
+  rowTitle: 70,
   rowsPerFigure: 60,
   figuresPerPage: 6,
   left: 40,

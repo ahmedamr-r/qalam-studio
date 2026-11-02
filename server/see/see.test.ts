@@ -91,7 +91,8 @@ describe.skipIf(process.platform === "win32")("reading the words on screenshots"
       ],
     });
     expect(first.get("bbb222")?.lines[0].text).toBe("checkout.png");
-    expect(await runs()).toEqual([["read", path.join(dir, "basket.png"), path.join(dir, "checkout.png")]]);
+    // Read in one run, in whichever order what's kept was looked up.
+    expect((await runs()).map((r) => [r[0], ...r.slice(1).sort()])).toEqual([["read", path.join(dir, "basket.png"), path.join(dir, "checkout.png")]]);
     expect((await readdir(path.join(org, ".qalam", "seen", "text"))).sort()).toEqual(["aaa111.json", "bbb222.json"]);
 
     await rm(log);

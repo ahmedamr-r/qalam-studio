@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { findQuote } from "../quotes";
 import type { ShotLine } from "@/seen/shot";
 import { pageFacts, PICTURE_LIMITS, type Box, type PageFacts } from "./page-facts";
-import { freshLines, joinPictures, mergeLines, numbersIn, pagesToSend, pictureAt, picturesFrom, picturesLine, pickPage, printedOf, regionsOf, sanitizeFigures, scaleTicks, scanText, worthReading, type Printed } from "./pictures";
+import { freshLines, joinPictures, mergeLines, numbersIn, pagesToSend, pictureAt, picturesFrom, picturesLine, pickPage, printedOf, regionsOf, rowTitle, sanitizeFigures, scaleTicks, scanText, worthReading, type Printed } from "./pictures";
 
 const OPS = { save: 10, restore: 11, transform: 12, constructPath: 91, endPath: 28, fill: 22, paintImageXObject: 85, paintFormXObjectBegin: 74, paintFormXObjectEnd: 75 };
 const VIEW = { transform: [1, 0, 0, -1, 0, 792], width: 612, height: 792 };
@@ -97,6 +97,18 @@ describe("what's worth a call, with no tokens", () => {
   it("a chart's picture does", () => {
     expect(worthReading(printed(CHART, { layer: "Churn by month" }))).toBeGreaterThan(0);
     expect(freshLines({ lines: [line("Churn by month"), line("4.1%")], layer: "Churn by month" }).map((l) => l.text)).toEqual(["4.1%"]);
+  });
+
+  it("a decorative banner doesn't bring the page's own wrapped lines in as new", () => {
+    // Read as words, a body line breaks where it wraps: "Con-" isn't in the text, which has "Consumer".
+    const body = [line("prepared by the Con-", [0.1, 0.5, 0.4, 0.02]), line("sumer and Community section, 2017", [0.1, 0.53, 0.4, 0.02])];
+    const banner: Box = [0, 0, 1, 0.16];
+    const p = printed(body, { layer: "prepared by the Consumer and Community section, 2017", pictureBoxes: [banner] });
+    expect(freshLines(p)).toEqual([]);
+    expect(worthReading(p)).toBe(0);
+    // A word in the banner itself is the picture's.
+    const inBanner = line("Survey 2017", [0.1, 0.05, 0.2, 0.02]);
+    expect(freshLines({ ...p, lines: [...body, inBanner] })).toEqual([inBanner]);
   });
 
   it("a scan's prose needs no call; its rows of numbers do", () => {
@@ -238,6 +250,19 @@ describe("what code keeps of a reading", () => {
     const lines = [...CHART, line("Source: billing system, active subscriptions", [0.15, 0.49, 0.3, 0.01])];
     const r = sanitizeFigures(answer([row("Jan", "4.1%")]), printed(lines));
     expect(r.rest).toEqual(["Source: billing system, active subscriptions"]);
+  });
+
+  it("keeps a row on one line, however the page wrapped its words", () => {
+    const r = sanitizeFigures(answer([{ labels: [{ name: "", value: "Jan" }], numbers: [{ name: "Change from 2016", value: "4.1%" }], from_shape: false }], ""), printed(CHART, { layer: "Change\nfrom 2016" }));
+    expect(r.figures[0].rows).toEqual(["Jan · Change from 2016: 4.1%"]);
+  });
+
+  it("carries a short form of a long title on each row, and the whole title once", () => {
+    const title = "Table 1. Share of adults at least doing okay financially (by demographic characteristics)";
+    const r = sanitizeFigures(answer([row("Jan", "4.1%")], title, "table"), printed([...CHART, line(title)]));
+    expect(r.figures[0].title).toBe(title);
+    expect(r.figures[0].rows).toEqual(["Table 1. Share of adults at least doing okay financially · Jan · 4.1%"]);
+    expect(rowTitle("A very long title with no aside in it that goes on and on and on and on and on past the limit")).toBe("A very long title with no aside in it that goes on and on and on and");
   });
 
   it("makes nothing of an answer that isn't one", () => {

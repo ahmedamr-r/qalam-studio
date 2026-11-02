@@ -43,7 +43,7 @@ const buf = (b: Buffer) => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLen
 const line = (t: string, box: [number, number, number, number] = [0.1, 0.1, 0.2, 0.02]): ShotLine => ({ text: t, box, conf: 1 });
 
 /** A chart's words, a scale down the side and one printed bar. */
-const CHART = [line("Churn by month", [0.2, 0.2, 0.3, 0.02]), line("6%", [0.15, 0.25, 0.03, 0.01]), line("4%", [0.15, 0.3, 0.03, 0.01]), line("2%", [0.15, 0.35, 0.03, 0.01]), line("4.1%", [0.3, 0.28, 0.03, 0.01]), line("Jan", [0.3, 0.42, 0.03, 0.01]), line("Apr", [0.5, 0.42, 0.03, 0.01])];
+const CHART = [line("Churn by month", [0.2, 0.27, 0.3, 0.02]), line("6%", [0.15, 0.3, 0.03, 0.01]), line("4%", [0.15, 0.35, 0.03, 0.01]), line("2%", [0.15, 0.4, 0.03, 0.01]), line("4.1%", [0.3, 0.33, 0.03, 0.01]), line("Jan", [0.3, 0.47, 0.03, 0.01]), line("Apr", [0.5, 0.47, 0.03, 0.01])];
 
 let dir: string;
 let store: OrgStore;
@@ -179,6 +179,12 @@ describe("reading a PDF's pictures", () => {
     expect(call).not.toHaveBeenCalled();
     expect(r.text).toContain("Printed in a picture on page 1\n\nChurn by month\n\n6%");
     expect(r.pictures?.unread).toEqual([{ pages: [1], why: "no-vision" }]);
+  });
+
+  it("a seal's words aren't kept when nothing paired them: only what holds a number is", async () => {
+    const seal = [line("BOARD OF GOVERNORS OF THE RESERVE", [0.2, 0.3, 0.5, 0.03])];
+    const r = await readPdfPictures(store, buf(pdf([`${text(LONG)} ${picture()}`])), {}, deps({ 1: seal }, { sees: () => false }));
+    expect(r.text).toBe(LONG);
   });
 
   it("an engine that turns a picture away stops being asked, and the document still reads", async () => {

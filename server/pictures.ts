@@ -7,7 +7,7 @@ import { picturesCall, type PictureSent } from "@/ai/pictures";
 import type { ShotImage } from "@/ai/seen";
 import { aiConfigured, structured } from "@/ai/server";
 import { NO_TEXT, pdfText, type PdfRead } from "@/discovery/ingest/pdf";
-import { freshLines, joinPictures, pagesToSend, PICTURE_LIMITS, pickPage, printedOf, regionsOf, sanitizeFigures, scanText, type PageAddition, type PageFacts, type PageReading, type PickWhy, type Printed } from "@/discovery/ingest/pictures";
+import { freshLines, joinPictures, numbersIn, pagesToSend, PICTURE_LIMITS, pickPage, printedOf, regionsOf, sanitizeFigures, scanText, type PageAddition, type PageFacts, type PageReading, type PickWhy, type Printed } from "@/discovery/ingest/pictures";
 import type { PictureUnreadWhy, SourcePictures, TextBlock } from "@/discovery/sources";
 import type { ShotLine, ShotRead } from "@/seen/shot";
 import { labOn } from "./lab";
@@ -179,9 +179,9 @@ export async function readPdfPictures(store: Store, bytes: ArrayBuffer, o: { emi
         if (r.rest.length) add.rest = r.rest;
         if (r.left.length) add.left = r.left;
       } else if (p.why === "picture") {
-        // Nothing paired its words: what it prints is still printed.
+        // Nothing paired its words: what it prints is still printed, where that's more than a logo or a seal.
         const fresh = freshLines(p).map((l) => l.text.trim());
-        if (fresh.length) add.words = fresh;
+        if (fresh.some((l) => numbersIn(l).length)) add.words = fresh;
       }
       // Only what's in the source keeps a picture, for a reader to compare it with.
       if (add.scan?.text || add.figures || add.rest || add.words || add.left) {

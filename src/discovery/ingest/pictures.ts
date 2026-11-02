@@ -45,11 +45,13 @@ export interface Printed {
   /** The words of the page's text, as pdf.js read them. */
   layer: string;
   drawnBox: Box | null;
+  /** Where its pictures are: only words inside one are a picture's. */
+  pictureBoxes?: Box[];
 }
 
 export function printedOf(f: PageFacts, why: PickWhy, read: Pick<ShotRead, "w" | "h" | "lines">, layer: string, regions: readonly (readonly ShotLine[])[] = []): Printed {
   const sure = (l: ShotLine) => l.conf >= PICTURE_LIMITS.minConf && !!l.text.trim();
-  return { page: f.page, why, w: read.w, h: read.h, lines: mergeLines(read.lines.filter(sure), regions.map((r) => r.filter(sure))), layer, drawnBox: f.drawnBox };
+  return { page: f.page, why, w: read.w, h: read.h, lines: mergeLines(read.lines.filter(sure), regions.map((r) => r.filter(sure))), layer, drawnBox: f.drawnBox, pictureBoxes: f.pictureBoxes };
 }
 
 const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
@@ -98,10 +100,19 @@ const wordsOf = (s: string) => folded(s).match(/[\p{L}\p{N}][\p{L}\p{N}.,'%-]*[\
 /** The numbers in a text as they're written: "4.1" and "1,240", never the 4 in 4.1. */
 export const numbersIn = (s: string) => folded(s).match(/\d+(?:[.,]\d+)*/g) ?? [];
 
-/** The lines that say something the page's text doesn't. */
-export function freshLines(p: Pick<Printed, "lines" | "layer">): ShotLine[] {
+/**
+ * The lines a picture says that the page's text doesn't. Only inside a picture: read as words, a
+ * page's own body breaks where it wraps ("Con-", "sumer"), which looks new beside its text, so a
+ * decorative banner would otherwise bring the whole page in again.
+ */
+export function freshLines(p: Pick<Printed, "lines" | "layer" | "pictureBoxes">): ShotLine[] {
   const known = new Set(wordsOf(p.layer));
-  return p.lines.filter((l) => wordsOf(l.text).some((w) => !known.has(w)));
+  const boxes = p.pictureBoxes;
+  const inPicture = (l: ShotLine) => {
+    const [x, y] = [l.box[0] + l.box[2] / 2, l.box[1] + l.box[3] / 2];
+    return boxes!.some((b) => x >= b[0] && x <= b[0] + b[2] && y >= b[1] && y <= b[1] + b[3]);
+  };
+  return p.lines.filter((l) => (!boxes?.length || inPicture(l)) && wordsOf(l.text).some((w) => !known.has(w)));
 }
 
 const SHORT_WITH_NUMBER = 3;
@@ -229,7 +240,8 @@ function printedWords(words: unknown, p: Pick<Printed, "lines" | "layer">, max: 
   const own = onScreen(words, hay, max);
   if (!own) return null;
   const as = (words as string).trim();
-  return hay.lines.some((l) => l.text.includes(as)) ? as : own;
+  // On one line, however the page wrapped it: a row is one line.
+  return (hay.lines.some((l) => l.text.includes(as)) ? as : own).replace(/\s+/g, " ");
 }
 
 /** A number's own words when it's printed: spaced either way ("4.1 %"), whole, and on the page. */
@@ -246,6 +258,15 @@ const cellsOf = (raw: unknown): { name: string; value: string }[] => (Array.isAr
 });
 
 const cellLine = (name: string | null, value: string) => (name ? `${name}: ${value}` : value);
+
+/** The figure's title as each of its rows carries it: its first words, up to any aside, so a table's rows don't each repeat a long title in full. */
+export function rowTitle(title: string): string {
+  const aside = title.indexOf(" (");
+  const short = aside > 0 ? title.slice(0, aside) : title;
+  if (short.length <= PICTURE_LIMITS.rowTitle) return short;
+  const cut = short.lastIndexOf(" ", PICTURE_LIMITS.rowTitle);
+  return short.slice(0, cut > 0 ? cut : PICTURE_LIMITS.rowTitle);
+}
 
 /**
  * One page's figures as code keeps them. A number stays only where it's printed on this page, not
@@ -307,7 +328,7 @@ export function sanitizeFigures(raw: unknown, p: Printed, fresh: readonly ShotLi
         kept++;
       }
       // A number on its own says nothing; so does a label whose numbers all went.
-      if (numbers.length ? kept > 0 && (labels.length > 0 || named) : labels.length >= 2) rows.push([...(title ? [title] : []), ...cells].join(" · "));
+      if (numbers.length ? kept > 0 && (labels.length > 0 || named) : labels.length >= 2) rows.push([...(title ? [rowTitle(title)] : []), ...cells].join(" · "));
     }
     if (rows.length) figures.push({ kind, title, rows });
   }
