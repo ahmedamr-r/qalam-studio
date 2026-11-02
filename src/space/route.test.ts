@@ -18,16 +18,17 @@ describe("what a message to the canvas's chat is for", () => {
     expect(routeOf({ text: "what do drivers say about New Cairo", docs: [] })).toEqual({ job: "ask" });
   });
 
-  it("takes in what customers said: their docs, or a paste that reads as who said what", () => {
-    expect(routeOf({ text: "", docs: [{ voice: "customers" }] })).toEqual({ job: "take" });
-    expect(routeOf({ text: long, docs: [{ voice: "own" }, { voice: "customers" }] })).toEqual({ job: "take" });
+  it("takes in any doc, whatever it is, and a paste that reads as who said what", () => {
+    expect(routeOf({ text: "", docs: [{}] })).toEqual({ job: "take" });
+    expect(routeOf({ text: "", docs: [{ basis: "measured" }] })).toEqual({ job: "take" });
+    expect(routeOf({ text: long, docs: [{ basis: "own" }, {}] })).toEqual({ job: "take" });
     expect(routeOf({ text: "Sara: the driver kept moving away", docs: [], pasted: "customers" })).toEqual({ job: "take" });
   });
 
-  it("reads their own long text or doc as a brain dump", () => {
+  it("reads their own long text, or a doc they say is their own thinking, as a brain dump", () => {
     expect(routeOf({ text: long, docs: [] })).toEqual({ job: "dump" });
     expect(routeOf({ text: "First thought\nSecond thought\nThird thought", docs: [] })).toEqual({ job: "dump" });
-    expect(routeOf({ text: "", docs: [{ voice: "own" }] })).toEqual({ job: "dump" });
+    expect(routeOf({ text: "", docs: [{ basis: "own" }] })).toEqual({ job: "dump" });
     // A long question is thinking out loud, read as a dump.
     expect(routeOf({ text: `${long}?`, docs: [] })).toEqual({ job: "dump" });
   });

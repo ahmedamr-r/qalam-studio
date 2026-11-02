@@ -1,3 +1,4 @@
+import type { Basis } from "@/discovery/basis";
 import { newId } from "@/doc/factory";
 import { fragmentRefs, roundAnswers, type DumpChallenge } from "@/discovery/dump";
 import type { SourceQuote } from "@/discovery/sources";
@@ -75,6 +76,8 @@ export interface SetupDoc {
   cut?: true;
   /** Whose words a doc holds: customers' (it becomes a source of its own once the setup is settled) or the person's own (it stays in the dump). */
   voice?: "customers" | "own";
+  /** What it rests on, where they set it on the canvas chat's chip (else the reader says). */
+  basis?: Basis;
   /** Its own source, once it was split out (src/org/setup-split.ts). */
   source?: string;
 }

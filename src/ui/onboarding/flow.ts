@@ -331,13 +331,14 @@ export function startOnCanvas(how: "find-goal" | "find-problem" | "write" | "lat
 }
 
 /**
- * What they sent at the problems door held nothing customers said: their words go to the canvas's
- * chat, taken as a goal or a problem, and the sources kept from it (none of it customers') go.
+ * What they sent at the problems door held nothing to go on: their words go to the canvas's chat,
+ * taken as a goal or a problem, and the sources kept from it go. Docs sent with no words of theirs
+ * stay kept: nothing else holds them.
  */
 export async function takeAs(what: "goal" | "problem") {
   const p = useFirstRun.getState().problems;
   if (p.sent) handWords(p.sent);
-  for (const s of p.sources ?? []) if (s.sourceId) await orgFetch(`/sources/${encodeURIComponent(s.sourceId)}`, { method: "DELETE" }).catch(() => {});
+  if (p.sent) for (const s of p.sources ?? []) if (s.sourceId) await orgFetch(`/sources/${encodeURIComponent(s.sourceId)}`, { method: "DELETE" }).catch(() => {});
   await finishFirstRun(`${orgHref()}?take=${what}`);
 }
 

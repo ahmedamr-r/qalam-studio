@@ -137,6 +137,17 @@ describe("short statements and what came of them", () => {
     expect(running(withTurn(emptyChat(), turn("t", { kind: "take", state: "taking", sources: [], pages: [], quotes: 0 }, "")))?.id).toBe("t");
   });
 
+  it("says what each document was read as, and what it went into", () => {
+    const reply = (j: Partial<Extract<ChatTurn["job"], { kind: "take" }>>) => threadOf(withTurn(emptyChat(), turn("t", { kind: "take", state: "done", sources: ["a"], pages: [], quotes: 1, docs: [{ source: "a", title: "Funnel", points: { measured: 1 } }], ...j }, "")))[1].parts;
+    expect(reply({})).toEqual([{ type: "data", name: "taken", data: { turn: "t" } }]);
+    expect(reply({ pages: [{ id: "p", title: "Leaving at payment" }] })).toEqual([{ type: "data", name: "taken", data: { turn: "t" } }, { type: "text", text: "It went into this problem's page:" }, { type: "data", name: "pages", data: { turn: "t" } }]);
+  });
+
+  it("says a doc read as their own thinking before its brain dump's reply", () => {
+    const parts = threadOf(withTurn(emptyChat(), turn("t", { kind: "dump", source: "s", asOwn: { title: "Strategy" } }, "")))[1].parts;
+    expect(parts[0]).toEqual({ type: "data", name: "asOwn", data: { turn: "t" } });
+  });
+
   it("asks code's own opening questions when Qalam AI's were still being worked out as the page went", () => {
     const c = chatOf({ v: 1, turns: [turn("f", { kind: "find", what: "goal", loading: true }, "Help me find a goal")] });
     expect(c.turns[0].job).toEqual({ kind: "find", what: "goal" });

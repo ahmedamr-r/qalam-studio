@@ -56,3 +56,45 @@ export function evidenceBasis(e: { kind: string; basis?: Basis; online?: boolean
   if (e.online) return "read";
   return e.basis ?? (e.kind === "quote" ? "said" : "own");
 }
+
+/** How many points of each kind a source holds. */
+export type BasisCounts = Partial<Record<Basis, number>>;
+
+export function basisCounts(s: { kind?: string; basis?: Basis; quotes: readonly { basis?: Basis }[] }): BasisCounts {
+  const out: BasisCounts = {};
+  for (const q of s.quotes) {
+    const b = basisOf(s, q);
+    out[b] = (out[b] ?? 0) + 1;
+  }
+  return out;
+}
+
+/** What most of a source's points rest on. */
+export const mainBasis = (c: BasisCounts): Basis | null => (BASES.filter((b) => c[b]).sort((a, b) => (c[b] ?? 0) - (c[a] ?? 0))[0] ?? null);
+
+const WORD: Record<Basis, [string, string]> = { said: ["thing people said", "things people said"], measured: ["measured point", "measured points"], studied: ["finding from a study", "findings from a study"], read: ["point read elsewhere", "points read elsewhere"], own: ["point of your own thinking", "points of your own thinking"] };
+
+/** A source's points in words: "6 measured points · 2 things people said", the most first. */
+export const countsLine = (c: BasisCounts) =>
+  BASES.filter((b) => c[b])
+    .sort((a, b) => (c[b] ?? 0) - (c[a] ?? 0))
+    .map((b) => `${c[b]} ${WORD[b][c[b] === 1 ? 0 : 1]}`)
+    .join(" · ");
+
+/**
+ * A source's basis changed: Qalam AI's lines that cite it move to where what they cite now puts
+ * them ("We know" with nothing left to rest on becomes "We believe", and back). A person's lines
+ * stay, as do what speaks against and open questions. True when one moved.
+ */
+export function movedLines(lines: { by: string; section: string; cites: string[] }[], ofSource: (ref: string) => boolean, evidence: (ref: string) => boolean): boolean {
+  let moved = false;
+  for (const l of lines) {
+    if (l.by !== "qalam" || (l.section !== "know" && l.section !== "believe") || !l.cites.some(ofSource)) continue;
+    // Down when nothing it cites holds it up any more; up only on this source's own words, never on a belief it merely cites something for.
+    const section = !l.cites.some(evidence) ? "believe" : l.cites.some((r) => ofSource(r) && evidence(r)) ? "know" : l.section;
+    if (section === l.section) continue;
+    l.section = section;
+    moved = true;
+  }
+  return moved;
+}

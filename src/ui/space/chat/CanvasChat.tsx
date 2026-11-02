@@ -35,7 +35,7 @@ import { answerFind, ask, clearChat, findQuestionsOf, findWith, openChat, send, 
 export const CHAT_W = 360;
 
 /** What the box is for when a button set it (src/space/route.ts's modes), in a word on the box. */
-const MODE_LABEL: Record<ChatMode, string> = { ask: "A question", dump: "Brain dump", take: "What customers said", goal: "A goal", problem: "A problem" };
+const MODE_LABEL: Record<ChatMode, string> = { ask: "A question", dump: "Brain dump", take: "To take in", goal: "A goal", problem: "A problem" };
 
 export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
   useEffect(() => void openChat(space), [space]);
@@ -138,7 +138,7 @@ export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
               draftKey={`chat:${space ?? "org"}:${compose.key}`}
               draft={compose.text}
               above={<SourceRow fit="customers" />}
-              attached={<AttachmentChips voices />}
+              attached={<AttachmentChips kinds />}
               onFiles={attachFiles}
               sendEmpty={readyDocs(attached).length > 0}
               hint={

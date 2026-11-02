@@ -1,3 +1,4 @@
+import { countsLine } from "@/discovery/basis";
 import { useState } from "react";
 import { nanoid } from "nanoid";
 import { callAI } from "@/ai/client";
@@ -24,7 +25,7 @@ import { useCurrentOrg } from "../frame/store";
 
 type Result = CaptureResult & { linked?: LinkedNow | null };
 type Item = { id: string; title: string; step: string } & ({ state: "working" } | { state: "done"; result: Result } | { state: "failed"; error: string });
-type Whose = "customers" | "mine";
+type Whose = "auto" | "mine";
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -34,18 +35,18 @@ const titleOf = (i: AddInput) => (i.kind === "file" ? i.file.name : i.kind === "
 function said(r: Result): string {
   if (r.own !== undefined) return r.own ? `Read as your own thinking: ${plural(r.own, "piece")}, filed${r.filed ? ` into ${plural(r.filed.pages.length, "topic page")}` : ""} as what you believe.` : "Kept, but Qalam AI found nothing in it to file.";
   if (r.waiting === "roles") return "Kept. It's an interview: add it to a board and say who is who there, then Qalam AI reads it.";
-  if (!r.quotes) return "Kept, but Qalam AI found nothing customers said in it.";
+  if (!r.quotes) return "Kept, but Qalam AI found nothing in it to go on.";
   const pages = r.filed ? r.filed.pages.length : 0;
   const linked = r.linked ? (r.linked.added ? `${plural(r.linked.added, "new link")} from problems to goals` : "no new link to a goal") : "";
-  return [`${plural(r.quotes, "quote")} picked out`, pages ? `filed into ${plural(pages, "topic page")}` : "", linked, r.placed.length ? r.placed.map((p) => `${plural(p.count, "proposal")} for ${p.name}`).join(", ") : "no board it fits yet"].filter(Boolean).join(" · ");
+  return [r.points ? countsLine(r.points) : `${plural(r.quotes, "quote")} picked out`, pages ? `filed into ${plural(pages, "topic page")}` : "", linked, r.placed.length ? r.placed.map((p) => `${plural(p.count, "proposal")} for ${p.name}`).join(", ") : "no board it fits yet"].filter(Boolean).join(" · ");
 }
 
-export function AddToOrg({ product, job, hint = "Interviews, tickets, notes, pages. Qalam AI files what customers said and proposes where it fits." }: { product: string | null; job?: string; hint?: string }) {
+export function AddToOrg({ product, job, hint = "Reports, research, interviews, tickets, notes, pages. Qalam AI says what each is, files what it states and proposes where it fits." }: { product: string | null; job?: string; hint?: string }) {
   const [items, setItems] = useState<Item[]>([]);
   const solo = useCurrentOrg()?.shape === "solo";
   const [whose, setWhose] = useState<Whose | null>(null);
   // On your own, what you add is most often your own notes; a job's notes are what people told you.
-  const mine = (whose ?? (solo && !job ? "mine" : "customers")) === "mine";
+  const mine = (whose ?? (solo && !job ? "mine" : "auto")) === "mine";
   const update = (id: string, patch: Partial<Item>) => setItems((list) => list.map((x) => (x.id === id ? ({ ...x, ...patch } as Item) : x)));
 
   const take = async (inputs: AddInput[]) => {
@@ -80,14 +81,14 @@ export function AddToOrg({ product, job, hint = "Interviews, tickets, notes, pag
   return (
     <div className="flex flex-col gap-[10px] rounded-lg bg-panel p-[12px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
       <div className="flex flex-wrap items-center justify-between gap-[8px]">
-        <p className="text-caption text-fg-muted">{mine ? "Your own notes and thinking. Qalam AI files them as what you believe, never as what customers said." : hint}</p>
+        <p className="text-caption text-fg-muted">{mine ? "Your own notes and thinking. Qalam AI files them as what you believe, never as what you know." : hint}</p>
         {!job && (
           <Segmented
-            label="Whose words"
-            value={mine ? "mine" : "customers"}
+            label="What it is"
+            value={mine ? "mine" : "auto"}
             options={[
-              { value: "customers", label: "Customers' words" },
-              { value: "mine", label: "Mine" },
+              { value: "auto", label: "Qalam AI will tell" },
+              { value: "mine", label: "My own thinking" },
             ]}
             onChange={(v) => setWhose(v as Whose)}
           />
@@ -104,7 +105,7 @@ export function AddToOrg({ product, job, hint = "Interviews, tickets, notes, pag
               {it.state === "done" && (
                 <span className="text-fg-muted">
                   {said(it.result)}
-                  {/* Nothing customers said in it: it may be their own thinking. */}
+                  {/* Nothing to go on in it: it may be their own thinking. */}
                   {!it.result.quotes && it.result.own === undefined && !it.result.waiting && (
                     <>
                       {" "}

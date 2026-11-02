@@ -759,6 +759,23 @@ export class OrgStore {
     });
   }
 
+  /** Lines moved between a page's sections by `change`, under the pages' one lock: how many pages it changed. */
+  async moveTopicLines(change: (t: Topic) => boolean): Promise<number> {
+    const moved = await locked("topics", async () => {
+      const out: Topic[] = [];
+      for (const id of this.topics.keys()) {
+        const t = await this.readTopic(id);
+        if (t && change(t)) {
+          await this.writeTopic(t);
+          out.push(t);
+        }
+      }
+      return out;
+    });
+    for (const t of moved) this.emit({ kind: "topic", id: t.id });
+    return moved.length;
+  }
+
   /**
    * File what Qalam AI proposed (checked by code first, src/hub/topics.ts sanitizeFiling) into the
    * pages as they are now, and note which quotes the pages have now seen. `from` names the material.

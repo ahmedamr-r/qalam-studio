@@ -1,3 +1,4 @@
+import { heldBasis, isBasis } from "./basis";
 import { newId } from "@/doc/factory";
 import type { BriefAnswer, Doc } from "@/doc/schema";
 import { isOstCard, treeRootOf } from "@/doc/board";
@@ -325,7 +326,7 @@ function sanitizeChallenges(raw: unknown, pieceOf: (ref: string) => string | und
 }
 
 /** What Qalam AI read in a brain dump, kept only where it holds: each piece found in the builder's words. */
-export function sanitizeRead(raw: unknown, text: string, cards: PlaceCard[], now = Date.now(), within?: readonly [number, number][]): DumpRead {
+export function sanitizeRead(raw: unknown, text: string, cards: PlaceCard[], now = Date.now(), within?: readonly [number, number][], file = false): DumpRead {
   const r = rec(raw);
   const find = quoteFinder(text);
   const kept = new Map<string, string>();
@@ -340,7 +341,9 @@ export function sanitizeRead(raw: unknown, text: string, cards: PlaceCard[], now
     // Pieces never overlap: the first one written keeps the words.
     if (fragments.some((x) => x.span[0] < m.span[1] && m.span[0] < x.span[1])) continue;
     const role: DumpRole = isRole(f.role) ? f.role : "context";
-    const q: SourceQuote = { id: newId(), text: m.words, span: m.span, ...(m.parts.length > 1 ? { parts: m.parts } : {}), kind: quoteKind(role), role, addedBy: "ai", at: now };
+    // A file's piece says what it rests on, as far as code can hold it; their thinking's words are theirs.
+    const basis = file && isBasis(f.basis) ? heldBasis(f.basis, m.words) : undefined;
+    const q: SourceQuote = { id: newId(), text: m.words, span: m.span, ...(m.parts.length > 1 ? { parts: m.parts } : {}), kind: quoteKind(role), ...(basis && basis !== "own" ? { basis } : {}), role, addedBy: "ai", at: now };
     const ref = clip(f.id, 24);
     if (ref && !kept.has(ref)) {
       kept.set(ref, q.id);

@@ -39,7 +39,7 @@ vi.mock("@/ai/server", () => ({
   },
 }));
 process.env.QALAM_NO_MODELS = "1";
-const { captureSource, fileSources, readAsOwn } = await import("./capture");
+const { captureSource, changeBasis, fileSources, readAsOwn } = await import("./capture");
 const { startInbox } = await import("./inbox");
 
 const fts5 = (() => {
@@ -152,6 +152,28 @@ describe.skipIf(!fts5)("capture, in the core", () => {
   it("reads material with no customers' words in it as their own thinking after, but never what customers said", async () => {
     const r = await captureSource(store, { kind: "paste", title: "Sara interview", text: "Sara: I can't plan bath time around a four-hour window." });
     await expect(readAsOwn(store, r.sourceId)).rejects.toThrow("What it states was taken in already.");
+  });
+
+  it("says what it read a document as, and keeps nothing it was asked to hold when it's only their thinking", async () => {
+    const r = await captureSource(store, { kind: "paste", title: "Sara interview", text: "Sara: I can't plan bath time around a four-hour window." });
+    expect(r.points).toEqual({ said: 1 });
+    // Told what it is, every point goes by that.
+    const own = await captureSource(store, { kind: "paste", title: "Sara again", text: "Sara: I can't plan bath time around a four-hour window." }, { basis: "own", holdOwn: true });
+    expect(own.heldOwn).toBe(true);
+    expect(await store.getSource(own.sourceId)).toBeNull();
+    expect(await store.getSource(r.sourceId)).not.toBeNull();
+  });
+
+  it("goes by what the person says a source rests on, and moves the lines citing it", async () => {
+    const r = await captureSource(store, { kind: "paste", title: "Sara interview", text: "Sara: I can't plan bath time around a four-hour window." });
+    const sections = async () => (await store.listTopics()).flatMap((t) => t.lines.filter((l) => l.by === "qalam").map((l) => l.section));
+    expect(await sections()).toContain("know");
+    expect((await changeBasis(store, r.sourceId, "read")).moved).toBeGreaterThan(0);
+    expect((await store.getSource(r.sourceId))?.basis).toBe("read");
+    expect(await sections()).not.toContain("know");
+    await changeBasis(store, r.sourceId, "measured");
+    expect(await sections()).toContain("know");
+    await expect(changeBasis(store, "nope", "read")).rejects.toThrow("No such source");
   });
 
   it("takes in what's dropped in the inbox, and sets aside what it can't read", async () => {

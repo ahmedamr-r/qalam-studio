@@ -1,3 +1,4 @@
+import type { Basis } from "@/discovery/basis";
 import { create } from "zustand";
 import type { Ingested } from "@/discovery/ingest/core";
 import type { TextBlock } from "@/discovery/sources";
@@ -184,6 +185,9 @@ export async function attachHits(connector: Pick<ConnectorState, "id" | "label">
   }
 }
 
+/** What a doc rests on, as the person says (none: the reader says). */
+export const setBasis = (key: string, basis: Basis | undefined) => set(key, { basis });
+
 /** Whose words a doc holds, as the person says. */
 export const setVoice = (key: string, voice: "customers" | "own") => set(key, { voice, chose: true });
 
@@ -197,4 +201,4 @@ export type SentDoc = Attachment & { ingested: Ingested };
 export const readyDocs = (items: readonly Attachment[]): SentDoc[] => items.filter((x): x is SentDoc => x.state === "ready" && !!x.ingested);
 
 /** What's kept of a sent doc: where it came from and what was known of it. */
-export const docRef = ({ from, title, origin, type, at, pages, voice }: DocRef): DocRef => ({ from, title, ...(origin ? { origin } : {}), ...(type ? { type } : {}), ...(at ? { at } : {}), ...(pages ? { pages } : {}), ...(voice ? { voice } : {}) });
+export const docRef = ({ from, title, origin, type, at, pages, voice, basis }: DocRef): DocRef => ({ ...(basis ? { basis } : {}), from, title, ...(origin ? { origin } : {}), ...(type ? { type } : {}), ...(at ? { at } : {}), ...(pages ? { pages } : {}), ...(voice ? { voice } : {}) });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isEvidence } from "@/hub/topics";
-import { basisOf, basisSub, evidenceBasis, heldBasis, pieceBasis, reachesKnow } from "./basis";
+import { basisCounts, basisOf, basisSub, countsLine, evidenceBasis, heldBasis, mainBasis, movedLines, pieceBasis, reachesKnow } from "./basis";
 import { whose } from "./solutions";
 import { quoteEvidence, type SourceQuote } from "./sources";
 import { sanitizeExtract } from "./synthesis";
@@ -98,5 +98,38 @@ describe("reading any document", () => {
   it("treats a fetched page's numbers as someone else's", () => {
     const got = sanitizeExtract({ quotes: [{ id: "q1", chunkId: "c1", text: "Step: Payment · Users: 4,200 · Left: 41%.", kind: "finding", basis: "measured" }] }, [{ ...chunks[0], kind: "url" as const }]);
     expect(got.quotes[0].quote.basis).toBe("read");
+  });
+});
+
+describe("what a source holds", () => {
+  const s = { kind: "text", quotes: [{ basis: "measured" as const }, { basis: "measured" as const }, {}, { basis: "own" as const }] };
+
+  it("counts its points by what they rest on, and says so the most first", () => {
+    expect(basisCounts(s)).toEqual({ measured: 2, said: 1, own: 1 });
+    expect(mainBasis(basisCounts(s))).toBe("measured");
+    expect(mainBasis({})).toBeNull();
+    expect(countsLine(basisCounts(s))).toBe("2 measured points · 1 thing people said · 1 point of your own thinking");
+    expect(basisCounts({ ...s, basis: "read" })).toEqual({ read: 4 });
+  });
+});
+
+describe("a source's lines when what it rests on changes", () => {
+  const line = (section: string, cites: string[], by = "qalam") => ({ section, cites, by });
+  const mine = (r: string) => r.startsWith("m");
+
+  it("moves what no longer stands to We believe, and what now does up, on this source's words", () => {
+    const lines = [line("know", ["m1"]), line("know", ["m1", "other"]), line("believe", ["m2"]), line("believe", ["other2"])];
+    // Now read elsewhere: only `other` still counts.
+    expect(movedLines(lines, mine, (r) => r === "other")).toBe(true);
+    expect(lines.map((l) => l.section)).toEqual(["believe", "know", "believe", "believe"]);
+    // Measured after all: its own lines go back up.
+    expect(movedLines(lines, mine, (r) => mine(r) || r === "other")).toBe(true);
+    expect(lines.map((l) => l.section)).toEqual(["know", "know", "know", "believe"]);
+  });
+
+  it("never moves a person's line, what speaks against, or a question, and says when nothing moved", () => {
+    const lines = [line("know", ["m1"], "person"), line("against", ["m1"]), line("open", ["m1"])];
+    expect(movedLines(lines, mine, () => false)).toBe(false);
+    expect(lines.map((l) => l.section)).toEqual(["know", "against", "open"]);
   });
 });

@@ -1,4 +1,4 @@
-import { basisOf } from "@/discovery/basis";
+import { basisCounts, basisOf, movedLines, reachesKnow, type Basis } from "@/discovery/basis";
 import { nanoid } from "nanoid";
 import { dumpReadCall, extractCall, synthesizeCall } from "@/ai/discovery";
 import { DUMP_MAX_CHARS, sanitizeRead } from "@/discovery/dump";
@@ -19,6 +19,7 @@ import { contextText } from "@/org/context-md";
 import { wordsFor } from "@/org/words";
 import { contextOf, type OrgContext, type PackRequest } from "@/org/pack";
 import { splitSetup } from "@/org/setup-split";
+import { isEvidence } from "@/hub/topics";
 import { indexFor } from "./index/registry";
 import { packedPieces, packFor } from "./index/search";
 import { NotFoundError, type OrgStore } from "./org/store";
@@ -41,6 +42,10 @@ export interface CaptureOpts {
   signal?: AbortSignal;
   /** The person's own thinking (their notes), read as what they believe rather than as what customers said. */
   own?: boolean;
+  /** What the person says it rests on: it wins over what the reader says of each point. */
+  basis?: Basis;
+  /** Nothing in it but the team's own thinking: keep nothing and say so, for the chat's brain dump to read it. */
+  holdOwn?: boolean;
   /**
    * Where it's placed: only these boards, each only under these cards (a feed's wiring), or nowhere
    * (`{}`). Left out: every board of its product.
@@ -254,6 +259,7 @@ export async function captureSource(store: OrgStore, ing: Ingested, o: CaptureOp
     boards: [],
     product: o.product ?? null,
     kind: ing.kind,
+    ...(o.basis ? { basis: o.basis } : {}),
     title: ing.title,
     ...(ing.origin ? { origin: ing.origin } : {}),
     text: ing.text,
@@ -268,13 +274,18 @@ export async function captureSource(store: OrgStore, ing: Ingested, o: CaptureOp
   };
   emit(`Keeping “${s.title}” in the ${wordsFor(store.info.shape).org}`);
   await store.putSource(s);
-  const result = (filed?: FilingTotals, placed: CaptureResult["placed"] = []): CaptureResult => ({ sourceId: s.id, title: s.title, quotes: s.quotes.length, needs: s.needs.length, ...(filed ? { filed } : {}), placed });
+  const result = (filed?: FilingTotals, placed: CaptureResult["placed"] = []): CaptureResult => ({ sourceId: s.id, title: s.title, quotes: s.quotes.length, needs: s.needs.length, ...(s.about ? { about: s.about } : {}), points: basisCounts(s), ...(filed ? { filed } : {}), placed });
   // Their own thinking: read as what they believe, never as what customers said.
   if (o.own) return { ...result(), ...(await readAsOwn(store, s.id, emit)) };
   if (awaitingRoles(s)) return { ...result(), waiting: "roles" };
   const deps = await coreDeps(store);
   s = await readIn(store, deps, s, o);
-  if (o.signal?.aborted || !s.quotes.length) return result();
+  if (o.signal?.aborted) return result();
+  if (o.holdOwn && !s.quotes.some((q) => basisOf(s, q) !== "own")) {
+    await store.removeSource(s.id);
+    return { ...result(), heldOwn: true };
+  }
+  if (!s.quotes.length) return result();
   emit("Filing it into the topic pages");
   const filed = await fileMaterial(deps, [s], { product: s.product ?? null, signal: o.signal });
   // Filing noted the quotes it saw on the source: build on that copy.
@@ -289,4 +300,35 @@ export async function captureSource(store: OrgStore, ing: Ingested, o: CaptureOp
     filed,
     Object.entries(placements).map(([board, list]) => ({ board, name: store.getProject(board)?.record.name ?? "A board", count: list.length })),
   );
+}
+
+/**
+ * The person says what a source rests on: every point of it goes by that, and Qalam AI's lines that
+ * cite it move to where what they cite now puts them (what else they cite still counts). Pieces
+ * follow through the store's change event.
+ */
+export async function changeBasis(store: OrgStore, id: string, basis: Basis): Promise<{ moved: number }> {
+  const s = await store.getSource(id);
+  if (!s) throw new NotFoundError("No such source");
+  const next = { ...s, basis };
+  await store.putSource(next);
+  const refs = new Set(next.quotes.map((q) => quotePiece(q.id)));
+  // What else a line cites: the index knows, and with no index (Node 22) only this source's words count.
+  const others = await Promise.resolve()
+    .then(async () => {
+      const ix = indexFor(store);
+      await ix.settled();
+      return ix;
+    })
+    .catch(() => null);
+  const moved = await store.moveTopicLines((t) => {
+    const cited = [...new Set(t.lines.flatMap((l) => l.cites))].filter((r) => !refs.has(r));
+    const rows = others?.piecesByRef(cited);
+    const other = (r: string) => {
+      const row = rows?.get(r);
+      return !!row && isEvidence(row);
+    };
+    return movedLines(t.lines, (r) => refs.has(r), (r) => (refs.has(r) ? reachesKnow(basis) : other(r)));
+  });
+  return { moved };
 }

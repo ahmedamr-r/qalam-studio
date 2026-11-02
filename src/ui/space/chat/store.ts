@@ -7,10 +7,10 @@ import { KIND_LABEL } from "@/discovery/kinds";
 import { goalsNow } from "@/goals/client";
 import { goalById } from "@/goals/tree";
 import { askOrganization } from "@/org/ask";
-import { captureIngested } from "@/org/capture";
+import { captureIngested, setSourceBasis } from "@/org/capture";
 import { orgFetch, orgJson } from "@/org/client";
 import type { Ingested } from "@/discovery/ingest/core";
-import { chatKey, chatOf, emptyChat, withJob, withTurn, type CanvasChat, type ChatDoc, type ChatJob, type ChatTurn, type FiledPage, type FocusGoal } from "@/space/chat";
+import { chatKey, chatOf, emptyChat, withJob, withTurn, type CanvasChat, type ChatDoc, type ChatJob, type ChatTurn, type FiledPage, type FocusGoal, type TakenDoc } from "@/space/chat";
 import { cardForPage, pageOf } from "@/space/pages";
 import { DUMP_WORDS, routeOf, titleFrom, wordsIn, type ChatMode } from "@/space/route";
 import { FIND_MIN, findRound, findText, findTranscript, type FindWhat } from "@/space/find";
@@ -22,6 +22,8 @@ import { loadMarket, useMarket } from "@/org/market";
 import { useSpaceView } from "@/space/view";
 import { newId } from "@/doc/factory";
 import { docPart, docRef, guessVoice, joinParts, type SentDoc } from "../../chat/attach";
+import type { Basis } from "@/discovery/basis";
+import { DUMP_MAX_CHARS } from "@/discovery/dump";
 import { ingestFile, ingestPaste } from "../../discovery/ingest";
 import { startDump, stopDump, useDump } from "../../discovery/dump";
 import { addSources } from "../../discovery/import";
@@ -181,10 +183,13 @@ export function retake(id: string, mode: ChatMode) {
 // A brain dump
 
 /** Their own thinking, read as a brain dump (src/ui/discovery/dump.ts): their words and their own docs as one text. */
-async function dumpIt(at: string | null, said: string, docs: readonly SentDoc[]) {
+async function dumpIt(at: string | null, said: string, docs: readonly SentDoc[], asOwn = false) {
   const source = newId();
-  const id = jobAt(at, said, { kind: "dump", source }, docs.map(docRef));
-  const text = joinParts([...(said ? [{ body: said }] : []), ...docs.map((d) => docPart({ via: d.via, title: d.title, text: d.ingested.text, blocks: d.ingested.blocks, voice: d.voice }))]).text;
+  const whole = joinParts([...(said ? [{ body: said }] : []), ...docs.map((d) => docPart({ via: d.via, title: d.title, text: d.ingested.text, blocks: d.ingested.blocks }))]).text;
+  // A doc that read as their thinking can be longer than a dump takes: its start, and the reply says so.
+  const cut = asOwn && whole.length > DUMP_MAX_CHARS;
+  const text = cut ? whole.slice(0, DUMP_MAX_CHARS) : whole;
+  const id = jobAt(at, said, { kind: "dump", source, ...(asOwn ? { asOwn: { title: docs[0]?.title ?? "It", ...(cut ? { cut: true as const } : {}) } } : {}) }, docs.map(docRef));
   try {
     await startDump(text, { id: source });
     sourceCame(sourceOf(source)?.title ?? "Your thinking");
@@ -399,29 +404,37 @@ export function placeStatement(id: string, title: string) {
 // Taking in what customers said
 
 /**
- * What customers said, taken in as the organization's sources (server/capture.ts): each of their
- * docs, and what they pasted when it reads as who said what. Their own docs and long text that came
- * with it are kept as their thinking (read as what they believe).
+ * Material taken in as the organization's sources (server/capture.ts): each doc, read for what it
+ * states, and what they pasted when it reads as who said what. A doc they said is their own, and long
+ * text that came with it, are kept as their thinking (read as what they believe). A doc nobody said
+ * anything about that holds only their thinking goes on to a brain dump: its pushback and rounds.
  */
 async function takeIn(at: string | null, said: string, docs: readonly SentDoc[]) {
   const id = jobAt(at, said, { kind: "take", state: "taking", sources: [], pages: [], quotes: 0 }, docs.map(docRef));
   const ctrl = begin(id);
-  const parts: { ing: () => Promise<Ingested>; own: boolean }[] = [];
+  const parts: { ing: () => Promise<Ingested>; own: boolean; basis?: Basis; doc?: SentDoc }[] = [];
   const voice = said ? guessVoice({ text: said, title: "" }) : "own";
   if (said && (voice === "customers" || wordsIn(said) >= DUMP_WORDS)) parts.push({ ing: () => ingestPaste(said), own: voice !== "customers" });
-  for (const d of docs) parts.push({ ing: async () => d.ingested, own: d.voice !== "customers" });
+  for (const d of docs) parts.push({ ing: async () => d.ingested, own: d.basis === "own", ...(d.basis ? { basis: d.basis } : {}), doc: d });
   const sources: string[] = [];
+  const taken: TakenDoc[] = [];
+  const held: SentDoc[] = [];
   const pages = new Map<string, FiledPage>();
   let quotes = 0;
   try {
     for (const p of parts) {
       const ing = await p.ing();
       sourceCame(ing.title);
-      const r = await captureIngested(ing, { product: st().space, own: p.own, onActivity: step(id), signal: ctrl.signal });
+      const r = await captureIngested(ing, { product: st().space, own: p.own, ...(p.basis ? { basis: p.basis } : {}), holdOwn: !!p.doc && !p.basis, onActivity: step(id), signal: ctrl.signal });
+      if (r.heldOwn) {
+        held.push(p.doc!);
+        continue;
+      }
       sources.push(r.sourceId);
       quotes += r.quotes;
+      taken.push({ source: r.sourceId, title: r.title, ...(r.about ? { about: r.about } : {}), points: r.points ?? {}, ...(p.basis ? { basis: p.basis } : {}) });
       for (const f of r.filed?.pages ?? []) if (f.kind === "need") pages.set(f.id, { id: f.id, title: f.title });
-      change((c) => withJob(c, id, (j) => (j.kind === "take" ? { ...j, sources: [...sources], pages: [...pages.values()], quotes } : j)));
+      change((c) => withJob(c, id, (j) => (j.kind === "take" ? { ...j, sources: [...sources], pages: [...pages.values()], quotes, docs: [...taken] } : j)));
     }
     change((c) => withJob(c, id, (j) => (j.kind === "take" ? { ...j, state: "done" } : j)));
   } catch (e) {
@@ -430,6 +443,35 @@ async function takeIn(at: string | null, said: string, docs: readonly SentDoc[])
   } finally {
     end(id);
   }
+  // What reads as their own thinking gets a brain dump's conversation: in this turn when it's all there was.
+  for (const [i, d] of held.entries()) void dumpIt(i === 0 && !taken.length ? id : null, i === 0 && !taken.length ? said : `“${d.title}”`, [d], true);
+}
+
+/** What a document they took in rests on, as they say: its points go by that, and the page lines citing them move. */
+export async function changeDocBasis(turn: string, source: string, basis: Basis) {
+  await setSourceBasis(source, basis);
+  change((c) =>
+    withJob(c, turn, (j) => {
+      if (j.kind !== "take" || !j.docs) return j;
+      return { ...j, docs: j.docs.map((d) => { if (d.source !== source) return d; const n = Object.values(d.points).reduce((a, b) => a + (b ?? 0), 0); return { ...d, basis, points: n ? { [basis]: n } : {} }; }) };
+    }),
+  );
+}
+
+/** A doc that read as their own thinking, taken in as what they say it is instead: the brain dump stops, its source goes. */
+export async function takeAsBasis(id: string, basis: Basis) {
+  const t = turnOf(id);
+  if (t?.job.kind !== "dump" || !t.job.asOwn) return;
+  const { source, asOwn } = t.job;
+  const text = sourceOf(source)?.text;
+  if (!text) return;
+  stopTurn(id);
+  await orgFetch(`/sources/${encodeURIComponent(source)}`, { method: "DELETE" }).then(
+    () => useSources.setState((st) => ({ list: st.list.filter((x) => x.id !== source) })),
+    () => {},
+  );
+  const doc = { key: source, from: "computer", via: "this computer", title: asOwn.title, state: "ready", basis, ingested: { kind: "text", title: asOwn.title, text } } as SentDoc;
+  await takeIn(id, t.said, [doc]);
 }
 
 /** What they're looking at on the canvas, for Qalam AI to hear: the card picked, else the page open, in its own words. */

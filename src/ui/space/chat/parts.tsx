@@ -1,3 +1,4 @@
+import { BASES, BASIS_LABEL, countsLine, isBasis, mainBasis, type Basis } from "@/discovery/basis";
 import { useRef, useState } from "react";
 import clsx from "clsx";
 import { Check, Quote, RotateCcw } from "lucide-react";
@@ -33,7 +34,7 @@ import { r } from "../../recipes";
 import { useTopics } from "../../topics/list";
 import { useWords } from "../../frame/store";
 import { show } from "../links";
-import { anotherFile, dropTurn, leaveFile, placeStatement, retake, turnOf, useCanvasChat } from "./store";
+import { anotherFile, changeDocBasis, dropTurn, leaveFile, placeStatement, retake, takeAsBasis, turnOf, useCanvasChat } from "./store";
 import { titleFrom } from "@/space/route";
 
 /*
@@ -62,7 +63,7 @@ function WorkingPart({ data }: { data: PartData }) {
   const { org } = useWords();
   if (!live || !t) return null;
   const said = t.said.length > 60 ? `${t.said.slice(0, 59)}…` : t.said;
-  const first = t.job.kind === "take" ? "Taking in what customers said" : t.job.kind === "find" ? "Looking on the web for what usually gets in the way of goals like it" : `Looking through the ${org} for “${said}”`;
+  const first = t.job.kind === "take" ? "Reading what it says" : t.job.kind === "find" ? "Looking on the web for what usually gets in the way of goals like it" : `Looking through the ${org} for “${said}”`;
   return (
     <div className="flex flex-col gap-[6px]">
       <Progress label={live.steps.at(-1) ?? first} started={live.started} tokens={0} />
@@ -713,6 +714,60 @@ function SwitchPart({ data }: { data: PartData }) {
   );
 }
 
+/** What a document is, as a person can set it: its label reads as a link. */
+function BasisSelect({ label, value, options, onPick }: { label: string; value: Basis | ""; options: readonly Basis[]; onPick: (b: Basis) => void }) {
+  return (
+    <select aria-label={label} value={value} onChange={(e) => isBasis(e.target.value) && onPick(e.target.value)} className="cursor-pointer appearance-none bg-transparent text-caption text-fg-muted underline decoration-fg/20 underline-offset-2 hover:text-fg">
+      <option value="" disabled>
+        {label}
+      </option>
+      {options.map((b) => (
+        <option key={b} value={b}>
+          {BASIS_LABEL[b]}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/** What each document taken in was read as, and a way to say it's something else. */
+function TakenPart({ data }: { data: PartData }) {
+  const t = useTurn(data.turn);
+  if (t?.job.kind !== "take" || !t.job.docs) return null;
+  return (
+    <ul className="flex flex-col gap-[8px]">
+      {t.job.docs.map((d) => {
+        const main = mainBasis(d.points);
+        const line = countsLine(d.points);
+        return (
+          <li key={d.source} className="flex flex-col gap-[2px]">
+            <p className="text-body leading-[20px] text-fg" dir="auto">
+              {d.about || `“${d.title}”`}
+            </p>
+            <p className="text-caption text-fg-muted">{line || "I kept it, but found nothing in it to go on."}</p>
+            <BasisSelect label={d.basis ? `You said: ${BASIS_LABEL[d.basis]}. Change it` : main ? `Not ${BASIS_LABEL[main].toLowerCase()}? Change it` : "Say what it is"} value="" options={BASES} onPick={(b) => void changeDocBasis(t.id, d.source, b)} />
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/** A doc that read as their own thinking: it says so, and a way to say it's evidence instead. */
+function AsOwnPart({ data }: { data: PartData }) {
+  const t = useTurn(data.turn);
+  if (t?.job.kind !== "dump" || !t.job.asOwn) return null;
+  const { title, cut } = t.job.asOwn;
+  return (
+    <div className="flex flex-col gap-[2px]">
+      <p className="text-body leading-[20px] text-fg" dir="auto">
+        “{title}” reads as your own thinking, so I&apos;ll push back on it rather than file it as evidence.{cut ? " It's long, so this is its start." : ""}
+      </p>
+      <BasisSelect label="Not your thinking? Say what it is" value="" options={["said", "measured", "studied", "read"]} onPick={(b) => void takeAsBasis(t.id, b)} />
+    </div>
+  );
+}
+
 /** The problems' pages what was taken in went into, each opening in the canvas's panel. */
 function PagesPart({ data }: { data: PartData }) {
   const t = useTurn(data.turn);
@@ -737,6 +792,8 @@ function DocsPart({ data }: { data: PartData }) {
 }
 
 export const PARTS: Record<string, PartComponent> = {
+  taken: TakenPart,
+  asOwn: AsOwnPart,
   working: WorkingPart,
   answer: AnswerPart,
   choose: ChoosePart,

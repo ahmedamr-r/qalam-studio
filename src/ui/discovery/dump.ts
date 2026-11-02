@@ -247,7 +247,7 @@ export async function readDump(sourceId: string) {
   const { tree, cards } = board();
   try {
     const { raw, sample, model } = await call(sourceId, reading(s.dump), { stage: "dump-read", product: product(), dump: s.text, tree, ...aimOf(s.dump, cards) }, () => sampleRaw(SAMPLE_DUMP_READ_RAW, cards), 3500);
-    const r = sanitizeRead(raw, s.text, cards, Date.now(), s.dump.within);
+    const r = sanitizeRead(raw, s.text, cards, Date.now(), s.dump.within, !!s.dump.file);
     // The wrong file: what it is, and the kind that would help (they add another, or have it read anyway).
     if (s.dump.file && (!r.bears || !r.fragments.length)) {
       await updateSource(sourceId, (x) => ({ ...x, quotes: r.fragments, dump: { ...x.dump!, phase: "ready", failed: undefined, understanding: r.understanding, challenges: [], buckets: [], off: { wanted: r.wanted }, ...(model ? { model } : {}) } }));

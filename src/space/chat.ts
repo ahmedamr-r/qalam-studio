@@ -1,3 +1,4 @@
+import type { Basis, BasisCounts } from "@/discovery/basis";
 import type { DumpSession } from "@/discovery/dump";
 import type { AskAnswer } from "@/hub/ask";
 import type { SetupDoc } from "@/org/setup";
@@ -20,6 +21,15 @@ export const MAX_TURNS = 100;
 
 export type ChatDoc = Omit<SetupDoc, "span" | "cut">;
 
+/** A document as it was read: what it is, its points by what they rest on, and what the person said it is. */
+export interface TakenDoc {
+  source: string;
+  title: string;
+  about?: string;
+  points: BasisCounts;
+  basis?: Basis;
+}
+
 /** A problem page material went into. */
 export interface FiledPage {
   id: string;
@@ -37,14 +47,15 @@ export type ChatJob =
    * suggest), then the card written (`card`).
    */
   | { kind: "add"; what: "goal" | "problem"; card: string; under: string | null; state?: "suggesting" | "suggested"; suggestion?: string; why?: string }
-  /** What customers said, taken in as sources: filed into problem pages, placed where it fits. */
-  | { kind: "take"; state: "taking" | "done" | "failed"; sources: string[]; pages: FiledPage[]; quotes: number; error?: string }
+  /** Material taken in as sources: read for what it states, filed into problem pages, placed where it fits. `docs`: what each was read as (none: a turn from before). */
+  | { kind: "take"; state: "taking" | "done" | "failed"; sources: string[]; pages: FiledPage[]; quotes: number; docs?: TakenDoc[]; error?: string }
   /**
    * Their own thinking as a brain dump: its source's session is how it's going (`error`: it never
    * started; `find`: it answers "Help me find one", with what they said to code's questions;
-   * `file`: a file added for a card, read against it, `left` once they left it out).
+   * `file`: a file added for a card, read against it, `left` once they left it out; `asOwn`: a doc
+   * that read as their own thinking when taken in, `cut` when only its start fits).
    */
-  | { kind: "dump"; source: string; error?: string; find?: { what: FindWhat; said: { question: string; answer: string }[]; goal?: FocusGoal }; file?: { card: string; title: string; left?: true } }
+  | { kind: "dump"; source: string; error?: string; asOwn?: { title: string; cut?: true }; find?: { what: FindWhat; said: { question: string; answer: string }[]; goal?: FocusGoal }; file?: { card: string; title: string; left?: true } }
   /**
    * "Help me find one": the opening questions, being answered (the box asks them). `goal`: the
    * problem to focus on for a goal on the canvas, its opening questions asked once Qalam AI has
@@ -188,6 +199,11 @@ function replyTo(t: ChatTurn, dumpOf: DumpOf): ChatPart[] {
     case "take":
       if (j.state === "taking") return [part("working", id)];
       if (j.state === "failed") return [text(j.error ?? "It couldn't be taken in.")];
+      if (j.docs)
+        return [
+          part("taken", id),
+          ...(j.pages.length ? [text(`It went into ${j.pages.length === 1 ? "this problem's page" : "these problems' pages"}:`), part("pages", id)] : []),
+        ];
       return [
         text(
           j.pages.length
@@ -201,7 +217,7 @@ function replyTo(t: ChatTurn, dumpOf: DumpOf): ChatPart[] {
     case "dump": {
       if (j.file?.left) return [text(`You left “${j.file.title}” out.`)];
       const s = dumpOf(j.source);
-      return [...looksAfter(t, s, -1), ...(j.find ? [part("opening", id)] : []), ...(j.error ? [text(j.error)] : dumpReply(t, s))];
+      return [...(j.asOwn ? [part("asOwn", id)] : []), ...looksAfter(t, s, -1), ...(j.find ? [part("opening", id)] : []), ...(j.error ? [text(j.error)] : dumpReply(t, s))];
     }
     case "find":
       if (j.goal) {

@@ -1,3 +1,4 @@
+import { BASES, BASIS_LABEL, isBasis } from "@/discovery/basis";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import clsx from "clsx";
 import * as Popover from "@radix-ui/react-popover";
@@ -12,7 +13,7 @@ import { Button, Checkbox, IconBtn, MenuItem, MenuLabel, Spinner } from "../cont
 import { r } from "../recipes";
 import { ago } from "../time";
 import { StatusDot } from "../viz";
-import { attachFiles, attachHits, removeAttachment, setVoice, sourcesFor, useAttach, wordCount, type DocRef, type SourceFit } from "./attach";
+import { attachFiles, attachHits, removeAttachment, setBasis, setVoice, sourcesFor, useAttach, wordCount, type DocRef, type SourceFit } from "./attach";
 
 /*
  * Bringing docs into the chat box: a row of the sources that fit what Qalam AI asked (two connectors,
@@ -375,8 +376,8 @@ function DocMark({ from }: { from: string }) {
 }
 
 /** The picked docs in the box: reading, how long, or why not; × leaves one out. */
-/** The docs in the box, as chips. `voices`: each says whose words it holds (customers' or the person's own), and a click changes it. */
-export function AttachmentChips({ voices = false }: { voices?: boolean }) {
+/** The docs in the box, as chips. `voices`: each says whose words it holds (customers' or the person's own), and a click changes it. `kinds`: each can say what it rests on, else Qalam AI will tell. */
+export function AttachmentChips({ voices = false, kinds = false }: { voices?: boolean; kinds?: boolean }) {
   const items = useAttach((s) => s.items);
   if (!items.length) return null;
   return (
@@ -400,6 +401,22 @@ export function AttachmentChips({ voices = false }: { voices?: boolean }) {
             >
               {a.voice === "customers" ? "Customers' words" : "Mine"}
             </button>
+          )}
+          {kinds && a.state === "ready" && (
+            <select
+              aria-label={`What ${a.title} is`}
+              title="What it is. Left alone, Qalam AI reads it and tells you"
+              value={a.basis ?? ""}
+              onChange={(e) => setBasis(a.key, isBasis(e.target.value) ? e.target.value : undefined)}
+              className={clsx("max-w-[132px] shrink-0 cursor-pointer appearance-none truncate rounded-sm bg-transparent px-[5px] text-micro font-medium leading-[18px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)] hover:bg-active", a.basis ? "text-fg" : "text-fg-muted")}
+            >
+              <option value="">Qalam AI will tell</option>
+              {BASES.map((b) => (
+                <option key={b} value={b}>
+                  {BASIS_LABEL[b]}
+                </option>
+              ))}
+            </select>
           )}
           <IconBtn size="sm" label={`Leave out ${a.title}`} onClick={() => removeAttachment(a.key)} className="size-[22px]">
             <X {...ICON} size={12} />

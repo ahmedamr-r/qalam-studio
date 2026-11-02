@@ -565,6 +565,7 @@ export function dumpReadSchema(cardIds: string[], file = false) {
         id: str("f1, f2, …"),
         quote: str("The builder's words exactly as written, a phrase to two sentences. Leave words out only with …"),
         role: enm(DUMP_ROLES, ROLE_HINT),
+        ...(file ? { basis: enm(BASES, `What it rests on, by where the words come from: ${BASIS_HINT}`) } : {}),
       }),
       "Every piece that could land on the board, in the order written. Skip filler; pieces never overlap",
     ),
