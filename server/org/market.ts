@@ -12,7 +12,7 @@ import { research, structured } from "@/ai/server";
 import type { OutsidePage } from "@/goals/outside";
 import { aboutFromFacts, companyMaterial, companyTask, MAX_PAGES, sanitizeFacts, siteUrl } from "@/market/facts";
 import { competitorsMaterial, competitorsTask, domainMaterial, domainTask, sanitizeCompetitors, sanitizeDomain } from "@/market/rivals";
-import { sessionOf, type CompanyLook, type CompetitorsLook, type LookName, type MarketSession } from "@/market/session";
+import { lookingUnrun, sessionOf, type CompanyLook, type CompetitorsLook, type LookName, type MarketSession } from "@/market/session";
 import type { Competitor, MarketLine } from "@/market/types";
 import { nanoid } from "nanoid";
 import { readPage } from "./pages";
@@ -39,9 +39,15 @@ export const realDeps: MarketDeps = { research, read: readPage, structured };
 const running = new Map<string, AbortController>();
 const runKey = (store: OrgStore, look: LookName) => `${store.dir}|${look}`;
 
-/** The session as the window sees it: a look this process isn't running any more says it stopped. */
+/**
+ * The session as the window sees it: a look this process isn't running any more says it stopped.
+ * A look writes its end before it leaves `running`, so "looking" with nothing running may only be a
+ * read from just before that end; a second read, started now, has the end if there was one.
+ */
 export async function marketSession(store: OrgStore): Promise<MarketSession> {
-  return sessionOf(await store.getMarketSession(), (look) => running.has(runKey(store, look)));
+  const on = (look: LookName) => running.has(runKey(store, look));
+  const read = await store.getMarketSession();
+  return sessionOf(lookingUnrun(read, on) ? await store.getMarketSession() : read, on);
 }
 
 const STEPS = 6;

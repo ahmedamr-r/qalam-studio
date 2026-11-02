@@ -53,6 +53,9 @@ export const emptySession = (): MarketSession => ({ v: 1 });
 const LOOKS = ["company", "competitors", "domain"] as const;
 export type LookName = (typeof LOOKS)[number];
 
+/** Whether what was read has a look still "looking" that nothing runs. */
+export const lookingUnrun = (s: MarketSession | null, running: (look: LookName) => boolean) => LOOKS.some((name) => s?.[name]?.state === "looking" && !running(name));
+
 /** A session as read from its file; a look still "looking" that nothing runs (`running`) was stopped when the core did. */
 export function sessionOf(raw: unknown, running: (look: LookName) => boolean = () => false): MarketSession {
   const s = raw && typeof raw === "object" && (raw as MarketSession).v === 1 ? (raw as MarketSession) : emptySession();

@@ -146,4 +146,22 @@ describe("competitors and the domain in the first run", () => {
     ]);
     expect(m.struggles[0]).toMatchObject({ text: "Pickups are hard to schedule.", url: "https://report.example/uco" });
   });
+
+  it("doesn't take a look that ends during a read for one that stopped", async () => {
+    await lookForCompetitors(store, ["Zeit Co"], { deps: web([], {}) });
+    // The first read has it looking and answers only once the look is over and gone from what's running.
+    const old = await store.getMarketSession();
+    expect(old!.competitors!.state).toBe("looking");
+    for (const end = Date.now() + 10_000; Date.now() < end && (await store.getMarketSession())!.competitors!.state === "looking"; ) await new Promise((r) => setTimeout(r, 5));
+    await new Promise((r) => setTimeout(r, 20));
+    const read = vi.spyOn(store, "getMarketSession").mockResolvedValueOnce(old);
+    const s = await marketSession(store);
+    read.mockRestore();
+    expect(s.competitors).toMatchObject({ state: "ready", found: [{ name: "Zeit Co" }] });
+  });
+
+  it("still says a look stopped when nothing runs it and its file stays looking", async () => {
+    await store.changeMarketSession((x) => ({ ...x, domain: { state: "looking", at: 1, steps: ["Starting"], aims: 0, struggles: 0 } }));
+    expect((await marketSession(store)).domain).toMatchObject({ state: "failed", error: "It stopped before it finished: look again." });
+  });
 });
