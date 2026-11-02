@@ -389,7 +389,8 @@ export function AttachmentChips({ voices = false, kinds = false }: { voices?: bo
           className={clsx("inline-flex h-[26px] max-w-[360px] items-center gap-[6px] rounded-md bg-hover pl-[6px] pr-[1px] text-caption shadow-[inset_0_0_0_1px_var(--color-line-subtle)]", a.state === "failed" && "shadow-[inset_0_0_0_1px_var(--color-danger)]")}
         >
           <DocMark from={a.from} />
-          <span className={clsx("min-w-0 truncate font-medium", a.state === "reading" ? "q-shimmer-text text-fg-muted" : "text-fg")}>{a.title}</span>
+          <span className={clsx("min-w-[48px] truncate font-medium", a.state === "reading" ? "q-shimmer-text text-fg-muted" : "text-fg")}>{a.title}</span>
+          {a.state === "reading" && a.step && <span className="shrink-0 text-fg-subtle tnum">{a.step}</span>}
           {a.state === "reading" ? <Spinner size={10} /> : a.state === "ready" ? <span className="shrink-0 text-fg-subtle tnum">{wordCount(a.ingested!.text).toLocaleString()} words</span> : <span className="shrink-0 text-danger">Can't read it</span>}
           {voices && a.state === "ready" && (
             <button

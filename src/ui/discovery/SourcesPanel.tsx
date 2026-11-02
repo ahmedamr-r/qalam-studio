@@ -112,7 +112,7 @@ function SourceList() {
               <Spinner size={12} />
               <span className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate text-body text-fg">{j.title}</span>
-                <span className="truncate text-micro text-fg-subtle">Reading…</span>
+                <span className="truncate text-micro text-fg-subtle">{j.step ?? "Reading…"}</span>
               </span>
             </div>
           ))}

@@ -16,6 +16,8 @@ export interface SourceJob {
   /** Until it's stored: what it will be called. */
   title?: string;
   kind?: SourceKind;
+  /** How the reading is going, when it takes a while (a PDF's pictures). */
+  step?: string;
 }
 
 export interface SourcesUI {

@@ -112,7 +112,7 @@ const textFile = (orgDir: string, hash: string) => path.join(orgDir, ".qalam", "
  * The words on each screenshot, by its hash: kept ones from `.qalam/seen/text`, the rest read in
  * one run of the reader and kept. Null where there's no reader here or it couldn't read the file.
  */
-export async function readShots(orgDir: string, shots: { hash: string; file: string }[]): Promise<Map<string, ShotRead | null>> {
+export async function readShots(orgDir: string, shots: { hash: string; file: string }[], onEach?: () => void): Promise<Map<string, ShotRead | null>> {
   const out = new Map<string, ShotRead | null>();
   /** Files to read, each with the pictures it is. */
   const misses = new Map<string, string[]>();
@@ -122,7 +122,10 @@ export async function readShots(orgDir: string, shots: { hash: string; file: str
       out.set(hash, null);
       const kept = fileSafe(hash) ? await readJson<ShotRead & { v?: number }>(textFile(orgDir, hash)) : null;
       const read = kept?.v === READ_VERSION ? readOf(kept) : null;
-      if (read) return void out.set(hash, read);
+      if (read) {
+        onEach?.();
+        return void out.set(hash, read);
+      }
       const abs = path.resolve(file);
       misses.set(abs, [...(misses.get(abs) ?? []), hash]);
     }),
@@ -133,6 +136,7 @@ export async function readShots(orgDir: string, shots: { hash: string; file: str
   // Vision takes about a second a screenshot; the first waits for its models.
   await run(bin, ["read", ...misses.keys()], 30_000 + 10_000 * misses.size, (o) => {
     const hashes = typeof o.file === "string" ? misses.get(o.file) : undefined;
+    if (hashes) onEach?.();
     const read = hashes && !("error" in o) ? readOf(o) : null;
     if (!hashes || !read) return;
     for (const hash of hashes) {
@@ -162,11 +166,12 @@ export async function readRegions(file: string, boxes: readonly (readonly [numbe
  * Pages of a PDF drawn as pictures in `dir`, their longer side `side` pixels, by page number. Empty
  * with no reader here; a page this Mac couldn't draw is left out.
  */
-export async function drawPdfPages(file: string, dir: string, side: number, pages: readonly number[]): Promise<Map<number, { file: string }>> {
+export async function drawPdfPages(file: string, dir: string, side: number, pages: readonly number[], onEach?: () => void): Promise<Map<number, { file: string }>> {
   const out = new Map<number, { file: string }>();
   const bin = pages.length ? seeBin() : null;
   if (!bin) return out;
   await run(bin, ["pdf", path.resolve(file), path.resolve(dir), String(side), ...pages.map(String)], 30_000 + 5_000 * pages.length, (o) => {
+    onEach?.();
     if (num(o.page) && typeof o.file === "string" && !("error" in o)) out.set(o.page, { file: o.file });
   });
   return out;

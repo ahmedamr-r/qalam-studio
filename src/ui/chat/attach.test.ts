@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { setLab } from "@/lab";
 import type { ConnectorState } from "@/org/connectors";
-import { docPart, docsCheck, guessVoice, joinParts, sourcesFor, spansWithin, type Attachment } from "./attach";
+import { attachFiles, clearAttachments, docPart, docsCheck, guessVoice, joinParts, removeAttachment, sourcesFor, spansWithin, useAttach, type Attachment } from "./attach";
 
 const c = (id: string, group: ConnectorState["group"], o: Partial<ConnectorState> = {}): ConnectorState =>
   ({ id, label: id[0].toUpperCase() + id.slice(1), group, feeds: "material", imports: true, via: null, tone: "off", claudeCode: null, ...o }) as ConnectorState;
@@ -88,5 +89,52 @@ describe("whose words a doc holds", () => {
   it("says so in the doc's header when they're customers' words", () => {
     expect(docPart({ via: "this computer", title: "a.md", text: "x", voice: "customers" }).header).toBe("From this computer: a.md (customers' words)");
     expect(docPart({ via: "this computer", title: "a.md", text: "x", voice: "own" }).header).toBe("From this computer: a.md");
+  });
+});
+
+describe("a PDF being read in the core", () => {
+  afterEach(() => {
+    clearAttachments();
+    vi.unstubAllGlobals();
+    setLab(true);
+  });
+
+  /** A core that says one step, then reads until it's stopped; `stopped` resolves when it is. */
+  function slowCore() {
+    let stopped = () => {};
+    const gone = new Promise<void>((done) => (stopped = done));
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (url === "/api/orgs") return Response.json({ current: "o1", orgs: [{ id: "o1", name: "Org", dir: "/x" }] });
+      init?.signal?.addEventListener("abort", stopped);
+      const body = new ReadableStream<Uint8Array>({
+        start(c) {
+          c.enqueue(new TextEncoder().encode(`${JSON.stringify({ type: "activity", label: "Reading page 3 of 52" })}\n`));
+          init?.signal?.addEventListener("abort", () => c.error(Object.assign(new Error("Aborted"), { name: "AbortError" })));
+        },
+      });
+      return new Response(body);
+    });
+    return gone;
+  }
+
+  const file = () => new File(["%PDF-1.4"], "Report.pdf", { type: "application/pdf" });
+
+  it("says how it's going on its chip, and leaving it out stops the read", async () => {
+    setLab(["pictures"]);
+    const gone = slowCore();
+    attachFiles([file()]);
+    await vi.waitFor(() => expect(useAttach.getState().items[0]?.step).toBe("Reading page 3 of 52"));
+    removeAttachment(useAttach.getState().items[0].key);
+    await gone;
+    expect(useAttach.getState().items).toEqual([]);
+  });
+
+  it("clearing the box stops what's being read in it", async () => {
+    setLab(["pictures"]);
+    const gone = slowCore();
+    attachFiles([file()]);
+    await vi.waitFor(() => expect(useAttach.getState().items[0]?.step).toBeTruthy());
+    clearAttachments();
+    await gone;
   });
 });

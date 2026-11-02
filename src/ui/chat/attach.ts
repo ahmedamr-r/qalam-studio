@@ -27,6 +27,8 @@ export interface Attachment extends DocRef {
   /** Where it came from, in words ("this computer", "Google Drive"). */
   via: string;
   state: "reading" | "ready" | "failed";
+  /** How the reading is going, when it takes a while (a PDF's pictures). */
+  step?: string;
   ingested?: Ingested;
   why?: string;
   /** The person chose whose words it holds (else it's guessed once it's read). */
@@ -151,16 +153,28 @@ function add(items: Attachment[]): Attachment[] {
 /** A spreadsheet, by its name: read as text, shown as a sheet. */
 const SHEET = /\.(csv|tsv|xlsx)$/i;
 
+/** The files being read, to stop when they're left out: a PDF's pictures spend tokens. */
+const reading = new Map<string, AbortController>();
+
+function stopReading(key: string) {
+  reading.get(key)?.abort();
+  reading.delete(key);
+}
+
 /** Files from this computer: each read here, as the home's Add reads them. */
 export function attachFiles(files: File[]) {
   const fresh = add(files.map((f) => ({ key: `computer:${f.name}:${f.size}:${f.lastModified}`, from: "computer", via: "this computer", title: f.name, at: new Date(f.lastModified).toISOString(), state: "reading" as const })));
   for (const a of fresh) {
     const file = files.find((f) => `computer:${f.name}:${f.size}:${f.lastModified}` === a.key)!;
+    const stop = new AbortController();
+    reading.set(a.key, stop);
     void import("../discovery/ingest").then(({ ingestFile }) =>
-      ingestFile(file).then(
-        (ingested) => set(a.key, { state: "ready", ingested, type: SHEET.test(file.name) ? "sheet" : ingested.kind, ...pagesOf(ingested), ...guessed(a, ingested) }),
-        (e: unknown) => set(a.key, { state: "failed", why: message(e) }),
-      ),
+      ingestFile(file, { signal: stop.signal, onStep: (step) => set(a.key, { step }) })
+        .then(
+          (ingested) => set(a.key, { state: "ready", step: undefined, ingested, type: SHEET.test(file.name) ? "sheet" : ingested.kind, ...pagesOf(ingested), ...guessed(a, ingested) }),
+          (e: unknown) => set(a.key, { state: "failed", step: undefined, why: message(e) }),
+        )
+        .finally(() => reading.get(a.key) === stop && reading.delete(a.key)),
     );
   }
 }
@@ -191,8 +205,14 @@ export const setBasis = (key: string, basis: Basis | undefined) => set(key, { ba
 /** Whose words a doc holds, as the person says. */
 export const setVoice = (key: string, voice: "customers" | "own") => set(key, { voice, chose: true });
 
-export const removeAttachment = (key: string) => useAttach.setState((s) => ({ items: s.items.filter((x) => x.key !== key) }));
-export const clearAttachments = () => useAttach.setState({ items: [] });
+export function removeAttachment(key: string) {
+  stopReading(key);
+  useAttach.setState((s) => ({ items: s.items.filter((x) => x.key !== key) }));
+}
+export function clearAttachments() {
+  for (const key of [...reading.keys()]) stopReading(key);
+  useAttach.setState({ items: [] });
+}
 
 /** A doc ready to send: where it came from, its title, its words. */
 export type SentDoc = Attachment & { ingested: Ingested };

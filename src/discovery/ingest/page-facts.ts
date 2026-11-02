@@ -23,9 +23,12 @@ export const PICTURE_LIMITS = {
   freshWords: 3,
   /** Pages drawn and read on this Mac per document (a second or two each, no tokens). */
   readPages: 60,
-  /** Pages Qalam AI is sent per document, and per call. At 1568 px a page is about 2,500 tokens. */
+  /** Pages Qalam AI is sent per document, and per call. A page of figures came to about 4.8k tokens in and 2k out (a 66-page report, $0.94 on Opus). */
   modelPages: 12,
   perCall: 4,
+  /** How many calls run at once, and how many pages are read closer at once. */
+  callsAtOnce: 3,
+  closerAtOnce: 4,
   /** The longer side a page is drawn at for reading, and sent at. */
   readSide: 2200,
   sendSide: 1568,

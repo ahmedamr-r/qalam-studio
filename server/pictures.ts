@@ -42,7 +42,7 @@ export interface PictureDeps {
   /** Whether the engine can see pictures now. */
   sees: () => boolean;
   draw: typeof drawPdfPages;
-  words: (orgDir: string, shots: { hash: string; file: string }[]) => Promise<Map<string, ShotRead | null>>;
+  words: (orgDir: string, shots: { hash: string; file: string }[], onEach?: () => void) => Promise<Map<string, ShotRead | null>>;
   regions: (file: string, boxes: readonly (readonly [number, number, number, number])[]) => Promise<ShotLine[][]>;
   prep: typeof prepShot;
   call: (opts: ReturnType<typeof picturesCall>, signal?: AbortSignal) => Promise<{ data: unknown; model?: string }>;
@@ -70,6 +70,18 @@ async function nodePdfJs() {
 }
 
 const pageText = (r: Pick<PdfRead, "text" | "pages">, page: number) => r.text.slice(r.pages[page - 1], page < r.pages.length ? r.pages[page] - 2 : r.text.length);
+
+/** `run` over each, at most `n` at a time. */
+async function pool<T>(items: readonly T[], n: number, run: (item: T) => Promise<void>): Promise<void> {
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(n, items.length) }, async () => {
+      while (next < items.length) await run(items[next++]);
+    }),
+  );
+}
+
+const STOPPED = () => Object.assign(new Error("Stopped."), { name: "AbortError" });
 
 const isStop = (e: unknown, signal?: AbortSignal) => !!signal?.aborted || (e as Error)?.name === "AbortError";
 
@@ -115,20 +127,32 @@ export async function readPdfPictures(store: Store, bytes: ArrayBuffer, o: { emi
     };
     note(picks.slice(PICTURE_LIMITS.readPages).map((p) => p.f.page), "limit");
 
-    o.emit?.(`Reading the pictures on ${reading.length === 1 ? "1 page" : `${reading.length} pages`}`);
+    // One steady number over the three passes (drawn, read, read closer): a long report takes a while.
+    const passes = reading.length * 3;
+    let passed = 0;
+    let said = -1;
+    const tick = () => {
+      const pct = Math.min(100, Math.round((100 * ++passed) / passes));
+      if (pct !== said) o.emit?.(`Reading ${(said = pct)}%`);
+    };
     const pdf = path.join(tmp, "doc.pdf");
     await writeFile(pdf, file);
-    const drawn = await deps.draw(pdf, tmp, PICTURE_LIMITS.readSide, reading.map((p) => p.f.page));
+    const drawn = await deps.draw(pdf, tmp, PICTURE_LIMITS.readSide, reading.map((p) => p.f.page), tick);
     const shots = await Promise.all([...drawn].map(async ([page, d]) => ({ page, file: d.file, hash: assetHash(new Uint8Array(await readFile(d.file))) })));
-    const words = await deps.words(store.dir, shots);
+    if (o.signal?.aborted) throw STOPPED();
+    const words = await deps.words(store.dir, shots, tick);
     const shotOf = new Map(shots.map((s) => [s.page, s]));
-    const printed: Printed[] = [];
-    for (const { f, why } of reading) {
+    const printedAt = new Map<number, Printed>();
+    await pool(reading, PICTURE_LIMITS.closerAtOnce, async ({ f, why }) => {
+      if (o.signal?.aborted) throw STOPPED();
       const s = shotOf.get(f.page);
       const r = s ? words.get(s.hash) : null;
-      if (s && r) printed.push(printedOf(f, why, r, pageText(read, f.page), await deps.regions(s.file, regionsOf(f, why))));
-    }
-    note(reading.map((p) => p.f.page).filter((p) => !printed.some((x) => x.page === p)), "failed");
+      if (s && r) printedAt.set(f.page, printedOf(f, why, r, pageText(read, f.page), await deps.regions(s.file, regionsOf(f, why))));
+      tick();
+    });
+    // In the document's order, however the parts finished.
+    const printed = reading.flatMap(({ f }) => printedAt.get(f.page) ?? []);
+    note(reading.map((p) => p.f.page).filter((p) => !printedAt.has(p)), "failed");
 
     const { send, over } = pagesToSend(printed);
     note(over.map((p) => p.page), "limit");
@@ -142,31 +166,39 @@ export async function readPdfPictures(store: Store, bytes: ArrayBuffer, o: { emi
     };
 
     if (send.length && !deps.sees()) note(send.map((p) => p.page), "no-vision");
-    else {
-      for (let i = 0; i < send.length; i += PICTURE_LIMITS.perCall) {
-        if (o.signal?.aborted) throw Object.assign(new Error("Stopped."), { name: "AbortError" });
-        const batch = send.slice(i, i + PICTURE_LIMITS.perCall);
+    else if (send.length) {
+      const batches = Array.from({ length: Math.ceil(send.length / PICTURE_LIMITS.perCall) }, (_, i) => send.slice(i * PICTURE_LIMITS.perCall, (i + 1) * PICTURE_LIMITS.perCall));
+      const failed: number[] = [];
+      let refused = false;
+      let done = 0;
+      const say = () => o.emit?.(`Qalam AI: ${done} of ${send.length} ${send.length === 1 ? "page" : "pages"}`);
+      say();
+      await pool(batches, PICTURE_LIMITS.callsAtOnce, async (batch) => {
+        if (refused) return;
+        if (o.signal?.aborted) throw STOPPED();
         const sent: (PictureSent & { p: Printed })[] = [];
         for (const p of batch) {
           const im = await imageOf(p.page, PICTURE_LIMITS.sendSide);
           if (im) sent.push({ p, ref: `p${sent.length + 1}`, page: p.page, image: im.image, words: printedList(p) });
         }
-        if (!sent.length) continue;
-        o.emit?.(`Reading what's printed in the pictures (pages ${sent[0].page}–${sent[sent.length - 1].page})`);
+        if (!sent.length) return;
         try {
           const { data, model } = await deps.call(picturesCall(sent), o.signal);
           const pages = (data as { pages?: { id?: unknown }[] } | null)?.pages;
           for (const s of sent) readings.set(s.page, sanitizeFigures((Array.isArray(pages) ? pages : []).find((x) => x?.id === s.ref) ?? null, s.p, s.p.why === "scan" ? [] : undefined));
           void store.putTrace({ id: nanoid(10), projectId: "pictures", kind: "pdf-pictures", at: Date.now(), ...(model ? { model } : {}), pdf: hash, pages: sent.map((s) => ({ ref: s.ref, page: s.page, why: s.p.why })), answer: data, kept: sent.map((s) => ({ page: s.page, ...readings.get(s.page)! })) } as { id: string; projectId: string }).catch(() => {});
+          done += sent.length;
+          say();
         } catch (e) {
           if (isStop(e, o.signal)) throw e;
           console.warn(`[pictures] couldn't read pages ${sent.map((s) => s.page).join(", ")}: ${(e as Error).message}`);
           // An engine that turns pictures away does so for the rest too.
-          const refused = (e as { code?: string }).code === "no_vision" || /can't read pictures/i.test((e as Error).message);
-          note(refused ? send.slice(i).map((p) => p.page) : sent.map((s) => s.page), refused ? "no-vision" : "failed");
-          if (refused) break;
+          if ((e as { code?: string }).code === "no_vision" || /can't read pictures/i.test((e as Error).message)) refused = true;
+          else failed.push(...sent.map((s) => s.page));
         }
-      }
+      });
+      note(failed.sort((a, b) => a - b), "failed");
+      if (refused) note(send.map((p) => p.page).filter((p) => !readings.has(p) && !failed.includes(p)), "no-vision");
     }
 
     const adds: PageAddition[] = [];

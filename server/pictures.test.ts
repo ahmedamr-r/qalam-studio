@@ -54,16 +54,23 @@ function deps(lines: Record<number, ShotLine[]>, over: Partial<PictureDeps> = {}
   return {
     reader: async () => true,
     sees: () => true,
-    draw: async (_file, out, _side, pages) => {
+    draw: async (_file, out, _side, pages, onEach) => {
       const m = new Map<number, { file: string }>();
       for (const p of pages) {
         const file = path.join(out, `page-${p}.png`);
         await writeFile(file, `page ${p}`);
         m.set(p, { file });
+        onEach?.();
       }
       return m;
     },
-    words: async (_org, shots) => new Map(shots.map((s) => [s.hash, { w: 1000, h: 1400, dhash: "0000000000000000", lines: lines[Number(/page-(\d+)/.exec(s.file)?.[1])] ?? [] }])),
+    words: async (_org, shots, onEach) =>
+      new Map(
+        shots.map((s) => {
+          onEach?.();
+          return [s.hash, { w: 1000, h: 1400, dhash: "0000000000000000", lines: lines[Number(/page-(\d+)/.exec(s.file)?.[1])] ?? [] }];
+        }),
+      ),
     regions: async () => [],
     prep: async (_org, _hash, file) => ({ file, type: "image/jpeg" }),
     call: call as unknown as PictureDeps["call"],
@@ -187,12 +194,59 @@ describe("reading a PDF's pictures", () => {
     expect(r.text).toBe(LONG);
   });
 
-  it("an engine that turns a picture away stops being asked, and the document still reads", async () => {
+  it("an engine that turns a picture away leaves every page's words, and the document still reads", async () => {
     call.mockRejectedValue(new Error("llava can't read pictures. Pick a model that can, in Connections."));
     const pages = Array.from({ length: 6 }, () => `${text(LONG)} ${picture()}`);
     const r = await readPdfPictures(store, buf(pdf(pages)), {}, deps(Object.fromEntries(pages.map((_, i) => [i + 1, CHART]))));
-    expect(call).toHaveBeenCalledTimes(1);
     expect(r.pictures?.unread).toEqual([{ pages: [1, 2, 3, 4, 5, 6], why: "no-vision" }]);
+    expect(r.text).toContain("Printed in a picture on page 6");
+  });
+
+  it("runs its calls side by side, each page keeping its own answer whichever finishes first", async () => {
+    const pages = Array.from({ length: 12 }, (_, i) => `${text(`${LONG} ${i + 1}`)} ${picture()}`);
+    const lines = (n: number) => [line(`Bars ${n}`, [0.2, 0.27, 0.2, 0.02]), line("Jan", [0.3, 0.47, 0.03, 0.01]), line(`${n}.5%`, [0.3, 0.33, 0.03, 0.01])];
+    let now = 0;
+    let most = 0;
+    const waiting: (() => void)[] = [];
+    call.mockImplementation(async (opts: { content: { type: string; text?: string }[] }) => {
+      most = Math.max(most, ++now);
+      // All three in flight before any answers; the last to arrive answers first.
+      await new Promise<void>((done) => {
+        waiting.unshift(done);
+        if (waiting.length === 3) for (const w of waiting.splice(0)) w();
+      });
+      now--;
+      const refs = opts.content.flatMap((b) => {
+        const m = /^(p\d+) \(page (\d+)/.exec(b.text ?? "");
+        return m ? [{ id: m[1], n: m[2] }] : [];
+      });
+      return { data: { pages: refs.map(({ id, n }) => ({ id, figures: [{ kind: "chart", title: `Bars ${n}`, rows: [{ labels: [{ name: "", value: "Jan" }], numbers: [{ name: "", value: `${n}.5%` }], from_shape: false }] }] })) } };
+    });
+    const steps: string[] = [];
+    const r = await readPdfPictures(store, buf(pdf(pages)), { emit: (l) => steps.push(l) }, deps(Object.fromEntries(pages.map((_, i) => [i + 1, lines(i + 1)]))));
+    expect(call).toHaveBeenCalledTimes(3);
+    expect(most).toBe(3);
+    for (let n = 1; n <= 12; n++) expect(r.text).toContain(`Bars ${n} · Jan · ${n}.5%`);
+    expect(r.pictures?.read.map((p) => p.page)).toEqual(Array.from({ length: 12 }, (_, i) => i + 1));
+    expect(r.pictures?.unread).toBeUndefined();
+    // Says how it's going, all the way through.
+    const percents = steps.flatMap((l) => (/^Reading (\d+)%$/.exec(l)?.[1] ? [Number(/^Reading (\d+)%$/.exec(l)![1])] : []));
+    expect(percents).toEqual([...percents].sort((a, b) => a - b));
+    expect(percents.at(-1)).toBe(100);
+    expect(steps.slice(-4)).toEqual(expect.arrayContaining(["Qalam AI: 0 of 12 pages", "Qalam AI: 12 of 12 pages"]));
+    expect(steps.at(-1)).toBe("Qalam AI: 12 of 12 pages");
+  });
+
+  it("a failed call costs only its own pages", async () => {
+    const pages = Array.from({ length: 8 }, (_, i) => `${text(`${LONG} ${i + 1}`)} ${picture()}`);
+    call.mockImplementation(async (opts: { content: { text?: string }[] }) => {
+      if (opts.content.some((b) => b.text?.startsWith("p1 (page 1 "))) throw new Error("overloaded");
+      return { data: { pages: [] } };
+    });
+    const r = await readPdfPictures(store, buf(pdf(pages)), {}, deps(Object.fromEntries(pages.map((_, i) => [i + 1, CHART]))));
+    expect(r.pictures?.unread).toEqual([{ pages: [1, 2, 3, 4], why: "failed" }]);
+    expect(r.text).toContain("Printed in a picture on page 1");
+    expect(r.text).not.toContain("Printed in a picture on page 5");
   });
 
   it("a call that fails leaves the page's printed words, and isn't kept for next time", async () => {
@@ -212,6 +266,41 @@ describe("reading a PDF's pictures", () => {
       throw Object.assign(new Error("Stopped."), { name: "AbortError" });
     });
     await expect(readPdfPictures(store, buf(pdf([`${text(LONG)} ${picture()}`])), { signal: stop.signal }, deps({ 1: CHART }))).rejects.toThrow("Stopped");
+  });
+
+  it("stopping while it reads the page spends nothing and reads no further", async () => {
+    const stop = new AbortController();
+    const regions = vi.fn(async () => {
+      stop.abort();
+      return [];
+    });
+    const pages = Array.from({ length: 12 }, () => `${text(LONG)} ${picture()}`);
+    await expect(readPdfPictures(store, buf(pdf(pages)), { signal: stop.signal }, deps(Object.fromEntries(pages.map((_, i) => [i + 1, CHART])), { regions }))).rejects.toThrow("Stopped");
+    expect(call).not.toHaveBeenCalled();
+    expect(regions.mock.calls.length).toBeLessThanOrEqual(4);
+  });
+
+  it("reads its pages closer side by side, keeping them in the document's order", async () => {
+    let now = 0;
+    let most = 0;
+    const seen: string[] = [];
+    const regions: PictureDeps["regions"] = async () => {
+      most = Math.max(most, ++now);
+      await new Promise((d) => setTimeout(d, 5));
+      now--;
+      return [];
+    };
+    const pages = Array.from({ length: 9 }, (_, i) => `${text(`${LONG} ${i + 1}`)} ${picture()}`);
+    call.mockImplementation(async (opts: { content: { text?: string }[] }) => {
+      for (const b of opts.content) {
+        const m = /^p\d+ \(page (\d+)/.exec(b.text ?? "");
+        if (m) seen.push(m[1]);
+      }
+      return { data: { pages: [] } };
+    });
+    await readPdfPictures(store, buf(pdf(pages)), {}, deps(Object.fromEntries(pages.map((_, i) => [i + 1, CHART])), { regions }));
+    expect(most).toBe(4);
+    expect(seen.map(Number).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
   });
 
   it("clears what it drew", async () => {

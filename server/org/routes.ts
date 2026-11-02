@@ -685,18 +685,16 @@ export function orgRoutes(): Hono<Env> {
   });
   /**
    * A PDF read here rather than in the window, so what's inside its pictures can be read and checked
-   * on this Mac (lab: pictures). Answers what the window's own reading would, with more text.
+   * on this Mac (lab: pictures). Answers what the window's own reading would, with more text, saying
+   * how it's going (NDJSON): a long report takes minutes. Stopped when the request goes.
    */
   r.post("/api/org/:org/pdf", async (c) => {
     if (rateLimited(c.req.raw)) return c.json({ error: "rate_limited", message: "Too many requests, try again in a few minutes." }, 429);
     if (Number(c.req.header("content-length") ?? 0) > MAX_FILE) return c.json({ error: "too_large", message: "That file is over 40 MB." }, 413);
     const bytes = await c.req.arrayBuffer();
     if (bytes.byteLength > MAX_FILE) return c.json({ error: "too_large", message: "That file is over 40 MB." }, 413);
-    try {
-      return c.json(await readPdfPictures(c.get("store"), bytes, { signal: c.req.raw.signal }));
-    } catch (e) {
-      return c.json({ error: "unread", message: e instanceof Error ? e.message : String(e) }, 422);
-    }
+    const store = c.get("store");
+    return streamed(c.req.raw.signal, (emit, signal) => readPdfPictures(store, bytes, { emit, signal }));
   });
   /** What a source rests on, as the person says: its points go by that, and the lines citing them move. */
   r.put("/api/org/:org/sources/:id/basis", async (c) => {

@@ -87,7 +87,7 @@ export async function addSources(inputs: Readable[], opts: { map?: boolean; unde
       const job = newId();
       setJob(job, { phase: "reading", title: titleOf(input), kind: kindOf(input) });
       try {
-        const read = input.kind === "file" ? [await ingestFile(input.file)] : input.kind === "read" ? [input.ingested] : input.kind === "url" ? [await ingestUrl(input.url, ctrl.signal)] : input.kind === "paste" ? [await ingestPaste(input.text, input.title)] : await fromTools(input, job, ctrl.signal);
+        const read = input.kind === "file" ? [await ingestFile(input.file, { signal: ctrl.signal, onStep: (step) => setJob(job, { phase: "reading", title: titleOf(input), kind: kindOf(input), step }) })] : input.kind === "read" ? [input.ingested] : input.kind === "url" ? [await ingestUrl(input.url, ctrl.signal)] : input.kind === "paste" ? [await ingestPaste(input.text, input.title)] : await fromTools(input, job, ctrl.signal);
         for (const r of read) {
           const rec: SourceRecord = { v: 1, id: newId(), projectId, kind: r.kind, title: r.title, ...(r.origin ? { origin: r.origin } : {}), text: r.text, ...(r.pages ? { pages: r.pages } : {}), ...(r.blocks?.length ? { blocks: r.blocks } : {}), ...(r.pictures ? { pictures: r.pictures } : {}), ...(r.truncated ? { truncated: true } : {}), ...(r.segments && r.transcript ? { segments: r.segments, transcript: r.transcript } : {}), addedAt: Date.now(), read: [], quotes: [], needs: [] };
           await addSourceRecord(rec);

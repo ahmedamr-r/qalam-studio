@@ -55,7 +55,7 @@ export function AddToOrg({ product, job, hint = "Reports, research, interviews, 
       setItems((list) => [{ id, title: titleOf(input), step: "Reading it", state: "working" }, ...list]);
       try {
         const read =
-          input.kind === "file" ? [await ingestFile(input.file)] : input.kind === "url" ? [await ingestUrl(input.url)] : input.kind === "paste" ? [await ingestPaste(input.text, input.title)] : await readFromTools(input, undefined, (step) => update(id, { step }));
+          input.kind === "file" ? [await ingestFile(input.file, { onStep: (step) => update(id, { step }) })] : input.kind === "url" ? [await ingestUrl(input.url)] : input.kind === "paste" ? [await ingestPaste(input.text, input.title)] : await readFromTools(input, undefined, (step) => update(id, { step }));
         for (const ing of read) {
           update(id, { title: ing.title, step: "Keeping it" });
           const result = await captureIngested(ing, { product, job, own: mine, onActivity: (step) => update(id, { step }) });

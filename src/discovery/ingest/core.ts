@@ -92,6 +92,8 @@ export async function fromBytes(bytes: ArrayBuffer, type: string, name: string, 
   const web = !!origin && /^https?:/i.test(origin);
   if (type === "application/pdf" || ext === "pdf" || String.fromCharCode(...head) === "%PDF-") {
     const r = await readers.pdf(bytes).catch((e) => {
+      // Stopped by the person: nothing to say about the file.
+      if ((e as Error)?.name === "AbortError") throw e;
       throw new IngestError(e instanceof Error && /no text/.test(e.message) ? e.message : `${name} couldn't be read as a PDF.`);
     });
     // A file goes by its name; a PDF at an address by its own title, when it has one.
