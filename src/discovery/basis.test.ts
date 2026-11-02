@@ -3,7 +3,9 @@ import { isEvidence } from "@/hub/topics";
 import { basisCounts, basisOf, basisSub, countsLine, evidenceBasis, heldBasis, mainBasis, movedLines, pieceBasis, reachesKnow } from "./basis";
 import { whose } from "./solutions";
 import { quoteEvidence, type SourceQuote } from "./sources";
+import { evidenceLabel, evidenceSummary, isAssumed } from "./evidence";
 import { sanitizeExtract } from "./synthesis";
+import { backingLine, thin, type CardFacts } from "./next";
 
 const quote = { id: "q", text: "x", span: [0, 1], kind: "finding", addedBy: "ai", at: 1 } as SourceQuote;
 
@@ -131,5 +133,31 @@ describe("a source's lines when what it rests on changes", () => {
     const lines = [line("know", ["m1"], "person"), line("against", ["m1"]), line("open", ["m1"])];
     expect(movedLines(lines, mine, () => false)).toBe(false);
     expect(lines.map((l) => l.section)).toEqual(["know", "against", "open"]);
+  });
+});
+
+describe("what a card rests on, with more than customers' words", () => {
+  const at = 1;
+  const e = (id: string, basis?: "measured" | "studied" | "read" | "own") => ({ id, kind: "quote" as const, text: id, sourceId: id, addedBy: "ai" as const, at, ...(basis ? { basis } : {}) });
+  const card = (evidence: ReturnType<typeof e>[]) => ({ kind: "opportunity" as const, createdBy: "ai" as const, evidence });
+
+  it("says what backs it", () => {
+    expect(evidenceLabel(card([e("a"), e("b", "measured")]))).toBe("1 quote · 1 measured");
+    expect(evidenceLabel(card([e("a", "studied"), e("b", "read")]))).toBe("1 studied · 1 read elsewhere");
+    expect(evidenceLabel(card([e("a")]))).toBe("1 quote");
+    expect(evidenceSummary(card([e("a"), e("b", "measured"), e("c", "own"), e("d", "read")]))).toMatchObject({ quotes: 2, sources: 2, mix: { said: 1, measured: 1 }, ours: 1, read: 1 });
+  });
+
+  it("leaves a card only read about Assumed, and a measured one not", () => {
+    expect(isAssumed(card([e("a", "read")]))).toBe(true);
+    expect(evidenceLabel(card([e("a", "read")]))).toBe("Assumed · 1 read elsewhere");
+    expect(isAssumed(card([e("a", "measured")]))).toBe(false);
+  });
+
+  it("doesn't call a card nothing but customers' words back thin, nor say it's bare with a metric behind it", () => {
+    const facts = (over: Partial<CardFacts["evidence"]>) => ({ kind: "opportunity", evidence: { quotes: 0, sources: 0, ours: 0, online: 0, against: 0, who: [], from: [], ...over }, page: null, goal: null, feeds: [] }) as unknown as CardFacts;
+    expect(thin(facts({ quotes: 1, sources: 1, mix: { measured: 1 } }))).toBe(false);
+    expect(backingLine(facts({ quotes: 2, sources: 2, mix: { measured: 1, said: 1 } }))).toBe("Rests on 1 quote · 1 measured from 2 sources");
+    expect(backingLine(facts({ read: 1 }))).toBe("Only read elsewhere: 1");
   });
 });

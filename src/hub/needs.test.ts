@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { needEvidence, needSummary, rankNeeds, strengthOf, weeklyCounts, type NeedInput, type PieceFacts, type ShownOn } from "./needs";
+import { needEvidence, needLine, needSummary, onlyPeopleSaid, rankNeeds, strengthOf, weeklyCounts, type NeedInput, type PieceFacts, type ShownOn } from "./needs";
 import type { Topic, TopicLine } from "./topics";
 
 const DAY = 86_400_000;
@@ -59,6 +59,20 @@ describe("what to work on next", () => {
       ["online-only", 3, "assumed"],
       ["nothing", 0, "assumed"],
     ]);
+  });
+
+  it("counts what's measured and studied as it counts what people said, what's read elsewhere apart", () => {
+    const pieces = { "q:1": quote("s1"), "q:2": quote("funnel", ago(3), "measured:finding"), "q:3": quote("study", ago(3), "studied:finding"), "q:4": quote("gartner", ago(3), "read:finding"), "q:5": quote("notes", ago(3), "own:finding") };
+    const t = topic("t", { lines: [line("l1", "know", ["q:1", "q:2", "q:3", "q:5"]), line("l2", "believe", ["q:4"])] });
+    const s = needSummary(t, input([t], pieces));
+    expect(s).toMatchObject({ quotes: 3, sources: 3, mix: { said: 1, measured: 1, studied: 1 }, read: 1 });
+    expect(strengthOf(s)).toBe("strong");
+    expect(needLine(s)).toBe("1 quote · 1 measured · 1 studied · 3 sources");
+    expect(needLine({ quotes: 0, sources: 0 })).toBe("Nothing outside the team yet");
+    expect(needLine({ quotes: 2, sources: 1 })).toBe("2 quotes · 1 source");
+    expect(onlyPeopleSaid(s.mix)).toBe(false);
+    expect(onlyPeopleSaid({ said: 2 })).toBe(true);
+    expect(onlyPeopleSaid(undefined)).toBe(true);
   });
 
   it("says who raises a need: the segment pages citing the same evidence", () => {

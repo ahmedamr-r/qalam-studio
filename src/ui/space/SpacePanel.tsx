@@ -8,7 +8,7 @@ import type { GoalsNow } from "@/goals/client";
 import { metricLine } from "@/goals/goals-md";
 import type { Job } from "@/goals/jobs";
 import { goalById } from "@/goals/tree";
-import type { RankedNeed } from "@/hub/needs";
+import { needLine, onlyPeopleSaid, type RankedNeed } from "@/hub/needs";
 import { sameTopic } from "@/hub/topics";
 import { goalHref, topicHref } from "@/projects/model";
 import type { SpaceThing } from "@/space/compose";
@@ -103,11 +103,11 @@ function ProblemPanel({ id, thing, need, tree, close }: { id: string; thing: Ext
         {close}
       </div>
       <p className="text-caption text-fg-muted">
-        {g ? `Behind ${g.title}.` : "Customers keep raising it, and no goal is linked to it yet."}
+        {g ? `Behind ${g.title}.` : onlyPeopleSaid(need?.mix) ? "Customers keep raising it, and no goal is linked to it yet." : "It keeps coming up, and no goal is linked to it yet."}
         {need && (
           <>
             {" "}
-            {need.quotes ? `${plural(need.quotes, "quote")} from ${plural(need.sources, "source")}` : "No customer words yet"}
+            {needLine(need)}
             {need.against ? `, ${need.against} against` : ""}.
           </>
         )}

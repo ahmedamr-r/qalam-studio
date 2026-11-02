@@ -98,3 +98,10 @@ export function movedLines(lines: { by: string; section: string; cites: string[]
   }
   return moved;
 }
+
+/** What can reach "We know" behind something, in a few words: "2 quotes · 1 measured". A quote is what people said; the rest say what they are. */
+export const backingWords = (mix: BasisCounts) =>
+  (["said", "measured", "studied"] as const)
+    .filter((b) => mix[b])
+    .map((b) => (b === "said" ? `${mix[b]} ${mix[b] === 1 ? "quote" : "quotes"}` : `${mix[b]} ${b}`))
+    .join(" · ");

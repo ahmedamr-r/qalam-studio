@@ -396,7 +396,7 @@ function EvidenceSection({ id, card }: { id: string; card: OstCard }) {
   );
 }
 
-/** The card's evidence at a glance: how strong (by the sources of its customers' quotes), how many quotes and sources, what's against it, who said it. */
+/** The card's evidence at a glance: how strong (by the sources of what backs it), how much of what and from how many sources, what's against it, who said it. */
 /** One piece of evidence in a line: how its words start and whose they are. A click shows them whole, where they're from, and Remove. */
 function EvidenceRow({ id, e }: { id: string; e: OstEvidence }) {
   const [open, setOpen] = useState(false);
@@ -446,7 +446,7 @@ function NoEvidence() {
         ))}
       </div>
       <div className="absolute inset-0 flex items-center justify-center">
-        <Tip label="Customers' words make a card solid. Drag a quote from Sources onto the card.">
+        <Tip label="What people said, measured or studied makes a card solid. Drag a point from Sources onto the card.">
           <button type="button" className={clsx(r.buttonSm, r.buttonSecondary)} onClick={() => studio().setLeftTab("sources")}>
             <Quote {...ICON} /> Find quotes in Sources
           </button>

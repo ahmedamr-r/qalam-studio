@@ -1,6 +1,6 @@
 import { useState } from "react";
 import clsx from "clsx";
-import { strengthFill, strengthOf, type RankedNeed } from "@/hub/needs";
+import { needLine, strengthFill, strengthOf, type RankedNeed } from "@/hub/needs";
 import { topicHref } from "@/projects/model";
 import { cardHref } from "../space/href";
 import { workOnNeed } from "../space/SpacePanel";
@@ -31,9 +31,10 @@ export function NeedStrip({ s, shows }: { s: RankedNeed; shows: ShowsUpOn[] }) {
           <Meter value={strengthFill(s)} label={`${STRENGTH[strength]}, from ${plural(s.sources, "source")}`} />
         </span>
         <span className="flex flex-col gap-[2px] text-caption tnum">
-          <span className="text-fg">{s.quotes ? `${plural(s.quotes, "quote")} · ${plural(s.sources, "source")}` : "No customer words yet"}</span>
+          <span className="text-fg">{needLine(s)}</span>
           {/* People online back it, below its own customers' words. */}
           {s.online > 0 && <span className="text-fg-muted">{`${plural(s.online, "quote")} from ${plural(s.onlineSources, "post")} online`}</span>}
+          {!!s.read && <span className="text-fg-muted">{`${s.read} read elsewhere`}</span>}
           <span className={s.against ? "text-warning" : "text-fg-subtle"}>{s.against ? `${s.against} against` : "Nothing against"}</span>
         </span>
         <span className="flex flex-col gap-[2px]">

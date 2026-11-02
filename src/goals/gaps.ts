@@ -41,7 +41,7 @@ export function gapsOf(goal: Goal, problems: GoalProblem[], topics: ReadonlyMap<
   if (!problems.length) out.push({ key: `no-problems:${goal.id}`, kind: "no-problems", title: "Which customer problems would move it" });
   const top = problems.slice(0, GAP_LIMITS.problems);
   for (const p of top)
-    if (!p.quotes) out.push({ key: `team-only:${p.topic}`, kind: "team-only", title: `Whether customers have “${one(p.title)}”, or ${wordsFor(shape).onlyUs}`, page: p.topic });
+    if (!p.quotes) out.push({ key: `team-only:${p.topic}`, kind: "team-only", title: `Whether anything outside the team shows “${one(p.title)}”, or ${wordsFor(shape).onlyUs}`, page: p.topic });
     else if (!p.segments.length) out.push({ key: `no-segment:${p.topic}`, kind: "no-segment", title: `Who has “${one(p.title)}”`, page: p.topic });
   let questions = 0;
   for (const p of top) {

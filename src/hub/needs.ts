@@ -1,11 +1,12 @@
+import { backingWords, pieceBasis, type BasisCounts } from "@/discovery/basis";
 import { isEvidence, isOnline, type Topic } from "./topics";
 
 /*
  * What to work on next (pure): the organization's needs, ranked by what backs them. A need page's
- * strength is the customer evidence its "We know" lines cite (customers' quotes, finished tests;
- * never the team's own brain dump): how many sources it comes from, then how many quotes, then how
- * new. What people said online (public posts, reviews) counts after that, and on its own leaves a
- * need Assumed. Each need also carries who raises it (segment pages citing the same evidence), how
+ * strength is the evidence its "We know" lines cite (what people said, what's measured or studied,
+ * finished tests; never the team's own brain dump): how many sources it comes from, then how many
+ * points, then how new. What people said online (public posts, reviews) and what's read elsewhere
+ * count after that, and on their own leave a need Assumed. Each need also carries who raises it (segment pages citing the same evidence), how
  * that evidence arrived week by week, what speaks against it, and the boards that have it.
  */
 
@@ -41,6 +42,10 @@ export interface NeedEvidence {
   /** People online's words its "We know" or "We believe" lines cite, and the posts they're in. */
   online: Set<string>;
   onlineSources: Set<string>;
+  /** What's read elsewhere its "We know" or "We believe" lines cite. */
+  read: Set<string>;
+  /** What backs it (`quotes`), by what each rests on. */
+  mix: BasisCounts;
 }
 
 export function needEvidence(t: Pick<Topic, "lines">, pieces: Map<string, PieceFacts>): NeedEvidence {
@@ -49,6 +54,8 @@ export function needEvidence(t: Pick<Topic, "lines">, pieces: Map<string, PieceF
   const against = new Set<string>();
   const online = new Set<string>();
   const onlineSources = new Set<string>();
+  const read = new Set<string>();
+  const mix: BasisCounts = {};
   const ats: number[] = [];
   let newest = 0;
   const evidence = (ref: string) => {
@@ -62,6 +69,7 @@ export function needEvidence(t: Pick<Topic, "lines">, pieces: Map<string, PieceF
     if (l.section === "know" || l.section === "believe")
       for (const ref of l.cites) {
         const p = pieces.get(ref);
+        if (p?.type === "quote" && pieceBasis(p) === "read" && !isOnline(p)) read.add(ref);
         if (!p || !isOnline(p)) continue;
         online.add(ref);
         onlineSources.add(p.source ?? ref);
@@ -70,13 +78,18 @@ export function needEvidence(t: Pick<Topic, "lines">, pieces: Map<string, PieceF
     for (const ref of l.cites) {
       const p = evidence(ref);
       if (!p) continue;
-      if (!quotes.has(ref)) ats.push(p.at);
+      if (!quotes.has(ref)) {
+        ats.push(p.at);
+        // A test's result counts as what's studied; a card's own quote as what people said.
+        const b = p.type === "card" ? "studied" : p.type === "quote" ? pieceBasis(p) : "said";
+        mix[b] = (mix[b] ?? 0) + 1;
+      }
       quotes.add(ref);
       sources.add(p.source ?? ref);
       newest = Math.max(newest, l.at, p.at);
     }
   }
-  return { quotes, sources, against, newest, ats, online, onlineSources };
+  return { quotes, sources, against, newest, ats, online, onlineSources, read, mix };
 }
 
 export interface RankedNeed {
@@ -86,6 +99,10 @@ export interface RankedNeed {
   products: string[];
   quotes: number;
   sources: number;
+  /** `quotes`, by what each rests on (none: all what people said). */
+  mix?: BasisCounts;
+  /** What's read elsewhere behind it. */
+  read?: number;
   against: number;
   /** People online's words behind it (public posts, reviews), and how many posts. */
   online: number;
@@ -132,6 +149,8 @@ export function needSummary(t: Topic, x: NeedInput): RankedNeed {
     products: t.products,
     quotes: e.quotes.size,
     sources: e.sources.size,
+    mix: e.mix,
+    ...(e.read.size ? { read: e.read.size } : {}),
     against: e.against.size,
     online: e.online.size,
     onlineSources: e.onlineSources.size,
@@ -147,8 +166,16 @@ export function rankNeeds(x: NeedInput): RankedNeed[] {
   return x.topics
     .filter((t) => t.kind === "need")
     .map((t) => needSummary(t, x))
-    .sort((a, b) => b.sources - a.sources || b.quotes - a.quotes || b.onlineSources - a.onlineSources || b.online - a.online || b.newest - a.newest || a.title.localeCompare(b.title));
+    .sort((a, b) => b.sources - a.sources || b.quotes - a.quotes || b.onlineSources - a.onlineSources || b.online - a.online || (b.read ?? 0) - (a.read ?? 0) || b.newest - a.newest || a.title.localeCompare(b.title));
 }
+
+const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
+
+/** What backs a need, in a line: "2 quotes · 1 measured · 3 sources", or that nothing outside the team does yet. */
+export const needLine = (n: Pick<RankedNeed, "quotes" | "sources" | "mix">) => (n.quotes ? `${backingWords(n.mix ?? { said: n.quotes })} · ${plural(n.sources, "source")}` : "Nothing outside the team yet");
+
+/** Only what people said behind it: "customers keep raising it" says what's so. */
+export const onlyPeopleSaid = (mix: BasisCounts | undefined) => !mix || Object.keys(mix).every((b) => b === "said");
 
 export type Strength = "strong" | "growing" | "thin" | "assumed";
 

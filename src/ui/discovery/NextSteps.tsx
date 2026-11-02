@@ -98,7 +98,7 @@ export function useCardFacts(id: string | null): CardFacts | null {
     return {
       kind: card.kind,
       evidence: evidenceSummary(card),
-      page: need ? { topic: need.topic, strength: strengthOf(need), quotes: need.quotes, sources: need.sources } : null,
+      page: need ? { topic: need.topic, strength: strengthOf(need), quotes: need.quotes, sources: need.sources, mix: need.mix } : null,
       under: { solutions: kids.filter((k) => k === "solution").length, tests: kids.filter((k) => k === "test").length },
       ...(goal && inputs
         ? {

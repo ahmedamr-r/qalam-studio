@@ -340,9 +340,9 @@ describe("evidence", () => {
         quote("e", "notes"),
       ],
     });
-    expect(evidenceSummary(card)).toEqual({ quotes: 4, sources: 3, ours: 2, online: 0, against: 1, who: ["Omar", "Sara"], from: ["omar interview", "sara interview", "notes interview"] });
+    expect(evidenceSummary(card)).toEqual({ quotes: 4, sources: 3, mix: { said: 4 }, ours: 2, online: 0, against: 1, who: ["Omar", "Sara"], from: ["omar interview", "sara interview", "notes interview"] });
     // The brain dump's words are the team's, and the quote against isn't counted as backing.
-    expect(evidenceSummary(newCard("opportunity"))).toEqual({ quotes: 0, sources: 0, ours: 0, online: 0, against: 0, who: [], from: [] });
+    expect(evidenceSummary(newCard("opportunity"))).toEqual({ quotes: 0, sources: 0, mix: {}, ours: 0, online: 0, against: 0, who: [], from: [] });
   });
 
   it("counts people online apart, and leaves a drafted problem Assumed until its own customers say it", () => {

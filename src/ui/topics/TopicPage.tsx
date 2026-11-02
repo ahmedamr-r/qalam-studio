@@ -1,4 +1,4 @@
-import { pieceBasis, type Basis } from "@/discovery/basis";
+import { backingWords, pieceBasis, type Basis, type BasisCounts } from "@/discovery/basis";
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import clsx from "clsx";
 import { MoreHorizontal, Plus, Quote } from "lucide-react";
@@ -41,8 +41,8 @@ import { lab } from "@/lab";
 const ICON = { size: 14, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 
 const EMPTY: Record<TopicSection, string> = {
-  know: "Nothing customers said, or a test showed, yet.",
-  believe: "What the team thinks, before customers show it.",
+  know: "Nothing people said, measured or studied, or a test showed, yet.",
+  believe: "What the team thinks, or what's read elsewhere, before anything of yours shows it.",
   against: "Nothing speaks against it yet.",
   open: "No open questions.",
 };
@@ -396,7 +396,12 @@ function backingOf(refs: string[], view: TopicView): string | null {
   const quotes = refs.map((ref) => view.cited[ref]).filter((p): p is CitedPiece => !!p && (customers(p) || (p.type === "evidence" && p.sub === "quote")));
   if (quotes.length < 2) return null;
   const sources = new Set(quotes.map((p) => p.source ?? p.title ?? p.ref));
-  return `${quotes.length} quotes${sources.size > 1 ? ` from ${sources.size} sources` : ""}`;
+  const mix: BasisCounts = {};
+  for (const p of quotes) {
+    const b = p.type === "quote" ? pieceBasis(p) : "said";
+    mix[b] = (mix[b] ?? 0) + 1;
+  }
+  return `${backingWords(mix) || `${quotes.length} read elsewhere`}${sources.size > 1 ? ` from ${sources.size} sources` : ""}`;
 }
 
 /** Where a piece opens: a quote in its source on a board that uses it, a card on its board. */
@@ -441,7 +446,7 @@ function Cites({ refs, from, view }: { refs: string[]; from: string[]; view: Top
         const href = hrefOf(p, view);
         const chip = (
           <>
-            {customers(p) && <Quote size={10} absoluteStrokeWidth strokeWidth={1.5} className="shrink-0" />}
+            {p.type === "quote" && pieceBasis(p) === "said" && <Quote size={10} absoluteStrokeWidth strokeWidth={1.5} className="shrink-0" />}
             <span className="truncate">{label}</span>
             {list.length > 1 && <span className="shrink-0 text-fg-subtle tnum">· {list.length}</span>}
           </>

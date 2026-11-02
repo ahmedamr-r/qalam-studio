@@ -15,7 +15,7 @@ import type { Job } from "@/goals/jobs";
 import type { GoalProblem } from "@/goals/problems";
 import { underOf } from "@/goals/tree";
 import type { Goal } from "@/goals/types";
-import { strengthFill, strengthOf } from "@/hub/needs";
+import { needLine, strengthFill, strengthOf } from "@/hub/needs";
 import { orgFetch, orgJson } from "@/org/client";
 import { findProblems, type Linked } from "@/org/goal-work";
 import { useOrgContext } from "@/org/context";
@@ -292,7 +292,7 @@ export default function GoalView({ id, space, at }: { id: string; space: Space; 
               <h2 id={`${ids}problems`} className="text-title font-medium">
                 Problems behind it
               </h2>
-              <p className="text-caption text-fg-subtle">The ones that bear directly on its number first, then by what customers said.</p>
+              <p className="text-caption text-fg-subtle">The ones that bear directly on its number first, then by what backs them.</p>
             </div>
             <div className="flex items-center gap-[8px]">
               {!!page.unlinked.length && (
@@ -310,7 +310,7 @@ export default function GoalView({ id, space, at }: { id: string; space: Space; 
                     <MenuItem key={u.id} onSelect={() => void link(u.id, g.id, true)}>
                       <span className="flex min-w-0 flex-col">
                         <span className="truncate">{u.title}</span>
-                        <span className="text-micro text-fg-subtle">{u.quotes ? `${plural(u.quotes, "quote")} · ${plural(u.sources, "source")}` : "No customer words yet"}</span>
+                        <span className="text-micro text-fg-subtle">{needLine(u)}</span>
                       </span>
                     </MenuItem>
                   ))}
@@ -336,7 +336,7 @@ export default function GoalView({ id, space, at }: { id: string; space: Space; 
             </ul>
           ) : (
             <p className="rounded-lg bg-panel px-[14px] py-[12px] text-body text-fg-muted shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
-              No problems linked yet. Find problems has Qalam AI read the problem pages against this goal; each link it keeps rests on what customers said.
+              No problems linked yet. Find problems has Qalam AI read the problem pages against this goal; each link it keeps rests on what the pages say.
             </p>
           )}
         </section>
@@ -405,7 +405,7 @@ function ProblemRow({ p, via, at, funnel, onWork, onUnlink, boardName }: { p: Go
       </span>
       <span className="flex min-w-0 flex-col items-end gap-[4px] pt-[1px]">
         <span className="max-w-full truncate text-caption text-fg-muted tnum">
-          {p.quotes ? `${plural(p.quotes, "quote")} · ${plural(p.sources, "source")}` : "No customer words yet"}
+          {needLine(p)}
           {p.against > 0 && <span className="text-warning"> · {p.against} against</span>}
         </span>
         {onThis ? (

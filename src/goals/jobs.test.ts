@@ -36,7 +36,7 @@ describe("what isn't known about a goal", () => {
       ["no-baseline", "Where “Weekly reorders” stands today"],
       ["no-target", "Where “Weekly reorders” should get to, and by when"],
       ["no-segment", "Who has “Rebuilding my usual basket takes too long”"],
-      ["team-only", "Whether customers have “Surprise delivery fees put me off ordering again”, or only the team says so"],
+      ["team-only", "Whether anything outside the team shows “Surprise delivery fees put me off ordering again”, or only the team says so"],
       ["open-question", "Do people reorder the same basket each week?"],
     ]);
     // Keys stay the same while a gap is open.

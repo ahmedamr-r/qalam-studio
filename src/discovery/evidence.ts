@@ -1,3 +1,4 @@
+import { backingWords, evidenceBasis, reachesKnow, type BasisCounts } from "./basis";
 import type { OstCard, OstEvidence } from "./types";
 
 /*
@@ -5,8 +6,9 @@ import type { OstCard, OstEvidence } from "./types";
  * with nothing behind it is Assumed until someone attaches words that back it: a customer quote,
  * the builder's own words (an interview answer, a brain dump), or a note. The builder's words
  * never count as a customer's. Words that speak against a card are kept on it and counted, but
- * never back it. What people said online (public posts, reviews) backs a card too, but on its own
- * leaves it Assumed until someone the team talked to says it.
+ * never back it. What people said online (public posts, reviews) and what's read elsewhere (someone
+ * else's report) back a card too, but on their own leave it Assumed until something of the team's
+ * own shows it: what its people said, what it measured or studied.
  */
 
 export type EvidenceTier = "customer" | "answers" | "note" | "none";
@@ -14,8 +16,14 @@ export type EvidenceTier = "customer" | "answers" | "note" | "none";
 /** The evidence that backs a card (not the words against it). */
 export const backing = (card: Pick<OstCard, "evidence">): OstEvidence[] => card.evidence.filter((e) => e.stance !== "against");
 
-/** What backs a card from its own customers and team (not people online). */
-const ownBacking = (card: Pick<OstCard, "evidence">): OstEvidence[] => backing(card).filter((e) => !e.online);
+/** What backs a card from its own customers and team (not people online, nor what's read elsewhere). */
+const ownBacking = (card: Pick<OstCard, "evidence">): OstEvidence[] => backing(card).filter((e) => evidenceBasis(e) !== "read");
+
+/** What in that can reach "We know": what's said, measured or studied. */
+const knownBacking = (card: Pick<OstCard, "evidence">): OstEvidence[] => ownBacking(card).filter((e) => reachesKnow(evidenceBasis(e)));
+
+/** How many pieces read elsewhere (someone else's report, not people online) back a card. */
+export const readCount = (card: Pick<OstCard, "evidence">) => backing(card).filter((e) => !e.online && evidenceBasis(e) === "read").length;
 
 /** How many quotes from people online back a card. */
 export const onlineCount = (card: Pick<OstCard, "evidence">) => backing(card).filter((e) => e.online).length;
@@ -26,7 +34,7 @@ export const againstCount = (card: Pick<OstCard, "evidence">) => card.evidence.f
 /** The strongest kind of evidence on a card. */
 export function tierOf(card: Pick<OstCard, "evidence">): EvidenceTier {
   const kinds = new Set(ownBacking(card).map((e) => e.kind));
-  if (kinds.has("quote")) return "customer";
+  if (knownBacking(card).length) return "customer";
   if (kinds.has("answer") || kinds.has("dump")) return "answers";
   if (kinds.has("note")) return "note";
   return "none";
@@ -34,13 +42,17 @@ export function tierOf(card: Pick<OstCard, "evidence">): EvidenceTier {
 
 /** A card's evidence at a glance, for the strip on top of it in the card panel. */
 export interface EvidenceSummary {
-  /** Customers' quotes that back it, and the sources they come from. */
+  /** What backs it and can reach "We know" (customers' quotes, what's measured or studied), and the sources they come from. */
   quotes: number;
   sources: number;
+  /** Those by what they rest on (none: all quotes). */
+  mix?: BasisCounts;
   /** The team's own words that back it: interview answers, a brain dump, notes. */
   ours: number;
   /** Quotes from people online (public posts, reviews) that back it. */
   online: number;
+  /** What's read elsewhere that backs it. */
+  read?: number;
   against: number;
   /** Who said those quotes, as their sources name them, the most quoted first. */
   who: string[];
@@ -64,12 +76,20 @@ function mostFirst(names: (string | undefined)[]): string[] {
 
 export function evidenceSummary(card: Pick<OstCard, "evidence">): EvidenceSummary {
   const backs = ownBacking(card);
-  const quotes = backs.filter((e) => e.kind === "quote");
+  const quotes = knownBacking(card);
+  const mix: BasisCounts = {};
+  for (const e of quotes) {
+    const b = evidenceBasis(e);
+    mix[b] = (mix[b] ?? 0) + 1;
+  }
+  const read = readCount(card);
   return {
     quotes: quotes.length,
     // A quote with no source of its own counts as one.
     sources: new Set(quotes.map((e) => e.sourceId ?? e.sourceTitle ?? e.id)).size,
+    mix,
     ours: backs.length - quotes.length,
+    ...(read ? { read } : {}),
     online: onlineCount(card),
     against: againstCount(card),
     who: mostFirst(quotes.map((e) => e.speaker)),
@@ -77,9 +97,9 @@ export function evidenceSummary(card: Pick<OstCard, "evidence">): EvidenceSummar
   };
 }
 
-/** A card's evidence in the order its rows read: customers' quotes, the team's own words, then what speaks against it (each kept as attached). */
+/** A card's evidence in the order its rows read: what can reach "We know", the rest, then what speaks against it (each kept as attached). */
 export function evidenceRows(card: Pick<OstCard, "evidence">): OstEvidence[] {
-  const rank = (e: OstEvidence) => (e.stance === "against" ? 2 : e.kind === "quote" ? 0 : 1);
+  const rank = (e: OstEvidence) => (e.stance === "against" ? 2 : reachesKnow(evidenceBasis(e)) ? 0 : 1);
   return [...card.evidence].sort((a, b) => rank(a) - rank(b));
 }
 
@@ -96,16 +116,19 @@ export function evidenceLabel(card: Pick<OstCard, "kind" | "createdBy" | "eviden
   const tail = against ? ` · ${against} against` : "";
   const online = onlineCount(card);
   const posts = online ? ` · ${online} ${online === 1 ? "post" : "posts"} online` : "";
-  if (isAssumed(card)) return against || online ? `Assumed${posts}${tail}` : "Assumed · needs evidence";
+  const read = readCount(card);
+  const reads = read ? ` · ${read} read elsewhere` : "";
+  if (isAssumed(card)) return against || online || read ? `Assumed${posts}${reads}${tail}` : "Assumed · needs evidence";
   if (isAIIdea(card)) return `Qalam AI idea${tail}`;
   const n = (k: OstEvidence["kind"]) => ownBacking(card).filter((e) => e.kind === k).length;
-  const quotes = n("quote");
-  if (quotes) return `${quotes} ${quotes === 1 ? "quote" : "quotes"}${tail}`;
+  const known = evidenceSummary(card);
+  if (known.quotes) return `${backingWords(known.mix ?? {})}${reads}${tail}`;
   // The answers to a card's questions are a source of the person's words too (src/discovery/questions.ts).
   if (n("answer") || ownBacking(card).some((e) => e.answerId?.startsWith("ask:"))) return `From your answers${tail}`;
   if (n("dump")) return `From your ${ownBacking(card).some((e) => e.kind === "dump" && !e.file) ? "brain dump" : "file"}${tail}`;
   if (n("note")) return `${n("note") === 1 ? "Your note" : `${n("note")} notes`}${tail}`;
-  if (online) return `${online} ${online === 1 ? "post" : "posts"} online${tail}`;
+  if (online) return `${online} ${online === 1 ? "post" : "posts"} online${reads}${tail}`;
+  if (read) return `${read} read elsewhere${tail}`;
   if (against) return `${against} against`;
   return card.kind === "opportunity" ? "No evidence yet" : "";
 }

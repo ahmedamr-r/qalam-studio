@@ -1,10 +1,11 @@
+import { backingWords } from "@/discovery/basis";
 import type { Decision } from "@/decisions/model";
 import type { Doc } from "@/doc/schema";
 import { backing } from "@/discovery/evidence";
 import type { OstCard } from "@/discovery/types";
 import { factHash } from "@/knowledge/refs";
 import { cardRef } from "./pieces";
-import { needEvidence, type PieceFacts, type ShownOn } from "./needs";
+import { needEvidence, onlyPeopleSaid, type PieceFacts, type ShownOn } from "./needs";
 import { WORK_LABEL, workKey, type WorkStatus } from "@/connectors/work";
 import { sameTopic, type Topic } from "./topics";
 import type { GoalTree } from "@/goals/types";
@@ -170,13 +171,13 @@ export function runChecks(x: CheckInput): Notice[] {
       const shown = x.shows.get(t.id) ?? [];
       // A need customers keep raising, on no board: its known lines rest on two sources or more.
       if (t.kind === "need" && !shown.length) {
-        const { quotes, sources, newest } = needEvidence(t, x.pieces);
+        const { quotes, sources, newest, mix } = needEvidence(t, x.pieces);
         if (sources.size >= 2)
           out.push({
             key: `pattern:${t.id}:${tier(sources.size)}`,
             kind: "pattern",
-            title: `Customers keep raising ${q(t.title)}, and no board has it`,
-            why: `${plural(quotes.size, "quote")} from ${plural(sources.size, "source")} on its topic page; no card on a board rests on them.`,
+            title: onlyPeopleSaid(mix) ? `Customers keep raising ${q(t.title)}, and no board has it` : `${q(t.title)} keeps coming up, and no board has it`,
+            why: `${backingWords(mix)} from ${plural(sources.size, "source")} on its topic page; no card on a board rests on them.`,
             at: newest || t.updatedAt,
             topic: t.id,
             refs: [...quotes],

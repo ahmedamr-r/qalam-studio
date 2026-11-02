@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import type { EvidenceSummary } from "@/discovery/evidence";
-import { strengthFill, strengthOf, type Strength } from "@/hub/needs";
+import { needLine, strengthFill, strengthOf, type Strength } from "@/hub/needs";
 import { Tip } from "../controls";
 import { r } from "../recipes";
 import { Meter } from "../viz";
@@ -26,11 +26,11 @@ export function EvidenceStrip({ s }: { s: EvidenceSummary }) {
           {s.quotes ? (
             <Tip label={s.from.length ? s.from.join(" · ") : plural(s.sources, "source")}>
               <span tabIndex={0} className="truncate text-fg">
-                {plural(s.quotes, "quote")} · {plural(s.sources, "source")}
+                {needLine(s)}
               </span>
             </Tip>
           ) : (
-            <span className="text-fg-muted">No customer words yet</span>
+            <span className="text-fg-muted">{s.read ? `${s.read} read elsewhere` : "Nothing outside the team yet"}</span>
           )}
           <span className={s.against ? "text-warning" : "text-fg-subtle"}>{s.against ? `${s.against} against` : "Nothing against"}</span>
         </span>

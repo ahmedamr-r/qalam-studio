@@ -2,7 +2,7 @@ import { useState } from "react";
 import clsx from "clsx";
 import type { Bearing } from "@/goals/bearings";
 import type { Goal } from "@/goals/types";
-import { strengthFill, strengthOf, type RankedNeed } from "@/hub/needs";
+import { needLine, strengthFill, strengthOf, type RankedNeed } from "@/hub/needs";
 import { goalHref, topicHref } from "@/projects/model";
 import { Tip } from "../controls";
 import { r } from "../recipes";
@@ -58,7 +58,7 @@ function Row({ n, goals }: { n: RankedNeed; goals: Goal[] }) {
       </Tip>
       <span className="col-start-2 col-end-4 flex min-w-0 flex-wrap items-center gap-x-[8px] gap-y-[4px]">
         <span className="text-caption text-fg-muted tnum">
-          {n.quotes ? `${plural(n.quotes, "quote")} · ${plural(n.sources, "source")}` : "No customer words yet"}
+          {needLine(n)}
           {n.against > 0 && <span className="text-warning"> · {n.against} against</span>}
         </span>
         <Sparkline values={n.weeks} label={`Quotes added each week, last ${n.weeks.length} weeks: ${n.weeks.join(", ")}`} />

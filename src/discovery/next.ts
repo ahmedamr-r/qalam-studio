@@ -1,3 +1,4 @@
+import { backingWords, type BasisCounts } from "./basis";
 import type { EvidenceSummary } from "./evidence";
 import type { OstKind } from "./types";
 import type { Strength } from "@/hub/needs";
@@ -29,7 +30,7 @@ export interface CardFacts {
   kind: OstKind;
   evidence: EvidenceSummary;
   /** A problem's page, and how much it rests on. */
-  page: { topic: string; strength: Strength; quotes: number; sources: number } | null;
+  page: { topic: string; strength: Strength; quotes: number; sources: number; mix?: BasisCounts } | null;
   /** What's under it already. */
   under: { solutions: number; tests: number };
   /** A goal's number in a line (null: none yet), the problems behind it, its next job, and what was proposed for it not decided yet: goals under it, problems behind it. */
@@ -160,9 +161,10 @@ export function backingLine(f: CardFacts): string {
   if (f.kind === "test") return "";
   const e = f.evidence;
   const tail = `${e.against ? ` · ${e.against} against` : ""}${f.feeds.length ? ` · watched in ${f.feeds.join(", ")}` : ""}`;
-  if (e.quotes) return `Rests on ${plural(e.quotes, "quote")} from ${plural(e.sources, "source")}${tail}`;
-  if (f.page?.quotes) return `Its page rests on ${plural(f.page.quotes, "quote")} from ${plural(f.page.sources, "source")}${tail}`;
+  if (e.quotes) return `Rests on ${backingWords(e.mix ?? { said: e.quotes })} from ${plural(e.sources, "source")}${tail}`;
+  if (f.page?.quotes) return `Its page rests on ${backingWords(f.page.mix ?? { said: f.page.quotes })} from ${plural(f.page.sources, "source")}${tail}`;
   if (e.ours) return `Only your words so far${tail}`;
   if (e.online) return `Only people online: ${plural(e.online, "post")}${tail}`;
+  if (e.read) return `Only read elsewhere: ${e.read}${tail}`;
   return f.kind === "solution" ? `Rests on the problem above it${tail}` : `Nothing behind it yet${tail}`;
 }
