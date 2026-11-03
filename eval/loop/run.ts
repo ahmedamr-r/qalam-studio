@@ -65,10 +65,12 @@ async function freshRead(s: SourceRecord, signal: AbortSignal): Promise<{ text: 
     const texts: string[] = [];
     const authors: string[] = [];
     for (let page = 1; page <= REVIEW_PAGES; page++) {
-      const json = (await readJson(reviewFeed(where.id, where.country, page), signal)) as { feed?: { entry?: { author?: { name?: { label?: string } } }[] } } | null;
+      const json = (await readJson(reviewFeed(where.id, where.country, page), signal)) as { feed?: { entry?: unknown } } | null;
       const got = reviewsIn(json);
       texts.push(...got.map((r) => `${r.title}. ${r.words}`));
-      for (const e of json?.feed?.entry ?? []) if (e.author?.name?.label) authors.push(e.author.name.label);
+      // A feed with one review gives it as an object, not a list.
+      const entry = json?.feed?.entry;
+      for (const e of (Array.isArray(entry) ? entry : entry ? [entry] : []) as { author?: { name?: { label?: string } } }[]) if (e.author?.name?.label) authors.push(e.author.name.label);
       if (got.length < 50) break;
     }
     return { text: texts.join("\n\n"), authors };
@@ -185,11 +187,16 @@ async function main() {
   const all = [];
   for (const i of inputs) {
     console.log(`\n${i.id}: scanning…`);
-    const m = await runOne(i, root, out);
+    // One input failing doesn't stop the rest.
+    const m = await runOne(i, root, out).catch((e: unknown) => {
+      console.log(`  failed: ${e instanceof Error ? e.message : String(e)}`);
+      return null;
+    });
+    if (!m) continue;
     all.push(m);
+    await writeFile(path.join(out, "summary.json"), JSON.stringify(all, null, 2));
     console.log(`  ${m.state} · ${m.seconds}s · ${m.calls} calls · ${m.tokens} tokens · ${m.read} read · ${m.problems} problems · ${m.kept} quotes, ${m.notFound} not found, ${m.unbacked} lines unbacked · on a fresh read: ${m.quotesOnFreshRead}${m.thin ? " · said it found little" : ""}`);
   }
-  await writeFile(path.join(out, "summary.json"), JSON.stringify(all, null, 2));
   console.log(`\nReports for a person to read: ${out}`);
 }
 
