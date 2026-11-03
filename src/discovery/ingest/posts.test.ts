@@ -4,6 +4,8 @@ import { isDiscussion, isReddit, lookedOnlineLine, pickReviews, postAddress, rev
 describe("public posts", () => {
   it("reads an app's reviews from Apple's feed and anything else as a page; a Reddit address isn't ours to read", () => {
     expect(postAddress("https://apps.apple.com/ae/app/basket-groceries/id1234567")).toEqual({ kind: "appstore", id: "1234567", country: "ae" });
+    expect(postAddress("https://apps.apple.com/app/id6772874868")).toEqual({ kind: "appstore", id: "6772874868", country: "us" });
+    expect(postAddress("https://apps.apple.com/CZ/app/id570060128")).toEqual({ kind: "appstore", id: "570060128", country: "cz" });
     expect(reviewFeed("1234567", "ae", 2)).toBe("https://itunes.apple.com/ae/rss/customerreviews/page=2/id=1234567/sortby=mostrecent/json");
     expect(postAddress("https://old.reddit.com/r/groceries/comments/abc123/x/")).toEqual({ kind: "page" });
     expect(postAddress("not a url")).toEqual({ kind: "page" });
@@ -35,8 +37,8 @@ describe("public posts", () => {
   });
 
   it("reads only where people speak for themselves, never an article about them", () => {
-    const yes = ["https://www.reddit.com/r/dubai/comments/abc/fees/", "https://apps.apple.com/ae/app/x/id1", "https://forum.example.org/t/fees/12", "https://community.example.com/thread", "https://money.stackexchange.com/q/1", "https://www.trustpilot.com/review/x.com"];
-    const no = ["https://www.gulfnews.com/why-your-bill", "https://gerald.com/blog/instacart-costs", "https://reddit.sentinel-team.org/posts/1", "not a url"];
+    const yes = ["https://www.reddit.com/r/dubai/comments/abc/fees/", "https://apps.apple.com/ae/app/x/id1", "https://forum.example.org/t/fees/12", "https://community.example.com/thread", "https://money.stackexchange.com/q/1", "https://www.trustpilot.com/review/x.com", "https://allnurses.com/how-eat-night-shift-t574298", "https://www.mumsnet.com/talk/work/5453463-late-payments", "https://www.ukbusinessforums.co.uk/goto/post?id=31", "https://trainerroad.com/forum/t/meal-timing/123", "https://www.cathe.com/forum/threads/eating.249585"];
+    const no = ["https://www.gulfnews.com/why-your-bill", "https://gerald.com/blog/instacart-costs", "https://shiftfuel.app/pricing", "https://news.example.com/2026/the-t-shirt", "https://reddit.sentinel-team.org/posts/1", "not a url"];
     expect(yes.map(isDiscussion)).toEqual(yes.map(() => true));
     expect(no.map(isDiscussion)).toEqual(no.map(() => false));
   });

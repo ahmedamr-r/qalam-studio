@@ -43,11 +43,12 @@ export const pageLines = (pages: Map<string, OutsidePage>) => [...pages.values()
 // Competitors
 
 /** What the research step is asked about the competitors. */
-export function competitorsTask(o: { org: string; facts: readonly MarketLine[]; named: readonly string[] }): string {
+export function competitorsTask(o: { org: string; facts: readonly MarketLine[]; named: readonly string[]; said?: string }): string {
   return [
     `“${o.org}”:`,
-    companyLines(o.facts) || "- (nothing known yet)",
-    o.named.length ? `The competitors they name: ${o.named.join(", ")}. Find each one's own website and what it does; add the other main competitors if there are clear ones.` : "They named none: find the companies that compete with it for the same customers, in the same market.",
+    ...(o.said ? [`What they want to build: ${one(o.said)}`] : []),
+    companyLines(o.facts) || (o.said ? "" : "- (nothing known yet)"),
+    o.named.length ? `The competitors they name: ${o.named.join(", ")}. Find each one's own website and what it does; add the other main competitors if there are clear ones.` : o.said ? "They named none: find what people use for this today, the most widely used first, big general products included, then the closest specialists." : "They named none: find the companies that compete with it for the same customers, in the same market.",
   ].join("\n");
 }
 
@@ -55,10 +56,11 @@ export interface CompetitorsSent extends PagesSent {
   named: string[];
 }
 
-export function competitorsMaterial(o: { org: string; facts: readonly MarketLine[]; named: readonly string[]; notes: string; pages: OutsidePage[] }): CompetitorsSent {
+export function competitorsMaterial(o: { org: string; facts: readonly MarketLine[]; named: readonly string[]; notes: string; pages: OutsidePage[]; said?: string }): CompetitorsSent {
   const pages = pagesBlock(o.pages);
   const text = [
     `The company: “${o.org}”.`,
+    ...(o.said ? [`What they want to build: ${one(o.said)}`] : []),
     companyLines(o.facts),
     "",
     o.named.length ? `The competitors they named: ${o.named.join(", ")}` : "They named no competitors.",

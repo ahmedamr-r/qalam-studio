@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appNameIn, appsIn, bestApp, hnComments, hnSearch, hnThreads } from "./sources";
+import { appNameIn, appsIn, bestApp, hnComments, hnMatches, hnSearch, hnThreads, popularApps } from "./sources";
 
 const app = (id: number, name: string, ratings = 500) => ({ trackId: id, trackName: name, trackViewUrl: `https://apps.apple.com/us/app/x/id${id}`, userRatingCount: ratings });
 
@@ -18,6 +18,11 @@ describe("finding an app", () => {
     expect(bestApp("Linear", apps)).toBeNull();
     expect(bestApp("!", apps)).toBeNull();
   });
+
+  it("finds the most rated apps for a search, leaving out those with too few ratings to read", () => {
+    const apps = appsIn({ results: [app(1, "Small", 50), app(2, "Big", 9000), app(3, "Middle", 400)] });
+    expect(popularApps(apps).map((a) => a.id)).toEqual(["2", "3"]);
+  });
 });
 
 describe("Hacker News", () => {
@@ -32,6 +37,14 @@ describe("Hacker News", () => {
     expect(got[0].text).toContain("Thanks someone");
     expect(got[0].text).not.toMatch(/<p>|pg_fan/);
     expect(hnComments(null)).toEqual([]);
+  });
+
+  it("keeps only comments about what was searched", () => {
+    expect(hnMatches("We shifted away from fossil fuel years ago", { name: "Shift Fuel" })).toBe(false);
+    expect(hnMatches("I tried Shift Fuel on nights", { name: "shift fuel" })).toBe(true);
+    expect(hnMatches("My meal plans never fit my shifts", { words: "meal plan shift" })).toBe(true);
+    expect(hnMatches("A meal I had once", { words: "meal plan" })).toBe(false);
+    expect(hnComments({ hits: [hit(1, long("We shifted from fossil fuel"))] }, { name: "Shift Fuel" })).toEqual([]);
   });
 
   it("groups comments by thread, the thread most of them are in first, the same comment once", () => {

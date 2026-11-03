@@ -38,7 +38,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "eval:retrieval": "tsx eval/retrieval/run.ts",
-    "eval:tiers": "tsx eval/tiers/run.ts"
+    "eval:tiers": "tsx eval/tiers/run.ts",
+    "eval:loop": "tsx eval/loop/run.ts"
   },
   "dependencies": {
     "electron": "^45.0.0",

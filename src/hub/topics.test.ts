@@ -136,6 +136,12 @@ describe("filing", () => {
     ]),
   });
 
+  it("counts a line left out because what it quotes isn't in what it cites", () => {
+    let unbacked = 0;
+    sanitizeFiling({ add: [{ topic: "t1", section: "know", text: "They said “words nobody said at all here”.", cites: ["q2"] }] }, sent(), { unbacked: () => void unbacked++ });
+    expect(unbacked).toBe(1);
+  });
+
   it("keeps lines that rest on what was sent, and starts the pages they need", () => {
     const f = sanitizeFiling(
       {

@@ -171,8 +171,9 @@ export function rankNeeds(x: NeedInput): RankedNeed[] {
 
 const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
 
-/** What backs a need, in a line: "2 quotes · 1 measured · 3 sources", or that nothing outside the team does yet. */
-export const needLine = (n: Pick<RankedNeed, "quotes" | "sources" | "mix">) => (n.quotes ? `${backingWords(n.mix ?? { said: n.quotes })} · ${plural(n.sources, "source")}` : "Nothing outside the team yet");
+/** What backs a need, in a line: "2 quotes · 1 measured · 3 sources", what only people online say, or that nothing outside the team does yet. */
+export const needLine = (n: Pick<RankedNeed, "quotes" | "sources" | "mix"> & Partial<Pick<RankedNeed, "online" | "onlineSources">>) =>
+  n.quotes ? `${backingWords(n.mix ?? { said: n.quotes })} · ${plural(n.sources, "source")}` : n.online ? `${plural(n.online, "quote")} from people online · ${plural(n.onlineSources ?? 1, "source")}` : "Nothing outside the team yet";
 
 /** Only what people said behind it: "customers keep raising it" says what's so. */
 export const onlyPeopleSaid = (mix: BasisCounts | undefined) => !mix || Object.keys(mix).every((b) => b === "said");

@@ -17,8 +17,9 @@ export function postAddress(raw: string): PostAddress {
     return { kind: "page" };
   }
   const host = u.hostname.replace(/^www\./, "");
-  const app = host === "apps.apple.com" ? u.pathname.match(/^\/([a-z]{2})\/app\/(?:[^/]+\/)?id(\d+)/i) : null;
-  return app ? { kind: "appstore", id: app[2], country: app[1].toLowerCase() } : { kind: "page" };
+  // A link needn't name a country's store (apps.apple.com/app/id123), and its page is only the maker's words.
+  const app = host === "apps.apple.com" ? u.pathname.match(/^(?:\/([a-z]{2}))?\/app\/(?:[^/]+\/)?id(\d+)/i) : null;
+  return app ? { kind: "appstore", id: app[2], country: (app[1] ?? "us").toLowerCase() } : { kind: "page" };
 }
 
 /** A Reddit address: found by search, but not ours to read. */
@@ -100,8 +101,14 @@ export function isDiscussion(raw: string): boolean {
   } catch {
     return false;
   }
-  return DISCUSSION_HOSTS.some((h) => host === h || host.endsWith(`.${h}`)) || /^(forums?|community|communities|discuss|discussions|answers|support\.community)\./.test(host);
+  return DISCUSSION_HOSTS.some((h) => host === h || host.endsWith(`.${h}`)) || /^(forums?|community|communities|discuss|discussions|answers|support\.community)\./.test(host) || isThread(raw);
 }
+
+/** An address shaped like a forum's thread, on a site we don't know by name (allnurses.com/how-eat-night-shift-t574298). */
+const isThread = (raw: string) => {
+  const u = new URL(raw);
+  return /forums?\./i.test(u.hostname) || /\/(t|threads?|topics?|forums?|discussions?|talk|viewtopic)(\/|\.|$)|-t\d+\/?$/i.test(u.pathname);
+};
 
 /** What looking online came to (server/org/posts.ts). */
 export interface LookedOnline {

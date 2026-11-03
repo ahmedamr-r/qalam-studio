@@ -1,4 +1,4 @@
-import { basisOf, basisSub, pieceBasis, type Basis } from "@/discovery/basis";
+import { basisOf, basisSub, pieceBasis, type Basis, isPublic } from "@/discovery/basis";
 import type { Doc } from "@/doc/schema";
 import type { ProductMap } from "@/code/map";
 import type { SeenMap } from "@/seen/types";
@@ -122,7 +122,7 @@ export function sourcePieces(s: SourceRecord, n: Names): Built {
   for (const quote of s.quotes) {
     const ref = quotePiece(quote.id);
     const dump = s.kind === "dump";
-    const online = s.kind === "post";
+    const online = isPublic(s);
     const basis = basisOf(s, quote);
     const held = !online && basis !== "said" && (!dump || basis !== "own");
     const what = held

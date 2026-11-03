@@ -25,6 +25,7 @@ import { CHAT_KEY, chatOf, type CanvasChat } from "@/space/chat";
 import { marketFromMarkdown, marketToMarkdown } from "@/market/market-md";
 import type { Market } from "@/market/types";
 import type { MarketSession } from "@/market/session";
+import type { ScanSession } from "@/scan/session";
 import type { FeedLog } from "@/feeds/feeds";
 import type { JobLog } from "@/goals/jobs";
 import { sameTopic } from "@/hub/topics";
@@ -88,6 +89,8 @@ export type OrgEvent = { tab?: string } & (
   | { kind: "map"; key: string; removed?: boolean }
   /** What's known about the company, its competitors and its domain changed (hub/market.md), or the first run's lookups moved on (`session`). */
   | { kind: "market"; session?: boolean }
+  /** A scan of what people complain about moved on (chats/scan/session.json). */
+  | { kind: "scan" }
   /** What people see in a product changed (hub/seen/<key>.md), or a reading of screenshots moved on (`reading`). */
   | { kind: "seen"; key: string; removed?: boolean; reading?: boolean }
   | { kind: "notice" }
@@ -982,6 +985,24 @@ export class OrgStore {
       return s;
     });
     this.emit({ kind: "market", session: true, tab: opts.tab });
+    return next;
+  }
+
+  // A scan of what people complain about (server/org/scan.ts): this computer's, out of Git.
+
+  getScanSession(): Promise<ScanSession | null> {
+    return readJson<ScanSession>(this.abs("chats/scan/session.json"));
+  }
+
+  /** Change or start the scan under its lock; every change is announced, so the window follows along. */
+  async changeScanSession(fn: (s: ScanSession | null) => ScanSession, opts: { tab?: string } = {}): Promise<ScanSession> {
+    const file = this.abs("chats/scan/session.json");
+    const next = await locked(file, async () => {
+      const s = fn(await readJson<ScanSession>(file));
+      await atomicWrite(file, stableStringify(s));
+      return s;
+    });
+    this.emit({ kind: "scan", tab: opts.tab });
     return next;
   }
 

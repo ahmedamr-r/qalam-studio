@@ -74,7 +74,7 @@ export const DiscoveryBody = z
   .discriminatedUnion("stage", [
     z.object({ stage: z.literal("followups"), answers: z.array(Answer).min(1).max(12) }),
     z.object({ stage: z.literal("draft"), answers: z.array(Answer).min(1).max(12), followUps: z.array(Answer).max(3).optional(), context: ContextIn }),
-    z.object({ stage: z.literal("extract"), product: text(2000), chunks: z.array(ChunkIn).min(1).max(8), goals: z.array(z.object({ id: text(12), title: text(300), metric: text(200) })).max(12).optional(), propose: z.array(text(300)).max(60).optional(), context: ContextIn }),
+    z.object({ stage: z.literal("extract"), product: text(2000), focus: text(2200).optional(), chunks: z.array(ChunkIn).min(1).max(8), goals: z.array(z.object({ id: text(12), title: text(300), metric: text(200) })).max(12).optional(), propose: z.array(text(300)).max(60).optional(), context: ContextIn }),
     z.object({ stage: z.literal("synthesize"), product: text(2000), tree: z.array(CardIn).min(1).max(400), quotes: z.array(QuoteIn).min(1).max(150), needs: z.array(NeedIn).max(60), context: ContextIn }),
     z.object({ stage: z.literal("import"), request: z.string().trim().min(3).max(1000), connectors: z.array(z.string().max(64)).min(1).max(8) }),
     z.object({ stage: z.literal("dump-read"), ...DumpBase }),
@@ -379,6 +379,7 @@ export const extractContent = (b: Extract<DiscoveryRequest, { stage: "extract" }
     "",
     ...(b.goals?.length ? ["", "The goals they're moving (id · goal · the number it tracks):", ...b.goals.map((g) => `- ${g.id} · ${g.title} · ${g.metric}`)] : []),
     ...(b.propose?.length ? ["", "Goals they have already, or that were proposed already (don't propose these again):", ...b.propose.map((t) => `- ${t}`)] : []),
+    ...(b.focus ? ["", `What they're looking into: ${b.focus}`, "Pick out only what bears on that. A review or comment about something else is not evidence of anything here, however much it says: pass over it, and return nothing for a part with nothing on it."] : []),
     "",
     "Say what each document is, and pick out what it states.",
   ].join("\n");

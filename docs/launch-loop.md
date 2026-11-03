@@ -63,10 +63,10 @@ No tokens to fetch. All of this lives in `src/scan/sources.ts` (pure) and `serve
 
 - **Finding an app:** `findApp(name, country)` through Apple's search API (`itunes.apple.com/search`, no key). A competitor's name is matched by code, then shown for the person to confirm. Apps have a country, so MENA products look in the right store.
 - **App Store reviews:** read up to 10 pages of 50. Checked on one app on November 3: page 11 answers 400. Today's `postAddress` reads page 1 only.
-- **Which reviews:** one extract call takes at most `EXTRACT_MAX_CHARS` (40,000), so `pickReviews` keeps 1 to 3 star reviews first, then the most voted (`im:voteSum`), then the newest. It says how many were read and how many were left out. The kept text stays exact, as quotes need.
+- **Which reviews:** one read call fits about 20,000 characters (`CHUNK`, with at most 40 quotes), so `pickReviews` keeps 1 to 3 star reviews first, then 4 stars, the most voted (`im:voteSum`) and then newest within each, and no 5 stars. It says how many were read and how many were kept. The kept text stays exact, as quotes need.
 - **Hacker News:** comment search through Algolia's API, by role ("Hacker News commenter"), `author` never kept, HTML removed with `htmlText`, and each comment's link kept as its origin. A model writes up to 3 searches (as `searchesCall` does); code runs them.
 - **Other pages:** the research step as now, only pages `isDiscussion` accepts. Whether G2, Capterra or Trustpilot let code read them is untested; the eval in phase 2 shows it.
-- **Reddit:** remove `postAddress`'s thread path and `redditText`, and skip Reddit links before fetching. Keep `why.reddit` by checking the link's host, so a Reddit link found still says to paste the thread. Fix the "until Qalam has a Reddit sign-in" line in `AGENTS.md`.
+- **Reddit:** remove `postAddress`'s thread path and `redditText`, and skip Reddit links before fetching. Keep `why.reddit` by checking the link's host, so a Reddit link found still says to paste the thread. Fix the "until Qalam has a Reddit sign-in" line in `AGENTS.md`. Don't get around this with an anti-bot scraper such as Scrapling: Reddit's User Agreement bans scraping without written consent, and in July 2026 a court let Reddit's anti-circumvention claims proceed against a scraping tool and its user.
 
 **Done when:** pure tests pass on saved answers, including no reviews, one review, a refused page and a handle in the words, and a live read of 3 real apps and 3 searches gives text with no usernames.
 

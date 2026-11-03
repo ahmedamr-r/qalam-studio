@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isEvidence } from "@/hub/topics";
-import { basisCounts, basisOf, basisSub, countsLine, evidenceBasis, heldBasis, mainBasis, movedLines, pieceBasis, reachesKnow } from "./basis";
+import { basisCounts, basisOf, isPublic, basisSub, countsLine, evidenceBasis, heldBasis, mainBasis, movedLines, pieceBasis, reachesKnow } from "./basis";
 import { solutionsMaterial, whose } from "./solutions";
 import { quoteEvidence, type SourceQuote } from "./sources";
 import { evidenceLabel, evidenceSummary, isAssumed } from "./evidence";
@@ -12,6 +12,12 @@ const quote = { id: "q", text: "x", span: [0, 1], kind: "finding", addedBy: "ai"
 describe("what a point rests on", () => {
   it("reads what came before there was one as it always meant", () => {
     expect(basisOf({ kind: "pdf" }, quote)).toBe("said");
+    // Public words are read elsewhere, unless they say these are their own product's reviews.
+    expect(basisOf({ kind: "post" }, { basis: "measured" })).toBe("read");
+    expect(basisOf({ kind: "post", basis: "said" }, quote)).toBe("said");
+    expect(isPublic({ kind: "post" })).toBe(true);
+    expect(isPublic({ kind: "post", basis: "said" })).toBe(false);
+    expect(isPublic({ kind: "pdf" })).toBe(false);
     expect(basisOf({ kind: "dump" }, quote)).toBe("own");
     expect(basisOf({ kind: "post" }, quote)).toBe("read");
     expect(pieceBasis({ sub: "pain" })).toBe("said");

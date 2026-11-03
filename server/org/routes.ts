@@ -50,6 +50,8 @@ import { decideProblem, draftProblems } from "./problems";
 import { decideSolution, draftSolutions, solutionsView, type SolutionsCard } from "./solutions";
 import { draftTests, type TestsRequest } from "./tests";
 import { aboutTopic, lookOnline } from "./posts";
+import { scanNow, startScan, stopScan } from "./scan";
+import { scanRequest } from "@/scan/session";
 import { addRepo, answerFromCode, codeView, readRepo, removeRepo, type NewRepo } from "../code";
 import { GOAL_LEVERS, type GoalLever } from "@/goals/types";
 import { meShape } from "@/org/you";
@@ -976,6 +978,19 @@ export function orgRoutes(): Hono<Env> {
     const store = c.get("store");
     return c.json({ org: store.info.name, market: await store.getMarket(), session: await marketSession(store) });
   });
+  // What people complain about: an idea or a product, read and filed (./scan.ts).
+  r.get("/api/org/:org/scan", async (c) => c.json({ session: await scanNow(c.get("store")) }));
+  r.post("/api/org/:org/scan", async (c) => {
+    if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't read what people complain about." }, 503);
+    const req = scanRequest(await c.req.json().catch(() => null));
+    if (!req) return bad("Say what you want to build, or name a product");
+    return c.json({ session: await startScan(c.get("store"), req, { tab: tabOf(c.req.raw.headers) }) });
+  });
+  r.delete("/api/org/:org/scan", (c) => {
+    stopScan(c.get("store"));
+    return c.json({ ok: true });
+  });
+
   r.post("/api/org/:org/market/company", async (c) => {
     if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't look the company up." }, 503);
     const b = (await c.req.json().catch(() => null)) as { site?: unknown; said?: unknown } | null;

@@ -61,10 +61,8 @@ export async function readAppReviews(app: { id: string; country: string; name?: 
 export async function readPosts(link: { url: string; title?: string }, signal: AbortSignal): Promise<OutsidePage | null> {
   if (isReddit(link.url)) return null;
   const where = postAddress(link.url);
-  if (where.kind === "appstore") {
-    const got = await readAppReviews({ id: where.id, country: where.country, url: link.url }, signal);
-    if (got) return got.page;
-  }
+  // An app's page with no reviews to read is its maker's words, not what anyone complains about.
+  if (where.kind === "appstore") return (await readAppReviews({ id: where.id, country: where.country, url: link.url }, signal))?.page ?? null;
   const page = await readPage(link, signal);
   return page && { ...page, text: withoutHandles(page.text) };
 }

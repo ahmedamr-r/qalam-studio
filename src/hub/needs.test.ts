@@ -70,6 +70,7 @@ describe("what to work on next", () => {
     expect(needLine(s)).toBe("1 quote · 1 measured · 1 studied · 3 sources");
     expect(needLine({ quotes: 0, sources: 0 })).toBe("Nothing outside the team yet");
     expect(needLine({ quotes: 2, sources: 1 })).toBe("2 quotes · 1 source");
+    expect(needLine({ quotes: 0, sources: 0, online: 14, onlineSources: 3 })).toBe("14 quotes from people online · 3 sources");
     expect(onlyPeopleSaid(s.mix)).toBe(false);
     expect(onlyPeopleSaid({ said: 2 })).toBe(true);
     expect(onlyPeopleSaid(undefined)).toBe(true);

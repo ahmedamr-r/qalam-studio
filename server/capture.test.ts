@@ -39,7 +39,7 @@ vi.mock("@/ai/server", () => ({
   },
 }));
 process.env.QALAM_NO_MODELS = "1";
-const { captureSource, changeBasis, decideFoundGoal, fileSources, readAsOwn } = await import("./capture");
+const { captureSource, captureTogether, changeBasis, decideFoundGoal, fileSources, readAsOwn } = await import("./capture");
 const { startInbox } = await import("./inbox");
 
 const fts5 = (() => {
@@ -236,4 +236,45 @@ describe.skipIf(!fts5)("capture, in the core", () => {
     expect(await readdir(path.join(store.dir, "inbox", "added"))).toEqual(["Sara call.md"]);
     expect((await readdir(path.join(store.dir, "sources"))).filter((f) => f.endsWith(".md"))).toHaveLength(1);
   }, 20_000);
+});
+
+describe("captureTogether", () => {
+  const post = (title: string, origin: string) => ({ ing: { kind: "post" as const, title, origin, text: `App Store reviewer (1 star): Slow. I can't plan bath time around a four-hour window. ${origin}` } });
+
+  it("reads each source, files them all at once, places nothing, and counts what it couldn't find", async () => {
+    const r = await captureTogether(store, [post("Reviews A", "https://a.example"), post("Reviews B", "https://b.example")]);
+    expect(r.sources.map((s) => s.quotes)).toEqual([1, 1]);
+    expect(r.notFound).toBe(2);
+    expect(calls.list.filter((c) => c === "extract")).toHaveLength(2);
+    expect(calls.list.filter((c) => c === "topics")).toHaveLength(1);
+    expect(calls.list).not.toContain("place");
+    expect(r.filed?.pages.map((p) => p.title)).toEqual(["Delivery windows are too wide"]);
+  });
+
+  it("files strangers' words as what's believed, and a product's own reviews as what's known", async () => {
+    await captureTogether(store, [post("Reviews", "https://a.example")]);
+    const section = async () => (await store.listTopics()).find((t) => t.title === "Delivery windows are too wide")?.lines[0].section;
+    expect(await section()).toBe("believe");
+    for (const t of await store.listTopics()) await store.removeTopic(t.id);
+    await captureTogether(store, [{ ...post("My reviews", "https://b.example"), basis: "said" }]);
+    expect((await store.listTopics()).some((t) => t.title === "Delivery windows are too wide" && t.lines.some((l) => l.section === "know"))).toBe(true);
+  });
+
+  it("with a focus, keeps no source no page cites, and says which is which in the order given", async () => {
+    const off = { ing: { kind: "post" as const, title: "Off topic", origin: "https://off.example", text: "App Store reviewer (1 star): Slow. I can't plan bath time around a four-hour window. Off" } };
+    // The filing cites only the first quote it's sent.
+    const r = await captureTogether(store, [post("Reviews", "https://a.example"), off], { focus: "Delivery windows" });
+    expect(r.sources[0]).toMatchObject({ title: "Reviews", quotes: 1 });
+    expect(r.sources[1]).toEqual({ title: "Off topic", quotes: 0 });
+    expect((await store.listSources()).map((s) => s.title)).not.toContain("Off topic");
+    expect(calls.texts[0]).toContain("Delivery windows");
+  });
+
+  it("stops before reading when it's stopped", async () => {
+    const stop = new AbortController();
+    stop.abort();
+    const r = await captureTogether(store, [post("Reviews", "https://a.example")], { signal: stop.signal });
+    expect(r.sources).toEqual([]);
+    expect(calls.list).toEqual([]);
+  });
 });

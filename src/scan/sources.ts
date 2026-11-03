@@ -16,6 +16,8 @@ export interface AppHit {
   name: string;
   url: string;
   ratings: number;
+  /** What it says it is: its category and its description's start. */
+  about?: string;
 }
 
 export const appSearch = (term: string, country: string) => `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&entity=software&limit=10&country=${country}`;
@@ -27,7 +29,8 @@ export function appsIn(json: unknown): AppHit[] {
     const id = typeof r.trackId === "number" ? String(r.trackId) : "";
     const name = str(r.trackName).trim();
     const url = str(r.trackViewUrl);
-    return id && name && url ? [{ id, name, url, ratings: Number(r.userRatingCount) || 0 }] : [];
+    const about = [str(r.primaryGenreName), str(r.description).replace(/\s+/g, " ").slice(0, 220)].filter(Boolean).join(": ");
+    return id && name && url ? [{ id, name, url, ratings: Number(r.userRatingCount) || 0, ...(about ? { about } : {}) }] : [];
   });
 }
 
@@ -48,6 +51,9 @@ export function bestApp(name: string, apps: readonly AppHit[]): AppHit | null {
   return apps.filter((a) => a.ratings >= MIN_RATINGS && ` ${words(a.name)} `.includes(want)).sort((a, b) => b.ratings - a.ratings)[0] ?? null;
 }
 
+/** The apps most people rated for a search, for an idea whose named competitors have none: enough ratings to have reviews worth reading. */
+export const popularApps = (apps: readonly AppHit[], min = 200) => apps.filter((a) => a.ratings >= min).sort((a, b) => b.ratings - a.ratings);
+
 export interface HnComment {
   story: string;
   title: string;
@@ -59,13 +65,24 @@ const YEAR = 365 * 86_400_000;
 /** Comments from the last three years that match some words. */
 export const hnSearch = (query: string, now: number) => `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(query)}&tags=comment&hitsPerPage=50&numericFilters=created_at_i>${Math.floor((now - 3 * YEAR) / 1000)}`;
 
-/** The comments in an answer, as words with no username; too short to say anything, or with no thread to link to, they're left out. */
-export function hnComments(json: unknown): HnComment[] {
+/**
+ * Whether a comment is about what was searched: a product's name whole ("Shift Fuel", never "the shift
+ * away from fossil fuel"), or every word of a search, its endings free ("plans" for "plan"). The search
+ * itself matches far more loosely than that.
+ */
+export function hnMatches(text: string, q: { name?: string; words?: string }): boolean {
+  const have = ` ${words(text)} `;
+  if (q.name) return have.includes(` ${words(q.name)} `);
+  return words(q.words ?? "").split(" ").filter(Boolean).every((w) => have.includes(` ${w}`));
+}
+
+/** The comments in an answer that are about what was searched, as words with no username; too short to say anything, or with no thread to link to, they're left out. */
+export function hnComments(json: unknown, q: { name?: string; words?: string } = {}): HnComment[] {
   const hits = rec(json).hits;
   return (Array.isArray(hits) ? hits : []).map(rec).flatMap((h) => {
     const story = h.story_id === null || h.story_id === undefined ? "" : String(h.story_id);
     const text = withoutHandles(htmlText(str(h.comment_text)).text).trim();
-    return story && text.length >= 60 ? [{ story, title: str(h.story_title).trim(), text }] : [];
+    return story && text.length >= 60 && hnMatches(text, q) ? [{ story, title: str(h.story_title).trim(), text }] : [];
   });
 }
 

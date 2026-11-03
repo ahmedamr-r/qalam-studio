@@ -50,6 +50,15 @@ describe("sanitizeExtract", () => {
   const got = sanitizeExtract(raw, chunks, new Map(), 7);
   const words = got.quotes.map((q) => q.quote.text);
 
+  it("keeps no speaker on what's said in public", () => {
+    const post = sanitizeExtract({ quotes: [{ id: "q1", chunkId: "c1", text: "I never know when the driver will turn up.", speaker: "P3", kind: "pain" }] }, [{ ref: "c1", sourceId: "a", start: 0, text: A, kind: "post" }], new Map(), 7);
+    expect(post.quotes[0].quote.speaker).toBeUndefined();
+  });
+
+  it("counts the quotes it couldn't find", () => {
+    expect(got.notFound).toBe(3);
+  });
+
   it("keeps only quotes found word for word in the part they name, with the source's words", () => {
     expect(words).toEqual(["I never know when the driver will turn up.", "The prices change every week … I'd love a price history", "so I just stopped ordering for lunch"]);
   });
