@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isDiscussion, isReddit, lookedOnlineLine, pickReviews, postAddress, reviewFeed, reviewsIn, reviewsText, withoutHandles } from "./posts";
+import { isDiscussion, isReddit, lookedOnlineLine, pickReviews, postAddress, refusesReaders, reviewFeed, reviewsIn, reviewsText, withoutHandles } from "./posts";
 
 describe("public posts", () => {
   it("reads an app's reviews from Apple's feed and anything else as a page; a Reddit address isn't ours to read", () => {
@@ -19,6 +19,9 @@ describe("public posts", () => {
     const got = reviewsIn({ feed: { entry: [entry("2", "Takes forever to reorder.", { "im:voteSum": { label: "4" }, updated: { label: "2026-10-01T10:00:00-07:00" } }), { "im:rating": { label: "x" }, content: { label: "?" } }] } });
     expect(got).toEqual([{ stars: 2, title: "Slow", words: "Takes forever to reorder.", votes: 4, at: Date.parse("2026-10-01T10:00:00-07:00") }]);
     expect(reviewsIn({ feed: { entry: entry("1", "One entry only") } })).toHaveLength(1);
+    // A title that's the reviewer's own name or business isn't kept.
+    const named = { ...entry("4", "Very easy to use."), author: { name: { label: "KO Construction" } }, title: { label: "KO Construction and Remodeling LLC" } };
+    expect(reviewsText("App", reviewsIn({ feed: { entry: named } }))?.text).toBe("App Store reviewer (4 stars): Very easy to use.");
     expect(reviewsIn({ feed: {} })).toEqual([]);
     expect(reviewsIn(null)).toEqual([]);
     expect(reviewsText("Basket", got)).toEqual({ title: "App Store reviews: Basket", text: "App Store reviewer (2 stars): Slow. Takes forever to reorder." });
@@ -34,6 +37,11 @@ describe("public posts", () => {
     const small = pickReviews([r(1, "x".repeat(50)), r(2, "short")], 60);
     expect(small.kept.map((x) => x.words)).toEqual(["short"]);
     expect(small.left).toBe(1);
+  });
+
+  it("knows the review sites that refuse to be read", () => {
+    expect(["https://www.g2.com/x", "https://capterra.com/p/1", "https://www.producthunt.com/products/x"].map(refusesReaders)).toEqual([true, true, true]);
+    expect(["https://forum.example.com/t/1", "not a url"].map(refusesReaders)).toEqual([false, false]);
   });
 
   it("reads only where people speak for themselves, never an article about them", () => {

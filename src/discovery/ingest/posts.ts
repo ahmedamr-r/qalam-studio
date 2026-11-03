@@ -22,6 +22,15 @@ export function postAddress(raw: string): PostAddress {
   return app ? { kind: "appstore", id: app[2], country: (app[1] ?? "us").toLowerCase() } : { kind: "page" };
 }
 
+/** Review sites that refuse to be read from here (403, November 2026): tried last, so forums that answer get their turn. */
+export const refusesReaders = (raw: string) => {
+  try {
+    return /(^|\.)(g2|capterra|producthunt)\.com$/i.test(new URL(raw).hostname);
+  } catch {
+    return false;
+  }
+};
+
 /** A Reddit address: found by search, but not ours to read. */
 export function isReddit(raw: string): boolean {
   try {
@@ -60,7 +69,11 @@ export function reviewsIn(json: unknown): Review[] {
     const words = one(label(e.content));
     const stars = Number(label(e["im:rating"]));
     if (!words || !Number.isFinite(stars) || stars < 1) return [];
-    return [{ stars, title: one(label(e.title)), words, votes: Number(label(e["im:voteSum"])) || 0, at: Date.parse(label(e.updated)) || 0 }];
+    // Some reviewers title a review with their own name or business: never kept.
+    const by = one(label(rec(e.author).name)).toLowerCase();
+    const said = one(label(e.title));
+    const title = by.length >= 5 && said.toLowerCase().includes(by) ? "" : said;
+    return [{ stars, title, words, votes: Number(label(e["im:voteSum"])) || 0, at: Date.parse(label(e.updated)) || 0 }];
   });
 }
 
@@ -82,7 +95,7 @@ export function pickReviews(all: readonly Review[], max = REVIEW_CHARS): { kept:
   return { kept, left: all.length - kept.length };
 }
 
-const reviewLine = (r: Review) => `App Store reviewer (${r.stars} ${r.stars === 1 ? "star" : "stars"}): ${r.title}. ${r.words}`;
+const reviewLine = (r: Review) => `App Store reviewer (${r.stars} ${r.stars === 1 ? "star" : "stars"}): ${r.title ? `${r.title}. ` : ""}${r.words}`;
 
 /** An app's reviews as who said what: each reviewer, their stars, their words. */
 export function reviewsText(app: string, reviews: readonly Review[]): { title: string; text: string } | null {

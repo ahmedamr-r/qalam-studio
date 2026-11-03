@@ -90,6 +90,19 @@ This is the core. Don't build phases 3 to 5 until it passes.
 
 **If it fails, stop and rethink the loop.** A better share card won't fix weak results.
 
+**Result, November 3, 2026 (`.qalam-dev/eval-loop/final/`, not in Git). What code measures passed; the comparison with plain Claude is for Ahmed to mark:**
+- 588 quotes kept; 578 of the 578 re-checked were found on a fresh read, and 10 were on a page that couldn't be read again. 1 quote thrown out as not found, and no filed lines.
+- 9 of 10 gave at least 3 problems. The tenth, a changelog tool, found nothing and said so.
+- 73 to 269 seconds and 41,000 to 153,000 tokens per scan, averaging 150 seconds and 84,000.
+- Three real runs before this one changed the design: read marketing copy as complaints, read gig-work reviews for a meal planner, and kept quotes from off-topic threads. The reader now hears what the person is looking into, and Qalam AI picks which apps are really used for the need.
+
+**Known weak spots to carry forward:**
+- Thrown-out counts are almost always 0, so "code threw out M" won't carry a share card. Say what was checked instead.
+- G2, Capterra and Product Hunt refuse to be read (403), as do many forums. Plain Claude's search can name these pages but Qalam can't quote them, so a person can paste them.
+- Hacker News searches still bring in loosely related threads, and names that are common words mislead ("Beamer" found LaTeX threads).
+- Problem titles follow the sources' language: an English idea with Saudi reviews gets Arabic titles. Decide this in phase 3.
+- "Uses today" lists named products that were never read, and one wrong app (Invoke). Show only what was read.
+
 ### 3. One box
 
 - **`scanInput` (pure, `src/scan/input.ts`):** App Store link, other web address, short name or idea text. A wrong guess costs one click to correct.

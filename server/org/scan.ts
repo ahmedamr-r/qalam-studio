@@ -1,7 +1,7 @@
 import { competitorsCall } from "@/ai/market";
 import { appsCall, searchesCall } from "@/ai/scan";
 import type { Ingested } from "@/discovery/ingest/core";
-import { isDiscussion, isReddit, postAddress } from "@/discovery/ingest/posts";
+import { isDiscussion, isReddit, postAddress, refusesReaders } from "@/discovery/ingest/posts";
 import type { OutsidePage } from "@/goals/outside";
 import { competitorsMaterial, competitorsTask, sanitizeCompetitors } from "@/market/rivals";
 import { emptyScan, isThin, sanitizeAppPicks, sanitizeSearches, scanOf, type ScanRead, type ScanRequest, type ScanSession } from "@/scan/session";
@@ -172,7 +172,7 @@ async function runScan(store: OrgStore, req: ScanRequest, deps: ScanDeps, signal
       const where = postAddress(l.url);
       return (where.kind !== "appstore" || fresh(`app:${where.id}`)) && fresh(l.url);
     });
-    const tries = unseen.slice(0, SCAN_LIMITS.tries);
+    const tries = [...unseen.filter((l) => !refusesReaders(l.url)), ...unseen.filter((l) => refusesReaders(l.url))].slice(0, SCAN_LIMITS.tries);
     if (tries.length) step("Reading pages where people talk about it");
     // Many forums turn readers away: on to the next until enough have read.
     let unreadable = 0;
@@ -190,7 +190,7 @@ async function runScan(store: OrgStore, req: ScanRequest, deps: ScanDeps, signal
         }
       }
     }
-    const notRead: NonNullable<ScanSession["notRead"]> = [...links.filter((l) => isReddit(l.url)).map((l) => ({ url: l.url, why: "reddit" as const })), ...links.filter((l) => !isReddit(l.url) && !isDiscussion(l.url)).map((l) => ({ url: l.url, why: "article" as const })), ...unseen.slice(tried).map((l) => ({ url: l.url, why: "too many" as const })), ...refused.map((url) => ({ url, why: "unreadable" as const }))];
+    const notRead: NonNullable<ScanSession["notRead"]> = [...links.filter((l) => isReddit(l.url)).map((l) => ({ url: l.url, why: "reddit" as const })), ...links.filter((l) => !isReddit(l.url) && !isDiscussion(l.url)).map((l) => ({ url: l.url, why: "article" as const })), ...unseen.filter((l) => !tries.slice(0, tried).includes(l)).map((l) => ({ url: l.url, why: "too many" as const })), ...refused.map((url) => ({ url, why: "unreadable" as const }))];
     for (const p of got) take({ title: p.title, origin: p.url, kind: "page" }, p.text);
     await change((s) => ({ ...s, read: items.map((i) => i.read), skipped: { reddit, before, articles, unreadable }, notRead: notRead.slice(0, 30), ...(noWeb ? { noWeb: true as const } : {}) }));
     if (signal.aborted) return;
