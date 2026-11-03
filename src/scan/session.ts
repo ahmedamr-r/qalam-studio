@@ -22,11 +22,22 @@ export type ScanState = "reading" | "done" | "failed" | "stopped";
 export interface ScanRead {
   title: string;
   origin: string;
-  kind: "reviews" | "thread" | "page";
+  /** Reviews, a thread and a page are people speaking for themselves; an article is what's been published. */
+  kind: "reviews" | "thread" | "page" | "article";
   sourceId?: string;
   quotes?: number;
   /** For reviews: how many the feed gave, and how many were kept to read. */
   reviews?: { read: number; kept: number };
+}
+
+/** What's known beside what people say: what another product offers or charges, or what a page published. */
+export interface ScanKnown {
+  kind: "product" | "published";
+  /** The product it's about. */
+  name?: string;
+  text: string;
+  title: string;
+  url: string;
 }
 
 export interface ScanSession {
@@ -45,6 +56,8 @@ export interface ScanSession {
   notRead?: { url: string; why: "reddit" | "before" | "article" | "unreadable" | "too many" }[];
   /** Quotes kept; Qalam AI's quotes code couldn't find; lines whose words didn't hold. */
   checked: { kept: number; notFound: number; unbacked: number };
+  /** Read elsewhere, each with its page, to show beside the problems. */
+  known?: ScanKnown[];
   /** The problem pages it went into. */
   problems: { id: string; title: string }[];
   /** Too little to go on: said so, never filled in. */
@@ -74,6 +87,9 @@ export function scanRequest(raw: unknown): ScanRequest | null {
   }
   return null;
 }
+
+/** The quotes of people speaking for themselves, which is what a scan's verdict goes by. */
+export const peopleQuotes = (read: readonly Pick<ScanRead, "kind" | "quotes">[]) => read.reduce((n, r) => n + (r.kind === "article" ? 0 : (r.quotes ?? 0)), 0);
 
 export const emptyScan = (target: ScanTarget, at: number): ScanSession => ({ v: 1, state: "reading", at, target, steps: ["Starting"], competitors: [], read: [], skipped: { reddit: 0, before: 0, articles: 0, unreadable: 0 }, checked: { kept: 0, notFound: 0, unbacked: 0 }, problems: [], thin: false });
 

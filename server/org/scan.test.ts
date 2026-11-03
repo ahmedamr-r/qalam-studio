@@ -77,18 +77,89 @@ describe("a scan", () => {
       { name: "Mealime", app: { id: "11", name: "Mealime Meal Plans", url: "https://apps.apple.com/us/app/x/id11" } },
       { name: "Big Planner", app: { id: "22", name: "Big Planner", url: "https://apps.apple.com/us/app/x/id22" } },
     ]);
-    expect(s.read.map((r) => r.kind)).toEqual(["reviews", "reviews", "thread", "page"]);
+    expect(s.read.map((r) => r.kind)).toEqual(["reviews", "reviews", "thread", "page", "article"]);
     expect(s.read[0]).toMatchObject({ reviews: { read: 500, kept: 90 }, sourceId: "s0", quotes: 5 });
     expect(s.problems).toHaveLength(3);
-    expect(s.checked).toEqual({ kept: 20, notFound: 4, unbacked: 2 });
+    expect(s.checked).toEqual({ kept: 25, notFound: 4, unbacked: 2 });
     expect(s.thin).toBe(false);
   });
 
-  it("never reads Reddit or articles, says so, and keeps no usernames", async () => {
+  it("reads what's been published as read elsewhere, for what's known about the market, and shows it beside people's words", async () => {
     const d = deps();
     const s = await scanToEnd(store, idea, d);
-    expect(s.skipped).toEqual({ reddit: 1, before: 0, articles: 1, unreadable: 0 });
-    expect(s.notRead?.map((n) => n.why)).toEqual(["reddit", "article"]);
+    const article = d.captured().find((x) => x.ing.origin === "https://news.example.com/why") as { ing: { kind?: string }; basis?: string; focus?: string };
+    expect(article.ing.kind).toBe("url");
+    expect(article.basis).toBe("read");
+    expect(article.focus).toContain("what they use today and pay");
+    expect(s.read.at(-1)).toMatchObject({ kind: "article", origin: "https://news.example.com/why" });
+    expect(vi.mocked(d.research).mock.calls.map(([r]) => r.purpose)).toContain("space");
+  });
+
+  it("goes by people's words when it says it found little: what's published can't make up for them", async () => {
+    const d = deps({ quotes: 2, links: [{ title: "An article", url: "https://news.example.com/why" }] });
+    vi.mocked(d.reviews).mockResolvedValue(null);
+    vi.mocked(d.json).mockResolvedValue(null);
+    const taken = vi.mocked(d.capture).getMockImplementation()!;
+    vi.mocked(d.capture).mockImplementation(async (a, items, o) => ({ ...(await taken(a, items, o)), sources: items.map((x, i) => ({ id: `s${i}`, title: x.ing.title, quotes: 40 })) }));
+    const s = await scanToEnd(store, idea, d);
+    expect(s.read.map((r) => r.kind)).toEqual(["article"]);
+    expect(s.problems).toHaveLength(3);
+    expect(s.checked.kept).toBe(40);
+    expect(s.thin).toBe(true);
+  });
+
+  it("keeps what others offer in what's known, a person's competitor stays theirs, and an earlier look's isn't taken for theirs", async () => {
+    await store.changeMarket((m) => ({ ...m, competitors: [{ id: "c1", name: "Paprika", lines: [], by: "you", at: 1 }, { id: "c2", name: "Old Rival", lines: [], by: "qalam", at: 1 }] }));
+    const d = deps({ competitors: ["Mealime"] });
+    const rival = { competitors: [{ name: "Mealime", page: "w1", lines: [{ text: "Mealime are meal planning apps.", page: "w1", quote: "are meal planning apps people use every week" }] }] };
+    const answer = vi.mocked(d.structured).getMockImplementation()!;
+    vi.mocked(d.structured).mockImplementation(async (call, signal) => ((call as { system?: string }).system?.includes("competitors from web pages") ? { data: rival } : answer(call, signal)) as never);
+    const s = await scanToEnd(store, idea, d);
+    const task = vi.mocked(d.research).mock.calls.find(([r]) => r.purpose === "competitors")![0].task;
+    expect(task).toContain("Paprika");
+    expect(task).not.toContain("Old Rival");
+    expect(task).toContain("what it charges");
+    const m = await store.getMarket();
+    expect(m.competitors.map((c) => c.name)).toEqual(["Paprika", "Mealime", "Old Rival"]);
+    expect(m.competitors.find((c) => c.name === "Mealime")?.lines[0].quote).toContain("meal planning apps");
+    expect(s.known).toContainEqual(expect.objectContaining({ kind: "product", name: "Mealime", text: "Mealime are meal planning apps." }));
+  });
+
+  it("says what others charge, a price first, and an app no lookup named only with a price", async () => {
+    const d = deps({ competitors: ["Mealime"] });
+    const rival = { competitors: [{ name: "Mealime", page: "w1", lines: [{ text: "Mealime are meal planning apps.", page: "w1", quote: "are meal planning apps people use every week" }] }] };
+    const answer = vi.mocked(d.structured).getMockImplementation()!;
+    vi.mocked(d.structured).mockImplementation(async (call, signal) => {
+      const c = call as { system?: string; content?: { text: string }[] };
+      if (c.system?.includes("competitors from web pages")) return { data: rival } as never;
+      if (c.system?.includes("what products charge")) return { data: { prices: [{ name: "Mealime", text: "Mealime Pro costs $5.99 a month.", page: "w1", quote: "Mealime Pro costs $5.99 per month." }] } } as never;
+      return answer(call, signal) as never;
+    });
+    vi.mocked(d.read).mockImplementation(async (l) => ({ ref: "", url: l.url, title: "Mealime pricing", text: `Mealime are meal planning apps people use every week. Mealime Pro costs $5.99 per month. ${"Plans and lists. ".repeat(20)}` }));
+    const s = await scanToEnd(store, idea, d);
+    const m = await store.getMarket();
+    expect(m.competitors.find((c) => c.name === "Mealime")?.lines[0].text).toBe("Mealime Pro costs $5.99 a month.");
+    expect(s.known?.[0]).toMatchObject({ kind: "product", text: "Mealime Pro costs $5.99 a month." });
+    expect(m.competitors.map((c) => c.name)).not.toContain("Big Planner");
+  });
+
+  it("looks at what a product competes with too, on its own lookup, and a failed lookup for what's published doesn't stop it", async () => {
+    const d = deps();
+    const look = vi.mocked(d.research).getMockImplementation()!;
+    vi.mocked(d.research).mockImplementation(async (req, emit, signal) => {
+      if (req.purpose === "space") throw new Error("search failed");
+      return look(req, emit, signal);
+    });
+    const s = await scanToEnd(store, { target: { kind: "product", name: "Mealime" }, country: "us" }, d);
+    expect(s.state).toBe("done");
+    expect(vi.mocked(d.research).mock.calls.find(([r]) => r.purpose === "competitors")![0].task).toContain("competes with Mealime");
+  });
+
+  it("never reads Reddit, says so, and keeps no usernames", async () => {
+    const d = deps();
+    const s = await scanToEnd(store, idea, d);
+    expect(s.skipped).toEqual({ reddit: 1, before: 0, articles: 0, unreadable: 0 });
+    expect(s.notRead?.map((n) => n.why)).toEqual(["reddit"]);
     expect(vi.mocked(d.posts).mock.calls.map(([l]) => l.url)).toEqual([page.url]);
     const thread = d.captured().find((x) => x.ing.origin?.includes("ycombinator"))!;
     expect(thread.ing.origin).toBe("https://news.ycombinator.com/item?id=7");
@@ -112,7 +183,7 @@ describe("a scan", () => {
     const theirs = deps();
     await rm(path.join(dir, "chats"), { recursive: true, force: true });
     await scanToEnd(store, { target: { kind: "product", name: "Mealime", app: link }, country: "us" }, theirs);
-    expect(theirs.captured().some((x) => x.basis)).toBe(false);
+    expect(theirs.captured().some((x) => x.basis === "said")).toBe(false);
   });
 
   it("names a product from its link when they gave only that", async () => {

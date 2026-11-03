@@ -112,6 +112,7 @@ async function report(i: LoopInput, s: ScanSession, store: OrgStore, sources: So
   out.push(...s.competitors.map((c) => `- Uses today: ${c.name}${c.app ? ` (app: ${c.app.name})` : " (no app found)"}`));
   out.push(...s.read.map((r) => `- ${r.title} · ${r.quotes ?? 0} quotes${r.reviews ? ` · ${r.reviews.kept} of ${r.reviews.read} reviews read` : ""} · ${r.origin}`));
   out.push(...(s.notRead ?? []).map((n) => `- Not read (${n.why}): ${n.url}`));
+  if (s.known?.length) out.push("", "## Read elsewhere", "", ...s.known.map((k) => `- ${k.name ? `${k.name}: ` : ""}${line(k.text)} (${k.title}, ${k.url})`));
   out.push("", "## Problems, ranked", "");
   for (const n of needs) {
     const t = await store.getTopic(n.topic);
@@ -143,7 +144,7 @@ async function runOne(i: LoopInput, root: string, out: string) {
     const scanTokens = spent.reduce((n, e) => n + e.input + e.output + e.cacheRead + e.cacheWrite, 0);
     const about = session.target.kind === "idea" ? session.target.said : session.target.name;
     const plainNotes = (await research({ purpose: "posts", task: `What do people complain about here, in their own words, and what's worth building? ${about}`, connectors: ["web"] }, () => {}, ctrl.signal).catch(() => null))?.notes ?? "";
-    const sources = (await store.listSources()).filter((s) => s.kind === "post");
+    const sources = (await store.listSources()).filter((s) => s.kind === "post" || s.kind === "url");
     const check = await checkSources(sources, ctrl.signal);
     const metrics = {
       id: i.id,

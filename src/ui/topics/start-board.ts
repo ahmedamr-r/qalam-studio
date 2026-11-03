@@ -24,7 +24,9 @@ export async function problemCard(topicId: string): Promise<{ title: string; pro
   const view = await topicsDb.get(topicId);
   if (!view) return null;
   const t = view.topic;
-  const refs = [...new Set(t.lines.filter((l) => l.section === "know").flatMap((l) => l.cites))].filter((r) => r.startsWith(QUOTE));
+  // What people said in public stays in "We believe", and still shows what the card rests on (it reads as Assumed until customers say it too).
+  const isPublic = (r: string) => (view.cited[r]?.sub ?? "").startsWith("online:");
+  const refs = [...new Set(t.lines.flatMap((l) => (l.section === "know" ? l.cites : l.section === "believe" ? l.cites.filter(isPublic) : [])))].filter((r) => r.startsWith(QUOTE));
   const sources = new Map<string, SourceRecord | null>();
   const evidence: OstEvidence[] = [];
   for (const ref of refs) {

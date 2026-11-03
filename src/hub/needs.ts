@@ -172,11 +172,15 @@ export function rankNeeds(x: NeedInput): RankedNeed[] {
 const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
 
 /** What backs a need, in a line: "2 quotes · 1 measured · 3 sources", what only people online say, or that nothing outside the team does yet. */
-export const needLine = (n: Pick<RankedNeed, "quotes" | "sources" | "mix"> & Partial<Pick<RankedNeed, "online" | "onlineSources">>) =>
-  n.quotes ? `${backingWords(n.mix ?? { said: n.quotes })} · ${plural(n.sources, "source")}` : n.online ? `${plural(n.online, "quote")} from people online · ${plural(n.onlineSources ?? 1, "source")}` : "Nothing outside the team yet";
+export const needLine = (n: Pick<RankedNeed, "quotes" | "sources" | "mix"> & Partial<Pick<RankedNeed, "online" | "onlineSources" | "read">>) => {
+  const read = n.read ? `${n.read} read elsewhere` : "";
+  if (n.quotes) return [`${backingWords(n.mix ?? { said: n.quotes })} · ${plural(n.sources, "source")}`, read].filter(Boolean).join(" · ");
+  if (n.online) return [`${plural(n.online, "quote")} from people online · ${plural(n.onlineSources ?? 1, "source")}`, read].filter(Boolean).join(" · ");
+  return read || "Nothing outside the team yet";
+};
 
 /** What backs a need, in the few words a card has room for; "" when nothing does. */
-export const needShort = (n: Partial<Pick<RankedNeed, "quotes" | "sources" | "online">>) => (n.quotes ? `${plural(n.quotes, "quote")} · ${plural(n.sources ?? 1, "source")}` : n.online ? `${plural(n.online, "quote")} online` : "");
+export const needShort = (n: Partial<Pick<RankedNeed, "quotes" | "sources" | "online" | "read">>) => (n.quotes ? `${plural(n.quotes, "quote")} · ${plural(n.sources ?? 1, "source")}` : n.online ? `${plural(n.online, "quote")} online` : n.read ? `${n.read} read elsewhere` : "");
 
 /** Only what people said behind it: "customers keep raising it" says what's so. */
 export const onlyPeopleSaid = (mix: BasisCounts | undefined) => !mix || Object.keys(mix).every((b) => b === "said");

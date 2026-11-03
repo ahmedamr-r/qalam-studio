@@ -207,7 +207,7 @@ export function threadOf(i: ThreadInput): ChatMessage[] {
       return out;
     }
     if (engineDone(i) && i.box) {
-      out.push(ai("box", text("What do you want to build, or which product should I look at? I'll find what people already complain about, and code checks every quote against its page."), part("choices", { set: "box" })));
+      out.push(ai("box", text("What do you want to build, or which product should I look at?"), part("choices", { set: "box" })));
       if (i.naming.error) out.push(ai("name:error", part("error", { text: i.naming.error })));
     } else if (engineDone(i)) {
       shapeAsk("shape");

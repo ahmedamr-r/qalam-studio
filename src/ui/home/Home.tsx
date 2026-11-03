@@ -365,7 +365,6 @@ function ScanBox({ space }: { space: string | null }) {
     >
       <label htmlFor="scan-box" className="flex flex-col gap-[4px] text-center">
         <span className="text-body font-medium text-fg">What do you want to build, or which product should I look at?</span>
-        <span className="text-caption text-fg-muted">I'll find what people already complain about, and code checks every quote against its page.</span>
       </label>
       <span className="flex gap-[6px]">
         <input id="scan-box" dir="auto" value={said} onChange={(e) => setSaid(e.target.value)} placeholder="An idea, an app's name or its link" className={clsx(r.field, r.fieldInput, "min-w-0 flex-1")} />

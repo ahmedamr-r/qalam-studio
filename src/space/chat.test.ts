@@ -196,6 +196,16 @@ describe("short statements and what came of them", () => {
     expect(runs({ kind: "scan", target, asked: 1 })).toBe("s");
     expect(runs({ kind: "scan", target, asked: 1, session: session("done") })).toBeNull();
     expect(runs({ kind: "scan", target, asked: 1, error: "No engine" })).toBeNull();
+    // Waiting on where it goes: nothing runs yet.
+    expect(parts({ kind: "scan", target, asked: 1, where: true })).toEqual(["scanWhere"]);
+    expect(runs({ kind: "scan", target, asked: 1, where: true })).toBeNull();
+    // The steps after it: asked in the box, running while worked out, and a page closing stops them.
+    const done = session("done");
+    expect(parts({ kind: "scan", target, asked: 1, session: done, plan: { step: "audiences" } })).toEqual(["scanned", "scanPlan"]);
+    expect(runs({ kind: "scan", target, asked: 1, session: done, plan: { step: "picking" } })).toBe("s");
+    expect(runs({ kind: "scan", target, asked: 1, session: done, plan: { step: "picked" } })).toBeNull();
+    expect(asking({ v: 1, turns: [turn("s", { kind: "scan", target, asked: 1, session: done, plan: { step: "asking" } })] }, () => null)).toMatchObject({ plan: true });
+    expect(chatOf({ v: 1, turns: [turn("s", { kind: "scan", target, asked: 1, session: done, plan: { step: "picking" } })] }).turns[0].job).toMatchObject({ plan: { step: "failed" } });
     // It goes on in the core: a reload still shows it running, until the core says.
     expect(chatOf({ v: 1, turns: [turn("s", { kind: "scan", target, asked: 1 })] }).turns[0].job).toEqual({ kind: "scan", target, asked: 1 });
   });

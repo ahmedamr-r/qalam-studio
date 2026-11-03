@@ -22,7 +22,7 @@ import type { Space } from "../../frame/spaces";
 import { ASK_EVENT, takeAskNext } from "../../org/ask-next";
 import { PARTS } from "./parts";
 import { clearMode, composeIn, useCompose } from "./compose";
-import { answerFind, answerNumber, ask, clearChat, findQuestionsOf, findWith, numberQuestions, openChat, send, stopTurn, turnOf, useCanvasChat } from "./store";
+import { answerPlan, planQuestionsOf, answerFind, answerNumber, ask, clearChat, findQuestionsOf, findWith, numberQuestions, openChat, send, stopTurn, turnOf, useCanvasChat } from "./store";
 
 /*
  * Qalam AI's chat on the left of a space's canvas, as Figma keeps its panel there: one box for
@@ -35,7 +35,7 @@ import { answerFind, answerNumber, ask, clearChat, findQuestionsOf, findWith, nu
 export const CHAT_W = 360;
 
 /** What the box is for when a button set it (src/space/route.ts's modes), in a word on the box. */
-const MODE_LABEL: Record<ChatMode, string> = { ask: "A question", dump: "Brain dump", take: "To take in", goal: "A goal", problem: "A problem", scan: "What people complain about" };
+const MODE_LABEL: Record<ChatMode, string> = { ask: "A question", dump: "Brain dump", take: "To take in", goal: "A goal", problem: "A problem", scan: "An idea or a product" };
 
 export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
   useEffect(() => void openChat(space), [space]);
@@ -108,7 +108,7 @@ export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
               <div className="flex flex-col gap-[10px] pt-[8px]">
                 <p className="text-body text-fg">Ask what your {org} knows, or bring something to the canvas.</p>
                 <button type="button" className={clsx(r.replyChip, "self-start")} onClick={() => composeIn({ mode: "scan" })}>
-                  <QalamAIGlyph size={12} /> See what people complain about
+                  <QalamAIGlyph size={12} /> Look into an idea or a product
                 </button>
                 <p className="text-caption text-fg-muted">A question is answered from its problem pages, sources, boards and decisions. Reports, research, interviews and tickets go into problems&apos; pages, each saying what it is; your thinking is read and placed as cards; a goal or a problem is worded for the canvas, for you to use or change.</p>
                 <div className="flex flex-wrap gap-[6px]">
@@ -127,6 +127,8 @@ export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
             waiting && !busy ? (
               "number" in waiting ? (
                 <NumberRound key={waiting.turn.id} turn={waiting.turn.id} />
+              ) : "plan" in waiting ? (
+                <PlanRound key={waiting.turn.id} turn={waiting.turn.id} />
               ) : "find" in waiting ? (
                 <FindRound key={`${waiting.turn.id}:${waiting.find}`} turn={waiting.turn.id} what={waiting.find} />
               ) : (
@@ -218,6 +220,19 @@ function FindForm({ turn, what }: { turn: string; what: FindWhat }) {
       review={{ submitLabel: "Send answers" }}
     />
   );
+}
+
+/** The questions before working out who it's for and what comes first; every one can be skipped. */
+function PlanRound({ turn }: { turn: string }) {
+  const questions = useMemo(() => planQuestionsOf(turn).map(toQuestion), [turn]);
+  const [form, setForm] = useState<FlowState>(() => initialFlow(questions));
+  const answerOf = (f: FlowState, q: (typeof questions)[number]) => {
+    const a = f.answers[q.id];
+    if (!a) return "";
+    const said = summarize(q, a);
+    return said === "Skipped" || said === "—" || said === "None" ? "" : said;
+  };
+  return <Questionnaire title="Before I work out what comes first" questions={questions} state={form} onChange={setForm} onSubmit={(f) => void answerPlan(turn, Object.fromEntries(questions.map((q) => [q.id, answerOf(f, q)])))} review={{ submitLabel: "Send answers" }} />;
 }
 
 /** A goal's number, asked once a problem's goal is picked: what's left out is suggested. */

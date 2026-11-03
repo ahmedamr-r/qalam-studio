@@ -347,7 +347,7 @@ const READ_AT_ONCE = 3;
  * is placed on a board. With a `focus`, a source no page ended up citing bore on nothing they're
  * looking into, so it isn't kept: its words shouldn't turn up later as if they'd mattered.
  */
-export async function captureTogether(store: OrgStore, items: readonly { ing: Ingested; basis?: Basis }[], o: Pick<CaptureOpts, "emit" | "signal" | "focus"> = {}): Promise<TakenTogether> {
+export async function captureTogether(store: OrgStore, items: readonly { ing: Ingested; basis?: Basis; focus?: string }[], o: Pick<CaptureOpts, "emit" | "signal" | "focus"> = {}): Promise<TakenTogether> {
   const core = await coreDeps(store);
   // Filing hears what they're looking into too, so the pages it starts are about that.
   const deps: FilingDeps = o.focus ? { ...core, productLine: (id) => [`What they're looking into: ${o.focus}`, core.productLine(id)].filter(Boolean).join("\n\n") } : core;
@@ -357,11 +357,11 @@ export async function captureTogether(store: OrgStore, items: readonly { ing: In
   const one = async () => {
     while (next < items.length && !o.signal?.aborted) {
       const at = next++;
-      const { ing, basis } = items[at];
+      const { ing, basis, focus } = items[at];
       const s = newSource(ing, { ...(basis ? { basis } : {}) });
       await store.putSource(s);
       o.emit?.(`Reading “${s.title}”`);
-      read[at] = await readIn(store, core, s, { signal: o.signal, ...(o.focus ? { focus: o.focus } : {}), notFound: (n) => void (notFound += n) });
+      read[at] = await readIn(store, core, s, { signal: o.signal, ...(focus ?? o.focus ? { focus: focus ?? o.focus } : {}), notFound: (n) => void (notFound += n) });
     }
   };
   await Promise.all(Array.from({ length: Math.min(READ_AT_ONCE, items.length) }, one));
@@ -377,7 +377,8 @@ export async function captureTogether(store: OrgStore, items: readonly { ing: In
   const cited = new Set((await store.listTopics()).flatMap((t) => t.lines.flatMap((l) => l.cites)));
   const sources: TakenTogether["sources"] = [];
   for (const s of done) {
-    if (s.quotes.some((q) => cited.has(quotePiece(q.id)))) sources.push(said(s));
+    // What's read elsewhere needn't bear on a problem to be worth keeping: a market's numbers rarely do.
+    if (s.quotes.some((q) => cited.has(quotePiece(q.id))) || (s.basis === "read" && s.quotes.length)) sources.push(said(s));
     else {
       await store.removeSource(s.id);
       sources.push({ title: s.title, quotes: 0 });

@@ -10,6 +10,8 @@ import type { GoalFit, GoalIdea, MovesFound, SuggestedNumber } from "@/goals/mov
 import type { Benchmark } from "@/goals/outside";
 import type { OstMetric } from "@/discovery/types";
 import type { ScanSession, ScanTarget } from "@/scan/session";
+import type { GoalAction, ScanAudience } from "@/scan/plan";
+import type { Drafted, SolutionDraft } from "@/discovery/solutions";
 
 /*
  * Qalam AI's chat on the left of a space's canvas (src/ui/space/chat/), as it's kept: one file per
@@ -89,6 +91,30 @@ export interface ScanJob {
   session?: ScanSession;
   mine?: true;
   error?: string;
+  /** Another scan's problems are in this project: where it goes is theirs to say, before it starts. */
+  where?: true;
+  /** From its problems to what to build first. */
+  plan?: ScanPlan;
+}
+
+/** The steps from a scan's problems to what to build first, each kept so a reload shows it as it was. */
+export interface ScanPlan {
+  step: "questioning" | "asking" | "reading" | "audiences" | "goal" | "picking" | "picked" | "placed" | "failed";
+  questions?: PlanQuestion[];
+  /** Their answers, as words and as a source of their own. */
+  answers?: string;
+  answersSource?: string;
+  /** The audiences its quotes show (none: reviews often don't say who wrote them). */
+  audiences?: ScanAudience[];
+  audience?: { name: string; refs: string[] };
+  /** The first goal: what they'd do, and how many of how many. A suggestion until they take it. */
+  goal?: { action: GoalAction; reach: number; of: number };
+  build?: { topic: string; problem: string; drafts: SolutionDraft[]; quotes: Drafted["quotes"]; pick: { draft: string; why: string; later: { draft: string; why: string }[] } | null; note: string };
+  /** The draft to build first: Qalam AI's, until they pick another. */
+  chosen?: string;
+  /** Its solution's card, once it's on the canvas. */
+  card?: string;
+  error?: string;
 }
 
 /**
@@ -158,6 +184,8 @@ function stopped(j: ChatJob): ChatJob {
     const { loading: _gone, ...rest } = j;
     return rest;
   }
+  // What was being worked out when the page went stops there: they can ask again.
+  if (j.kind === "scan" && j.plan && (j.plan.step === "questioning" || j.plan.step === "reading" || j.plan.step === "picking")) return { ...j, plan: { ...j.plan, step: "failed", error: "It stopped when the page closed." } };
   if (j.kind === "goalfor" && j.step === "looking") return { ...j, step: "failed", error: "It stopped when the page closed." };
   // A number still being worked out when the page went: theirs to type.
   if (j.kind === "goalfor" && j.step === "suggesting") return { ...j, step: "suggested", suggestion: null };
@@ -283,11 +311,12 @@ function replyTo(t: ChatTurn, dumpOf: DumpOf): ChatPart[] {
       return [...(j.asOwn ? [part("asOwn", id)] : []), ...looksAfter(t, s, -1), ...(j.find ? [part("opening", id)] : []), ...(j.error ? [text(j.error)] : dumpReply(t, s))];
     }
     case "scan":
+      if (j.where) return [part("scanWhere", id)];
       if (j.error) return [text(`I couldn't read it: ${j.error}`), part("scanAgain", id)];
       if (!j.session || j.session.state === "reading") return [part("scanning", id)];
       if (j.session.state === "stopped") return [text("You stopped it before it finished."), part("scanAgain", id)];
       if (j.session.state === "failed") return [text(`I couldn't finish: ${j.session.error ?? "something went wrong"}`), part("scanAgain", id)];
-      return [part("scanned", id)];
+      return [part("scanned", id), ...(j.plan ? [part("scanPlan", id)] : [])];
     case "find":
       if (j.goal) {
         if (j.loading) return [part("working", id), part("cancel", id)];
@@ -321,8 +350,9 @@ export function threadOf(c: CanvasChat, dumpOf: DumpOf = () => null): ChatMessag
 }
 
 /** Whose questions the box asks now: the newest "Help me find one" or brain dump waiting on its answers. */
-export function asking(c: CanvasChat, dumpOf: DumpOf): ({ turn: ChatTurn } & ({ source: string } | { find: FindWhat } | { number: true })) | null {
+export function asking(c: CanvasChat, dumpOf: DumpOf): ({ turn: ChatTurn } & ({ source: string } | { find: FindWhat } | { number: true } | { plan: true })) | null {
   for (const t of [...c.turns].reverse()) {
+    if (t.job.kind === "scan" && t.job.plan?.step === "asking") return { turn: t, plan: true };
     if (t.job.kind === "goalfor" && t.job.step === "asking") return { turn: t, number: true };
     if (t.job.kind === "find") return { turn: t, find: t.job.what };
     if (t.job.kind !== "dump" || t.job.error) continue;
@@ -332,7 +362,8 @@ export function asking(c: CanvasChat, dumpOf: DumpOf): ({ turn: ChatTurn } & ({ 
 }
 
 // A goal's opening look runs here (the box offers Stop); the questions it works out are asked after.
-const busy = (j: ChatJob) => (j.kind === "scan" && !j.error && (!j.session || j.session.state === "reading")) || (j.kind === "ask" && j.state === "asking") || (j.kind === "take" && j.state === "taking") || (j.kind === "find" && !!j.goal && !!j.loading) || (j.kind === "goalfor" && (j.step === "looking" || j.step === "suggesting"));
+const scanBusy = (j: ScanJob) => (!j.error && !j.where && (!j.session || j.session.state === "reading")) || (!!j.plan && (j.plan.step === "questioning" || j.plan.step === "reading" || j.plan.step === "picking"));
+const busy = (j: ChatJob) => (j.kind === "scan" && scanBusy(j)) || (j.kind === "ask" && j.state === "asking") || (j.kind === "take" && j.state === "taking") || (j.kind === "find" && !!j.goal && !!j.loading) || (j.kind === "goalfor" && (j.step === "looking" || j.step === "suggesting"));
 
 /** What in the chat is still running (the composer offers Stop). */
 export const running = (c: CanvasChat): ChatTurn | null => [...c.turns].reverse().find((t) => busy(t.job)) ?? null;

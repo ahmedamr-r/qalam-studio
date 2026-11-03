@@ -13,7 +13,7 @@ import { askOrganization } from "@/org/ask";
 import { captureIngested, decideFoundGoal, setSourceBasis } from "@/org/capture";
 import { orgFetch, orgJson } from "@/org/client";
 import type { Ingested } from "@/discovery/ingest/core";
-import { chatKey, chatOf, emptyChat, withJob, withTurn, type CanvasChat, type ChatDoc, type ChatJob, type ChatTurn, type FiledPage, type FocusGoal, type GoalForJob, type GoalForOn, type TakenDoc } from "@/space/chat";
+import { chatKey, chatOf, emptyChat, withJob, withTurn, type CanvasChat, type ChatDoc, type ChatJob, type ChatTurn, type FiledPage, type FocusGoal, type GoalForJob, type GoalForOn, type ScanJob, type ScanPlan, type TakenDoc } from "@/space/chat";
 import { cardForPage, pageOf } from "@/space/pages";
 import { DUMP_WORDS, routeOf, titleFrom, wordsIn, type ChatMode } from "@/space/route";
 import { FIND_MIN, findRound, findText, findTranscript, type FindWhat } from "@/space/find";
@@ -27,7 +27,18 @@ import { useSpaceView } from "@/space/view";
 import { onOrgChange } from "@/org/live";
 import { otherReading, requestOf, scanInput } from "@/scan/input";
 import type { ScanTarget } from "@/scan/session";
-import { scanNow, startScan, stopScan } from "@/org/scan";
+import { firstBuild, keepAnswers, keepAudience, planAudiences, planQuestions, scanNow, startScan, stopScan } from "@/org/scan";
+import { firstGoal, sameTarget, scanRound, SUGGESTED_GOAL, type GoalAction, type ScanAudience } from "@/scan/plan";
+import { projectName } from "@/scan/input";
+import { draftBacking, draftCards } from "@/discovery/solutions";
+import { decideDraft } from "@/org/solutions";
+import { quoteEvidence } from "@/discovery/sources";
+import { sourcesDb } from "@/discovery/db";
+import { createOrg } from "@/org/client";
+import { orgHref } from "@/projects/model";
+import { handWords } from "../handoff";
+import { problemCard } from "../../topics/start-board";
+import { visitSources } from "../../discovery/sources";
 import { newId } from "@/doc/factory";
 import { docPart, docRef, guessVoice, joinParts, type SentDoc } from "../../chat/attach";
 import type { Basis } from "@/discovery/basis";
@@ -212,6 +223,9 @@ export function scanFrom(said: string, space: string | null) {
 /** An idea or a product read for what people complain about. It runs in the core; this follows it. */
 async function scanIt(at: string | null, said: string, target: ScanTarget | null = scanInput(said)) {
   if (!target) return void jobAt(at, said, { kind: "choose", first: "problem" });
+  // Another scan's problems are here: two unrelated products would run together on one page.
+  const other = !at && st().chat.turns.some((t) => t.job.kind === "scan" && t.job.session?.state === "done" && t.job.session.problems.length > 0 && !sameTarget(t.job.target, target));
+  if (other) return void jobAt(at, said, { kind: "scan", target, asked: Date.now(), where: true });
   const id = jobAt(at, said, { kind: "scan", target, asked: Date.now() });
   try {
     const session = await startScan(requestOf(target, said, typeof navigator === "undefined" ? "" : navigator.language));
@@ -231,7 +245,7 @@ async function followScan() {
   followingScan ??= onOrgChange((c) => {
     if (c.kind === "scan") void followScan();
   });
-  const open = [...st().chat.turns].reverse().find((t) => t.job.kind === "scan" && !t.job.error && (!t.job.session || t.job.session.state === "reading"));
+  const open = [...st().chat.turns].reverse().find((t) => t.job.kind === "scan" && !t.job.error && !t.job.where && (!t.job.session || t.job.session.state === "reading"));
   if (!open) return;
   const session = await scanNow().catch(() => null);
   // An answer about an earlier scan (asked just before this one started) says nothing about this one.
@@ -254,6 +268,27 @@ export function scanOtherWay(id: string) {
   void scanIt(id, t.said, other);
 }
 
+/** It goes in this project anyway: they know what they're mixing. */
+export function scanHere(id: string) {
+  const t = turnOf(id);
+  if (t?.job.kind === "scan") void scanIt(id, t.said, t.job.target);
+}
+
+/** It gets a project of its own, whose canvas starts it. */
+export async function scanInNewProject(id: string) {
+  const t = turnOf(id);
+  if (t?.job.kind !== "scan") return;
+  try {
+    const org = await createOrg(projectName(t.job.target), "solo");
+    await fetch(`/api/org/${encodeURIComponent(org.id)}/first-run`, { method: "POST" }).catch(() => {});
+    handWords(t.said);
+    dropTurn(id);
+    window.location.assign(`${orgHref(org.id)}?scan=1`);
+  } catch (e) {
+    change((c) => withJob(c, id, (j) => (j.kind === "scan" ? { ...j, where: undefined, error: message(e) } : j)));
+  }
+}
+
 /** Again, as it was read. */
 export function scanAgain(id: string) {
   const t = turnOf(id);
@@ -267,6 +302,147 @@ export async function scanIsMine(id: string) {
   const reviews = t.job.session.read.filter((r) => r.kind === "reviews" && r.sourceId);
   await Promise.all(reviews.map((r) => setSourceBasis(r.sourceId!, "said")));
   change((c) => withJob(c, id, (j) => (j.kind === "scan" ? { ...j, mine: true } : j)));
+}
+
+// ---------------------------------------------------------------------------
+// From a scan's problems to what to build first
+
+const scanJob = (id: string): ScanJob | null => {
+  const j = turnOf(id)?.job;
+  return j?.kind === "scan" ? j : null;
+};
+const plan = (id: string, fn: (p: ScanPlan) => ScanPlan) => change((c) => withJob(c, id, (j) => (j.kind === "scan" && j.plan ? { ...j, plan: fn(j.plan) } : j)));
+const planOf = (j: ScanJob) => ({ target: j.target, sources: (j.session?.read ?? []).flatMap((r) => (r.sourceId ? [r.sourceId] : [])) });
+/** What it's working out now, or that it stopped. */
+const stoppedPlan = (id: string, e: unknown) => {
+  const aborted = (e as Error).name === "AbortError";
+  plan(id, (p) => ({ ...p, step: "failed", error: aborted ? "You stopped it." : message(e) }));
+};
+
+/** Work out what to build first: the questions first, in the box. */
+export async function planStart(id: string) {
+  const j = scanJob(id);
+  if (!j) return;
+  change((c) => withJob(c, id, (x) => (x.kind === "scan" ? { ...x, plan: { step: "questioning" } } : x)));
+  const ctrl = begin(id);
+  try {
+    const questions = await planQuestions(planOf(j), ctrl.signal);
+    plan(id, (p) => ({ ...p, step: "asking", questions: questions.length ? questions : scanRound() }));
+  } catch (e) {
+    if ((e as Error).name === "AbortError") return stoppedPlan(id, e);
+    plan(id, (p) => ({ ...p, step: "asking", questions: scanRound() }));
+  } finally {
+    end(id);
+  }
+}
+
+/** The questions the box asks now. */
+export const planQuestionsOf = (id: string) => scanJob(id)?.plan?.questions ?? scanRound();
+
+/** Their answers, kept as their own words, then who the quotes show. Everything may be skipped. */
+export async function answerPlan(id: string, answers: Readonly<Record<string, string>>) {
+  const j = scanJob(id);
+  if (!j?.plan) return;
+  const said = planQuestionsOf(id).map((q) => ({ question: q.title, answer: (answers[q.id] ?? "").trim() })).filter((x) => x.answer);
+  const words = said.map((x) => `${x.question} ${x.answer}`).join("\n");
+  plan(id, (p) => ({ ...p, step: "reading", answers: words }));
+  const ctrl = begin(id);
+  try {
+    const source = said.length ? await keepAnswers(said, `Your answers: ${projectName(j.target)}`).catch(() => null) : null;
+    const audiences = await planAudiences({ ...planOf(j), answers: words }, ctrl.signal);
+    plan(id, (p) => ({ ...p, step: "audiences", audiences, ...(source ? { answersSource: source } : {}) }));
+  } catch (e) {
+    stoppedPlan(id, e);
+  } finally {
+    end(id);
+  }
+}
+
+/** Who they'll build for: one the quotes show, or their own words. On to a first goal. */
+export function pickAudience(id: string, a: ScanAudience | { name: string }) {
+  const name = a.name.trim();
+  if (!name) return;
+  const refs = "quotes" in a ? a.quotes.map((q) => q.ref) : [];
+  void keepAudience({ name, ...("about" in a && a.about ? { about: a.about } : {}), refs }).catch(() => {});
+  plan(id, (p) => ({ ...p, step: "goal", audience: { name, refs }, goal: { action: "sign-up", reach: SUGGESTED_GOAL.reach, of: SUGGESTED_GOAL.of } }));
+}
+
+/** The first goal as they've set it. */
+export function setPlanGoal(id: string, goal: { action: GoalAction; reach: number; of: number }) {
+  plan(id, (p) => ({ ...p, goal }));
+}
+
+/** Their first goal taken: one solution drafted and picked for them. */
+export async function planFirst(id: string, topic?: string) {
+  const j = scanJob(id);
+  if (!j?.plan?.audience) return;
+  plan(id, (p) => ({ ...p, step: "picking", error: undefined }));
+  const ctrl = begin(id);
+  try {
+    const build = await firstBuild({ ...planOf(j), audience: j.plan.audience.name, refs: j.plan.audience.refs, answers: j.plan.answers ?? "", ...(j.plan.answersSource ? { answersSource: j.plan.answersSource } : {}), ...(topic ? { topic } : {}) }, ctrl.signal);
+    if (!build?.drafts.length) return plan(id, (p) => ({ ...p, step: "failed", error: build?.note || "I found no solution I could stand behind for this problem." }));
+    plan(id, (p) => ({ ...p, step: "picked", build, chosen: build.pick?.draft ?? build.drafts[0].id }));
+  } catch (e) {
+    stoppedPlan(id, e);
+  } finally {
+    end(id);
+  }
+}
+
+/** Where a plan that stopped carries on. */
+export function planAgain(id: string) {
+  const p = scanJob(id)?.plan;
+  if (!p) return;
+  if (p.audience) return void planFirst(id);
+  if (p.questions) return plan(id, (x) => ({ ...x, step: "asking", error: undefined }));
+  void planStart(id);
+}
+
+/** Another draft first: it's theirs to say. */
+export const chooseDraft = (id: string, draft: string) => plan(id, (p) => ({ ...p, chosen: draft }));
+
+/** On the canvas in one undo step: the first goal, its problem under it, the solution and its test. */
+export async function placeFirstBuild(id: string) {
+  const p = scanJob(id)?.plan;
+  const d = p?.build?.drafts.find((x) => x.id === p.chosen);
+  if (!p?.build || !p.audience || !p.goal || !d) return;
+  const c = await problemCard(p.build.topic);
+  if (!c) return;
+  const goal = firstGoal(p.audience.name, p.goal.action, p.goal.reach, p.goal.of);
+  const goalNode = makeCardNode(newCard("outcome", { title: goal.title, metric: { name: goal.metric, unit: "people", direction: "increase", baseline: null, current: null, target: goal.target } }));
+  const { solution, test } = draftCards(d);
+  const quotes = p.build.quotes;
+  const backing = draftBacking(d, (ref) => quotes[ref] ?? null, Date.now(), newId);
+  const evidence = [...backing.words];
+  await visitSources(backing.quotes.map((q) => q.sourceId));
+  for (const q of backing.quotes) {
+    const s = await sourcesDb.get(q.sourceId).catch(() => null);
+    const quote = s?.quotes.find((x) => x.id === q.quoteId);
+    if (s && quote) evidence.push(quoteEvidence(s, quote, "ai"));
+  }
+  const solutionNode = makeCardNode({ ...solution, evidence });
+  const doc = studio().doc;
+  const sameCard = (k: string) => !k.startsWith("topic:") && doc.nodes[k]?.meta.ost?.kind === "opportunity" && doc.nodes[k].meta.ost.title === c.title;
+  const already = Object.keys(doc.nodes).find(sameCard);
+  const problemNode = already ? null : makeCardNode(newCard("opportunity", { title: c.title, evidence: c.evidence }));
+  const faint = [...useSpaceView.getState().things].flatMap(([card, t]) => (t.type === "problem" && t.topic === p.build!.topic ? [card] : []));
+  studio().mutate((x) => {
+    for (const f of faint) {
+      const parent = x.nodes[f]?.parentId;
+      const list = parent ? x.nodes[parent].children : x.roots;
+      const at = list.indexOf(f);
+      if (at >= 0) list.splice(at, 1);
+      delete x.nodes[f];
+    }
+    addCardIn(x, goalNode, null);
+    if (already) moveCardsIn(x, [already], goalNode.id);
+    else addCardIn(x, problemNode!, goalNode.id);
+    addCardIn(x, solutionNode, already ?? problemNode!.id);
+    if (test) addCardIn(x, makeCardNode(test), solutionNode.id);
+  });
+  void decideDraft(p.build.topic, d.id, "accepted").catch(() => {});
+  plan(id, (x) => ({ ...x, step: "placed", card: solutionNode.id }));
+  show(solutionNode.id);
 }
 
 // ---------------------------------------------------------------------------

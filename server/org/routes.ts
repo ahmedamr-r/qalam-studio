@@ -51,7 +51,8 @@ import { decideSolution, draftSolutions, solutionsView, type SolutionsCard } fro
 import { draftTests, type TestsRequest } from "./tests";
 import { aboutTopic, lookOnline } from "./posts";
 import { scanNow, startScan, stopScan } from "./scan";
-import { scanRequest } from "@/scan/session";
+import { firstBuild, keepAnswers, keepAudience, planAudiences, planQuestions } from "./scan-plan";
+import { scanRequest, type ScanTarget } from "@/scan/session";
 import { addRepo, answerFromCode, codeView, readRepo, removeRepo, type NewRepo } from "../code";
 import { GOAL_LEVERS, type GoalLever } from "@/goals/types";
 import { meShape } from "@/org/you";
@@ -989,6 +990,49 @@ export function orgRoutes(): Hono<Env> {
   r.delete("/api/org/:org/scan", (c) => {
     stopScan(c.get("store"));
     return c.json({ ok: true });
+  });
+  // From its problems to what to build first (./scan-plan.ts): each step answers what it found, and the chat keeps it.
+  const planOf = (b: { target?: unknown; sources?: unknown } | null): { target: ScanTarget; sources: string[] } | null => {
+    const req = scanRequest({ target: b?.target });
+    const sources = Array.isArray(b?.sources) ? b.sources.filter((x): x is string => typeof x === "string" && ID.test(x)).slice(0, 20) : [];
+    return req && sources.length ? { target: req.target, sources } : null;
+  };
+  r.post("/api/org/:org/scan/questions", async (c) => {
+    const plan = planOf(await c.req.json().catch(() => null));
+    if (!plan) return bad("No scan to go on");
+    if (!aiConfigured()) return c.json({ questions: [] });
+    return c.json({ questions: await planQuestions(c.get("store"), plan, c.req.raw.signal) });
+  });
+  r.post("/api/org/:org/scan/answers", async (c) => {
+    const b = (await c.req.json().catch(() => null)) as { said?: unknown; title?: unknown } | null;
+    const said = (Array.isArray(b?.said) ? b.said : []).map((x: { question?: unknown; answer?: unknown }) => ({ question: clipped(x?.question, 300), answer: typeof x?.answer === "string" ? x.answer.slice(0, 4000) : "" })).slice(0, 6);
+    return c.json({ source: await keepAnswers(c.get("store"), said, clipped(b?.title, 200) || "Your answers") });
+  });
+  r.post("/api/org/:org/scan/audiences", async (c) => {
+    const b = (await c.req.json().catch(() => null)) as { target?: unknown; sources?: unknown; answers?: unknown } | null;
+    const plan = planOf(b);
+    if (!plan) return bad("No scan to go on");
+    if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't read who this is for." }, 503);
+    return c.json({ audiences: await planAudiences(c.get("store"), { ...plan, answers: typeof b?.answers === "string" ? b.answers.slice(0, 4000) : "" }, c.req.raw.signal) });
+  });
+  r.post("/api/org/:org/scan/audience", async (c) => {
+    const b = (await c.req.json().catch(() => null)) as { name?: unknown; about?: unknown; refs?: unknown } | null;
+    const name = clipped(b?.name, 120);
+    if (!name) return bad("Say who it's for");
+    const refs = Array.isArray(b?.refs) ? b.refs.filter((x): x is string => typeof x === "string").slice(0, 12) : [];
+    await keepAudience(c.get("store"), { name, about: clipped(b?.about, 300), refs });
+    return c.json({ ok: true });
+  });
+  r.post("/api/org/:org/scan/first", async (c) => {
+    const b = (await c.req.json().catch(() => null)) as { target?: unknown; sources?: unknown; audience?: unknown; refs?: unknown; answers?: unknown; answersSource?: unknown; topic?: unknown } | null;
+    const plan = planOf(b);
+    const audience = clipped(b?.audience, 120);
+    if (!plan || !audience) return bad("Say who it's for");
+    if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't draft what to build." }, 503);
+    const refs = Array.isArray(b?.refs) ? b.refs.filter((x): x is string => typeof x === "string").slice(0, 60) : [];
+    return c.json({
+      build: await firstBuild(c.get("store"), { ...plan, audience, refs, answers: typeof b?.answers === "string" ? b.answers.slice(0, 4000) : "", ...(typeof b?.answersSource === "string" && ID.test(b.answersSource) ? { answersSource: b.answersSource } : {}), ...(typeof b?.topic === "string" && ID.test(b.topic) ? { topic: b.topic } : {}) }, c.req.raw.signal),
+    });
   });
 
   r.post("/api/org/:org/market/company", async (c) => {

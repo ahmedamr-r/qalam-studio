@@ -6,7 +6,7 @@ import { marketPieces } from "@/hub/pieces";
 import { editMarket } from "./edit";
 import { aboutAfterFact, aboutFromFacts, companyMaterial, sanitizeFacts, siteUrl } from "./facts";
 import { marketFromMarkdown, marketToMarkdown } from "./market-md";
-import { competitorsMaterial, domainMaterial, sanitizeCompetitors, sanitizeDomain } from "./rivals";
+import { competitorsMaterial, domainMaterial, ownSite, priceExcerpt, pricesMaterial, sanitizeCompetitors, sanitizeDomain, sanitizePrices, withRivals } from "./rivals";
 import { sessionOf } from "./session";
 import { marketContext } from "./text";
 import { emptyMarket, MARKET_LIMITS, type Market, type MarketLine } from "./types";
@@ -210,5 +210,73 @@ describe("what's known, as the canvas edits it and calls hear it", () => {
     const tests = testsMaterial({ solution: { title: "Reminders", description: "", assumptions: [], tests: [] }, problem: null, goal: null, pieces: [], company });
     expect(tests.text).toContain(company);
     expect(tests.hay).not.toContain("40 branches");
+  });
+});
+
+describe("competitors a lookup found", () => {
+  const line = (id: string, by: "you" | "qalam") => ({ id, text: id, by, at: 1 });
+  const c = (name: string, by: "you" | "qalam", lines: ReturnType<typeof line>[] = [], url?: string) => ({ id: name, name, by, lines, at: 1, ...(url ? { url } : {}) });
+
+  it("gives Qalam AI's lines way to the new ones, and keeps a person's", () => {
+    const m = withRivals({ competitors: [c("Mealime", "you", [line("mine", "you"), line("old", "qalam")], "https://mine.example")] }, [c("mealime", "qalam", [line("new", "qalam")], "https://found.example")]);
+    expect(m.competitors).toHaveLength(1);
+    expect(m.competitors[0]).toMatchObject({ name: "Mealime", by: "you", url: "https://mine.example" });
+    expect(m.competitors[0].lines.map((l) => l.id)).toEqual(["mine", "new"]);
+  });
+
+  it("keeps a person's first when the list is full", () => {
+    const many = Array.from({ length: MARKET_LIMITS.competitors }, (_, i) => c(`Found ${i}`, "qalam"));
+    const m = withRivals({ competitors: [c("Mine", "you")] }, many);
+    expect(m.competitors).toHaveLength(MARKET_LIMITS.competitors);
+    expect(m.competitors[0].name).toBe("Mine");
+  });
+});
+
+describe("what competitors charge", () => {
+  const pad = "Plans for every household and every week of the year, with lists you can share. ".repeat(12);
+  const p = (url: string, text: string, title = "Page") => ({ ref: "", url, title, text });
+  const pricing = p("https://mealime.com/pricing", `${pad}Mealime Pro costs $5.99 per month. ${pad}`, "Mealime pricing");
+
+  it("sends only the parts of a page that speak of a price, and nothing when none does", () => {
+    const e = priceExcerpt(pricing.text);
+    expect(e).toContain("$5.99 per month");
+    expect(e.length).toBeLessThan(600);
+    expect(priceExcerpt("We help you cook.")).toBe("");
+    expect(pricesMaterial({ names: ["Mealime"], pages: [p("https://x.example", "We help you cook.")] })).toBeNull();
+    expect(pricesMaterial({ names: ["Mealime"], pages: [p("https://x.example", "Paprika costs $4.99 per month.")] })).toBeNull();
+  });
+
+  it("keeps a price only on a page naming that product, its quote there and its number in the quote", () => {
+    const other = p("https://blog.example/roundup", `Paprika costs $4.99 per month. ${pad}`);
+    const m = pricesMaterial({ names: ["Mealime", "Paprika"], pages: [pricing, other] })!;
+    const ids = [...m.pages.keys()];
+    let n = 0;
+    const kept = sanitizePrices(
+      {
+        prices: [
+          { name: "mealime", text: "Mealime Pro costs $5.99 a month.", page: ids[0], quote: "Mealime Pro costs $5.99 per month." },
+          { name: "Mealime", text: "Mealime Pro costs $3.99 a month.", page: ids[0], quote: "Mealime Pro costs $5.99 per month." },
+          { name: "Mealime", text: "Mealime costs $5.99.", page: ids[0], quote: "Mealime is only $5.99 today." },
+          { name: "Mealime", text: "Mealime has plans.", page: ids[0], quote: "Mealime Pro costs $5.99 per month." },
+          { name: "Mealime", text: "It costs $4.99.", page: ids[1], quote: "Paprika costs $4.99 per month." },
+          { name: "Stranger", text: "It costs $5.99.", page: ids[0], quote: "Mealime Pro costs $5.99 per month." },
+          { name: "Paprika", text: "Paprika costs $4.99 a month.", page: ids[1], quote: "Paprika costs $4.99 per month." },
+        ],
+      },
+      m,
+      { now: 1, id: () => `l${++n}` },
+    );
+    expect(kept.get("Mealime")?.map((l) => l.text)).toEqual(["Mealime Pro costs $5.99 a month."]);
+    expect(kept.get("Paprika")?.[0]).toMatchObject({ url: "https://blog.example/roundup", by: "qalam" });
+    expect(kept.has("Stranger")).toBe(false);
+  });
+
+  it("knows a product's own site from a review site's page about it", () => {
+    expect(ownSite({ name: "Bonsai", url: "https://www.hellobonsai.com/blog/invoicing" })).toBe("https://www.hellobonsai.com");
+    expect(ownSite({ name: "HoneyBook - Small Business CRM", url: "https://honeybook.com/" })).toBe("https://honeybook.com");
+    expect(ownSite({ name: "MealPrepPro Planner & Recipes", url: "https://mealpreppro.com/a" })).toBe("https://mealpreppro.com");
+    expect(ownSite({ name: "Mealime", url: "https://apppricinglab.com/app/mealime" })).toBeNull();
+    expect(ownSite({ name: "Riseo: Night Shift Tracker", url: "https://apps.apple.com/app/id1" })).toBeNull();
+    expect(ownSite({ name: "Mealime" })).toBeNull();
   });
 });

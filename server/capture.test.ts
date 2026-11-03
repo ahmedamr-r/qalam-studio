@@ -10,7 +10,7 @@ import type { SourceRecord } from "@/discovery/sources";
 import { OrgStore } from "./org/store";
 
 // Qalam AI's answers, faked by what each call asks; what code keeps of them is real.
-const calls = vi.hoisted(() => ({ list: [] as string[], texts: [] as string[] }));
+const calls = vi.hoisted(() => ({ list: [] as string[], texts: [] as string[], reads: [] as string[] }));
 vi.mock("@/ai/server", () => ({
   backend: () => "api",
   aiConfigured: () => true,
@@ -22,6 +22,7 @@ vi.mock("@/ai/server", () => ({
     }
     if (opts.system.includes("pick out what it states")) {
       calls.list.push("extract");
+      calls.reads.push(text);
       return { data: { quotes: [{ id: "q1", chunkId: "c1", text: "I can't plan bath time around a four-hour window.", speaker: "Sara", kind: "pain" }, { id: "q2", chunkId: "c1", text: "Words that aren't in the material.", speaker: null, kind: "pain" }], needs: [{ title: "Delivery windows are too wide", quoteIds: ["q1"] }] } };
     }
     if (opts.system.includes("keep an organization's topic pages")) {
@@ -268,6 +269,15 @@ describe("captureTogether", () => {
     expect(r.sources[1]).toEqual({ title: "Off topic", quotes: 0 });
     expect((await store.listSources()).map((s) => s.title)).not.toContain("Off topic");
     expect(calls.texts[0]).toContain("Delivery windows");
+  });
+
+  it("keeps what's read elsewhere even when no page cites it, each read for its own focus", async () => {
+    const report = { ing: { kind: "url" as const, title: "A report", origin: "https://report.example", text: "App Store reviewer (1 star): Slow. I can't plan bath time around a four-hour window. Off" }, basis: "read" as const, focus: "What the market pays" };
+    const r = await captureTogether(store, [post("Reviews", "https://a.example"), report], { focus: "Delivery windows" });
+    expect(r.sources[1].title).toBe("A report");
+    expect(r.sources[1].quotes).toBeGreaterThan(0);
+    expect((await store.listSources()).map((s) => s.title)).toContain("A report");
+    expect(calls.reads.some((t) => t.includes("What the market pays"))).toBe(true);
   });
 
   it("moves a product's reviews to what's known once they say the product is theirs", async () => {

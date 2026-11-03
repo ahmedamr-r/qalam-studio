@@ -67,7 +67,7 @@ describe("what to work on next", () => {
     const s = needSummary(t, input([t], pieces));
     expect(s).toMatchObject({ quotes: 3, sources: 3, mix: { said: 1, measured: 1, studied: 1 }, read: 1 });
     expect(strengthOf(s)).toBe("strong");
-    expect(needLine(s)).toBe("1 quote · 1 measured · 1 studied · 3 sources");
+    expect(needLine(s)).toBe("1 quote · 1 measured · 1 studied · 3 sources · 1 read elsewhere");
     expect(needLine({ quotes: 0, sources: 0 })).toBe("Nothing outside the team yet");
     expect(needLine({ quotes: 2, sources: 1 })).toBe("2 quotes · 1 source");
     expect(needLine({ quotes: 0, sources: 0, online: 14, onlineSources: 3 })).toBe("14 quotes from people online · 3 sources");

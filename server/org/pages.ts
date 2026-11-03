@@ -19,7 +19,8 @@ export async function readPage(link: { url: string; title?: string }, signal: Ab
     const raw = new TextDecoder().decode(page.body);
     const html = /html/i.test(page.contentType) ? htmlText(raw) : /^text\//i.test(page.contentType) ? { text: raw } : null;
     if (!html || html.text.trim().length < 200 || isWall(html)) return null;
-    return { ref: "", url: link.url, title: ("title" in html && html.title?.trim()) || link.title || link.url, text: html.text };
+    const own = "title" in html ? html.title?.trim() : "";
+    return { ref: "", url: link.url, title: (own && !/^(document|untitled|home|index|page)$/i.test(own) ? own : "") || link.title || new URL(link.url).hostname.replace(/^www\./, ""), text: html.text };
   } catch {
     return null;
   }

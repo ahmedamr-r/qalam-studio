@@ -52,6 +52,8 @@ export const TIER_OF = {
   statement: "decide",
   "tool-look": "decide",
   "scan-searches": "decide",
+  "scan-audience": "decide",
+  "scan-pick": "decide",
   // Fetching: the tool-runner makes the calls code planned.
   connector: "fetch",
   numbers: "fetch",
