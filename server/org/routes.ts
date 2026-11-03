@@ -50,9 +50,11 @@ import { decideProblem, draftProblems } from "./problems";
 import { decideSolution, draftSolutions, solutionsView, type SolutionsCard } from "./solutions";
 import { draftTests, type TestsRequest } from "./tests";
 import { aboutTopic, lookOnline } from "./posts";
-import { scanNow, startScan, stopScan } from "./scan";
+import { scanNow, startScan, steerQuestions, steerScan, stopScan } from "./scan";
+import { steerRound } from "@/scan/steer";
 import { firstBuild, keepAnswers, keepAudience, planAudiences, planQuestions } from "./scan-plan";
 import { scanRequest, type ScanTarget } from "@/scan/session";
+import type { ScanSaid } from "@/scan/steer";
 import { addRepo, answerFromCode, codeView, readRepo, removeRepo, type NewRepo } from "../code";
 import { GOAL_LEVERS, type GoalLever } from "@/goals/types";
 import { meShape } from "@/org/you";
@@ -991,11 +993,19 @@ export function orgRoutes(): Hono<Env> {
     stopScan(c.get("store"));
     return c.json({ ok: true });
   });
+  // While it reads: the questions as it starts, and what they say.
+  r.post("/api/org/:org/scan/ask", async (c) => {
+    const req = scanRequest(await c.req.json().catch(() => null));
+    if (!req) return bad("Nothing to look at");
+    if (!aiConfigured()) return c.json({ questions: steerRound(req.target) });
+    return c.json({ questions: await steerQuestions(req, c.req.raw.signal) });
+  });
+  r.post("/api/org/:org/scan/steer", async (c) => c.json({ session: await steerScan(c.get("store"), await c.req.json().catch(() => null), { tab: c.req.header("x-qalam-tab") }) }));
   // From its problems to what to build first (./scan-plan.ts): each step answers what it found, and the chat keeps it.
-  const planOf = (b: { target?: unknown; sources?: unknown } | null): { target: ScanTarget; sources: string[] } | null => {
-    const req = scanRequest({ target: b?.target });
+  const planOf = (b: { target?: unknown; sources?: unknown; told?: unknown } | null): { target: ScanTarget; sources: string[]; told: ScanSaid[] } | null => {
+    const req = scanRequest({ target: b?.target, told: b?.told });
     const sources = Array.isArray(b?.sources) ? b.sources.filter((x): x is string => typeof x === "string" && ID.test(x)).slice(0, 20) : [];
-    return req && sources.length ? { target: req.target, sources } : null;
+    return req && sources.length ? { target: req.target, sources, told: req.told ?? [] } : null;
   };
   r.post("/api/org/:org/scan/questions", async (c) => {
     const plan = planOf(await c.req.json().catch(() => null));

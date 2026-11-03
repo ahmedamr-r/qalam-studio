@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { DumpSession } from "@/discovery/dump";
 import type { AskAnswer } from "@/hub/ask";
-import { asking, chatKey, chatOf, emptyChat, MAX_TURNS, running, threadOf, withJob, withTurn, type ChatTurn } from "./chat";
+import { asking, chatKey, chatOf, emptyChat, MAX_TURNS, running, threadOf, withJob, withTurn, type ChatTurn, type ScanJob } from "./chat";
 
 const answer: AskAnswer = { question: "Why do parents stop?", answer: "The window.", claims: [], unknowns: [], how: "packed", at: 1 };
 const turn = (id: string, job: ChatTurn["job"], said = "Why do parents stop ordering?"): ChatTurn => ({ id, at: 1, said, job });
@@ -82,6 +82,17 @@ describe("a brain dump in the canvas's chat", () => {
     expect(asking(c, (id) => session({ phase: id === "s1" ? "asking" : "review" }))).toMatchObject({ source: "s1" });
     expect(asking(c, () => session({}))?.turn.id).toBe("b");
     expect(asking(c, () => session({ phase: "placed" }))).toBeNull();
+  });
+
+  it("asks its questions while a scan reads, and they don't survive a page closing before they're written", () => {
+    const scan = (ask: NonNullable<ScanJob["ask"]>, error?: string): ScanJob => ({ kind: "scan", target: { kind: "idea", said: "A meal planner" }, asked: 1, ask, ...(error ? { error } : {}) });
+    const chat = (job: ScanJob) => ({ v: 1 as const, turns: [{ id: "a", said: "A meal planner", at: 1, job }] });
+    expect(asking(chat(scan({ step: "asking", questions: [] })), () => null)).toMatchObject({ steer: true });
+    expect(asking(chat(scan({ step: "writing" })), () => null)).toBeNull();
+    expect(asking(chat(scan({ step: "done" })), () => null)).toBeNull();
+    expect(asking(chat(scan({ step: "asking", questions: [] }, "It failed")), () => null)).toBeNull();
+    const after = chatOf(chat(scan({ step: "writing" })));
+    expect((after.turns[0].job as ScanJob).ask).toEqual({ step: "done" });
   });
 
   it("asks code's opening questions first when they want help finding one, then reads the answers as a dump", () => {

@@ -16,7 +16,7 @@ vi.mock("../index/registry", () => ({
   },
 }));
 
-const { scanNow, scanToEnd, startScan, stopScan } = await import("./scan");
+const { scanNow, scanToEnd, startScan, steerQuestions, steerScan, stopScan } = await import("./scan");
 
 let dir: string;
 let store: OrgStore;
@@ -153,6 +153,92 @@ describe("a scan", () => {
     const s = await scanToEnd(store, { target: { kind: "product", name: "Mealime" }, country: "us" }, d);
     expect(s.state).toBe("done");
     expect(vi.mocked(d.research).mock.calls.find(([r]) => r.purpose === "competitors")![0].task).toContain("competes with Mealime");
+  });
+
+  it("hears what they say while it reads, in what's left to search and in what's read", async () => {
+    const d = deps();
+    const look = vi.mocked(d.research).getMockImplementation()!;
+    vi.mocked(d.research).mockImplementation(async (req, emit, signal) => {
+      // Answered once it's got going: the competitor lookup has run, the rest hasn't.
+      if (req.purpose === "competitors") await steerScan(store, { said: [{ question: "Who first?", answer: "Night nurses" }] });
+      return look(req, emit, signal);
+    });
+    const s = await scanToEnd(store, idea, d);
+    const tasks = vi.mocked(d.research).mock.calls.map(([r]) => [r.purpose, r.task] as const);
+    expect(tasks.find(([p]) => p === "competitors")?.[1]).not.toContain("Night nurses");
+    expect(tasks.find(([p]) => p === "posts")?.[1]).toContain("Night nurses");
+    expect(tasks.find(([p]) => p === "space")?.[1]).toContain("Night nurses");
+    const [, , opts] = vi.mocked(d.capture).mock.calls[0];
+    expect(opts.focus).toContain("Night nurses");
+    expect(opts.focus).toContain("never what to find");
+    expect((d.captured().find((x) => x.ing.origin === "https://news.example.com/why") as { focus?: string }).focus).toContain("Night nurses");
+    expect(s.steer?.said).toEqual([{ question: "Who first?", answer: "Night nurses" }]);
+  });
+
+  it("reads nothing of what they took off, even after its reviews came in, and never proposes it again", async () => {
+    const d = deps({ competitors: ["Mealime"] });
+    const rival = { competitors: [{ name: "Mealime", page: "w1", lines: [{ text: "Mealime are meal planning apps.", page: "w1", quote: "are meal planning apps people use every week" }] }] };
+    const answer = vi.mocked(d.structured).getMockImplementation()!;
+    vi.mocked(d.structured).mockImplementation(async (call, signal) => ((call as { system?: string }).system?.includes("competitors from web pages") ? { data: rival } : answer(call, signal)) as never);
+    const look = vi.mocked(d.research).getMockImplementation()!;
+    vi.mocked(d.research).mockImplementation(async (req, emit, signal) => {
+      // Reviews have been fetched by now; the reading hasn't started.
+      if (req.purpose === "posts") await steerScan(store, { off: ["Mealime"] });
+      return look(req, emit, signal);
+    });
+    const s = await scanToEnd(store, idea, d);
+    const titles = d.captured().map((x) => x.ing.title);
+    expect(vi.mocked(d.reviews).mock.calls.length).toBe(2);
+    expect(titles).not.toContain("App Store reviews: Mealime Meal Plans");
+    expect(titles).toContain("App Store reviews: Big Planner");
+    expect(s.read.map((r) => r.title)).toEqual(titles);
+    const m = await store.getMarket();
+    expect(m.competitors.map((c) => c.name)).not.toContain("Mealime");
+    expect(m.gone).toContain("mealime");
+  });
+
+  it("doesn't fetch an app they took off in time", async () => {
+    const d = deps();
+    // The list goes out before the reviews are fetched, so a click there comes in time.
+    const change = store.changeScanSession.bind(store);
+    const spy = vi.spyOn(store, "changeScanSession").mockImplementation(async (fn, o) => {
+      const n = await change(fn, o);
+      if (n.competitors.some((c) => c.name === "Big Planner") && !n.steer) await change((x) => ({ ...x!, steer: { said: [], off: ["Big Planner"] } }));
+      return n;
+    });
+    await scanToEnd(store, idea, d);
+    spy.mockRestore();
+    expect(vi.mocked(d.reviews).mock.calls.map(([a]) => a.name)).toEqual(["Mealime Meal Plans"]);
+  });
+
+  it("changes nothing once it's over, and with nothing to say", async () => {
+    const d = deps();
+    await scanToEnd(store, idea, d);
+    const before = await store.getScanSession();
+    expect(await steerScan(store, { said: [{ question: "Who first?", answer: "Nurses" }] })).toEqual(before);
+    expect((await store.getScanSession())?.steer).toBeUndefined();
+    await store.changeScanSession((s) => ({ ...s!, state: "reading" }));
+    const still = await store.getScanSession();
+    expect(await steerScan(store, { said: [] })).toEqual(still);
+  });
+
+  it("asked again, what they said still stands", async () => {
+    const d = deps();
+    const s = await scanToEnd(store, { ...idea, told: [{ question: "Who first?", answer: "Night nurses" }] }, d);
+    expect(s.steer?.said).toHaveLength(1);
+    expect(vi.mocked(d.capture).mock.calls[0][2].focus).toContain("Night nurses");
+  });
+
+  it("works out the questions from their words alone, and asks code's own when it can't", async () => {
+    const answer = { understood: "You want a meal planner for shift workers.", who: ["Nurses", "Drivers"] };
+    const ask = vi.fn(async () => ({ data: answer }));
+    const q = await steerQuestions({ target: idea.target }, new AbortController().signal, { structured: ask as never });
+    expect(q.map((x) => x.id)).toEqual(["meant", "who", "seen"]);
+    expect(q[0].title).toBe("You want a meal planner for shift workers. Right?");
+    expect(q[1].options.map((o) => o.label)).toEqual(["Nurses", "Drivers"]);
+    const failed = await steerQuestions({ target: idea.target }, new AbortController().signal, { structured: (async () => { throw new Error("No engine"); }) as never });
+    expect(failed[0].title).toBe(`You want to build: ${idea.target.said}. Right?`);
+    expect(failed[1].options).toEqual([]);
   });
 
   it("never reads Reddit, says so, and keeps no usernames", async () => {

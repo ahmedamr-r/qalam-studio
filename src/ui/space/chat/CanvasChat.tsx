@@ -22,7 +22,7 @@ import type { Space } from "../../frame/spaces";
 import { ASK_EVENT, takeAskNext } from "../../org/ask-next";
 import { PARTS } from "./parts";
 import { clearMode, composeIn, useCompose } from "./compose";
-import { answerPlan, planQuestionsOf, answerFind, answerNumber, ask, clearChat, findQuestionsOf, findWith, numberQuestions, openChat, send, stopTurn, turnOf, useCanvasChat } from "./store";
+import { answerFind, answerNumber, answerPlan, answerSteer, ask, clearChat, findQuestionsOf, findWith, leaveSteer, numberQuestions, openChat, planQuestionsOf, send, steerQuestionsOf, stopTurn, turnOf, useCanvasChat } from "./store";
 
 /*
  * Qalam AI's chat on the left of a space's canvas, as Figma keeps its panel there: one box for
@@ -48,6 +48,8 @@ export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
   // What's running: an ask or a capture, or a brain dump's call.
   const busy = running(chat) ?? (dumpBusy ? (chat.turns.find((t) => t.job.kind === "dump" && t.job.source === dumpBusy) ?? null) : null);
   const waiting = asking(chat, dumpOf);
+  // The questions while a scan reads don't wait for it, and it doesn't wait for them.
+  const steering = !!waiting && "steer" in waiting;
   const { org } = useWords();
   const attached = useAttach((s) => s.items);
   const compose = useCompose();
@@ -122,10 +124,12 @@ export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
             )
           }
           // The box stays at the bottom wherever it shows (with Stop while a goal's look runs before its questions); a round of questions flows after the thread.
-          pinned={!waiting || !!busy}
+          pinned={!waiting || (!!busy && !steering)}
           footer={
-            waiting && !busy ? (
-              "number" in waiting ? (
+            waiting && (!busy || steering) ? (
+              "steer" in waiting ? (
+                <SteerRound key={waiting.turn.id} turn={waiting.turn.id} />
+              ) : "number" in waiting ? (
                 <NumberRound key={waiting.turn.id} turn={waiting.turn.id} />
               ) : "plan" in waiting ? (
                 <PlanRound key={waiting.turn.id} turn={waiting.turn.id} />
@@ -220,6 +224,27 @@ function FindForm({ turn, what }: { turn: string; what: FindWhat }) {
       review={{ submitLabel: "Send answers" }}
     />
   );
+}
+
+/** The questions while a scan reads, each one skippable. If it finishes before they start on them, they go: what's still wanted is asked later. */
+function SteerRound({ turn }: { turn: string }) {
+  const questions = useMemo(() => steerQuestionsOf(turn).map(toQuestion), [turn]);
+  const [form, setForm] = useState<FlowState>(() => initialFlow(questions));
+  const untouched = useRef(form);
+  const over = useCanvasChat((s) => {
+    const j = s.chat.turns.find((t) => t.id === turn)?.job;
+    return j?.kind === "scan" && !!j.session && j.session.state !== "reading";
+  });
+  useEffect(() => {
+    if (over && form === untouched.current) leaveSteer(turn);
+  }, [over, form, turn]);
+  const answerOf = (f: FlowState, q: (typeof questions)[number]) => {
+    const a = f.answers[q.id];
+    if (!a) return "";
+    const said = summarize(q, a);
+    return said === "Skipped" || said === "—" || said === "None" ? "" : said;
+  };
+  return <Questionnaire title="While I read" questions={questions} state={form} onChange={setForm} onSubmit={(f) => answerSteer(turn, Object.fromEntries(questions.map((q) => [q.id, answerOf(f, q)])))} />;
 }
 
 /** The questions before working out who it's for and what comes first; every one can be skipped. */

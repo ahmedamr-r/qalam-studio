@@ -382,7 +382,7 @@ function EmptyMap({ space }: { space: string | null }) {
   if (scanning)
     return (
       <div className="pointer-events-none absolute inset-0 grid place-items-center p-[24px]">
-        <p className="max-w-[320px] text-center text-body text-fg-muted">Problems show here once they're read and checked.</p>
+        <p className="max-w-[320px] text-center text-body text-fg-muted">Problems show here as they're found.</p>
       </div>
     );
   const rows = [

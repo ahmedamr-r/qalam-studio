@@ -2,6 +2,7 @@ import type { PlanQuestion } from "@/ai/plan";
 import type { ScanPlan } from "@/space/chat";
 import type { ScanAudience } from "@/scan/plan";
 import type { ScanRequest, ScanSession, ScanTarget } from "@/scan/session";
+import type { ScanSaid, ScanSteer } from "@/scan/steer";
 import { orgFetch, orgJson } from "./client";
 
 /** What people complain about, in the window: the core runs it (server/org/scan.ts) and announces each change. */
@@ -12,8 +13,11 @@ export const startScan = (req: ScanRequest) => orgJson<{ session: ScanSession }>
 
 export const stopScan = () => orgFetch("/scan", { method: "DELETE" }).then(() => {});
 
-type Plan = { target: ScanTarget; sources: string[] };
+type Plan = { target: ScanTarget; sources: string[]; told?: ScanSaid[] };
 const post = <T>(path: string, json: unknown, signal?: AbortSignal) => orgJson<T>(path, { method: "POST", json, ...(signal ? { signal } : {}) });
+
+export const steerQuestions = (target: ScanTarget, signal?: AbortSignal) => post<{ questions: PlanQuestion[] }>("/scan/ask", { target }, signal).then((r) => r.questions);
+export const steerScan = (more: Partial<ScanSteer>) => post<{ session: ScanSession | null }>("/scan/steer", more).then((r) => r.session);
 
 export const planQuestions = (p: Plan, signal?: AbortSignal) => post<{ questions: PlanQuestion[] }>("/scan/questions", p, signal).then((r) => r.questions);
 export const keepAnswers = (said: { question: string; answer: string }[], title: string) => post<{ source: string | null }>("/scan/answers", { said, title }).then((r) => r.source);

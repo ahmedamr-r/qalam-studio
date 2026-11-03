@@ -252,7 +252,7 @@ function SingleStep({ q, a, onAnswer }: { q: SingleQuestion; a: Answer; onAnswer
               <span className="text-body font-medium text-fg" dir="auto">
                 {o.label}
               </span>
-              {q.recommended === o.value && <Tag tone="ai">Recommended</Tag>}
+              {q.recommended === o.value && q.options.length > 1 && <Tag tone="ai">Recommended</Tag>}
             </span>
             {o.description && (
               <span className="mt-[2px] block text-caption text-fg-muted" dir="auto">

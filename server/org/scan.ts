@@ -1,10 +1,12 @@
 import { competitorsCall, pricesCall } from "@/ai/market";
-import { appsCall, searchesCall } from "@/ai/scan";
+import type { PlanQuestion } from "@/ai/plan";
+import { appsCall, searchesCall, steerCall } from "@/ai/scan";
 import type { Ingested } from "@/discovery/ingest/core";
 import { isDiscussion, isReddit, postAddress, refusesReaders } from "@/discovery/ingest/posts";
 import type { OutsidePage } from "@/goals/outside";
 import { competitorsMaterial, competitorsTask, ownSite, pricesMaterial, sanitizeCompetitors, sanitizePrices, withRivals } from "@/market/rivals";
 import type { Competitor } from "@/market/types";
+import { focusWith, isOff, sanitizeSteer, steerOf, steerRound, toldLines, withSteer, type ScanSteer } from "@/scan/steer";
 import { emptyScan, isThin, peopleQuotes, sanitizeAppPicks, sanitizeSearches, scanOf, type ScanKnown, type ScanRead, type ScanRequest, type ScanSession } from "@/scan/session";
 import { appLookup, appNameIn, appSearch, appsIn, bestApp, hnComments, hnSearch, hnThreads, popularApps, type AppHit } from "@/scan/sources";
 import { nanoid } from "nanoid";
@@ -32,7 +34,7 @@ export interface ScanDeps extends MarketDeps {
 
 const liveDeps: ScanDeps = { ...realDeps, json: readJson, reviews: readAppReviews, posts: readPosts, capture: captureTogether };
 
-export const SCAN_LIMITS = { competitors: 3, candidates: 12, apps: 3, pages: 5, tries: 12, articles: 4, articleTries: 8, articleChars: 20_000, atOnce: 4, steps: 6, priced: 6, pricePages: 8, knownPerRival: 2, knownPerPage: 3, known: 14 } as const;
+export const SCAN_LIMITS = { competitors: 3, candidates: 12, apps: 3, pages: 5, tries: 12, articles: 4, articleTries: 8, articleChars: 20_000, atOnce: 4, steps: 6, askMs: 20_000, priced: 6, pricePages: 8, knownPerRival: 2, knownPerPage: 3, known: 14 } as const;
 
 const running = new Map<string, AbortController>();
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -54,16 +56,40 @@ export async function startScan(store: OrgStore, req: ScanRequest, opts: { tab?:
   running.get(store.dir)?.abort();
   const ctrl = new AbortController();
   running.set(store.dir, ctrl);
-  const s = await store.changeScanSession(() => emptyScan(req.target, Date.now()), opts);
+  const s = await store.changeScanSession(() => emptyScan(req.target, Date.now(), req.told), opts);
   void runScan(store, req, opts.deps ?? liveDeps, ctrl.signal, s.at).finally(() => {
     if (running.get(store.dir) === ctrl) running.delete(store.dir);
   });
   return s;
 }
 
+/** What they've said while it reads, for what hasn't been read yet. Nothing changes once it's over. */
+export async function steerScan(store: OrgStore, raw: unknown, opts: { tab?: string } = {}): Promise<ScanSession | null> {
+  const more = steerOf(raw);
+  const now = await store.getScanSession();
+  if (!now || now.state !== "reading" || (!more.said.length && !more.off.length)) return now;
+  return store.changeScanSession((s) => {
+    const cur = s ?? now;
+    return cur.at === now.at && cur.state === "reading" ? { ...cur, steer: withSteer(cur.steer, more) } : cur;
+  }, opts);
+}
+
+/** The questions as it starts: how Qalam AI took them, from their words alone; code's own when it can't say in time. */
+export async function steerQuestions(req: Pick<ScanRequest, "target">, signal: AbortSignal, deps: Pick<ScanDeps, "structured"> = liveDeps): Promise<PlanQuestion[]> {
+  const about = req.target.kind === "idea" ? req.target.said : req.target.name;
+  if (!about) return steerRound(req.target);
+  try {
+    const { data } = await deps.structured<unknown>(steerCall(about, req.target.kind), AbortSignal.any([signal, AbortSignal.timeout(SCAN_LIMITS.askMs)]));
+    return sanitizeSteer(data, req.target);
+  } catch (e) {
+    if (signal.aborted) throw e;
+    return steerRound(req.target);
+  }
+}
+
 /** Run a scan to its end, for what waits on it (the eval). */
 export async function scanToEnd(store: OrgStore, req: ScanRequest, deps: ScanDeps = liveDeps, signal: AbortSignal = new AbortController().signal): Promise<ScanSession> {
-  const { at } = await store.changeScanSession(() => emptyScan(req.target, Date.now()));
+  const { at } = await store.changeScanSession(() => emptyScan(req.target, Date.now(), req.told));
   await runScan(store, req, deps, signal, at);
   return (await store.getScanSession())!;
 }
@@ -77,11 +103,17 @@ async function runScan(store: OrgStore, req: ScanRequest, deps: ScanDeps, signal
     return next;
   };
   const step = (label: string) => void change((s) => ({ ...s, steps: [...s.steps, label].slice(-SCAN_LIMITS.steps) }));
+  // What they've said so far: read where it can still turn something, and late is fine.
+  const steerNow = async (): Promise<ScanSteer | undefined> => {
+    await chain;
+    const s = await store.getScanSession();
+    return s?.at === at ? s.steer : undefined;
+  };
   try {
     const { target, country } = req;
     const about = target.kind === "idea" ? target.said : target.name;
     const mine = target.kind === "product" && target.mine;
-    const items: { ing: Ingested; read: ScanRead; basis?: "said" | "read"; focus?: string }[] = [];
+    let items: { ing: Ingested; read: ScanRead; basis?: "said" | "read"; focus?: string }[] = [];
     const take = (read: ScanRead, text: string, basis?: "said") => items.push({ ing: { kind: "post", title: read.title.slice(0, 200), origin: read.origin, text }, read, ...(basis ? { basis } : {}) });
     // Asked twice, a page isn't read twice; nor is one kept from before.
     const seen = new Set((await store.listSources()).filter((s) => (s.kind === "post" || s.kind === "url") && s.origin).map((s) => s.origin!));
@@ -151,16 +183,21 @@ async function runScan(store: OrgStore, req: ScanRequest, deps: ScanDeps, signal
     await change((s) => ({ ...s, competitors: apps }));
     if (signal.aborted) return;
 
-    // App Store reviews.
-    if (toRead.length) step(`Reading App Store reviews of ${toRead.map((a) => a.name ?? "the app").join(", ")}`);
-    for (const got of await Promise.all(toRead.filter((a) => fresh(`app:${a.id}`) && fresh(a.url)).map((a) => deps.reviews(a, signal)))) {
-      if (got) take({ title: got.page.title, origin: got.page.url, kind: "reviews", reviews: { read: got.read, kept: got.kept } }, got.page.text, mine ? "said" : undefined);
+    // App Store reviews, of the apps they haven't taken off.
+    const offApps = (steer: ScanSteer | undefined) => new Set(apps.filter((a) => a.app && isOff(steer, a.name)).map((a) => a.app!.id));
+    const gone = offApps(await steerNow());
+    const reading = toRead.filter((a) => !gone.has(a.id) && fresh(`app:${a.id}`) && fresh(a.url));
+    if (reading.length) step(`Reading App Store reviews of ${reading.map((a) => a.name ?? "the app").join(", ")}`);
+    for (const [i, got] of (await Promise.all(reading.map((a) => deps.reviews(a, signal)))).entries()) {
+      if (got) take({ title: got.page.title, origin: got.page.url, kind: "reviews", reviews: { read: got.read, kept: got.kept }, appId: reading[i].id }, got.page.text, mine ? "said" : undefined);
     }
     if (signal.aborted) return;
 
     // Hacker News: the searches Qalam AI wrote, and each name as it is; only comments about what was searched.
     step("Searching Hacker News");
     const now = Date.now();
+    const hearing = await steerNow();
+    names = names.filter((n) => !isOff(hearing, n));
     const searches = [...sanitizeSearches(wrote).map((q) => ({ query: q, about: { words: q } })), ...names.map((n) => ({ query: n, about: { name: n } }))];
     const comments = (await Promise.all(searches.map(async (q) => hnComments(await deps.json(hnSearch(q.query, now), signal), q.about)))).flat();
     for (const t of hnThreads(comments)) if (fresh(t.origin)) take({ title: t.title, origin: t.origin, kind: "thread" }, t.text);
@@ -168,9 +205,11 @@ async function runScan(store: OrgStore, req: ScanRequest, deps: ScanDeps, signal
 
     // Other pages where people speak for themselves, what's been published around it, and (for a product) what it competes with: each costs a lookup, none needs the others.
     const name = target.kind === "product" ? target.name || names[0] || "" : "";
+    const told = toldLines(await steerNow());
+    const theySaid = told ? [`What they've said so far (where to look first, not what to find):\n${told}`] : [];
     const [info, space, compared] = await Promise.all([
-      deps.research({ purpose: "posts", task: [`What it's about: ${about}`, "Find forums, Q&A threads and review pages where the people this is for describe their problems in their own words: what they tried, what went wrong, what they gave up on. Not pages selling a product.", ...(names.length ? [`Products they may mention: ${names.join(", ")}`] : [])].join("\n"), connectors: ["web"] }, step, signal),
-      deps.research({ purpose: "space", task: [`What it's about: ${about || names.join(", ")}`, ...(names.length ? [`Products in this market: ${names.join(", ")}`] : [])].join("\n"), connectors: ["web"] }, step, signal).catch((e: unknown) => {
+      deps.research({ purpose: "posts", task: [`What it's about: ${about}`, "Find forums, Q&A threads and review pages where the people this is for describe their problems in their own words: what they tried, what went wrong, what they gave up on. Not pages selling a product.", ...(names.length ? [`Products they may mention: ${names.join(", ")}`] : []), ...theySaid].join("\n"), connectors: ["web"] }, step, signal),
+      deps.research({ purpose: "space", task: [`What it's about: ${about || names.join(", ")}`, ...(names.length ? [`Products in this market: ${names.join(", ")}`] : []), ...theySaid].join("\n"), connectors: ["web"] }, step, signal).catch((e: unknown) => {
         if (signal.aborted) throw e;
         return null;
       }),
@@ -189,14 +228,15 @@ async function runScan(store: OrgStore, req: ScanRequest, deps: ScanDeps, signal
     if (!info) noWeb = true;
     if (signal.aborted) return;
 
-    // What they charge, then all of it kept in what's known: a scan stopped before here keeps none of it.
-    rivals = await pricesFor(rivals, apps, rivalPages, deps, signal, step).catch((e: unknown) => {
+    // What they charge, for the ones they haven't taken off.
+    const asked = await steerNow();
+    const foundNames = rivals.map((c) => c.name);
+    rivals = await pricesFor(rivals.filter((c) => !isOff(asked, c.name)), apps.filter((a) => !isOff(asked, a.name)), rivalPages, deps, signal, step).catch((e: unknown) => {
       if (signal.aborted) throw e;
       console.warn(`[scan] prices: ${message(e)}`);
       return rivals;
     });
     if (signal.aborted) return;
-    if (rivals.length) await store.changeMarket((x) => withRivals(x, rivals));
     const fromSpace = new Set((space?.sources ?? []).map((s) => s.url));
     const links = [...new Map([...(info?.sources ?? []), ...(space?.sources ?? [])].filter((s) => /^https?:\/\//i.test(s.url)).map((s) => [s.url, s])).values()];
     const reddit = links.filter((l) => isReddit(l.url)).length;
@@ -219,11 +259,19 @@ async function runScan(store: OrgStore, req: ScanRequest, deps: ScanDeps, signal
     const lookingAt = target.kind === "idea" ? `the market around this idea: ${target.said}` : `the market ${name || "this product"} is in`;
     const inTheirWords = target.kind === "idea" ? " Write page titles and lines in the language this idea is written in, quoting people in theirs." : "";
     for (const p of articlesRead.got) items.push({ ing: { kind: "url", title: p.title.slice(0, 200), origin: p.url, text: p.text.slice(0, SCAN_LIMITS.articleChars) }, read: { title: p.title, origin: p.url, kind: "article" }, basis: "read", focus: `What's known about ${lookingAt}: how many people it's for, what they use today and pay, what keeps them and what loses them, and what they struggle with. Numbers only as the page gives them.${inTheirWords}` });
+    // The last word before the reading starts: what they took off isn't read into anything, and isn't proposed again.
+    const steer = await steerNow();
+    const offNow = offApps(steer);
+    items = items.filter((i) => !(i.read.appId && offNow.has(i.read.appId)));
+    const takenOff = foundNames.filter((n) => isOff(steer, n)).map((n) => n.toLowerCase());
+    rivals = rivals.filter((c) => !isOff(steer, c.name));
+    if (rivals.length || takenOff.length) await store.changeMarket((x) => ({ ...withRivals(x, rivals), gone: [...new Set([...x.gone, ...takenOff])] }));
+    if (signal.aborted) return;
     await change((s) => ({ ...s, read: items.map((i) => i.read), skipped: { reddit, before, articles: others.length - articlesRead.got.length, unreadable: pagesRead.refused.length }, notRead: notRead.slice(0, 30), ...(noWeb ? { noWeb: true as const } : {}) }));
     if (signal.aborted) return;
 
     // Taken in together: what's kept is found word for word, and filed once.
-    const taken = items.length ? await deps.capture(store, items.map(({ ing, basis, focus }) => ({ ing, ...(basis ? { basis } : {}), ...(focus ? { focus } : {}) })), { emit: step, signal, focus: target.kind === "idea" ? `What people struggle with around this idea: ${target.said}.${inTheirWords}` : `What people complain about in ${name || "this product"}` }) : { sources: [], filed: null, notFound: 0 };
+    const taken = items.length ? await deps.capture(store, items.map(({ ing, basis, focus }) => ({ ing, ...(basis ? { basis } : {}), ...(focus ? { focus: focusWith(focus, steer) } : {}) })), { emit: step, signal, focus: focusWith(target.kind === "idea" ? `What people struggle with around this idea: ${target.said}.${inTheirWords}` : `What people complain about in ${name || "this product"}`, steer) }) : { sources: [], filed: null, notFound: 0 };
     if (signal.aborted) return;
     const kept = taken.sources.reduce((n, s) => n + s.quotes, 0);
     const problems = (taken.filed?.pages ?? []).filter((p) => p.kind === "need").map((p) => ({ id: p.id, title: p.title }));

@@ -1,3 +1,4 @@
+import { steerOf, type ScanSaid, type ScanSteer } from "./steer";
 /*
  * A scan of what people complain about (pure; the core runs it, server/org/scan.ts), kept in
  * chats/scan/session.json so the window follows it and a reload picks it up. It starts from an idea
@@ -15,6 +16,8 @@ export interface ScanRequest {
   target: ScanTarget;
   /** Which App Store to look in. */
   country: string;
+  /** What they've said already, when it's being asked again. */
+  told?: ScanSaid[];
 }
 
 export type ScanState = "reading" | "done" | "failed" | "stopped";
@@ -28,6 +31,8 @@ export interface ScanRead {
   quotes?: number;
   /** For reviews: how many the feed gave, and how many were kept to read. */
   reviews?: { read: number; kept: number };
+  /** For reviews: the app, so taking it off can reach them. */
+  appId?: string;
 }
 
 /** What's known beside what people say: what another product offers or charges, or what a page published. */
@@ -56,6 +61,8 @@ export interface ScanSession {
   notRead?: { url: string; why: "reddit" | "before" | "article" | "unreadable" | "too many" }[];
   /** Quotes kept; Qalam AI's quotes code couldn't find; lines whose words didn't hold. */
   checked: { kept: number; notFound: number; unbacked: number };
+  /** What they've said while it reads (src/scan/steer.ts). */
+  steer?: ScanSteer;
   /** Read elsewhere, each with its page, to show beside the problems. */
   known?: ScanKnown[];
   /** The problem pages it went into. */
@@ -75,15 +82,17 @@ export function scanRequest(raw: unknown): ScanRequest | null {
   const r = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   const t = r.target && typeof r.target === "object" ? (r.target as Record<string, unknown>) : {};
   const country = isCountry(r.country) ? r.country : "us";
+  const told = steerOf({ said: r.told }).said;
+  const also = told.length ? { told } : {};
   if (t.kind === "idea") {
     const said = clean(t.said, 2000);
-    return said.length >= 3 ? { target: { kind: "idea", said }, country } : null;
+    return said.length >= 3 ? { target: { kind: "idea", said }, country, ...also } : null;
   }
   if (t.kind === "product") {
     const name = clean(t.name, 200);
     const app = clean(t.app, 400);
     if (!name && !app) return null;
-    return { target: { kind: "product", name, ...(app ? { app } : {}), ...(t.mine === true ? { mine: true } : {}) }, country };
+    return { target: { kind: "product", name, ...(app ? { app } : {}), ...(t.mine === true ? { mine: true } : {}) }, country, ...also };
   }
   return null;
 }
@@ -91,7 +100,7 @@ export function scanRequest(raw: unknown): ScanRequest | null {
 /** The quotes of people speaking for themselves, which is what a scan's verdict goes by. */
 export const peopleQuotes = (read: readonly Pick<ScanRead, "kind" | "quotes">[]) => read.reduce((n, r) => n + (r.kind === "article" ? 0 : (r.quotes ?? 0)), 0);
 
-export const emptyScan = (target: ScanTarget, at: number): ScanSession => ({ v: 1, state: "reading", at, target, steps: ["Starting"], competitors: [], read: [], skipped: { reddit: 0, before: 0, articles: 0, unreadable: 0 }, checked: { kept: 0, notFound: 0, unbacked: 0 }, problems: [], thin: false });
+export const emptyScan = (target: ScanTarget, at: number, told?: readonly ScanSaid[]): ScanSession => ({ v: 1, state: "reading", at, target, steps: ["Starting"], competitors: [], ...(told?.length ? { steer: { said: [...told], off: [] } } : {}), read: [], skipped: { reddit: 0, before: 0, articles: 0, unreadable: 0 }, checked: { kept: 0, notFound: 0, unbacked: 0 }, problems: [], thin: false });
 
 /** At least this much, or the scan says it found little. */
 export const SCAN_ENOUGH = { problems: 3, quotes: 10 } as const;

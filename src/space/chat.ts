@@ -10,6 +10,7 @@ import type { GoalFit, GoalIdea, MovesFound, SuggestedNumber } from "@/goals/mov
 import type { Benchmark } from "@/goals/outside";
 import type { OstMetric } from "@/discovery/types";
 import type { ScanSession, ScanTarget } from "@/scan/session";
+import type { ScanSaid } from "@/scan/steer";
 import type { GoalAction, ScanAudience } from "@/scan/plan";
 import type { Drafted, SolutionDraft } from "@/discovery/solutions";
 
@@ -93,6 +94,10 @@ export interface ScanJob {
   error?: string;
   /** Another scan's problems are in this project: where it goes is theirs to say, before it starts. */
   where?: true;
+  /** The questions while it reads: `writing` them, `asking` in the box, `done` once answered or left. Nothing waits on them. */
+  ask?: { step: "writing" | "asking" | "done"; questions?: PlanQuestion[] };
+  /** What they've said while it reads: heard by what's left to read, not asked again after. */
+  told?: ScanSaid[];
   /** From its problems to what to build first. */
   plan?: ScanPlan;
 }
@@ -184,6 +189,7 @@ function stopped(j: ChatJob): ChatJob {
     const { loading: _gone, ...rest } = j;
     return rest;
   }
+  if (j.kind === "scan" && j.ask?.step === "writing") return { ...j, ask: { step: "done" } };
   // What was being worked out when the page went stops there: they can ask again.
   if (j.kind === "scan" && j.plan && (j.plan.step === "questioning" || j.plan.step === "reading" || j.plan.step === "picking")) return { ...j, plan: { ...j.plan, step: "failed", error: "It stopped when the page closed." } };
   if (j.kind === "goalfor" && j.step === "looking") return { ...j, step: "failed", error: "It stopped when the page closed." };
@@ -350,8 +356,9 @@ export function threadOf(c: CanvasChat, dumpOf: DumpOf = () => null): ChatMessag
 }
 
 /** Whose questions the box asks now: the newest "Help me find one" or brain dump waiting on its answers. */
-export function asking(c: CanvasChat, dumpOf: DumpOf): ({ turn: ChatTurn } & ({ source: string } | { find: FindWhat } | { number: true } | { plan: true })) | null {
+export function asking(c: CanvasChat, dumpOf: DumpOf): ({ turn: ChatTurn } & ({ source: string } | { find: FindWhat } | { number: true } | { plan: true } | { steer: true })) | null {
   for (const t of [...c.turns].reverse()) {
+    if (t.job.kind === "scan" && t.job.ask?.step === "asking" && !t.job.error) return { turn: t, steer: true };
     if (t.job.kind === "scan" && t.job.plan?.step === "asking") return { turn: t, plan: true };
     if (t.job.kind === "goalfor" && t.job.step === "asking") return { turn: t, number: true };
     if (t.job.kind === "find") return { turn: t, find: t.job.what };

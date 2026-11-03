@@ -27,7 +27,8 @@ import { useSpaceView } from "@/space/view";
 import { onOrgChange } from "@/org/live";
 import { otherReading, requestOf, scanInput } from "@/scan/input";
 import type { ScanTarget } from "@/scan/session";
-import { firstBuild, keepAnswers, keepAudience, planAudiences, planQuestions, scanNow, startScan, stopScan } from "@/org/scan";
+import { notAsked, steerAnswers, steerRound, type ScanSaid } from "@/scan/steer";
+import { firstBuild, keepAnswers, keepAudience, planAudiences, planQuestions, scanNow, startScan, steerQuestions, steerScan, stopScan } from "@/org/scan";
 import { firstGoal, sameTarget, scanRound, SUGGESTED_GOAL, type GoalAction, type ScanAudience } from "@/scan/plan";
 import { projectName } from "@/scan/input";
 import { draftBacking, draftCards } from "@/discovery/solutions";
@@ -94,6 +95,15 @@ function save() {
     saving = null;
     void orgFetch(`/canvas-chat/${key}`, { method: "PUT", json: chat }).catch(() => {});
   }, 400);
+}
+
+/** Now: what's about to run in the core shouldn't depend on the page staying open 400 ms more. */
+function saveNow() {
+  const { key, chat } = st();
+  if (!key) return Promise.resolve();
+  if (saving) clearTimeout(saving);
+  saving = null;
+  return orgFetch(`/canvas-chat/${key}`, { method: "PUT", json: chat }).catch(() => {});
 }
 
 function change(fn: (c: CanvasChat) => CanvasChat) {
@@ -221,20 +231,47 @@ export function scanFrom(said: string, space: string | null) {
 }
 
 /** An idea or a product read for what people complain about. It runs in the core; this follows it. */
-async function scanIt(at: string | null, said: string, target: ScanTarget | null = scanInput(said)) {
+async function scanIt(at: string | null, said: string, target: ScanTarget | null = scanInput(said), told?: readonly ScanSaid[]) {
   if (!target) return void jobAt(at, said, { kind: "choose", first: "problem" });
   // Another scan's problems are here: two unrelated products would run together on one page.
   const other = !at && st().chat.turns.some((t) => t.job.kind === "scan" && t.job.session?.state === "done" && t.job.session.problems.length > 0 && !sameTarget(t.job.target, target));
   if (other) return void jobAt(at, said, { kind: "scan", target, asked: Date.now(), where: true });
-  const id = jobAt(at, said, { kind: "scan", target, asked: Date.now() });
+  const id = jobAt(at, said, { kind: "scan", target, asked: Date.now(), ...(told?.length ? { told: [...told] } : {}) });
+  void saveNow();
   try {
-    const session = await startScan(requestOf(target, said, typeof navigator === "undefined" ? "" : navigator.language));
+    const session = await startScan({ ...requestOf(target, said, typeof navigator === "undefined" ? "" : navigator.language), ...(told?.length ? { told: [...told] } : {}) });
     change((c) => withJob(c, id, (j) => (j.kind === "scan" ? { ...j, session } : j)));
     void followScan();
+    // Asked again, what they've said still stands.
+    if (!told?.length) void askWhileReading(id, target);
   } catch (e) {
     change((c) => withJob(c, id, (j) => (j.kind === "scan" ? { ...j, error: message(e) } : j)));
   }
 }
+
+/** The questions as it starts. It's reading already, and nothing waits on them. */
+async function askWhileReading(id: string, target: ScanTarget) {
+  const set = (fn: (j: ScanJob) => ScanJob) => change((c) => withJob(c, id, (j) => (j.kind === "scan" ? fn(j) : j)));
+  set((j) => ({ ...j, ask: { step: "writing" } }));
+  const questions = await steerQuestions(target).catch(() => steerRound(target));
+  set((j) => (j.ask?.step === "writing" && (!j.session || j.session.state === "reading") ? { ...j, ask: { step: "asking", questions } } : j.ask?.step === "writing" ? { ...j, ask: { step: "done" } } : j));
+}
+
+/** The questions the box asks while it reads. */
+export const steerQuestionsOf = (id: string) => scanJob(id)?.ask?.questions ?? [];
+
+/** Their answers: heard by what's left to read, and not asked again. */
+export function answerSteer(id: string, answers: Readonly<Record<string, string>>) {
+  const said = steerAnswers(steerQuestionsOf(id), answers);
+  change((c) => withJob(c, id, (j) => (j.kind === "scan" ? { ...j, ask: { step: "done" }, ...(said.length ? { told: [...(j.told ?? []), ...said] } : {}) } : j)));
+  if (said.length) void steerScan({ said }).catch(() => {});
+}
+
+/** The questions go, unanswered: it finished before they started on them. */
+export const leaveSteer = (id: string) => change((c) => withJob(c, id, (j) => (j.kind === "scan" && j.ask?.step === "asking" ? { ...j, ask: { step: "done" } } : j)));
+
+/** Not what they meant: an app or a competitor it found, taken off before it's read into anything. */
+export const steerOff = (name: string) => void steerScan({ off: [name] }).catch(() => {});
 
 let followingScan: (() => void) | null = null;
 /** The window and the core share a clock on this computer; a little room all the same. */
@@ -289,10 +326,10 @@ export async function scanInNewProject(id: string) {
   }
 }
 
-/** Again, as it was read. */
+/** Again, as it was read, and what they said still stands. */
 export function scanAgain(id: string) {
   const t = turnOf(id);
-  if (t?.job.kind === "scan") void scanIt(id, t.said, t.job.target);
+  if (t?.job.kind === "scan") void scanIt(id, t.said, t.job.target, t.job.told);
 }
 
 /** They say the product is theirs: its reviews are its customers' words, and what rests on them moves to "We know". */
@@ -312,7 +349,7 @@ const scanJob = (id: string): ScanJob | null => {
   return j?.kind === "scan" ? j : null;
 };
 const plan = (id: string, fn: (p: ScanPlan) => ScanPlan) => change((c) => withJob(c, id, (j) => (j.kind === "scan" && j.plan ? { ...j, plan: fn(j.plan) } : j)));
-const planOf = (j: ScanJob) => ({ target: j.target, sources: (j.session?.read ?? []).flatMap((r) => (r.sourceId ? [r.sourceId] : [])) });
+const planOf = (j: ScanJob) => ({ target: j.target, sources: (j.session?.read ?? []).flatMap((r) => (r.sourceId ? [r.sourceId] : [])), ...(j.told?.length ? { told: j.told } : {}) });
 /** What it's working out now, or that it stopped. */
 const stoppedPlan = (id: string, e: unknown) => {
   const aborted = (e as Error).name === "AbortError";
@@ -325,25 +362,29 @@ export async function planStart(id: string) {
   if (!j) return;
   change((c) => withJob(c, id, (x) => (x.kind === "scan" ? { ...x, plan: { step: "questioning" } } : x)));
   const ctrl = begin(id);
+  let answered = false;
   try {
     const questions = await planQuestions(planOf(j), ctrl.signal);
-    plan(id, (p) => ({ ...p, step: "asking", questions: questions.length ? questions : scanRound() }));
+    // They've answered all there is: straight on to who it's for.
+    answered = !questions.length && !!j.told?.length;
+    if (!answered) plan(id, (p) => ({ ...p, step: "asking", questions: questions.length ? questions : scanRound() }));
   } catch (e) {
     if ((e as Error).name === "AbortError") return stoppedPlan(id, e);
-    plan(id, (p) => ({ ...p, step: "asking", questions: scanRound() }));
+    plan(id, (p) => ({ ...p, step: "asking", questions: notAsked(scanRound(), j.told ?? []) }));
   } finally {
     end(id);
   }
+  if (answered) void answerPlan(id, {});
 }
 
 /** The questions the box asks now. */
-export const planQuestionsOf = (id: string) => scanJob(id)?.plan?.questions ?? scanRound();
+export const planQuestionsOf = (id: string) => scanJob(id)?.plan?.questions ?? notAsked(scanRound(), scanJob(id)?.told ?? []);
 
 /** Their answers, kept as their own words, then who the quotes show. Everything may be skipped. */
 export async function answerPlan(id: string, answers: Readonly<Record<string, string>>) {
   const j = scanJob(id);
   if (!j?.plan) return;
-  const said = planQuestionsOf(id).map((q) => ({ question: q.title, answer: (answers[q.id] ?? "").trim() })).filter((x) => x.answer);
+  const said = [...(j.told ?? []), ...planQuestionsOf(id).map((q) => ({ question: q.title, answer: (answers[q.id] ?? "").trim() })).filter((x) => x.answer)];
   const words = said.map((x) => `${x.question} ${x.answer}`).join("\n");
   plan(id, (p) => ({ ...p, step: "reading", answers: words }));
   const ctrl = begin(id);

@@ -83,6 +83,23 @@ describe("from a scan's problems to what comes first", () => {
     expect(q.every((x) => x.options.length === 0)).toBe(true);
   });
 
+  it("doesn't ask again what they answered while it read, and tells Qalam AI not to", async () => {
+    const who = "Who do you picture using this first?";
+    const none = await planQuestions(store, { target, sources: ["s1"], told: [{ question: who, answer: "Night nurses" }] }, undefined, { structured: async () => { throw new Error("no"); }, draft: async () => { throw new Error("no"); } });
+    expect(none.map((q) => q.title)).not.toContain(who);
+    expect(none.length).toBeGreaterThan(0);
+    let heard = "";
+    await planQuestions(store, { target, sources: ["s1"], told: [{ question: who, answer: "Night nurses" }] }, undefined, {
+      structured: (async (call: { content: { text: string }[] }) => {
+        heard = call.content[0].text;
+        return { data: { questions: [] } };
+      }) as never,
+      draft: async () => { throw new Error("no"); },
+    });
+    expect(heard).toContain("never ask it again");
+    expect(heard).toContain("Night nurses");
+  });
+
   it("keeps their answers as their own words, and nothing with nothing answered", async () => {
     expect(await keepAnswers(store, [{ question: "Who?", answer: "  " }], "Your answers")).toBeNull();
     const id = (await keepAnswers(store, [{ question: "Who?", answer: "Night nurses I know" }, { question: "Seen it?", answer: "" }], "Your answers"))!;

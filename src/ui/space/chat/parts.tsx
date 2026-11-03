@@ -1,7 +1,7 @@
 import { BASES, BASIS_LABEL, countsLine, isBasis, mainBasis, type Basis } from "@/discovery/basis";
 import { useRef, useState } from "react";
 import clsx from "clsx";
-import { Check, Quote, RotateCcw } from "lucide-react";
+import { Check, Quote, RotateCcw, X } from "lucide-react";
 import { nanoid } from "nanoid";
 import { studio, useStudio } from "@/doc/store";
 import { isOstCard } from "@/doc/board";
@@ -35,11 +35,12 @@ import { useTopics } from "../../topics/list";
 import { useWords } from "../../frame/store";
 import { show } from "../links";
 import { FoundGoalRow } from "../../chat/FoundGoalRow";
-import { anotherFile, changeDocBasis, decideDocGoal, dropTurn, leaveFile, leaveFit, lookPastFits, placeStatement, retake, retryGoalFor, settleNumber, takeAsBasis, takeFit, takeIdea, turnOf, takeGoalNumber, useCanvasChat, openProblems, scanAgain, scanIsMine, scanOtherWay, chooseDraft, pickAudience, placeFirstBuild, planAgain, planFirst, planStart, scanHere, scanInNewProject, setPlanGoal } from "./store";
+import { anotherFile, changeDocBasis, chooseDraft, decideDocGoal, dropTurn, leaveFile, leaveFit, lookPastFits, openProblems, pickAudience, placeFirstBuild, placeStatement, planAgain, planFirst, planStart, retake, retryGoalFor, scanAgain, scanHere, scanInNewProject, scanIsMine, scanOtherWay, setPlanGoal, settleNumber, steerOff, stopTurn, takeAsBasis, takeFit, takeGoalNumber, takeIdea, turnOf, useCanvasChat } from "./store";
 import { titleFrom } from "@/space/route";
 import { otherReading } from "@/scan/input";
 import { firstGoal, GOAL_ACTIONS, riskiest, type GoalAction, type ScanAudience } from "@/scan/plan";
 import { peopleQuotes, type ScanKnown } from "@/scan/session";
+import { isOff } from "@/scan/steer";
 import type { ScanPlan } from "@/space/chat";
 import { addMaterial } from "../new";
 import { goalNumberLine, withUnit } from "@/goals/moves";
@@ -1037,9 +1038,31 @@ function ScanningPart({ data }: { data: PartData }) {
   if (t?.job.kind !== "scan") return null;
   const s = t.job.session;
   const other = otherReading(t.job.target, t.said);
+  const found = (s?.competitors ?? []).filter((c) => !isOff(s?.steer, c.name));
+  const canTake = !!s && !s.read.length;
   return (
     <div className="flex flex-col gap-[6px]">
       <Progress label={s?.steps.at(-1) ?? "Starting"} started={s?.at ?? t.at} tokens={0} note="This takes a few minutes, and goes on if you close this." />
+      {found.length > 0 && (
+        <div className="flex flex-col gap-[4px]">
+          {/* Once it's reading them there's nothing left to take them out of. */}
+          <p className="text-caption text-fg-muted">{canTake ? (t.job.target.kind === "idea" ? "What I found people using. Take off any that's wrong:" : "The app I found. Take it off if it's the wrong one:") : t.job.target.kind === "idea" ? "What I found people using:" : "The app I found:"}</p>
+          <div className="flex flex-wrap gap-[4px]">
+            {found.map((c) => (
+              <span key={c.name} className={clsx(r.chip, "max-w-full")}>
+                <span className="truncate" dir="auto">
+                  {c.app?.name ?? c.name}
+                </span>
+                {canTake && (
+                  <button type="button" aria-label={`Take off ${c.app?.name ?? c.name}`} className="-mr-[2px] grid size-[14px] shrink-0 place-items-center rounded-sm hover:bg-hover" onClick={() => steerOff(c.name)}>
+                    <X size={10} absoluteStrokeWidth strokeWidth={1.5} />
+                  </button>
+                )}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
       <p className="text-caption text-fg-muted">
         I took this as {t.job.target.kind === "idea" ? "an idea" : `a product${t.job.target.name ? `: ${t.job.target.name}` : ""}`}.
         {other && (
@@ -1051,6 +1074,12 @@ function ScanningPart({ data }: { data: PartData }) {
           </>
         )}
       </p>
+      {/* The questions sit where the box's Stop would be. */}
+      {t.job.ask?.step === "asking" && (
+        <button type="button" className="self-start text-caption text-fg-muted underline decoration-fg/20 underline-offset-2 hover:text-fg" onClick={() => stopTurn(t.id)}>
+          Stop reading
+        </button>
+      )}
     </div>
   );
 }

@@ -162,6 +162,19 @@ A scan takes a few minutes, and most of that is the last step: reading pages and
 
 **Done when:** tests show an answer reaching the reader and a competitor taken off never read into anything, and a real scan answered mid-way comes out different from the same scan left alone.
 
+**Built November 3.** "A tool that helps wedding photographers get paid on time", in the browser, the same idea twice. The questions came up about 10 seconds in. Answered ("Solo wedding photographers", "Couples who pay a deposit then ghost the final invoice after the wedding", one app taken off) by 0:38, before it had finished finding competitors:
+
+| | Answered | Left alone |
+|---|---|---|
+| Ranked first | "Couples don't pay the balance once the wedding is over" (43 quotes) | "My client paid, but the money is held or arrives weeks late" |
+| That same problem | | "Once couples have the final product, they stop paying", filed ninth |
+| Kept that they never mentioned | Money held by payment platforms, fees, tools that fail to send invoices | |
+| Problems, points | 8, 152 | 10, 207 |
+
+Its searches turned too ("wedding photographer forum client won't pay final balance after wedding"), the app taken off was never read, and "Work out what to build first" then asked new questions that built on the answers ("Which fix would you try first for the post-wedding ghosting?").
+
+**Weak spot:** the left-alone scan took 6 minutes, nearly all of it filing 207 points. Worth capping what's read before launch.
+
 ### 5. Share and build
 
 All built by code from what's kept (decision 5).

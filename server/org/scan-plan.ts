@@ -7,6 +7,7 @@ import type { Drafted, SolutionDraft } from "@/discovery/solutions";
 import { emptyFiling } from "@/hub/topics";
 import { audiencesMaterial, firstPickMaterial, problemFor, sanitizeAudiences, sanitizeFirstPick, scanRound, type FirstPick, type PlanProblem, type PlanWord, type ScanAudience } from "@/scan/plan";
 import type { ScanTarget } from "@/scan/session";
+import { notAsked, toldLines, type ScanSaid } from "@/scan/steer";
 import { sanitizeFindQuestions } from "@/space/find";
 import { nanoid } from "nanoid";
 import { draftSolutions } from "./solutions";
@@ -58,19 +59,20 @@ export async function planMaterial(store: OrgStore, sources: readonly string[]):
   return { problems, words, published };
 }
 
-/** The questions before it works out who and what: Qalam AI's from what it read, else code's own. */
-export async function planQuestions(store: OrgStore, o: { target: ScanTarget; sources: readonly string[] }, signal?: AbortSignal, deps: ScanPlanDeps = liveDeps): Promise<PlanQuestion[]> {
+/** The questions before it works out who and what: Qalam AI's from what it read, else code's own, and neither what they've answered while it read. */
+export async function planQuestions(store: OrgStore, o: { target: ScanTarget; sources: readonly string[]; told?: readonly ScanSaid[] }, signal?: AbortSignal, deps: ScanPlanDeps = liveDeps): Promise<PlanQuestion[]> {
+  const told = o.told ?? [];
   const { problems, words, published } = await planMaterial(store, o.sources);
   const about = o.target.kind === "idea" ? `What they want to build: ${o.target.said}` : `The product: ${o.target.name}`;
-  const text = [about, "", "The problems found:", ...problems.slice(0, 8).map((p) => `- ${p.title}`), "", "What people say, in public:", ...words.slice(0, 24).map((w) => `- ${w.text}`), ...(published.length ? ["", "What's been published around it (someone else's words):", ...published.map((w) => `- ${w}`)] : [])].join("\n");
+  const text = [about, "", "The problems found:", ...problems.slice(0, 8).map((p) => `- ${p.title}`), "", "What people say, in public:", ...words.slice(0, 24).map((w) => `- ${w.text}`), ...(published.length ? ["", "What's been published around it (someone else's words):", ...published.map((w) => `- ${w}`)] : []), ...(told.length ? ["", "What they've told you already (never ask it again):", toldLines({ said: [...told], off: [] })] : [])].join("\n");
   const m = { text, known: [...problems.map((p) => p.title), ...words.map((w) => w.text), ...published] };
   try {
     const { data } = await deps.structured<unknown>({ kind: "find-questions", system: QUESTIONS_SYSTEM, schema: findQuestionsSchema(), effort: "low", maxTokens: 3000, content: [{ type: "text", text }] }, signal);
     const kept = sanitizeFindQuestions(data, m);
-    return kept.length ? kept : scanRound();
+    return notAsked(kept.length ? kept : scanRound(), told);
   } catch (e) {
     if (signal?.aborted) throw e;
-    return scanRound();
+    return notAsked(scanRound(), told);
   }
 }
 
