@@ -270,6 +270,14 @@ describe("captureTogether", () => {
     expect(calls.texts[0]).toContain("Delivery windows");
   });
 
+  it("moves a product's reviews to what's known once they say the product is theirs", async () => {
+    const r = await captureTogether(store, [post("My reviews", "https://own.example")]);
+    const section = async () => (await store.listTopics()).find((t) => t.title === "Delivery windows are too wide")?.lines.at(-1)?.section;
+    expect(await section()).toBe("believe");
+    await changeBasis(store, r.sources[0].id!, "said");
+    expect(await section()).toBe("know");
+  });
+
   it("stops before reading when it's stopped", async () => {
     const stop = new AbortController();
     stop.abort();

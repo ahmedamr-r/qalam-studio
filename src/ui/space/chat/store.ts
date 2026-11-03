@@ -24,6 +24,10 @@ import { goalsForProblem, lookForGoal, suggestGoalNumber } from "@/org/goal-work
 import { knowsMarket } from "@/market/types";
 import { loadMarket, useMarket } from "@/org/market";
 import { useSpaceView } from "@/space/view";
+import { onOrgChange } from "@/org/live";
+import { otherReading, requestOf, scanInput } from "@/scan/input";
+import type { ScanTarget } from "@/scan/session";
+import { scanNow, startScan, stopScan } from "@/org/scan";
 import { newId } from "@/doc/factory";
 import { docPart, docRef, guessVoice, joinParts, type SentDoc } from "../../chat/attach";
 import type { Basis } from "@/discovery/basis";
@@ -60,9 +64,11 @@ interface ChatState {
   live: Record<string, Live>;
   /** "Help me find one" asked for a canvas whose chat isn't loaded yet: started as it loads. */
   pending: { key: string; what: FindWhat } | null;
+  /** Words for a scan from a canvas whose chat isn't loaded yet (the first run's box): started as it loads. */
+  pendingScan: { key: string; said: string } | null;
 }
 
-export const useCanvasChat = create<ChatState>(() => ({ key: null, space: null, chat: emptyChat(), loaded: false, live: {}, pending: null }));
+export const useCanvasChat = create<ChatState>(() => ({ key: null, space: null, chat: emptyChat(), loaded: false, live: {}, pending: null, pendingScan: null }));
 
 const st = () => useCanvasChat.getState();
 const ctrls = new Map<string, AbortController>();
@@ -100,6 +106,13 @@ export async function openChat(space: string | null) {
   if (pending?.key === key) {
     useCanvasChat.setState({ pending: null });
     findWith(pending.what, space);
+  }
+  // A scan started before the page closed went on in the core: where it's got to.
+  void followScan();
+  const words = st().pendingScan;
+  if (words?.key === key) {
+    useCanvasChat.setState({ pendingScan: null });
+    void scanIt(null, words.said);
   }
 }
 
@@ -171,6 +184,7 @@ export async function runAs(at: string | null, said: string, mode: ChatMode, doc
   if (mode === "goal" || mode === "problem") return void addCard(at, said, mode);
   if (mode === "take") return takeIn(at, said, docs);
   if (mode === "dump") return dumpIt(at, said, docs);
+  if (mode === "scan") return scanIt(at, said);
 }
 
 /** Words sent to the chat from elsewhere (the first run's idea), taken as `mode`. */
@@ -182,6 +196,77 @@ export function sendToChat(text: string, mode: ChatMode) {
 export function retake(id: string, mode: ChatMode) {
   const t = turnOf(id);
   if (t) void runAs(id, t.said, mode);
+}
+
+// ---------------------------------------------------------------------------
+// What people complain about
+
+/** Words from the one box (the first run's, the empty canvas's): into this canvas's chat, once it's loaded. */
+export function scanFrom(said: string, space: string | null) {
+  toggleChat(true);
+  const key = chatKey(space);
+  if (st().key !== key || !st().loaded) return useCanvasChat.setState({ pendingScan: { key, said } });
+  void scanIt(null, said);
+}
+
+/** An idea or a product read for what people complain about. It runs in the core; this follows it. */
+async function scanIt(at: string | null, said: string, target: ScanTarget | null = scanInput(said)) {
+  if (!target) return void jobAt(at, said, { kind: "choose", first: "problem" });
+  const id = jobAt(at, said, { kind: "scan", target, asked: Date.now() });
+  try {
+    const session = await startScan(requestOf(target, said, typeof navigator === "undefined" ? "" : navigator.language));
+    change((c) => withJob(c, id, (j) => (j.kind === "scan" ? { ...j, session } : j)));
+    void followScan();
+  } catch (e) {
+    change((c) => withJob(c, id, (j) => (j.kind === "scan" ? { ...j, error: message(e) } : j)));
+  }
+}
+
+let followingScan: (() => void) | null = null;
+/** The window and the core share a clock on this computer; a little room all the same. */
+const CLOCK_SLACK = 1000;
+
+/** The newest scan still reading takes the core's word on how it stands; the panel opens on what it found. */
+async function followScan() {
+  followingScan ??= onOrgChange((c) => {
+    if (c.kind === "scan") void followScan();
+  });
+  const open = [...st().chat.turns].reverse().find((t) => t.job.kind === "scan" && !t.job.error && (!t.job.session || t.job.session.state === "reading"));
+  if (!open) return;
+  const session = await scanNow().catch(() => null);
+  // An answer about an earlier scan (asked just before this one started) says nothing about this one.
+  if (!session || open.job.kind !== "scan" || session.at < open.job.asked - CLOCK_SLACK) return;
+  change((c) => withJob(c, open.id, (j) => (j.kind === "scan" ? { ...j, session } : j)));
+  if (session.state === "done" && session.problems.length) openProblems();
+}
+
+/** The panel on the ranked problems (src/ui/home/Home.tsx hears this). */
+export const PANEL_EVENT = "qalam:panel";
+export const openProblems = () => window.dispatchEvent(new CustomEvent(PANEL_EVENT, { detail: "problems" }));
+
+/** The same words read the other way: an idea as a product's name, or the other way round. */
+export function scanOtherWay(id: string) {
+  const t = turnOf(id);
+  if (t?.job.kind !== "scan") return;
+  const other = otherReading(t.job.target, t.said);
+  if (!other) return;
+  stopTurn(id);
+  void scanIt(id, t.said, other);
+}
+
+/** Again, as it was read. */
+export function scanAgain(id: string) {
+  const t = turnOf(id);
+  if (t?.job.kind === "scan") void scanIt(id, t.said, t.job.target);
+}
+
+/** They say the product is theirs: its reviews are its customers' words, and what rests on them moves to "We know". */
+export async function scanIsMine(id: string) {
+  const t = turnOf(id);
+  if (t?.job.kind !== "scan" || !t.job.session) return;
+  const reviews = t.job.session.read.filter((r) => r.kind === "reviews" && r.sourceId);
+  await Promise.all(reviews.map((r) => setSourceBasis(r.sourceId!, "said")));
+  change((c) => withJob(c, id, (j) => (j.kind === "scan" ? { ...j, mine: true } : j)));
 }
 
 // ---------------------------------------------------------------------------
@@ -712,4 +797,5 @@ export function stopTurn(id: string) {
   ctrls.get(id)?.abort();
   const j = turnOf(id)?.job;
   if (j?.kind === "dump" && useDump.getState().busy?.sourceId === j.source) stopDump(j.source);
+  if (j?.kind === "scan" && (!j.session || j.session.state === "reading")) void stopScan().catch(() => {});
 }

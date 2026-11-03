@@ -9,6 +9,7 @@ import type { FocusLook } from "@/goals/focus";
 import type { GoalFit, GoalIdea, MovesFound, SuggestedNumber } from "@/goals/moves";
 import type { Benchmark } from "@/goals/outside";
 import type { OstMetric } from "@/discovery/types";
+import type { ScanSession, ScanTarget } from "@/scan/session";
 
 /*
  * Qalam AI's chat on the left of a space's canvas (src/ui/space/chat/), as it's kept: one file per
@@ -71,8 +72,24 @@ export type ChatJob =
    * problem to focus on for a goal on the canvas, its opening questions asked once Qalam AI has
    * looked on the web for what usually gets in its way (`look`).
    */
+  | ScanJob
   | { kind: "find"; what: FindWhat; error?: string; /** Qalam AI's opening questions, from what's known about the company and its domain (none: code's own). */ questions?: PlanQuestion[]; /** Those being worked out. */ loading?: true; goal?: FocusGoal; look?: FocusLook }
   | GoalForJob;
+
+/**
+ * What people complain about: an idea or a product read in the core (server/org/scan.ts), which goes
+ * on if the page closes. `session`: how it stands, its last word kept here since the next scan
+ * replaces the core's. `mine`: they said the product is theirs, so its reviews are its customers' words.
+ */
+export interface ScanJob {
+  kind: "scan";
+  target: ScanTarget;
+  /** When it was asked for: a session from before is an earlier scan's, never this one's. */
+  asked: number;
+  session?: ScanSession;
+  mine?: true;
+  error?: string;
+}
 
 /**
  * The goal a problem could move (src/goals/moves.ts): `looking` at the goals on the canvas, then the
@@ -147,7 +164,7 @@ function stopped(j: ChatJob): ChatJob {
   return j;
 }
 
-const KINDS = new Set(["ask", "choose", "add", "take", "dump", "find", "goalfor"]);
+const KINDS = new Set(["ask", "choose", "add", "take", "dump", "find", "goalfor", "scan"]);
 
 /** A chat as read from its file (what it doesn't know is left out). */
 export function chatOf(raw: unknown): CanvasChat {
@@ -265,6 +282,12 @@ function replyTo(t: ChatTurn, dumpOf: DumpOf): ChatPart[] {
       const s = dumpOf(j.source);
       return [...(j.asOwn ? [part("asOwn", id)] : []), ...looksAfter(t, s, -1), ...(j.find ? [part("opening", id)] : []), ...(j.error ? [text(j.error)] : dumpReply(t, s))];
     }
+    case "scan":
+      if (j.error) return [text(`I couldn't read it: ${j.error}`), part("scanAgain", id)];
+      if (!j.session || j.session.state === "reading") return [part("scanning", id)];
+      if (j.session.state === "stopped") return [text("You stopped it before it finished."), part("scanAgain", id)];
+      if (j.session.state === "failed") return [text(`I couldn't finish: ${j.session.error ?? "something went wrong"}`), part("scanAgain", id)];
+      return [part("scanned", id)];
     case "find":
       if (j.goal) {
         if (j.loading) return [part("working", id), part("cancel", id)];
@@ -309,7 +332,7 @@ export function asking(c: CanvasChat, dumpOf: DumpOf): ({ turn: ChatTurn } & ({ 
 }
 
 // A goal's opening look runs here (the box offers Stop); the questions it works out are asked after.
-const busy = (j: ChatJob) => (j.kind === "ask" && j.state === "asking") || (j.kind === "take" && j.state === "taking") || (j.kind === "find" && !!j.goal && !!j.loading) || (j.kind === "goalfor" && (j.step === "looking" || j.step === "suggesting"));
+const busy = (j: ChatJob) => (j.kind === "scan" && !j.error && (!j.session || j.session.state === "reading")) || (j.kind === "ask" && j.state === "asking") || (j.kind === "take" && j.state === "taking") || (j.kind === "find" && !!j.goal && !!j.loading) || (j.kind === "goalfor" && (j.step === "looking" || j.step === "suggesting"));
 
 /** What in the chat is still running (the composer offers Stop). */
 export const running = (c: CanvasChat): ChatTurn | null => [...c.turns].reverse().find((t) => busy(t.job)) ?? null;

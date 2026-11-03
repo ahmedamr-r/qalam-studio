@@ -100,10 +100,12 @@ This is the core. Don't build phases 3 to 5 until it passes.
 - Thrown-out counts are almost always 0, so "code threw out M" won't carry a share card. Say what was checked instead.
 - G2, Capterra and Product Hunt refuse to be read (403), as do many forums. Plain Claude's search can name these pages but Qalam can't quote them, so a person can paste them.
 - Hacker News searches still bring in loosely related threads, and names that are common words mislead ("Beamer" found LaTeX threads).
-- Problem titles follow the sources' language: an English idea with Saudi reviews gets Arabic titles. Decide this in phase 3.
-- "Uses today" lists named products that were never read, and one wrong app (Invoke). Show only what was read.
+- Scanning two unrelated products in one project mixes them: a page titled about Duolingo's ads took MyFitnessPal's reviews about ads. One project per idea or product works; decide in phase 4 whether to say so, or to start a new project.
+- Checked in the browser on a fresh home: the box, a scan from the first run and from the chat, an App Store link, Stop, Try again, a reload and "This is my product". Not yet checked on the installed Mac app, in light mode, or at phone width.
 
 ### 3. One box
+
+Built on November 3, 2026. Decided while building: "This is my product" comes after the scan rather than as a question before it, so nothing stops the flow; an idea's problems are written in the idea's language, quoting people in theirs; the thread names only what was read, so a named competitor with no reviews doesn't show.
 
 - **`scanInput` (pure, `src/scan/input.ts`):** App Store link, other web address, short name or idea text. A wrong guess costs one click to correct.
 - **`routeOf`:** add a `scan` mode, and treat an App Store link as a scan. Keep today's routes for everything else, and test them with `src/space/route.ts`'s existing cases.

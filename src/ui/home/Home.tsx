@@ -34,7 +34,9 @@ import { NeedsALook } from "../org/NeedsALook";
 import { LabSections, SectionButtons, SpacePages, SpaceProblems, UnplacedGoals, type SectionButton, type SpaceSection } from "./SpaceSections";
 import { addMaterial, writeCard } from "../space/new";
 import { CanvasChat, ChatPill } from "../space/chat/CanvasChat";
-import { findWith } from "../space/chat/store";
+import { findWith, PANEL_EVENT, scanFrom, useCanvasChat } from "../space/chat/store";
+import { running } from "@/space/chat";
+import { scanInput } from "@/scan/input";
 import { QalamAIGlyph } from "../brand/ai-glyph";
 import { useOrgData } from "../org/useOrgData";
 import { useNotices } from "../notices/useNotices";
@@ -139,6 +141,12 @@ export default function Home({ product: productId = null }: { product?: string |
 
   // The panel's sections, as buttons over the canvas; none is open until one's clicked.
   const [asked, setAsked] = useState<SpaceSection | null>(askedSection);
+  // A scan's problems are ready (../space/chat/store.ts): the panel opens on them.
+  useEffect(() => {
+    const on = (e: Event) => setAsked((e as CustomEvent<SpaceSection>).detail);
+    window.addEventListener(PANEL_EVENT, on);
+    return () => window.removeEventListener(PANEL_EVENT, on);
+  }, []);
   const [toMove, setToMove] = useState<Project[]>([]);
   useEffect(() => void browserProjectsToMove().then(setToMove, () => {}), []);
   const pendingSetup = sources.filter((s) => s.setup && s.setup.phase !== "done").sort((a, b) => b.addedAt - a.addedAt)[0];
@@ -341,7 +349,43 @@ export default function Home({ product: productId = null }: { product?: string |
 }
 
 /** Nothing on the canvas yet: a goal or a problem, written on the canvas or found with Qalam AI in the chat. */
+/** The one box: an idea or a product, read for what people already complain about. */
+function ScanBox({ space }: { space: string | null }) {
+  const [said, setSaid] = useState("");
+  const ready = !!scanInput(said);
+  return (
+    <form
+      className="flex flex-col gap-[8px]"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!ready) return;
+        scanFrom(said.trim(), space);
+        setSaid("");
+      }}
+    >
+      <label htmlFor="scan-box" className="flex flex-col gap-[4px] text-center">
+        <span className="text-body font-medium text-fg">What do you want to build, or which product should I look at?</span>
+        <span className="text-caption text-fg-muted">I'll find what people already complain about, and code checks every quote against its page.</span>
+      </label>
+      <span className="flex gap-[6px]">
+        <input id="scan-box" dir="auto" value={said} onChange={(e) => setSaid(e.target.value)} placeholder="An idea, an app's name or its link" className={clsx(r.field, r.fieldInput, "min-w-0 flex-1")} />
+        <button type="submit" disabled={!ready} className={clsx(r.buttonSm, r.buttonPrimary, "shrink-0 gap-[6px]")}>
+          <QalamAIGlyph size={12} /> Look
+        </button>
+      </span>
+    </form>
+  );
+}
+
 function EmptyMap({ space }: { space: string | null }) {
+  // While a scan reads, the problems are on their way: nothing to start yet.
+  const scanning = useCanvasChat((s) => running(s.chat)?.job.kind === "scan");
+  if (scanning)
+    return (
+      <div className="pointer-events-none absolute inset-0 grid place-items-center p-[24px]">
+        <p className="max-w-[320px] text-center text-body text-fg-muted">Problems show here once they're read and checked.</p>
+      </div>
+    );
   const rows = [
     { what: "goal", kind: "outcome", title: "A goal", body: "What the team is trying to move." },
     { what: "problem", kind: "opportunity", title: "A problem", body: "What customers need, struggle with or wish for." },
@@ -349,8 +393,9 @@ function EmptyMap({ space }: { space: string | null }) {
   return (
     <div className="pointer-events-none absolute inset-0 grid place-items-center p-[24px]">
       <div className="pointer-events-auto flex w-[min(420px,100%)] flex-col gap-[12px] rounded-xl bg-raised px-[18px] py-[16px] shadow-floating">
+        <ScanBox space={space} />
         <div className="flex flex-col gap-[4px] text-center">
-          <p className="text-body font-medium text-fg">Start with a goal or a problem</p>
+          <p className="text-body font-medium text-fg">Or start with a goal or a problem</p>
           <p className="text-caption text-fg-muted">{space ? "This product's goals and problems show here, with their solutions and tests under them." : "Each goal shows here with the problems behind it, and their solutions and tests under them."}</p>
         </div>
         {rows.map((x) => (

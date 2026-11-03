@@ -53,7 +53,7 @@ export async function startScan(store: OrgStore, req: ScanRequest, opts: { tab?:
   const ctrl = new AbortController();
   running.set(store.dir, ctrl);
   const s = await store.changeScanSession(() => emptyScan(req.target, Date.now()), opts);
-  void runScan(store, req, opts.deps ?? liveDeps, ctrl.signal).finally(() => {
+  void runScan(store, req, opts.deps ?? liveDeps, ctrl.signal, s.at).finally(() => {
     if (running.get(store.dir) === ctrl) running.delete(store.dir);
   });
   return s;
@@ -61,16 +61,16 @@ export async function startScan(store: OrgStore, req: ScanRequest, opts: { tab?:
 
 /** Run a scan to its end, for what waits on it (the eval). */
 export async function scanToEnd(store: OrgStore, req: ScanRequest, deps: ScanDeps = liveDeps, signal: AbortSignal = new AbortController().signal): Promise<ScanSession> {
-  await store.changeScanSession(() => emptyScan(req.target, Date.now()));
-  await runScan(store, req, deps, signal);
+  const { at } = await store.changeScanSession(() => emptyScan(req.target, Date.now()));
+  await runScan(store, req, deps, signal, at);
   return (await store.getScanSession())!;
 }
 
-async function runScan(store: OrgStore, req: ScanRequest, deps: ScanDeps, signal: AbortSignal) {
-  // Written in order as it goes, so nothing lands after the end.
+async function runScan(store: OrgStore, req: ScanRequest, deps: ScanDeps, signal: AbortSignal, at: number) {
+  // Written in order as it goes, so nothing lands after the end; a run stopped late leaves the next one's session alone.
   let chain: Promise<unknown> = Promise.resolve();
   const change = (fn: (s: ScanSession) => ScanSession) => {
-    const next = chain.then(() => store.changeScanSession((s) => fn(s ?? emptyScan(req.target, Date.now()))));
+    const next = chain.then(() => store.changeScanSession((s) => (s && s.at !== at ? s : fn(s ?? emptyScan(req.target, at)))));
     chain = next.catch(() => {});
     return next;
   };
@@ -196,7 +196,7 @@ async function runScan(store: OrgStore, req: ScanRequest, deps: ScanDeps, signal
     if (signal.aborted) return;
 
     // Taken in together: what's kept is found word for word, and filed once.
-    const taken = items.length ? await deps.capture(store, items.map(({ ing, basis }) => ({ ing, ...(basis ? { basis } : {}) })), { emit: step, signal, focus: target.kind === "idea" ? `What people struggle with around this idea: ${target.said}` : `What people complain about in ${target.name || names[0] || "this product"}` }) : { sources: [], filed: null, notFound: 0 };
+    const taken = items.length ? await deps.capture(store, items.map(({ ing, basis }) => ({ ing, ...(basis ? { basis } : {}) })), { emit: step, signal, focus: target.kind === "idea" ? `What people struggle with around this idea: ${target.said}. Write page titles and lines in the language this idea is written in, quoting people in theirs.` : `What people complain about in ${target.name || names[0] || "this product"}` }) : { sources: [], filed: null, notFound: 0 };
     if (signal.aborted) return;
     const kept = taken.sources.reduce((n, s) => n + s.quotes, 0);
     const problems = (taken.filed?.pages ?? []).filter((p) => p.kind === "need").map((p) => ({ id: p.id, title: p.title }));

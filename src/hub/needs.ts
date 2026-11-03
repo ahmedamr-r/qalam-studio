@@ -175,6 +175,9 @@ const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
 export const needLine = (n: Pick<RankedNeed, "quotes" | "sources" | "mix"> & Partial<Pick<RankedNeed, "online" | "onlineSources">>) =>
   n.quotes ? `${backingWords(n.mix ?? { said: n.quotes })} · ${plural(n.sources, "source")}` : n.online ? `${plural(n.online, "quote")} from people online · ${plural(n.onlineSources ?? 1, "source")}` : "Nothing outside the team yet";
 
+/** What backs a need, in the few words a card has room for; "" when nothing does. */
+export const needShort = (n: Partial<Pick<RankedNeed, "quotes" | "sources" | "online">>) => (n.quotes ? `${plural(n.quotes, "quote")} · ${plural(n.sources ?? 1, "source")}` : n.online ? `${plural(n.online, "quote")} online` : "");
+
 /** Only what people said behind it: "customers keep raising it" says what's so. */
 export const onlyPeopleSaid = (mix: BasisCounts | undefined) => !mix || Object.keys(mix).every((b) => b === "said");
 

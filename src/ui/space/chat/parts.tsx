@@ -35,8 +35,10 @@ import { useTopics } from "../../topics/list";
 import { useWords } from "../../frame/store";
 import { show } from "../links";
 import { FoundGoalRow } from "../../chat/FoundGoalRow";
-import { anotherFile, changeDocBasis, decideDocGoal, dropTurn, leaveFile, leaveFit, lookPastFits, placeStatement, retake, retryGoalFor, settleNumber, takeAsBasis, takeFit, takeIdea, turnOf, takeGoalNumber, useCanvasChat } from "./store";
+import { anotherFile, changeDocBasis, decideDocGoal, dropTurn, leaveFile, leaveFit, lookPastFits, placeStatement, retake, retryGoalFor, settleNumber, takeAsBasis, takeFit, takeIdea, turnOf, takeGoalNumber, useCanvasChat, openProblems, scanAgain, scanIsMine, scanOtherWay } from "./store";
 import { titleFrom } from "@/space/route";
+import { otherReading } from "@/scan/input";
+import { addMaterial } from "../new";
 import { goalNumberLine, withUnit } from "@/goals/moves";
 import type { Benchmark } from "@/goals/outside";
 
@@ -607,6 +609,9 @@ function ChoosePart({ data }: { data: PartData }) {
       <button type="button" className={r.replyChip} onClick={() => retake(t.id, "ask")}>
         Ask about it
       </button>
+      <button type="button" className={r.replyChip} onClick={() => retake(t.id, "scan")}>
+        See what people complain about
+      </button>
     </ReplyChips>
   );
 }
@@ -1023,7 +1028,105 @@ function DocsPart({ data }: { data: PartData }) {
   return t?.docs?.length ? <DocsSent docs={t.docs} /> : null;
 }
 
+/** A scan under way: what it's doing, Stop on the box, and the other reading of their words. */
+function ScanningPart({ data }: { data: PartData }) {
+  const t = useTurn(data.turn);
+  if (t?.job.kind !== "scan") return null;
+  const s = t.job.session;
+  const other = otherReading(t.job.target, t.said);
+  return (
+    <div className="flex flex-col gap-[6px]">
+      <Progress label={s?.steps.at(-1) ?? "Starting"} started={s?.at ?? t.at} tokens={0} note="This takes a few minutes, and goes on if you close this." />
+      <p className="text-caption text-fg-muted">
+        I took this as {t.job.target.kind === "idea" ? "an idea" : `a product${t.job.target.name ? `: ${t.job.target.name}` : ""}`}.
+        {other && (
+          <>
+            {" "}
+            <button type="button" className="underline decoration-fg/20 underline-offset-2 hover:text-fg" onClick={() => scanOtherWay(t.id)}>
+              Read it as {other.kind === "idea" ? "an idea" : "a product's name"} instead
+            </button>
+          </>
+        )}
+      </p>
+    </div>
+  );
+}
+
+/** What a scan came to: what it read, how far its words were checked, and the way to its problems. */
+function ScannedPart({ data }: { data: PartData }) {
+  const t = useTurn(data.turn);
+  if (t?.job.kind !== "scan" || !t.job.session) return null;
+  const job = t.job;
+  const s = job.session!;
+  const kept = s.read.filter((x) => x.quotes);
+  const apps = kept.filter((x) => x.kind === "reviews").map((x) => x.title.replace(/^App Store reviews: /, ""));
+  const threads = kept.filter((x) => x.kind === "thread").length;
+  const pages = kept.filter((x) => x.kind === "page").length;
+  const read = [apps.length ? `App Store reviews of ${apps.join(", ")}` : "", threads ? `${threads} Hacker News ${threads === 1 ? "thread" : "threads"}` : "", pages ? `${pages} ${pages === 1 ? "forum page" : "forum pages"}` : ""].filter(Boolean).join(", ");
+  const refused = s.skipped.unreadable;
+  const mineOffer = job.target.kind === "product" && !job.mine && s.read.some((x) => x.kind === "reviews" && x.sourceId);
+  const isMineThen = job.mine;
+  // Asked again: everything it found it had read already, so nothing here is a verdict on what's there.
+  const already = s.thin && !s.read.length && s.skipped.before > 0;
+  return (
+    <div className="flex flex-col gap-[8px]">
+      {already ? (
+        <p className="text-body text-fg">Nothing new: I've read all of this already, and what it says is in your problems.</p>
+      ) : s.thin ? (
+        <p className="text-body text-fg">
+          I found little{s.problems.length ? `: ${s.problems.length === 1 ? "1 problem" : `${s.problems.length} problems`} from ${s.checked.kept === 1 ? "1 quote" : `${s.checked.kept} quotes`}` : ""}, so I won't call it a pattern. {read ? `I read ${read}.` : "Nothing I could read spoke to it."}
+        </p>
+      ) : (
+        <p className="text-body text-fg">
+          {s.problems.length} problems, from {s.checked.kept} quotes: {read}.
+        </p>
+      )}
+      {!s.thin && <p className="text-caption text-fg-muted">Code found every quote word for word on its page. {isMineThen ? "Your own app's reviews count as your customers' words; the rest is what people say publicly." : "This is what people say publicly, so it stays in We believe until your own customers say it too."}</p>}
+      {(refused > 0 || s.skipped.reddit > 0) && (
+        <p className="text-caption text-fg-subtle">
+          {refused > 0 ? `${refused} ${refused === 1 ? "site" : "sites"} wouldn't let me read ${refused === 1 ? "its page" : "their pages"}. ` : ""}
+          {s.skipped.reddit > 0 ? "Reddit doesn't let apps read it. " : ""}
+          Paste a thread here to add it.
+        </p>
+      )}
+      {s.noWeb && <p className="text-caption text-fg-subtle">There's no web search here, so I read only what I can reach directly.</p>}
+      <ReplyChips>
+        {(s.problems.length > 0 || already) && (
+          <button type="button" className={r.replyChipPrimary} onClick={openProblems}>
+            See them ranked
+          </button>
+        )}
+        {s.thin && !already && (
+          <button type="button" className={r.replyChip} onClick={addMaterial}>
+            Add what you have
+          </button>
+        )}
+        {mineOffer && (
+          <button type="button" className={r.replyChip} onClick={() => void scanIsMine(t.id)}>
+            This is my product
+          </button>
+        )}
+      </ReplyChips>
+    </div>
+  );
+}
+
+function ScanAgainPart({ data }: { data: PartData }) {
+  const t = useTurn(data.turn);
+  if (t?.job.kind !== "scan") return null;
+  return (
+    <ReplyChips>
+      <button type="button" className={r.replyChip} onClick={() => scanAgain(t.id)}>
+        Try again
+      </button>
+    </ReplyChips>
+  );
+}
+
 export const PARTS: Record<string, PartComponent> = {
+  scanning: ScanningPart,
+  scanned: ScannedPart,
+  scanAgain: ScanAgainPart,
   taken: TakenPart,
   asOwn: AsOwnPart,
   working: WorkingPart,

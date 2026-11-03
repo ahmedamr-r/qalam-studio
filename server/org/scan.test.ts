@@ -185,6 +185,28 @@ describe("a scan", () => {
     expect(await scanNow(store)).toMatchObject({ state: "failed" });
   });
 
+  it("a run stopped late leaves the next scan's session alone", async () => {
+    let finish!: (v: null) => void;
+    const slow = deps();
+    let step: (label: string) => void = () => {};
+    vi.mocked(slow.research).mockImplementation((_r, emit) => {
+      step = emit;
+      return new Promise((yes) => (finish = yes));
+    });
+    await startScan(store, idea, { deps: slow });
+    await vi.waitFor(() => expect(slow.research).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 2));
+    const next = deps();
+    const started = await startScan(store, { target: { kind: "product", name: "Mealime" }, country: "us" }, { deps: next });
+    step("A late step from the old one");
+    finish(null);
+    await vi.waitFor(async () => expect((await store.getScanSession())?.state).toBe("done"));
+    const end = (await store.getScanSession())!;
+    expect(end.at).toBe(started.at);
+    expect(end.target).toMatchObject({ kind: "product" });
+    expect(end.steps).not.toContain("A late step from the old one");
+  });
+
   it("answers at once, and Stop ends it as stopped with nothing filed", async () => {
     const d = deps();
     vi.mocked(d.research).mockImplementation((_r, _e, signal) => new Promise((_, no) => signal.addEventListener("abort", () => no(new Error("aborted")))));

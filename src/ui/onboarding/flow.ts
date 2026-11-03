@@ -26,6 +26,7 @@ import { loadOrgContext } from "@/org/context";
 import { orgFetch } from "@/org/client";
 import { orgHref } from "@/projects/model";
 import { handWords } from "../space/handoff";
+import { projectName, scanInput } from "@/scan/input";
 
 /*
  * The first run as state, apart from the pages that show it: Qalam AI found and tested, the
@@ -65,6 +66,8 @@ export interface FirstRun {
   problems: { sent: string | null; docs?: DocRef[]; result: { pages: number; quotes: number; needs?: { id: string; title: string }[] } | null; error: string | null; found?: { source: string; goal: FoundGoal }[]; sources?: ProblemSource[] };
   /** What a door is doing while it reads or makes something. */
   working: { label: string } | null;
+  /** They asked to set it up properly, not through the one box. */
+  full?: boolean;
   /** They said there's no website yet: the company step asks for a line about it instead (this tab). */
   noSite: boolean;
   /** Competitors they added by name while checking the ones found (this tab). */
@@ -103,9 +106,10 @@ export const engineDone = (s: FirstRun) => !!s.engine.test?.ok || s.engine.skipp
 const shapeIn = (search: string) => orgShape(new URLSearchParams(search).get("for"));
 
 export function startWelcome(search: string) {
-  useFirstRun.setState({ route: "welcome", mode: welcomeMode(search), shape: shapeIn(search) });
+  const fullIn = (q: string) => new URLSearchParams(q).has("full") || !!orgShape(new URLSearchParams(q).get("for"));
+  useFirstRun.setState({ route: "welcome", mode: welcomeMode(search), shape: shapeIn(search), full: fullIn(search) });
   void checkEngine();
-  window.addEventListener("popstate", () => useFirstRun.setState({ shape: shapeIn(window.location.search) }));
+  window.addEventListener("popstate", () => useFirstRun.setState({ shape: shapeIn(window.location.search), full: fullIn(window.location.search) }));
 }
 
 /** Who it's for, before its name (in the address, so Back takes it back). */
@@ -152,6 +156,30 @@ export async function engineChanged(view: EngineView) {
   if (!view.ready) return;
   setEngine({ keyOpen: false });
   await checkEngine();
+}
+
+/** They'd rather set it up properly: who it's for, its name and the steps after (in the address, so Back returns to the box). */
+export function setUpProperly() {
+  push({ full: "1" });
+  useFirstRun.setState({ full: true });
+}
+
+/** The one box: a project named from their words, and on to its canvas, whose chat reads what people complain about. */
+export async function startFromBox(said: string): Promise<boolean> {
+  const target = scanInput(said);
+  if (!target) return false;
+  useFirstRun.setState({ naming: { name: said, busy: true, error: null } });
+  try {
+    const org = await createOrg(projectName(target), "solo");
+    handWords(said);
+    // The steps it skipped aren't left to pick up: the box is the first run.
+    await fetch(`/api/org/${encodeURIComponent(org.id)}/first-run`, { method: "POST" }).catch(() => {});
+    window.location.assign(`${orgHref(org.id)}?scan=1`);
+    return true;
+  } catch (e) {
+    useFirstRun.setState({ naming: { name: null, busy: false, error: message(e) } });
+    return false;
+  }
 }
 
 /** The organization's name: a folder in ~/Qalam, then on to who they are there (the setup page). */

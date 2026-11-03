@@ -1,5 +1,6 @@
 import type { Basis } from "@/discovery/basis";
 import { isQuestion } from "@/discovery/speakers";
+import { isAppLink } from "@/scan/input";
 
 /*
  * What a message to the canvas's chat is for, worked out by code with no tokens
@@ -7,13 +8,14 @@ import { isQuestion } from "@/discovery/speakers";
  * material (read for what it states, kept, filed into problem pages, placed where it fits), as is any
  * doc, unless they said it's their own thinking; the person's own long text or
  * doc set to their own thinking is a brain dump, read and placed on the canvas; a short statement could be a goal, a
- * problem or a question, so the chat asks which (its chips, a number putting the goal first).
+ * problem or a question, so the chat asks which (its chips, a number putting the goal first); an
+ * app's link, or the box set to it, reads what people complain about (src/scan/).
  * A mode a button set (Write a goal, Find a problem…) wins. The chat says how it took each message,
  * and they can switch.
  */
 
 /** What a message can be taken as. */
-export type ChatMode = "ask" | "dump" | "take" | "goal" | "problem";
+export type ChatMode = "ask" | "dump" | "take" | "goal" | "problem" | "scan";
 
 export type Routed = { job: ChatMode } | { job: "choose"; first: "goal" | "problem" };
 
@@ -32,6 +34,8 @@ export function routeOf(i: { text: string; docs: readonly { basis?: Basis }[]; p
   const text = i.text.trim();
   if (!text && !i.docs.length) return null;
   if (i.mode) return { job: i.mode };
+  // An app's link alone: what its users complain about.
+  if (!i.docs.length && isAppLink(text)) return { job: "scan" };
   // Any doc is read for what it states, with whatever of theirs came along; so is a paste of who said what.
   if (i.docs.some((d) => d.basis !== "own") || (text && i.pasted === "customers")) return { job: "take" };
   if (i.docs.length || wordsIn(text) >= DUMP_WORDS || lines(text) >= DUMP_LINES) return { job: "dump" };

@@ -21,7 +21,7 @@ import { toggleChat, useWords } from "../../frame/store";
 import type { Space } from "../../frame/spaces";
 import { ASK_EVENT, takeAskNext } from "../../org/ask-next";
 import { PARTS } from "./parts";
-import { clearMode, useCompose } from "./compose";
+import { clearMode, composeIn, useCompose } from "./compose";
 import { answerFind, answerNumber, ask, clearChat, findQuestionsOf, findWith, numberQuestions, openChat, send, stopTurn, turnOf, useCanvasChat } from "./store";
 
 /*
@@ -35,7 +35,7 @@ import { answerFind, answerNumber, ask, clearChat, findQuestionsOf, findWith, nu
 export const CHAT_W = 360;
 
 /** What the box is for when a button set it (src/space/route.ts's modes), in a word on the box. */
-const MODE_LABEL: Record<ChatMode, string> = { ask: "A question", dump: "Brain dump", take: "To take in", goal: "A goal", problem: "A problem" };
+const MODE_LABEL: Record<ChatMode, string> = { ask: "A question", dump: "Brain dump", take: "To take in", goal: "A goal", problem: "A problem", scan: "What people complain about" };
 
 export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
   useEffect(() => void openChat(space), [space]);
@@ -107,6 +107,9 @@ export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
             loaded && (
               <div className="flex flex-col gap-[10px] pt-[8px]">
                 <p className="text-body text-fg">Ask what your {org} knows, or bring something to the canvas.</p>
+                <button type="button" className={clsx(r.replyChip, "self-start")} onClick={() => composeIn({ mode: "scan" })}>
+                  <QalamAIGlyph size={12} /> See what people complain about
+                </button>
                 <p className="text-caption text-fg-muted">A question is answered from its problem pages, sources, boards and decisions. Reports, research, interviews and tickets go into problems&apos; pages, each saying what it is; your thinking is read and placed as cards; a goal or a problem is worded for the canvas, for you to use or change.</p>
                 <div className="flex flex-wrap gap-[6px]">
                   {(["goal", "problem"] as FindWhat[]).map((w) => (
@@ -159,6 +162,7 @@ export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
                 if (t.length > DUMP_MAX_CHARS) return `That's over ${DUMP_MAX_CHARS.toLocaleString()} characters: paste the most useful part, or bring it as a doc.`;
                 const docs = docsCheck(t, attached, null);
                 if (docs) return docs;
+                if (compose.mode === "scan") return t.trim().length >= 2 ? null : "Name a product, or say what you want to build.";
                 if (compose.mode === "dump" && !readyDocs(attached).length && t.trim().length < 40) return "Write a few sentences more: what you think, and why.";
                 return readyDocs(attached).length || t.trim().length >= 3 ? null : "Write a little more.";
               }}

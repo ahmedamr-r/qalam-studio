@@ -181,4 +181,22 @@ describe("short statements and what came of them", () => {
       expect(c.turns[1].job).toMatchObject({ step: "suggested", suggestion: null });
     });
   });
+
+  it("follows a scan from what the core says, and keeps it running until it ends", () => {
+    const target = { kind: "idea" as const, said: "A meal planner" };
+    const session = (state: "reading" | "done" | "failed" | "stopped", error?: string) => ({ v: 1 as const, state, at: 1, target, steps: [], competitors: [], read: [], skipped: { reddit: 0, before: 0, articles: 0, unreadable: 0 }, checked: { kept: 0, notFound: 0, unbacked: 0 }, problems: [], thin: false, ...(error ? { error } : {}) });
+    const parts = (job: ChatTurn["job"]) => threadOf({ v: 1, turns: [turn("s", job, "A meal planner")] })[1].parts.map((p) => (p.type === "data" ? p.name : "text"));
+    expect(parts({ kind: "scan", target, asked: 1 })).toEqual(["scanning"]);
+    expect(parts({ kind: "scan", target, asked: 1, session: session("reading") })).toEqual(["scanning"]);
+    expect(parts({ kind: "scan", target, asked: 1, session: session("done") })).toEqual(["scanned"]);
+    expect(parts({ kind: "scan", target, asked: 1, session: session("failed", "Limit reached") })).toEqual(["text", "scanAgain"]);
+    expect(parts({ kind: "scan", target, asked: 1, session: session("stopped") })).toEqual(["text", "scanAgain"]);
+    expect(parts({ kind: "scan", target, asked: 1, error: "No engine" })).toEqual(["text", "scanAgain"]);
+    const runs = (job: ChatTurn["job"]) => running({ v: 1, turns: [turn("s", job)] })?.id ?? null;
+    expect(runs({ kind: "scan", target, asked: 1 })).toBe("s");
+    expect(runs({ kind: "scan", target, asked: 1, session: session("done") })).toBeNull();
+    expect(runs({ kind: "scan", target, asked: 1, error: "No engine" })).toBeNull();
+    // It goes on in the core: a reload still shows it running, until the core says.
+    expect(chatOf({ v: 1, turns: [turn("s", { kind: "scan", target, asked: 1 })] }).turns[0].job).toEqual({ kind: "scan", target, asked: 1 });
+  });
 });

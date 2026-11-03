@@ -31,7 +31,7 @@ export interface ChatMessage {
 }
 
 /** Which buttons a `choices` part shows. */
-export type ChoiceSet = "shape" | "door" | "skip" | "know-skip" | "propose" | "proposal" | "know-review" | "goals-in" | "verify" | "idea-board" | "company" | "company-again" | "competitors" | "competitors-again" | "start" | "take-as";
+export type ChoiceSet = "box" | "shape" | "door" | "skip" | "know-skip" | "propose" | "proposal" | "know-review" | "goals-in" | "verify" | "idea-board" | "company" | "company-again" | "competitors" | "competitors-again" | "start" | "take-as";
 
 export type EngineState = "looking" | "testing" | "ready" | "problem" | "skipped" | "unknown";
 
@@ -40,6 +40,8 @@ export interface ThreadInput {
   mode: WelcomeMode;
   first: boolean;
   orgName: string | null;
+  /** Asks the one box first (src/scan/): off once they ask to set it up properly, and for a run that's a check. */
+  box?: boolean;
   /** A company or team, or just them on their own idea: picked before the name (null: not yet, or an organization from before). */
   shape: OrgShape | null;
   engine: EngineState;
@@ -204,7 +206,10 @@ export function threadOf(i: ThreadInput): ChatMessage[] {
       out.push(ai("verify", text("Each part, tested again. Nothing is changed."), part("verify"), part("choices", { set: "verify" })));
       return out;
     }
-    if (engineDone(i)) {
+    if (engineDone(i) && i.box) {
+      out.push(ai("box", text("What do you want to build, or which product should I look at? I'll find what people already complain about, and code checks every quote against its page."), part("choices", { set: "box" })));
+      if (i.naming.error) out.push(ai("name:error", part("error", { text: i.naming.error })));
+    } else if (engineDone(i)) {
       shapeAsk("shape");
       if (i.shape) {
         out.push(ai("name:ask", text(nameAsk(i, true))));
@@ -365,7 +370,7 @@ export function threadOf(i: ThreadInput): ChatMessage[] {
 
 export interface Ask {
   /** `problems`: what customers said, to file · `idea`: the idea, for a board. */
-  kind: "name" | "dump" | "outline" | "questions" | "problems" | "idea" | "company" | "competitors" | "none";
+  kind: "box" | "name" | "dump" | "outline" | "questions" | "problems" | "idea" | "company" | "competitors" | "none";
   /** Whose questions take the composer's place. */
   scope?: "know" | "find";
   placeholder: string;
@@ -384,6 +389,7 @@ export function askOf(i: ThreadInput): Ask {
   if (i.route === "welcome") {
     if (i.mode === "verify") return none("Checking only: nothing to type here", "verify");
     if (!engineDone(i)) return none(i.engine === "problem" ? "Set up Qalam AI above, or set it up later" : "Checking Qalam AI…", "engine");
+    if (i.box) return { kind: "box", placeholder: "A meal planner for night-shift workers, or an app's name or link", submit: "enter", key: "box" };
     if (!i.shape) return none("Pick one above", "shape");
     return { kind: "name", placeholder: i.shape === "solo" ? "Meal planner" : "Basket", submit: "enter", key: "name" };
   }
