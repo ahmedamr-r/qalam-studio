@@ -12,7 +12,7 @@ export type LookState = "looking" | "ready" | "settled" | "failed";
 export interface Look {
   state: LookState;
   at: number;
-  /** What it's doing, the newest last ("Searched the web: tagaddod"). */
+  /** What it's doing, the newest last ("Searched the web: example"). */
   steps: string[];
   error?: string;
   /** No web search on this computer: they're asked in words instead. */

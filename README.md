@@ -66,7 +66,7 @@ In Qalam the model proposes, and code decides what's kept.
 
 ### With npx
 
-`npx qalam-studio`, as above. It's the same desktop app, on a Mac or anywhere Electron runs, though Windows through npx hasn't been tried yet. An Intel build of Node on an Apple silicon Mac works, but search goes by words only, and Connections says so.
+`npx qalam-studio`, as above. It's the same desktop app, and it's been tried on Apple silicon Macs. Intel Macs, Windows and Linux haven't been tried this way yet, and voice and reading words on screenshots are the Mac's. An Intel build of Node on an Apple silicon Mac works, but search goes by words only, and Connections says so. It doesn't update itself: `npx qalam-studio@latest` gets the newest, and your projects stay in `~/Qalam`.
 
 ### The Mac app
 
