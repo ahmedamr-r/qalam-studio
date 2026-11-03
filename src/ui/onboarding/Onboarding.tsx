@@ -14,7 +14,7 @@ import { toQuestion } from "../ai/plan";
 import { Questionnaire } from "../ai/Questionnaire";
 import { initialFlow, type FlowState } from "../ai/questionFlow";
 import { attachFiles, clearAttachments, docsCheck, readyDocs, useAttach } from "../chat/attach";
-import { AttachmentChips, SourceRow } from "../chat/SourcePicker";
+import { AttachmentChips, SourceMenu } from "../chat/SourcePicker";
 import { ChatComposer, ChatThread } from "../chat/ChatThread";
 import { PageFrame } from "../frame/PageFrame";
 import { r } from "../recipes";
@@ -203,7 +203,7 @@ export function Onboarding({ route }: { route: "welcome" | "setup" }) {
         draftKey={ask.key}
         draft={ask.kind === "outline" ? knowText : ask.kind === "dump" || ask.kind === "idea" ? lastDump.current : ""}
         onKeyDown={ask.kind === "outline" ? indent : undefined}
-        above={ask.sources ? <SourceRow fit={ask.sources} /> : undefined}
+        plus={ask.sources ? <SourceMenu fit={ask.sources} /> : undefined}
         attached={ask.sources ? <AttachmentChips voices={ask.sources === "docs"} /> : undefined}
         onFiles={ask.sources ? attachFiles : undefined}
         sendEmpty={!!ask.sources && readyDocs(attached).length > 0}

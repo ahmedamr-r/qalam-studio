@@ -7,6 +7,7 @@ import type { ChatMode } from "@/space/route";
 import { useSpaceView } from "@/space/view";
 import { QalamAIGlyph } from "../../brand/ai-glyph";
 import { IconBtn, Spinner } from "../../controls";
+import { MenuItem } from "../../menu";
 import { toQuestion } from "../../ai/plan";
 import { Questionnaire } from "../../ai/Questionnaire";
 import { initialFlow, summarize, type FlowState } from "../../ai/questionFlow";
@@ -16,7 +17,7 @@ import { answerRound, resumeDumps, saveRound, sessionOf, useDump } from "../../d
 import { useSources } from "../../discovery/sources";
 import { ChatComposer, ChatThread } from "../../chat/ChatThread";
 import { attachFiles, clearAttachments, docsCheck, readyDocs, useAttach } from "../../chat/attach";
-import { AttachmentChips, SourceRow } from "../../chat/SourcePicker";
+import { AttachmentChips, SourceMenu } from "../../chat/SourcePicker";
 import { toggleChat, useWords } from "../../frame/store";
 import type { Space } from "../../frame/spaces";
 import { ASK_EVENT, takeAskNext } from "../../org/ask-next";
@@ -32,7 +33,7 @@ import { answerBrief, answerFind, answerNumber, answerPlan, answerSteer, ask, br
  * computer. ⌘\ folds it; a narrow window draws it over the canvas.
  */
 
-export const CHAT_W = 360;
+export const CHAT_W = 420;
 
 /** What the box is for when a button set it (src/space/route.ts's modes), in a word on the box. */
 const MODE_LABEL: Record<ChatMode, string> = { ask: "A question", dump: "Brain dump", take: "To take in", goal: "A goal", problem: "A problem", scan: "An idea or a product" };
@@ -143,27 +144,34 @@ export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
             ) : (
             <ChatComposer
               label="Message Qalam AI"
-              placeholder="Ask, paste your thinking, or write a goal or a problem"
+              placeholder="Ask, or paste your thinking…"
               submit="enter"
               disabled={!loaded}
               running={!!busy}
               onStop={() => busy && stopTurn(busy.id)}
               draftKey={`chat:${space ?? "org"}:${compose.key}`}
               draft={compose.text}
-              above={<SourceRow fit="customers" />}
+              plus={
+                <SourceMenu fit="customers" manage>
+                  {!busy &&
+                    (["goal", "problem"] as FindWhat[]).map((w) => (
+                      <MenuItem key={w} icon={<QalamAIGlyph size={14} />} onSelect={() => findWith(w, space)}>
+                        Help me find {w === "goal" ? "a goal" : "a problem"}
+                      </MenuItem>
+                    ))}
+                </SourceMenu>
+              }
               attached={<AttachmentChips kinds />}
               onFiles={attachFiles}
               sendEmpty={readyDocs(attached).length > 0}
-              hint={
-                compose.mode ? (
-                  <span className="inline-flex h-[20px] items-center gap-[4px] rounded-sm bg-ai-subtle pr-[2px] pl-[6px] font-medium text-ai">
+              chip={
+                compose.mode && (
+                  <span className="inline-flex h-[20px] items-center gap-[4px] rounded-sm bg-ai-subtle pr-[2px] pl-[6px] text-micro font-medium whitespace-nowrap text-ai">
                     {MODE_LABEL[compose.mode]}
                     <button type="button" aria-label="Let the chat work out what it is" onClick={clearMode} className="grid size-[16px] place-items-center rounded-sm hover:bg-hover">
                       <X size={10} absoluteStrokeWidth strokeWidth={1.5} />
                     </button>
                   </span>
-                ) : (
-                  "Shift ↵ for a new line"
                 )
               }
               check={(t) => {

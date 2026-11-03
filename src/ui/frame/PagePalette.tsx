@@ -15,6 +15,7 @@ import { highlightRuns, scoreItem } from "../surfaces/fuzzy";
 import { useTopics } from "../topics/list";
 import { askNext } from "../org/ask-next";
 import { SpaceTile } from "./OrgPlaces";
+import { withAsk } from "./palette";
 import { PLACES, placeShown, type Place } from "./places";
 import type { Space } from "./spaces";
 import { useCurrentOrg, useFrame } from "./store";
@@ -101,9 +102,8 @@ function Palette({ space }: { space: Space }) {
         .sort((a, b) => b.score - a.score)
         .slice(0, MAX),
     );
-    if (q.length >= 3)
-      ranked.unshift({ key: "ask", group: "Qalam AI", label: `Ask: ${q}`, hits: [], icon: <QalamAIGlyph size={16} />, score: 0, run: () => askNext(q) });
-    return ranked;
+    if (q.length < 3) return ranked;
+    return withAsk(ranked, { key: "ask", group: "Qalam AI", label: `Ask: ${q}`, hits: [], icon: <QalamAIGlyph size={16} />, score: 0, run: () => askNext(q) }, q);
   }, [query, boards, topics, goals, space, products, org]);
 
   useEffect(() => setAt(0), [query]);

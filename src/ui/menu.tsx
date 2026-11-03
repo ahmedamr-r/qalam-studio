@@ -327,7 +327,7 @@ export const MenuLabel = ({ children }: { children: ReactNode }) => <div classNa
 
 // ── Submenu ──────────────────────────────────────────────────────────────────
 
-export function SubMenu({ label, icon, children, checks = false, className }: { label: string; icon?: ReactNode; children: ReactNode; checks?: boolean; className?: string }) {
+export function SubMenu({ label, icon, trailing, children, checks = false, className }: { label: string; icon?: ReactNode; trailing?: ReactNode; children: ReactNode; checks?: boolean; className?: string }) {
   const parent = useMenu();
   const id = useId();
   const open = parent?.openSub === id;
@@ -376,6 +376,7 @@ export function SubMenu({ label, icon, children, checks = false, className }: { 
           {parent?.checks && <span className={r.menuCheckSlot} />}
           {icon && <span className="ic grid shrink-0 place-items-center [&_svg]:size-[14px]">{icon}</span>}
           <span className="min-w-0 flex-1 truncate">{label}</span>
+          {trailing}
           <ChevronRight size={12} absoluteStrokeWidth strokeWidth={1.25} className="-mr-[2px] shrink-0 text-fg-subtle" />
         </button>
       </Popover.Anchor>

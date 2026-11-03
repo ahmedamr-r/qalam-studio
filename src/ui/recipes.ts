@@ -191,6 +191,8 @@ const spec = {
   composer: "q-ai-ring mx-[10px] mb-[10px] rounded-xl bg-raised focus-within:shadow-focus-field", // data-busy while running (ring + glow replace focus)
   composerInput: "w-full resize-none bg-transparent px-[12px] pt-[12px] pb-[6px] text-body text-fg outline-none focus-visible:outline-none placeholder:text-fg-faint",
   composerBar: "flex items-center gap-[4px] pt-[4px] pr-[6px] pb-[6px] pl-[8px]",
+  composerRow: "flex items-end gap-[4px] p-[6px]",                        // src/ui/chat's box: the +, the text, then the mic and Send on one row
+  composerLine: "min-w-0 flex-1 resize-none bg-transparent p-[4px] text-body leading-[20px] text-fg outline-none focus-visible:outline-none placeholder:text-fg-faint",
   composerPill: "q-item inline-flex h-[24px] items-center gap-[5px] rounded-md bg-hover px-[7px] text-caption font-medium text-fg-muted shadow-[inset_0_0_0_1px_var(--color-line-subtle)] hover:text-fg",
   stopButton: "h-[26px] gap-[6px] rounded-md pl-[8px] pr-[4px] text-body",  // + buttonBase + buttonPrimary, with an Esc kbdOnInverse
 
