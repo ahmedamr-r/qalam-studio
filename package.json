@@ -2,7 +2,7 @@
   "name": "qalam-studio",
   "productName": "Qalam Studio",
   "version": "0.1.1",
-  "description": "An open-source, Arabic-first AI studio for product makers: discovery boards, a knowledge hub and design tools, on your own Claude Code.",
+  "description": "Open-source product discovery on your own Claude Code or Codex: the problems worth solving, ranked by what backs them, with every quote checked by code.",
   "license": "Apache-2.0",
   "private": true,
   "type": "module",

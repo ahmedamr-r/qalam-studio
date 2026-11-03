@@ -1,6 +1,6 @@
 # Qalam Studio
 
-An open-source, Arabic-first second brain for product makers. Bring what you have (analytics and reports, research, interviews, tickets, market studies, strategy docs), and Qalam turns it into the problems worth solving, ranked by what backs them. Every line rests on a source's own words, which code finds word for word, and says what kind of evidence they are.
+Open-source product discovery on your own Claude Code or Codex. Qalam turns what you have (analytics and reports, research, interviews, tickets, market studies, strategy docs) into the problems worth solving, ranked by what backs them. Every line rests on a source's own words, which code finds word for word, and says what kind of evidence they are. Arabic and English both work.
 
 Qalam keeps what your organization knows as readable files on your own computer: its goals, what its sources state, the problems behind them, and what you decided. Qalam AI runs on your own Claude Code or Codex, so there is no Qalam account and no Qalam server.
 
