@@ -6,11 +6,13 @@ import { ENGINE_LABEL, isEngineKind, isKeyed, type EngineKind } from "@/ai/engin
 import { fixHealth, healthNow } from "../health";
 import { recentUsage } from "../usage";
 import { connectorDef } from "@/connectors/catalog";
+import { readEventRef } from "@/connectors/analytics";
 import type { Hit } from "@/connectors/recipes";
 import { browseConnector, connectorsView, forgetConnector, importItems, listClaudeCode, readItems, saveToken, searchConnector, viaClaudeCode } from "../connectors";
 import { storeFor } from "../org/home";
 import type { OstWork } from "@/discovery/types";
-import { readInsight, searchInsights } from "../connectors/numbers";
+import { lookInside } from "../connectors/look";
+import { readInsight, searchEvents, searchInsights, toolsOffered } from "../connectors/numbers";
 import { cancelGoogleSignIn, googleClient, signInGoogle } from "../connectors/google";
 import { cancelSignIn, keepApp, signIn } from "../connectors/oauth";
 import { workStatuses } from "../connectors/work";
@@ -191,6 +193,13 @@ export function connectionsRoutes(): Hono {
       return c.json({ error: "browse_failed", message: e instanceof Error ? e.message : String(e) }, 400);
     }
   });
+  // Qalam AI looking inside a tool: its picks, by titles and snippets, for the person to add or leave.
+  r.post("/api/org/:org/connectors/:id/look", async (c) => {
+    if (!(await storeFor(c.req.param("org")))) return c.json({ error: "not_found", message: "No such organization." }, 404);
+    const { about } = (await c.req.json().catch(() => ({}))) as { about?: unknown };
+    if (typeof about !== "string" || !about.trim()) return c.json({ error: "bad_request", message: "What should it look for?" }, 400);
+    return ndjson((emit) => lookInside(c.req.param("id"), about.trim().slice(0, 600), emit, c.req.raw.signal));
+  });
   r.post("/api/org/:org/connectors/:id/read", async (c) => {
     const store = await storeFor(c.req.param("org"));
     if (!store) return c.json({ error: "not_found", message: "No such organization." }, 404);
@@ -208,22 +217,37 @@ export function connectionsRoutes(): Hono {
     // Taken in to the end even if the window goes: each item is kept, read, filed and placed.
     return ndjson((emit) => importItems(store, c.req.param("id"), picked, emit));
   });
-  // An outcome's number from a saved PostHog insight (through Claude Code's PostHog server).
-  r.post("/api/connectors/posthog/insights", async (c) => {
-    const { query } = (await c.req.json().catch(() => ({}))) as { query?: unknown };
+  r.get("/api/connectors/:id/tools", async (c) => {
     try {
-      return c.json({ hits: await searchInsights(typeof query === "string" ? query.trim().slice(0, 120) : "") });
+      return c.json({ tools: await toolsOffered(c.req.param("id")) });
     } catch (e) {
-      return c.json({ error: "posthog", message: e instanceof Error ? e.message : String(e) }, 400);
+      return c.json({ error: "numbers", message: e instanceof Error ? e.message : String(e) }, 400);
     }
   });
-  r.post("/api/connectors/posthog/read", async (c) => {
-    const { ref } = (await c.req.json().catch(() => ({}))) as { ref?: unknown };
-    if (typeof ref !== "string" || !/^[A-Za-z0-9_-]{1,40}$/.test(ref)) return c.json({ error: "bad_request", message: "Which insight?" }, 400);
+  // A number from a saved chart in an analytics tool.
+  r.post("/api/connectors/:id/insights", async (c) => {
+    const { query } = (await c.req.json().catch(() => ({}))) as { query?: unknown };
     try {
-      return c.json(await readInsight(ref));
+      return c.json({ hits: await searchInsights(c.req.param("id"), typeof query === "string" ? query.trim().slice(0, 120) : "") });
     } catch (e) {
-      return c.json({ error: "posthog", message: e instanceof Error ? e.message : String(e) }, 400);
+      return c.json({ error: "numbers", message: e instanceof Error ? e.message : String(e) }, 400);
+    }
+  });
+  r.post("/api/connectors/:id/events", async (c) => {
+    const { query } = (await c.req.json().catch(() => ({}))) as { query?: unknown };
+    try {
+      return c.json({ hits: await searchEvents(c.req.param("id"), typeof query === "string" ? query.trim().slice(0, 120) : "") });
+    } catch (e) {
+      return c.json({ error: "numbers", message: e instanceof Error ? e.message : String(e) }, 400);
+    }
+  });
+  r.post("/api/connectors/:id/read", async (c) => {
+    const { ref } = (await c.req.json().catch(() => ({}))) as { ref?: unknown };
+    if (typeof ref !== "string" || !(/^[A-Za-z0-9_-]{1,80}$/.test(ref) || readEventRef(ref.slice(0, 300)))) return c.json({ error: "bad_request", message: "Which chart?" }, 400);
+    try {
+      return c.json(await readInsight(c.req.param("id"), ref));
+    } catch (e) {
+      return c.json({ error: "numbers", message: e instanceof Error ? e.message : String(e) }, 400);
     }
   });
   // Reading a product's code: Qalam's own GitHub sign-in (device flow, read-only), or a folder on this Mac.

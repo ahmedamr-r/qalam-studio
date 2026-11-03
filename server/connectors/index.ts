@@ -11,7 +11,7 @@ import { secrets } from "../secrets";
 import { readSettings, writeSettings } from "../settings";
 import { claudeCodeKnown, listClaudeCode, runTools } from "./claude-code";
 import { browseDrive, forgetGoogle, googleClient, googleSignedIn, readDriveFile } from "./google";
-import { notionPageText, notionSearch, notionWhoAmI } from "./notion-api";
+import { notionChildren, notionPageText, notionSearch, notionWhoAmI } from "./notion-api";
 import { appKept, forgetSignIn, signedIn, SignInAgain, withSignedIn } from "./oauth";
 import { linearWhoAmI } from "./work";
 
@@ -169,13 +169,13 @@ export async function browseConnector(id: string, at: BrowseAt, o: { force?: boo
 async function browseNow(id: string, words: string, folder: string | null | undefined): Promise<Hit[]> {
   if (words) return searchConnector(id, words);
   const h = await how(id);
-  // Notion's API lists the pages shared with the integration, newest first.
-  if (h.via === "token") return folder === undefined ? notionSearch(h.token, "") : [];
+  // Notion's API lists the pages shared with the integration, newest first, and the pages inside a page.
+  if (h.via === "token") return folder ? notionChildren(h.token, folder) : notionSearch(h.token, "");
   if (h.via === "google") return browseDrive(folder !== undefined ? { folder } : {});
   const recipe = RECIPES[id];
   const call = folder !== undefined ? recipe.list?.(folder) : recipe.recent?.();
   if (!call) return [];
-  const { site, answer } = await onTools(id, h, async (ask, site) => ({ site, answer: await ask(call) }));
+  const { site, answer } = await onTools(id, h, async (ask, site) => ({ site, answer: await ask(call).catch((e: unknown) => (e instanceof SignInAgain ? Promise.reject(e) : null)) }));
   if (answer === null) throw new Error(h.via === "mcp" ? `${connectorDef(id)?.label ?? id} didn't answer.` : "Claude Code didn't answer. Is it signed in there?");
   return recipe.hits(answer, site);
 }

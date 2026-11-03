@@ -23,7 +23,7 @@ export const LAB_FEATURES = [
   "questions",
   /** Engines other than Claude Code, Codex and an Anthropic key. */
   "engines",
-  /** Connectors (the catalog, the first run's Connect step, Bring it from), and work status on cards. */
+  /** The connectors past docs and analytics (customer voice, build and design), the first run's Connect step, and work status on cards. */
   "connectors",
   /** Product code: Connections' Product code card, Evidence's product maps. */
   "code",
@@ -71,6 +71,9 @@ export function setLab(s: LabState) {
 
 /** The engines v0.1 offers: the person's own Claude Code and Codex, and an Anthropic key. */
 export const engineShown = (kind: string): boolean => kind === "cli" || kind === "codex" || kind === "api" || lab("engines");
+
+/** The connector groups shown: docs and analytics, the rest with the lab's `connectors`. */
+export const connectorShown = (group: string): boolean => group === "docs" || group === "numbers" || lab("connectors");
 
 let loading: Promise<void> | null = null;
 

@@ -6,6 +6,7 @@ import { QalamAIGlyph } from "../brand/ai-glyph";
 import { r } from "../recipes";
 import { Button, Checkbox, Kbd, Tag } from "../controls";
 import { Dictated } from "../voice/MicButton";
+import { ToolSuggestion } from "./ToolSuggestion";
 import {
   CUSTOM_MAX,
   OTHER,
@@ -13,6 +14,7 @@ import {
   addCustom,
   answerOf,
   currentOf,
+  fillAnswer,
   optionAt,
   position,
   reduceFlow,
@@ -198,6 +200,7 @@ export function Questionnaire({ questions, state, onChange, onSubmit, review, ti
                 />
               </Dictated>
             )}
+            {q.tool && <ToolSuggestion ask={q.tool} question={q.title} onFill={(line) => answer(fillAnswer(q, answerOf(q, state.answers), line))} />}
           </>
         )}
       </div>

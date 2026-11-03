@@ -3,6 +3,7 @@ import clsx from "clsx";
 import { X } from "lucide-react";
 import { GROUPS } from "@/connectors/catalog";
 import type { Hit } from "@/connectors/recipes";
+import { connectorShown } from "@/lab";
 import { connectorsDb, type ConnectorState, type ImportResult } from "@/org/connectors";
 import { hereHref } from "../frame/useSpace";
 import { showDock } from "../space/dock";
@@ -65,7 +66,7 @@ export function Connectors() {
         </button>
       </div>
       {error && <p className="text-caption text-danger">{error}</p>}
-      {GROUPS.map((g) => (
+      {GROUPS.filter((g) => connectorShown(g.id)).map((g) => (
         <div key={g.id} className="flex flex-col gap-[8px]">
           <h3 className="text-micro font-medium text-fg-subtle">{g.label}</h3>
           <ul className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-[8px]">

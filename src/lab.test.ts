@@ -54,10 +54,11 @@ describe("with everything hidden (v0.1)", () => {
     expect(PLACES.filter((p) => placeShown(p.id)).map((p) => p.id)).toEqual(["home", "connections"]);
   });
 
-  it("brings material in from this computer only", () => {
+  it("brings material in from docs tools, and customers' voice only with the lab", () => {
     const notion = { id: "notion", group: "docs", feeds: "material", imports: true } as ConnectorState;
-    expect(sourcesFor("docs", [notion])).toHaveLength(1);
+    const slack = { id: "slack", group: "voice", feeds: "material", imports: true } as ConnectorState;
+    expect(sourcesFor("customers", [notion, slack])).toHaveLength(2);
     setLab([]);
-    expect(sourcesFor("docs", [notion])).toEqual([]);
+    expect(sourcesFor("customers", [notion, slack])).toEqual([notion]);
   });
 });

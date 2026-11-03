@@ -255,7 +255,7 @@ function MetricSection({ id, card }: { id: string; card: OstCard }) {
       <Field label="By when">
         <CommitInput ariaLabel="Timeframe" value={m.timeframe ?? ""} placeholder="End of Q1" onCommit={(t) => set({ timeframe: t.trim() || undefined })} />
       </Field>
-      {lab("connectors") && <MetricSource m={m} onChange={(next) => edit(id, (c) => void (c.metric = next))} onLeave={saveThenGo} />}
+      <MetricSource m={m} onChange={(next) => edit(id, (c) => void (c.metric = next))} onLeave={saveThenGo} />
     </Section>
   );
 }

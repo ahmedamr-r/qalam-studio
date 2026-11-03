@@ -50,6 +50,7 @@ export const TIER_OF = {
   "goal-ideas": "decide",
   "goal-number": "decide",
   statement: "decide",
+  "tool-look": "decide",
   // Fetching: the tool-runner makes the calls code planned.
   connector: "fetch",
   numbers: "fetch",

@@ -4,9 +4,11 @@ import clsx from "clsx";
 import * as Popover from "@radix-ui/react-popover";
 import { create } from "zustand";
 import { ChevronDown, ChevronRight, File, FileSpreadsheet, FileText, Folder, Presentation, Search, Upload, X } from "lucide-react";
+import type { LookedHit } from "@/connectors/look";
 import { RECIPES, type Hit, type HitType } from "@/connectors/recipes";
 import { ACCEPT } from "@/discovery/ingest/core";
 import { connectorsDb, type ConnectorState } from "@/org/connectors";
+import { QalamAIGlyph } from "../brand/ai-glyph";
 import { ConnectorLogo } from "../brand/ConnectorLogo";
 import { ConnectActions, type View } from "../connections/Connectors";
 import { Button, Checkbox, IconBtn, MenuItem, MenuLabel, Spinner } from "../controls";
@@ -27,7 +29,7 @@ const ICON = { size: 14, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const
 // The connectors on this computer, asked once per window; Claude Code is asked which it has once too.
 const useConnectors = create<{ view: View | null; checking: boolean }>(() => ({ view: null, checking: false }));
 let asked = false;
-function useConnectorView() {
+export function useConnectorView() {
   const { view, checking } = useConnectors();
   useEffect(() => {
     if (asked) return;
@@ -138,8 +140,8 @@ export function SourceRow({ fit }: { fit: SourceFit }) {
   );
 }
 
-/** Where the picker is: what was opened lately, a folder (the trail down to it), a search, or nowhere yet (search only). */
-type Place = { kind: "recent" } | { kind: "folder"; trail: { id: string | null; title: string }[] } | { kind: "search"; words: string; back: Place } | { kind: "none" };
+/** Where the picker is: what was opened lately, a folder (the trail down to it), a search, Qalam AI's look, or nowhere yet (search only). */
+type Place = { kind: "recent" } | { kind: "folder"; trail: { id: string | null; title: string }[] } | { kind: "search"; words: string; back: Place } | { kind: "look"; about: string; back: Place } | { kind: "none" };
 
 const TOP: Record<string, string> = { drive: "My Drive" };
 
@@ -195,21 +197,48 @@ function ConnectFirst({ c, onView }: { c: ConnectorState; onView: (v: View) => v
 
 const TYPE_ICON: Record<HitType, typeof File> = { folder: Folder, doc: FileText, pdf: FileText, sheet: FileSpreadsheet, slides: Presentation, text: FileText, other: File };
 
-function Browse({ c, onClose }: { c: ConnectorState; onClose: () => void }) {
+/**
+ * A connected tool to browse: what was opened lately, its folders or pages, a search, or Qalam AI
+ * looking inside it. By default what's picked goes in the chat box; `onAdd` takes it instead, and
+ * `about` is what Qalam AI looks for when nothing's typed.
+ */
+export function Browse({ c, onClose, onAdd, addLabel = "Add", about }: { c: ConnectorState; onClose: () => void; onAdd?: (hits: Hit[]) => void; addLabel?: string; about?: string }) {
   const recipe = RECIPES[c.id];
-  // Drive through Google's own API has its folders and what was opened lately.
-  const folders = c.via === "google" || (!!recipe?.list && c.via !== "token");
+  // Drive through Google's own API has its folders and what was opened lately; a Notion token, the pages shared with it.
+  const folders = c.via === "google" || !!recipe?.list;
   const recent = c.via === "google" || !!recipe?.recent || c.via === "token";
-  const top: Place = folders ? { kind: "folder", trail: [{ id: null, title: TOP[c.id] ?? "Top" }] } : { kind: "none" };
+  const tops = (c.via !== "token" && recipe?.roots) || [{ id: null, title: TOP[c.id] ?? "Top" }];
+  const top: Place = folders ? { kind: "folder", trail: [tops[0]] } : { kind: "none" };
   const [place, setPlace] = useState<Place>(recent ? { kind: "recent" } : top);
   const [words, setWords] = useState("");
-  const [hits, setHits] = useState<Hit[] | null>(null);
+  const [hits, setHits] = useState<LookedHit[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [picked, setPicked] = useState<Map<string, Hit>>(new Map());
   const [again, setAgain] = useState(0);
+  /** Qalam AI was asked with nothing to go on: the box takes what to look for. */
+  const [asking, setAsking] = useState(false);
+  /** How Qalam AI's look is going. */
+  const [step, setStep] = useState<string | null>(null);
+  const input = useRef<HTMLInputElement>(null);
   const at = place.kind === "search" ? { query: place.words } : place.kind === "folder" ? { folder: place.trail[place.trail.length - 1].id } : place.kind === "recent" ? {} : null;
-  const key = JSON.stringify(at);
+  const key = place.kind === "look" ? `look:${place.about}` : JSON.stringify(at);
   useEffect(() => {
+    if (place.kind === "look") {
+      const stop = new AbortController();
+      setHits(null);
+      setError(null);
+      setStep(null);
+      // Its picks come back ticked: nothing's read until they're added.
+      connectorsDb.look(c.id, place.about, setStep, stop.signal).then(
+        (x) => {
+          if (stop.signal.aborted) return;
+          setHits(x.hits);
+          setPicked((m) => new Map([...m, ...x.hits.map((h): [string, Hit] => [h.id, h])]));
+        },
+        (e: unknown) => !stop.signal.aborted && setError(e instanceof Error ? e.message : String(e)),
+      );
+      return () => stop.abort();
+    }
     if (!at) return setHits([]);
     let live = true;
     setHits(null);
@@ -223,11 +252,23 @@ function Browse({ c, onClose }: { c: ConnectorState; onClose: () => void }) {
     };
   }, [c.id, key, again]);
 
+  const backOf = (p: Place) => (p.kind === "search" || p.kind === "look" ? p.back : p);
+  const look = (what: string) => {
+    setAsking(false);
+    setPlace((p) => ({ kind: "look", about: what, back: backOf(p) }));
+  };
   const search = (e: FormEvent) => {
     e.preventDefault();
     const w = words.trim();
     if (!w) return;
-    setPlace((p) => ({ kind: "search", words: w, back: p.kind === "search" ? p.back : p }));
+    if (asking) return look(w);
+    setPlace((p) => ({ kind: "search", words: w, back: backOf(p) }));
+  };
+  const askAI = () => {
+    const what = words.trim() || about?.trim();
+    if (what) return look(what);
+    setAsking(true);
+    input.current?.focus();
   };
   const toggle = (h: Hit, on: boolean) =>
     setPicked((m) => {
@@ -237,9 +278,13 @@ function Browse({ c, onClose }: { c: ConnectorState; onClose: () => void }) {
       return next;
     });
   const add = () => {
+    if (onAdd) return onAdd([...picked.values()]);
     void attachHits(c, [...picked.values()]);
     onClose();
   };
+  const crumbs = place.kind === "folder" && place.trail.length > 1 ? place.trail : tops;
+  const isTrail = crumbs !== tops;
+  const openFolder = (h: Hit) => setPlace((p) => ({ kind: "folder", trail: [...(p.kind === "folder" ? p.trail : [tops[0]]), { id: h.id, title: h.title }] }));
   const slow = c.via === "claude-code";
 
   return (
@@ -248,8 +293,8 @@ function Browse({ c, onClose }: { c: ConnectorState; onClose: () => void }) {
         <form onSubmit={search} role="search">
           <label className={r.field}>
             <Search {...ICON} className="shrink-0 text-fg-subtle" />
-            <input autoFocus className={r.fieldInput} aria-label={`Search ${c.label}`} placeholder={`Search ${c.label}`} value={words} onChange={(e) => setWords(e.target.value)} />
-            {place.kind === "search" && (
+            <input ref={input} autoFocus className={r.fieldInput} aria-label={`Search ${c.label}`} placeholder={asking ? "What should Qalam AI look for?" : `Search ${c.label}`} value={words} onChange={(e) => setWords(e.target.value)} />
+            {(place.kind === "search" || place.kind === "look") && (
               <IconBtn
                 size="sm"
                 label="Clear the search"
@@ -265,7 +310,9 @@ function Browse({ c, onClose }: { c: ConnectorState; onClose: () => void }) {
         </form>
         <nav aria-label="Where" className="flex min-h-[24px] flex-wrap items-center gap-[2px] text-caption">
           {place.kind === "search" ? (
-            <span className="px-[4px] text-fg-muted">Results for “{place.words}”</span>
+            <span className="min-w-0 truncate px-[4px] text-fg-muted">Results for “{place.words}”</span>
+          ) : place.kind === "look" ? (
+            <span className="min-w-0 truncate px-[4px] text-fg-muted">Qalam AI's picks for “{place.about}”</span>
           ) : (
             <>
               {recent && (
@@ -274,21 +321,28 @@ function Browse({ c, onClose }: { c: ConnectorState; onClose: () => void }) {
                 </button>
               )}
               {folders &&
-                (place.kind === "folder" ? place.trail : (top as Extract<Place, { kind: "folder" }>).trail.slice(0, 1)).map((f, i, trail) => (
-                  <span key={`${f.id}:${i}`} className="inline-flex items-center gap-[2px]">
-                    {i > 0 ? <ChevronRight {...ICON} size={12} className="text-fg-faint" /> : recent && <span aria-hidden className="mx-[4px] h-[12px] w-px bg-line" />}
-                    <button
-                      type="button"
-                      aria-current={(place.kind === "folder" && i === trail.length - 1) || undefined}
-                      onClick={() => setPlace({ kind: "folder", trail: place.kind === "folder" ? place.trail.slice(0, i + 1) : [f] })}
-                      className={clsx("max-w-[160px] truncate rounded-sm px-[6px] py-[2px] hover:bg-hover", place.kind === "folder" && i === trail.length - 1 ? "font-medium text-fg" : "text-fg-muted")}
-                    >
-                      {f.title}
-                    </button>
-                  </span>
-                ))}
+                crumbs.map((f, i) => {
+                  // Deep in a folder: the trail back up. At the top: its places, side by side.
+                  const here = place.kind === "folder" && (isTrail ? i === crumbs.length - 1 : place.trail[0].id === f.id);
+                  return (
+                    <span key={`${f.id}:${i}`} className="inline-flex items-center gap-[2px]">
+                      {i > 0 && isTrail ? <ChevronRight {...ICON} size={12} className="text-fg-faint" /> : i === 0 && recent && <span aria-hidden className="mx-[4px] h-[12px] w-px bg-line" />}
+                      <button
+                        type="button"
+                        aria-current={here || undefined}
+                        onClick={() => setPlace({ kind: "folder", trail: isTrail ? crumbs.slice(0, i + 1) : [f] })}
+                        className={clsx("max-w-[160px] truncate rounded-sm px-[6px] py-[2px] hover:bg-hover", here ? "font-medium text-fg" : "text-fg-muted")}
+                      >
+                        {f.title}
+                      </button>
+                    </span>
+                  );
+                })}
             </>
           )}
+          <button type="button" onClick={askAI} className={clsx(r.replyChip, "ml-auto shrink-0")}>
+            <QalamAIGlyph size={12} /> Let Qalam AI look
+          </button>
         </nav>
       </div>
       <div className="min-h-[120px] flex-1 overflow-y-auto overflow-x-hidden px-[6px] pb-[6px]">
@@ -302,14 +356,14 @@ function Browse({ c, onClose }: { c: ConnectorState; onClose: () => void }) {
         ) : hits === null ? (
           <div className="flex flex-col gap-[6px] p-[6px]" aria-busy>
             <span className="inline-flex items-center gap-[6px] text-caption text-fg-muted">
-              <Spinner size={12} /> <span className="q-shimmer-text">{slow ? `Asking ${c.label} through Claude Code…` : `Looking in ${c.label}…`}</span>
+              <Spinner size={12} /> <span className="q-shimmer-text">{(place.kind === "look" && step) || (slow ? `Asking ${c.label} through Claude Code…` : `Looking in ${c.label}…`)}</span>
             </span>
             {[0, 1, 2, 3].map((i) => (
               <span key={i} className={clsx(r.skeleton, "h-[24px]")} aria-hidden />
             ))}
           </div>
         ) : !hits.length ? (
-          <p className="p-[6px] text-caption text-fg-subtle">{place.kind === "none" ? `Search ${c.label} for the docs that explain it.` : place.kind === "search" ? "Nothing found. Try other words." : place.kind === "folder" ? "This folder is empty." : "Nothing opened lately. Search instead."}</p>
+          <p className="p-[6px] text-caption text-fg-subtle">{place.kind === "none" ? `Search ${c.label} for the docs that explain it, or let Qalam AI look.` : place.kind === "look" ? "Qalam AI found nothing that fits. Browse, or search in your own words." : place.kind === "search" ? "Nothing found. Try other words." : place.kind === "folder" ? "Nothing in here." : "Nothing opened lately. Search instead."}</p>
         ) : (
           <ul aria-label={`In ${c.label}`} className="flex flex-col">
             {hits.map((h) => {
@@ -320,7 +374,7 @@ function Browse({ c, onClose }: { c: ConnectorState; onClose: () => void }) {
                   <li key={h.id}>
                     <button
                       type="button"
-                      onClick={() => setPlace((p) => ({ kind: "folder", trail: [...(p.kind === "folder" ? p.trail : (top as Extract<Place, { kind: "folder" }>).trail), { id: h.id, title: h.title }] }))}
+                      onClick={() => openFolder(h)}
                       className="q-item flex h-[30px] w-full items-center gap-[8px] rounded-md px-[6px] text-left text-body text-fg hover:bg-hover"
                     >
                       <Icon {...ICON} className="shrink-0 text-fg-subtle" />
@@ -338,19 +392,27 @@ function Browse({ c, onClose }: { c: ConnectorState; onClose: () => void }) {
                   </li>
                 );
               return (
-                <li key={h.id} className="flex h-[30px] items-center rounded-md px-[6px] hover:bg-hover">
-                  <Checkbox
-                    className="min-w-0 flex-1"
-                    checked={picked.has(h.id)}
-                    onChange={(on) => toggle(h, on)}
-                    label={
-                      <span className="flex min-w-0 flex-1 items-center gap-[8px] text-body text-fg">
-                        <Icon {...ICON} className="shrink-0 text-fg-subtle" />
-                        <span className="min-w-0 flex-1 truncate">{h.title}</span>
-                        {when && <span className="shrink-0 text-micro text-fg-subtle tnum">{when}</span>}
-                      </span>
-                    }
-                  />
+                <li key={h.id} className="flex flex-col rounded-md px-[6px] hover:bg-hover">
+                  <span className="flex h-[30px] items-center gap-[4px]">
+                    <Checkbox
+                      className="min-w-0 flex-1"
+                      checked={picked.has(h.id)}
+                      onChange={(on) => toggle(h, on)}
+                      label={
+                        <span className="flex min-w-0 flex-1 items-center gap-[8px] text-body text-fg">
+                          <Icon {...ICON} className="shrink-0 text-fg-subtle" />
+                          <span className="min-w-0 flex-1 truncate">{h.title}</span>
+                          {when && <span className="shrink-0 text-micro text-fg-subtle tnum">{when}</span>}
+                        </span>
+                      }
+                    />
+                    {h.opens && (
+                      <IconBtn size="sm" label={`Open ${h.title}`} onClick={() => openFolder(h)}>
+                        <ChevronRight {...ICON} />
+                      </IconBtn>
+                    )}
+                  </span>
+                  {h.why && <span className="truncate pb-[4px] pl-[22px] text-micro text-fg-subtle">{h.why}</span>}
                 </li>
               );
             })}
@@ -363,7 +425,7 @@ function Browse({ c, onClose }: { c: ConnectorState; onClose: () => void }) {
           Cancel
         </Button>
         <Button size="sm" disabled={!picked.size} onClick={add}>
-          {picked.size ? `Add ${picked.size}` : "Add"}
+          {picked.size ? `${addLabel} ${picked.size}` : addLabel}
         </Button>
       </footer>
     </>

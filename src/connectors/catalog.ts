@@ -106,9 +106,43 @@ export const CATALOG: readonly ConnectorDef[] = [
   { id: "jira", label: "Jira", group: "build", feeds: "work", claudeCode: /\bjira\b|atlassian/i, mcp: ATLASSIAN, imports: false, status: "token" },
   { id: "github", label: "GitHub", group: "build", feeds: "work", claudeCode: /github/i, imports: false, status: "public" },
   { id: "figma", label: "Figma", group: "build", feeds: "work", claudeCode: /\bfigma\b/i, imports: false, screens: true },
-  { id: "posthog", label: "PostHog", group: "numbers", feeds: "numbers", claudeCode: /posthog/i, imports: false, numbers: true },
-  { id: "amplitude", label: "Amplitude", group: "numbers", feeds: "numbers", claudeCode: /amplitude/i, imports: false },
-  { id: "mixpanel", label: "Mixpanel", group: "numbers", feeds: "numbers", claudeCode: /mixpanel/i, imports: false },
+  // Read scopes only. PostHog's sign-in sends an account to its own region from the one address.
+  { id: "posthog", label: "PostHog", group: "numbers", feeds: "numbers", claudeCode: /posthog/i, mcp: { url: "https://mcp.posthog.com/mcp", scope: "user:read organization:read project:read insight:read query:read" }, imports: false, numbers: true },
+  {
+    id: "amplitude",
+    label: "Amplitude",
+    group: "numbers",
+    feeds: "numbers",
+    claudeCode: /amplitude/i,
+    mcp: {
+      url: "https://mcp.amplitude.com/mcp",
+      scope: "all:read offline_access",
+      regions: [
+        { id: "us", label: "US", url: "https://mcp.amplitude.com/mcp" },
+        { id: "eu", label: "EU", url: "https://mcp.eu.amplitude.com/mcp" },
+      ],
+    },
+    imports: false,
+    numbers: true,
+  },
+  {
+    id: "mixpanel",
+    label: "Mixpanel",
+    group: "numbers",
+    feeds: "numbers",
+    claudeCode: /mixpanel/i,
+    mcp: {
+      url: "https://mcp.mixpanel.com/mcp",
+      scope: "projects analysis events insights segmentation retention data:read funnels flows data_definitions dashboard_reports bookmarks",
+      regions: [
+        { id: "us", label: "US", url: "https://mcp.mixpanel.com/mcp" },
+        { id: "eu", label: "EU", url: "https://mcp-eu.mixpanel.com/mcp" },
+        { id: "in", label: "IN", url: "https://mcp-in.mixpanel.com/mcp" },
+      ],
+    },
+    imports: false,
+    numbers: true,
+  },
 ];
 
 export const connectorDef = (id: string) => CATALOG.find((c) => c.id === id);

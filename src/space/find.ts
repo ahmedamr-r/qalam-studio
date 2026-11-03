@@ -1,4 +1,5 @@
 import type { PlanQuestion } from "@/ai/plan";
+import type { ToolAsk } from "@/connectors/suggest";
 import { sharedWords } from "@/discovery/near";
 import type { Market } from "@/market/types";
 import { sanitizeQuestions } from "@/ui/ai/plan";
@@ -13,20 +14,20 @@ import { sanitizeQuestions } from "@/ui/ai/plan";
 
 export type FindWhat = "goal" | "problem";
 
-const open = (id: string, title: string, why: string): PlanQuestion => ({ id, title, why, multi: false, options: [], recommended: [], allowOther: false });
+const open = (id: string, title: string, why: string, tool?: ToolAsk): PlanQuestion => ({ id, title, why, multi: false, options: [], recommended: [], allowOther: false, ...(tool ? { tool } : {}) });
 
 /** The opening round: open questions, each skippable. */
 export function findRound(what: FindWhat): PlanQuestion[] {
   return what === "goal"
     ? [
         open("for-whom", "What does the product do, and who is it for?", "A goal is a change for those people."),
-        open("change", "What is the team trying to change in the next few months?", "A goal is a change the team could see happen."),
-        open("number", "Is there a number you'd watch to know it's working? Where is it now?", "So the goal can carry its number, in your words."),
+        open("change", "What is the team trying to change in the next few months?", "A goal is a change the team could see happen.", { kind: "docs", lookFor: "strategy goals roadmap" }),
+        open("number", "Is there a number you'd watch to know it's working? Where is it now?", "So the goal can carry its number, in your words.", { kind: "numbers" }),
       ]
     : [
         open("who", "Who are the customers, and what are they trying to get done?", "A problem is theirs: whose, and in the middle of what."),
-        open("struggle", "What do they struggle with, complain about or ask for?", "In their words if you have them: what you've heard or seen."),
-        open("give-up", "Where do they give up, or go somewhere else?", "Where it costs them, and you."),
+        open("struggle", "What do they struggle with, complain about or ask for?", "In their words if you have them: what you've heard or seen.", { kind: "docs", lookFor: "customer research feedback" }),
+        open("give-up", "Where do they give up, or go somewhere else?", "Where it costs them, and you.", { kind: "numbers", lookFor: "funnel" }),
       ];
 }
 

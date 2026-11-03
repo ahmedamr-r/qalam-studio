@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TOOL_FIELDS, type ToolAsk } from "@/connectors/suggest";
 import { CATALOG } from "@/design-system/components";
 import { PLATFORM_GUIDE, PLATFORM_IDS, type Platform } from "@/design-system/platform";
 import { MAX_SCREENS } from "./screen-count";
@@ -21,6 +22,8 @@ export interface PlanQuestion {
   /** The option Qalam AI would pick (single choice), or picks (multi). */
   recommended: string[];
   allowOther: boolean;
+  /** A tool that could answer it better than memory. */
+  tool?: ToolAsk;
 }
 
 export interface PlanGap {
@@ -110,8 +113,10 @@ export const questionItem = (who = "designer", several = "which panels or tools 
     },
     recommended: strs("The value(s) you recommend: one for a single-choice question; none for an open question"),
     allowOther: { type: "boolean", description: "Offer a free-text answer too" },
+    // Only questions about the person's product: a designer's plan has no tools to ask.
+    ...(who === "designer" ? {} : TOOL_FIELDS),
   },
-  required: ["id", "title", "why", "multi", "options", "recommended", "allowOther"],
+  required: ["id", "title", "why", "multi", "options", "recommended", "allowOther", ...(who === "designer" ? [] : ["from", "look_for"])],
 });
 
 const QUESTION_ITEM = questionItem();

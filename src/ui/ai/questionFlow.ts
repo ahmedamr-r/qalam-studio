@@ -6,6 +6,8 @@
  * on an earlier answer (dependsOn) simply appears or disappears; only answers are stored.
  */
 
+import type { ToolAsk } from "@/connectors/suggest";
+
 export interface QOption {
   value: string;
   label: string;
@@ -27,6 +29,8 @@ interface QBase {
   source?: "ai" | "studio";
   /** Questions whose answers this one is built from: changing them clears this answer. */
   dependsOn?: string[];
+  /** A tool that could answer it better than memory: the card offers to connect it and fetch from it. */
+  tool?: ToolAsk;
 }
 
 export interface SingleQuestion extends QBase {
@@ -295,6 +299,15 @@ export function addCustom(a: Multi, name: string): Multi {
   const n = name.trim().replace(/\s+/g, " ").slice(0, CUSTOM_MAX);
   if (!n || a.custom.some((c) => c.toLowerCase() === n.toLowerCase())) return a;
   return { ...a, custom: [...a.custom, n] };
+}
+
+/** The answer with a line a tool brought added to it, however the question takes words; the person can still change it. */
+export function fillAnswer(q: Question, a: Answer, line: string): Answer {
+  const add = (had: string | undefined, max: number) => [had?.trim(), line].filter(Boolean).join("\n").slice(0, max);
+  if (q.kind === "text") return { kind: "text", text: add(a.kind === "text" ? a.text : "", q.maxLength ?? Infinity) };
+  if (q.kind === "single") return { kind: "single", value: OTHER, other: add(a.kind === "single" && a.value === OTHER ? a.other : "", 1200) };
+  const multi: Multi = a.kind === "multi" ? a : { kind: "multi", values: [], custom: [] };
+  return { ...multi, custom: [...multi.custom, line.slice(0, 1200)] };
 }
 
 export function removeCustom(a: Multi, name: string): Multi {

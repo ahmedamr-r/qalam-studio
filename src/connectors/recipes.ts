@@ -31,6 +31,8 @@ export interface Hit {
   site?: string;
   /** A folder, opened rather than read. */
   folder?: boolean;
+  /** Can be read and can also be opened, for what's inside it (a Notion page). */
+  opens?: boolean;
   type?: HitType;
 }
 
@@ -44,6 +46,8 @@ export interface Recipe {
   text?: (result: string) => string;
   /** A folder's items (null: the top), for a tool with folders; its answer reads with `hits`. */
   list?: (folder: string | null) => ToolCall;
+  /** The places at its top, for a tool with several (Notion's Private and Shared). */
+  roots?: readonly { id: string; title: string }[];
   /** What was opened lately, shown before anything is searched; its answer reads with `hits`. */
   recent?: () => ToolCall;
 }
@@ -57,14 +61,41 @@ const json = (text: string): unknown => {
 };
 const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
 
-/** Notion's hosted server: notion-search answers {results:[{id,title,url,type,highlight,timestamp}]}. */
+/** A Notion address's page id, and the address without its tracking. */
+const notionId = (url: string | undefined) => (url ? /([0-9a-f]{32})(?:[?#/]|$)/i.exec(url)?.[1] : undefined);
+const plainUrl = (url: string) => url.split("?")[0];
+
+/** A page holds what's between its <content> tags; what's around them is the tool's own wrapping. */
+const notionContent = (text: string) => /<content>([\s\S]*)<\/content>/.exec(text)?.[1];
+/** A title as Notion's Markdown writes it (“\[Team\] notes”). */
+const unescaped = (s: string) => s.replace(/\\([[\]()*_`~#])/g, "$1").replace(/\s+/g, " ").trim();
+const CHILD = /<(page|database)\s+url="\{*([^"}]+)\}*"[^>]*>([\s\S]*?)<\/\1>/g;
+
+/*
+ * Notion's hosted server. Search and its lists (recent, private, shared) answer
+ * {results:[{type,url,title}]}, some with id, highlight and timestamp, and notion-fetch a page's text,
+ * with the pages inside it as <page url="…">Title</page>. A page opens like a folder and can also be
+ * read; a database reads as its schema, so it isn't offered.
+ */
 export function notionHits(result: string): Hit[] {
-  const j = json(result) as { results?: Record<string, unknown>[] } | null;
+  const j = json(result) as { results?: Record<string, unknown>[]; text?: unknown } | null;
+  if (!j?.results && typeof j?.text === "string")
+    return [...(notionContent(j.text) ?? "").matchAll(CHILD)].flatMap((m) => {
+      const id = notionId(m[2]);
+      return id ? [{ id, title: unescaped(m[3]) || "Untitled", url: plainUrl(m[2]), ...(m[1] === "database" ? { type: "other" as const } : { opens: true }) }] : [];
+    });
   return (j?.results ?? []).flatMap((r) => {
-    const id = str(r.id);
+    const id = str(r.id) ?? notionId(str(r.url));
     if (!id) return [];
-    return [{ id, title: str(r.title) ?? "Untitled", ...(str(r.url) ? { url: str(r.url) } : {}), ...(str(r.highlight) ? { snippet: str(r.highlight)!.slice(0, 200) } : {}), ...(str(r.timestamp) ? { at: str(r.timestamp) } : {}) }];
+    return [{ id, title: str(r.title) ?? "Untitled", ...(str(r.url) ? { url: plainUrl(str(r.url)!) } : {}), ...(str(r.highlight) ? { snippet: str(r.highlight)!.slice(0, 200) } : {}), ...(str(r.timestamp) ? { at: str(r.timestamp) } : {}), ...(r.type === "database" ? { type: "other" as const } : { opens: true }) }];
   });
+}
+
+/** A fetched page's own words: its content without the tool's wrapping, the pages inside it by their titles. */
+export function notionText(result: string): string {
+  const text = itemText(result);
+  const content = notionContent(text);
+  return content === undefined ? text : content.replace(CHILD, (_m, _kind, _url, title: string) => unescaped(title)).replace(/<p \/>/g, "").trim();
 }
 
 /*
@@ -130,6 +161,13 @@ export const RECIPES: Record<string, Recipe> = {
     search: (query) => ({ tool: "notion-search", args: { query } }),
     hits: notionHits,
     fetch: (hit) => ({ tool: "notion-fetch", args: { id: hit.id } }),
+    text: notionText,
+    recent: () => ({ tool: "notion-list-recent-pages", args: { limit: 50 } }),
+    roots: [
+      { id: "private", title: "Private" },
+      { id: "shared", title: "Shared" },
+    ],
+    list: (folder) => (folder === "shared" ? { tool: "notion-list-shared-pages", args: { limit: 100 } } : folder === "private" || folder === null ? { tool: "notion-list-private-pages", args: { limit: 100 } } : { tool: "notion-fetch", args: { id: folder } }),
   },
   intercom: {
     search: (query) => ({ tool: "search", args: { query: intercomQuery(query) } }),
@@ -163,7 +201,12 @@ export function notionTitle(page: { properties?: Record<string, { type?: string;
 
 /** /v1/search's pages as hits. */
 export function notionApiHits(res: { results?: { object?: string; id?: string; url?: string; last_edited_time?: string; properties?: Record<string, { type?: string; title?: RichText[] }> }[] }): Hit[] {
-  return (res.results ?? []).filter((r) => r.object === "page" && r.id).map((r) => ({ id: r.id!, title: notionTitle(r), ...(r.url ? { url: r.url } : {}), ...(r.last_edited_time ? { at: r.last_edited_time } : {}) }));
+  return (res.results ?? []).filter((r) => r.object === "page" && r.id).map((r) => ({ id: r.id!, title: notionTitle(r), ...(r.url ? { url: r.url } : {}), ...(r.last_edited_time ? { at: r.last_edited_time } : {}), opens: true }));
+}
+
+/** A page's blocks: the pages inside it, as hits. */
+export function notionChildHits(blocks: (Block & { child_page?: { title?: string } })[]): Hit[] {
+  return blocks.filter((b) => b.type === "child_page" && b.id).map((b) => ({ id: b.id!, title: b.child_page?.title?.trim() || "Untitled", opens: true }));
 }
 
 const TEXT_BLOCKS = new Set(["paragraph", "heading_1", "heading_2", "heading_3", "bulleted_list_item", "numbered_list_item", "to_do", "toggle", "quote", "callout", "code"]);

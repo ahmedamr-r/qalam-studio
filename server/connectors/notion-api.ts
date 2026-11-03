@@ -1,4 +1,4 @@
-import { notionApiHits, notionBlocksText, type Hit } from "@/connectors/recipes";
+import { notionApiHits, notionBlocksText, notionChildHits, type Hit } from "@/connectors/recipes";
 
 /*
  * Notion's own API, with the internal integration secret Qalam keeps in the Keychain: a search, a
@@ -28,8 +28,13 @@ export async function notionSearch(token: string, query: string, f?: typeof fetc
   return notionApiHits(await call(token, "/search", { method: "POST", body: JSON.stringify({ query, filter: { property: "object", value: "page" }, ...order, page_size: 20 }) }, f));
 }
 
+/** The pages inside a page. */
+export const notionChildren = async (token: string, id: string, f?: typeof fetch): Promise<Hit[]> => notionChildHits((await notionBlocks(token, id, f)) as Parameters<typeof notionChildHits>[0]);
+
 /** A page's words (its top-level blocks, up to a thousand). */
-export async function notionPageText(token: string, id: string, f?: typeof fetch): Promise<string> {
+export const notionPageText = async (token: string, id: string, f?: typeof fetch): Promise<string> => notionBlocksText(await notionBlocks(token, id, f));
+
+async function notionBlocks(token: string, id: string, f?: typeof fetch) {
   const blocks: Record<string, unknown>[] = [];
   let cursor: string | undefined;
   for (let n = 0; n < 10; n++) {
@@ -38,5 +43,5 @@ export async function notionPageText(token: string, id: string, f?: typeof fetch
     if (!page.has_more || !page.next_cursor) break;
     cursor = page.next_cursor;
   }
-  return notionBlocksText(blocks);
+  return blocks;
 }

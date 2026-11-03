@@ -145,7 +145,7 @@ export function numberRound(metric: Partial<Pick<OstMetric, "name" | "unit" | "c
   const name = metric?.name?.trim();
   return [
     ...(name ? [] : [open("name", "What number would show it moving?", "One you could read every week or month. Skip it and the goal stays without a number.")]),
-    ...(metric?.current !== null && metric?.current !== undefined || metric?.baseline !== null && metric?.baseline !== undefined ? [] : [open("now", name ? `Where does ${name} stand today?` : "Where does it stand today?", "As far as you know. Skip it if you don't know yet.")]),
+    ...(metric?.current !== null && metric?.current !== undefined || metric?.baseline !== null && metric?.baseline !== undefined ? [] : [{ ...open("now", name ? `Where does ${name} stand today?` : "Where does it stand today?", "As far as you know. Skip it if you don't know yet."), tool: { kind: "numbers" as const, ...(name ? { lookFor: name } : {}) } }]),
     open("target", "Do you have a number in mind to reach?", "Skip it and I'll suggest one from what's normal in your industry."),
   ];
 }

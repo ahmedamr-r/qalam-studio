@@ -1,32 +1,42 @@
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import clsx from "clsx";
 import { ChartLine, ExternalLink, X } from "lucide-react";
+import { countsEvents } from "@/connectors/analytics";
 import type { InsightNumbers } from "@/connectors/numbers";
 import type { Hit } from "@/connectors/recipes";
+import { toolConnected } from "@/connectors/suggest";
 import type { OstMetric } from "@/discovery/types";
 import { numbersDb } from "@/org/connectors";
 import { placeHref } from "@/projects/model";
+import { useConnectorView } from "../chat/SourcePicker";
 import { Button, IconBtn } from "../controls";
 import { r } from "../recipes";
 import { ago } from "../time";
+import { EventPicker } from "./EventPicker";
 
 const ICON = { size: 12, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 
 /**
- * Where a number comes from: a saved PostHog insight, read through Claude Code's PostHog server
- * (an outcome card's, a goal's). Code reads the number from PostHog's own answer; reading it isn't
- * a decision. Each read takes about a minute (Claude Code starts its servers first). `query` and
- * `open` start it searching for that insight at once (a job that reads the number).
+ * Where a number comes from: a saved chart in an analytics tool (an outcome card's, a goal's). Code
+ * reads the number from the tool's own answer; reading it isn't a decision. Through Claude Code
+ * each read takes about a minute (it starts its servers first). `query` and `open` start it searching
+ * for that chart at once (a job that reads the number).
  */
 export function MetricSource({ m, onChange, onLeave, query: first = "", open = false }: { m: OstMetric; onChange: (next: OstMetric) => void; onLeave?: (e: MouseEvent<HTMLAnchorElement>) => void; query?: string; open?: boolean }) {
+  const { view } = useConnectorView();
+  const tools = (view?.connectors ?? []).filter((c) => c.numbers && toolConnected(c));
+  const [picked, setPicked] = useState<string | null>(null);
+  const toolId = picked ?? m.source?.connector ?? tools[0]?.id ?? "posthog";
+  const label = view?.connectors.find((c) => c.id === toolId)?.label ?? toolId;
   const [step, setStep] = useState<"idle" | "pick" | "series">(open ? "pick" : "idle");
   const [query, setQuery] = useState(first);
   const [hits, setHits] = useState<Hit[] | null>(null);
   const [series, setSeries] = useState<{ hit: Hit; read: InsightNumbers } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const run = async (label: string, fn: () => Promise<void>) => {
-    setBusy(label);
+  const viaClaude = view?.connectors.find((c) => c.id === toolId)?.via === "claude-code";
+  const run = async (say: string, fn: () => Promise<void>) => {
+    setBusy(say);
     setError(null);
     try {
       await fn();
@@ -36,7 +46,15 @@ export function MetricSource({ m, onChange, onLeave, query: first = "", open = f
       setBusy(null);
     }
   };
-  const find = (q: string) => run("Asking PostHog through Claude Code…", async () => setHits((await numbersDb.insights(q)).hits));
+  /** Counting one of its events instead: where it has no saved chart that fits, or they asked. */
+  const [events, setEvents] = useState(false);
+  const canCount = countsEvents(toolId);
+  const find = (q: string, id = toolId) =>
+    run(`Looking in ${label}…`, async () => {
+      const found = (await numbersDb.insights(q, id)).hits;
+      setHits(found);
+      if (!found.length && countsEvents(id)) setEvents(true);
+    });
   // Once, when it opens on a job's query (a ref, as development runs effects twice).
   const started = useRef(false);
   useEffect(() => {
@@ -46,50 +64,83 @@ export function MetricSource({ m, onChange, onLeave, query: first = "", open = f
     }
   }, []);
   const apply = (hit: Pick<Hit, "id" | "title" | "url">, s: { label: string; value: number }, url?: string) => {
-    onChange({ ...m, current: s.value, source: { connector: "posthog", ref: hit.id, ...(url ?? hit.url ? { url: url ?? hit.url } : {}), label: hit.title, series: s.label }, readAt: Date.now() });
+    onChange({ ...m, current: s.value, source: { connector: toolId, ref: hit.id, ...(url ?? hit.url ? { url: url ?? hit.url } : {}), label: hit.title, series: s.label }, readAt: Date.now() });
     setStep("idle");
     setSeries(null);
   };
   /** Read it, and use the series asked for, the only one, or ask which. */
   const read = (hit: Pick<Hit, "id" | "title" | "url">, want?: string) =>
-    run("Reading it through Claude Code…", async () => {
-      const r = await numbersDb.read(hit.id);
-      if (!r.series.length) throw new Error("This insight has no one number to read. Pick another, or type the number.");
+    run(`Reading it from ${label}…`, async () => {
+      const r = await numbersDb.read(hit.id, toolId);
+      if (!r.series.length) throw new Error("This chart has no one number to read. Pick another, or type the number.");
       const s = want ? r.series.find((x) => x.label === want) : r.series.length === 1 ? r.series[0] : undefined;
       if (s) return apply({ ...hit, title: r.name ?? hit.title }, s, r.url);
       setSeries({ hit: { ...hit, title: r.name ?? hit.title }, read: r });
       setStep("series");
     });
-  const src = m.source?.connector === "posthog" ? m.source : null;
+  const src = m.source;
   return (
     <div className="flex flex-col gap-[6px] pt-[4px]">
       {src && step === "idle" ? (
         <div className="flex items-center gap-[6px] text-caption text-fg-muted">
           <ChartLine {...ICON} />
           <span className="min-w-0 flex-1 truncate">
-            PostHog · {src.label ?? src.ref}
+            {label} · {src.label ?? src.ref}
             {src.series && src.series !== src.label ? ` · ${src.series}` : ""}
             {m.readAt ? ` · read ${ago(m.readAt)}` : ""}
           </span>
           {src.url && (
-            <a href={src.url} target="_blank" rel="noreferrer" aria-label="Open it in PostHog" className={r.iconButtonSm}>
+            <a href={src.url} target="_blank" rel="noreferrer" aria-label={`Open it in ${label}`} className={r.iconButtonSm}>
               <ExternalLink {...ICON} />
             </a>
           )}
           <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => void read({ id: src.ref, title: src.label ?? src.ref, url: src.url }, src.series)}>
             Read again
           </Button>
-          <IconBtn size="sm" label="Stop reading it from PostHog" onClick={() => onChange({ ...m, source: undefined, readAt: undefined })}>
+          <IconBtn size="sm" label={`Stop reading it from ${label}`} onClick={() => onChange({ ...m, source: undefined, readAt: undefined })}>
             <X {...ICON} />
           </IconBtn>
         </div>
       ) : step === "idle" ? (
-        <Button size="sm" variant="secondary" className="self-start" onClick={() => setStep("pick")}>
-          <ChartLine {...ICON} />
-          Read it from PostHog…
-        </Button>
+        tools.length ? (
+          <span className="flex flex-wrap gap-[6px]">
+            {tools.map((c) => (
+              <Button
+                key={c.id}
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  setPicked(c.id);
+                  setHits(null);
+                  setEvents(false);
+                  setStep("pick");
+                  void find("", c.id);
+                }}
+              >
+                <ChartLine {...ICON} />
+                Read it from {c.label}…
+              </Button>
+            ))}
+          </span>
+        ) : (
+          <a href={placeHref("connections")} onClick={onLeave} className={clsx(r.buttonSm, r.buttonSecondary, "self-start")}>
+            <ChartLine {...ICON} />
+            Read it from your analytics…
+          </a>
+        )
       ) : null}
-      {step === "pick" && (
+      {step === "pick" && events && (
+        <div className="flex flex-col gap-[4px]">
+          <span className="flex items-center gap-[6px]">
+            <span className="min-w-0 flex-1 text-micro text-fg-subtle">{hits && !hits.length ? `No saved chart ${query.trim() ? "by that name" : `in ${label} yet`}, so count an event instead.` : `Count an event in ${label}.`}</span>
+            <IconBtn size="sm" label="Cancel" onClick={() => (setStep("idle"), setHits(null), setEvents(false))}>
+              <X {...ICON} />
+            </IconBtn>
+          </span>
+          <EventPicker tool={{ id: toolId, label, via: viaClaude ? "claude-code" : null }} onCharts={() => setEvents(false)} onPick={(picked, count) => (apply(picked, count, picked.url), setEvents(false))} />
+        </div>
+      )}
+      {step === "pick" && !events && (
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -99,7 +150,7 @@ export function MetricSource({ m, onChange, onLeave, query: first = "", open = f
         >
           <span className="flex items-center gap-[6px]">
             <span className={clsx(r.field, "flex-1")}>
-              <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="A saved insight's name" aria-label="Search PostHog's insights" className={r.fieldInput} />
+              <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="A saved chart's name" aria-label={`Search ${label}'s saved charts`} className={r.fieldInput} />
             </span>
             <Button type="submit" size="sm" variant="secondary" disabled={!!busy}>
               Find
@@ -114,7 +165,12 @@ export function MetricSource({ m, onChange, onLeave, query: first = "", open = f
               {h.snippet && <span className="truncate text-micro text-fg-subtle">{h.snippet}</span>}
             </button>
           ))}
-          {hits && !hits.length && <p className="text-micro text-fg-subtle">No saved insight by that name.</p>}
+          {hits && !hits.length && <p className="text-micro text-fg-subtle">No saved chart by that name.</p>}
+          {canCount && !busy && (
+            <button type="button" className={clsx(r.buttonSm, r.buttonGhost, "self-start")} onClick={() => setEvents(true)}>
+              Count an event instead
+            </button>
+          )}
         </form>
       )}
       {step === "series" && series && (
@@ -128,7 +184,7 @@ export function MetricSource({ m, onChange, onLeave, query: first = "", open = f
           ))}
         </div>
       )}
-      {busy && <p className="q-shimmer-text text-micro text-fg-muted">{busy} about a minute</p>}
+      {busy && <p className="q-shimmer-text text-micro text-fg-muted">{busy}{viaClaude ? " About a minute through Claude Code." : ""}</p>}
       {error && (
         <p className="text-micro text-danger">
           {error}{" "}

@@ -25,7 +25,7 @@ export const OPEN_ID = "know";
 /** Code's first question: what the person knows about the card, in their own words (or said aloud), skippable. */
 export function openQuestion(kind: OstKind): PlanQuestion {
   const why = kind === "outcome" ? "What moves it, who it's for, what you've seen: Qalam AI searches it and asks from it" : "Who has it, when, what they do instead: Qalam AI searches it and asks from it";
-  return { id: OPEN_ID, title: "What do you know about it?", why, multi: false, options: [], recommended: [], allowOther: false };
+  return { id: OPEN_ID, title: "What do you know about it?", why, multi: false, options: [], recommended: [], allowOther: false, tool: { kind: "docs" } };
 }
 
 /** The first round: code's open question, not answered yet. */

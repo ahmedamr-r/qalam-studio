@@ -1,6 +1,7 @@
 import { callAI, type AIEvent } from "@/ai/client";
 import { BUCKET_MAX, CHANGE_KINDS, MAX_BUCKETS, type FollowupResult, type PlanPayloadT, type PlanQuestion, type PlanResult, type PlanRoundsT, type PlanStandard, type StandardChange } from "@/ai/plan";
 import type { ResearchInfo } from "@/ai/research-shared";
+import { toolAsk, type ToolAsk } from "@/connectors/suggest";
 import { MAX_SCREENS } from "@/ai/screen-count";
 import { PLATFORMS, PLATFORM_IDS, isPlatform, type Platform } from "@/design-system/platform";
 import { OTHER, REVIEW, initialFlow, resolvedAnswers, type Answer, type FlowState, type Question } from "./questionFlow";
@@ -74,6 +75,8 @@ function sanitizeChanges(raw: unknown): StandardChange[] {
     .slice(0, 6);
 }
 
+const withTool = (tool: ToolAsk | undefined) => (tool ? { tool } : {});
+
 /**
  * A bucket of the model's questions, checked: unique, safe ids; 2–4 options, or none for an open
  * question; recommendations that point at an option; at most BUCKET_MAX.
@@ -107,6 +110,7 @@ export function sanitizeQuestions(raw: unknown): PlanQuestion[] {
         options: options.map(({ value, label, description }: { value: string; label: string; description: string }) => ({ value, label, description })),
         recommended: rec,
         allowOther: !!q?.allowOther,
+        ...withTool(toolAsk(q?.from, q?.look_for)),
       };
     })
     // A single option is no choice; no options at all is an open question.
@@ -163,8 +167,11 @@ export function sanitizePlan(raw: unknown, fallback: Platform): PlanResult {
 
 /** One of Qalam AI's questions as the questionnaire asks it. An open question can be skipped. */
 export function toQuestion(q: PlanQuestion): Question {
+  // What a tool brings back goes in the answer, so a question with a tool always takes words of its own.
+  const open = q.allowOther || !!q.tool;
+  const tool = withTool(q.tool);
   if (!q.options.length)
-    return { id: q.id, kind: "text", title: q.title, why: q.why || undefined, source: "ai", optional: true, placeholder: "Answer in your own words, or skip", maxLength: 600 };
+    return { id: q.id, kind: "text", title: q.title, why: q.why || undefined, source: "ai", optional: true, placeholder: "Answer in your own words, or skip", maxLength: q.tool ? 1200 : 600, ...tool };
   if (q.multi)
     return {
       id: q.id,
@@ -173,8 +180,9 @@ export function toQuestion(q: PlanQuestion): Question {
       why: q.why || undefined,
       source: "ai",
       min: 1,
-      groups: [{ id: "picks", label: "Pick any", options: q.options, ...(q.allowOther ? { custom: { placeholder: "Add your own" } } : {}) }],
+      groups: [{ id: "picks", label: "Pick any", options: q.options, ...(open ? { custom: { placeholder: "Add your own" } } : {}) }],
       default: { values: q.recommended.length ? q.recommended : [q.options[0].value], custom: [] },
+      ...tool,
     };
   return {
     id: q.id,
@@ -184,7 +192,8 @@ export function toQuestion(q: PlanQuestion): Question {
     source: "ai",
     options: q.options,
     recommended: q.recommended[0] ?? q.options[0].value,
-    ...(q.allowOther ? { other: { label: "Something else…", placeholder: "Describe what you want" } } : {}),
+    ...(open ? { other: { label: "Something else…", placeholder: "Describe what you want" } } : {}),
+    ...tool,
   };
 }
 

@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { auth, UnauthorizedError, type OAuthClientProvider, type OAuthDiscoveryState } from "@modelcontextprotocol/sdk/client/auth.js";
 import type { OAuthClientInformationMixed, OAuthClientMetadata, OAuthTokens } from "@modelcontextprotocol/sdk/shared/auth.js";
 import type { FetchLike } from "@modelcontextprotocol/sdk/shared/transport.js";
+import type { ToolSchemas } from "@/connectors/analytics";
 import { connectorDef, signInGroup } from "@/connectors/catalog";
 import { RECIPES } from "@/connectors/recipes";
 import { WORK_RECIPES } from "@/connectors/work";
@@ -207,7 +208,7 @@ export async function signIn(id: string, o: SignInOptions = {}): Promise<void> {
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-/** The tools a connector's recipe calls: a material recipe's site, search and fetch; a work recipe's status call. */
+/** The tools a connector's recipe calls: a material recipe's site, search and fetch; a work recipe's status call. An analytics tool's are worked out from what its server lists, call by call. */
 function toolsFor(id: string): string[] {
   const recipe = RECIPES[id];
   const work = WORK_RECIPES[id];
@@ -241,7 +242,7 @@ function sayNo(f: FetchLike): FetchLike {
 // Calls with what's kept
 
 /** Calls to a connector signed in here, one session at a time per connector (a token refreshed twice at once would be refused). */
-export function withSignedIn<T>(id: string, serverUrl: string, fn: (call: McpCall) => Promise<T>, fetchFn?: FetchLike): Promise<T> {
+export function withSignedIn<T>(id: string, serverUrl: string, fn: (call: McpCall, schemas: () => Promise<ToolSchemas>) => Promise<T>, fetchFn?: FetchLike): Promise<T> {
   const turns = (g.__qalamOAuthTurns ??= new Map());
   const run = async () => {
     const label = labelOf(id);
@@ -256,7 +257,7 @@ export function withSignedIn<T>(id: string, serverUrl: string, fn: (call: McpCal
     };
     const p = provider(k, { redirectUrl: redirectsOf(k.client)[0] ?? "http://127.0.0.1/callback", register: false, ownClient: !!connectorDef(id)?.mcp?.ownApp, onRedirect, onChange: () => keep(id, k) });
     try {
-      return await withMcp(serverUrl, p, (call) => fn(call), sayNo(fetchFn ?? fetch));
+      return await withMcp(serverUrl, p, (call, _tools, schemas) => fn(call, schemas), sayNo(fetchFn ?? fetch));
     } catch (e) {
       throw e instanceof UnauthorizedError ? new SignInAgain(label) : e;
     }

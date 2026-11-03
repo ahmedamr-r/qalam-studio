@@ -22,12 +22,10 @@ export default function ConnectionsPage() {
           <h2 className="text-micro font-medium text-fg-subtle">Qalam AI</h2>
           <EngineCard />
         </div>
-        {lab("connectors") && (
-          <div className="flex flex-col gap-[8px]">
-            <h2 className="text-micro font-medium text-fg-subtle">Connectors</h2>
-            <Connectors />
-          </div>
-        )}
+        <div className="flex flex-col gap-[8px]">
+          <h2 className="text-micro font-medium text-fg-subtle">Connectors</h2>
+          <Connectors />
+        </div>
         {lab("code") && (
           <div className="flex flex-col gap-[8px]">
             <h2 className="text-micro font-medium text-fg-subtle">Product code</h2>

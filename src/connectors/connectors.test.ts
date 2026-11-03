@@ -49,7 +49,7 @@ describe("what Claude Code already has", () => {
 describe("reading Notion", () => {
   it("through Claude Code: search answers as hits, a page's words as they came", () => {
     const res = JSON.stringify({ results: [{ id: "p1", title: "Interview: Sara", url: "https://www.notion.so/p1", type: "page", highlight: "I rebuild my basket", timestamp: "2026-10-20T10:00:00Z" }, { title: "no id" }], type: "workspace_search" });
-    expect(notionHits(res)).toEqual([{ id: "p1", title: "Interview: Sara", url: "https://www.notion.so/p1", snippet: "I rebuild my basket", at: "2026-10-20T10:00:00Z" }]);
+    expect(notionHits(res)).toEqual([{ id: "p1", title: "Interview: Sara", url: "https://www.notion.so/p1", snippet: "I rebuild my basket", at: "2026-10-20T10:00:00Z", opens: true }]);
     expect(RECIPES.notion.fetch({ id: "p1", title: "x" })).toEqual({ tool: "notion-fetch", args: { id: "p1" } });
     expect(itemText(JSON.stringify({ title: "t", text: "  Every Sunday I rebuild it.  " }))).toBe("Every Sunday I rebuild it.");
     expect(itemText("plain words")).toBe("plain words");
@@ -57,7 +57,7 @@ describe("reading Notion", () => {
 
   it("with Qalam's own token: pages from the API, and their blocks as lines", () => {
     const hits = notionApiHits({ results: [{ object: "page", id: "p1", url: "https://n/p1", properties: { Name: { type: "title", title: [{ plain_text: "Sara " }, { plain_text: "call" }] } } }, { object: "database", id: "d1" }] });
-    expect(hits).toEqual([{ id: "p1", title: "Sara call", url: "https://n/p1" }]);
+    expect(hits).toEqual([{ id: "p1", title: "Sara call", url: "https://n/p1", opens: true }]);
     const text = notionBlocksText([
       { type: "heading_2", heading_2: { rich_text: [{ plain_text: "What she said" }] } },
       { type: "paragraph", paragraph: { rich_text: [{ plain_text: "Every Sunday I " }, { plain_text: "rebuild it." }] } },

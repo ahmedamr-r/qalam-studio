@@ -1,5 +1,6 @@
 import type { ConnectorGroup } from "@/connectors/catalog";
 import type { ListedStatus } from "@/connectors/claude-code";
+import type { LookedHit } from "@/connectors/look";
 import type { Hit } from "@/connectors/recipes";
 import type { InsightNumbers } from "@/connectors/numbers";
 import type { WorkStatus } from "@/connectors/work";
@@ -110,6 +111,11 @@ export const connectorsDb = {
   search: async (id: string, query: string) => json<{ hits: Hit[] }>(await send(await orgPath(`/connectors/${id}/search`), "POST", { query })),
   /** What was opened lately (no place), a folder's items (`folder`, null: the top) or a search (`query`). Through Claude Code, a run each; kept five minutes. */
   browse: async (id: string, at: { query?: string; folder?: string | null }, force = false) => json<{ hits: Hit[] }>(await send(await orgPath(`/connectors/${id}/browse`), "POST", { ...at, ...(force ? { force } : {}) })),
+  /** Qalam AI looks inside it: searches of its own, then picks by titles and snippets. Nothing is read. */
+  look: async (id: string, about: string, onActivity: (label: string) => void, signal?: AbortSignal) => {
+    const res = await fetch(await orgPath(`/connectors/${id}/look`), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ about }), signal });
+    return streamed<{ hits: LookedHit[]; searched: string[] }>(res, (m) => m.type === "activity" && m.label && onActivity(m.label));
+  },
   /** The picked items' words, not taken in; `onActivity` hears how it's going. */
   read: async (id: string, hits: Hit[], onActivity?: (label: string) => void, signal?: AbortSignal): Promise<ReadItem[]> => {
     const res = await fetch(await orgPath(`/connectors/${id}/read`), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ hits }), signal });
@@ -126,8 +132,10 @@ export const workDb = {
   status: async (links: OstWork[], force = false) => json<{ statuses: Record<string, WorkStatus> }>(await send(await orgPath("/work/status"), "POST", { links, force })),
 };
 
-/** An outcome's number from a saved PostHog insight (through Claude Code: about a minute each). */
+/** A number from a saved chart in an analytics tool (through Claude Code: about a minute each). */
 export const numbersDb = {
-  insights: (query: string) => send("/api/connectors/posthog/insights", "POST", { query }).then((r) => json<{ hits: Hit[] }>(r)),
-  read: (ref: string) => send("/api/connectors/posthog/read", "POST", { ref }).then((r) => json<InsightNumbers>(r)),
+  insights: (query: string, id = "posthog") => send(`/api/connectors/${id}/insights`, "POST", { query }).then((r) => json<{ hits: Hit[] }>(r)),
+  /** Its events, for an account with no saved chart that fits. */
+  events: (query: string, id: string) => send(`/api/connectors/${id}/events`, "POST", { query }).then((r) => json<{ hits: Hit[] }>(r)),
+  read: (ref: string, id = "posthog") => send(`/api/connectors/${id}/read`, "POST", { ref }).then((r) => json<InsightNumbers>(r)),
 };

@@ -101,7 +101,7 @@ const open = (id: string, title: string, why: string): PlanQuestion => ({ id, ti
 export function focusRound(): PlanQuestion[] {
   return [
     open("who", "Who has to do something different for it to move?", "The problem to focus on is theirs."),
-    open("way", "What gets in their way today, as far as you know?", "What you've seen, heard or suspect: say which."),
+    { ...open("way", "What gets in their way today, as far as you know?", "What you've seen, heard or suspect: say which."), tool: { kind: "docs" as const, lookFor: "customer research feedback" } },
     open("tried", "What have you tried for it so far, and what happened?", "So what's proposed isn't something you've ruled out."),
   ];
 }

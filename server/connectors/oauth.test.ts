@@ -211,7 +211,7 @@ describe("Qalam's own sign-in to a connector's MCP server", () => {
     // The listener took its one answer and is gone.
     expect(await refused(new URL(page).searchParams.get("redirect_uri")!)).toBe(true);
     // Calls go straight to the server with the kept token.
-    expect(await searchConnector("notion", "Dana")).toEqual([{ id: "p1", title: "Interview: Dana", url: "https://www.notion.so/p1" }]);
+    expect(await searchConnector("notion", "Dana")).toEqual([{ id: "p1", title: "Interview: Dana", url: "https://www.notion.so/p1", opens: true }]);
   });
 
   it("turns away an answer without this sign-in's state, or for another address, and keeps waiting", async () => {
