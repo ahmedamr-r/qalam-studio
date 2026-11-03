@@ -1398,7 +1398,7 @@ function GoalStep({ id, name, goal }: { id: string; name: string; goal: { action
   );
 }
 
-/** What to build first: the strongest signal so far, what would prove it wrong, and the others a click away. */
+/** What to build first: the strongest signal so far, what has to be true, and the others a click away. */
 function PickedStep({ id, plan }: { id: string; plan: ScanPlan }) {
   const b = plan.build!;
   const d = b.drafts.find((x) => x.id === plan.chosen) ?? b.drafts[0];
@@ -1415,7 +1415,7 @@ function PickedStep({ id, plan }: { id: string; plan: ScanPlan }) {
         <p className="text-body font-medium text-fg" dir="auto">{d.title}</p>
         <p className="text-caption text-fg-muted" dir="auto">{d.description}</p>
         {isPick && b.pick?.why && <p className="text-caption text-fg" dir="auto">{b.pick.why}</p>}
-        {risk && <Settled label="What would prove it wrong" value={risk.text} />}
+        {risk && <Settled label="What has to be true" value={risk.text} />}
         {d.test && <Settled label="Test it first" value={d.test.what} />}
         {d.test?.suggested && <Settled label="A suggested pass line" value={d.test.suggested} />}
       </div>

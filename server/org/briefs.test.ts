@@ -57,10 +57,10 @@ describe("a brief for a card", () => {
     expect(body.slice(0, body.indexOf("## Read elsewhere"))).not.toContain("Meal planning apps grew 12%");
   });
 
-  it("for a solution: what to build first, what would prove it wrong, its test and what waits", async () => {
+  it("for a solution: what to build first, what has to be true, its test and what waits", async () => {
     const meta = await writeCardBrief(store, { card: { ...words({ title: "Shift-based plans", description: "Plans around the rota.", assumptions: ["Nurses will enter their rota."], tests: [{ what: "Try it with 5", how: "By hand.", suggested: "3 of 5" }], topic: null, evidence: [{ text: "As a night nurse I never know when to eat on my shift.", kind: "quote", sourceId: "s1" }] }), id: "c2", kind: "solution" }, goal: { title: "5 of 10 sign up", metric: "Signed up" }, problem: words({ title: "Meals don't fit", topic: await topicId() }), under: [], others: ["Another way"], asked: { platform: "A web app" } }, undefined, answers([]));
     const { body } = (await store.getBrief(meta.id))!;
-    for (const part of ["## The goal", "5 of 10 sign up. Measured as: Signed up.", "## Build first", "Shift-based plans", "## What would prove it wrong", "Nurses will enter their rota.", "## Test it first", "A suggested pass line, yours to change: 3 of 5", "- Another way", "It runs first: A web app."]) expect(body).toContain(part);
+    for (const part of ["## The goal", "5 of 10 sign up. Measured as: Signed up.", "## Build first", "Shift-based plans", "## What has to be true", "Nurses will enter their rota.", "## Test it first", "A suggested pass line, yours to change: 3 of 5", "- Another way", "It runs first: A web app."]) expect(body).toContain(part);
   });
 
   it("for a goal: the problems behind it, and no solution picked", async () => {

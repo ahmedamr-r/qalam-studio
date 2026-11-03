@@ -122,7 +122,7 @@ Built on November 3, 2026. Decided while building: "This is my product" comes af
 - **Audiences:** one call (`audiencesCall`, kind `scan-audience`, decide tier). `sanitizeAudiences` keeps at most 3, each citing at least 2 quotes it was sent, with its name mostly in those quotes' or their answers' words (`nameRests`; `wordsHold` was too strict: it turned down "Batch cookers" over "cook", and every audience on the first real scan). Reviews often don't say who wrote them, so with none kept: "These reviews don't say who wrote them", and it asks. The one picked becomes a segment page.
 - **First goal:** worded by code from the audience and an action they choose (sign up, pay, come back). The numbers are suggested and labelled, using `settleNumber`'s rule, and only count once taken.
 - **Build first:** Draft solutions on the top problem for that audience, then one call (`firstPickCall`) picks one draft, gives its reason and lists what waits. `sanitizeFirstPick` keeps only ids it was sent, and words and numbers found in what was sent. Any other draft is one click away.
-- **The words:** "Strongest signal so far". Show what would prove it wrong (its riskiest assumption) beside it.
+- **The words:** "Strongest signal so far". Show what has to be true (its riskiest assumption) beside it.
 
 **Done when:** tests cover each sanitize rule with a made-up quote, name and number, and 3 of the eval's inputs reach a pick that a person agrees follows from its quotes.
 
@@ -247,6 +247,33 @@ Run in this order:
 
 Posting and picking demo subjects stay with Ahmed.
 
+**The checklist, run November 3.** From a packed tarball with empty caches, the whole loop from the box to the brief, each engine as the only one the app could see:
+
+| | Claude Code, a named app (Duolingo) | Codex on ChatGPT's Free plan, an idea (staff shifts for small restaurants) |
+|---|---|---|
+| `npx` to the box | 100 seconds | 75 seconds |
+| The scan | 273 seconds | 304 seconds, told to slow down 8 times |
+| What it found | 6 problems from 38 quotes, all from Hacker News, as Apple's feed had no reviews then | 7 problems from 21 quotes, with reviews of 2 apps |
+| Who it's for, then what first | About a minute | About a minute |
+| Tokens, box to brief | About 160,000 | About 323,000, 176,000 of them its web search |
+
+Every quote on 3 pages followed back:
+
+- **Duolingo:** 40 of 40 in their kept source word for word, and 40 of 40 on the live page.
+- **Staff shifts:** 26 of 26 in their kept source. On the live page, 12 found, 10 unchecked because their sites refused the second visit, and 4 App Store reviews not in what Apple's feed answered this time.
+
+What it found, all fixed:
+
+- **A first install could look hung for hours.** One connection to GitHub crawled at 20 KB/s where a new one got 3 MB/s, and Electron's download shows nothing and never gives up. The launcher now says how much has come and drops a crawling connection.
+- **Someone with only Codex was told to install Claude Code.** An engine that can't run now gives way to one that can.
+- **A brief limit ended a scan a minute in.** It now waits and asks again.
+- **A named app could get no reviews.** Apple's stores differ as its spellings do, so it now reads Canada's, Australia's and Britain's when the person's own has none.
+- **A Reddit mirror wasn't counted as Reddit,** so a page that claims "Reddit isn't read" could have been wrong. Mirrors are out too.
+- **"What would prove it wrong" stated the assumption,** so it said the opposite of what it meant. It's "What has to be true" now.
+- **"Only your words so far"** showed on a card that also had quotes from people online.
+
+Not done: a separate macOS account (Claude Code's and Codex's sign-ins were this Mac's), the npm registry itself, the Mac app from this branch, Windows, an Intel Mac. The README describes `npx qalam-studio` as working, so publish before that README reaches `main`. Steps 2, 4 and 5 are still to do.
+
 ## Rules for all of it
 
 - The model proposes and code verifies: quotes found word for word, numbers only where the source has them, ids only from what was sent. A suggested goal number is the one labelled exception, as today.
@@ -284,4 +311,4 @@ Google Play (behind the lab first, after checking its terms), Reddit, Design thi
 
 ## Start here
 
-Phases 0 to 7 and 4b are built, on the branch `launch-loop`, not pushed (November 3); the plugin in phase 7 waits for after launch. Next: phase 8, before going public. Still for a person to mark: whether scans beat plain Claude (`.qalam-dev/eval-loop/final/`), and whether a pick follows from its quotes on 3 inputs.
+Phases 0 to 7 and 4b are built, on the branch `launch-loop`, not pushed (November 3); the plugin in phase 7 waits for after launch. Phase 8's checklist and docs are done. Next: publishing to npm, watching 3 to 5 people, the video and the post. Still for a person to mark: whether scans beat plain Claude (`.qalam-dev/eval-loop/final/`), and whether a pick follows from its quotes on 3 inputs.

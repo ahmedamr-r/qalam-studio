@@ -1,35 +1,54 @@
 # Qalam Studio
 
-Open-source product discovery on your own Claude Code or Codex. Qalam turns what you have (analytics and reports, research, interviews, tickets, market studies, strategy docs) into the problems worth solving, ranked by what backs them. Every line rests on a source's own words, which code finds word for word, and says what kind of evidence they are. Arabic and English both work.
+Describe what you want to build, or name a product. Qalam Studio reads what people complain about, ranks the problems, works out who to build for and what to build first, and writes the brief for your coding agent. It runs on your own Claude Code or Codex, on your own computer.
 
-Qalam keeps what your organization knows as readable files on your own computer: its goals, what its sources state, the problems behind them, and what you decided. Qalam AI runs on your own Claude Code or Codex, so there is no Qalam account and no Qalam server.
+Every quote links to where it was said, and there's no Qalam account or server.
 
 Qalam Studio is built by Ahmed Amr.
 
-## Status: v0.1
+## Try it
 
-v0.1 is the first version for people to try. It's for a founder or PM on their own, or a team of two or three, with a pile of material about their product and customers, and no time to read it twice. It shows one loop (below) and hides everything else Qalam can do behind a switch ([What v0.1 hides](#what-v01-hides)).
+```bash
+npx qalam-studio
+```
 
-Expect rough edges and slow AI calls: looking up a company, or reading a long document, takes a minute or two. Issues and pull requests are welcome.
+You need Node 22.12 or newer. The first run downloads the desktop shell, about 390 MB and a minute and a half. Then Qalam looks for Claude Code or Codex on your computer, signed in with your own account, and asks one thing: what you want to build, or which product to look at.
 
-## What it does
+Nothing set up yet, or no idea at hand? **Try it with a sample** opens a made-up project with its problems ranked. It needs no engine and spends no tokens.
 
-Everything happens on one canvas per organization, with Qalam AI's chat on its left, as Figma keeps its panel there.
+There's also a [Mac app](#the-mac-app), and you can run it [from source](#from-source).
 
-1. **Open Qalam.** It finds Claude Code or Codex on your computer, and you name your organization (a company or team, or just you with an idea).
-2. **It learns the company.** Give it your website, or a line about what you do. Qalam AI looks it up on the web, and you check each fact it found, row by row: keep it, fix it or drop it. Then your competitors: name them, or let it find them. While you work, it reads what companies like yours usually aim for and what their customers struggle with.
-3. **Start.** Qalam AI offers to help you find a first goal or problem from what companies like yours face, to take one you have in mind, or to start from documents or notes you have.
-4. **Bring anything to the chat.**
-   - **Any document** (pasted, or as PDF, Word, Markdown, CSV or XLSX files) is read for what it states. Qalam AI says what it is and marks each point: people said, measured, studied, read elsewhere, or your own thinking. It files them into one page per problem, and you can correct what it decided.
-   - **Your own thinking** is a brain dump, as is a document that holds only that. Qalam AI says what it took from it, pushes back where it won't hold up, asks a few rounds of questions, and proposes cards for the canvas.
-   - **A goal or a problem in your words** is worded as a proper statement for you to use, edit, or replace with your own words.
-   - **A question** is answered from everything you added, with each quote checked.
-   Where a document states an aim or clearly tracks a number, Qalam AI also proposes it as a goal, for you to accept or leave out. An accepted goal keeps the document's number, and the problems that bear on it link under it.
-5. **Problems, ranked.** Beside the canvas, the problems are ranked by what backs them: sources first, then points, then the newest. Interviews, metrics and studies all count; what you read elsewhere comes after them. A problem's page says what you know, what you believe, what speaks against it and what's still open.
-6. **Goals.** Pick a goal on the canvas and choose **Find the problem to focus on**. Qalam AI looks on the web for what usually keeps goals like it from moving and asks you about it. Where your answers call for it, it looks again, then proposes the one to three problems to work on first. **Find its problems** links the problem pages that already bear on it.
-7. **Solutions.** On a problem, **Draft solutions** proposes two to four, each with its riskiest assumptions and one test of the riskiest.
+## What you get
 
-You can also drop files into the organization's `inbox/` folder from Finder while Qalam is running. And there's a mic in every box: talking is quicker than typing out what a customer said.
+1. **One box.** An idea in your words, an app's name, a website or an App Store link.
+2. **It reads the space.** What people already complain about, in App Store reviews, on Hacker News and on forums, then what others offer and charge and what's been published. While it reads, it asks a few questions so it looks in the right place. It takes about 5 minutes, and keeps going if you close the window.
+3. **Problems, ranked.** One page per problem, each line linked to the quotes behind it, best backed first, and each on the canvas. It says plainly when it found little, rather than padding it out.
+4. **Who to build for, and what first.** Two or three audiences backed by what people said, for you to pick from. A first goal about learning, such as "5 of 10 of these people sign up". Then one thing to build for one problem, why that one, what to leave for later, the riskiest assumption and one test. It's called the strongest signal so far, because that's all it is.
+5. **A brief for your coding agent.** Features with what "done" means for each, what backs them, and what has to be true for them to work, as Markdown to copy or a file to hand over. Any goal, problem or solution on the canvas can get one.
+6. **Something to share.** A picture of what it found and a one-file report, each shown to you before anything goes anywhere.
+
+What people say in public is a strong signal, not proof, so it stays under **We believe** until your own customers say it too.
+
+### With what you already have
+
+Bring anything to the chat beside the canvas, in a project of its own or one you already scanned:
+
+- **Any document** (pasted, or as PDF, Word, Markdown, CSV or XLSX files) is read for what it states: people said, measured, studied, read elsewhere, or your own thinking. It's filed into the problem pages, and you can correct what it decided.
+- **Your own thinking** is a brain dump. Qalam AI says what it took from it, pushes back where it won't hold up, asks a few rounds of questions, and proposes cards for the canvas.
+- **A goal or a problem in your words** is worded as a proper statement for you to use, edit, or replace with your own.
+- **A question** is answered from everything there, with each quote checked.
+
+On the canvas, **Draft solutions** on a problem proposes two to four, each with its riskiest assumptions and one test. **Find the problem to focus on** on a goal looks on the web for what usually keeps goals like it from moving, asks you about it, and proposes the problems to work on first. Notion and analytics tools (PostHog, Amplitude, Mixpanel) can be connected in Connections, and a question that one could answer offers it.
+
+Arabic and English both work, and there's a mic in every box.
+
+## What it can't do yet
+
+- **Reddit isn't read.** Reports say its public access is closing, and reading it without permission would go against its policy. Paste a thread into the chat and it's read like anything else.
+- **Many sites turn readers away.** A scan says how many it couldn't read. Most of what's read comes from Hacker News, forums and articles.
+- **App Store reviews come and go.** Apple's public feed often comes back empty for an app, so a scan may have none even for a big one. A competitor's reviews are also left out when they say nothing about your problem.
+- **A run isn't small.** From the box to the brief, one used about 160,000 tokens on Claude Code and about 320,000 on Codex, against your own plan. On ChatGPT's Free plan it's told to slow down along the way, and waits.
+- **It hasn't been run by many people yet.** Expect rough edges. Issues and pull requests are welcome.
 
 ## How it keeps the AI honest
 
@@ -38,10 +57,16 @@ In Qalam the model proposes, and code decides what's kept.
 - **Numbers:** a number is kept only where the source has it, and a measured point must have one.
 - **What you know:** "We know" takes what people said, what you measured or studied, and what a test showed. Someone else's report and the team's own thinking stay under **We believe**.
 - **The web:** what Qalam AI reads on the web is kept only where its words are on the page it names. It's never counted as your own evidence.
+- **Who said it:** a quote says where it came from, never who. Usernames aren't kept.
+- **Who it's for and what comes first:** these rest only on what people said. What's read elsewhere (prices, reports, articles) shows beside them, labelled, and decides neither.
 - **Your words:** Qalam AI never rewrites a line you wrote. It says what speaks against it instead.
 - **Answers:** when you ask your organization a question, code finds each quote in the answer where Qalam AI says it is, and marks the claims it can't back.
 
 ## Install
+
+### With npx
+
+`npx qalam-studio`, as above. It's the same desktop app, on a Mac or anywhere Electron runs, though Windows through npx hasn't been tried yet. An Intel build of Node on an Apple silicon Mac works, but search goes by words only, and Connections says so.
 
 ### The Mac app
 
@@ -90,18 +115,33 @@ Settings are optional and go in `.env.local` (`.env.example` lists them):
   - What customers said and your own notes: `sources/`, their text as Markdown.
   - Decisions: a log per month in `decisions/`.
 - **Ready for Git.** Its `.gitignore` leaves out `.qalam/` (this computer's state, and a search index that can always be rebuilt) and `chats/`.
-- **Search runs on your computer:** words (SQLite FTS5), meaning (a small embedding model, about 37 MB, downloaded once from Hugging Face), and the links between pieces.
-- **What goes to the AI:** each request sends what it needs (the words you added, the pages and cards it bears on, what's known about the company). It goes through your Claude Code or Codex, or to the Anthropic API with a key. Qalam runs Claude Code from an empty folder with its tools off. Ask gets read-only tools inside the organization's folder. Web lookups use your engine's own web search.
-- **Nothing is sent to the author.** No analytics, telemetry or tracking. The Mac app asks GitHub for a newer version when it starts and every six hours; `QALAM_NO_UPDATES=1` turns that off.
+- **Search runs on your computer:** words (SQLite FTS5), meaning (a small embedding model, about 37 MB), and the links between pieces.
+- **What goes to the AI:** each request sends what it needs (the words you added, the pages and cards it bears on, what's known about the company). It goes through your Claude Code or Codex, or to the Anthropic API with a key. Qalam runs Claude Code from an empty folder with its tools off. Ask gets read-only tools inside the organization's folder.
+- **Nothing is sent to the author.** No analytics, telemetry or tracking.
 
-## What v0.1 hides
+## What it fetches from the web
 
-Qalam can do much more than the loop above, but a first-time user sees only the loop. The rest is behind one switch (`src/lab.ts`). Nothing is deleted, and an organization made with everything on still opens.
+A scan is your computer reading public pages, one person at a time. Code reads them, not a model, and it says who it is (`QalamStudio/1.0`). Private addresses are refused, each page has a size and a time limit, and a page that turns readers away is left alone.
+
+- **Your engine's own web search** finds competitors, threads and articles.
+- **Apple:** its search API, and the public review feed for an app's reviews. App Store web pages are never read.
+- **Hacker News:** through Algolia's search API.
+- **Pages the search found:** forums, Q&A and review sites, articles and reports, and each product's own pricing page.
+- **Hugging Face:** the embedding model, once.
+- **GitHub:** the Mac app asks for a newer version when it starts and every six hours. `QALAM_NO_UPDATES=1` turns that off.
+
+Connected tools (Notion, analytics) are read only when you ask.
+
+These sources' terms were read in November 2026, for a free tool each person runs for themselves: [docs/launch-loop.md](docs/launch-loop.md#what-the-sources-terms-say). It's a reading, not legal advice, and worth doing again if your use differs.
+
+## What's hidden for now
+
+Qalam can do much more than the loop above, but someone new sees only the loop. The rest is behind one switch (`src/lab.ts`). Nothing is deleted, and a project made with everything on still opens.
 - **Design:** the design studio Qalam started as, with a Figma-like canvas, design systems built from a brief or screenshots, generated screens, critique, and prototypes compiled to React.
 - **Teams:** the Decisions page and the "why?" prompt. Decisions are still recorded quietly.
-- **Connections:** connectors to Notion, Intercom, Slack, Linear, Jira, Confluence and Google Drive, plus feeds wired to goals and cards, product code from GitHub, and numbers from PostHog.
+- **Connections:** customer voice and build tools (Intercom, Slack, Linear, Jira, Figma), feeds wired to goals and cards, and product code from GitHub.
 - **Goals:** a goal's jobs and gaps, Break it down, What others aim for, and its funnel.
-- **Reading more:** people online (Reddit threads, App Store reviews), what people see (screens and flows read from your screenshots), and Review now.
+- **Reading more:** Look online on a single problem's page, what people see (screens and flows read from your screenshots), charts and scans inside PDFs, and Review now.
 - **More engines:** OpenAI, Gemini and OpenRouter keys, Ollama and LM Studio.
 - **Smaller pieces:** quick capture from the menu bar, Draft its tests, and the first run's extra steps.
 
@@ -123,6 +163,8 @@ server/          the local server: routes, the request guard, capture, Ask
 server/org/      an organization's folder: files, versions, the watcher, its routes and lookups
 server/index/    the search index (FTS5 words, vectors, links)
 electron/        the desktop app: the window, qalam://app, the menu bar, updates
+src/scan/        reading a space: what people complain about, who it's for, what comes first, the share card
+src/sample/      the made-up project behind Try it with a sample
 src/space/       the canvas: composed from every goal's tree, saved back to its boards, the chat's jobs
 src/goals/       the goal tree (goals.md), problems behind a goal, finding the one to focus on
 src/hub/         the knowledge as pieces and links, topic pages, the checks behind Needs a look
@@ -146,8 +188,9 @@ pnpm dist:mac:adhoc # package the Mac app into release/dist, signed ad hoc as re
 
 ## Roadmap
 
-- **Five first users:** watch five people use v0.1 on their own material, then turn hidden features back on one at a time, starting with what they ask for.
-- **A notarized Mac app**, which installs its own updates and comes with a Homebrew cask, and an npm package for `npx qalam-studio`.
+- **Watching people use it:** then turning hidden features back on one at a time, starting with what they ask for.
+- **A notarized Mac app**, which installs its own updates and comes with a Homebrew cask.
+- **Claude Code plugin:** lets your coding agent ask why a brief says what it says.
 - **Charts and tables in PDFs:** numbers inside a chart's picture aren't read by default, and a PDF table's cells lose their columns. A lab switch (`pictures`, Mac only) reads printed numbers in charts, image tables and scans, each checked against what this Mac reads off the page.
 - **Interview recordings:** drop in audio or video and get an Arabic or English transcript to quote from.
 

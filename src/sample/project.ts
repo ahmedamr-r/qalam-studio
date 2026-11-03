@@ -203,7 +203,7 @@ const BRIEF: BriefData = {
     title: "Order again shelf on the home screen",
     description: "Last week's basket waits on the home screen, ready to change and check out.",
     why: "It came up in every weekly-planner interview and in the tickets about past orders.",
-    wrong: "Parents change so much of last week's basket that starting from it saves them nothing.",
+    wrong: "Parents change little enough of last week's basket that starting from it saves them time.",
     test: { what: "Parents want last week's basket, not a fresh start", how: "5-user prototype test with parents who shop weekly", suggested: "4 of 5 find the shelf unprompted" },
   },
   later: [

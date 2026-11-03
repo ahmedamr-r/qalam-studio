@@ -102,7 +102,7 @@ export function reportHtml(d: ReportData): string {
     .map((p) => `<section class="item"><h3 dir="auto">${esc(one(p.title))}</h3><p class="muted">${esc(p.line)}</p>${p.quotes.slice(0, SHARE_LIMITS.reportQuotes).map(quote).join("")}</section>`)
     .join("");
   const row = (label: string, value?: string) => (value?.trim() ? `<dt>${esc(label)}</dt><dd dir="auto">${esc(one(value))}</dd>` : "");
-  const plan = d.plan ? [row("For", d.plan.audience), row("First goal", d.plan.goal), row("Build first", d.plan.build), row("Why this first", d.plan.why), row("What would prove it wrong", d.plan.wrong), row("Test it first", d.plan.test), row("A suggested pass line", d.plan.pass)].join("") : "";
+  const plan = d.plan ? [row("For", d.plan.audience), row("First goal", d.plan.goal), row("Build first", d.plan.build), row("Why this first", d.plan.why), row("What has to be true", d.plan.wrong), row("Test it first", d.plan.test), row("A suggested pass line", d.plan.pass)].join("") : "";
   const knownRow = (k: ReportData["known"][number]) => `<p dir="auto">${esc([k.name, one(k.text)].filter(Boolean).join(": "))} <span class="muted">${link(k.title || hostOf(k.url), k.url)}</span></p>`;
   const products = d.known.filter((k) => k.kind === "product");
   const published = d.known.filter((k) => k.kind === "published");

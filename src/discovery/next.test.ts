@@ -147,6 +147,9 @@ describe("a card's next steps in v0.1 (src/lab.ts)", () => {
 describe("what a card rests on, in a line", () => {
   it("counts customers' quotes and their sources, and what speaks against it", () => {
     expect(backingLine(facts({ evidence: { ...none, quotes: 4, sources: 2, against: 1 } }))).toBe("Rests on 4 quotes from 2 sources · 1 against");
+    expect(backingLine(facts({ evidence: { ...none, ours: 3 } }))).toBe("Only your words so far");
+    expect(backingLine(facts({ evidence: { ...none, ours: 3, online: 2, read: 2 } }))).toBe("Your words, with 2 posts online and 2 read elsewhere");
+    expect(backingLine(facts({ evidence: { ...none, ours: 1, online: 1 } }))).toBe("Your words, with 1 post online");
     expect(backingLine(facts({ evidence: { ...none, quotes: 1, sources: 1 } }))).toBe("Rests on 1 quote from 1 source");
   });
 

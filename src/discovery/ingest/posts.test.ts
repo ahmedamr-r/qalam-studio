@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isApplePage, isDiscussion, isReddit, lookedOnlineLine, pickReviews, postAddress, refusesReaders, reviewFeeds, reviewsFrom, reviewsIn, reviewsText, withoutHandles } from "./posts";
+import { allReviews, isApplePage, isDiscussion, isReddit, lookedOnlineLine, pickReviews, postAddress, refusesReaders, reviewFeeds, reviewsFrom, reviewsIn, reviewStores, reviewsText, withoutHandles } from "./posts";
 
 describe("Apple's review feed", () => {
   const entry = (words: string) => ({ content: { label: words }, "im:rating": { label: "2" }, title: { label: "" }, author: { name: { label: "x" } }, "im:voteSum": { label: "0" }, updated: { label: "2026-11-01" } });
@@ -26,6 +26,33 @@ describe("Apple's review feed", () => {
   it("has nothing when no spelling does", async () => {
     expect(await reviewsFrom(["a", "b"], async () => ({ feed: {} }))).toEqual([]);
   });
+
+  it("goes on to Apple's other stores when one has none, the person's own first", async () => {
+    expect(reviewStores("ae")).toEqual(["ae", "us", "ca", "au", "gb"]);
+    expect(reviewStores("us")).toEqual(["us", "ca", "au", "gb"]);
+    const asked: string[] = [];
+    const got = await allReviews({ id: "1", country: "us" }, async (url) => {
+      asked.push(url);
+      return url.includes("/ca/") ? { feed: { entry: [entry("Only Canada has it.")] } } : { feed: {} };
+    });
+    expect(got.map((r) => r.words)).toEqual(["Only Canada has it."]);
+    expect(asked.some((u) => u.includes("/us/"))).toBe(true);
+    expect(asked.some((u) => u.includes("/au/"))).toBe(false);
+  });
+
+  it("reads on through a store's pages, without taking what a later page repeats", async () => {
+    const fifty = (from: number) => Array.from({ length: 50 }, (_, i) => entry(`Review ${from + i}.`));
+    const got = await allReviews({ id: "1", country: "us" }, async (url) => {
+      if (url.includes("page=1/")) return { feed: { entry: fifty(0) } };
+      if (url.includes("page=2/")) return { feed: { entry: fifty(0) } };
+      return { feed: {} };
+    });
+    expect(got).toHaveLength(50);
+  });
+
+  it("has nothing when no store does", async () => {
+    expect(await allReviews({ id: "1", country: "us" }, async () => ({ feed: {} }))).toEqual([]);
+  });
 });
 
 describe("public posts", () => {
@@ -36,7 +63,8 @@ describe("public posts", () => {
     expect(postAddress("https://old.reddit.com/r/groceries/comments/abc123/x/")).toEqual({ kind: "page" });
     expect(postAddress("not a url")).toEqual({ kind: "page" });
     expect(["https://old.reddit.com/r/x/comments/1", "https://redd.it/abc", "https://reddit.com/r/x"].map(isReddit)).toEqual([true, true, true]);
-    expect(["https://reddit.sentinel-team.org/posts/1", "not a url"].map(isReddit)).toEqual([false, false]);
+    expect(["https://reddit.birdcat.cafe/r/x/comments/1", "https://safereddit.com/r/x", "https://redlib.example.org/r/x"].map(isReddit)).toEqual([true, true, true]);
+    expect(["https://credit.example/forum/1", "https://news.ycombinator.com/item?id=1", "not a url"].map(isReddit)).toEqual([false, false, false]);
   });
 
   const entry = (stars: string, content: string, more: Record<string, unknown> = {}) => ({ author: { name: { label: "Mona_K" } }, "im:rating": { label: stars }, title: { label: "Slow" }, content: { label: content }, ...more });

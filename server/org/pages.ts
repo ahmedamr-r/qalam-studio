@@ -1,5 +1,5 @@
 import { fetchGuarded } from "@/discovery/fetch-guard";
-import { isApplePage, isReddit, pickReviews, postAddress, REVIEW_PAGES, reviewFeeds, reviewsFrom, reviewsText, type Review, withoutHandles } from "@/discovery/ingest/posts";
+import { allReviews, isApplePage, isReddit, pickReviews, postAddress, reviewsText, withoutHandles } from "@/discovery/ingest/posts";
 import { appLookup, appNameIn } from "@/scan/sources";
 import { htmlText, isWall } from "@/discovery/ingest/text";
 import type { OutsidePage } from "@/goals/outside";
@@ -47,15 +47,9 @@ export interface ReadReviews {
 
 /** An app's App Store reviews, read by code: every page the feed gives, the ones worth a read kept. */
 export async function readAppReviews(app: { id: string; country: string; name?: string; url: string }, signal: AbortSignal): Promise<ReadReviews | null> {
-  const all: Review[] = [];
-  for (let page = 1; page <= REVIEW_PAGES; page++) {
-    if (signal.aborted) return null;
-    const got = await reviewsFrom(reviewFeeds(app.id, app.country, page), (url) => readJson(url, signal));
-    // Two spellings can sort differently, so a later page can hold what an earlier one had.
-    const fresh = got.filter((r) => !all.some((a) => a.words === r.words));
-    all.push(...fresh);
-    if (got.length < 50 || !fresh.length) break;
-  }
+  if (signal.aborted) return null;
+  const all = await allReviews(app, (url) => readJson(url, signal));
+  if (signal.aborted) return null;
   const name = app.name ?? appNameIn(await readJson(appLookup(app.id, app.country), signal)) ?? "an app";
   const { kept } = pickReviews(all);
   const read = reviewsText(name, kept);

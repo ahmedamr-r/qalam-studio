@@ -171,6 +171,8 @@ export function backingLine(f: CardFacts): string {
   const tail = `${e.against ? ` · ${e.against} against` : ""}${f.feeds.length ? ` · watched in ${f.feeds.join(", ")}` : ""}`;
   if (e.quotes) return `Rests on ${backingWords(e.mix ?? { said: e.quotes })} from ${plural(e.sources, "source")}${tail}`;
   if (f.page?.quotes) return `Its page rests on ${backingWords(f.page.mix ?? { said: f.page.quotes })} from ${plural(f.page.sources, "source")}${tail}`;
+  const alongside = [e.online ? `${plural(e.online, "post")} online` : "", e.read ? `${e.read} read elsewhere` : ""].filter(Boolean).join(" and ");
+  if (e.ours && alongside) return `Your words, with ${alongside}${tail}`;
   if (e.ours) return `Only your words so far${tail}`;
   if (e.online) return `Only people online: ${plural(e.online, "post")}${tail}`;
   if (e.read) return `Only read elsewhere: ${e.read}${tail}`;

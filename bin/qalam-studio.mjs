@@ -1,8 +1,11 @@
 #!/usr/bin/env node
 // `npx qalam-studio`: opens Qalam as a desktop app, in the Electron that npm installed with it.
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { fetchElectron } from "./fetch-electron.mjs";
 
 const RELEASES = "https://github.com/ahmedamr-r/qalam-studio/releases/latest";
 
@@ -15,8 +18,11 @@ if (major < 22 || (major === 22 && minor < 12)) {
 
 let electron;
 try {
-  // The first time, this downloads Electron (about 100 MB) and says so.
-  electron = createRequire(import.meta.url)("electron");
+  const require = createRequire(import.meta.url);
+  const electronDir = path.dirname(require.resolve("electron/package.json"));
+  // Electron's package would fetch itself as it's required, saying nothing more until it's done.
+  if (!existsSync(path.join(electronDir, "path.txt")) && !(await fetchElectron(electronDir, console.log, RELEASES))) throw new Error("It didn't finish.");
+  electron = require("electron");
 } catch (e) {
   console.error(`Qalam Studio couldn't fetch Electron, which it runs on. Check your connection and try again, or download the app instead: ${RELEASES}\n\n${e instanceof Error ? e.message : e}`);
   process.exit(1);

@@ -35,7 +35,8 @@ export const refusesReaders = (raw: string) => {
 export function isReddit(raw: string): boolean {
   try {
     const host = new URL(raw).hostname.toLowerCase();
-    return host === "reddit.com" || host.endsWith(".reddit.com") || host === "redd.it";
+    // A mirror or another front-end holds the same people's words, so it's Reddit too.
+    return host === "redd.it" || host.includes("reddit") || /(^|\.)(redlib|teddit)\./.test(host);
   } catch {
     return false;
   }
@@ -66,6 +67,25 @@ export async function reviewsFrom(addresses: readonly string[], read: (url: stri
   for (const url of addresses) {
     const got = reviewsIn(await read(url));
     if (got.length) return got;
+  }
+  return [];
+}
+
+/** Whose feeds to read: the person's own store, then Apple's other big English ones, since a store's feed can be as empty as a spelling's. */
+export const reviewStores = (country: string) => [...new Set([country, "us", "ca", "au", "gb"])];
+
+/** Every page of an app's reviews from the first store that has any. */
+export async function allReviews(app: { id: string; country: string }, read: (url: string) => Promise<unknown>): Promise<Review[]> {
+  for (const store of reviewStores(app.country)) {
+    const all: Review[] = [];
+    for (let page = 1; page <= REVIEW_PAGES; page++) {
+      const got = await reviewsFrom(reviewFeeds(app.id, store, page), read);
+      // Two spellings can sort differently, so a later page can hold what an earlier one had.
+      const fresh = got.filter((r) => !all.some((a) => a.words === r.words));
+      all.push(...fresh);
+      if (got.length < 50 || !fresh.length) break;
+    }
+    if (all.length) return all;
   }
   return [];
 }

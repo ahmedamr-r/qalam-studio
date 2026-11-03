@@ -166,7 +166,7 @@ export function briefMarkdown(b: BriefData): string {
       out.push("", "Rests on:", "", ...f.quotes.map(quoteLine));
     });
   } else if (!b.quotes.length) out.push("", "## What to build", "", "Nothing backs this yet, so there's nothing to suggest building from. Find what backs it first.");
-  if (b.build?.wrong) out.push("", "## What would prove it wrong", "", one(b.build.wrong));
+  if (b.build?.wrong) out.push("", "## What has to be true", "", one(b.build.wrong));
   if (b.build?.test) {
     out.push("", "## Test it first", "", `${one(b.build.test.what)}. ${one(b.build.test.how)}`);
     if (b.build.test.suggested) out.push("", `A suggested pass line, yours to change: ${one(b.build.test.suggested)}`);

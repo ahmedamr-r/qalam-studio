@@ -7,7 +7,7 @@ import type { ScanTarget } from "./session";
  * From a scan's problems to what to build first (pure; server/org/scan-plan.ts runs the calls): up to
  * 3 questions, 2 or 3 audiences backed by quotes for the person to pick, a first goal about learning,
  * then one solution to build first. The model proposes and code verifies, and none of it claims to be
- * the best: it's the strongest signal so far, with what would prove it wrong beside it.
+ * the best: it's the strongest signal so far, with what has to be true beside it.
  */
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});

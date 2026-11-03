@@ -58,7 +58,7 @@ describe("the report", () => {
 
   it("has what was found, what's decided and what's read elsewhere, with links back", () => {
     const h = reportHtml(data());
-    for (const part of ["84 quotes from 7 places", "Couples don&#39;t pay the balance", "“She ghosted me.”", '<a href="https://a.example/1" rel="noreferrer">a.example</a>', "Solo photographers", "What would prove it wrong", "Read elsewhere", "HoneyBook: It costs $19 a month.", "not proof"]) expect(h).toContain(part);
+    for (const part of ["84 quotes from 7 places", "Couples don&#39;t pay the balance", "“She ghosted me.”", '<a href="https://a.example/1" rel="noreferrer">a.example</a>', "Solo photographers", "What has to be true", "Read elsewhere", "HoneyBook: It costs $19 a month.", "not proof"]) expect(h).toContain(part);
   });
 
   it("fetches nothing and runs nothing, whatever it's fed", () => {

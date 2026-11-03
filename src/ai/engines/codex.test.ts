@@ -121,6 +121,11 @@ describe("Codex, signed in with ChatGPT", () => {
     expect(readCodexEvents(['{"type":"error","message":"first"}', '{"type":"turn.failed","error":{"message":"failed"}}']).error).toBe("failed");
     expect(codexError('{"status":401,"error":{"message":"Unauthorized"}}', "m").code).toBe("auth");
     expect(codexError('{"status":429,"error":{"message":"You have hit your usage limit"}}', "m").code).toBe("rate_limited");
+    expect(codexError('{"status":429,"error":{"message":"You have hit your usage limit"}}', "m").message).toContain("usage limit");
+    const burst = codexError("exceeded retry limit, last status: 429 Too Many Requests", "m");
+    expect(burst.code).toBe("rate_limited");
+    expect(burst.message).toContain("slow down");
+    expect(burst.message).not.toContain("429");
     expect(codexError("something else", "m")).toMatchObject({ code: "api_error", message: "something else" });
     expect(catalogModels(JSON.stringify({ models: [{ slug: "hidden", visibility: "hide", priority: 1 }, { slug: "b", visibility: "list", priority: 9 }, { slug: "a", visibility: "list", priority: 5 }] }))).toEqual(["a", "b"]);
     expect(catalogModels("nope")).toEqual([]);
