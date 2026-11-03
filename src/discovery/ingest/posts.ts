@@ -1,13 +1,14 @@
 /*
- * What people say in public, as text the extract reads (pure): a Reddit thread through its JSON, an
- * app's App Store reviews through Apple's review feed, any other page as its words. Each person is
- * named by their role there ("Reddit commenter", "App Store reviewer"), never by their handle, so a
- * quote says where it's from without saying who.
+ * What people say in public, as text the extract reads (pure): an app's App Store reviews through
+ * Apple's review feed, any other page as its words. Each person is named by their role there ("App
+ * Store reviewer"), never by their handle, so a quote says where it's from without saying who. Reddit
+ * closed its API to new apps (October 2026) and is closing it for good in March 2027, so its threads
+ * aren't read: people paste them.
  */
 
-export type PostAddress = { kind: "reddit"; api: string } | { kind: "appstore"; api: string } | { kind: "page" };
+export type PostAddress = { kind: "appstore"; id: string; country: string } | { kind: "page" };
 
-/** Where to read a page from: a Reddit thread's JSON, an app's review feed, or the page itself. */
+/** Where to read a page from: an app's review feed, or the page itself. */
 export function postAddress(raw: string): PostAddress {
   let u: URL;
   try {
@@ -15,71 +16,77 @@ export function postAddress(raw: string): PostAddress {
   } catch {
     return { kind: "page" };
   }
-  const host = u.hostname.replace(/^(www|old|new|np)\./, "");
-  const thread = host === "reddit.com" ? u.pathname.match(/^\/r\/([^/]+)\/comments\/([a-z0-9]+)/i) : null;
-  if (thread) return { kind: "reddit", api: `https://www.reddit.com/r/${thread[1]}/comments/${thread[2]}/.json?limit=100&raw_json=1` };
+  const host = u.hostname.replace(/^www\./, "");
   const app = host === "apps.apple.com" ? u.pathname.match(/^\/([a-z]{2})\/app\/(?:[^/]+\/)?id(\d+)/i) : null;
-  if (app) return { kind: "appstore", api: `https://itunes.apple.com/${app[1].toLowerCase()}/rss/customerreviews/page=1/id=${app[2]}/sortby=mostrecent/json` };
-  return { kind: "page" };
+  return app ? { kind: "appstore", id: app[2], country: app[1].toLowerCase() } : { kind: "page" };
+}
+
+/** A Reddit address: found by search, but not ours to read. */
+export function isReddit(raw: string): boolean {
+  try {
+    const host = new URL(raw).hostname.toLowerCase();
+    return host === "reddit.com" || host.endsWith(".reddit.com") || host === "redd.it";
+  } catch {
+    return false;
+  }
 }
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 const str = (v: unknown) => (typeof v === "string" ? v : "");
 const one = (s: string) => s.replace(/\r/g, "").replace(/\n{3,}/g, "\n\n").trim();
-/** Markdown's marks off: links as their words, quotes and emphasis plain. */
-const plain = (s: string) =>
-  one(
-    s
-      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-      .replace(/^>\s?/gm, "")
-      .replace(/[*_~`]{1,3}([^*_~`]+)[*_~`]{1,3}/g, "$1"),
-  );
-const GONE = new Set(["[deleted]", "[removed]"]);
-/** A Reddit listing's children. */
-const kids = (listing: unknown): unknown[] => {
-  const c = rec(rec(listing).data).children;
-  return Array.isArray(c) ? c : [];
-};
 
-/** A Reddit thread as who said what: the original post, then the comments (two levels deep), at most so many. */
-export function redditText(json: unknown, max = 60): { title: string; text: string } | null {
-  if (!Array.isArray(json) || json.length < 2) return null;
-  const post = rec(rec(kids(json[0])[0]).data);
-  const title = one(str(post.title));
-  if (!title) return null;
-  const sub = str(post.subreddit);
-  const lines = [`Original post${sub ? ` in r/${sub}` : ""}: ${title}${str(post.selftext).trim() ? `\n${plain(str(post.selftext))}` : ""}`];
-  const walk = (children: unknown[], depth: number) => {
-    for (const c of children) {
-      if (lines.length > max) return;
-      const x = rec(c);
-      if (x.kind !== "t1") continue;
-      const d = rec(x.data);
-      const body = str(d.body).trim();
-      if (body && !GONE.has(body) && str(d.author) !== "AutoModerator") lines.push(`${d.is_submitter ? "Original poster" : "Reddit commenter"}: ${plain(body)}`);
-      if (depth < 1) walk(kids(d.replies), depth + 1);
-    }
-  };
-  walk(kids(json[1]), 0);
-  return { title: `Reddit: ${title}`, text: lines.join("\n\n") };
+/** Apple's feed answers ten pages of 50 for an app, and refuses the eleventh (checked November 2026). */
+export const REVIEW_PAGES = 10;
+/** What one read call takes of reviews: a source of this size is one chunk (src/discovery/sources.ts). */
+export const REVIEW_CHARS = 20_000;
+
+export const reviewFeed = (id: string, country: string, page: number) => `https://itunes.apple.com/${country}/rss/customerreviews/page=${page}/id=${id}/sortby=mostrecent/json`;
+
+export interface Review {
+  stars: number;
+  title: string;
+  words: string;
+  votes: number;
+  at: number;
 }
 
-/** An app's App Store reviews as who said what: each reviewer, their stars, their words. */
-export function appStoreText(json: unknown, max = 50): { title: string; text: string } | null {
+/** The reviews on one page of the feed (never who wrote them). */
+export function reviewsIn(json: unknown): Review[] {
   const feed = rec(rec(json).feed);
   const entries = (Array.isArray(feed.entry) ? feed.entry : feed.entry ? [feed.entry] : []).map(rec);
   const label = (v: unknown) => str(rec(v).label);
-  const lines: string[] = [];
-  for (const e of entries) {
+  return entries.flatMap((e) => {
     const words = one(label(e.content));
     const stars = Number(label(e["im:rating"]));
-    if (!words || !Number.isFinite(stars) || stars < 1) continue;
-    lines.push(`App Store reviewer (${stars} ${stars === 1 ? "star" : "stars"}): ${one(label(e.title))}. ${words}`);
-    if (lines.length >= max) break;
+    if (!words || !Number.isFinite(stars) || stars < 1) return [];
+    return [{ stars, title: one(label(e.title)), words, votes: Number(label(e["im:voteSum"])) || 0, at: Date.parse(label(e.updated)) || 0 }];
+  });
+}
+
+/**
+ * The reviews worth a read, as many as fit: complaints first (1 to 3 stars), then the "good, but…" of
+ * 4 stars, most voted and then newest within each. 5 stars aren't complaints, so they're left out.
+ */
+export function pickReviews(all: readonly Review[], max = REVIEW_CHARS): { kept: Review[]; left: number } {
+  const rank = (r: Review) => (r.stars <= 3 ? 0 : 1);
+  const order = all.filter((r) => r.stars < 5).sort((a, b) => rank(a) - rank(b) || b.votes - a.votes || b.at - a.at);
+  const kept: Review[] = [];
+  let size = 0;
+  for (const r of order) {
+    const n = reviewLine(r).length + 2;
+    if (size + n > max) continue;
+    kept.push(r);
+    size += n;
   }
-  if (!lines.length) return null;
-  const app = one(label(rec(feed.title))).replace(/^iTunes Store: Customer Reviews$/, "") || "an app";
-  return { title: `App Store reviews: ${app}`, text: lines.join("\n\n") };
+  return { kept, left: all.length - kept.length };
+}
+
+const reviewLine = (r: Review) => `App Store reviewer (${r.stars} ${r.stars === 1 ? "star" : "stars"}): ${r.title}. ${r.words}`;
+
+/** An app's reviews as who said what: each reviewer, their stars, their words. */
+export function reviewsText(app: string, reviews: readonly Review[]): { title: string; text: string } | null {
+  if (!reviews.length) return null;
+  return { title: `App Store reviews: ${app}`, text: reviews.map(reviewLine).join("\n\n") };
 }
 
 /** Sites where people speak for themselves (forums, Q&A, reviews), not articles about them. */
@@ -116,7 +123,7 @@ const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? on
 export function lookedOnlineLine(r: LookedOnline): string {
   if (r.added) return `Read ${count(r.read, "page")}: ${count(r.quotes, "quote")} from people online, filed where they fit.`;
   const w = r.why;
-  const parts = w ? [w.before && `${count(w.before, "page")} in already`, w.articles && `${count(w.articles, "article")} rather than people's own words`, w.unreadable && `${count(w.unreadable, "page")} couldn't be read`, w.reddit && `${count(w.reddit, "Reddit thread")} Reddit won't show without a sign-in`].filter(Boolean) : [];
+  const parts = w ? [w.before && `${count(w.before, "page")} in already`, w.articles && `${count(w.articles, "article")} rather than people's own words`, w.unreadable && `${count(w.unreadable, "page")} couldn't be read`, w.reddit && `${count(w.reddit, "Reddit thread")} Reddit doesn't let apps read`].filter(Boolean) : [];
   const said = r.error ?? (parts.length ? `Nothing new: ${parts.join(", ")}.` : "Nothing new.");
   return w?.reddit || w?.unreadable ? `${said} Paste a thread's or reviews' text with Add to take it in.` : said;
 }

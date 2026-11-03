@@ -1,5 +1,6 @@
 import { fetchGuarded } from "@/discovery/fetch-guard";
-import { appStoreText, postAddress, redditText, withoutHandles } from "@/discovery/ingest/posts";
+import { isReddit, pickReviews, postAddress, REVIEW_PAGES, reviewFeed, reviewsIn, reviewsText, withoutHandles, type Review } from "@/discovery/ingest/posts";
+import { appLookup, appNameIn } from "@/scan/sources";
 import { htmlText, isWall } from "@/discovery/ingest/text";
 import type { OutsidePage } from "@/goals/outside";
 
@@ -24,21 +25,46 @@ export async function readPage(link: { url: string; title?: string }, signal: Ab
   }
 }
 
-/** What people say on a page, as who said what: a Reddit thread and App Store reviews by role, any other page as its words without handles. */
-export async function readPosts(link: { url: string; title?: string }, signal: AbortSignal): Promise<OutsidePage | null> {
-  const where = postAddress(link.url);
-  if (where.kind === "page") {
-    const page = await readPage(link, signal);
-    return page && { ...page, text: withoutHandles(page.text) };
-  }
+/** A public feed's answer as JSON; null when it refuses or doesn't answer in JSON. */
+export async function readJson(url: string, signal: AbortSignal): Promise<unknown> {
   try {
-    const res = await fetchGuarded(where.api, { signal: limit(signal) });
-    const json = JSON.parse(new TextDecoder().decode(res.body)) as unknown;
-    const read = where.kind === "reddit" ? redditText(json) : appStoreText(json);
-    return read && read.text.length >= 200 ? { ref: "", url: link.url, title: read.title, text: read.text } : null;
+    const res = await fetchGuarded(url, { signal: limit(signal) });
+    return JSON.parse(new TextDecoder().decode(res.body)) as unknown;
   } catch {
-    // Refused or not JSON (a site that turns readers away): the page itself, as its words.
-    const page = await readPage(link, signal);
-    return page && { ...page, text: withoutHandles(page.text) };
+    return null;
   }
+}
+
+export interface ReadReviews {
+  page: OutsidePage;
+  /** How many reviews the feed gave, and how many of them were kept for reading. */
+  read: number;
+  kept: number;
+}
+
+/** An app's App Store reviews, read by code: every page the feed gives, the ones worth a read kept. */
+export async function readAppReviews(app: { id: string; country: string; name?: string; url: string }, signal: AbortSignal): Promise<ReadReviews | null> {
+  const all: Review[] = [];
+  for (let page = 1; page <= REVIEW_PAGES; page++) {
+    if (signal.aborted) return null;
+    const got = reviewsIn(await readJson(reviewFeed(app.id, app.country, page), signal));
+    all.push(...got);
+    if (got.length < 50) break;
+  }
+  const name = app.name ?? appNameIn(await readJson(appLookup(app.id, app.country), signal)) ?? "an app";
+  const { kept } = pickReviews(all);
+  const read = reviewsText(name, kept);
+  return read && read.text.length >= 200 ? { page: { ref: "", url: app.url, title: read.title, text: read.text }, read: all.length, kept: kept.length } : null;
+}
+
+/** What people say on a page, as who said what: App Store reviews by role, any other page as its words without handles; never Reddit. */
+export async function readPosts(link: { url: string; title?: string }, signal: AbortSignal): Promise<OutsidePage | null> {
+  if (isReddit(link.url)) return null;
+  const where = postAddress(link.url);
+  if (where.kind === "appstore") {
+    const got = await readAppReviews({ id: where.id, country: where.country, url: link.url }, signal);
+    if (got) return got.page;
+  }
+  const page = await readPage(link, signal);
+  return page && { ...page, text: withoutHandles(page.text) };
 }

@@ -1,6 +1,6 @@
 import { NO_WEB } from "@/ai/abilities";
 import { research } from "@/ai/server";
-import { isDiscussion, postAddress, type LookedOnline } from "@/discovery/ingest/posts";
+import { isDiscussion, isReddit, type LookedOnline } from "@/discovery/ingest/posts";
 import { SECTION_HEADING } from "@/hub/topics";
 import { captureSource, type CaptureOpts } from "../capture";
 import { flushBearings } from "./goals";
@@ -9,8 +9,8 @@ import { NotFoundError, type OrgStore } from "./store";
 
 /**
  * What people say online about a problem, in the core: the research step searches the web for
- * public pages where people describe it (purpose "posts"), code reads them itself (./pages.ts: a
- * Reddit thread and App Store reviews by role, never by handle), and each is taken in like any
+ * public pages where people describe it (purpose "posts"), code reads them itself (./pages.ts: App
+ * Store reviews by role, never by handle; never Reddit), and each is taken in like any
  * material, as a source of kind `post`. What's filed from it is people online's: it backs the
  * problem below its own customers' words, and alone never makes "We know" (src/hub/needs.ts).
  */
@@ -51,12 +51,14 @@ export async function lookOnline(store: OrgStore, about: OnlineAbout, emit: (lab
   if (!info) return { read: 0, added: 0, quotes: 0, skipped: 0, error: NO_WEB };
   // Only where people speak for themselves: an article about them isn't their words.
   const found = [...new Map(info.sources.filter((s) => /^https?:\/\//i.test(s.url)).map((s) => [s.url, s])).values()];
-  const links = found.filter((s) => isDiscussion(s.url)).slice(0, ONLINE_LIMITS.pages);
-  const why = { before: 0, articles: found.length - found.filter((s) => isDiscussion(s.url)).length, unreadable: 0, reddit: 0 };
-  if (!links.length) return { read: 0, added: 0, quotes: 0, skipped: why.articles, why, error: info.error ?? (found.length ? "It found only articles about this, not threads or reviews where people say it themselves." : "The web had no threads or reviews where people talk about this.") };
+  // Reddit doesn't let apps read it: said apart, so they can paste the thread.
+  const reddit = found.filter((s) => isReddit(s.url)).length;
+  const links = found.filter((s) => isDiscussion(s.url) && !isReddit(s.url)).slice(0, ONLINE_LIMITS.pages);
+  const why = { before: 0, articles: found.length - reddit - links.length, unreadable: 0, reddit };
+  if (!links.length) return { read: 0, added: 0, quotes: 0, skipped: why.articles + reddit, why, ...(reddit ? {} : { error: info.error ?? (found.length ? "It found only articles about this, not threads or reviews where people say it themselves." : "The web had no threads or reviews where people talk about this.") }) };
   // A page taken in before isn't taken in again.
   const kept = new Set((await store.listSources()).filter((s) => s.kind === "post" && s.origin).map((s) => s.origin!));
-  const out: LookedOnline = { read: 0, added: 0, quotes: 0, skipped: why.articles, why };
+  const out: LookedOnline = { read: 0, added: 0, quotes: 0, skipped: why.articles + reddit, why };
   const filed = new Set<string>();
   for (const link of links) {
     if (signal.aborted) break;
@@ -69,8 +71,7 @@ export async function lookOnline(store: OrgStore, about: OnlineAbout, emit: (lab
     const page = await readPosts(link, signal);
     if (!page) {
       out.skipped++;
-      if (postAddress(link.url).kind === "reddit") why.reddit++;
-      else why.unreadable++;
+      why.unreadable++;
       continue;
     }
     out.read++;
