@@ -52,7 +52,7 @@ import { draftTests, type TestsRequest } from "./tests";
 import { aboutTopic, lookOnline } from "./posts";
 import { scanNow, startScan, steerQuestions, steerScan, stopScan } from "./scan";
 import { steerRound } from "@/scan/steer";
-import { firstBuild, keepAnswers, keepAudience, planAudiences, planQuestions, writeBrief } from "./scan-plan";
+import { firstBuild, keepAnswers, keepAudience, planAudiences, planQuestions, scanShare, writeBrief } from "./scan-plan";
 import { scanRequest, type ScanTarget } from "@/scan/session";
 import type { ScanSaid } from "@/scan/steer";
 import { addRepo, answerFromCode, codeView, readRepo, removeRepo, type NewRepo } from "../code";
@@ -1033,6 +1033,11 @@ export function orgRoutes(): Hono<Env> {
     await keepAudience(c.get("store"), { name, about: clipped(b?.about, 300), refs });
     return c.json({ ok: true });
   });
+  r.post("/api/org/:org/scan/share", async (c) => {
+    const plan = planOf(await c.req.json().catch(() => null));
+    if (!plan) return bad("No scan to go on");
+    return c.json({ problems: await scanShare(c.get("store"), plan.sources) });
+  });
   r.post("/api/org/:org/scan/brief", async (c) => {
     const b = (await c.req.json().catch(() => null)) as { target?: unknown; sources?: unknown; topic?: unknown; draft?: unknown; audience?: unknown; about?: unknown; goal?: { title?: unknown; metric?: unknown }; answers?: unknown; why?: unknown; later?: unknown; asked?: { platform?: unknown; exists?: unknown; needs?: unknown }; known?: unknown } | null;
     const plan = planOf(b);
@@ -1052,8 +1057,8 @@ export function orgRoutes(): Hono<Env> {
         about: clipped(b?.about, 300),
         goal: { title: clipped(b?.goal?.title, 200), metric: clipped(b?.goal?.metric, 200) },
         answers: typeof b?.answers === "string" ? b.answers.slice(0, 4000) : "",
-        why: clipped(b?.why, 400),
-        later: list(b?.later).slice(0, 4).map((l: { draft?: unknown; why?: unknown }) => ({ draft: clipped(l?.draft, 60), why: clipped(l?.why, 400) })),
+        why: clipped(b?.why, 600),
+        later: list(b?.later).slice(0, 4).map((l: { draft?: unknown; why?: unknown }) => ({ draft: clipped(l?.draft, 60), why: clipped(l?.why, 600) })),
         asked: { platform: clipped(b?.asked?.platform, 200), exists: clipped(b?.asked?.exists, 400), needs: clipped(b?.asked?.needs, 60) },
         // As the scan said it, to be shown beside what people said; only web addresses go in as links.
         known: list(b?.known).slice(0, 20).flatMap((k: { kind?: unknown; name?: unknown; text?: unknown; title?: unknown; url?: unknown }) => {

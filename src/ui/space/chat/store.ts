@@ -350,7 +350,7 @@ const scanJob = (id: string): ScanJob | null => {
   return j?.kind === "scan" ? j : null;
 };
 const plan = (id: string, fn: (p: ScanPlan) => ScanPlan) => change((c) => withJob(c, id, (j) => (j.kind === "scan" && j.plan ? { ...j, plan: fn(j.plan) } : j)));
-const planOf = (j: ScanJob) => ({ target: j.target, sources: (j.session?.read ?? []).flatMap((r) => (r.sourceId ? [r.sourceId] : [])), ...(j.told?.length ? { told: j.told } : {}) });
+export const planOf = (j: ScanJob) => ({ target: j.target, sources: (j.session?.read ?? []).flatMap((r) => (r.sourceId ? [r.sourceId] : [])), ...(j.told?.length ? { told: j.told } : {}) });
 /** What it's working out now, or that it stopped. */
 const stoppedPlan = (id: string, e: unknown) => {
   const aborted = (e as Error).name === "AbortError";

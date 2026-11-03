@@ -2,6 +2,7 @@ import type { PlanQuestion } from "@/ai/plan";
 import type { ScanPlan } from "@/space/chat";
 import type { ScanAudience } from "@/scan/plan";
 import type { BriefAsked } from "@/scan/brief";
+import type { ShareProblem } from "@/scan/share";
 import type { ScanKnown, ScanRequest, ScanSession, ScanTarget } from "@/scan/session";
 import type { ScanSaid, ScanSteer } from "@/scan/steer";
 import { orgFetch, orgJson } from "./client";
@@ -18,6 +19,7 @@ type Plan = { target: ScanTarget; sources: string[]; told?: ScanSaid[] };
 const post = <T>(path: string, json: unknown, signal?: AbortSignal) => orgJson<T>(path, { method: "POST", json, ...(signal ? { signal } : {}) });
 
 export const writeBrief = (p: Plan & { topic: string; draft: string; audience: string; about?: string; goal: { title: string; metric: string }; answers: string; why: string; later: { draft: string; why: string }[]; asked: BriefAsked; known: ScanKnown[] }, signal?: AbortSignal) => post<{ brief: { file: string; markdown: string } | null }>("/scan/brief", p, signal).then((r) => r.brief);
+export const scanShare = (p: Plan) => post<{ problems: ShareProblem[] }>("/scan/share", p).then((r) => r.problems);
 export const steerQuestions = (target: ScanTarget, signal?: AbortSignal) => post<{ questions: PlanQuestion[] }>("/scan/ask", { target }, signal).then((r) => r.questions);
 export const steerScan = (more: Partial<ScanSteer>) => post<{ session: ScanSession | null }>("/scan/steer", more).then((r) => r.session);
 

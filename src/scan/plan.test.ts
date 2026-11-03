@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SolutionDraft } from "@/discovery/solutions";
-import { nameRests, audiencesMaterial, firstGoal, firstPickMaterial, problemFor, riskiest, sameTarget, sanitizeAudiences, sanitizeFirstPick, scanRound } from "./plan";
+import { wholeSentences, nameRests, audiencesMaterial, firstGoal, firstPickMaterial, problemFor, riskiest, sameTarget, sanitizeAudiences, sanitizeFirstPick, scanRound } from "./plan";
 
 const word = (ref: string, text: string) => ({ ref, text, source: "Reviews", origin: "https://x.example" });
 const words = [word("a", "As a night nurse I never know when to eat on my shift."), word("b", "Night nurse here, the plan assumes I sleep at night, 3 times it was wrong."), word("c", "My kids hate the recipes it picks.")];
@@ -30,6 +30,13 @@ describe("audiences", () => {
     const got = sanitizeAudiences({ audiences: [{ name: "Parents", about: "Wrong 9 times.", quotes: ["q1", "q3"] }] }, m, { id });
     expect(got[0].name).toBe("Parents");
     expect(got[0].about).toBe("");
+  });
+
+  it("keeps whole sentences, never one cut off", () => {
+    expect(wholeSentences("One. Two.", 100)).toBe("One. Two.");
+    expect(wholeSentences("This is the first sentence. This is the second and it runs on for ages.", 40)).toBe("This is the first sentence.");
+    expect(wholeSentences("One long sentence with no end in sight at all", 20)).toBe("");
+    expect(wholeSentences(7, 20)).toBe("");
   });
 
   it("holds a name to most of its telling words, their endings free", () => {

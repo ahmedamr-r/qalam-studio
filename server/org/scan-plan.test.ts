@@ -10,7 +10,7 @@ vi.mock("@/ai/server", () => ({
   structured: () => Promise.reject(new Error("No model in tests")),
 }));
 process.env.QALAM_NO_MODELS = "1";
-const { firstBuild, keepAnswers, keepAudience, planAudiences, planMaterial, planQuestions, writeBrief } = await import("./scan-plan");
+const { firstBuild, keepAnswers, keepAudience, planAudiences, planMaterial, planQuestions, scanShare, writeBrief } = await import("./scan-plan");
 
 let dir: string;
 let store: OrgStore;
@@ -143,6 +143,13 @@ describe("from a scan's problems to what comes first", () => {
     expect(b).toMatchObject({ drafts: [], pick: null, note: "Nothing it could stand behind." });
     expect(d.structured).not.toHaveBeenCalled();
     expect(await firstBuild(store, { target, sources: ["gone"], audience: "Parents", refs: [], answers: "" }, undefined, deps())).toBeNull();
+  });
+
+  it("shares the problems from people's words alone, best backed first, each saying what backs it", async () => {
+    const list = await scanShare(store, ["s1"]);
+    expect(list.map((p) => p.title)).toEqual(["Meals don't fit night shifts", "Recipes get rejected"]);
+    expect(list[0].quotes[0]).toEqual({ text: "As a night nurse I never know when to eat on my shift.", source: "Reviews", url: "https://x.example" });
+    expect(await scanShare(store, ["gone"])).toEqual([]);
   });
 
   describe("the brief", () => {

@@ -1,5 +1,5 @@
 import { BASES, BASIS_LABEL, countsLine, isBasis, mainBasis, type Basis } from "@/discovery/basis";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import { Check, Quote, RotateCcw, X } from "lucide-react";
 import { nanoid } from "nanoid";
@@ -35,13 +35,16 @@ import { useTopics } from "../../topics/list";
 import { useWords } from "../../frame/store";
 import { show } from "../links";
 import { FoundGoalRow } from "../../chat/FoundGoalRow";
-import { anotherFile, briefStart, changeDocBasis, chooseDraft, decideDocGoal, dropTurn, leaveFile, leaveFit, lookPastFits, openProblems, pickAudience, placeFirstBuild, placeStatement, planAgain, planFirst, planStart, retake, retryGoalFor, scanAgain, scanHere, scanInNewProject, scanIsMine, scanOtherWay, setPlanGoal, settleNumber, steerOff, stopTurn, takeAsBasis, takeFit, takeGoalNumber, takeIdea, turnOf, useCanvasChat } from "./store";
+import { anotherFile, briefStart, changeDocBasis, chooseDraft, decideDocGoal, dropTurn, leaveFile, leaveFit, lookPastFits, openProblems, pickAudience, placeFirstBuild, placeStatement, planAgain, planFirst, planOf, planStart, retake, retryGoalFor, scanAgain, scanHere, scanInNewProject, scanIsMine, scanOtherWay, setPlanGoal, settleNumber, steerOff, stopTurn, takeAsBasis, takeFit, takeGoalNumber, takeIdea, turnOf, useCanvasChat } from "./store";
 import { titleFrom } from "@/space/route";
-import { otherReading } from "@/scan/input";
+import { otherReading, projectName } from "@/scan/input";
 import { firstGoal, GOAL_ACTIONS, riskiest, type GoalAction, type ScanAudience } from "@/scan/plan";
 import { peopleQuotes, type ScanKnown } from "@/scan/session";
+import { cardQuotes, readLine, reportHtml, type ReportData, type ShareProblem } from "@/scan/share";
+import { scanShare } from "@/org/scan";
+import { shareCardPng } from "@/engine/share-card";
 import { isOff } from "@/scan/steer";
-import type { ScanPlan } from "@/space/chat";
+import type { ScanJob, ScanPlan } from "@/space/chat";
 import { addMaterial } from "../new";
 import { goalNumberLine, withUnit } from "@/goals/moves";
 import type { Benchmark } from "@/goals/outside";
@@ -1085,6 +1088,122 @@ function ScanningPart({ data }: { data: PartData }) {
 }
 
 /** What a scan came to: what it read, how far its words were checked, and the way to its problems. */
+/** What it found, to share: a card to look at first, and a report of one file. Posting stays theirs. */
+function ShareBlock({ job }: { job: ScanJob }) {
+  const [open, setOpen] = useState(false);
+  if (!open)
+    return (
+      <button type="button" className="self-start text-caption text-fg-muted underline decoration-fg/20 underline-offset-2 hover:text-fg" onClick={() => setOpen(true)}>
+        Share what it found
+      </button>
+    );
+  return <SharePanel job={job} />;
+}
+
+function SharePanel({ job }: { job: ScanJob }) {
+  const [problems, setProblems] = useState<ShareProblem[] | null>(null);
+  const [at, setAt] = useState(0);
+  const [card, setCard] = useState<{ blob: Blob; url: string } | null>(null);
+  const [note, setNote] = useState("");
+  const s = job.session!;
+  const quotes = peopleQuotes(s.read);
+  const places = s.read.filter((x) => x.kind !== "article" && x.quotes).length;
+  const shown = problems?.[at];
+
+  useEffect(() => {
+    let live = true;
+    void scanShare(planOf(job))
+      .then((list) => {
+        if (!live) return;
+        // What they decided to build for comes first, once there is such a thing.
+        const first = job.plan?.build?.topic;
+        const usable = list.filter((p) => cardQuotes(p.quotes).length > 0);
+        setProblems([...usable.filter((p) => p.id === first), ...usable.filter((p) => p.id !== first)]);
+      })
+      .catch((e: unknown) => live && setNote(e instanceof Error ? e.message : String(e)));
+    return () => {
+      live = false;
+    };
+    // Once, as it opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!shown) return;
+    let live = true;
+    let url = "";
+    void shareCardPng({ title: shown.title, quotes: cardQuotes(shown.quotes), foot: readLine(quotes, places) })
+      .then((bytes) => {
+        if (!live || !bytes) return;
+        const blob = new Blob([bytes.slice()], { type: "image/png" });
+        url = URL.createObjectURL(blob);
+        setCard({ blob, url });
+      })
+      .catch((e: unknown) => live && setNote(e instanceof Error ? e.message : String(e)));
+    return () => {
+      live = false;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [shown, quotes, places]);
+
+  const save = (href: string, name: string) => {
+    const a = document.createElement("a");
+    a.href = href;
+    a.download = name;
+    a.click();
+  };
+  const copy = () => {
+    if (!card) return;
+    void navigator.clipboard
+      .write([new ClipboardItem({ "image/png": card.blob })])
+      .then(() => setNote("Copied."))
+      .catch(() => setNote("This window can't copy pictures. Save it instead."));
+  };
+  const saveReport = () => {
+    const p = job.plan;
+    const d = p?.build?.drafts.find((x) => x.id === p.chosen);
+    const risk = d ? riskiest(d) : null;
+    const plan: ReportData["plan"] = p?.audience
+      ? { audience: p.audience.name, ...(p.goal ? { goal: firstGoal(p.audience.name, p.goal.action, p.goal.reach, p.goal.of).title } : {}), ...(d ? { build: d.title, ...(p.build?.pick?.draft === d.id ? { why: p.build.pick.why } : {}), ...(risk ? { wrong: risk.text } : {}), ...(d.test ? { test: d.test.what, ...(d.test.suggested ? { pass: d.test.suggested } : {}) } : {}) } : {}) }
+      : undefined;
+    const html = reportHtml({ about: projectName(job.target), at: s.at, problems: problems ?? [], quotes, places, ...(plan ? { plan } : {}), known: s.known ?? [] });
+    const href = URL.createObjectURL(new Blob([html], { type: "text/html" }));
+    save(href, "qalam-report.html");
+    window.setTimeout(() => URL.revokeObjectURL(href), 10_000);
+  };
+
+  return (
+    <div className="flex flex-col gap-[8px] rounded-lg p-[8px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
+      <p className="text-caption text-fg-muted">Look it over first: these are strangers' public words. Posting it is up to you.</p>
+      {card ? <img src={card.url} alt={shown ? `A card about: ${shown.title}` : "A card"} className="w-full rounded-md shadow-[0_0_0_1px_var(--color-line-subtle)]" /> : !note && <p className="text-caption text-fg-subtle">Drawing it…</p>}
+      {problems && !problems.length && <p className="text-caption text-fg-muted">No problem here has a quote short enough for a card, but the report has them all.</p>}
+      {note && <p className="text-caption text-fg-muted">{note}</p>}
+      <ReplyChips>
+        {card && (
+          <button type="button" className={r.replyChipPrimary} onClick={copy}>
+            Copy image
+          </button>
+        )}
+        {card && (
+          <button type="button" className={r.replyChip} onClick={() => save(card.url, "qalam-card.png")}>
+            Save image
+          </button>
+        )}
+        {problems && (
+          <button type="button" className={r.replyChip} onClick={saveReport}>
+            Save the report
+          </button>
+        )}
+        {problems && problems.length > 1 && (
+          <button type="button" className={r.replyChip} onClick={() => setAt((i) => (i + 1) % Math.min(problems.length, 6))}>
+            Another problem
+          </button>
+        )}
+      </ReplyChips>
+    </div>
+  );
+}
+
 /** What's known beside what people say: what other products offer and charge, and what's been published, each with its page. */
 function KnownFold({ known }: { known: readonly ScanKnown[] }) {
   if (!known.length) return null;
@@ -1153,6 +1272,7 @@ function ScannedPart({ data }: { data: PartData }) {
       )}
       {s.noWeb && <p className="text-caption text-fg-subtle">There's no web search here, so I read only what I can reach directly.</p>}
       <KnownFold known={s.known ?? []} />
+      {!s.thin && s.problems.length > 0 && <ShareBlock job={job} />}
       <ReplyChips>
         {!s.thin && !job.plan && (
           <button type="button" className={r.replyChipPrimary} onClick={() => void planStart(t.id)}>

@@ -186,6 +186,8 @@ All built by code from what's kept (decision 5).
 - **Card:** CanvasKit, using the PNG export in `src/engine/renderer.ts`, so Arabic shapes correctly. 1200×675: the problem, up to 3 short quotes with where each came from, and how much was read ("84 quotes from 7 places"). Copy or save it. Check that clipboard images work at `qalam://app`.
 - **What goes public:** short excerpts with links back, roles and never usernames, and nothing the person hasn't seen first. Posting stays theirs.
 
+**Built November 3:** the card was drawn in English, Arabic and mixed text and with a very long title, and leaves a quote that doesn't fit off whole. The report fetches nothing. Not checked yet: copying an image in the installed app at `qalam://app` (the preview pane refused, and it said so, with Save image beside it), and light mode by eye.
+
 **Done when:** the card renders in English, Arabic and mixed text, with long titles; opening the report in a browser with the network off works; and following 5 quotes back from a brief finds each one.
 
 ### 6. Installing

@@ -14,6 +14,18 @@ const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object"
 const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 const one = (s: string) => s.replace(/\s+/g, " ").trim();
 const clip = (v: unknown, max: number) => (typeof v === "string" ? one(v).slice(0, max) : "");
+/** As many whole sentences as fit: a reason cut off mid-word reads as a mistake. Nothing if not even one does. */
+export function wholeSentences(v: unknown, max: number): string {
+  const t = typeof v === "string" ? one(v) : "";
+  if (t.length <= max) return t;
+  let end = 0;
+  for (const m of t.matchAll(/[.!?؟]["”’)]?(?=\s)/g)) {
+    const at = (m.index ?? 0) + m[0].length;
+    if (at > max) break;
+    end = at;
+  }
+  return t.slice(0, end);
+}
 
 /** A public quote a plan may rest on. */
 export interface PlanWord {
@@ -37,7 +49,7 @@ export function scanRound(): PlanQuestion[] {
   return [open("who", "Who do you picture using this first?", "So the problems can be read for them."), open("seen", "Have you seen this problem yourself? Where?", "What you've seen counts more than what's public."), open("can", "What could you build and try in the next couple of weeks?", "So what comes first is something you can do.")];
 }
 
-const LIMITS = { audiences: 3, minQuotes: 2, quotes: 6, name: 60, about: 200, why: 300, words: 60 } as const;
+const LIMITS = { audiences: 3, minQuotes: 2, quotes: 6, name: 60, about: 240, why: 500, words: 60 } as const;
 
 const SMALL = new Set("a an the of for and or who with in on at to their them they people person users user customers".split(" "));
 const wordList = (s: string) => s.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
@@ -105,7 +117,7 @@ export function sanitizeAudiences(raw: unknown, m: PlanSent, o: { id: () => stri
     if (!name || quotes.length < LIMITS.minQuotes || out.some((k) => k.name.toLowerCase() === name.toLowerCase())) continue;
     const said = [...quotes.map((q) => q.text), m.answers].join("\n");
     if (!nameRests(name, said)) continue;
-    const about = checkWords(clip(a.about, LIMITS.about), [{ text: said }]) ?? "";
+    const about = checkWords(wholeSentences(a.about, LIMITS.about), [{ text: said }], "", LIMITS.about) ?? "";
     out.push({ id: o.id(), name, about, quotes });
   }
   return out;
@@ -202,10 +214,10 @@ export function sanitizeFirstPick(raw: unknown, m: FirstPickSent): FirstPick | n
   if (!ids.length) return null;
   const said = typeof r.pick === "string" ? r.pick.trim() : "";
   const id = m.drafts.has(said) ? said : ids[0];
-  const why = (id === said ? checkWords(clip(r.why, LIMITS.why), [{ text: m.hay }]) : null) ?? "";
+  const why = (id === said ? checkWords(wholeSentences(r.why, LIMITS.why), [{ text: m.hay }], "", LIMITS.why) : null) ?? "";
   const later = ids.filter((d) => d !== id).map((d) => {
     const x = list(r.later).map(rec).find((l) => l.id === d);
-    return { draft: m.drafts.get(d)!.id, why: (x && checkWords(clip(x.why, LIMITS.why), [{ text: m.hay }])) || "" };
+    return { draft: m.drafts.get(d)!.id, why: (x && checkWords(wholeSentences(x.why, LIMITS.why), [{ text: m.hay }], "", LIMITS.why)) || "" };
   });
   return { draft: m.drafts.get(id)!.id, why, later };
 }

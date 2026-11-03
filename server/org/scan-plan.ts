@@ -4,7 +4,9 @@ import type { PlanQuestion } from "@/ai/plan";
 import { structured } from "@/ai/server";
 import { quotePiece, type SourceQuote, type SourceRecord } from "@/discovery/sources";
 import type { Drafted, SolutionDraft } from "@/discovery/solutions";
+import { needLine } from "@/hub/needs";
 import { emptyFiling } from "@/hub/topics";
+import type { ShareProblem } from "@/scan/share";
 import { audiencesMaterial, firstPickMaterial, problemFor, sanitizeAudiences, sanitizeFirstPick, scanRound, type FirstPick, type PlanProblem, type PlanWord, type ScanAudience } from "@/scan/plan";
 import { briefMarkdown, briefMaterial, sanitizeBrief, type BriefAsked, type BriefFeature } from "@/scan/brief";
 import type { ScanKnown, ScanTarget } from "@/scan/session";
@@ -187,4 +189,15 @@ export async function writeBrief(store: OrgStore, o: { target: ScanTarget; sourc
     known: o.known,
   });
   return { file: await store.putBrief(draft.title, markdown), markdown, features };
+}
+
+/** The problems as a card or a report shows them, best backed first, from people's words alone. */
+export async function scanShare(store: OrgStore, sources: readonly string[]): Promise<ShareProblem[]> {
+  const { problems, words } = await planMaterial(store, sources);
+  const needs = new Map((await needsNow(store)).needs.map((n) => [n.topic, n]));
+  const byRef = new Map(words.map((w) => [w.ref, w]));
+  return problems.map((p) => {
+    const n = needs.get(p.id);
+    return { id: p.id, title: p.title, line: n ? needLine(n) : "", quotes: p.cites.flatMap((c) => byRef.get(c) ?? []).map((w) => ({ text: w.text, source: w.source, ...(w.origin ? { url: w.origin } : {}) })) };
+  });
 }
