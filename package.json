@@ -1,7 +1,7 @@
 {
   "name": "qalam-studio",
   "productName": "Qalam Studio",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Describe what you want to build, or name a product. Qalam Studio reads what people complain about, ranks the problems, works out who to build for and what to build first, and writes the brief for your coding agent. Runs on your own Claude Code or Codex, on your own computer.",
   "license": "Apache-2.0",
   "type": "module",

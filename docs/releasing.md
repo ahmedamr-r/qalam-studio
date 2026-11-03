@@ -84,7 +84,7 @@ The installed app checks for updates unless `QALAM_NO_UPDATES=1` is set.
    npm_config_cache=$(mktemp -d) electron_config_cache=$(mktemp -d) QALAM_HOME=$(mktemp -d) npx --yes --package=./qalam-studio-<version>.tgz qalam-studio
    ```
 
-3. `npm login`, then `npm publish`.
+3. `npm login`, then `npm publish`, which asks you to approve it in the browser. npm may take a few minutes to make a version available: on the first publish it answered with a placeholder, `0.0.0-stage`, for about 5 minutes, and `npx` gets that until it's done, so check `npm view qalam-studio version` before telling anyone.
 4. Try the real thing, again with empty caches:
 
    ```bash
@@ -97,7 +97,7 @@ The installed app checks for updates unless `QALAM_NO_UPDATES=1` is set.
 
 Each step is public, so go in this order, and don't start one until the one before it is done:
 
-1. Publish to npm, and try it (above).
+1. Publish to npm, and try it (above), including pressing Send and going to another app: a window out of sight behaves differently, and nothing but a real window shows it.
 2. Merge into `main` and push, since the README says `npx qalam-studio` works.
 3. Tag the version and push the tag, then publish the draft release `release.yml` makes, so the Mac app the README links to has the same loop.
 4. Change GitHub's description to the README's first sentence.

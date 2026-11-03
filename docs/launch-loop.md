@@ -271,8 +271,9 @@ What it found, all fixed:
 - **A Reddit mirror wasn't counted as Reddit,** so a page that claims "Reddit isn't read" could have been wrong. Mirrors are out too.
 - **"What would prove it wrong" stated the assumption,** so it said the opposite of what it meant. It's "What has to be true" now.
 - **"Only your words so far"** showed on a card that also had quotes from people online.
+- **A scan didn't start while its window was out of sight,** found trying the published 0.2.0. It waited for the canvas to be drawn, which a hidden window never does, so someone who pressed Send and went to another app could come back to nothing begun. It now starts in 3 seconds either way, and the window opens in front of the terminal it was started from. Fixed in 0.2.1.
 
-Not done: a separate macOS account (Claude Code's and Codex's sign-ins were this Mac's), the npm registry itself, the Mac app from this branch, Windows, an Intel Mac. The README describes `npx qalam-studio` as working, so publish before that README reaches `main`. Steps 2, 4 and 5 are still to do.
+0.2.0 went to npm on November 3, and its download from the registry matches what was checked. Not done: a separate macOS account (Claude Code's and Codex's sign-ins were this Mac's), the Mac app from this branch, Windows, an Intel Mac. The README describes `npx qalam-studio` as working, so it goes to `main` only once the version people should use is on npm. Steps 2, 4 and 5 are still to do.
 
 ## Rules for all of it
 

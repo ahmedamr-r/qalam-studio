@@ -36,7 +36,28 @@ import { addMaterial } from "./new";
  *   ?panel=problems       the panel open on that section (read by ../home/Home.tsx as it opens)
  */
 
-const KEYS = ["card", "board", "then", "problem", "under", "review", "source", "idea", "add", "find", "write", "take", "scan", "panel"];
+const KEYS = ["card", "board", "then", "problem", "under", "review", "source", "idea", "add", "write", "take", "panel"];
+
+/**
+ * What the address hands straight to the chat, taken once the canvas's cards are in rather than once
+ * they're drawn: a window out of sight draws nothing, and someone who pressed Send and went to another
+ * app still wants it read.
+ */
+export function consumeChatParams() {
+  const u = new URL(window.location.href);
+  const p = u.searchParams;
+  const find = p.get("find");
+  const scan = p.get("scan");
+  if (!find && !scan) return;
+  p.delete("find");
+  p.delete("scan");
+  history.replaceState(history.state, "", `${u.pathname}${p.size ? `?${p}` : ""}${u.hash}`);
+  if (find === "goal" || find === "problem") void findWith(find, currentSpace());
+  if (scan === "1") {
+    const text = takeWords();
+    if (text) scanFrom(text, currentSpace());
+  }
+}
 
 export async function consumeHomeParams() {
   const u = new URL(window.location.href);
@@ -51,10 +72,8 @@ export async function consumeHomeParams() {
   const review = get("review");
   const source = get("source");
   const idea = get("idea");
-  const find = get("find");
   const take = get("take");
   const write = get("write");
-  const scan = get("scan");
   if (get("add") === "1") addMaterial();
   for (const k of KEYS) p.delete(k);
   // The kept drafts read the address themselves (src/ui/discovery/solutions.ts).
@@ -86,13 +105,8 @@ export async function consumeHomeParams() {
     const text = takeIdea();
     if (text) void sendToChat(text, "dump");
   }
-  // From the first run's start: help finding one, the box for one in mind, or their words taken as one.
-  if (find === "goal" || find === "problem") findWith(find, currentSpace());
+  // From the first run's start: the box for one in mind, or their words taken as one.
   if (write === "1") composeIn({});
-  if (scan === "1") {
-    const text = takeWords();
-    if (text) scanFrom(text, currentSpace());
-  }
   if (take === "goal" || take === "problem") {
     const text = takeWords();
     if (text) void sendToChat(text, take);
