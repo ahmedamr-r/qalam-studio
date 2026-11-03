@@ -243,4 +243,4 @@ Google Play (behind the lab first, after checking its terms), Reddit, Design thi
 
 ## Start here
 
-Phases 0 to 2, then stop and read the eval together. Everything after that depends on what it shows.
+Phases 0 to 5 and 4b are built, on the branch `launch-loop`, not pushed (November 3). Next: phase 6, installing. Still for a person to mark: whether scans beat plain Claude (`.qalam-dev/eval-loop/final/`), and whether a pick follows from its quotes on 3 inputs.
