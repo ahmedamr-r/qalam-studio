@@ -14,7 +14,7 @@ import { DUMP_WORDS, wordsIn, type ChatMode } from "@/space/route";
 import { claimStrip } from "@/hub/ask";
 import type { TopicInfo } from "@/hub/topics";
 import { topicsDb } from "@/org/topics";
-import { topicHref } from "@/projects/model";
+import { placeHref, topicHref } from "@/projects/model";
 import type { PartData } from "../../chat/types";
 import type { PartComponent } from "../../chat/ChatThread";
 import { ReplyChips } from "../../chat/ChatThread";
@@ -1556,7 +1556,26 @@ function ScanAgainPart({ data }: { data: PartData }) {
   );
 }
 
+function NoEnginePart({ data }: { data: PartData }) {
+  const t = useTurn(data.turn);
+  if (t?.job.kind !== "noEngine") return null;
+  const mode = t.job.mode;
+  return (
+    <div className="flex flex-wrap gap-[6px]">
+      <a href={placeHref("connections")} className={r.replyChipPrimary}>
+        Set up Qalam AI
+      </a>
+      {mode && t.said && (
+        <button type="button" className={r.replyChip} onClick={() => retake(t.id, mode)}>
+          Try again
+        </button>
+      )}
+    </div>
+  );
+}
+
 export const PARTS: Record<string, PartComponent> = {
+  noEngine: NoEnginePart,
   brief: BriefPart,
   scanning: ScanningPart,
   scanned: ScannedPart,

@@ -13,6 +13,7 @@ import { packedPieces, packFor, search, showsUp, type Hit } from "../index/searc
 import { orgGraph } from "@/hub/graph";
 import { filingShape, topicShape, type Topic } from "@/hub/topics";
 import { chooseFolder, createOrg, currentOrg, listOrgs, openFolder, qalamHome, rememberOrg, storeFor } from "./home";
+import { openSample } from "./sample";
 import { noticesNow } from "./notices";
 import { spaceBoards } from "./map";
 import { needsNow } from "./needs";
@@ -97,7 +98,7 @@ export function orgRoutes(): Hono<Env> {
     const current = await currentOrg();
     const orgs = await listOrgs();
     // None yet (the first run): the window welcomes them instead.
-    return c.json({ home: qalamHome(), current: current?.id ?? null, orgs: orgs.map(({ id, name, dir, shape }) => ({ id, name, dir, ...(shape ? { shape } : {}) })) });
+    return c.json({ home: qalamHome(), current: current?.id ?? null, orgs: orgs.map(({ id, name, dir, shape, sample }) => ({ id, name, dir, ...(shape ? { shape } : {}), ...(sample ? { sample } : {}) })) });
   });
   r.post("/api/orgs", async (c) => {
     const { name, shape } = (await c.req.json().catch(() => ({}))) as { name?: string; shape?: unknown };
@@ -105,6 +106,7 @@ export function orgRoutes(): Hono<Env> {
     return c.json(await createOrg(name, undefined, orgShape(shape) ?? undefined));
   });
   /** Open a folder as an organization: the one given, or one picked with the Mac's own picker. */
+  r.post("/api/orgs/sample", async (c) => c.json(await openSample()));
   r.post("/api/orgs/open", async (c) => {
     let { path: dir } = (await c.req.json().catch(() => ({}))) as { path?: string };
     if (!dir) {
@@ -135,8 +137,8 @@ export function orgRoutes(): Hono<Env> {
   });
 
   const infoOf = (store: OrgStore) => {
-    const { id, name, shape } = store.info;
-    return { id, name, dir: store.dir, ...(shape ? { shape } : {}) };
+    const { id, name, shape, sample } = store.info;
+    return { id, name, dir: store.dir, ...(shape ? { shape } : {}), ...(sample ? { sample } : {}) };
   };
   r.get("/api/org/:org/info", (c) => c.json(infoOf(c.get("store"))));
   /** Rename it, or say who it is: a company or team, or one person on their own. */

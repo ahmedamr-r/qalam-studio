@@ -35,6 +35,7 @@ import { Dictated } from "../voice/MicButton";
 import { ParakeetInstall } from "../voice/ParakeetInstall";
 import { wordsFor } from "@/org/words";
 import { FoundGoalRow } from "../chat/FoundGoalRow";
+import { trySample } from "../org/sample";
 import { setUpProperly, checkEngine, decideGoal, engineChanged, finishFirstRun, findCompetitors, goStep, keepCompetitors, keepFacts, lookAgain, noWebsite, skipCompetitors, startOnCanvas, takeAs, openKeyField, pickDoor, pickShape, saveVoice, saveYou, saveYours, skipEngine, togglePick, useFirstRun } from "./flow";
 import { useMarket } from "@/org/market";
 import { FIELD_LABEL, type Competitor, type MarketLine } from "@/market/types";
@@ -128,6 +129,11 @@ function EnginePart({ data }: { data: PartData }) {
             </button>
           )}
           {changes && (
+            <button type="button" className={r.replyChip} onClick={() => void trySample()}>
+              Try it with a sample
+            </button>
+          )}
+          {changes && (
             <button type="button" className={clsx(qr.textBtn, "ml-auto")} onClick={skipEngine}>
               Set up later
             </button>
@@ -175,7 +181,12 @@ function ChoicesPart({ data }: { data: PartData }) {
   const n = Number(data.n ?? 0);
   switch (data.set) {
     case "box":
-      return <ReplyChips>{chip("Set it up properly instead", setUpProperly)}</ReplyChips>;
+      return (
+        <ReplyChips>
+          {chip("Set it up properly instead", setUpProperly)}
+          {chip("Try it with a sample", trySample)}
+        </ReplyChips>
+      );
     case "shape":
       return (
         <ReplyChips>

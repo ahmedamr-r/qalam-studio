@@ -12,6 +12,8 @@ export interface OrgRef {
   dir: string;
   /** A company or team, or one person on their own (none: a team, made before shapes). */
   shape?: OrgShape;
+  /** The project "Try it with a sample" opened. */
+  sample?: true;
 }
 
 /** This window, for the org's change announcements. */
@@ -89,6 +91,9 @@ async function orgsRequest(path: string, body: unknown): Promise<Response> {
 
 /** A new organization: a folder in ~/Qalam (a team's, or one person's project). */
 export const createOrg = async (name: string, shape?: OrgShape): Promise<OrgRef> => (await orgsRequest("/api/orgs", { name, ...(shape ? { shape } : {}) })).json();
+
+/** The sample project: made the first time, as they left it after that. It needs no engine. */
+export const openSampleOrg = async (): Promise<OrgRef> => (await orgsRequest("/api/orgs/sample", {})).json();
 
 /** The desktop app's bridge (electron/preload.cjs): the system's own folder picker. */
 const desktop = () => (globalThis as { qalamDesktop?: { chooseFolder(title: string): Promise<string | null> } }).qalamDesktop;

@@ -224,4 +224,14 @@ describe("short statements and what came of them", () => {
     // It goes on in the core: a reload still shows it running, until the core says.
     expect(chatOf({ v: 1, turns: [turn("s", { kind: "scan", target, asked: 1 })] }).turns[0].job).toEqual({ kind: "scan", target, asked: 1 });
   });
+  it("says what a message needs when there's no engine, with nothing running", () => {
+    const c = withTurn(emptyChat(), turn("n", { kind: "noEngine", mode: "ask" }));
+    const [you, reply] = threadOf(c);
+    expect(you.role).toBe("user");
+    expect(reply.parts[0]).toMatchObject({ type: "text" });
+    expect(reply.parts[1]).toMatchObject({ type: "data", name: "noEngine", data: { turn: "n" } });
+    expect(running(c)).toBeFalsy();
+    // It outlives a reload as it was.
+    expect(chatOf({ v: 1, turns: c.turns }).turns[0].job).toEqual({ kind: "noEngine", mode: "ask" });
+  });
 });

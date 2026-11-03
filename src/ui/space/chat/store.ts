@@ -58,6 +58,7 @@ import { show } from "../links";
 import { placeFor, writeCard } from "../new";
 import { useCompose } from "./compose";
 import { toggleChat } from "../../frame/store";
+import { engineMissing } from "../../frame/useHealth";
 
 /*
  * Qalam AI's chat beside a space's canvas, in the window: the canvas's turns (src/space/chat.ts),
@@ -131,14 +132,14 @@ export async function openChat(space: string | null) {
   const pending = st().pending;
   if (pending?.key === key) {
     useCanvasChat.setState({ pending: null });
-    findWith(pending.what, space);
+    void findWith(pending.what, space);
   }
   // A scan started before the page closed went on in the core: where it's got to.
   void followScan();
   const words = st().pendingScan;
   if (words?.key === key) {
     useCanvasChat.setState({ pendingScan: null });
-    void scanIt(null, words.said);
+    void runAs(null, words.said, "scan");
   }
 }
 
@@ -206,8 +207,9 @@ export function send(text: string, docs: readonly SentDoc[]): boolean {
 /** A turn's words taken one way: as a new turn, or (`at`) a turn taken another way than it was. */
 export async function runAs(at: string | null, said: string, mode: ChatMode, docs: readonly SentDoc[] = []): Promise<void> {
   if (at) stopTurn(at);
-  if (mode === "ask") return ask(said, at);
   if (mode === "goal" || mode === "problem") return void addCard(at, said, mode);
+  if (await engineMissing()) return void jobAt(at, said, { kind: "noEngine", mode });
+  if (mode === "ask") return ask(said, at);
   if (mode === "take") return takeIn(at, said, docs);
   if (mode === "dump") return dumpIt(at, said, docs);
   if (mode === "scan") return scanIt(at, said);
@@ -232,7 +234,7 @@ export function scanFrom(said: string, space: string | null) {
   toggleChat(true);
   const key = chatKey(space);
   if (st().key !== key || !st().loaded) return useCanvasChat.setState({ pendingScan: { key, said } });
-  void scanIt(null, said);
+  void runAs(null, said, "scan");
 }
 
 /** An idea or a product read for what people complain about. It runs in the core; this follows it. */
@@ -596,12 +598,14 @@ async function dumpIt(at: string | null, said: string, docs: readonly SentDoc[],
 const FIND_SAID: Record<FindWhat, string> = { goal: "Help me find a goal", problem: "Help me find a problem" };
 
 /** "Help me find one" on `space`'s canvas: code's opening questions in the box (one at a time: an open one is kept). */
-export function findWith(what: FindWhat, space: string | null) {
+export async function findWith(what: FindWhat, space: string | null): Promise<void> {
   toggleChat(true);
   const key = chatKey(space);
-  if (st().key !== key || !st().loaded) return useCanvasChat.setState({ pending: { key, what } });
+  if (st().key !== key || !st().loaded) return void useCanvasChat.setState({ pending: { key, what } });
   const open = st().chat.turns.find((t) => t.job.kind === "find");
   if (open?.job.kind === "find" && open.job.what === what) return;
+  // Before they answer anything: it would be read by what isn't there.
+  if (await engineMissing()) return void addTurn(FIND_SAID[what], { kind: "noEngine", mode: null });
   if (open) dropTurn(open.id);
   // With the company and its domain known, Qalam AI asks from them; else code's own questions.
   const known = knowsMarket(useMarket.getState().market);

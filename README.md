@@ -147,7 +147,6 @@ pnpm dist:mac:adhoc # package the Mac app into release/dist, signed ad hoc as re
 ## Roadmap
 
 - **Five first users:** watch five people use v0.1 on their own material, then turn hidden features back on one at a time, starting with what they ask for.
-- **A sample project**, so someone with no material at hand sees the loop in a minute.
 - **A notarized Mac app**, which installs its own updates and comes with a Homebrew cask, and an npm package for `npx qalam-studio`.
 - **Charts and tables in PDFs:** numbers inside a chart's picture aren't read by default, and a PDF table's cells lose their columns. A lab switch (`pictures`, Mac only) reads printed numbers in charts, image tables and scans, each checked against what this Mac reads off the page.
 - **Interview recordings:** drop in audio or video and get an Arabic or English transcript to quote from.

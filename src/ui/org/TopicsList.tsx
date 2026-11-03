@@ -1,3 +1,4 @@
+import { useWords } from "../frame/store";
 import { FileText } from "lucide-react";
 import type { SourceRecord } from "@/discovery/sources";
 import { disputedCount, sectionCounts, TOPIC_KIND_LABEL, type TopicInfo, type TopicKind } from "@/hub/topics";
@@ -55,6 +56,7 @@ export function FilingBanner({ sources, onFiled }: { sources: SourceRecord[]; on
 }
 
 export function TopicsList({ topics, sources, products, onFiled, banner = true }: { topics: TopicInfo[] | null; sources: SourceRecord[]; products: Product[]; onFiled: () => void; banner?: boolean }) {
+  const { whole } = useWords();
   const waiting = unfiled(sources);
   if (topics === null) return <p className="text-body text-fg-muted">Loading the pages…</p>;
   if (!topics.length)
@@ -95,7 +97,7 @@ export function TopicsList({ topics, sources, products, onFiled, banner = true }
                         <span className="text-caption text-fg-muted">
                           {[...(counts.length ? counts : ["Nothing on it yet"]), ...(disputed ? [`${disputed} disputed`] : [])].join(" · ")}
                         </span>
-                        <span className="text-caption text-fg-subtle">{[TOPIC_KIND_LABEL[t.kind], ...(productNames(t).length ? productNames(t) : ["Whole organization"]), `updated ${ago(t.updatedAt)}`].join(" · ")}</span>
+                        <span className="text-caption text-fg-subtle">{[TOPIC_KIND_LABEL[t.kind], ...(productNames(t).length ? productNames(t) : [whole]), `updated ${ago(t.updatedAt)}`].join(" · ")}</span>
                       </span>
                     </a>
                   </li>

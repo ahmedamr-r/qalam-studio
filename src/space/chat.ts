@@ -13,6 +13,7 @@ import type { ScanSession, ScanTarget } from "@/scan/session";
 import type { ScanSaid } from "@/scan/steer";
 import type { GoalAction, ScanAudience } from "@/scan/plan";
 import type { Drafted, SolutionDraft } from "@/discovery/solutions";
+import type { ChatMode } from "./route";
 
 /*
  * Qalam AI's chat on the left of a space's canvas (src/ui/space/chat/), as it's kept: one file per
@@ -55,6 +56,8 @@ export type ChatJob =
   | { kind: "ask"; state: "asking" | "answered" | "failed"; answer?: AskAnswer; secs?: number; error?: string }
   /** A short statement: is it a goal or a problem (or a question)? The chips say. */
   | { kind: "choose"; first: "goal" | "problem" }
+  /** It needs Qalam AI and there's no engine here: nothing ran. `mode`: how it's taken once there is (none: there's nothing to send again). */
+  | { kind: "noEngine"; mode: ChatMode | null }
   /**
    * Their words as a goal's or a problem's card: Qalam AI's wording first (`suggesting`, then
    * `suggested`, for them to use, edit or leave for their own words; none when it found none to
@@ -213,7 +216,7 @@ function stopped(j: ChatJob): ChatJob {
   return j;
 }
 
-const KINDS = new Set(["ask", "choose", "add", "take", "dump", "find", "goalfor", "scan", "brief"]);
+const KINDS = new Set(["ask", "choose", "noEngine", "add", "take", "dump", "find", "goalfor", "scan", "brief"]);
 
 /** A chat as read from its file (what it doesn't know is left out). */
 export function chatOf(raw: unknown): CanvasChat {
@@ -304,6 +307,8 @@ function replyTo(t: ChatTurn, dumpOf: DumpOf): ChatPart[] {
       return [part("answer", id), part("switch", id)];
     case "choose":
       return [text("Is it a goal or a problem? I'll suggest how to word it for the canvas."), part("choose", id)];
+    case "noEngine":
+      return [text("That needs Qalam AI, which isn't set up on this computer yet. It runs on your own Claude Code or Codex."), part("noEngine", id)];
     case "add":
       if (j.state === "suggesting") return [part("working", id)];
       if (j.state === "suggested") return [part("statement", id)];

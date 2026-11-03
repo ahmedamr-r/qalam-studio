@@ -1,6 +1,6 @@
 # Qalam Studio launch loop: the plan
 
-Written November 3, 2026. Nothing here is built yet. Where this differs from `docs/v0.1.md`, this plan wins for the public launch; update that page as each phase lands.
+Written November 3, 2026. Where this differs from `docs/v0.1.md`, this plan wins for the public launch; update that page as each phase lands.
 
 **Who it's for:** people who build with Claude Code or Codex, on their own or in a small team, with an idea or a product and no time to research it properly.
 
@@ -224,6 +224,17 @@ All built by code from what's kept (decision 5).
 
 **Done when:** the sample opens with ranked problems in under a minute, with no engine configured.
 
+**Built November 3** (the sample; the plugin stays for after launch). Tried from a packed tarball with empty caches, and with no Claude Code, Codex or key anywhere it could find them:
+
+| | Result |
+|---|---|
+| `npx` to a window | 80 seconds |
+| "Try it with a sample" to ranked problems | 1.6 seconds, no tokens |
+
+- **What it opens on:** Basket as one project, its 10 problems ranked, its goals with their problems, solutions and tests on the canvas, and one finished brief. Everything in it is invented, so no stranger's words ship in the package.
+- **It's not a scan's result:** Basket's quotes are its own customers' interviews, so its problems read "We know", where a scan's public words stay in "We believe". The questions, who it's for, what comes first and the share card need an engine, so they can't be tried in it.
+- **With no engine anywhere:** the chat now says what's needed and offers to set it up, where it showed a process's error, and it says so before someone answers "Help me find one", not after. This also covers anyone who pressed "Set up later".
+
 ### 8. Before going public
 
 Run in this order:
@@ -273,4 +284,4 @@ Google Play (behind the lab first, after checking its terms), Reddit, Design thi
 
 ## Start here
 
-Phases 0 to 6 and 4b are built, on the branch `launch-loop`, not pushed (November 3). Next: phase 7, trying it without an engine. Still for a person to mark: whether scans beat plain Claude (`.qalam-dev/eval-loop/final/`), and whether a pick follows from its quotes on 3 inputs.
+Phases 0 to 7 and 4b are built, on the branch `launch-loop`, not pushed (November 3); the plugin in phase 7 waits for after launch. Next: phase 8, before going public. Still for a person to mark: whether scans beat plain Claude (`.qalam-dev/eval-loop/final/`), and whether a pick follows from its quotes on 3 inputs.

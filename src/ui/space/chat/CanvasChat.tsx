@@ -18,7 +18,8 @@ import { useSources } from "../../discovery/sources";
 import { ChatComposer, ChatThread } from "../../chat/ChatThread";
 import { attachFiles, clearAttachments, docsCheck, readyDocs, useAttach } from "../../chat/attach";
 import { AttachmentChips, SourceMenu } from "../../chat/SourcePicker";
-import { toggleChat, useWords } from "../../frame/store";
+import { toggleChat, useCurrentOrg, useWords } from "../../frame/store";
+import { SampleIntro } from "../../org/SampleIntro";
 import type { Space } from "../../frame/spaces";
 import { ASK_EVENT, takeAskNext } from "../../org/ask-next";
 import { PARTS } from "./parts";
@@ -52,6 +53,7 @@ export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
   // The questions while a scan reads don't wait for it, and it doesn't wait for them.
   const steering = !!waiting && "steer" in waiting;
   const { org } = useWords();
+  const sample = useCurrentOrg()?.sample;
   const attached = useAttach((s) => s.items);
   const compose = useCompose();
   // Docs picked for another canvas don't come along.
@@ -107,7 +109,10 @@ export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
           onCancel={() => busy && stopTurn(busy.id)}
           parts={PARTS}
           empty={
-            loaded && (
+            loaded &&
+            (sample ? (
+              <SampleIntro />
+            ) : (
               <div className="flex flex-col gap-[10px] pt-[8px]">
                 <p className="text-body text-fg">Ask what your {org} knows, or bring something to the canvas.</p>
                 <button type="button" className={clsx(r.replyChip, "self-start")} onClick={() => composeIn({ mode: "scan" })}>
@@ -122,7 +127,7 @@ export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
                   ))}
                 </div>
               </div>
-            )
+            ))
           }
           // The box stays at the bottom wherever it shows (with Stop while a goal's look runs before its questions); a round of questions flows after the thread.
           pinned={!waiting || (!!busy && !steering)}

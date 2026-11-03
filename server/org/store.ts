@@ -58,6 +58,8 @@ export interface OrgInfo {
   createdAt: number;
   /** A company or team, or one person on their own idea (src/org/words.ts); none: made before shapes, a team. */
   shape?: OrgShape;
+  /** The project "Try it with a sample" opened (server/org/sample.ts). */
+  sample?: true;
 }
 
 export type OrgEvent = { tab?: string } & (
@@ -242,6 +244,12 @@ export class OrgStore {
   async setShape(shape: OrgShape) {
     if (this.org.shape === shape) return;
     this.org = { ...this.org, shape };
+    await this.write(this.abs("org.json"), stableStringify(this.org));
+    this.emit({ kind: "org" });
+  }
+
+  async markSample() {
+    this.org = { ...this.org, sample: true };
     await this.write(this.abs("org.json"), stableStringify(this.org));
     this.emit({ kind: "org" });
   }
