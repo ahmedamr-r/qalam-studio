@@ -109,8 +109,10 @@ const STOP = formatKeys({ key: "Escape" });
  * The composer, inside a ChatThread. What it takes is the surface's to say: `check` answers why
  * the text can't go yet (shown under it, nothing is sent); `onSend` false puts the text back.
  * `draftKey` changing sets the text to `draft` (what they wrote comes back after Edit or Stop).
- * A surface that takes docs puts its row of sources `above` the text and the picked ones in
- * `attached`, hears files dropped on the box (`onFiles`), and says when docs alone can go (`sendEmpty`).
+ * One row: the text between what adds to it and what sends it, growing upward as it wraps. A surface
+ * that takes docs puts its + in `plus` and the picked ones in `attached`, hears files dropped on the
+ * box (`onFiles`), and says when docs alone can go (`sendEmpty`). `chip` says what the box is set to,
+ * beside the mic; `hint` is a line under the box.
  */
 export function ChatComposer({
   placeholder,
@@ -125,7 +127,8 @@ export function ChatComposer({
   draftKey,
   onKeyDown,
   hint,
-  above,
+  chip,
+  plus,
   attached,
   onFiles,
   sendEmpty,
@@ -142,7 +145,8 @@ export function ChatComposer({
   draftKey: string;
   onKeyDown?: (e: KeyboardEvent<HTMLTextAreaElement>, setText: (t: string) => void) => void;
   hint?: ReactNode;
-  above?: ReactNode;
+  chip?: ReactNode;
+  plus?: ReactNode;
   attached?: ReactNode;
   onFiles?: (files: File[]) => void;
   sendEmpty?: boolean;
@@ -189,44 +193,47 @@ export function ChatComposer({
           });
         }}
       >
-        {above}
-        <ComposerPrimitive.Input
-          ref={input}
-          aria-label={label}
-          placeholder={placeholder}
-          disabled={disabled}
-          submitMode={submit}
-          minRows={submit === "ctrlEnter" ? 3 : 1}
-          maxRows={12}
-          unstable_focusOnRunStart={false}
-          cancelOnEscape={false}
-          dir="auto"
-          className={r.composerInput}
-          onKeyDown={(e) => {
-            if (running && e.key === "Escape") {
-              e.preventDefault();
-              onStop?.();
-              return;
-            }
-            onKeyDown?.(e, (t) => aui.composer.setText(t));
-          }}
-        />
         {attached}
-        <div className={r.composerBar}>
-          <span className="flex min-w-0 flex-1 items-center gap-[6px] truncate text-micro text-fg-subtle">{hint}</span>
-          {!disabled && !running && <MicButton field={input} onText={speechInto(input, (t) => aui.composer.setText(t))} />}
-          {running ? (
-            <button type="button" onClick={onStop} className={clsx(r.buttonBase, r.buttonPrimary, r.stopButton)}>
-              Stop <Kbd keys={STOP} size="sm" onInverse />
-            </button>
-          ) : (
-            <button type="submit" disabled={disabled} aria-label="Send" title={`Send (${(submit === "enter" ? SEND : SEND_LONG).join("")})`} className={clsx(r.iconButtonSm, "bg-inverse text-fg-inverse hover:bg-inverse/90 disabled:bg-hover disabled:text-fg-faint")}>
-              <ArrowUp size={14} strokeWidth={2} />
-            </button>
-          )}
+        <div className={r.composerRow}>
+          {plus}
+          <ComposerPrimitive.Input
+            ref={input}
+            aria-label={label}
+            placeholder={placeholder}
+            disabled={disabled}
+            submitMode={submit}
+            minRows={submit === "ctrlEnter" ? 3 : 1}
+            maxRows={12}
+            unstable_focusOnRunStart={false}
+            cancelOnEscape={false}
+            dir="auto"
+            className={r.composerLine}
+            onKeyDown={(e) => {
+              if (running && e.key === "Escape") {
+                e.preventDefault();
+                onStop?.();
+                return;
+              }
+              onKeyDown?.(e, (t) => aui.composer.setText(t));
+            }}
+          />
+          <span className="flex h-[28px] shrink-0 items-center gap-[4px]">
+            {chip}
+            {!disabled && !running && <MicButton size="md" field={input} onText={speechInto(input, (t) => aui.composer.setText(t))} />}
+            {running ? (
+              <button type="button" onClick={onStop} className={clsx(r.buttonBase, r.buttonPrimary, r.stopButton)}>
+                Stop <Kbd keys={STOP} size="sm" onInverse />
+              </button>
+            ) : (
+              <button type="submit" disabled={disabled} aria-label="Send" title={`Send (${(submit === "enter" ? SEND : SEND_LONG).join("")})`} className={clsx(r.iconButtonBase, "size-[28px] bg-inverse text-fg-inverse hover:bg-inverse/90 hover:text-fg-inverse disabled:bg-hover")}>
+                <ArrowUp size={16} strokeWidth={2} />
+              </button>
+            )}
+          </span>
         </div>
       </ComposerPrimitive.Root>
       {problem && <p className="px-[4px] text-caption text-danger">{problem}</p>}
+      {hint && <p className="-mt-[6px] truncate px-[4px] text-micro text-fg-subtle">{hint}</p>}
     </div>
   );
 }

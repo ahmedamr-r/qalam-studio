@@ -1,27 +1,30 @@
 import { BASES, BASIS_LABEL, isBasis } from "@/discovery/basis";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import clsx from "clsx";
 import * as Popover from "@radix-ui/react-popover";
 import { create } from "zustand";
-import { ChevronDown, ChevronRight, File, FileSpreadsheet, FileText, Folder, Presentation, Search, Upload, X } from "lucide-react";
+import { ChevronRight, File, FileSpreadsheet, FileText, Folder, Import, Plus, Presentation, Search, Settings2, Upload, X } from "lucide-react";
 import type { LookedHit } from "@/connectors/look";
 import { RECIPES, type Hit, type HitType } from "@/connectors/recipes";
 import { ACCEPT } from "@/discovery/ingest/core";
 import { connectorsDb, type ConnectorState } from "@/org/connectors";
+import { placeHref } from "@/projects/model";
 import { QalamAIGlyph } from "../brand/ai-glyph";
 import { ConnectorLogo } from "../brand/ConnectorLogo";
 import { ConnectActions, type View } from "../connections/Connectors";
-import { Button, Checkbox, IconBtn, MenuItem, MenuLabel, Spinner } from "../controls";
+import { Button, Checkbox, IconBtn, Spinner } from "../controls";
+import { Menu, MenuItem, MenuSeparator, SubMenu } from "../menu";
+import { navigate } from "../nav";
 import { r } from "../recipes";
 import { ago } from "../time";
 import { StatusDot } from "../viz";
 import { attachFiles, attachHits, removeAttachment, setBasis, setVoice, sourcesFor, useAttach, wordCount, type DocRef, type SourceFit } from "./attach";
 
 /*
- * Bringing docs into the chat box: a row of the sources that fit what Qalam AI asked (two connectors,
- * this computer, and the rest under More), a picker over the box that browses a connector (what was
- * opened lately, its folders, a search) and connects it first when it isn't yet, and the picked docs
- * as chips in the box, each read as it's picked. Logic in ./attach.ts.
+ * Bringing docs into the chat box: its + (the tools that fit what Qalam AI asked, in a submenu, and
+ * this computer), a picker over the box that browses a connector (what was opened lately, its
+ * folders, a search) and connects it first when it isn't yet, and the picked docs as chips in the
+ * box, each read as it's picked. Logic in ./attach.ts.
  */
 
 const ICON = { size: 14, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
@@ -53,58 +56,45 @@ export function useConnectorView() {
   return { view, checking, setView: (v: View) => useConnectors.setState({ view: v }) };
 }
 
-/** "Bring it from" in the box: the sources that fit, this computer, More; a picked connector opens its picker above the box. */
-export function SourceRow({ fit }: { fit: SourceFit }) {
+/** The box's +: the tools that fit, in a submenu (a picked one opens its picker above the box), this computer, and what else the surface offers. `manage` leads to Connections. */
+export function SourceMenu({ fit, manage = false, children }: { fit: SourceFit; manage?: boolean; children?: ReactNode }) {
   const { view, setView } = useConnectorView();
   const [openId, setOpenId] = useState<string | null>(null);
-  const [more, setMore] = useState(false);
   const file = useRef<HTMLInputElement>(null);
   const list = view ? sourcesFor(fit, view.connectors) : [];
   const open = openId ? (view?.connectors.find((c) => c.id === openId) ?? null) : null;
-  const pick = (c: ConnectorState) => {
-    setMore(false);
-    setOpenId(c.id);
-  };
   return (
     <Popover.Root open={!!open} onOpenChange={(o) => !o && setOpenId(null)}>
       <Popover.Anchor asChild>
-        <div role="group" aria-label="Bring it from" className="flex flex-wrap items-center gap-[6px] border-b border-line-subtle px-[10px] py-[8px]">
-          <span className="mr-[2px] text-micro text-fg-subtle">Bring it from</span>
-          {!view && <span className={clsx(r.skeleton, "h-[24px] w-[140px]")} aria-hidden />}
-          {list.slice(0, 2).map((c) => (
-            <button key={c.id} type="button" className={r.composerPill} aria-expanded={openId === c.id} onClick={() => pick(c)}>
-              <ConnectorLogo id={c.id} size={16} decorative />
-              {c.label}
-            </button>
-          ))}
-          <button type="button" className={r.composerPill} onClick={() => file.current?.click()}>
-            <Upload {...ICON} size={12} />
-            This computer
-          </button>
-          <input
-            ref={file}
-            type="file"
-            multiple
-            accept={ACCEPT}
-            hidden
-            onChange={(e) => {
-              const files = Array.from(e.target.files ?? []);
-              e.target.value = "";
-              if (files.length) attachFiles(files);
-            }}
-          />
-          {list.length > 2 && (
-            <Popover.Root open={more} onOpenChange={setMore}>
-              <Popover.Trigger asChild>
-                <button type="button" className={r.composerPill}>
-                  More <ChevronDown {...ICON} size={12} />
-                </button>
-              </Popover.Trigger>
-              <Popover.Portal>
-                <Popover.Content side="top" align="start" sideOffset={6} collisionPadding={12} className={clsx(r.menu, "w-[240px]")}>
-                  <MenuLabel>Bring it from</MenuLabel>
+        <span className="flex shrink-0">
+          <Menu
+            label="Add to the message"
+            side="top"
+            sideOffset={12}
+            alignOffset={-6}
+            className="w-[240px]"
+            trigger={
+              <button type="button" aria-label="Add docs" title="Add docs" className={r.iconButton}>
+                <Plus {...ICON} size={16} />
+              </button>
+            }
+          >
+            {(!view || list.length > 0) && (
+              <SubMenu
+                label="Bring it from"
+                icon={<Import {...ICON} />}
+                trailing={
+                  <span className="flex shrink-0 items-center gap-[4px]">
+                    {list.slice(0, 2).map((c) => (
+                      <ConnectorLogo key={c.id} id={c.id} size={16} decorative />
+                    ))}
+                  </span>
+                }
+              >
+                <div className="w-[260px]">
+                  {!view && <MenuItem disabled="Still asking which tools are here" onSelect={() => {}}>Finding your tools…</MenuItem>}
                   {list.map((c) => (
-                    <MenuItem key={c.id} icon={<ConnectorLogo id={c.id} size={16} decorative />} onSelect={() => pick(c)}>
+                    <MenuItem key={c.id} icon={<ConnectorLogo id={c.id} size={16} decorative />} onSelect={() => setOpenId(c.id)}>
                       <span className="flex items-center gap-[8px]">
                         <span className="min-w-0 flex-1 truncate">{c.label}</span>
                         <span className="inline-flex shrink-0 items-center gap-[4px] text-micro text-fg-subtle">
@@ -114,24 +104,55 @@ export function SourceRow({ fit }: { fit: SourceFit }) {
                       </span>
                     </MenuItem>
                   ))}
-                </Popover.Content>
-              </Popover.Portal>
-            </Popover.Root>
-          )}
-        </div>
+                  {manage && (
+                    <>
+                      <MenuSeparator />
+                      <MenuItem icon={<Settings2 {...ICON} />} onSelect={() => navigate(placeHref("connections"))}>
+                        Manage connections
+                      </MenuItem>
+                    </>
+                  )}
+                </div>
+              </SubMenu>
+            )}
+            <MenuItem icon={<Upload {...ICON} />} onSelect={() => file.current?.click()}>
+              Upload from computer
+            </MenuItem>
+            {children && (
+              <>
+                <MenuSeparator />
+                {children}
+              </>
+            )}
+          </Menu>
+        </span>
       </Popover.Anchor>
+      {/* Outside the menu, which is gone by the time the file dialog answers. */}
+      <input
+        ref={file}
+        type="file"
+        multiple
+        accept={ACCEPT}
+        hidden
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? []);
+          e.target.value = "";
+          if (files.length) attachFiles(files);
+        }}
+      />
       <Popover.Portal>
         <Popover.Content
           side="top"
           align="start"
-          sideOffset={8}
+          sideOffset={12}
+          alignOffset={-6}
           collisionPadding={12}
           aria-label={open ? `Pick from ${open.label}` : undefined}
           // Opening a folder replaces the row that had focus: that isn't leaving the picker. Escape, ×, Cancel or a click outside close it.
           onFocusOutside={(e) => e.preventDefault()}
           // The picker is the box's child in React's tree (a portal), so its search or token form's submit would reach the box and send the chat.
           onSubmit={(e) => e.stopPropagation()}
-          className={clsx(r.popover, "flex max-h-[min(440px,calc(100vh-120px))] w-[var(--radix-popover-trigger-width)] min-w-[320px] flex-col overflow-hidden p-0")}
+          className={clsx(r.popover, "flex max-h-[min(440px,calc(100vh-120px))] w-[360px] max-w-[calc(100vw-24px)] flex-col overflow-hidden p-0")}
         >
           {open && <Picker key={open.id} c={open} onView={setView} onClose={() => setOpenId(null)} />}
         </Popover.Content>
@@ -443,7 +464,7 @@ export function AttachmentChips({ voices = false, kinds = false }: { voices?: bo
   const items = useAttach((s) => s.items);
   if (!items.length) return null;
   return (
-    <ul aria-label="Docs to send" className="flex flex-wrap gap-[6px] px-[10px] pb-[2px]">
+    <ul aria-label="Docs to send" className="flex flex-wrap gap-[6px] px-[8px] pt-[8px]">
       {items.map((a) => (
         <li
           key={a.key}
