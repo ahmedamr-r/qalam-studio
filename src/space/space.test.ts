@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { produce } from "immer";
 import type { Doc } from "@/doc/schema";
 import { emptyDoc } from "@/doc/schema";
+import { isOstCard } from "@/doc/board";
+import { worldBounds } from "@/doc/geometry";
 import { addCardIn, makeCardNode, newCard } from "@/discovery/ops";
 import type { OstKind } from "@/discovery/types";
 import type { Bearing } from "@/goals/bearings";
@@ -342,6 +344,26 @@ describe("composed as the map was", () => {
     expect(g.doc.roots).toEqual(["o1", "q1", "topic:none:late"]);
     expect(g.doc.nodes.ns).toBeUndefined();
     expect(g.tags.get("o1")).toBeUndefined();
+  });
+
+  it("makes room for a brief's tile under its card, so it lands on nothing, and none under a fold", () => {
+    const card = "o1";
+    const on = (o: { briefs?: ReadonlySet<string> }) => layoutSpace(m.doc, { column: (id) => id.startsWith("topic:none:"), isGoal: (id) => m.things.get(id)?.type === "goal", ...o });
+    const { doc, slots } = on({ briefs: new Set([card]) });
+    const tile = slots.get(`brief:${card}`)!;
+    const parent = worldBounds(doc, card);
+    expect(tile.y).toBeGreaterThanOrEqual(parent.y + parent.h);
+    // Under its card, and clear of every other card.
+    for (const id of Object.keys(doc.nodes)) {
+      if (!isOstCard(doc.nodes[id]) || !doc.nodes[id].visible) continue;
+      const b = worldBounds(doc, id);
+      expect(tile.x + tile.w <= b.x || b.x + b.w <= tile.x || tile.y + tile.h <= b.y || b.y + b.h <= tile.y).toBe(true);
+    }
+    expect(on({}).slots.has(`brief:${card}`)).toBe(false);
+    const folded = produce(m.doc, (d) => {
+      d.nodes[card].meta.ost!.collapsed = true;
+    });
+    expect(layoutSpace(folded, { briefs: new Set([card]) }).slots.has(`brief:${card}`)).toBe(false);
   });
 
   it("lays the trees side by side, none over another, the column on the right, and a goal's lane at the left of its own cards", async () => {

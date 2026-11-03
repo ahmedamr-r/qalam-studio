@@ -35,7 +35,7 @@ import { useTopics } from "../../topics/list";
 import { useWords } from "../../frame/store";
 import { show } from "../links";
 import { FoundGoalRow } from "../../chat/FoundGoalRow";
-import { anotherFile, briefStart, changeDocBasis, chooseDraft, decideDocGoal, dropTurn, leaveFile, leaveFit, lookPastFits, openProblems, pickAudience, placeFirstBuild, placeStatement, planAgain, planFirst, planOf, planStart, retake, retryGoalFor, scanAgain, scanHere, scanInNewProject, scanIsMine, scanOtherWay, setPlanGoal, settleNumber, steerOff, stopTurn, takeAsBasis, takeFit, takeGoalNumber, takeIdea, turnOf, useCanvasChat } from "./store";
+import { anotherFile, briefAgain, briefStart, changeDocBasis, chooseDraft, decideDocGoal, dropTurn, leaveFile, leaveFit, lookPastFits, openProblems, pickAudience, placeFirstBuild, placeStatement, planAgain, planFirst, planOf, planStart, retake, retryGoalFor, scanAgain, scanHere, scanInNewProject, scanIsMine, scanOtherWay, setPlanGoal, settleNumber, steerOff, stopTurn, takeAsBasis, takeFit, takeGoalNumber, takeIdea, turnOf, useCanvasChat } from "./store";
 import { titleFrom } from "@/space/route";
 import { otherReading, projectName } from "@/scan/input";
 import { firstGoal, GOAL_ACTIONS, riskiest, type GoalAction, type ScanAudience } from "@/scan/plan";
@@ -44,7 +44,9 @@ import { cardQuotes, readLine, reportHtml, type ReportData, type ShareProblem } 
 import { scanShare } from "@/org/scan";
 import { shareCardPng } from "@/engine/share-card";
 import { isOff } from "@/scan/steer";
-import type { ScanJob, ScanPlan } from "@/space/chat";
+import type { BriefState, ScanJob, ScanPlan } from "@/space/chat";
+import { getBrief } from "@/org/briefs";
+import { openBrief, useBriefs } from "../../discovery/briefs";
 import { addMaterial } from "../new";
 import { goalNumberLine, withUnit } from "@/goals/moves";
 import type { Benchmark } from "@/goals/outside";
@@ -1441,15 +1443,8 @@ function PickedStep({ id, plan }: { id: string; plan: ScanPlan }) {
               Put it on the canvas
             </button>
           )}
-          <button type="button" className={placed ? r.replyChipPrimary : r.replyChip} onClick={() => briefStart(id)}>
+          <button type="button" className={placed ? r.replyChipPrimary : r.replyChip} onClick={() => void briefStart(id)}>
             Write a brief for your coding agent
-          </button>
-        </ReplyChips>
-      )}
-      {!placed && plan.brief && plan.brief.step !== "asking" && plan.brief.step !== "writing" && (
-        <ReplyChips>
-          <button type="button" className={r.replyChip} onClick={() => void placeFirstBuild(id)}>
-            Put it on the canvas
           </button>
         </ReplyChips>
       )}
@@ -1457,10 +1452,11 @@ function PickedStep({ id, plan }: { id: string; plan: ScanPlan }) {
   );
 }
 
-/** The brief: being written, then ready to hand over. */
-function BriefStep({ id, brief }: { id: string; brief: NonNullable<ScanPlan["brief"]> }) {
+/** A brief: what it lacks, being written, then a tile on the canvas to open or copy. */
+function BriefStep({ id, brief }: { id: string; brief: BriefState }) {
   const [copied, setCopied] = useState(false);
   const started = useCanvasChat((s) => s.live[id]?.started);
+  const kept = useBriefs((s) => s.list.some((b) => b.id === brief.id));
   if (brief.step === "asking") return <p className="text-body text-fg">A few things for the brief. Skip any you can't answer.</p>;
   if (brief.step === "writing") return <Progress label="Writing the brief" started={started ?? Date.now()} tokens={0} note="This takes under a minute." />;
   if (brief.step === "failed")
@@ -1468,35 +1464,51 @@ function BriefStep({ id, brief }: { id: string; brief: NonNullable<ScanPlan["bri
       <div className="flex flex-col gap-[6px]">
         <p className="text-body text-fg">{brief.error === "You stopped it." ? "You stopped it." : `I couldn't write it: ${brief.error ?? "something went wrong"}`}</p>
         <ReplyChips>
-          <button type="button" className={r.replyChip} onClick={() => briefStart(id)}>
+          <button type="button" className={r.replyChip} onClick={() => briefAgain(id)}>
             Try again
           </button>
         </ReplyChips>
       </div>
     );
-  const text = brief.markdown ?? "";
+  if (!kept)
+    return (
+      <div className="flex flex-col gap-[6px]">
+        <p className="text-body text-fg-muted">This brief has been taken off the canvas.</p>
+        <ReplyChips>
+          <button type="button" className={r.replyChip} onClick={() => briefAgain(id)}>
+            Write it again
+          </button>
+        </ReplyChips>
+      </div>
+    );
   const copy = () =>
-    void navigator.clipboard.writeText(text).then(() => {
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1600);
-    });
+    brief.id &&
+    void getBrief(brief.id)
+      .then((b) => navigator.clipboard.writeText(b.body))
+      .then(() => {
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1600);
+      });
   return (
     <div className="flex flex-col gap-[6px]">
-      <p className="text-body text-fg">The brief is ready. Paste it into your coding agent, or point it at the file.</p>
-      {brief.file && <p className="break-all text-caption text-fg-muted">{brief.file}</p>}
-      <details className="rounded-lg px-[10px] text-caption shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
-        <summary className="flex h-[30px] cursor-pointer list-none items-center font-medium text-fg-muted hover:text-fg [&::-webkit-details-marker]:hidden">Read it</summary>
-        <pre className="max-h-[320px] overflow-auto whitespace-pre-wrap pb-[10px] font-sans text-caption text-fg" dir="auto">
-          {text}
-        </pre>
-      </details>
-      <ReplyChips>
-        <button type="button" className={r.replyChipPrimary} onClick={copy}>
-          {copied ? "Copied" : "Copy the brief"}
-        </button>
-      </ReplyChips>
+      <p className="text-body text-fg">The brief is on the canvas, under its card. Click it there to read it.</p>
+      {brief.id && (
+        <ReplyChips>
+          <button type="button" className={r.replyChipPrimary} onClick={() => openBrief(brief.id!)}>
+            Open it
+          </button>
+          <button type="button" className={r.replyChip} onClick={copy}>
+            {copied ? "Copied" : "Copy for your coding agent"}
+          </button>
+        </ReplyChips>
+      )}
     </div>
   );
+}
+
+function BriefPart({ data }: { data: PartData }) {
+  const t = useTurn(data.turn);
+  return t?.job.kind === "brief" ? <BriefStep id={t.id} brief={t.job.brief} /> : null;
 }
 
 /** From a scan's problems to what to build first, the step it's on and what's settled. */
@@ -1544,6 +1556,7 @@ function ScanAgainPart({ data }: { data: PartData }) {
 }
 
 export const PARTS: Record<string, PartComponent> = {
+  brief: BriefPart,
   scanning: ScanningPart,
   scanned: ScannedPart,
   scanAgain: ScanAgainPart,

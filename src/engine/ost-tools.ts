@@ -42,6 +42,7 @@ import { cardWork, type WorkStatus } from "@/connectors/work";
 import { laneOf, litBy, NO_LANE, type Lane, type LaneFeed, type LaneItem } from "@/discovery/lane";
 import { useGoals } from "@/goals/client";
 import { useFeeds, wireFeed, wiredCards } from "@/ui/discovery/feeds";
+import { useBriefs } from "@/ui/discovery/briefs";
 import { SOURCE, sourceTile } from "@/discovery/look";
 import { quotable, type SourceRecord } from "@/discovery/sources";
 import { sourceOf, useSources } from "@/ui/discovery/sources";
@@ -49,7 +50,7 @@ import type { LaneRender } from "./lane-painter";
 import { openSource } from "@/ui/discovery/sources";
 
 /** The board's sources lane, its feeds among them (kept while the document, its sources and feeds are the same; none with the view option off). */
-let laneMemo: { doc: Doc; list: SourceRecord[]; visiting: SourceRecord[]; feeds: unknown; news: unknown; goals: unknown; groups: unknown; lane: Lane } | null = null;
+let laneMemo: { doc: Doc; list: SourceRecord[]; visiting: SourceRecord[]; feeds: unknown; news: unknown; goals: unknown; groups: unknown; briefs: unknown; slots: unknown; lane: Lane } | null = null;
 export function boardLane(): Lane {
   const s = studio();
   if (!s.view.sources) return NO_LANE;
@@ -59,7 +60,8 @@ export function boardLane(): Lane {
   // A space's canvas: one lane per goal's own cards, in the column its layout kept for it.
   const space = useSpaceView.getState();
   const groups = space.active ? space.groups : undefined;
-  if (laneMemo?.doc === s.doc && laneMemo.list === list && laneMemo.visiting === visiting && laneMemo.feeds === feeds && laneMemo.news === news && laneMemo.goals === goals && laneMemo.groups === groups) return laneMemo.lane;
+  const briefs = useBriefs.getState().list;
+  if (laneMemo?.doc === s.doc && laneMemo.list === list && laneMemo.visiting === visiting && laneMemo.feeds === feeds && laneMemo.news === news && laneMemo.goals === goals && laneMemo.groups === groups && laneMemo.briefs === briefs && laneMemo.slots === space.slots) return laneMemo.lane;
   const laneFeeds: LaneFeed[] = board
     ? feeds.map((f) => {
         const n = news[f.id];
@@ -72,7 +74,13 @@ export function boardLane(): Lane {
     const slot = space.slots.get(g.head);
     return slot ? { ...g, x: slot.x, top: slot.y } : g;
   });
-  laneMemo = { doc: s.doc, list, visiting, feeds, news, goals, groups, lane: laneOf(s.doc, [...list, ...visiting], placed, laneFeeds) };
+  const laneBriefs = space.active
+    ? briefs.flatMap((b) => {
+        const at = space.slots.get(`brief:${b.card}`);
+        return at ? [{ id: b.id, card: b.card, title: b.title, line: b.features ? `Brief · ${b.features} ${b.features === 1 ? "feature" : "features"}` : "Brief", x: at.x, y: at.y }] : [];
+      })
+    : [];
+  laneMemo = { doc: s.doc, list, visiting, feeds, news, goals, groups, briefs, slots: space.slots, lane: laneOf(s.doc, [...list, ...visiting], placed, laneFeeds, laneBriefs) };
   return laneMemo.lane;
 }
 
@@ -86,6 +94,8 @@ function portAt(world: Pt): LaneItem | null {
   const r = Math.max(SOURCE.port * 2, 8 / studio().camera.zoom);
   return (
     boardLane().items.find((i) => {
+      // A brief came out of its card: nothing to draw a cord from.
+      if (i.brief) return false;
       const { port } = sourceTile(i);
       return Math.hypot(world.x - port.x, world.y - port.y) <= r;
     }) ?? null

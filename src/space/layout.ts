@@ -13,7 +13,8 @@ import { TREE_GAP } from "@/discovery/pass";
  * problems no goal covers in a column on the right. Worked out after every edit and never kept,
  * so a board's file never changes for where a card sits on the canvas. With `lanes` (how many
  * sources each goal's lane holds), each goal keeps a column at the left of its own cards for its
- * lane, so no lane lands on another tree; `slots` says where each one is.
+ * lane, so no lane lands on another tree; `slots` says where each one is, and where a brief's tile
+ * goes under its card (`briefs`, kept as `brief:<card>`).
  */
 
 export interface LayoutOptions {
@@ -22,6 +23,8 @@ export interface LayoutOptions {
   /** Goals' cards: a goal's lane runs only as deep as its own cards, not its sub-goals'. */
   isGoal?: (id: string) => boolean;
   lanes?: ReadonlyMap<string, number>;
+  /** Cards with a brief: its tile hangs under the card, before what's under it. */
+  briefs?: ReadonlySet<string>;
 }
 
 /** What a goal's sources lane takes on its left, as the layout keeps room for it. */
@@ -59,6 +62,7 @@ export function layoutSpace(doc: Doc, o: LayoutOptions = {}): { doc: Doc; slots:
     const n = d.nodes[id] as FrameNode;
     const box = cardBox(n.meta.ost!);
     const kids = n.meta.ost!.collapsed ? [] : own(id).map(layoutNode);
+    if (o.briefs?.has(id) && !n.meta.ost!.collapsed) kids.unshift({ id: `brief:${id}`, w: LANE_W, h: LANE_ITEM_H, kids: [] });
     const rows = o.lanes?.get(id) ?? 0;
     // The lane's column, first among its children: the goal's own cards start right of it.
     if (rows && kids.length) kids.unshift({ id: `lane:${id}`, w: LANE_ROOM, h: Math.max(rows * (LANE_ITEM_H + LANE_ROW_GAP), depthOf(id)), kids: [] });
@@ -70,6 +74,7 @@ export function layoutSpace(doc: Doc, o: LayoutOptions = {}): { doc: Doc; slots:
     for (const k of t.kids) {
       const p = at.get(k.id)!;
       if (k.id.startsWith("lane:")) slots.set(k.id.slice(5), { x: origin.x + p.x, y: origin.y + p.y, w: LANE_W, h: k.h });
+      else if (k.id.startsWith("brief:")) slots.set(k.id, { x: origin.x + p.x, y: origin.y + p.y, w: k.w, h: k.h });
       else place(k, at, p, abs, origin);
     }
     // Everything under a fold is hidden (and keeps its last place).

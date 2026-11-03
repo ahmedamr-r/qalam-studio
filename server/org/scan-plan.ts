@@ -7,8 +7,8 @@ import type { Drafted, SolutionDraft } from "@/discovery/solutions";
 import { needLine } from "@/hub/needs";
 import { emptyFiling } from "@/hub/topics";
 import type { ShareProblem } from "@/scan/share";
-import { audiencesMaterial, firstPickMaterial, problemFor, sanitizeAudiences, sanitizeFirstPick, scanRound, type FirstPick, type PlanProblem, type PlanWord, type ScanAudience } from "@/scan/plan";
-import { briefMarkdown, briefMaterial, sanitizeBrief, type BriefAsked, type BriefFeature } from "@/scan/brief";
+import { audiencesMaterial, firstPickMaterial, problemFor, riskiest, sanitizeAudiences, sanitizeFirstPick, scanRound, type FirstPick, type PlanProblem, type PlanWord, type ScanAudience } from "@/scan/plan";
+import { briefMarkdown, briefMaterial, sanitizeBrief, type BriefAsked, type BriefFeature, type BriefMeta } from "@/discovery/brief";
 import type { ScanKnown, ScanTarget } from "@/scan/session";
 import { notAsked, toldLines, type ScanSaid } from "@/scan/steer";
 import { sanitizeFindQuestions } from "@/space/find";
@@ -140,27 +140,24 @@ export async function firstBuild(store: OrgStore, o: { target: ScanTarget; sourc
   return { topic: problem.id, problem: problem.title, drafts: d.drafts, quotes: d.quotes, pick, note: d.note };
 }
 
-export interface WrittenBrief {
-  /** Where it is, inside the organization. */
-  file: string;
-  markdown: string;
-  features: BriefFeature[];
-}
+const quoteOf = (w: PlanWord) => ({ text: w.text, source: w.source, ...(w.origin ? { url: w.origin } : {}) });
 
 /**
- * The brief for what they decided to build first: what's decided put in by code, read from what's kept
- * rather than from the request, and one call for the features. A call that fails leaves a brief without
- * them: everything people said and everything decided still stands, and that's most of it.
+ * The brief for what they decided to build first, a file with a tile under its solution's card: what's
+ * decided put in by code, read from what's kept rather than from the request, and one call for the
+ * features. A call that fails leaves a brief without them: everything people said and everything
+ * decided still stands, and that's most of it.
  */
-export async function writeBrief(store: OrgStore, o: { target: ScanTarget; sources: readonly string[]; topic: string; draft: string; audience: string; about?: string; goal: { title: string; metric: string }; answers: string; why: string; later: readonly { draft: string; why: string }[]; asked: BriefAsked; known: readonly ScanKnown[] }, signal?: AbortSignal, deps: ScanPlanDeps = liveDeps): Promise<WrittenBrief | null> {
+export async function writeBrief(store: OrgStore, o: { target: ScanTarget; sources: readonly string[]; card: string; topic: string; draft: string; audience: string; about?: string; goal: { title: string; metric: string }; answers: string; why: string; later: readonly { draft: string; why: string }[]; asked: BriefAsked; known: readonly ScanKnown[] }, signal?: AbortSignal, deps: ScanPlanDeps = liveDeps): Promise<BriefMeta | null> {
   const [file, topic] = await Promise.all([store.getSolutions(o.topic), store.getTopic(o.topic)]);
   const draft = file?.drafts.find((d) => d.id === o.draft);
   if (!draft || !topic) return null;
   const { problems, words, published } = await planMaterial(store, o.sources);
   const problem = problems.find((p) => p.id === o.topic) ?? { id: topic.id, title: topic.title, lines: topic.lines.filter((l) => l.section !== "against" && l.section !== "open").map((l) => l.text).slice(0, 12), cites: [] };
   const own = new Set(problem.cites);
-  const theirs = words.filter((w) => own.has(w.ref));
-  const m = briefMaterial({ target: o.target, audience: o.audience, goal: o.goal.title, answers: o.answers, asked: o.asked, problem, words: theirs, draft, published });
+  const theirs = words.filter((w) => own.has(w.ref)).map(quoteOf);
+  const wrong = riskiest(draft);
+  const m = briefMaterial({ about: o.target.kind === "idea" ? `What they want to build: ${o.target.said}` : `The product: ${o.target.name}`, audience: o.audience, goal: o.goal.title, answers: o.answers, asked: o.asked, problems: [problem], words: theirs, build: { title: draft.title, description: draft.description, assumptions: draft.assumptions.map((a) => a.text), test: draft.test }, published });
   let features: BriefFeature[] = [];
   if (theirs.length) {
     try {
@@ -173,22 +170,22 @@ export async function writeBrief(store: OrgStore, o: { target: ScanTarget; sourc
     }
   }
   const titleOf = (id: string) => file?.drafts.find((d) => d.id === id)?.title ?? "";
-  const markdown = briefMarkdown({
-    target: o.target,
-    at: Date.now(),
+  const at = Date.now();
+  const body = briefMarkdown({
+    at,
+    title: draft.title,
     audience: o.audience,
     ...(o.about ? { about: o.about } : {}),
     goal: o.goal,
-    problem: { title: topic.title, lines: problem.lines, open: topic.lines.filter((l) => l.section === "open").map((l) => l.text) },
-    quotes: theirs.map((w) => ({ text: w.text, source: w.source, ...(w.origin ? { url: w.origin } : {}) })),
-    draft,
-    why: o.why,
+    problems: [{ title: topic.title, lines: problem.lines, open: topic.lines.filter((l) => l.section === "open").map((l) => l.text) }],
+    quotes: theirs,
+    build: { title: draft.title, description: draft.description, ...(o.why ? { why: o.why } : {}), ...(wrong ? { wrong: wrong.text } : {}), test: draft.test },
     later: o.later.map((l) => ({ title: titleOf(l.draft), why: l.why })).filter((l) => l.title),
     features,
     asked: o.asked,
     known: o.known,
   });
-  return { file: await store.putBrief(draft.title, markdown), markdown, features };
+  return store.putBrief({ card: o.card, kind: "solution", title: draft.title, at, features: features.length }, body);
 }
 
 /** The problems as a card or a report shows them, best backed first, from people's words alone. */

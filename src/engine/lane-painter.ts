@@ -109,22 +109,25 @@ export class LanePainter {
       const a = items.get(e.from);
       if (!a || !doc.nodes[e.to]) continue;
       const b = worldBounds(doc, e.to);
-      const { port } = sourceTile(a);
-      const x1 = port.x;
-      const y1 = port.y;
-      const x2 = b.x;
-      const y2 = b.y + Math.min(b.h / 2, WIRE.enter);
+      const tile = sourceTile(a);
+      // A brief's wire comes down from the bottom of its card to the top of its tile; a source's, out of its port into the card.
+      const down = e.kind === "brief";
+      const x1 = down ? b.x + b.w / 2 : tile.port.x;
+      const y1 = down ? b.y + b.h : tile.port.y;
+      const x2 = down ? tile.x + tile.s / 2 : b.x;
+      const y2 = down ? tile.y : b.y + Math.min(b.h / 2, WIRE.enter);
       const lit = r.lit?.edges.has(e.id) ?? false;
       const dim = !!r.lit && !lit;
       const color = this.col(lit ? p.selection : p.line, dim ? WIRE.dim : 1);
       const path = new this.ck.PathBuilder();
       path.moveTo(x1, y1);
-      path.cubicTo(...wireCurve(x1, y1, x2, y2), x2, y2);
+      if (down) path.cubicTo(x1, y1 + (y2 - y1) / 2, x2, y1 + (y2 - y1) / 2, x2, y2);
+      else path.cubicTo(...wireCurve(x1, y1, x2, y2), x2, y2);
       const built = path.detachAndDelete();
       this.stroke.setColor(color);
       this.stroke.setStrokeWidth((lit ? WIRE.lit : WIRE.width) / Math.min(1, zoom));
-      // A feed's cord: it watches for the card, its words aren't on it yet.
-      const dash = e.kind === "feed" ? this.ck.PathEffect.MakeDash(FEED.dash.map((d) => d / Math.min(1, zoom)), 0) : null;
+      // A feed's cord: it watches for the card, its words aren't on it yet. A brief's: it came out of the card, it isn't one of its cards.
+      const dash = e.kind === "feed" || e.kind === "brief" ? this.ck.PathEffect.MakeDash(FEED.dash.map((d) => d / Math.min(1, zoom)), 0) : null;
       this.stroke.setPathEffect(dash);
       canvas.drawPath(built, this.stroke);
       this.stroke.setPathEffect(null);
@@ -199,11 +202,13 @@ export class LanePainter {
       canvas.drawLine(t.x + R, t.y + 1.5, t.x + t.s - R, t.y + 1.5, this.stroke);
     }
     this.mark(canvas, it.mark, t.x + t.s / 2, t.y + t.s / 2);
-    // Its port, on the right edge, where its wires leave.
-    this.fill.setColor(this.col(p.card));
-    canvas.drawCircle(t.port.x, t.port.y, SOURCE.port + 1.5, this.fill);
-    this.fill.setColor(this.col(hot ? p.selection : p.line));
-    canvas.drawCircle(t.port.x, t.port.y, SOURCE.port, this.fill);
+    // Its port, on the right edge, where its wires leave (a brief's wire comes in from above: it has none).
+    if (!it.brief) {
+      this.fill.setColor(this.col(p.card));
+      canvas.drawCircle(t.port.x, t.port.y, SOURCE.port + 1.5, this.fill);
+      this.fill.setColor(this.col(hot ? p.selection : p.line));
+      canvas.drawCircle(t.port.x, t.port.y, SOURCE.port, this.fill);
+    }
     // A feed's count of what's new, on the tile's corner.
     if (it.feed?.fresh && !it.feed.off) {
       const r = FEED.badge / 2;

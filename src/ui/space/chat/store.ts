@@ -13,7 +13,7 @@ import { askOrganization } from "@/org/ask";
 import { captureIngested, decideFoundGoal, setSourceBasis } from "@/org/capture";
 import { orgFetch, orgJson } from "@/org/client";
 import type { Ingested } from "@/discovery/ingest/core";
-import { chatKey, chatOf, emptyChat, withJob, withTurn, type CanvasChat, type ChatDoc, type ChatJob, type ChatTurn, type FiledPage, type FocusGoal, type GoalForJob, type GoalForOn, type ScanJob, type ScanPlan, type TakenDoc } from "@/space/chat";
+import { chatKey, chatOf, emptyChat, withJob, withTurn, type CanvasChat, type ChatDoc, type ChatJob, type ChatTurn, type FiledPage, type FocusGoal, type GoalForJob, type GoalForOn, type BriefState, type ScanJob, type ScanPlan, type TakenDoc } from "@/space/chat";
 import { cardForPage, pageOf } from "@/space/pages";
 import { DUMP_WORDS, routeOf, titleFrom, wordsIn, type ChatMode } from "@/space/route";
 import { FIND_MIN, findRound, findText, findTranscript, type FindWhat } from "@/space/find";
@@ -28,7 +28,11 @@ import { onOrgChange } from "@/org/live";
 import { otherReading, requestOf, scanInput } from "@/scan/input";
 import type { ScanTarget } from "@/scan/session";
 import { notAsked, steerAnswers, steerRound, type ScanSaid } from "@/scan/steer";
-import { briefRound } from "@/scan/brief";
+import { briefRound, type BriefAsked } from "@/discovery/brief";
+import { writeCardBrief } from "@/org/briefs";
+import { briefRequest } from "../../discovery/brief-request";
+import { loadBriefs } from "../../discovery/briefs";
+import { glideToLayer, onCanvasReady } from "../../discovery/canvas";
 import { firstBuild, writeBrief, keepAnswers, keepAudience, planAudiences, planQuestions, scanNow, startScan, steerQuestions, steerScan, stopScan } from "@/org/scan";
 import { firstGoal, sameTarget, scanRound, SUGGESTED_GOAL, type GoalAction, type ScanAudience } from "@/scan/plan";
 import { projectName } from "@/scan/input";
@@ -400,48 +404,84 @@ export async function answerPlan(id: string, answers: Readonly<Record<string, st
   }
 }
 
-/** The brief for whoever builds it: what it lacks first, in the box. */
-export function briefStart(id: string) {
-  plan(id, (p) => ({ ...p, brief: { step: "asking", questions: briefRound() } }));
+// A brief: what it lacks first, in the box, then written, then a tile under its card.
+
+const briefNow = (id: string) => {
+  const j = turnOf(id)?.job;
+  return j?.kind === "brief" ? j.brief : j?.kind === "scan" ? j.plan?.brief : undefined;
+};
+const setBrief = (id: string, brief: BriefState) => change((c) => withJob(c, id, (j) => (j.kind === "brief" ? { ...j, brief } : j.kind === "scan" && j.plan ? { ...j, plan: { ...j.plan, brief } } : j)));
+
+/** A brief for a card on the canvas (a goal, a problem or a solution), asked in the chat. */
+export function briefFor(card: string) {
+  toggleChat(true);
+  if (!st().loaded) return;
+  const open = st().chat.turns.some((t) => t.job.kind === "brief" && t.job.card === card && (t.job.brief.step === "asking" || t.job.brief.step === "writing"));
+  if (open) return;
+  const title = cardTitle(card);
+  addTurn(`Write a brief for “${title}”`, { kind: "brief", card, title, brief: { step: "asking", questions: briefRound() } });
 }
 
-export const briefQuestionsOf = (id: string) => scanJob(id)?.plan?.brief?.questions ?? briefRound();
+/** A scan's first pick: on the canvas first, since a brief's tile hangs under its card. */
+export async function briefStart(id: string) {
+  if (scanJob(id)?.plan?.step !== "placed") await placeFirstBuild(id);
+  if (scanJob(id)?.plan?.step === "placed") setBrief(id, { step: "asking", questions: briefRound() });
+}
+
+/** Asked again: what it lacks, again. */
+export const briefAgain = (id: string) => setBrief(id, { step: "asking", questions: briefRound() });
+
+export const briefQuestionsOf = (id: string) => briefNow(id)?.questions ?? briefRound();
 
 /** Their answers, then the brief: what's decided, and the features one call works out. Everything may be skipped. */
-export async function answerBrief(id: string, asked: Readonly<Record<string, string>>) {
-  const j = scanJob(id);
-  const p = j?.plan;
-  const d = p?.build?.drafts.find((x) => x.id === p.chosen);
-  if (!j || !p?.build || !p.audience || !p.goal || !d) return;
-  plan(id, (x) => ({ ...x, brief: { step: "writing" } }));
-  const pick = p.build.pick;
-  const others = p.build.drafts.filter((x) => x.id !== d.id);
-  const goal = firstGoal(p.audience.name, p.goal.action, p.goal.reach, p.goal.of);
+export async function answerBrief(id: string, answers: Readonly<Record<string, string>>) {
+  const job = turnOf(id)?.job;
+  if (!job) return;
+  const asked: BriefAsked = { ...(answers.platform ? { platform: answers.platform } : {}), ...(answers.exists ? { exists: answers.exists } : {}), ...(answers.needs ? { needs: answers.needs } : {}) };
+  setBrief(id, { step: "writing" });
   const ctrl = begin(id);
   try {
-    const about = p.audiences?.find((a) => a.name === p.audience?.name)?.about;
-    const brief = await writeBrief(
-      {
-        ...planOf(j),
-        topic: p.build.topic,
-        draft: d.id,
-        audience: p.audience.name,
-        ...(about ? { about } : {}),
-        goal: { title: goal.title, metric: goal.metric },
-        answers: p.answers ?? "",
-        why: pick?.draft === d.id ? pick.why : "",
-        later: others.map((x) => ({ draft: x.id, why: pick?.later.find((l) => l.draft === x.id)?.why ?? "" })),
-        asked: { ...(asked.platform ? { platform: asked.platform } : {}), ...(asked.exists ? { exists: asked.exists } : {}), ...(asked.needs ? { needs: asked.needs } : {}) },
-        known: j.session?.known ?? [],
-      },
-      ctrl.signal,
-    );
-    plan(id, (x) => ({ ...x, brief: brief ? { step: "ready", file: brief.file, markdown: brief.markdown } : { step: "failed", error: "What it was drafted from has gone." } }));
+    const meta = await (job.kind === "brief" ? writeForCard(job.card, asked, ctrl.signal) : job.kind === "scan" ? writeForPick(job, asked, ctrl.signal) : null);
+    if (!meta) return setBrief(id, { step: "failed", error: "What it was written from has gone." });
+    setBrief(id, { step: "ready", id: meta.id, file: meta.file });
+    await loadBriefs();
+    onCanvasReady((c) => glideToLayer(c, meta.card));
   } catch (e) {
-    plan(id, (x) => ({ ...x, brief: { step: "failed", error: (e as Error).name === "AbortError" ? "You stopped it." : message(e) } }));
+    setBrief(id, { step: "failed", error: (e as Error).name === "AbortError" ? "You stopped it." : message(e) });
   } finally {
     end(id);
   }
+}
+
+const writeForCard = (card: string, asked: BriefAsked, signal: AbortSignal) => {
+  const req = briefRequest(studio().doc, card, asked);
+  return req ? writeCardBrief(req, signal) : null;
+};
+
+function writeForPick(j: ScanJob, asked: BriefAsked, signal: AbortSignal) {
+  const p = j.plan;
+  const d = p?.build?.drafts.find((x) => x.id === p.chosen);
+  if (!p?.build || !p.audience || !p.goal || !p.card || !d) return null;
+  const pick = p.build.pick;
+  const goal = firstGoal(p.audience.name, p.goal.action, p.goal.reach, p.goal.of);
+  const about = p.audiences?.find((a) => a.name === p.audience?.name)?.about;
+  return writeBrief(
+    {
+      ...planOf(j),
+      card: p.card,
+      topic: p.build.topic,
+      draft: d.id,
+      audience: p.audience.name,
+      ...(about ? { about } : {}),
+      goal: { title: goal.title, metric: goal.metric },
+      answers: p.answers ?? "",
+      why: pick?.draft === d.id ? pick.why : "",
+      later: p.build.drafts.filter((x) => x.id !== d.id).map((x) => ({ draft: x.id, why: pick?.later.find((l) => l.draft === x.id)?.why ?? "" })),
+      asked,
+      known: j.session?.known ?? [],
+    },
+    signal,
+  );
 }
 
 /** Who they'll build for: one the quotes show, or their own words. On to a first goal. */

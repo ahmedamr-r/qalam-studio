@@ -10,7 +10,7 @@ import { lab } from "@/lab";
  * a step is picked (src/ui/discovery/next.ts). What v0.1 hides (src/lab.ts) isn't offered.
  */
 
-export type StepId = "draft-solutions" | "draft-tests" | "design-this" | "page" | "pass-line" | "next-job" | "find-problems" | "break-down" | "review-parts" | "others" | "find-backing" | "watch" | "connect" | "add-file" | "questions" | "draft-problems" | "review-problems" | "focus" | "find-goal";
+export type StepId = "draft-solutions" | "draft-tests" | "design-this" | "page" | "pass-line" | "next-job" | "find-problems" | "break-down" | "review-parts" | "others" | "find-backing" | "watch" | "connect" | "add-file" | "questions" | "draft-problems" | "review-problems" | "focus" | "find-goal" | "write-brief" | "open-brief";
 
 export interface NextStep {
   id: StepId;
@@ -52,6 +52,8 @@ export interface CardFacts {
   asking?: boolean;
   /** A test whose pass line Qalam AI suggested and nobody has set. */
   suggested?: boolean;
+  /** Its brief, once one's written. */
+  brief?: string;
   /** Qalam AI can run here. */
   ai: boolean;
   /** Qalam AI's proposals are under review: a new draft waits for them. */
@@ -98,6 +100,8 @@ export function nextSteps(f: CardFacts): NextStep[] {
   const push = (...steps: (NextStep | null)[]) => {
     for (const s of steps) if (s) out.push(s);
   };
+  // A brief or PRD for whoever builds it, on what's known so far; once written, a tile under the card.
+  const brief: NextStep = f.brief ? { id: "open-brief", label: "Its brief", hint: "Under this card on the canvas" } : { id: "write-brief", label: "Write a brief", hint: "A PRD for your coding agent", ai: true };
   switch (f.kind) {
     case "opportunity": {
       const bare = thin(f);
@@ -108,15 +112,15 @@ export function nextSteps(f: CardFacts): NextStep[] {
       // No goal above it: which one solving it would move, its own or one found, and that goal's number.
       const goal: NextStep | null = f.underGoal ? null : { id: "find-goal", label: "Find the goal it could move", hint: "Your goals first, then the web, then its number", ai: true };
       // Nothing behind it yet: what the organization has first, when it has something.
-      if ((asks || bare) && ground.find) push(ground.find, draft, goal, ground.watch, ground.file, page);
-      else push(draft, goal, ground.find, ground.watch, ground.file, page, asks || !lab("questions") ? null : QUESTIONS);
+      if ((asks || bare) && ground.find) push(ground.find, draft, brief, goal, ground.watch, ground.file, page);
+      else push(draft, brief, goal, ground.find, ground.watch, ground.file, page, asks || !lab("questions") ? null : QUESTIONS);
       break;
     }
     case "solution":
       // Hidden in v0.1 (src/lab.ts): Draft solutions gave it a test already, and Design this is the design tool.
       if (lab("tests")) push({ id: "draft-tests", label: "Draft its tests", hint: f.under.tests ? "More of what it assumes, and a test" : "What it assumes, and a test of the riskiest", ai: true });
       if (lab("design")) push({ id: "design-this", label: "Design this", hint: "Screens built on what it rests on" });
-      push(ground.find);
+      push(brief, ground.find);
       break;
     case "test":
       if (f.suggested) out.push({ id: "pass-line", label: "Use the suggested pass line" });
@@ -137,7 +141,7 @@ export function nextSteps(f: CardFacts): NextStep[] {
       // What waits to be decided first; then the problem to focus on, then, while nothing is behind it, its problems (found among the pages when there are some, else drafted).
       const waiting = [g.pending ? parts : null, g.drafted ? drafted : null];
       const rest = [g.pending ? null : parts, find, g.drafted ? null : drafted];
-      push(...waiting, focus, ...(g.behind ? rest : [rest[1], rest[2], rest[0]]), extras ? { id: "others", label: "What others aim for", hint: "Numbers others report · a minute or two", ai: true } : null, ground.watch, ground.file);
+      push(...waiting, focus, brief, ...(g.behind ? rest : [rest[1], rest[2], rest[0]]), extras ? { id: "others", label: "What others aim for", hint: "Numbers others report · a minute or two", ai: true } : null, ground.watch, ground.file);
       if (g.job && extras) push({ id: "next-job", label: `Next: ${g.job}`, hint: "What we don't know yet" });
       break;
     }

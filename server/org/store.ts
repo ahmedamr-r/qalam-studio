@@ -40,6 +40,7 @@ import type { FirstRunView } from "@/org/first-run";
 import type { Me } from "@/org/you";
 import type { OrgShape } from "@/org/words";
 import type { SolutionsFile } from "@/discovery/solutions";
+import { briefFile, briefFromFile, type BriefMeta } from "@/discovery/brief";
 import { assetExt, assetType, decodeProject, decodeSource, docVersion, encodeProject, encodeSource, isLocalField, recordVersion, splitLocal, type LocalFields } from "./codecs";
 import { assetHash, atomicWrite, contentHash, inside, locked, lockedAll, readJson, slugify, stableStringify, uniqueName } from "./fsx";
 
@@ -91,6 +92,8 @@ export type OrgEvent = { tab?: string } & (
   | { kind: "market"; session?: boolean }
   /** A scan of what people complain about moved on (chats/scan/session.json). */
   | { kind: "scan" }
+  /** A card's brief was written or taken off (hub/briefs/). */
+  | { kind: "brief" }
   /** What people see in a product changed (hub/seen/<key>.md), or a reading of screenshots moved on (`reading`). */
   | { kind: "seen"; key: string; removed?: boolean; reading?: boolean }
   | { kind: "notice" }
@@ -857,13 +860,41 @@ export class OrgStore {
   // What each product does today, from its code (hub/maps/<key>.md), and the repositories this
   // computer reads for them (.qalam/local).
 
-  /** A brief for whoever builds the first thing, as a file of its own to open or hand over (hub/briefs/). Its path inside the organization. */
-  async putBrief(title: string, text: string): Promise<string> {
+  // The briefs written for cards on the canvas (hub/briefs/<slug>.md, src/discovery/brief.ts): one a card, a file of its own to open or hand over.
+
+  async listBriefs(): Promise<BriefMeta[]> {
+    const names = await readdir(this.abs("hub/briefs")).catch(() => [] as string[]);
+    const out: BriefMeta[] = [];
+    for (const n of names.filter((x) => x.endsWith(".md")).sort()) {
+      const b = briefFromFile(await readFile(this.abs(`hub/briefs/${n}`), "utf8").catch(() => ""), `hub/briefs/${n}`);
+      if (b) out.push(b.meta);
+    }
+    return out;
+  }
+
+  async getBrief(id: string): Promise<{ meta: BriefMeta; body: string } | null> {
+    const meta = (await this.listBriefs()).find((b) => b.id === id);
+    if (!meta) return null;
+    return briefFromFile(await readFile(this.abs(meta.file), "utf8").catch(() => ""), meta.file);
+  }
+
+  /** A card's brief: written again, it stays in its file and keeps its id. */
+  async putBrief(m: Omit<BriefMeta, "id" | "file">, body: string, opts: { tab?: string } = {}): Promise<BriefMeta> {
     const dir = this.abs("hub/briefs");
+    const had = (await this.listBriefs()).find((b) => b.card === m.card);
     const used = new Set(await readdir(dir).catch(() => [] as string[]));
-    const name = uniqueName(slugify(title, "brief"), ".md", (n) => used.has(n));
-    await this.write(path.join(dir, name), text);
-    return `hub/briefs/${name}`;
+    const name = had ? path.basename(had.file) : uniqueName(slugify(m.title, "brief"), ".md", (n) => used.has(n));
+    const id = had?.id ?? nanoid(10);
+    await this.write(path.join(dir, name), briefFile({ ...m, id }, body));
+    this.emit({ kind: "brief", tab: opts.tab });
+    return { ...m, id, file: `hub/briefs/${name}` };
+  }
+
+  async removeBrief(id: string, opts: { tab?: string } = {}): Promise<void> {
+    const meta = (await this.listBriefs()).find((b) => b.id === id);
+    if (!meta) return;
+    await rm(this.abs(meta.file), { force: true });
+    this.emit({ kind: "brief", tab: opts.tab });
   }
 
   private mapFile(key: string) {

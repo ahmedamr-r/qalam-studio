@@ -14,6 +14,7 @@ import { useDiscovery } from "../discovery/store";
 import { useSources } from "../discovery/sources";
 import { startWork } from "../discovery/work";
 import { loadFeeds, SPACE, useFeeds } from "../discovery/feeds";
+import { loadBriefs, useBriefs } from "../discovery/briefs";
 import { onOrgChange } from "@/org/live";
 import { loadPlacements, usePlacements } from "../discovery/placements";
 import { startRecorder } from "../decisions/recorder";
@@ -54,6 +55,10 @@ export function startSpaceCanvas() {
   void loadFeeds(SPACE);
   useFeeds.subscribe(() => studio().invalidate());
   onOrgChange((c) => c.kind === "feed" && void loadFeeds(SPACE, false));
+  // The briefs written for the canvas's cards, each a tile under its card.
+  void loadBriefs();
+  useBriefs.subscribe(() => studio().invalidate());
+  onOrgChange((c) => c.kind === "brief" && void loadBriefs());
   // What Qalam AI found for the canvas's boards in material added to the organization, waiting for review.
   let boards = "";
   onSpaceComposed(() => {

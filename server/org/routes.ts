@@ -52,6 +52,7 @@ import { draftTests, type TestsRequest } from "./tests";
 import { aboutTopic, lookOnline } from "./posts";
 import { scanNow, startScan, steerQuestions, steerScan, stopScan } from "./scan";
 import { steerRound } from "@/scan/steer";
+import { briefRequestOf, writeCardBrief } from "./briefs";
 import { firstBuild, keepAnswers, keepAudience, planAudiences, planQuestions, scanShare, writeBrief } from "./scan-plan";
 import { scanRequest, type ScanTarget } from "@/scan/session";
 import type { ScanSaid } from "@/scan/steer";
@@ -1033,24 +1034,41 @@ export function orgRoutes(): Hono<Env> {
     await keepAudience(c.get("store"), { name, about: clipped(b?.about, 300), refs });
     return c.json({ ok: true });
   });
+  // A card's brief: written, listed for the canvas's tiles, read, taken off.
+  r.get("/api/org/:org/briefs", async (c) => c.json({ briefs: await c.get("store").listBriefs() }));
+  r.get("/api/org/:org/briefs/:id", async (c) => {
+    const brief = await c.get("store").getBrief(c.req.param("id"));
+    return brief ? c.json({ brief }) : c.json({ error: "not_found", message: "No such brief" }, 404);
+  });
+  r.post("/api/org/:org/briefs", async (c) => {
+    const req = briefRequestOf(await c.req.json().catch(() => null));
+    if (!req) return bad("Send the card it's for");
+    return c.json({ brief: await writeCardBrief(c.get("store"), req, c.req.raw.signal, undefined, { tab: c.req.header("x-qalam-tab") }) });
+  });
+  r.delete("/api/org/:org/briefs/:id", async (c) => {
+    await c.get("store").removeBrief(c.req.param("id"), { tab: c.req.header("x-qalam-tab") });
+    return c.json({ ok: true });
+  });
   r.post("/api/org/:org/scan/share", async (c) => {
     const plan = planOf(await c.req.json().catch(() => null));
     if (!plan) return bad("No scan to go on");
     return c.json({ problems: await scanShare(c.get("store"), plan.sources) });
   });
   r.post("/api/org/:org/scan/brief", async (c) => {
-    const b = (await c.req.json().catch(() => null)) as { target?: unknown; sources?: unknown; topic?: unknown; draft?: unknown; audience?: unknown; about?: unknown; goal?: { title?: unknown; metric?: unknown }; answers?: unknown; why?: unknown; later?: unknown; asked?: { platform?: unknown; exists?: unknown; needs?: unknown }; known?: unknown } | null;
+    const b = (await c.req.json().catch(() => null)) as { target?: unknown; sources?: unknown; card?: unknown; topic?: unknown; draft?: unknown; audience?: unknown; about?: unknown; goal?: { title?: unknown; metric?: unknown }; answers?: unknown; why?: unknown; later?: unknown; asked?: { platform?: unknown; exists?: unknown; needs?: unknown }; known?: unknown } | null;
     const plan = planOf(b);
     const audience = clipped(b?.audience, 120);
     const topic = clipped(b?.topic, 60);
     const draft = clipped(b?.draft, 60);
-    if (!plan || !audience || !ID.test(topic) || !ID.test(draft)) return bad("Nothing to write a brief from");
+    const card = clipped(b?.card, 200);
+    if (!plan || !audience || !card || !ID.test(topic) || !ID.test(draft)) return bad("Nothing to write a brief from");
     const list = (v: unknown) => (Array.isArray(v) ? v : []);
     const brief = await writeBrief(
       c.get("store"),
       {
         target: plan.target,
         sources: plan.sources,
+        card,
         topic,
         draft,
         audience,
@@ -1071,7 +1089,7 @@ export function orgRoutes(): Hono<Env> {
       },
       c.req.raw.signal,
     );
-    return c.json({ brief: brief && { file: brief.file, markdown: brief.markdown } });
+    return c.json({ brief });
   });
   r.post("/api/org/:org/scan/first", async (c) => {
     const b = (await c.req.json().catch(() => null)) as { target?: unknown; sources?: unknown; audience?: unknown; refs?: unknown; answers?: unknown; answersSource?: unknown; topic?: unknown } | null;

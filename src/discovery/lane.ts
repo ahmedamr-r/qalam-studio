@@ -16,7 +16,8 @@ import { fromSource, quoteOf, type SourceRecord } from "./sources";
  *
  * Each source is drawn as ./look.ts says a source looks (`SOURCE`): a tile with its mark and a port,
  * its title and where it's from under it. A feed watching for the tree's cards (a connector's saved
- * search, src/feeds/feeds.ts) sits in the same column, its cords to them dashed (`FEED`).
+ * search, src/feeds/feeds.ts) sits in the same column, its cords to them dashed (`FEED`). A brief
+ * written for a card looks the same and hangs under that card (`LaneBrief`).
  */
 
 /** An item's width: its words', the tile centred over them. */
@@ -46,6 +47,8 @@ export interface LaneItem {
   cards: string[];
   /** A feed (a connector's saved search) watching for these cards, not a source: what's new for it, and whether it stopped. */
   feed?: { id: string; fresh?: number; off?: boolean };
+  /** A brief written for this card, not a source: what came out of it, under it on the canvas. */
+  brief?: { id: string; card: string };
   x: number;
   y: number;
   w: number;
@@ -58,8 +61,8 @@ export interface LaneEdge {
   /** A card. */
   to: string;
   quotes: string[];
-  /** A feed's: it watches for the card, its words aren't on it (drawn dashed). */
-  kind?: "feed";
+  /** A feed's: it watches for the card, its words aren't on it (drawn dashed). A brief's: it was written from the card, down to its tile. */
+  kind?: "feed" | "brief";
 }
 
 /** A feed as the lane draws it (src/feeds/feeds.ts): its name, its tool's mark, and the cards on this board it's wired to. */
@@ -73,6 +76,16 @@ export interface LaneFeed {
   cards: string[];
   fresh?: number;
   off?: boolean;
+}
+
+/** A brief as the lane draws it (src/discovery/brief.ts): where its tile goes is the layout's. */
+export interface LaneBrief {
+  id: string;
+  card: string;
+  title: string;
+  line: string;
+  x: number;
+  y: number;
 }
 
 export interface Lane {
@@ -100,7 +113,7 @@ function partTitle(source: LaneSource, part: SetupDoc): string {
   return (source as { text?: string }).text?.slice(part.span[0], part.span[1]).replace(/\s+/g, " ").trim().slice(0, 120) || part.title;
 }
 
-export function laneOf(doc: Doc, sources: readonly (LaneSource & { text?: string })[], groups?: readonly LaneGroup[], feeds: readonly LaneFeed[] = []): Lane {
+export function laneOf(doc: Doc, sources: readonly (LaneSource & { text?: string })[], groups?: readonly LaneGroup[], feeds: readonly LaneFeed[] = [], briefs: readonly LaneBrief[] = []): Lane {
   const byId = new Map(sources.map((s) => [s.id, s]));
   const items: LaneItem[] = [];
   const edges: LaneEdge[] = [];
@@ -159,6 +172,13 @@ export function laneOf(doc: Doc, sources: readonly (LaneSource & { text?: string
       const { at: _at, ...rest } = it;
       items.push({ ...rest, x, y, w: LANE_W, h: LANE_ITEM_H });
     }
+  }
+  // A brief's tile under its card, wired down from it: what came out of the card, where the lane's tiles are what went in.
+  for (const b of briefs) {
+    if (!doc.nodes[b.card]?.visible) continue;
+    const key = `brief:${b.id}`;
+    items.push({ key, root: b.card, sourceId: "", title: b.title, mark: "brief", line: b.line, quotes: [], cards: [b.card], brief: { id: b.id, card: b.card }, x: b.x, y: b.y, w: LANE_W, h: LANE_ITEM_H });
+    edges.push({ id: `${key}>${b.card}`, from: key, to: b.card, quotes: [], kind: "brief" });
   }
   return { items, edges };
 }
