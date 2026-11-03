@@ -1,4 +1,4 @@
-import { audiencesCall, firstPickCall, QUESTIONS_SYSTEM } from "@/ai/scan";
+import { audiencesCall, briefCall, firstPickCall, QUESTIONS_SYSTEM } from "@/ai/scan";
 import { findQuestionsSchema } from "@/ai/find";
 import type { PlanQuestion } from "@/ai/plan";
 import { structured } from "@/ai/server";
@@ -6,7 +6,8 @@ import { quotePiece, type SourceQuote, type SourceRecord } from "@/discovery/sou
 import type { Drafted, SolutionDraft } from "@/discovery/solutions";
 import { emptyFiling } from "@/hub/topics";
 import { audiencesMaterial, firstPickMaterial, problemFor, sanitizeAudiences, sanitizeFirstPick, scanRound, type FirstPick, type PlanProblem, type PlanWord, type ScanAudience } from "@/scan/plan";
-import type { ScanTarget } from "@/scan/session";
+import { briefMarkdown, briefMaterial, sanitizeBrief, type BriefAsked, type BriefFeature } from "@/scan/brief";
+import type { ScanKnown, ScanTarget } from "@/scan/session";
 import { notAsked, toldLines, type ScanSaid } from "@/scan/steer";
 import { sanitizeFindQuestions } from "@/space/find";
 import { nanoid } from "nanoid";
@@ -135,4 +136,55 @@ export async function firstBuild(store: OrgStore, o: { target: ScanTarget; sourc
   const pick = asked ? sanitizeFirstPick(asked.data, m) : null;
   if (asked) await store.putTrace({ id: nanoid(10), projectId: "scan", kind: "scan-pick", at: Date.now(), ...(asked.model ? { model: asked.model } : {}), answer: asked.data, kept: pick } as { id: string; projectId: string }).catch(() => {});
   return { topic: problem.id, problem: problem.title, drafts: d.drafts, quotes: d.quotes, pick, note: d.note };
+}
+
+export interface WrittenBrief {
+  /** Where it is, inside the organization. */
+  file: string;
+  markdown: string;
+  features: BriefFeature[];
+}
+
+/**
+ * The brief for what they decided to build first: what's decided put in by code, read from what's kept
+ * rather than from the request, and one call for the features. A call that fails leaves a brief without
+ * them: everything people said and everything decided still stands, and that's most of it.
+ */
+export async function writeBrief(store: OrgStore, o: { target: ScanTarget; sources: readonly string[]; topic: string; draft: string; audience: string; about?: string; goal: { title: string; metric: string }; answers: string; why: string; later: readonly { draft: string; why: string }[]; asked: BriefAsked; known: readonly ScanKnown[] }, signal?: AbortSignal, deps: ScanPlanDeps = liveDeps): Promise<WrittenBrief | null> {
+  const [file, topic] = await Promise.all([store.getSolutions(o.topic), store.getTopic(o.topic)]);
+  const draft = file?.drafts.find((d) => d.id === o.draft);
+  if (!draft || !topic) return null;
+  const { problems, words, published } = await planMaterial(store, o.sources);
+  const problem = problems.find((p) => p.id === o.topic) ?? { id: topic.id, title: topic.title, lines: topic.lines.filter((l) => l.section !== "against" && l.section !== "open").map((l) => l.text).slice(0, 12), cites: [] };
+  const own = new Set(problem.cites);
+  const theirs = words.filter((w) => own.has(w.ref));
+  const m = briefMaterial({ target: o.target, audience: o.audience, goal: o.goal.title, answers: o.answers, asked: o.asked, problem, words: theirs, draft, published });
+  let features: BriefFeature[] = [];
+  if (theirs.length) {
+    try {
+      const dropped: { why: string; item: unknown }[] = [];
+      const { data, model } = await deps.structured<unknown>(briefCall(m.text), signal);
+      features = sanitizeBrief(data, m, (why, item) => dropped.push({ why, item }));
+      await store.putTrace({ id: nanoid(10), projectId: "scan", kind: "scan-brief", at: Date.now(), ...(model ? { model } : {}), answer: data, kept: features.length, dropped } as { id: string; projectId: string }).catch(() => {});
+    } catch (e) {
+      if (signal?.aborted) throw e;
+    }
+  }
+  const titleOf = (id: string) => file?.drafts.find((d) => d.id === id)?.title ?? "";
+  const markdown = briefMarkdown({
+    target: o.target,
+    at: Date.now(),
+    audience: o.audience,
+    ...(o.about ? { about: o.about } : {}),
+    goal: o.goal,
+    problem: { title: topic.title, lines: problem.lines, open: topic.lines.filter((l) => l.section === "open").map((l) => l.text) },
+    quotes: theirs.map((w) => ({ text: w.text, source: w.source, ...(w.origin ? { url: w.origin } : {}) })),
+    draft,
+    why: o.why,
+    later: o.later.map((l) => ({ title: titleOf(l.draft), why: l.why })).filter((l) => l.title),
+    features,
+    asked: o.asked,
+    known: o.known,
+  });
+  return { file: await store.putBrief(draft.title, markdown), markdown, features };
 }

@@ -28,7 +28,8 @@ import { onOrgChange } from "@/org/live";
 import { otherReading, requestOf, scanInput } from "@/scan/input";
 import type { ScanTarget } from "@/scan/session";
 import { notAsked, steerAnswers, steerRound, type ScanSaid } from "@/scan/steer";
-import { firstBuild, keepAnswers, keepAudience, planAudiences, planQuestions, scanNow, startScan, steerQuestions, steerScan, stopScan } from "@/org/scan";
+import { briefRound } from "@/scan/brief";
+import { firstBuild, writeBrief, keepAnswers, keepAudience, planAudiences, planQuestions, scanNow, startScan, steerQuestions, steerScan, stopScan } from "@/org/scan";
 import { firstGoal, sameTarget, scanRound, SUGGESTED_GOAL, type GoalAction, type ScanAudience } from "@/scan/plan";
 import { projectName } from "@/scan/input";
 import { draftBacking, draftCards } from "@/discovery/solutions";
@@ -394,6 +395,50 @@ export async function answerPlan(id: string, answers: Readonly<Record<string, st
     plan(id, (p) => ({ ...p, step: "audiences", audiences, ...(source ? { answersSource: source } : {}) }));
   } catch (e) {
     stoppedPlan(id, e);
+  } finally {
+    end(id);
+  }
+}
+
+/** The brief for whoever builds it: what it lacks first, in the box. */
+export function briefStart(id: string) {
+  plan(id, (p) => ({ ...p, brief: { step: "asking", questions: briefRound() } }));
+}
+
+export const briefQuestionsOf = (id: string) => scanJob(id)?.plan?.brief?.questions ?? briefRound();
+
+/** Their answers, then the brief: what's decided, and the features one call works out. Everything may be skipped. */
+export async function answerBrief(id: string, asked: Readonly<Record<string, string>>) {
+  const j = scanJob(id);
+  const p = j?.plan;
+  const d = p?.build?.drafts.find((x) => x.id === p.chosen);
+  if (!j || !p?.build || !p.audience || !p.goal || !d) return;
+  plan(id, (x) => ({ ...x, brief: { step: "writing" } }));
+  const pick = p.build.pick;
+  const others = p.build.drafts.filter((x) => x.id !== d.id);
+  const goal = firstGoal(p.audience.name, p.goal.action, p.goal.reach, p.goal.of);
+  const ctrl = begin(id);
+  try {
+    const about = p.audiences?.find((a) => a.name === p.audience?.name)?.about;
+    const brief = await writeBrief(
+      {
+        ...planOf(j),
+        topic: p.build.topic,
+        draft: d.id,
+        audience: p.audience.name,
+        ...(about ? { about } : {}),
+        goal: { title: goal.title, metric: goal.metric },
+        answers: p.answers ?? "",
+        why: pick?.draft === d.id ? pick.why : "",
+        later: others.map((x) => ({ draft: x.id, why: pick?.later.find((l) => l.draft === x.id)?.why ?? "" })),
+        asked: { ...(asked.platform ? { platform: asked.platform } : {}), ...(asked.exists ? { exists: asked.exists } : {}), ...(asked.needs ? { needs: asked.needs } : {}) },
+        known: j.session?.known ?? [],
+      },
+      ctrl.signal,
+    );
+    plan(id, (x) => ({ ...x, brief: brief ? { step: "ready", file: brief.file, markdown: brief.markdown } : { step: "failed", error: "What it was drafted from has gone." } }));
+  } catch (e) {
+    plan(id, (x) => ({ ...x, brief: { step: "failed", error: (e as Error).name === "AbortError" ? "You stopped it." : message(e) } }));
   } finally {
     end(id);
   }

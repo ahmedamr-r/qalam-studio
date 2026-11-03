@@ -91,6 +91,10 @@ describe("a brain dump in the canvas's chat", () => {
     expect(asking(chat(scan({ step: "writing" })), () => null)).toBeNull();
     expect(asking(chat(scan({ step: "done" })), () => null)).toBeNull();
     expect(asking(chat(scan({ step: "asking", questions: [] }, "It failed")), () => null)).toBeNull();
+    const planned = (brief: NonNullable<NonNullable<ScanJob["plan"]>["brief"]>): ScanJob => ({ ...scan({ step: "done" }), plan: { step: "placed", brief } });
+    expect(asking(chat(planned({ step: "asking", questions: [] })), () => null)).toMatchObject({ brief: true });
+    expect(running(chat(planned({ step: "writing" })))).not.toBeNull();
+    expect((chatOf(chat(planned({ step: "writing" }))).turns[0].job as ScanJob).plan?.brief).toEqual({ step: "failed", error: "It stopped when the page closed." });
     const after = chatOf(chat(scan({ step: "writing" })));
     expect((after.turns[0].job as ScanJob).ask).toEqual({ step: "done" });
   });

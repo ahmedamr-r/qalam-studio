@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,7 +10,7 @@ vi.mock("@/ai/server", () => ({
   structured: () => Promise.reject(new Error("No model in tests")),
 }));
 process.env.QALAM_NO_MODELS = "1";
-const { firstBuild, keepAnswers, keepAudience, planAudiences, planMaterial, planQuestions } = await import("./scan-plan");
+const { firstBuild, keepAnswers, keepAudience, planAudiences, planMaterial, planQuestions, writeBrief } = await import("./scan-plan");
 
 let dir: string;
 let store: OrgStore;
@@ -143,5 +143,54 @@ describe("from a scan's problems to what comes first", () => {
     expect(b).toMatchObject({ drafts: [], pick: null, note: "Nothing it could stand behind." });
     expect(d.structured).not.toHaveBeenCalled();
     expect(await firstBuild(store, { target, sources: ["gone"], audience: "Parents", refs: [], answers: "" }, undefined, deps())).toBeNull();
+  });
+
+  describe("the brief", () => {
+    const put = async () => {
+      const topic = (await store.listTopics()).find((t) => t.title === "Meals don't fit night shifts")!;
+      await store.changeSolutions(topic.id, () => ({ qalam: "solutions/1", topic: topic.id, at: 1, note: "", decided: {}, drafts: [{ ...draft("d1"), assumptions: [{ id: "a1", category: "usability", text: "Nurses will set their shifts.", importance: 3 }] }, draft("d2")] }));
+      return topic.id;
+    };
+    const base = (topic: string) => ({ target, sources: ["s1"], topic, draft: "d1", audience: "Night nurses", goal: { title: "5 of 10 night nurses sign up", metric: "Signed up, of 10 asked" }, answers: "", why: "It answers the night shift directly.", later: [{ draft: "d2", why: "It can wait." }], asked: { platform: "A web app" }, known: [] });
+
+    it("writes a file from what's kept, each feature resting on quotes, and reads the draft itself", async () => {
+      const topic = await put();
+      let heard = "";
+      const r = await writeBrief(store, base(topic), undefined, {
+        structured: (async (call: { content: { text: string }[] }) => {
+          heard = call.content[0].text;
+          return { data: { features: [{ title: "Set your shifts", why: "Plans assume daytime.", acceptance: ["A nurse can enter a week of shifts"], data: ["Shifts"], connects: [], quotes: ["q1"] }, { title: "Made up", why: "Plans assume daytime.", acceptance: ["It works"], data: [], connects: [], quotes: [] }] } };
+        }) as never,
+        draft: async () => {
+          throw new Error("no");
+        },
+      });
+      expect(heard).toContain("It runs first: A web app");
+      expect(heard).toContain("As a night nurse I never know when to eat on my shift.");
+      expect(r?.features.map((f) => f.title)).toEqual(["Set your shifts"]);
+      expect(r?.file).toMatch(/^hub\/briefs\/draft-d1.*\.md$/);
+      expect(r?.markdown).toContain("# Build brief: Draft d1");
+      expect(r?.markdown).toContain("- Draft d2: It can wait.");
+      expect(r?.markdown).toContain("“As a night nurse I never know when to eat on my shift.” ([Reviews](https://x.example))");
+      expect(await readFile(path.join(dir, r!.file), "utf8")).toBe(r!.markdown);
+    });
+
+    it("still writes what's decided when the call fails, and writes nothing about a draft that's gone", async () => {
+      const topic = await put();
+      const fails = { structured: (async () => { throw new Error("No engine"); }) as never, draft: async () => { throw new Error("no"); } };
+      const r = await writeBrief(store, base(topic), undefined, fails);
+      expect(r?.features).toEqual([]);
+      expect(r?.markdown).toContain("## Who it's for first");
+      expect(r?.markdown).not.toContain("### What to build");
+      expect(await writeBrief(store, { ...base(topic), draft: "gone" }, undefined, fails)).toBeNull();
+    });
+
+    it("gives each brief a file of its own", async () => {
+      const topic = await put();
+      const fails = { structured: (async () => { throw new Error("No engine"); }) as never, draft: async () => { throw new Error("no"); } };
+      const a = await writeBrief(store, base(topic), undefined, fails);
+      const b = await writeBrief(store, base(topic), undefined, fails);
+      expect(a?.file).not.toBe(b?.file);
+    });
   });
 });

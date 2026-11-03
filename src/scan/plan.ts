@@ -124,12 +124,16 @@ export const SUGGESTED_GOAL = { of: 10, reach: 5 } as const;
 
 const isArabic = (s: string) => /\p{Script=Arabic}/u.test(s);
 
+/** Someone's name for a group, mid-sentence: lower case unless it's a name ("NHS nurses"). */
+export function midSentence(name: string): string {
+  const said = one(name);
+  return /^\p{Lu}\p{Ll}/u.test(said) ? said[0].toLowerCase() + said.slice(1) : said;
+}
+
 /** A first goal, worded by code: about learning whether these people want it, never a business number. */
 export function firstGoal(audience: string, action: GoalAction, reach: number, of: number): { title: string; metric: string; target: number } {
   const a = GOAL_ACTIONS.find((x) => x.id === action) ?? GOAL_ACTIONS[0];
-  const said = one(audience);
-  // Mid-sentence, unless it's a name ("NHS nurses").
-  const who = /^\p{Lu}\p{Ll}/u.test(said) ? said[0].toLowerCase() + said.slice(1) : said;
+  const who = midSentence(audience);
   return { title: isArabic(who) ? `${reach} من ${of} من ${who} ${a.arabic}` : `${reach} of ${of} ${who} ${a.label}`, metric: `${a.metric}, of ${of} asked`, target: reach };
 }
 

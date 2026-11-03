@@ -41,6 +41,7 @@ const JOB: Record<CallKind | "other", string> = {
   "scan-searches": "Writing searches for what people complain about",
   "scan-audience": "Proposing who to build for",
   "scan-pick": "Picking what to build first",
+  "scan-brief": "Writing a brief for the coding agent",
   reader: "Reading code",
   research: "Looking things up",
   "pdf-pictures": "Reading pictures in PDFs",

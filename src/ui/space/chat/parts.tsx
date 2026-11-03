@@ -35,7 +35,7 @@ import { useTopics } from "../../topics/list";
 import { useWords } from "../../frame/store";
 import { show } from "../links";
 import { FoundGoalRow } from "../../chat/FoundGoalRow";
-import { anotherFile, changeDocBasis, chooseDraft, decideDocGoal, dropTurn, leaveFile, leaveFit, lookPastFits, openProblems, pickAudience, placeFirstBuild, placeStatement, planAgain, planFirst, planStart, retake, retryGoalFor, scanAgain, scanHere, scanInNewProject, scanIsMine, scanOtherWay, setPlanGoal, settleNumber, steerOff, stopTurn, takeAsBasis, takeFit, takeGoalNumber, takeIdea, turnOf, useCanvasChat } from "./store";
+import { anotherFile, briefStart, changeDocBasis, chooseDraft, decideDocGoal, dropTurn, leaveFile, leaveFit, lookPastFits, openProblems, pickAudience, placeFirstBuild, placeStatement, planAgain, planFirst, planStart, retake, retryGoalFor, scanAgain, scanHere, scanInNewProject, scanIsMine, scanOtherWay, setPlanGoal, settleNumber, steerOff, stopTurn, takeAsBasis, takeFit, takeGoalNumber, takeIdea, turnOf, useCanvasChat } from "./store";
 import { titleFrom } from "@/space/route";
 import { otherReading } from "@/scan/input";
 import { firstGoal, GOAL_ACTIONS, riskiest, type GoalAction, type ScanAudience } from "@/scan/plan";
@@ -1311,15 +1311,70 @@ function PickedStep({ id, plan }: { id: string; plan: ScanPlan }) {
           })}
         </div>
       )}
-      {placed ? (
-        <p className="text-caption text-fg-muted">It's on the canvas: the goal, the problem under it, then the solution and its test.</p>
+      {placed && <p className="text-caption text-fg-muted">It's on the canvas: the goal, the problem under it, then the solution and its test.</p>}
+      {plan.brief ? (
+        <BriefStep id={id} brief={plan.brief} />
       ) : (
         <ReplyChips>
-          <button type="button" className={r.replyChipPrimary} onClick={() => void placeFirstBuild(id)}>
+          {!placed && (
+            <button type="button" className={r.replyChipPrimary} onClick={() => void placeFirstBuild(id)}>
+              Put it on the canvas
+            </button>
+          )}
+          <button type="button" className={placed ? r.replyChipPrimary : r.replyChip} onClick={() => briefStart(id)}>
+            Write a brief for your coding agent
+          </button>
+        </ReplyChips>
+      )}
+      {!placed && plan.brief && plan.brief.step !== "asking" && plan.brief.step !== "writing" && (
+        <ReplyChips>
+          <button type="button" className={r.replyChip} onClick={() => void placeFirstBuild(id)}>
             Put it on the canvas
           </button>
         </ReplyChips>
       )}
+    </div>
+  );
+}
+
+/** The brief: being written, then ready to hand over. */
+function BriefStep({ id, brief }: { id: string; brief: NonNullable<ScanPlan["brief"]> }) {
+  const [copied, setCopied] = useState(false);
+  const started = useCanvasChat((s) => s.live[id]?.started);
+  if (brief.step === "asking") return <p className="text-body text-fg">A few things for the brief. Skip any you can't answer.</p>;
+  if (brief.step === "writing") return <Progress label="Writing the brief" started={started ?? Date.now()} tokens={0} note="This takes under a minute." />;
+  if (brief.step === "failed")
+    return (
+      <div className="flex flex-col gap-[6px]">
+        <p className="text-body text-fg">{brief.error === "You stopped it." ? "You stopped it." : `I couldn't write it: ${brief.error ?? "something went wrong"}`}</p>
+        <ReplyChips>
+          <button type="button" className={r.replyChip} onClick={() => briefStart(id)}>
+            Try again
+          </button>
+        </ReplyChips>
+      </div>
+    );
+  const text = brief.markdown ?? "";
+  const copy = () =>
+    void navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    });
+  return (
+    <div className="flex flex-col gap-[6px]">
+      <p className="text-body text-fg">The brief is ready. Paste it into your coding agent, or point it at the file.</p>
+      {brief.file && <p className="break-all text-caption text-fg-muted">{brief.file}</p>}
+      <details className="rounded-lg px-[10px] text-caption shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
+        <summary className="flex h-[30px] cursor-pointer list-none items-center font-medium text-fg-muted hover:text-fg [&::-webkit-details-marker]:hidden">Read it</summary>
+        <pre className="max-h-[320px] overflow-auto whitespace-pre-wrap pb-[10px] font-sans text-caption text-fg" dir="auto">
+          {text}
+        </pre>
+      </details>
+      <ReplyChips>
+        <button type="button" className={r.replyChipPrimary} onClick={copy}>
+          {copied ? "Copied" : "Copy the brief"}
+        </button>
+      </ReplyChips>
     </div>
   );
 }

@@ -22,7 +22,7 @@ import type { Space } from "../../frame/spaces";
 import { ASK_EVENT, takeAskNext } from "../../org/ask-next";
 import { PARTS } from "./parts";
 import { clearMode, composeIn, useCompose } from "./compose";
-import { answerFind, answerNumber, answerPlan, answerSteer, ask, clearChat, findQuestionsOf, findWith, leaveSteer, numberQuestions, openChat, planQuestionsOf, send, steerQuestionsOf, stopTurn, turnOf, useCanvasChat } from "./store";
+import { answerBrief, answerFind, answerNumber, answerPlan, answerSteer, ask, briefQuestionsOf, clearChat, findQuestionsOf, findWith, leaveSteer, numberQuestions, openChat, planQuestionsOf, send, steerQuestionsOf, stopTurn, turnOf, useCanvasChat } from "./store";
 
 /*
  * Qalam AI's chat on the left of a space's canvas, as Figma keeps its panel there: one box for
@@ -129,6 +129,8 @@ export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
             waiting && (!busy || steering) ? (
               "steer" in waiting ? (
                 <SteerRound key={waiting.turn.id} turn={waiting.turn.id} />
+              ) : "brief" in waiting ? (
+                <BriefRound key={waiting.turn.id} turn={waiting.turn.id} />
               ) : "number" in waiting ? (
                 <NumberRound key={waiting.turn.id} turn={waiting.turn.id} />
               ) : "plan" in waiting ? (
@@ -245,6 +247,19 @@ function SteerRound({ turn }: { turn: string }) {
     return said === "Skipped" || said === "—" || said === "None" ? "" : said;
   };
   return <Questionnaire title="While I read" questions={questions} state={form} onChange={setForm} onSubmit={(f) => answerSteer(turn, Object.fromEntries(questions.map((q) => [q.id, answerOf(f, q)])))} />;
+}
+
+/** What the brief still lacks, asked just before it's written; every one can be skipped. */
+function BriefRound({ turn }: { turn: string }) {
+  const questions = useMemo(() => briefQuestionsOf(turn).map(toQuestion), [turn]);
+  const [form, setForm] = useState<FlowState>(() => initialFlow(questions));
+  const answerOf = (f: FlowState, q: (typeof questions)[number]) => {
+    const a = f.answers[q.id];
+    if (!a) return "";
+    const said = summarize(q, a);
+    return said === "Skipped" || said === "—" || said === "None" ? "" : said;
+  };
+  return <Questionnaire title="For the brief" questions={questions} state={form} onChange={setForm} onSubmit={(f) => void answerBrief(turn, Object.fromEntries(questions.map((q) => [q.id, answerOf(f, q)])))} />;
 }
 
 /** The questions before working out who it's for and what comes first; every one can be skipped. */

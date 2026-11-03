@@ -52,7 +52,7 @@ import { draftTests, type TestsRequest } from "./tests";
 import { aboutTopic, lookOnline } from "./posts";
 import { scanNow, startScan, steerQuestions, steerScan, stopScan } from "./scan";
 import { steerRound } from "@/scan/steer";
-import { firstBuild, keepAnswers, keepAudience, planAudiences, planQuestions } from "./scan-plan";
+import { firstBuild, keepAnswers, keepAudience, planAudiences, planQuestions, writeBrief } from "./scan-plan";
 import { scanRequest, type ScanTarget } from "@/scan/session";
 import type { ScanSaid } from "@/scan/steer";
 import { addRepo, answerFromCode, codeView, readRepo, removeRepo, type NewRepo } from "../code";
@@ -1032,6 +1032,41 @@ export function orgRoutes(): Hono<Env> {
     const refs = Array.isArray(b?.refs) ? b.refs.filter((x): x is string => typeof x === "string").slice(0, 12) : [];
     await keepAudience(c.get("store"), { name, about: clipped(b?.about, 300), refs });
     return c.json({ ok: true });
+  });
+  r.post("/api/org/:org/scan/brief", async (c) => {
+    const b = (await c.req.json().catch(() => null)) as { target?: unknown; sources?: unknown; topic?: unknown; draft?: unknown; audience?: unknown; about?: unknown; goal?: { title?: unknown; metric?: unknown }; answers?: unknown; why?: unknown; later?: unknown; asked?: { platform?: unknown; exists?: unknown; needs?: unknown }; known?: unknown } | null;
+    const plan = planOf(b);
+    const audience = clipped(b?.audience, 120);
+    const topic = clipped(b?.topic, 60);
+    const draft = clipped(b?.draft, 60);
+    if (!plan || !audience || !ID.test(topic) || !ID.test(draft)) return bad("Nothing to write a brief from");
+    const list = (v: unknown) => (Array.isArray(v) ? v : []);
+    const brief = await writeBrief(
+      c.get("store"),
+      {
+        target: plan.target,
+        sources: plan.sources,
+        topic,
+        draft,
+        audience,
+        about: clipped(b?.about, 300),
+        goal: { title: clipped(b?.goal?.title, 200), metric: clipped(b?.goal?.metric, 200) },
+        answers: typeof b?.answers === "string" ? b.answers.slice(0, 4000) : "",
+        why: clipped(b?.why, 400),
+        later: list(b?.later).slice(0, 4).map((l: { draft?: unknown; why?: unknown }) => ({ draft: clipped(l?.draft, 60), why: clipped(l?.why, 400) })),
+        asked: { platform: clipped(b?.asked?.platform, 200), exists: clipped(b?.asked?.exists, 400), needs: clipped(b?.asked?.needs, 60) },
+        // As the scan said it, to be shown beside what people said; only web addresses go in as links.
+        known: list(b?.known).slice(0, 20).flatMap((k: { kind?: unknown; name?: unknown; text?: unknown; title?: unknown; url?: unknown }) => {
+          const url = clipped(k?.url, 500);
+          const text = clipped(k?.text, 500);
+          if (!text || !/^https?:\/\//i.test(url) || (k?.kind !== "product" && k?.kind !== "published")) return [];
+          const name = clipped(k?.name, 120);
+          return [{ kind: k.kind, text, url, title: clipped(k?.title, 200), ...(name ? { name } : {}) }];
+        }),
+      },
+      c.req.raw.signal,
+    );
+    return c.json({ brief: brief && { file: brief.file, markdown: brief.markdown } });
   });
   r.post("/api/org/:org/scan/first", async (c) => {
     const b = (await c.req.json().catch(() => null)) as { target?: unknown; sources?: unknown; audience?: unknown; refs?: unknown; answers?: unknown; answersSource?: unknown; topic?: unknown } | null;

@@ -857,6 +857,15 @@ export class OrgStore {
   // What each product does today, from its code (hub/maps/<key>.md), and the repositories this
   // computer reads for them (.qalam/local).
 
+  /** A brief for whoever builds the first thing, as a file of its own to open or hand over (hub/briefs/). Its path inside the organization. */
+  async putBrief(title: string, text: string): Promise<string> {
+    const dir = this.abs("hub/briefs");
+    const used = new Set(await readdir(dir).catch(() => [] as string[]));
+    const name = uniqueName(slugify(title, "brief"), ".md", (n) => used.has(n));
+    await this.write(path.join(dir, name), text);
+    return `hub/briefs/${name}`;
+  }
+
   private mapFile(key: string) {
     if (!/^[A-Za-z0-9_.-]{1,140}$/.test(key) || key.startsWith(".")) throw new NotFoundError("No such map");
     return this.abs(`hub/maps/${key}.md`);
