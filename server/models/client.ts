@@ -24,12 +24,20 @@ export const RERANKER = {
 } as const;
 
 export interface ModelsState {
-  status: "idle" | "loading" | "ready" | "failed";
+  /** `absent`: what runs the models isn't installed here, so there's nothing to try again. */
+  status: "idle" | "loading" | "ready" | "failed" | "absent";
   /** Why it failed. */
   error?: string;
   /** A model downloading. */
   download?: { model: string; done: number; total: number };
 }
+
+/**
+ * Whether a failure means node-llama-cpp isn't there: it's an optional dependency, and npm drops it where
+ * it can't run (its install refuses an Intel Node on an Apple silicon Mac, say). Told apart by what
+ * the worker actually hit, so a packaging that resolves it some other way can't be mistaken for this.
+ */
+export const missingRunner = (error: string) => /node-llama-cpp/.test(error) && /Cannot find|ERR_MODULE_NOT_FOUND/.test(error);
 
 export interface Models {
   /** The embedding model's id: vectors are kept per model. */
@@ -129,6 +137,11 @@ class ProcessModels implements Models {
   }
 
   private failed(error: string) {
+    if (missingRunner(error)) {
+      this.current = { status: "absent", error: "What runs the models isn't installed here." };
+      this.restUntil = Infinity;
+      return;
+    }
     this.current = { status: "failed", error };
     if (++this.failures >= MAX_FAILURES) this.restUntil = Date.now() + REST;
   }

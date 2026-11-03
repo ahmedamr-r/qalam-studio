@@ -1,5 +1,5 @@
 import { fetchGuarded } from "@/discovery/fetch-guard";
-import { isReddit, pickReviews, postAddress, REVIEW_PAGES, reviewFeed, reviewsIn, reviewsText, withoutHandles, type Review } from "@/discovery/ingest/posts";
+import { isApplePage, isReddit, pickReviews, postAddress, REVIEW_PAGES, reviewFeeds, reviewsFrom, reviewsText, type Review, withoutHandles } from "@/discovery/ingest/posts";
 import { appLookup, appNameIn } from "@/scan/sources";
 import { htmlText, isWall } from "@/discovery/ingest/text";
 import type { OutsidePage } from "@/goals/outside";
@@ -14,6 +14,8 @@ const limit = (signal: AbortSignal) => AbortSignal.any([signal, AbortSignal.time
 
 /** A page as words: HTML read as its text, plain text as it is; anything else (a PDF), or a page that turns readers away, isn't read. */
 export async function readPage(link: { url: string; title?: string }, signal: AbortSignal): Promise<OutsidePage | null> {
+  // Apple's terms bar reading its site by program, but for what it makes available for that: its search API and review feed, which are read as such.
+  if (isApplePage(link.url)) return null;
   try {
     const page = await fetchGuarded(link.url, { signal: limit(signal) });
     const raw = new TextDecoder().decode(page.body);
@@ -48,9 +50,11 @@ export async function readAppReviews(app: { id: string; country: string; name?: 
   const all: Review[] = [];
   for (let page = 1; page <= REVIEW_PAGES; page++) {
     if (signal.aborted) return null;
-    const got = reviewsIn(await readJson(reviewFeed(app.id, app.country, page), signal));
-    all.push(...got);
-    if (got.length < 50) break;
+    const got = await reviewsFrom(reviewFeeds(app.id, app.country, page), (url) => readJson(url, signal));
+    // Two spellings can sort differently, so a later page can hold what an earlier one had.
+    const fresh = got.filter((r) => !all.some((a) => a.words === r.words));
+    all.push(...fresh);
+    if (got.length < 50 || !fresh.length) break;
   }
   const name = app.name ?? appNameIn(await readJson(appLookup(app.id, app.country), signal)) ?? "an app";
   const { kept } = pickReviews(all);

@@ -18,6 +18,8 @@ export interface AppHit {
   ratings: number;
   /** What it says it is: its category and its description's start. */
   about?: string;
+  /** Its maker's own site, as the App Store gives it. */
+  site?: string;
 }
 
 export const appSearch = (term: string, country: string) => `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&entity=software&limit=10&country=${country}`;
@@ -30,7 +32,8 @@ export function appsIn(json: unknown): AppHit[] {
     const name = str(r.trackName).trim();
     const url = str(r.trackViewUrl);
     const about = [str(r.primaryGenreName), str(r.description).replace(/\s+/g, " ").slice(0, 220)].filter(Boolean).join(": ");
-    return id && name && url ? [{ id, name, url, ratings: Number(r.userRatingCount) || 0, ...(about ? { about } : {}) }] : [];
+    const site = /^https?:\/\//i.test(str(r.sellerUrl)) ? str(r.sellerUrl) : "";
+    return id && name && url ? [{ id, name, url, ratings: Number(r.userRatingCount) || 0, ...(about ? { about } : {}), ...(site ? { site } : {}) }] : [];
   });
 }
 

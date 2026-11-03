@@ -19,6 +19,9 @@ describe("what the box holds", () => {
     expect(otherReading({ kind: "product", name: "Meal Planner" }, "Meal Planner")).toEqual({ kind: "idea", said: "Meal Planner" });
     expect(otherReading({ kind: "idea", said: "a planner" }, "a planner")).toEqual({ kind: "product", name: "a planner" });
     expect(otherReading({ kind: "product", name: "", app: "https://apps.apple.com/us/app/x/id1" }, "x")).toBeNull();
+    const sentence = "A tool that helps freelance designers chase late invoices";
+    expect(otherReading({ kind: "idea", said: sentence }, sentence)).toBeNull();
+    expect(otherReading({ kind: "idea", said: "Is it any good?" }, "Is it any good?")).toBeNull();
     expect(isAppLink("look at https://apps.apple.com/us/app/x/id1")).toBe(false);
   });
 

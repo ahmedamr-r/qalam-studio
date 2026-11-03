@@ -26,6 +26,9 @@ const readsAsName = (text: string) => {
   return !/[.!?؟]$/.test(text) && (words.length === 1 || (words.length <= 3 && words.every((w) => /^[\p{Lu}\d]/u.test(w))));
 };
 
+/** The longest a product's name is taken to be when someone says that's what they typed. */
+const NAME_WORDS = 5;
+
 /** What the box holds; null when it says nothing yet. */
 export function scanInput(raw: string): ScanTarget | null {
   const text = raw.replace(/\s+/g, " ").trim();
@@ -36,10 +39,10 @@ export function scanInput(raw: string): ScanTarget | null {
   return text.length >= 3 ? { kind: "idea", said: text } : null;
 }
 
-/** The same words read the other way: a product's name as an idea, or the other way round. A link has no other reading. */
+/** The same words read the other way: a product's name as an idea, or the other way round. A link has no other reading, and a sentence is no name. */
 export function otherReading(t: ScanTarget, said: string): ScanTarget | null {
   const text = said.replace(/\s+/g, " ").trim();
-  if (t.kind === "idea") return { kind: "product", name: text.slice(0, 200) };
+  if (t.kind === "idea") return text.split(" ").length <= NAME_WORDS && !/[.!?؟]$/.test(text) ? { kind: "product", name: text } : null;
   return t.app || text.length < 3 ? null : { kind: "idea", said: text };
 }
 

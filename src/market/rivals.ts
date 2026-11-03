@@ -170,7 +170,7 @@ const hostOf = (url: string) => {
 export function ownSite(c: Pick<Competitor, "name" | "url">): string | null {
   if (!c.url) return null;
   const host = letters(hostOf(c.url));
-  const whole = letters(c.name.split(/\s[-–—:]\s?|:\s/)[0]);
+  const whole = letters(brandOf(c.name));
   const first = letters(c.name.split(/\s+/)[0]);
   if (!host || !(host.includes(whole) || (first.length >= 5 && host.includes(first)))) return null;
   try {
@@ -184,9 +184,12 @@ export interface PricesSent extends PagesSent {
   names: string[];
 }
 
+/** What a product goes by: an app's store name often runs on ("eMeals - Healthy Meal Plans"), and its own site won't say all of that. */
+export const brandOf = (name: string) => one(name.split(/\s[-–—:]\s?|:\s/)[0]);
+
 /** What the prices call reads: who to find a price for, and the parts of each page that speak of one. Null when none does: no call. */
 export function pricesMaterial(o: { names: readonly string[]; pages: readonly OutsidePage[] }): PricesSent | null {
-  const speaking = o.pages.filter((p) => priceExcerpt(p.text) && o.names.some((n) => nameOn(n, p.text) || nameOn(n, p.title))).slice(0, PRICE_LIMITS.pages);
+  const speaking = o.pages.filter((p) => priceExcerpt(p.text) && o.names.some((n) => nameOn(brandOf(n), p.text) || nameOn(brandOf(n), p.title))).slice(0, PRICE_LIMITS.pages);
   if (!speaking.length || !o.names.length) return null;
   const pages = new Map(speaking.map((p, i) => [`w${i + 1}`, { ...p, ref: `w${i + 1}` }]));
   const text = [`The products: ${o.names.join(", ")}`, "", "The pages, only the parts that speak of a price (id · title · address):", ...[...pages.values()].flatMap((p) => [`<page id="${p.ref}" title="${one(p.title).replace(/"/g, "'")}" url="${p.url}">`, priceExcerpt(p.text), "</page>"])].join("\n");
@@ -200,7 +203,7 @@ export function sanitizePrices(raw: unknown, m: PricesSent, o: { now: number; id
     const r = rec(x);
     const name = m.names.find((n) => low(n) === low(clip(r.name, MARKET_LIMITS.name)));
     const page = typeof r.page === "string" ? m.pages.get(r.page.trim()) : undefined;
-    if (!name || !page || !(nameOn(name, page.text) || nameOn(name, page.title))) continue;
+    if (!name || !page || !(nameOn(brandOf(name), page.text) || nameOn(brandOf(name), page.title))) continue;
     const line = checkedLine(r, m.pages, { now: o.now, id: o.id() });
     if (!line || !(valuesIn(line.text).length || /\bfree\b/i.test(line.text))) continue;
     const had = out.get(name) ?? [];

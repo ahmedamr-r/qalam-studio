@@ -53,7 +53,7 @@ export interface ScanSession {
   /** What it's doing, the newest last. */
   steps: string[];
   /** What people use today, found for an idea; each with the app found for it. */
-  competitors: { name: string; app?: { id: string; name: string; url: string } }[];
+  competitors: { name: string; app?: { id: string; name: string; url: string; site?: string } }[];
   read: ScanRead[];
   /** Pages it didn't read, and why. */
   skipped: { reddit: number; before: number; articles: number; unreadable: number };

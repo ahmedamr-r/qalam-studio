@@ -5,7 +5,7 @@ import { setEngineState } from "@/ai/engine";
 import { research } from "@/ai/server";
 import { onUsage } from "@/ai/usage";
 import type { UsageEntry } from "@/ai/usage-shared";
-import { postAddress, REVIEW_PAGES, reviewFeed, reviewsIn, withoutHandles } from "@/discovery/ingest/posts";
+import { postAddress, REVIEW_PAGES, reviewFeeds, reviewsFrom, withoutHandles } from "@/discovery/ingest/posts";
 import { htmlText } from "@/discovery/ingest/text";
 import { findQuote } from "@/discovery/quotes";
 import { quotePiece, type SourceRecord } from "@/discovery/sources";
@@ -65,11 +65,11 @@ async function freshRead(s: SourceRecord, signal: AbortSignal): Promise<{ text: 
     const texts: string[] = [];
     const authors: string[] = [];
     for (let page = 1; page <= REVIEW_PAGES; page++) {
-      const json = (await readJson(reviewFeed(where.id, where.country, page), signal)) as { feed?: { entry?: unknown } } | null;
-      const got = reviewsIn(json);
+      const raw: { json?: { feed?: { entry?: unknown } } | null } = {};
+      const got = await reviewsFrom(reviewFeeds(where.id, where.country, page), async (url) => (raw.json = (await readJson(url, signal)) as typeof raw.json));
       texts.push(...got.map((r) => `${r.title}. ${r.words}`));
       // A feed with one review gives it as an object, not a list.
-      const entry = json?.feed?.entry;
+      const entry = raw.json?.feed?.entry;
       for (const e of (Array.isArray(entry) ? entry : entry ? [entry] : []) as { author?: { name?: { label?: string } } }[]) if (e.author?.name?.label) authors.push(e.author.name.label);
       if (got.length < 50) break;
     }

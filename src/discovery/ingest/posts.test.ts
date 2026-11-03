@@ -1,12 +1,38 @@
 import { describe, expect, it } from "vitest";
-import { isDiscussion, isReddit, lookedOnlineLine, pickReviews, postAddress, refusesReaders, reviewFeed, reviewsIn, reviewsText, withoutHandles } from "./posts";
+import { isApplePage, isDiscussion, isReddit, lookedOnlineLine, pickReviews, postAddress, refusesReaders, reviewFeeds, reviewsFrom, reviewsIn, reviewsText, withoutHandles } from "./posts";
+
+describe("Apple's review feed", () => {
+  const entry = (words: string) => ({ content: { label: words }, "im:rating": { label: "2" }, title: { label: "" }, author: { name: { label: "x" } }, "im:voteSum": { label: "0" }, updated: { label: "2026-11-01" } });
+
+  it("knows each spelling of a page's address, and only the ones naming a page go past the first", () => {
+    const first = reviewFeeds("1234567", "ae", 1);
+    expect(first[0]).toBe("https://itunes.apple.com/ae/rss/customerreviews/page=1/id=1234567/sortby=mostrecent/json");
+    expect(first).toContain("https://itunes.apple.com/ae/rss/customerreviews/id=1234567/page=1/sortby=mostrecent/json");
+    expect(first).toContain("https://itunes.apple.com/ae/rss/customerreviews/id=1234567/json");
+    expect(new Set(first).size).toBe(first.length);
+    const later = reviewFeeds("1234567", "ae", 2);
+    expect(later.length).toBeGreaterThan(1);
+    expect(later.every((u) => u.includes("page=2/"))).toBe(true);
+  });
+
+  it("goes on past an empty answer or a refusal, and stops at the first with reviews", async () => {
+    const asked: string[] = [];
+    const answers: Record<string, unknown> = { a: { feed: { title: { label: "empty" } } }, b: null, c: { feed: { entry: [entry("It lost my data.")] } }, d: { feed: { entry: [entry("Never asked for.")] } } };
+    const got = await reviewsFrom(["a", "b", "c", "d"], async (url) => (asked.push(url), answers[url]));
+    expect(got.map((r) => r.words)).toEqual(["It lost my data."]);
+    expect(asked).toEqual(["a", "b", "c"]);
+  });
+
+  it("has nothing when no spelling does", async () => {
+    expect(await reviewsFrom(["a", "b"], async () => ({ feed: {} }))).toEqual([]);
+  });
+});
 
 describe("public posts", () => {
   it("reads an app's reviews from Apple's feed and anything else as a page; a Reddit address isn't ours to read", () => {
     expect(postAddress("https://apps.apple.com/ae/app/basket-groceries/id1234567")).toEqual({ kind: "appstore", id: "1234567", country: "ae" });
     expect(postAddress("https://apps.apple.com/app/id6772874868")).toEqual({ kind: "appstore", id: "6772874868", country: "us" });
     expect(postAddress("https://apps.apple.com/CZ/app/id570060128")).toEqual({ kind: "appstore", id: "570060128", country: "cz" });
-    expect(reviewFeed("1234567", "ae", 2)).toBe("https://itunes.apple.com/ae/rss/customerreviews/page=2/id=1234567/sortby=mostrecent/json");
     expect(postAddress("https://old.reddit.com/r/groceries/comments/abc123/x/")).toEqual({ kind: "page" });
     expect(postAddress("not a url")).toEqual({ kind: "page" });
     expect(["https://old.reddit.com/r/x/comments/1", "https://redd.it/abc", "https://reddit.com/r/x"].map(isReddit)).toEqual([true, true, true]);
@@ -61,5 +87,16 @@ describe("public posts", () => {
 
   it("takes handles out of a page's words", () => {
     expect(withoutHandles("Thanks u/omar99 and @sara.k, (@team) agreed")).toBe("Thanks someone and someone, (someone) agreed");
+  });
+});
+
+describe("Apple's own pages", () => {
+  it("knows them, and nothing else, whatever follows in the address", () => {
+    expect(isApplePage("https://apps.apple.com/us/app/x/id1")).toBe(true);
+    expect(isApplePage("https://www.apple.com/legal/")).toBe(true);
+    expect(isApplePage("https://apple.com/")).toBe(true);
+    expect(isApplePage("https://notapple.com/")).toBe(false);
+    expect(isApplePage("https://apple.com.example/")).toBe(false);
+    expect(isApplePage("not an address")).toBe(false);
   });
 });

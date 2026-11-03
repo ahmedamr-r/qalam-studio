@@ -24,7 +24,7 @@ export interface HealthFacts {
   engine: { kind: EngineKind; ready: boolean; word: string; detail?: string };
   /** Full-text search works with this Node (Node 24, or the desktop app's). */
   search: { ok: boolean; node: string };
-  models: { status: "idle" | "loading" | "ready" | "failed"; error?: string; download?: { done: number; total: number } } | null;
+  models: { status: "idle" | "loading" | "ready" | "failed" | "absent"; error?: string; download?: { done: number; total: number } } | null;
   inbox: { waiting: number; notRead: number; lastReason?: string; paused: boolean } | null;
   /** Talking instead of typing: whether a mic is on here, and whether macOS lets Qalam use the microphone. */
   voice?: { on: boolean; mic: "granted" | "denied" | "undetermined" } | null;
@@ -59,7 +59,9 @@ export function diagnose(f: HealthFacts): HealthRow[] {
   }
   if (!f.search.ok)
     rows.push({ id: "search", dot: "warn", label: "Search", word: "Off", detail: `This runs on Node ${f.search.node}, whose SQLite has no full-text search. Use Node 24, or the desktop app.` });
-  if (f.models?.status === "failed") rows.push({ id: "models", dot: "warn", label: "Meaning search", word: "Stopped", detail: f.models.error, fix: { id: "models.retry", label: "Try again" } });
+  // Nothing to try again: npm couldn't install what runs the model, and search goes by words.
+  if (f.models?.status === "absent") rows.push({ id: "models", dot: "off", label: "Meaning search", word: "Not on this install", detail: "Search goes by words here, which still works. It needs a build of Node for this computer's chip (on an Apple silicon Mac, not an Intel one): with that, run npx qalam-studio again, or download the app." });
+  else if (f.models?.status === "failed") rows.push({ id: "models", dot: "warn", label: "Meaning search", word: "Stopped", detail: f.models.error, fix: { id: "models.retry", label: "Try again" } });
   else if (f.models?.status === "loading" && f.models.download)
     rows.push({ id: "models", dot: "off", label: "Meaning search", word: `Downloading ${Math.round((100 * f.models.download.done) / Math.max(1, f.models.download.total))}%`, detail: "A small model, once. Search by words works meanwhile." });
   if (f.inbox?.paused && f.inbox.waiting) rows.push({ id: "inbox", dot: "warn", label: "Inbox", word: `${f.inbox.waiting} waiting`, detail: "Files wait until Qalam AI is set up." });

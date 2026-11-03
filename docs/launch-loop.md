@@ -200,6 +200,23 @@ All built by code from what's kept (decision 5).
 
 **Done when:** a clean user gets from `npx qalam-studio` to ranked problems.
 
+**Built November 3.** Tried from a packed tarball, with empty npm and Electron caches, a bare environment and throwaway folders. Not a separate macOS user, so Claude Code's sign-in was this Mac's, and not from the npm registry, since nothing is published yet.
+
+| | Result |
+|---|---|
+| Package | 20 MB to download, 50 MB unpacked, no source maps (17 MB of them left out) |
+| Installed with what it pulls in | 395 MB, of which Electron is 258 MB |
+| `npx` to a window, nothing cached | about 90 seconds (87 and 95), 102 on an Intel Node |
+| One sentence to ranked problems, questions left unanswered | 293 seconds: 9 problems from 95 quotes, from 2 Hacker News threads and 4 forum pages |
+
+- **Node:** Electron 45 needs Node 22.12 or newer just to fetch itself, so `engines` says that, not the 18 this plan guessed. On anything older the launcher now says what to do instead of a stack trace.
+- **What `npx` loses:** nothing on a native Node. npm installs `node-llama-cpp` as an optional dependency, so search by meaning works. On an Intel Node on an Apple silicon Mac (common after migrating from an older Mac) its install refuses to run and npm drops it: search goes by words, and Connections now says so.
+- **The Mac helpers** are arm64, and `scripts/check-pack.mjs` stops a pack that lacks them, since the build itself goes on without them. An Intel Mac or another system runs without them: a helper that can't start is logged and its features are off.
+- **Also seen working in the installed app:** search by meaning on a native Node, the "Not on this install" row on an Intel Node (once there's anything to index), and Copy image, a 1200×675 PNG on the clipboard.
+- **What it turned up:** Apple's review feed had been answering for few apps (see below), so a scan could end with no reviews and not say why; a page now goes through each spelling of the address. And "Read it as a product's name" was offered for a whole sentence, which reads nonsense as a name; it's offered up to 5 words now.
+- **Not tried:** an Intel Mac, Windows through `npx`, and the installed Mac app from this branch.
+- **The name** `qalam-studio` is free on npm as of November 3.
+
 ### 7. Trying it without an engine
 
 - **Sample:** "Try it with a sample" from `eval/retrieval/basket.ts`, no tokens, as `docs/v0.1.md` has asked for.
@@ -234,9 +251,21 @@ Posting and picking demo subjects stay with Ahmed.
 
 - **Weak results:** the largest risk. If a scan reads like plain Claude's answer, nothing else matters. Phase 2's check is there for this.
 - **Thin coverage:** App Store reviews need an app, and many ideas only have web competitors. Hacker News and paste help, but this may stay the loop's weak spot.
-- **Depending on outside sources:** Apple's feed and Algolia's API could change or close, and their terms haven't been read yet. Read them before phase 6. A source that fails says so; the scan goes on with the rest.
+- **Depending on outside sources:** Apple's feed and Algolia's API could change or close. A source that fails says so; the scan goes on with the rest. Terms read November 3 (a reading, not legal advice; see below).
 - **Cost and time:** a scan may use up to about 10 extract calls plus filing. The eval measures this. If it's too much for a plan's limits, read fewer sources before anything else.
 - **Attention before readiness:** the launch only happens once. Don't post until phase 8 is met.
+
+## What the sources' terms say
+
+Read November 3, 2026. A reading, not legal advice: worth a lawyer's look if this ever earns money.
+
+- **Apple's website terms** bar any "page-scrape", "robot" or other automatic program reading the site, except through means "purposely made available". So:
+  - App Store web pages are never read by code (`isApplePage`, in `readPage`). The price step had started doing this and was changed: it reads each product's own `/pricing` page, finding the site through `sellerUrl` in Apple's search API.
+  - The **search API** is documented, at about 20 calls a minute. A scan makes a handful.
+  - The **review feed** is a public JSON feed with no documentation and no promise. It's plausibly "purposely made available", but that's not certain, and Apple could close it. It's also unreliable: each spelling of its address is cached apart and any can be empty for hours. Across 12 apps on November 3, the one address Qalam used had reviews for 2, and seven spellings together for 10. A scan that ends with no reviews is often this, not the app.
+- **Republishing reviews:** the same terms bar republishing content "for publication or distribution or for any commercial enterprise" without consent, and Apple tells developers reviews go in marketing only with the reviewer's permission. Reading reviews on one's own computer is one thing; a share card or report with App Store quotes, posted publicly, is closer to that line. Open: whether the card should prefer other sources' quotes.
+- **Hacker News:** Y Combinator's terms bar scraping and commercial use "unless otherwise expressly authorized", but HN publishes its data through an official API and links Algolia's search API, documented at 10,000 requests an hour per IP. Fine as a free tool run by each person. Read this again before charging for anything.
+- **Reddit:** not read at all (phase 1).
 
 ## Not in this launch
 
@@ -244,4 +273,4 @@ Google Play (behind the lab first, after checking its terms), Reddit, Design thi
 
 ## Start here
 
-Phases 0 to 5 and 4b are built, on the branch `launch-loop`, not pushed (November 3). Next: phase 6, installing. Still for a person to mark: whether scans beat plain Claude (`.qalam-dev/eval-loop/final/`), and whether a pick follows from its quotes on 3 inputs.
+Phases 0 to 6 and 4b are built, on the branch `launch-loop`, not pushed (November 3). Next: phase 7, trying it without an engine. Still for a person to mark: whether scans beat plain Claude (`.qalam-dev/eval-loop/final/`), and whether a pick follows from its quotes on 3 inputs.

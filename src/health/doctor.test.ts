@@ -35,6 +35,11 @@ describe("This Mac, checked", () => {
       ["inbox", "warn", "2 not read"],
     ]);
     expect(rows.find((r) => r.id === "models")?.fix?.id).toBe("models.retry");
+    // Nothing to try again where what runs the models isn't installed; search goes by words.
+    const absent = diagnose({ ...fine, models: { status: "absent" } })[0];
+    expect(absent).toMatchObject({ id: "models", dot: "off", word: "Not on this install" });
+    expect(absent.fix).toBeUndefined();
+    expect(absent.detail).toContain("Search goes by words");
     expect(diagnose({ ...fine, models: { status: "loading", download: { done: 18, total: 36 } } })[0]).toMatchObject({ id: "models", dot: "off", word: "Downloading 50%" });
   });
 

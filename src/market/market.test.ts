@@ -6,7 +6,7 @@ import { marketPieces } from "@/hub/pieces";
 import { editMarket } from "./edit";
 import { aboutAfterFact, aboutFromFacts, companyMaterial, sanitizeFacts, siteUrl } from "./facts";
 import { marketFromMarkdown, marketToMarkdown } from "./market-md";
-import { competitorsMaterial, domainMaterial, ownSite, priceExcerpt, pricesMaterial, sanitizeCompetitors, sanitizeDomain, sanitizePrices, withRivals } from "./rivals";
+import { brandOf, competitorsMaterial, domainMaterial, ownSite, priceExcerpt, pricesMaterial, sanitizeCompetitors, sanitizeDomain, sanitizePrices, withRivals } from "./rivals";
 import { sessionOf } from "./session";
 import { marketContext } from "./text";
 import { emptyMarket, MARKET_LIMITS, type Market, type MarketLine } from "./types";
@@ -269,6 +269,17 @@ describe("what competitors charge", () => {
     expect(kept.get("Mealime")?.map((l) => l.text)).toEqual(["Mealime Pro costs $5.99 a month."]);
     expect(kept.get("Paprika")?.[0]).toMatchObject({ url: "https://blog.example/roundup", by: "qalam" });
     expect(kept.has("Stranger")).toBe(false);
+  });
+
+  it("finds a product on its own site by the name it goes by, not its whole store name", () => {
+    const own = p("https://emeals.com/pricing", `eMeals Plus costs $9.99 per month. ${pad}`);
+    const m = pricesMaterial({ names: ["eMeals - Healthy Meal Plans"], pages: [own] })!;
+    const [id] = [...m.pages.keys()];
+    const kept = sanitizePrices({ prices: [{ name: "eMeals - Healthy Meal Plans", text: "eMeals Plus costs $9.99 a month.", page: id, quote: "eMeals Plus costs $9.99 per month." }] }, m, { now: 1, id: () => "l1" });
+    expect(kept.get("eMeals - Healthy Meal Plans")?.[0].url).toBe("https://emeals.com/pricing");
+    expect(brandOf("eMeals - Healthy Meal Plans")).toBe("eMeals");
+    expect(brandOf("Riseo: Night Shift Tracker")).toBe("Riseo");
+    expect(brandOf("Mealime")).toBe("Mealime");
   });
 
   it("knows a product's own site from a review site's page about it", () => {

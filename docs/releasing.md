@@ -68,3 +68,19 @@ How it's put together:
 - **The ad-hoc `.dmg` window:** its background is `build/dmg-open-anyway.tiff`, rendered at 1x and 2x from `build/dmg-open-anyway.html` with `pnpm exec electron scripts/render-dmg.mjs`. The page writes around where Finder puts the icons (electron-builder's layout), so keep those spots clear when you change it.
 
 The installed app checks for updates unless `QALAM_NO_UPDATES=1` is set.
+
+## Publishing to npm
+
+`npx qalam-studio` runs the package on npm. The name is free as of November 2026.
+
+1. `npm pack` builds everything (`prepack`), stops if the Mac helpers are missing (`scripts/check-pack.mjs`), and writes the tarball. It has to run on an Apple silicon Mac with Xcode's Swift.
+2. Try the tarball with empty caches:
+
+   ```bash
+   npm_config_cache=$(mktemp -d) electron_config_cache=$(mktemp -d) QALAM_HOME=$(mktemp -d) npx --yes --package=./qalam-studio-<version>.tgz qalam-studio
+   ```
+
+3. `npm publish`, which asks for your npm login.
+
+It can't really be taken back: npm keeps a version's number for good once used. Bump the version first if the code has moved since the last release.
+

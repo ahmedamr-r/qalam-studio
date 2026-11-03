@@ -125,6 +125,19 @@ describe("a scan", () => {
     expect(s.known).toContainEqual(expect.objectContaining({ kind: "product", name: "Mealime", text: "Mealime are meal planning apps." }));
   });
 
+  it("reads what others charge at their own sites, as the App Store names them, and never the App Store's pages", async () => {
+    const d = deps();
+    vi.mocked(d.json).mockImplementation(async (url: string) => {
+      if (url.includes("itunes.apple.com/search")) return { results: [{ ...appResult(11, "Mealime Meal Plans"), sellerUrl: "https://www.mealime.com/app" }, { ...appResult(22, "Big Planner"), sellerUrl: "https://bigplanner.example" }] };
+      if (url.includes("hn.algolia.com")) return { hits: [] };
+      return null;
+    });
+    await scanToEnd(store, idea, d);
+    const read = vi.mocked(d.read).mock.calls.map(([l]) => l.url);
+    expect(read).toContain("https://www.mealime.com/pricing");
+    expect(read.filter((u) => u.includes("apple.com"))).toEqual([]);
+  });
+
   it("says what others charge, a price first, and an app no lookup named only with a price", async () => {
     const d = deps({ competitors: ["Mealime"] });
     const rival = { competitors: [{ name: "Mealime", page: "w1", lines: [{ text: "Mealime are meal planning apps.", page: "w1", quote: "are meal planning apps people use every week" }] }] };

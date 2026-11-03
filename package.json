@@ -2,13 +2,12 @@
   "name": "qalam-studio",
   "productName": "Qalam Studio",
   "version": "0.1.1",
-  "description": "Open-source product discovery on your own Claude Code or Codex: the problems worth solving, ranked by what backs them, with every quote checked by code.",
+  "description": "Describe what you want to build, or name a product. Qalam Studio reads what people complain about, ranks the problems, works out who to build for and what to build first, and writes the brief for your coding agent. Runs on your own Claude Code or Codex, on your own computer.",
   "license": "Apache-2.0",
-  "private": true,
   "type": "module",
   "main": "out/main.js",
   "engines": {
-    "node": ">=24"
+    "node": ">=22.12.0"
   },
   "bin": {
     "qalam-studio": "bin/qalam-studio.mjs"
@@ -16,6 +15,7 @@
   "files": [
     "bin/",
     "out/",
+    "!out/**/*.map",
     "dist/",
     "LICENSE",
     "NOTICE",
@@ -34,7 +34,7 @@
     "dist:mac": "pnpm build && pnpm build:desktop && node scripts/stage-app.mjs && electron-builder --mac --projectDir release/app --config ../../electron-builder.yml",
     "dist:mac:adhoc": "pnpm dist:mac -c.mac.identity=- -c.dmg.background=dmg-open-anyway.tiff",
     "dist:win": "pnpm build && pnpm build:desktop && node scripts/stage-app.mjs && electron-builder --win --projectDir release/app --config ../../electron-builder.yml",
-    "prepack": "pnpm build && pnpm build:desktop",
+    "prepack": "pnpm build && pnpm build:desktop && node scripts/check-pack.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "eval:retrieval": "tsx eval/retrieval/run.ts",
@@ -107,5 +107,22 @@
       "safe-content-frame": "0.0.34",
       "radix-ui": "1.8.1"
     }
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ahmedamr-r/qalam-studio.git"
+  },
+  "homepage": "https://github.com/ahmedamr-r/qalam-studio#readme",
+  "bugs": {
+    "url": "https://github.com/ahmedamr-r/qalam-studio/issues"
+  },
+  "author": "Ahmed Amr",
+  "keywords": [
+    "product-discovery",
+    "claude-code",
+    "codex",
+    "prd",
+    "user-research",
+    "desktop-app"
+  ]
 }

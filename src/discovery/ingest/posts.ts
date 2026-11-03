@@ -50,7 +50,25 @@ export const REVIEW_PAGES = 10;
 /** What one read call takes of reviews: a source of this size is one chunk (src/discovery/sources.ts). */
 export const REVIEW_CHARS = 20_000;
 
-export const reviewFeed = (id: string, country: string, page: number) => `https://itunes.apple.com/${country}/rss/customerreviews/page=${page}/id=${id}/sortby=mostrecent/json`;
+/**
+ * Where a page of an app's reviews may be. Apple caches each spelling of the feed's address apart and any
+ * of them can be empty for hours: in November 2026 one spelling had reviews for about one app in five, and
+ * these together for 10 apps of 12. Only the ones naming a page have later pages.
+ */
+export function reviewFeeds(id: string, country: string, page: number): string[] {
+  const named = [`page=${page}/id=${id}/sortby=mostrecent`, `id=${id}/page=${page}/sortby=mostrecent`, `page=${page}/id=${id}/sortby=mosthelpful`, `page=${page}/id=${id}`];
+  const first = [`id=${id}/sortby=mostrecent`, `id=${id}/sortby=mosthelpful`, `id=${id}`];
+  return (page === 1 ? [...named, ...first] : named).map((path) => `https://itunes.apple.com/${country}/rss/customerreviews/${path}/json`);
+}
+
+/** The first of these addresses that has reviews, read one after another so a good answer costs only itself. */
+export async function reviewsFrom(addresses: readonly string[], read: (url: string) => Promise<unknown>): Promise<Review[]> {
+  for (const url of addresses) {
+    const got = reviewsIn(await read(url));
+    if (got.length) return got;
+  }
+  return [];
+}
 
 export interface Review {
   stars: number;
@@ -107,6 +125,16 @@ export function reviewsText(app: string, reviews: readonly Review[]): { title: s
 const DISCUSSION_HOSTS = ["reddit.com", "apps.apple.com", "play.google.com", "quora.com", "stackexchange.com", "stackoverflow.com", "news.ycombinator.com", "trustpilot.com", "producthunt.com", "g2.com", "capterra.com", "tripadvisor.com", "indiehackers.com", "discord.com", "community.shopify.com"];
 
 /** A page where people say things in their own words: a thread, reviews, a forum. An article, a vendor's page or a news story isn't. */
+/** A page of Apple's own site (apps.apple.com and the rest): not to be read by program, Apple's terms say. */
+export function isApplePage(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return host === "apple.com" || host.endsWith(".apple.com");
+  } catch {
+    return false;
+  }
+}
+
 export function isDiscussion(raw: string): boolean {
   let host: string;
   try {

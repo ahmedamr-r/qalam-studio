@@ -4,7 +4,7 @@ import { appsCall, searchesCall, steerCall } from "@/ai/scan";
 import type { Ingested } from "@/discovery/ingest/core";
 import { isDiscussion, isReddit, postAddress, refusesReaders } from "@/discovery/ingest/posts";
 import type { OutsidePage } from "@/goals/outside";
-import { competitorsMaterial, competitorsTask, ownSite, pricesMaterial, sanitizeCompetitors, sanitizePrices, withRivals } from "@/market/rivals";
+import { brandOf, competitorsMaterial, competitorsTask, ownSite, pricesMaterial, sanitizeCompetitors, sanitizePrices, withRivals } from "@/market/rivals";
 import type { Competitor } from "@/market/types";
 import { focusWith, isOff, sanitizeSteer, steerOf, steerRound, toldLines, withSteer, type ScanSteer } from "@/scan/steer";
 import { emptyScan, isThin, peopleQuotes, sanitizeAppPicks, sanitizeSearches, scanOf, type ScanKnown, type ScanRead, type ScanRequest, type ScanSession } from "@/scan/session";
@@ -165,7 +165,7 @@ async function runScan(store: OrgStore, req: ScanRequest, deps: ScanDeps, signal
       const named: AppHit[] = [];
       for (const name of names) {
         const app = bestApp(name, appsIn(await deps.json(appSearch(name, country), signal)));
-        apps.push({ name, ...(app ? { app: { id: app.id, name: app.name, url: app.url } } : {}) });
+        apps.push({ name, ...(app ? { app: { id: app.id, name: app.name, url: app.url, ...(app.site ? { site: app.site } : {}) } } : {}) });
         if (app) named.push(app);
       }
       if (target.kind === "product") toRead.push(...named.map((a) => ({ id: a.id, country, name: a.name, url: a.url })));
@@ -176,7 +176,7 @@ async function runScan(store: OrgStore, req: ScanRequest, deps: ScanDeps, signal
         const picked = candidates.length ? sanitizeAppPicks((await deps.structured<unknown>(appsCall(about, candidates), signal)).data, candidates, SCAN_LIMITS.apps) : [];
         for (const a of picked) {
           toRead.push({ id: a.id, country, name: a.name, url: a.url });
-          if (!apps.some((x) => x.app?.id === a.id)) apps.push({ name: a.name, app: { id: a.id, name: a.name, url: a.url } });
+          if (!apps.some((x) => x.app?.id === a.id)) apps.push({ name: a.name, app: { id: a.id, name: a.name, url: a.url, ...(a.site ? { site: a.site } : {}) } });
         }
       }
     }
@@ -334,22 +334,22 @@ async function competitorsFor(store: OrgStore, o: { org: string; said: string; l
 }
 
 /**
- * What each charges, a price line first on its card: its pricing page and its app's page read by code,
- * beside the pages the lookup read; one call says it, only where a page speaks of a price at all. An
- * app people use that no lookup named joins them only with a price kept.
+ * What each charges, a price line first on its card: its pricing page read by code (at its own site,
+ * or the one the App Store gives for its app), beside the pages the lookup read; one call says it, only
+ * where a page speaks of a price at all. An app people use that no lookup named joins them only with
+ * a price kept. Never the App Store's own pages: Apple's terms bar reading them by program.
  */
 async function pricesFor(rivals: readonly Competitor[], apps: ScanSession["competitors"], pages: readonly OutsidePage[], deps: ScanDeps, signal: AbortSignal, step: (label: string) => void): Promise<Competitor[]> {
   const now = Date.now();
-  const extra = apps.flatMap((a): Competitor[] => (a.app && !rivals.some((c) => c.name.toLowerCase() === a.name.toLowerCase()) ? [{ id: `c${nanoid(8)}`, name: a.app.name, url: a.app.url, lines: [], by: "qalam", at: now }] : []));
+  const extra = apps.flatMap((a): Competitor[] => (a.app && !rivals.some((c) => c.name.toLowerCase() === a.name.toLowerCase()) ? [{ id: `c${nanoid(8)}`, name: brandOf(a.app.name), url: a.app.site ?? a.app.url, lines: [], by: "qalam", at: now }] : []));
   const all = [...rivals, ...extra].slice(0, SCAN_LIMITS.priced);
   if (!all.length) return [...rivals];
   step("Looking at what others charge");
   const own = all.flatMap((c) => {
-    const site = ownSite(c);
-    return site ? [{ url: `${site}/pricing`, title: `${c.name} pricing` }] : [];
+    const site = ownSite(c) ?? ownSite({ name: c.name, url: apps.find((a) => a.name === c.name || a.app?.name === c.name)?.app?.site });
+    return site ? [{ url: `${site}/pricing`, title: `${brandOf(c.name)} pricing` }] : [];
   });
-  const stores = apps.flatMap((a) => (a.app ? [{ url: a.app.url, title: a.app.name }] : []));
-  const read = (await Promise.all([...new Map([...own, ...stores].map((l) => [l.url, l])).values()].slice(0, SCAN_LIMITS.pricePages).map((l) => deps.read(l, signal)))).filter((p): p is OutsidePage => !!p);
+  const read = (await Promise.all([...new Map(own.map((l) => [l.url, l])).values()].slice(0, SCAN_LIMITS.pricePages).map((l) => deps.read(l, signal)))).filter((p): p is OutsidePage => !!p);
   const m = pricesMaterial({ names: all.map((c) => c.name), pages: [...read, ...pages] });
   if (!m || signal.aborted) return [...rivals];
   const { data } = await deps.structured<unknown>(pricesCall(m), signal);
