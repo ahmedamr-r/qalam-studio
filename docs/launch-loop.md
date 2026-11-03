@@ -32,7 +32,7 @@ Each one is a default to confirm before its phase starts.
 | 3 | Reviews of the person's own product count as what people said, only when they say the product is theirs. | They are that person's customers. It's one question at step 2, and Change it still works. |
 | 4 | The loop is not behind the lab. Google Play, other engines and the MCP server are. | The loop is the product. The rest stays optional. |
 | 5 | The brief, the report and the card are built by code from what's kept. | No new words from a model at the last step, so nothing unchecked reaches a public post. |
-| 6 | The first run gets the one box first, with the current steps behind "Set it up properly". | A launch visitor shouldn't answer five steps before seeing a result. Name and shape get defaults they can change later. |
+| 6 | The first run asks who it's for, then what to read, with the current steps behind "Set it up in detail". Reading starts on that first answer. | A launch visitor shouldn't answer five steps before seeing a result, and someone at a company shouldn't be treated as a solo founder. (Changed from one box on 11-04.) |
 
 ## What's reused and what's new
 
@@ -111,7 +111,7 @@ Built on November 3, 2026. Decided while building: "This is my product" comes af
 - **`routeOf`:** add a `scan` mode, and treat an App Store link as a scan. Keep today's routes for everything else, and test them with `src/space/route.ts`'s existing cases.
 - **The thread:** a `scan` job in `src/space/chat.ts` with parts in `src/ui/space/chat/parts.tsx`: what it's reading, what it found, then the ranked problems. The problems panel opens when filing is done (`?panel=problems`).
 - **The canvas:** problems arrive as faint cards under "No goal yet", the same way pages are drawn today. Check this at the first card and at 15 cards.
-- **First run:** after the engine step, the one box. It makes the organization (shape `solo`, name from their words, changeable), then hands over to the canvas with `?scan=1` and `handWords`. "Set it up properly" keeps today's steps.
+- **First run (since changed):** it now asks who it's for first, a company's product or their own idea, then three questions with suggested answers while a researcher reads, full screen, before the canvas. See First run in `AGENTS.md`. A company's path can still set it up in detail with today's steps.
 - **Empty canvas:** the box leads, above Write it and Help me find one.
 
 **Done when:** on `studio-fresh`, a new person gets from the app opening to ranked problems with one sentence typed, and a reload midway picks up where it was.

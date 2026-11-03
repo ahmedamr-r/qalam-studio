@@ -468,20 +468,13 @@ describe("the competitors", () => {
   });
 });
 
-describe("the one box", () => {
-  const welcome = (over: Partial<ThreadInput> = {}) => base({ route: "welcome", orgName: null, box: true, ...over });
+describe("setting it up in detail", () => {
+  const welcome = (over: Partial<ThreadInput> = {}) => base({ route: "welcome", orgName: null, ...over });
 
-  it("asks for an idea or a product once the engine is ready, with the steps a click away", () => {
-    const t = threadOf(welcome());
-    expect(t.at(-1)?.id).toBe("box");
-    expect(t.at(-1)?.parts.some((p) => p.type === "data" && p.data.set === "box")).toBe(true);
-    expect(askOf(welcome())).toMatchObject({ kind: "box", submit: "enter" });
-  });
-
-  it("isn't asked before the engine is ready, or once they chose to set it up properly", () => {
+  it("asks who it's for once the engine is ready, and nothing before", () => {
+    expect(threadOf(welcome()).some((m) => m.id === "shape:ask")).toBe(true);
+    expect(askOf(welcome()).kind).toBe("none");
     expect(askOf(welcome({ engine: "testing" })).kind).toBe("none");
-    expect(threadOf(welcome({ engine: "testing" })).some((m) => m.id === "box")).toBe(false);
-    expect(threadOf(welcome({ box: false })).some((m) => m.id === "shape:ask")).toBe(true);
-    expect(askOf(welcome({ box: false })).kind).toBe("none");
+    expect(threadOf(welcome({ engine: "testing" })).some((m) => m.id === "shape:ask")).toBe(false);
   });
 });

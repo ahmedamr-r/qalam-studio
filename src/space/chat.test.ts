@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { DumpSession } from "@/discovery/dump";
 import type { AskAnswer } from "@/hub/ask";
-import { asking, chatKey, chatOf, emptyChat, MAX_TURNS, running, threadOf, withJob, withTurn, type ChatTurn, type ScanJob } from "./chat";
+import { emptyScan } from "@/scan/session";
+import { asking, chatKey, chatOf, emptyChat, MAX_TURNS, running, scanTurn, threadOf, withJob, withTurn, type ChatTurn, type ScanJob } from "./chat";
 
 const answer: AskAnswer = { question: "Why do parents stop?", answer: "The window.", claims: [], unknowns: [], how: "packed", at: 1 };
 const turn = (id: string, job: ChatTurn["job"], said = "Why do parents stop ordering?"): ChatTurn => ({ id, at: 1, said, job });
@@ -43,6 +44,31 @@ describe("the canvas's chat", () => {
     ]);
     c = withJob(c, "a", () => ({ kind: "ask", state: "failed", error: "No engine" }));
     expect(threadOf(c)[1].parts[0]).toEqual({ type: "text", text: "I couldn't answer that: No engine" });
+  });
+});
+
+describe("a scan from the first run", () => {
+  const session = emptyScan({ kind: "product", name: "Basket", mine: true }, 5000);
+  const told = [{ question: "What are you trying to move?", answer: "Retention" }];
+
+  it("reads as if it had been asked for in the chat, with nothing left to ask", () => {
+    const t = scanTurn(session.target, "Basket", session, told);
+    expect(t).toMatchObject({ id: "scan-5000", at: 5000, said: "Basket" });
+    expect(t.job).toMatchObject({ kind: "scan", asked: 5000, ask: { step: "done" }, mine: true, told });
+    const kept = chatOf(withTurn(emptyChat(), t));
+    expect(kept.turns).toHaveLength(1);
+    expect(kept.turns[0].job).toMatchObject({ kind: "scan", session: { state: "reading" } });
+  });
+
+  it("isn't theirs unless they said so", () => {
+    const idea = emptyScan({ kind: "idea", said: "A planner" }, 1);
+    const job = scanTurn(idea.target, "A planner", idea).job as ScanJob;
+    expect(job.mine).toBeUndefined();
+    expect(job.told).toBeUndefined();
+  });
+
+  it("is the same turn when it's written again after an answer", () => {
+    expect(scanTurn(session.target, "Basket", session).id).toBe(scanTurn(session.target, "Basket", session, told).id);
   });
 });
 

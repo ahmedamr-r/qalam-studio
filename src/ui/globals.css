@@ -531,6 +531,7 @@ input, textarea { caret-color: var(--color-fg-accent); }
 @keyframes q-shimmer-text { from { background-position: 100% 0; } to { background-position: 0% 0; } }
 @keyframes q-shimmer   { from { background-position: -200px 0; } to { background-position: 200px 0; } }
 @keyframes q-breathe   { 50% { opacity: 0.45; } }
+@keyframes q-researcher { 50% { transform: translateY(-3px); } }
 @keyframes q-blink     { 50% { opacity: 0; } }
 @keyframes q-orbit     { to { --ai-angle: 360deg; } }
 @keyframes q-done-glow { 0% { opacity: 0; } 15% { opacity: 1; } 100% { opacity: 0; } }
@@ -601,6 +602,7 @@ input, textarea { caret-color: var(--color-fg-accent); }
 
 /* Enter for new content: chat turns, tab switch content, pen hint bar */
 .q-rise { animation: q-lift-in var(--dur-base) var(--ease-out-quint) both; }
+.q-researcher { animation: q-researcher 3.6s ease-in-out infinite; }
 .q-fade { animation: q-fade-in var(--dur-fast) var(--ease-out-quad) both; }
 .q-stagger > * { animation: q-pop-in var(--dur-fast) var(--ease-out-quint) both; animation-delay: calc(min(var(--i, 0), 8) * 30ms); }
 
@@ -707,6 +709,7 @@ input, textarea { caret-color: var(--color-fg-accent); }
   :root:not([data-motion="full"]) .q-icon-pop, :root:not([data-motion="full"]) .q-dialog[data-nope],
   :root:not([data-motion="full"]) .q-rail-marker[data-landed] { animation: none; }
   :root:not([data-motion="full"]) [data-done] .q-nuqta-hole { animation: none; }
+  :root:not([data-motion="full"]) .q-researcher,
   :root:not([data-motion="full"]) .q-skeleton, :root:not([data-motion="full"]) .q-breathe,
   :root:not([data-motion="full"]) .q-loader > i, :root:not([data-motion="full"]) .ds-shimmer,
   :root:not([data-motion="full"]) .ds-sweep, :root:not([data-motion="full"]) .ds-reflect::before,
@@ -726,6 +729,7 @@ input, textarea { caret-color: var(--color-fg-accent); }
 :root[data-motion="reduced"] .q-rail-marker[data-landed],
 :root[data-motion="reduced"] .q-dialog[data-nope],
 :root[data-motion="reduced"] [data-done] .q-nuqta-hole,
+:root[data-motion="reduced"] .q-researcher,
 :root[data-motion="reduced"] .q-skeleton,
 :root[data-motion="reduced"] .q-breathe,
 :root[data-motion="reduced"] .q-loader > i,

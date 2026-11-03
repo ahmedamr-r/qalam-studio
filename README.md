@@ -20,7 +20,7 @@ There's also a [Mac app](#the-mac-app), and you can run it [from source](#from-s
 
 ## What you get
 
-1. **One box.** An idea in your words, an app's name, a website or an App Store link.
+1. **Say what you're working on.** A product at a company, by its name, website or App Store link, or your own idea, in your words.
 2. **It reads the space.** What people already complain about, in App Store reviews, on Hacker News and on forums, then what others offer and charge and what's been published. While it reads, it asks a few questions so it looks in the right place. It takes about 5 minutes, and keeps going if you close the window.
 3. **Problems, ranked.** One page per problem, each line linked to the quotes behind it, best backed first, and each on the canvas. It says plainly when it found little, rather than padding it out.
 4. **Who to build for, and what first.** Two or three audiences backed by what people said, for you to pick from. A first goal about learning, such as "5 of 10 of these people sign up". Then one thing to build for one problem, why that one, what to leave for later, the riskiest assumption and one test. It's called the strongest signal so far, because that's all it is.

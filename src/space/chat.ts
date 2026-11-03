@@ -231,6 +231,14 @@ export function chatOf(raw: unknown): CanvasChat {
 /** A turn added: the newest MAX_TURNS kept. */
 export const withTurn = (c: CanvasChat, t: ChatTurn): CanvasChat => ({ ...c, turns: [...c.turns, t].slice(-MAX_TURNS) });
 
+/** A scan started from the first run, as if it had been asked for in the chat: nothing left to ask, and the chat follows it from here. */
+export const scanTurn = (target: ScanTarget, said: string, session: ScanSession, told?: readonly ScanSaid[]): ChatTurn => ({
+  id: `scan-${session.at}`,
+  at: session.at,
+  said,
+  job: { kind: "scan", target, asked: session.at, session, ask: { step: "done" }, ...(target.kind === "product" && target.mine ? { mine: true as const } : {}), ...(told?.length ? { told: [...told] } : {}) },
+});
+
 /** A turn changed in place (gone: nothing changes). */
 export const withJob = (c: CanvasChat, id: string, fn: (j: ChatJob) => ChatJob): CanvasChat => ({ ...c, turns: c.turns.map((t) => (t.id === id ? { ...t, job: fn(t.job) } : t)) });
 
