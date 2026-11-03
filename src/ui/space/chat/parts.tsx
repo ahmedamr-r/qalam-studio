@@ -1456,7 +1456,8 @@ function PickedStep({ id, plan }: { id: string; plan: ScanPlan }) {
 function BriefStep({ id, brief }: { id: string; brief: BriefState }) {
   const [copied, setCopied] = useState(false);
   const started = useCanvasChat((s) => s.live[id]?.started);
-  const kept = useBriefs((s) => s.list.some((b) => b.id === brief.id));
+  // Not known yet is not gone.
+  const kept = useBriefs((s) => !s.loaded || s.list.some((b) => b.id === brief.id));
   if (brief.step === "asking") return <p className="text-body text-fg">A few things for the brief. Skip any you can't answer.</p>;
   if (brief.step === "writing") return <Progress label="Writing the brief" started={started ?? Date.now()} tokens={0} note="This takes under a minute." />;
   if (brief.step === "failed")

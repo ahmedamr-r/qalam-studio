@@ -8,11 +8,11 @@ import { useDiscovery } from "./store";
  * under its card (src/discovery/lane.ts) that opens in the right panel (./BriefReader.tsx).
  */
 
-export const useBriefs = create<{ list: BriefMeta[] }>(() => ({ list: [] }));
+export const useBriefs = create<{ list: BriefMeta[]; loaded: boolean }>(() => ({ list: [], loaded: false }));
 
 export const loadBriefs = () =>
   listBriefs()
-    .then((list) => useBriefs.setState({ list }))
+    .then((list) => useBriefs.setState({ list, loaded: true }))
     .catch(() => {});
 
 /** How the lane and the panel name a brief's tile. */

@@ -443,8 +443,8 @@ export async function answerBrief(id: string, answers: Readonly<Record<string, s
   try {
     const meta = await (job.kind === "brief" ? writeForCard(job.card, asked, ctrl.signal) : job.kind === "scan" ? writeForPick(job, asked, ctrl.signal) : null);
     if (!meta) return setBrief(id, { step: "failed", error: "What it was written from has gone." });
-    setBrief(id, { step: "ready", id: meta.id, file: meta.file });
     await loadBriefs();
+    setBrief(id, { step: "ready", id: meta.id, file: meta.file });
     onCanvasReady((c) => glideToLayer(c, meta.card));
   } catch (e) {
     setBrief(id, { step: "failed", error: (e as Error).name === "AbortError" ? "You stopped it." : message(e) });
