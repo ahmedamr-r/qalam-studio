@@ -159,16 +159,16 @@
 
   /* Cards, sources and wires on a canvas (src/discovery/look.ts),
      a step above the canvas. src/engine/ost-palette.ts repeats them; a test keeps the two the same. */
-  --color-card: #2a2926;
+  --color-card: #242938;
   --color-card-line: #ffffff1c;
   --color-card-shadow: #00000073;
-  --color-card-edge: #ffffff0f;   /* a lit top edge */
+  --color-card-edge: #ffffff1a;   /* a lit top edge */
   --color-card-footer: #0000001f; /* the footer's shade, over the card */
-  --color-wire: #5f5c58;
+  --color-card-tag: #30364a;      /* a tag on the card's edge, a step above it */
+  --color-wire: #5b6176;
 
-  /* Discovery card kinds: the tag on each card's top edge (src/engine/ost-palette.ts repeats them).
-     Clear of the status hues (success, warning, danger, selection, ai) and of saffron. Ink on its
-     own tag (the hue at 16% over the card) 4.8–5.8. */
+  /* Discovery card kinds: the mark on each card's tag (src/engine/ost-palette.ts repeats them).
+     Clear of the status hues (success, warning, danger, selection, ai) and of saffron. */
   --color-kind-goal: #b3a3ff;
   --color-kind-problem: #e6c04e;
   --color-kind-solution: #52cca8;
@@ -429,11 +429,12 @@
   --color-component-subtle: rgb(106 79 224 / 0.10);
 
   --color-card: #ffffff;
-  --color-card-line: #0000001a;
-  --color-card-shadow: #00000024;
+  --color-card-line: #141e4621;
+  --color-card-shadow: #141e4629;
   --color-card-edge: #ffffff00;
-  --color-card-footer: #7a6a5508;
-  --color-wire: #bcb8b3;
+  --color-card-footer: #2a3f8008;
+  --color-card-tag: #eef1f9;
+  --color-wire: #b3b9c9;
 
   /* Ink on its own tag (the hue at 10% over white) 4.6–5.4. */
   --color-kind-goal: #6647d1;

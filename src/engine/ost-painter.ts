@@ -226,11 +226,11 @@ export class OstPainter {
     const w = Math.min(maxW, this.width(p) + pad * 2 + g);
     if (w < 24) return 0;
     this.fill.setColor(this.col(bg));
-    canvas.drawRRect(this.rrect(x, y, w, h, 5), this.fill);
+    canvas.drawRRect(this.rrect(x, y, w, h, 6), this.fill);
     if (outline) {
       this.stroke.setColor(this.col(this.pal.border));
       this.stroke.setStrokeWidth(1);
-      canvas.drawRRect(this.rrect(x + 0.5, y + 0.5, w - 1, h - 1, 4.5), this.stroke);
+      canvas.drawRRect(this.rrect(x + 0.5, y + 0.5, w - 1, h - 1, 5.5), this.stroke);
     }
     glyph?.(x + pad + 5, y + h / 2, ink);
     canvas.drawParagraph(p, x + pad + g, y + (h - p.getHeight()) / 2);
@@ -266,21 +266,19 @@ export class OstPainter {
 
   /**
    * The kind, as a tag on the card's top edge (TAG in src/discovery/look.ts: half above it, half on
-   * the card) in the kind's own colour. Opaque, so the edge doesn't run through it. A sub-goal's is
-   * quieter, so the goal above it reads first.
+   * the card): neutral, with its mark in the kind's own colour. Opaque, so the edge doesn't run through
+   * it. A sub-goal's sits flush with the card, so the goal above it reads first.
    */
   private kindTag(canvas: Canvas, kind: Kind, label: string, quiet: boolean) {
     const hue = this.pal[KIND_HUE[kind]];
-    const tp = this.label(label, hue, TAG.size, TAG.weight, 160, TAG.tracking);
+    const tp = this.label(label, this.pal.muted, TAG.size, TAG.weight, 160, TAG.tracking);
     const x = CARD.pad;
     const y = -TAG.h / 2;
     const w = TAG.pad * 2 + TAG.mark + this.width(tp);
     const body = this.rrect(x, y, w, TAG.h, TAG.radius);
-    this.fill.setColor(this.col(this.pal.card));
+    this.fill.setColor(this.col(quiet ? this.pal.card : this.pal.tag));
     canvas.drawRRect(body, this.fill);
-    this.fill.setColor(this.col(hue, quiet ? TAG.quietFill : TAG.fill));
-    canvas.drawRRect(body, this.fill);
-    this.stroke.setColor(this.col(hue, quiet ? TAG.quietEdge : TAG.edge));
+    this.stroke.setColor(this.col(this.pal.border));
     this.stroke.setStrokeWidth(1);
     canvas.drawRRect(this.rrect(x + 0.5, y + 0.5, w - 1, TAG.h - 1, TAG.radius - 0.5), this.stroke);
     this.kindMark(canvas, kind, x + TAG.pad + TAG.markSize / 2, 0, hue, TAG.markSize);
@@ -295,11 +293,11 @@ export class OstPainter {
     const tw = 8 + 10 + this.width(tp) + 8;
     const x = w - CARD.pad - tw;
     const y = -CARD.tag / 2;
-    this.fill.setColor(this.col(p.card));
-    canvas.drawRRect(this.rrect(x, y, tw, CARD.tag, 5), this.fill);
-    this.stroke.setColor(this.col(p.lineStrong, 0.55));
+    this.fill.setColor(this.col(p.tag));
+    canvas.drawRRect(this.rrect(x, y, tw, CARD.tag, 6), this.fill);
+    this.stroke.setColor(this.col(p.border));
     this.stroke.setStrokeWidth(1);
-    canvas.drawRRect(this.rrect(x + 0.5, y + 0.5, tw - 1, CARD.tag - 1, 4.5), this.stroke);
+    canvas.drawRRect(this.rrect(x + 0.5, y + 0.5, tw - 1, CARD.tag - 1, 5.5), this.stroke);
     this.fill.setColor(this.col(ink));
     canvas.drawCircle(x + 8 + 3, 0, 3, this.fill);
     canvas.drawParagraph(tp, x + 8 + 10, y + (CARD.tag - tp.getHeight()) / 2);

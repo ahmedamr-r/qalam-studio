@@ -149,9 +149,11 @@ export default function Home({ product: productId = null }: { product?: string |
   const [toMove, setToMove] = useState<Project[]>([]);
   useEffect(() => void browserProjectsToMove().then(setToMove, () => {}), []);
   const unplaced = goalTree.north ? goalTree.goals.filter((g) => !g.parent && g.id !== goalTree.north && inSpace(g.product, space)).length : 0;
+  const toLookAt = scoped.length + (unplaced ? 1 : 0) + (toMove.length ? 1 : 0) + (legacy ? 1 : 0);
   const buttons: SectionButton[] = [
     { id: "problems", label: "Problems", count: (needs?.needs ?? []).filter((n) => inSpace(n.products, space)).length },
-    { id: "needs", label: "Needs a look", count: scoped.length + (unplaced ? 1 : 0) + (toMove.length ? 1 : 0) + (legacy ? 1 : 0) },
+    // Only once there's something to look at (or a review to ask for), and while it's open.
+    ...(toLookAt || asked === "needs" || lab("review") ? [{ id: "needs" as const, label: "Needs a look", count: toLookAt }] : []),
     { id: "company", label: words.company },
     ...(topics?.some((t) => t.kind !== "need" && inSpace(t.products, space)) ? [{ id: "pages" as const, label: "Who and what" }] : []),
     ...(lab("design") || lab("seen") || lab("code") ? [{ id: "more" as const, label: "More" }] : []),
@@ -223,7 +225,7 @@ export default function Home({ product: productId = null }: { product?: string |
       <div className="relative flex h-full min-h-0 gap-[8px] px-[8px] pb-[8px]">
         {chatOpen && <CanvasChat space={space} over={!chatDocks} />}
         <div
-          className="relative min-w-0 flex-1 overflow-hidden rounded-xl shadow-panel"
+          className="@container relative min-w-0 flex-1 overflow-hidden rounded-xl shadow-panel"
           onPointerDownCapture={() => {
             pressed.current = true;
           }}

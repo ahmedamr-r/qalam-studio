@@ -1,15 +1,9 @@
-import clsx from "clsx";
-import { ChevronDown, CornerDownRight, ListPlus, PanelTopClose, PanelTopOpen, Trash2 } from "lucide-react";
+import { CornerDownRight, ListPlus, Trash2 } from "lucide-react";
 import { studio, useStudio } from "@/doc/store";
 import { isOstCard } from "@/doc/board";
 import { worldBounds } from "@/doc/geometry";
 import { runCommand } from "@/commands/registry";
-import { setStage, setTargetIn } from "@/discovery/ops";
-import { STAGES, stageLabel } from "@/discovery/kinds";
-import { feedback } from "@/commands/feedback";
 import { Button, IconBtn } from "../controls";
-import { Menu, MenuItem } from "../menu";
-import { r } from "../recipes";
 import { toScreenBox } from "../ai/anchor";
 import { useDiscovery } from "./store";
 import { addChildCard, addSiblingCard } from "./commands";
@@ -21,8 +15,8 @@ const BAR_H = 36;
 
 /**
  * A small bar over the selected card (FigJam's contextual toolbar): add a card under it or next
- * to it, its stage, fold its branch, delete. Keys show in the tooltips. What Qalam AI can do next
- * with the card is beside it (./NextSteps.tsx).
+ * to it, delete. Keys show in the tooltips. Its stage is in the card's panel and its fold toggle on
+ * its edge, and what Qalam AI can do next with the card is beside it (./NextSteps.tsx).
  */
 export default function CardBar({ vp }: { vp: { w: number; h: number } }) {
   const sel = useStudio((s) => (s.selection.length === 1 ? s.selection[0] : null));
@@ -40,8 +34,7 @@ export default function CardBar({ vp }: { vp: { w: number; h: number } }) {
   const card = node.meta.ost;
   const doc = studio().doc;
   const box = toScreenBox(worldBounds(doc, sel), cam);
-  const hasKids = node.children.some((c) => isOstCard(doc.nodes[c]));
-  const w = 216;
+  const w = card.kind === "test" ? 66 : 92;
   const left = Math.max(8, Math.min(vp.w - w - 8, box.x + box.w / 2 - w / 2));
   const above = box.y - BAR_H - 10;
   const top = above >= 8 ? above : Math.min(vp.h - BAR_H - 8, box.y + box.h + 22);
@@ -73,38 +66,6 @@ export default function CardBar({ vp }: { vp: { w: number; h: number } }) {
         <ListPlus {...ICON} />
       </IconBtn>
       <span aria-hidden className="mx-[2px] h-[16px] w-px bg-line" />
-      <Menu
-        label="Stage"
-        checks
-        className="w-[180px]"
-        trigger={
-          <button type="button" className={clsx(r.inlineSelect, "h-[24px] min-w-0 aria-expanded:bg-active")}>
-            <span className="truncate">{stageLabel(card.kind, card.stage)}</span>
-            <ChevronDown size={12} absoluteStrokeWidth strokeWidth={1.25} className="q-chevron" />
-          </button>
-        }
-      >
-        {STAGES[card.kind].map((st) => (
-          <MenuItem
-            key={st.value}
-            checked={card.stage === st.value}
-            onSelect={() => {
-              if (st.value !== "target") return setStage([sel], st.value);
-              let was: string | null = null;
-              studio().mutate((d) => void (was = setTargetIn(d, sel)));
-              if (was) feedback(`Target moved from “${was}”`, { id: "discovery.target" });
-            }}
-          >
-            {st.label}
-          </MenuItem>
-        ))}
-      </Menu>
-      <span className="flex-1" />
-      {hasKids && (
-        <IconBtn label={card.collapsed ? "Unfold the branch" : "Fold the branch"} command="discovery.collapse" size="sm" onClick={() => runCommand("discovery.collapse", "toolbar")}>
-          {card.collapsed ? <PanelTopOpen {...ICON} /> : <PanelTopClose {...ICON} />}
-        </IconBtn>
-      )}
       <IconBtn label="Delete the card and its branch" command="discovery.delete" size="sm" onClick={() => runCommand("discovery.delete", "toolbar")}>
         <Trash2 {...ICON} />
       </IconBtn>

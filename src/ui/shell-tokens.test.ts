@@ -62,6 +62,14 @@ describe("the Desk's colours", () => {
       }
   });
 
+  it("keeps a card's tag readable: its word on it, and its mark clear on it", () => {
+    for (const t of [dark, light])
+      for (const surface of ["--color-card-tag", "--color-card"]) {
+        expect([surface, contrastRatio(t["--color-fg-muted"], t[surface]) >= 4.5]).toEqual([surface, true]);
+        for (const kind of ["goal", "problem", "solution", "test"]) expect([surface, kind, contrastRatio(t[`--color-kind-${kind}`], t[surface]) >= 3]).toEqual([surface, kind, true]);
+      }
+  });
+
   it("keeps a question card's text readable on its sheet, a picked option's too", () => {
     const css = readFileSync(new URL("./globals.css", import.meta.url), "utf8");
     const saturation = Number(/--glass-filter:[^;]*saturate\(([\d.]+)\)/.exec(css)![1]);

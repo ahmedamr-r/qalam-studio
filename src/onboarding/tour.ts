@@ -38,8 +38,8 @@ export function tourStops(o: { card: TourCard | null; lane: boolean; company: st
     ...(o.card ? [{ target: "card" as const, pose: "found" as const, title: CARD_WORDS[o.card.as].title, body: CARD_WORDS[o.card.as].body(o.card.faintLeft) }] : []),
     ...(o.lane ? [{ target: "lane" as const, pose: "reading" as const, title: "Where the words came from", body: "Each wire runs from a source to the card it backs. Click a source to read what it says." }] : []),
     { target: "chat", pose: "idle", title: "Qalam AI", body: "Ask a question, paste your notes or add a file here. Anything you start, like finding a goal for a problem, runs here too." },
-    { target: "bar", pose: "writing", title: "Add more any time", body: "Sources holds everything read so far, and takes your interviews, notes and docs. Goal and Problem let you write your own." },
-    { target: "sections", pose: "idle", title: "The rest of what's known", body: `Problems lists them all, the best backed first. Needs a look says what's worth a second look. ${o.company} holds what's known about it.` },
+    { target: "bar", pose: "writing", title: "Add more any time", body: "Sources holds everything read so far, and takes your interviews, notes and docs. Add lets you write your own goal or problem." },
+    { target: "sections", pose: "idle", title: "The rest of what's known", body: `Problems lists them all, the best backed first. Needs a look shows up when something's worth a second look. ${o.company} holds what's known about it.` },
   ];
 }
 

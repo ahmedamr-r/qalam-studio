@@ -140,7 +140,7 @@ export function CanvasChecklist() {
 
   if (folded)
     return (
-      <button type="button" onClick={() => foldChecklist(false)} className="q-item absolute right-[12px] bottom-[12px] z-[8] @max-[620px]:bottom-[48px] flex h-[28px] items-center gap-[6px] rounded-lg bg-raised px-[10px] text-caption text-fg-muted shadow-floating hover:text-fg">
+      <button type="button" onClick={() => foldChecklist(false)} className="q-item absolute right-[12px] bottom-[52px] z-[8] flex h-[28px] items-center gap-[6px] rounded-lg bg-raised px-[10px] text-caption text-fg-muted shadow-floating hover:text-fg">
         Get started
         <span className="tnum text-fg-subtle">
           {count}/{rows.length}
@@ -149,7 +149,7 @@ export function CanvasChecklist() {
     );
 
   return (
-    <section aria-labelledby="checklist-title" className="q-fade absolute right-[12px] bottom-[12px] z-[8] @max-[800px]:bottom-[48px] flex w-[296px] max-w-[calc(100%-24px)] flex-col rounded-lg bg-raised p-[4px] shadow-floating">
+    <section aria-labelledby="checklist-title" className="q-fade absolute right-[12px] bottom-[52px] z-[8] flex w-[296px] max-w-[calc(100%-24px)] flex-col rounded-lg bg-raised p-[4px] shadow-floating">
       <div className="flex items-center gap-[6px] py-[2px] pr-[2px] pl-[8px]">
         <h2 id="checklist-title" className="text-caption font-medium text-fg">
           {count === rows.length ? "All done" : "Get started"}

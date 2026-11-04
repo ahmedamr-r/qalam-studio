@@ -14,6 +14,8 @@ export interface OstPalette {
   edge: string;
   /** The footer's shade, over the card. */
   footer: string;
+  /** A tag on the card's edge. */
+  tag: string;
   /** Title. */
   ink: string;
   /** Kind label, metric line. */
@@ -38,7 +40,7 @@ export interface OstPalette {
   dangerSubtle: string;
   ai: string;
   aiSubtle: string;
-  /** Each kind's own colour (src/discovery/look.ts): its tag on the card's top edge, its mark, a goal's progress. */
+  /** Each kind's own colour (src/discovery/look.ts): its mark on the tag and a goal's progress. */
   kindGoal: string;
   kindProblem: string;
   kindSolution: string;
@@ -49,15 +51,16 @@ export interface OstPalette {
 
 export const OST_PALETTE: { dark: OstPalette; light: OstPalette } = {
   dark: {
-    card: "#2A2926",
+    card: "#242938",
     border: "#FFFFFF1C",
     shadow: "#00000073",
-    edge: "#FFFFFF0F",
+    edge: "#FFFFFF1A",
     footer: "#0000001F",
+    tag: "#30364A",
     ink: "#F2F0ED",
     muted: "#B0ADAA",
     subtle: "#8A8681",
-    line: "#5F5C58",
+    line: "#5B6176",
     lineStrong: "#B0ADAA",
     chip: "#FFFFFF12",
     chipInk: "#B0ADAA",
@@ -80,14 +83,15 @@ export const OST_PALETTE: { dark: OstPalette; light: OstPalette } = {
   },
   light: {
     card: "#FFFFFF",
-    border: "#0000001A",
-    shadow: "#00000024",
+    border: "#141E4621",
+    shadow: "#141E4629",
     edge: "#FFFFFF00",
-    footer: "#7A6A5508",
+    footer: "#2A3F8008",
+    tag: "#EEF1F9",
     ink: "#1C1A18",
     muted: "#55524E",
     subtle: "#6C6863",
-    line: "#BCB8B3",
+    line: "#B3B9C9",
     lineStrong: "#55524E",
     chip: "#0000000D",
     chipInk: "#55524E",
@@ -117,6 +121,7 @@ export const PALETTE_TOKENS: Partial<Record<keyof OstPalette, string>> = {
   shadow: "--color-card-shadow",
   edge: "--color-card-edge",
   footer: "--color-card-footer",
+  tag: "--color-card-tag",
   line: "--color-wire",
   ink: "--color-fg",
   muted: "--color-fg-muted",

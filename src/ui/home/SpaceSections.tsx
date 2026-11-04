@@ -48,9 +48,9 @@ export function SectionButtons({ buttons, open, onPick, children }: { buttons: S
       {buttons.map((b) => {
         const Icon = SECTION_ICON[b.id];
         return (
-          <button key={b.id} type="button" aria-pressed={open === b.id} onClick={() => onPick(b.id)} className={clsx("q-item q-press flex h-[28px] items-center gap-[6px] rounded-lg px-[10px] text-caption whitespace-nowrap", open === b.id ? "bg-selection-subtle text-selection-label" : "text-fg-muted hover:bg-hover hover:text-fg")}>
+          <button key={b.id} type="button" aria-label={b.count ? `${b.label}, ${b.count}` : b.label} title={b.label} aria-pressed={open === b.id} onClick={() => onPick(b.id)} className={clsx("q-item q-press flex h-[28px] items-center gap-[6px] rounded-lg px-[10px] text-caption whitespace-nowrap", open === b.id ? "bg-selection-subtle text-selection-label" : "text-fg-muted hover:bg-hover hover:text-fg")}>
             <Icon size={13} absoluteStrokeWidth strokeWidth={1.5} />
-            {b.label}
+            <span className="@max-[560px]:hidden">{b.label}</span>
             {!!b.count && <span className={clsx("tnum", open !== b.id && "text-fg-subtle")}>{b.count}</span>}
           </button>
         );

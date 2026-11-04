@@ -31,14 +31,14 @@ export const KIND_MARK: Record<Kind, { stroke?: string; fill?: string }> = {
 export const MARK_STROKE = 1.5;
 
 /** A card: its corners, its padding, and where its title starts (below its tag's lower half). */
-export const CARD_LOOK = { radius: 8, pad: 14, top: 22 } as const;
+export const CARD_LOOK = { radius: 12, pad: 14, top: 22 } as const;
 
 /**
- * A card's kind, as a tag on its top edge: half above it, `pad` in from the card's left, opaque (the
- * kind's colour at `fill` over the card), a hairline of the kind's colour at `edge`. A quiet tag (a
- * sub-goal, something not settled yet) is fainter.
+ * A card's kind, as a tag on its top edge: half above it, `pad` in from the card's left, opaque, in
+ * neutral ink with the kind's colour on its mark (`--color-card-tag`, the card's hairline). A quiet
+ * tag (a sub-goal) sits flush with the card.
  */
-export const TAG = { h: 20, pad: 7, mark: 16, markSize: 10, radius: 5, size: 11, weight: 600, tracking: 0.1, fill: 0.16, edge: 0.45, quietFill: 0.06, quietEdge: 0.32 } as const;
+export const TAG = { h: 20, pad: 7, mark: 16, markSize: 10, radius: 6, size: 11, weight: 600, tracking: 0.1 } as const;
 
 /** A card's footer: a rule `ruleGap` under what it says, then a shaded band with `pad` above and below its row. */
 export const FOOTER = { ruleGap: 14, pad: 10 } as const;
