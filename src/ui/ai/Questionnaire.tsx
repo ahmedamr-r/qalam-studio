@@ -252,7 +252,7 @@ function SingleStep({ q, a, onAnswer }: { q: SingleQuestion; a: Answer; onAnswer
               <span className="text-body font-medium text-fg" dir="auto">
                 {o.label}
               </span>
-              {q.recommended === o.value && (
+              {q.recommended === o.value && q.options.length > 1 && (
                 <span className="inline-flex items-center gap-[4px] text-micro text-fg-muted">
                   <QalamAIGlyph size={12} /> Recommended
                 </span>

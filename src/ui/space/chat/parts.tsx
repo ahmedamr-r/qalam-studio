@@ -1,7 +1,7 @@
 import { BASES, BASIS_LABEL, countsLine, isBasis, mainBasis, type Basis } from "@/discovery/basis";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
-import { Check, Quote, RotateCcw } from "lucide-react";
+import { Check, Quote, RotateCcw, X } from "lucide-react";
 import { nanoid } from "nanoid";
 import { studio, useStudio } from "@/doc/store";
 import { isOstCard } from "@/doc/board";
@@ -13,7 +13,7 @@ import { DUMP_WORDS, wordsIn, type ChatMode } from "@/space/route";
 import { claimStrip } from "@/hub/ask";
 import type { TopicInfo } from "@/hub/topics";
 import { topicsDb } from "@/org/topics";
-import { topicHref } from "@/projects/model";
+import { placeHref, topicHref } from "@/projects/model";
 import type { PartData } from "../../chat/types";
 import type { PartComponent } from "../../chat/ChatThread";
 import { ReplyChips } from "../../chat/ChatThread";
@@ -33,8 +33,20 @@ import { useTopics } from "../../topics/list";
 import { useWords } from "../../frame/store";
 import { show } from "../links";
 import { FoundGoalRow } from "../../chat/FoundGoalRow";
-import { anotherFile, changeDocBasis, decideDocGoal, dropTurn, leaveFile, leaveFit, lookPastFits, placeStatement, retake, retryGoalFor, settleNumber, takeAsBasis, takeFit, takeIdea, turnOf, takeGoalNumber, useCanvasChat } from "./store";
+import { moreLine } from "@/onboarding/start";
+import { goalForTopProblem, anotherFile, briefAgain, briefStart, changeDocBasis, chooseDraft, decideDocGoal, dropTurn, leaveFile, leaveFit, lookPastFits, openProblems, pickAudience, placeFirstBuild, placeStatement, planAgain, planFirst, planOf, planStart, retake, retryGoalFor, scanAgain, scanHere, scanInNewProject, scanIsMine, scanOtherWay, setPlanGoal, settleNumber, steerOff, stopTurn, takeAsBasis, takeFit, takeGoalNumber, takeIdea, turnOf, useCanvasChat } from "./store";
 import { titleFrom } from "@/space/route";
+import { otherReading, projectName } from "@/scan/input";
+import { firstGoal, GOAL_ACTIONS, riskiest, type GoalAction, type ScanAudience } from "@/scan/plan";
+import { peopleQuotes, type ScanKnown } from "@/scan/session";
+import { cardQuotes, readLine, reportHtml, type ReportData, type ShareProblem } from "@/scan/share";
+import { scanShare } from "@/org/scan";
+import { shareCardPng } from "@/engine/share-card";
+import { isOff } from "@/scan/steer";
+import type { BriefState, ScanJob, ScanPlan } from "@/space/chat";
+import { getBrief } from "@/org/briefs";
+import { openBrief, useBriefs } from "../../discovery/briefs";
+import { addMaterial } from "../new";
 import { goalNumberLine, withUnit } from "@/goals/moves";
 import type { Benchmark } from "@/goals/outside";
 
@@ -600,6 +612,9 @@ function ChoosePart({ data }: { data: PartData }) {
       <button type="button" className={r.replyChip} onClick={() => retake(t.id, "ask")}>
         Ask about it
       </button>
+      <button type="button" className={r.replyChip} onClick={() => retake(t.id, "scan")}>
+        Look into it
+      </button>
     </ReplyChips>
   );
 }
@@ -1016,7 +1031,557 @@ function DocsPart({ data }: { data: PartData }) {
   return t?.docs?.length ? <DocsSent docs={t.docs} /> : null;
 }
 
+/** A scan under way: what it's doing, Stop on the box, and the other reading of their words. */
+function ScanningPart({ data }: { data: PartData }) {
+  const t = useTurn(data.turn);
+  if (t?.job.kind !== "scan") return null;
+  const s = t.job.session;
+  const other = otherReading(t.job.target, t.said);
+  const found = (s?.competitors ?? []).filter((c) => !isOff(s?.steer, c.name));
+  const canTake = !!s && !s.read.length;
+  return (
+    <div className="flex flex-col gap-[6px]">
+      <Progress label={s?.steps.at(-1) ?? "Starting"} started={s?.at ?? t.at} tokens={0} note="This takes a few minutes, and goes on if you close this." />
+      {found.length > 0 && (
+        <div className="flex flex-col gap-[4px]">
+          {/* Once it's reading them there's nothing left to take them out of. */}
+          <p className="text-caption text-fg-muted">{canTake ? (t.job.target.kind === "idea" ? "What I found people using. Take off any that's wrong:" : "The app I found. Take it off if it's the wrong one:") : t.job.target.kind === "idea" ? "What I found people using:" : "The app I found:"}</p>
+          <div className="flex flex-wrap gap-[4px]">
+            {found.map((c) => (
+              <span key={c.name} className={clsx(r.chip, "max-w-full")}>
+                <span className="truncate" dir="auto">
+                  {c.app?.name ?? c.name}
+                </span>
+                {canTake && (
+                  <button type="button" aria-label={`Take off ${c.app?.name ?? c.name}`} className="-mr-[2px] grid size-[14px] shrink-0 place-items-center rounded-sm hover:bg-hover" onClick={() => steerOff(c.name)}>
+                    <X size={10} absoluteStrokeWidth strokeWidth={1.5} />
+                  </button>
+                )}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+      <p className="text-caption text-fg-muted">
+        I took this as {t.job.target.kind === "idea" ? "an idea" : `a product${t.job.target.name ? `: ${t.job.target.name}` : ""}`}.
+        {other && (
+          <>
+            {" "}
+            <button type="button" className="underline decoration-fg/20 underline-offset-2 hover:text-fg" onClick={() => scanOtherWay(t.id)}>
+              Read it as {other.kind === "idea" ? "an idea" : "a product's name"} instead
+            </button>
+          </>
+        )}
+      </p>
+      {/* The questions sit where the box's Stop would be. */}
+      {t.job.ask?.step === "asking" && (
+        <button type="button" className="self-start text-caption text-fg-muted underline decoration-fg/20 underline-offset-2 hover:text-fg" onClick={() => stopTurn(t.id)}>
+          Stop reading
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** What a scan came to: what it read, how far its words were checked, and the way to its problems. */
+/** What it found, to share: a card to look at first, and a report of one file. Posting stays theirs. */
+function ShareBlock({ job }: { job: ScanJob }) {
+  const [open, setOpen] = useState(false);
+  if (!open)
+    return (
+      <button type="button" className="self-start text-caption text-fg-muted underline decoration-fg/20 underline-offset-2 hover:text-fg" onClick={() => setOpen(true)}>
+        Share what it found
+      </button>
+    );
+  return <SharePanel job={job} />;
+}
+
+function SharePanel({ job }: { job: ScanJob }) {
+  const [problems, setProblems] = useState<ShareProblem[] | null>(null);
+  const [at, setAt] = useState(0);
+  const [card, setCard] = useState<{ blob: Blob; url: string } | null>(null);
+  const [note, setNote] = useState("");
+  const s = job.session!;
+  const quotes = peopleQuotes(s.read);
+  const places = s.read.filter((x) => x.kind !== "article" && x.quotes).length;
+  const shown = problems?.[at];
+
+  useEffect(() => {
+    let live = true;
+    void scanShare(planOf(job))
+      .then((list) => {
+        if (!live) return;
+        // What they decided to build for comes first, once there is such a thing.
+        const first = job.plan?.build?.topic;
+        const usable = list.filter((p) => cardQuotes(p.quotes).length > 0);
+        setProblems([...usable.filter((p) => p.id === first), ...usable.filter((p) => p.id !== first)]);
+      })
+      .catch((e: unknown) => live && setNote(e instanceof Error ? e.message : String(e)));
+    return () => {
+      live = false;
+    };
+    // Once, as it opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!shown) return;
+    let live = true;
+    let url = "";
+    void shareCardPng({ title: shown.title, quotes: cardQuotes(shown.quotes), foot: readLine(quotes, places) })
+      .then((bytes) => {
+        if (!live || !bytes) return;
+        const blob = new Blob([bytes.slice()], { type: "image/png" });
+        url = URL.createObjectURL(blob);
+        setCard({ blob, url });
+      })
+      .catch((e: unknown) => live && setNote(e instanceof Error ? e.message : String(e)));
+    return () => {
+      live = false;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [shown, quotes, places]);
+
+  const save = (href: string, name: string) => {
+    const a = document.createElement("a");
+    a.href = href;
+    a.download = name;
+    a.click();
+  };
+  const copy = () => {
+    if (!card) return;
+    void navigator.clipboard
+      .write([new ClipboardItem({ "image/png": card.blob })])
+      .then(() => setNote("Copied."))
+      .catch(() => setNote("This window can't copy pictures. Save it instead."));
+  };
+  const saveReport = () => {
+    const p = job.plan;
+    const d = p?.build?.drafts.find((x) => x.id === p.chosen);
+    const risk = d ? riskiest(d) : null;
+    const plan: ReportData["plan"] = p?.audience
+      ? { audience: p.audience.name, ...(p.goal ? { goal: firstGoal(p.audience.name, p.goal.action, p.goal.reach, p.goal.of).title } : {}), ...(d ? { build: d.title, ...(p.build?.pick?.draft === d.id ? { why: p.build.pick.why } : {}), ...(risk ? { wrong: risk.text } : {}), ...(d.test ? { test: d.test.what, ...(d.test.suggested ? { pass: d.test.suggested } : {}) } : {}) } : {}) }
+      : undefined;
+    const html = reportHtml({ about: projectName(job.target), at: s.at, problems: problems ?? [], quotes, places, ...(plan ? { plan } : {}), known: s.known ?? [] });
+    const href = URL.createObjectURL(new Blob([html], { type: "text/html" }));
+    save(href, "qalam-report.html");
+    window.setTimeout(() => URL.revokeObjectURL(href), 10_000);
+  };
+
+  return (
+    <div className="flex flex-col gap-[8px] rounded-lg p-[8px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
+      <p className="text-caption text-fg-muted">Look it over first: these are strangers' public words. Posting it is up to you.</p>
+      {card ? <img src={card.url} alt={shown ? `A card about: ${shown.title}` : "A card"} className="w-full rounded-md shadow-[0_0_0_1px_var(--color-line-subtle)]" /> : !note && <p className="text-caption text-fg-subtle">Drawing it…</p>}
+      {problems && !problems.length && <p className="text-caption text-fg-muted">No problem here has a quote short enough for a card, but the report has them all.</p>}
+      {note && <p className="text-caption text-fg-muted">{note}</p>}
+      <ReplyChips>
+        {card && (
+          <button type="button" className={r.replyChipPrimary} onClick={copy}>
+            Copy image
+          </button>
+        )}
+        {card && (
+          <button type="button" className={r.replyChip} onClick={() => save(card.url, "qalam-card.png")}>
+            Save image
+          </button>
+        )}
+        {problems && (
+          <button type="button" className={r.replyChip} onClick={saveReport}>
+            Save the report
+          </button>
+        )}
+        {problems && problems.length > 1 && (
+          <button type="button" className={r.replyChip} onClick={() => setAt((i) => (i + 1) % Math.min(problems.length, 6))}>
+            Another problem
+          </button>
+        )}
+      </ReplyChips>
+    </div>
+  );
+}
+
+/** What's known beside what people say: what other products offer and charge, and what's been published, each with its page. */
+function KnownFold({ known }: { known: readonly ScanKnown[] }) {
+  if (!known.length) return null;
+  const products = known.filter((k) => k.kind === "product");
+  const published = known.filter((k) => k.kind === "published");
+  const row = (k: ScanKnown, i: number) => (
+    <li key={i} className="flex flex-col gap-[2px]">
+      <span className="text-fg" dir="auto">
+        {k.name ? `${k.name}: ` : ""}
+        {k.text}
+      </span>
+      <a href={k.url} target="_blank" rel="noreferrer" className="truncate text-micro text-fg-subtle hover:text-fg" title={k.url}>
+        {k.title || hostName(k.url)}
+      </a>
+    </li>
+  );
+  return (
+    <details className="group/known rounded-lg px-[10px] text-caption shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
+      <summary className="flex min-h-[30px] cursor-pointer list-none items-center gap-[6px] py-[6px] font-medium text-fg-muted hover:text-fg [&::-webkit-details-marker]:hidden">{products.length && published.length ? "What others offer, and what's been published" : products.length ? "What others offer" : "What's been published"}</summary>
+      <div className="flex flex-col gap-[10px] pb-[10px]">
+        <p className="text-fg-subtle">Read elsewhere, not your customers' words.</p>
+        {products.length > 0 && <ul className="flex flex-col gap-[8px]">{products.map(row)}</ul>}
+        {published.length > 0 && <ul className="flex flex-col gap-[8px]">{published.map(row)}</ul>}
+      </div>
+    </details>
+  );
+}
+
+function ScannedPart({ data }: { data: PartData }) {
+  const t = useTurn(data.turn);
+  if (t?.job.kind !== "scan" || !t.job.session) return null;
+  const job = t.job;
+  const s = job.session!;
+  const kept = s.read.filter((x) => x.quotes);
+  const apps = kept.filter((x) => x.kind === "reviews").map((x) => x.title.replace(/^App Store reviews: /, ""));
+  const threads = kept.filter((x) => x.kind === "thread").length;
+  const pages = kept.filter((x) => x.kind === "page").length;
+  const people = peopleQuotes(s.read);
+  const said = people === 1 ? "1 quote" : `${people} quotes`;
+  const read = [apps.length ? `App Store reviews of ${apps.join(", ")}` : "", threads ? `${threads} Hacker News ${threads === 1 ? "thread" : "threads"}` : "", pages ? `${pages} ${pages === 1 ? "forum page" : "forum pages"}` : ""].filter(Boolean).join(", ");
+  const refused = s.skipped.unreadable;
+  const mineOffer = job.target.kind === "product" && !job.mine && s.read.some((x) => x.kind === "reviews" && x.sourceId);
+  const isMineThen = job.mine;
+  // Asked again: everything it found it had read already, so nothing here is a verdict on what's there.
+  const already = s.thin && !s.read.some((x) => x.kind !== "article") && s.skipped.before > 0;
+  return (
+    <div className="flex flex-col gap-[8px]">
+      {already ? (
+        <p className="text-body text-fg">Nothing new: I've read all of this already, and what it says is in your problems.</p>
+      ) : s.thin ? (
+        <p className="text-body text-fg">
+          I found little{s.problems.length ? `: ${s.problems.length === 1 ? "1 problem" : `${s.problems.length} problems`} from ${said}` : ""}, so I won't call it a pattern. {read ? `I read ${read}.` : "Nothing I could read spoke to it."}
+        </p>
+      ) : (
+        <p className="text-body text-fg">
+          {s.problems.length} problems, from {said}: {read}.
+        </p>
+      )}
+      {!s.thin && <p className="text-caption text-fg-muted">{isMineThen ? "Your own app's reviews count as your customers' words; the rest is what people say publicly." : "This is what people say publicly, so it stays in We believe until your own customers say it too."}</p>}
+      {(refused > 0 || s.skipped.reddit > 0) && (
+        <p className="text-caption text-fg-subtle">
+          {refused > 0 ? `${refused} ${refused === 1 ? "site" : "sites"} wouldn't let me read ${refused === 1 ? "its page" : "their pages"}. ` : ""}
+          {s.skipped.reddit > 0 ? "Reddit doesn't let apps read it. " : ""}
+          Paste a thread here to add it.
+        </p>
+      )}
+      {s.noWeb && <p className="text-caption text-fg-subtle">There's no web search here, so I read only what I can reach directly.</p>}
+      <p className="text-caption text-fg-muted">{moreLine(job.mine ? "company" : "idea")}</p>
+      <KnownFold known={s.known ?? []} />
+      {!s.thin && s.problems.length > 0 && <ShareBlock job={job} />}
+      <ReplyChips>
+        {!s.thin && !job.plan && (
+          <button type="button" className={r.replyChipPrimary} onClick={() => void planStart(t.id)}>
+            <QalamAIGlyph size={12} /> Work out what to build first
+          </button>
+        )}
+        {(s.problems.length > 0 || already) && (
+          <button type="button" className={s.thin || job.plan ? r.replyChipPrimary : r.replyChip} onClick={openProblems}>
+            See them ranked
+          </button>
+        )}
+        {!s.thin && s.problems.length > 0 && (
+          <button type="button" className={r.replyChip} onClick={() => void goalForTopProblem()}>
+            Find goals for a problem
+          </button>
+        )}
+        {s.thin && !already && (
+          <button type="button" className={r.replyChip} onClick={addMaterial}>
+            Add what you have
+          </button>
+        )}
+        {mineOffer && (
+          <button type="button" className={r.replyChip} onClick={() => void scanIsMine(t.id)}>
+            This is my product
+          </button>
+        )}
+      </ReplyChips>
+    </div>
+  );
+}
+
+/** Another scan's problems are in this project: where this one goes is theirs to say. */
+function ScanWherePart({ data }: { data: PartData }) {
+  const t = useTurn(data.turn);
+  if (t?.job.kind !== "scan") return null;
+  return (
+    <div className="flex flex-col gap-[8px]">
+      <p className="text-body text-fg">This project is about something else, and problems from unrelated products would run together. Start a new project for this?</p>
+      <ReplyChips>
+        <button type="button" className={r.replyChipPrimary} onClick={() => void scanInNewProject(t.id)}>
+          Start a new project
+        </button>
+        <button type="button" className={r.replyChip} onClick={() => scanHere(t.id)}>
+          Keep it in this one
+        </button>
+      </ReplyChips>
+    </div>
+  );
+}
+
+/** A line of what's settled so far in a plan. */
+const Settled = ({ label, value }: { label: string; value: string }) => (
+  <p className="text-caption text-fg-muted">
+    {label}: <span className="text-fg" dir="auto">{value}</span>
+  </p>
+);
+
+/** Who the quotes show, each with the words that show them; or their own words. */
+function AudiencesStep({ id, list }: { id: string; list: readonly ScanAudience[] }) {
+  const [own, setOwn] = useState("");
+  return (
+    <div className="flex flex-col gap-[8px]">
+      <p className="text-body text-fg">{list.length ? "Who should this be for first? Here's who the quotes show." : "These quotes don't say who wrote them, so I won't guess. Who do you picture using this first?"}</p>
+      {list.map((a) => (
+        <div key={a.id} className="flex flex-col gap-[6px] rounded-lg bg-raised px-[10px] py-[8px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
+          <p className="text-body font-medium text-fg" dir="auto">{a.name}</p>
+          {a.about && <p className="text-caption text-fg-muted" dir="auto">{a.about}</p>}
+          <ul className="flex flex-col gap-[4px]">
+            {a.quotes.slice(0, 2).map((q) => (
+              <li key={q.ref} className="text-caption text-fg-subtle" dir="auto">
+                “{q.text.length > 140 ? `${q.text.slice(0, 139)}…` : q.text}”
+              </li>
+            ))}
+          </ul>
+          <button type="button" className={clsx(r.replyChip, "self-start")} onClick={() => pickAudience(id, a)}>
+            Build for them
+          </button>
+        </div>
+      ))}
+      <form
+        className="flex gap-[6px]"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (own.trim()) pickAudience(id, { name: own });
+        }}
+      >
+        <input aria-label="Someone else" dir="auto" value={own} onChange={(e) => setOwn(e.target.value)} placeholder={list.length ? "Someone else" : "Who they are"} className={clsx(r.field, r.fieldInput, "min-w-0 flex-1")} />
+        <button type="submit" disabled={!own.trim()} className={clsx(r.buttonSm, r.buttonSecondary, "shrink-0")}>
+          Build for them
+        </button>
+      </form>
+    </div>
+  );
+}
+
+/** A first goal about learning: worded by code, its numbers a suggestion until they take it. */
+function GoalStep({ id, name, goal }: { id: string; name: string; goal: { action: GoalAction; reach: number; of: number } }) {
+  const set = (o: Partial<typeof goal>) => setPlanGoal(id, { ...goal, ...o });
+  const num = (v: string, fallback: number) => {
+    const n = Math.round(Number(v));
+    return Number.isFinite(n) && n > 0 ? Math.min(n, 100000) : fallback;
+  };
+  return (
+    <div className="flex flex-col gap-[8px]">
+      <p className="text-body text-fg">A first goal, to learn whether they want this before you build much. What would show you they do?</p>
+      <ReplyChips>
+        {GOAL_ACTIONS.map((a) => (
+          <button key={a.id} type="button" className={a.id === goal.action ? r.replyChipPrimary : r.replyChip} onClick={() => set({ action: a.id })}>
+            {a.label}
+          </button>
+        ))}
+      </ReplyChips>
+      <p className="flex flex-wrap items-center gap-[6px] text-caption text-fg-muted">
+        <input aria-label="How many" type="number" min={1} value={goal.reach} onChange={(e) => set({ reach: num(e.target.value, goal.reach) })} className={clsx(r.field, r.fieldInput, "w-[52px]")} />
+        of
+        <input aria-label="Out of how many" type="number" min={1} value={goal.of} onChange={(e) => set({ of: num(e.target.value, goal.of) })} className={clsx(r.field, r.fieldInput, "w-[52px]")} />
+        <span>These numbers are only a suggestion: change them to what would convince you.</span>
+      </p>
+      <p className="text-body font-medium text-fg" dir="auto">{firstGoal(name, goal.action, goal.reach, goal.of).title}</p>
+      <ReplyChips>
+        <button type="button" className={r.replyChipPrimary} onClick={() => void planFirst(id)}>
+          Use this goal
+        </button>
+      </ReplyChips>
+    </div>
+  );
+}
+
+/** What to build first: the strongest signal so far, what has to be true, and the others a click away. */
+function PickedStep({ id, plan }: { id: string; plan: ScanPlan }) {
+  const b = plan.build!;
+  const d = b.drafts.find((x) => x.id === plan.chosen) ?? b.drafts[0];
+  const isPick = d.id === b.pick?.draft;
+  const risk = riskiest(d);
+  const others = b.drafts.filter((x) => x.id !== d.id);
+  const placed = plan.step === "placed";
+  return (
+    <div className="flex flex-col gap-[8px]">
+      <p className="text-caption text-fg-muted">Strongest signal so far, from what people say publicly: not proof.</p>
+      <Settled label="The problem" value={b.problem} />
+      <div className="flex flex-col gap-[6px] rounded-lg bg-raised px-[10px] py-[8px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
+        <p className="text-micro font-medium text-fg-subtle">Build first</p>
+        <p className="text-body font-medium text-fg" dir="auto">{d.title}</p>
+        <p className="text-caption text-fg-muted" dir="auto">{d.description}</p>
+        {isPick && b.pick?.why && <p className="text-caption text-fg" dir="auto">{b.pick.why}</p>}
+        {risk && <Settled label="What has to be true" value={risk.text} />}
+        {d.test && <Settled label="Test it first" value={d.test.what} />}
+        {d.test?.suggested && <Settled label="A suggested pass line" value={d.test.suggested} />}
+      </div>
+      {others.length > 0 && !placed && (
+        <div className="flex flex-col gap-[4px]">
+          <p className="text-caption text-fg-subtle">Can wait, or pick one instead:</p>
+          {others.map((x) => {
+            const why = b.pick?.later.find((l) => l.draft === x.id)?.why;
+            return (
+              <button key={x.id} type="button" className="q-item flex flex-col rounded-md px-[8px] py-[4px] text-left hover:bg-hover" onClick={() => chooseDraft(id, x.id)}>
+                <span className="text-caption text-fg" dir="auto">{x.title}</span>
+                {why && <span className="text-micro text-fg-subtle" dir="auto">{why}</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {placed && <p className="text-caption text-fg-muted">It's on the canvas: the goal, the problem under it, then the solution and its test.</p>}
+      {plan.brief ? (
+        <BriefStep id={id} brief={plan.brief} />
+      ) : (
+        <ReplyChips>
+          {!placed && (
+            <button type="button" className={r.replyChipPrimary} onClick={() => void placeFirstBuild(id)}>
+              Put it on the canvas
+            </button>
+          )}
+          <button type="button" className={placed ? r.replyChipPrimary : r.replyChip} onClick={() => void briefStart(id)}>
+            Write a brief for your coding agent
+          </button>
+        </ReplyChips>
+      )}
+    </div>
+  );
+}
+
+/** A brief: what it lacks, being written, then a tile on the canvas to open or copy. */
+function BriefStep({ id, brief }: { id: string; brief: BriefState }) {
+  const [copied, setCopied] = useState(false);
+  const started = useCanvasChat((s) => s.live[id]?.started);
+  // Not known yet is not gone.
+  const kept = useBriefs((s) => !s.loaded || s.list.some((b) => b.id === brief.id));
+  if (brief.step === "asking") return <p className="text-body text-fg">A few things for the brief. Skip any you can't answer.</p>;
+  if (brief.step === "writing") return <Progress label="Writing the brief" started={started ?? Date.now()} tokens={0} note="This takes under a minute." />;
+  if (brief.step === "failed")
+    return (
+      <div className="flex flex-col gap-[6px]">
+        <p className="text-body text-fg">{brief.error === "You stopped it." ? "You stopped it." : `I couldn't write it: ${brief.error ?? "something went wrong"}`}</p>
+        <ReplyChips>
+          <button type="button" className={r.replyChip} onClick={() => briefAgain(id)}>
+            Try again
+          </button>
+        </ReplyChips>
+      </div>
+    );
+  if (!kept)
+    return (
+      <div className="flex flex-col gap-[6px]">
+        <p className="text-body text-fg-muted">This brief has been taken off the canvas.</p>
+        <ReplyChips>
+          <button type="button" className={r.replyChip} onClick={() => briefAgain(id)}>
+            Write it again
+          </button>
+        </ReplyChips>
+      </div>
+    );
+  const copy = () =>
+    brief.id &&
+    void getBrief(brief.id)
+      .then((b) => navigator.clipboard.writeText(b.body))
+      .then(() => {
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1600);
+      });
+  return (
+    <div className="flex flex-col gap-[6px]">
+      <p className="text-body text-fg">The brief is on the canvas, under its card. Click it there to read it.</p>
+      {brief.id && (
+        <ReplyChips>
+          <button type="button" className={r.replyChipPrimary} onClick={() => openBrief(brief.id!)}>
+            Open it
+          </button>
+          <button type="button" className={r.replyChip} onClick={copy}>
+            {copied ? "Copied" : "Copy for your coding agent"}
+          </button>
+        </ReplyChips>
+      )}
+    </div>
+  );
+}
+
+function BriefPart({ data }: { data: PartData }) {
+  const t = useTurn(data.turn);
+  return t?.job.kind === "brief" ? <BriefStep id={t.id} brief={t.job.brief} /> : null;
+}
+
+/** From a scan's problems to what to build first, the step it's on and what's settled. */
+function ScanPlanPart({ data }: { data: PartData }) {
+  const t = useTurn(data.turn);
+  if (t?.job.kind !== "scan" || !t.job.plan) return null;
+  const p = t.job.plan;
+  const live = useCanvasChat.getState().live[t.id];
+  const goal = p.audience && p.goal ? firstGoal(p.audience.name, p.goal.action, p.goal.reach, p.goal.of).title : "";
+  return (
+    <div className="flex flex-col gap-[8px] pt-[4px]">
+      {p.audience && p.step !== "audiences" && <Settled label="For" value={p.audience.name} />}
+      {goal && p.step !== "goal" && <Settled label="First goal" value={goal} />}
+      {p.step === "questioning" && <Progress label="Working out what to ask" started={live?.started ?? t.at} tokens={0} note="A few short questions, then who it's for." />}
+      {p.step === "asking" && <p className="text-body text-fg">A few questions first. Skip any you can't answer.</p>}
+      {p.step === "reading" && <Progress label="Reading who these people are" started={live?.started ?? t.at} tokens={0} note="This takes under a minute." />}
+      {p.step === "audiences" && <AudiencesStep id={t.id} list={p.audiences ?? []} />}
+      {p.step === "goal" && p.audience && p.goal && <GoalStep id={t.id} name={p.audience.name} goal={p.goal} />}
+      {p.step === "picking" && <Progress label="Drafting what to build, then picking one" started={live?.started ?? t.at} tokens={0} note="This takes a minute or two." />}
+      {(p.step === "picked" || p.step === "placed") && p.build && <PickedStep id={t.id} plan={p} />}
+      {p.step === "failed" && (
+        <>
+          <p className="text-body text-fg">{p.error === "You stopped it." ? "You stopped it." : `I couldn't finish: ${p.error ?? "something went wrong"}`}</p>
+          <ReplyChips>
+            <button type="button" className={r.replyChip} onClick={() => planAgain(t.id)}>
+              Try again
+            </button>
+          </ReplyChips>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ScanAgainPart({ data }: { data: PartData }) {
+  const t = useTurn(data.turn);
+  if (t?.job.kind !== "scan") return null;
+  return (
+    <ReplyChips>
+      <button type="button" className={r.replyChip} onClick={() => scanAgain(t.id)}>
+        Try again
+      </button>
+    </ReplyChips>
+  );
+}
+
+function NoEnginePart({ data }: { data: PartData }) {
+  const t = useTurn(data.turn);
+  if (t?.job.kind !== "noEngine") return null;
+  const mode = t.job.mode;
+  return (
+    <div className="flex flex-wrap gap-[6px]">
+      <a href={placeHref("connections")} className={r.replyChipPrimary}>
+        Set up Qalam AI
+      </a>
+      {mode && t.said && (
+        <button type="button" className={r.replyChip} onClick={() => retake(t.id, mode)}>
+          Try again
+        </button>
+      )}
+    </div>
+  );
+}
+
 export const PARTS: Record<string, PartComponent> = {
+  noEngine: NoEnginePart,
+  brief: BriefPart,
+  scanning: ScanningPart,
+  scanned: ScannedPart,
+  scanAgain: ScanAgainPart,
+  scanWhere: ScanWherePart,
+  scanPlan: ScanPlanPart,
   taken: TakenPart,
   asOwn: AsOwnPart,
   working: WorkingPart,

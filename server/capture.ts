@@ -58,6 +58,8 @@ export interface CaptureOpts {
    * (`{}`). Left out: every board of its product.
    */
   scope?: Record<string, string[]>;
+  /** What the person is looking into: only what bears on it is picked out. */
+  focus?: string;
 }
 
 /**
@@ -157,7 +159,7 @@ export async function fileSources(store: OrgStore, ids: string[], product: strin
 }
 
 /** What customers said in the source's unread parts, picked out and checked as on a board. */
-async function readIn(store: OrgStore, deps: FilingDeps, s: SourceRecord, o: CaptureOpts): Promise<SourceRecord> {
+async function readIn(store: OrgStore, deps: FilingDeps, s: SourceRecord, o: CaptureOpts & { notFound?: (n: number) => void }): Promise<SourceRecord> {
   const calls = packCalls(unread(s));
   if (!calls.length) return s;
   const product = deps.productLine(s.product ?? null).slice(0, 2000);
@@ -175,13 +177,16 @@ async function readIn(store: OrgStore, deps: FilingDeps, s: SourceRecord, o: Cap
     const body = {
       stage: "extract" as const,
       product,
+      ...(o.focus ? { focus: o.focus } : {}),
       chunks: chunks.map((c) => ({ id: c.ref, source: cur.title.slice(0, 300), kind: SOURCE_KIND_LABEL[cur.kind], text: c.text, ...(cur.transcript ? { speakers: speakerNote(cur.transcript) } : {}) })),
       ...(org ? { context: org.context } : {}),
       ...(o.proposeGoals ? { propose: known.map((t) => t.slice(0, 300)) } : {}),
       ...(goals.length ? { goals: goals.map((g, i) => ({ id: `g${i + 1}`, title: g.title.slice(0, 300), metric: g.metric!.name.slice(0, 200) })) } : {}),
     };
     const { data } = await structured<unknown>(extractCall(body));
-    const got = finishExtracted(sanitizeExtract(data, chunks, new Map([[cur.id, cur.quotes.map((q) => q.span)]]), Date.now(), goalIds, [...known, ...(cur.foundGoals ?? []).map((g) => g.title)]), () => cur);
+    const checked = sanitizeExtract(data, chunks, new Map([[cur.id, cur.quotes.map((q) => q.span)]]), Date.now(), goalIds, [...known, ...(cur.foundGoals ?? []).map((g) => g.title)]);
+    if (checked.notFound) o.notFound?.(checked.notFound);
+    const got = finishExtracted(checked, () => cur);
     cur = {
       ...cur,
       read: [...new Set([...cur.read, ...call.map((c) => c.index)])],
@@ -263,13 +268,9 @@ export async function placeIn(store: OrgStore, deps: FilingDeps, s: SourceRecord
   return out;
 }
 
-/**
- * Keep material as one of the organization's sources and do what a board would with it: pick out
- * what customers said, file it into the topic pages, propose where it fits on the boards.
- */
-export async function captureSource(store: OrgStore, ing: Ingested, o: CaptureOpts = {}): Promise<CaptureResult> {
-  const emit = o.emit ?? (() => {});
-  let s: SourceRecord = {
+/** Material as a new source of the organization's, nothing read from it yet. */
+function newSource(ing: Ingested, o: Pick<CaptureOpts, "product" | "basis">): SourceRecord {
+  return {
     v: 1,
     id: nanoid(10),
     projectId: "",
@@ -290,6 +291,15 @@ export async function captureSource(store: OrgStore, ing: Ingested, o: CaptureOp
     quotes: [],
     needs: [],
   };
+}
+
+/**
+ * Keep material as one of the organization's sources and do what a board would with it: pick out
+ * what customers said, file it into the topic pages, propose where it fits on the boards.
+ */
+export async function captureSource(store: OrgStore, ing: Ingested, o: CaptureOpts = {}): Promise<CaptureResult> {
+  const emit = o.emit ?? (() => {});
+  let s = newSource(ing, o);
   emit(`Keeping “${s.title}” in the ${wordsFor(store.info.shape).org}`);
   await store.putSource(s);
   const result = (filed?: FilingTotals, placed: CaptureResult["placed"] = []): CaptureResult => ({ sourceId: s.id, title: s.title, quotes: s.quotes.length, needs: s.needs.length, ...(s.about ? { about: s.about } : {}), points: basisCounts(s), ...(s.goalNumbers?.length ? { goalNumbers: s.goalNumbers } : {}), ...(s.foundGoals?.length ? { foundGoals: s.foundGoals } : {}), ...(picturesLine(s.pictures) ? { pictures: picturesLine(s.pictures)! } : {}), ...(filed ? { filed } : {}), placed });
@@ -318,6 +328,63 @@ export async function captureSource(store: OrgStore, ing: Ingested, o: CaptureOp
     filed,
     Object.entries(placements).map(([board, list]) => ({ board, name: store.getProject(board)?.record.name ?? "A board", count: list.length })),
   );
+}
+
+export interface TakenTogether {
+  /** In the order given; `quotes` 0 and no id for one nothing was filed from (it isn't kept). */
+  sources: { id?: string; title: string; quotes: number }[];
+  filed: FilingTotals | null;
+  /** Quotes Qalam AI gave that code couldn't find in what it read. */
+  notFound: number;
+}
+
+/** How many sources are read at once. */
+const READ_AT_ONCE = 3;
+
+/**
+ * Several pieces of material taken in as one: each kept and read, a few at a time, then all filed
+ * together, so one filing sees them all and the same problem in two places lands on one page. Nothing
+ * is placed on a board. With a `focus`, a source no page ended up citing bore on nothing they're
+ * looking into, so it isn't kept: its words shouldn't turn up later as if they'd mattered.
+ */
+export async function captureTogether(store: OrgStore, items: readonly { ing: Ingested; basis?: Basis; focus?: string }[], o: Pick<CaptureOpts, "emit" | "signal" | "focus"> = {}): Promise<TakenTogether> {
+  const core = await coreDeps(store);
+  // Filing hears what they're looking into too, so the pages it starts are about that.
+  const deps: FilingDeps = o.focus ? { ...core, productLine: (id) => [`What they're looking into: ${o.focus}`, core.productLine(id)].filter(Boolean).join("\n\n") } : core;
+  const read: SourceRecord[] = [];
+  let notFound = 0;
+  let next = 0;
+  const one = async () => {
+    while (next < items.length && !o.signal?.aborted) {
+      const at = next++;
+      const { ing, basis, focus } = items[at];
+      const s = newSource(ing, { ...(basis ? { basis } : {}) });
+      await store.putSource(s);
+      o.emit?.(`Reading “${s.title}”`);
+      read[at] = await readIn(store, core, s, { signal: o.signal, ...(focus ?? o.focus ? { focus: focus ?? o.focus } : {}), notFound: (n) => void (notFound += n) });
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(READ_AT_ONCE, items.length) }, one));
+  const done = read.filter(Boolean);
+  const said = (s: SourceRecord) => ({ id: s.id, title: s.title, quotes: s.quotes.length });
+  if (o.signal?.aborted || !done.some((s) => s.quotes.length)) {
+    if (o.focus && !o.signal?.aborted) for (const s of done) await store.removeSource(s.id);
+    return { sources: done.map((s) => (o.focus && !o.signal?.aborted ? { title: s.title, quotes: 0 } : said(s))), filed: null, notFound };
+  }
+  o.emit?.("Filing what it found into problem pages");
+  const filed = await fileMaterial(deps, done, { product: null, signal: o.signal });
+  if (!o.focus || o.signal?.aborted) return { sources: done.map(said), filed, notFound };
+  const cited = new Set((await store.listTopics()).flatMap((t) => t.lines.flatMap((l) => l.cites)));
+  const sources: TakenTogether["sources"] = [];
+  for (const s of done) {
+    // What's read elsewhere needn't bear on a problem to be worth keeping: a market's numbers rarely do.
+    if (s.quotes.some((q) => cited.has(quotePiece(q.id))) || (s.basis === "read" && s.quotes.length)) sources.push(said(s));
+    else {
+      await store.removeSource(s.id);
+      sources.push({ title: s.title, quotes: 0 });
+    }
+  }
+  return { sources, filed, notFound };
 }
 
 /**

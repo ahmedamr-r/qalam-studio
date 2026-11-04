@@ -161,7 +161,7 @@ export async function workOnProblem(topic: string, faint: string): Promise<strin
 }
 
 /** A problem's page put on the canvas from a list or its page: where it's drawn faint, else on its own (a new tree, its board made on save). */
-export function workOnNeed(topic: string): Promise<unknown> {
+export function workOnNeed(topic: string): Promise<string | null> {
   const faint = cardForPage({ page: topic }, useSpaceView.getState().things);
   return faint ? workOnProblem(topic, faint) : addProblem(topic, null);
 }

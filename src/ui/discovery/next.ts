@@ -11,6 +11,7 @@ import { breakDownFor, draftProblemsFor, findProblemsFor, lookOutsideFor, review
 import { draftSolutionsFor } from "./solutions";
 import { useDiscovery } from "./store";
 import { draftTestsFor } from "./tests";
+import { openBrief } from "./briefs";
 
 /*
  * A picked card's next steps run (src/discovery/next.ts says which fit): drafts through their own
@@ -77,6 +78,12 @@ export async function runStep(card: string, step: NextStep, f: CardFacts, o: { l
     // Asked in the canvas's chat too: the goals on the canvas, then the web, then the number.
     case "find-goal":
       void import("../space/chat/store").then((m) => m.goalWith(card, f.page?.topic));
+      return;
+    case "write-brief":
+      void import("../space/chat/store").then((m) => m.briefFor(card));
+      return;
+    case "open-brief":
+      if (f.brief) openBrief(f.brief);
       return;
     case "draft-solutions":
       return draftSolutionsFor(card);

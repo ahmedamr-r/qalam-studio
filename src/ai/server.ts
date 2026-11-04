@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { orOnModelError, streamViaCli } from "./cli";
+import { patiently } from "./patience";
 import { runResearch, type ResearchRequest } from "./research";
 import { researchBlock } from "./research-shared";
 import { deltaBatcher } from "./deltas";
@@ -220,7 +221,8 @@ function researchDeps() {
 }
 
 /** The research step on its own, for the core (what others aim for): its notes and sources, or why there are none. */
-export const research = (req: ResearchRequest, emit: (label: string) => void, signal: AbortSignal) => runResearch(req, researchDeps(), emit, signal);
+export const research = (req: ResearchRequest, emit: (label: string) => void, signal: AbortSignal) =>
+  patiently(() => runResearch(req, researchDeps(), emit, signal), { signal, onWait: (ms) => emit(`Asked to slow down, so waiting ${ms / 1000} seconds`) });
 
 /** Run the research step (streaming what it looks up), then the structured call with its notes. */
 function streamWithResearch(opts: CallOpts, research: ResearchRequest): Response {
@@ -266,7 +268,7 @@ function streamWithResearch(opts: CallOpts, research: ResearchRequest): Response
  * organization), where no window reads the stream. Throws the stream's error.
  */
 export async function structured<T>(opts: CallOpts, signal?: AbortSignal): Promise<{ data: T; model?: string }> {
-  return readStructured<T>(streamStructured(opts), signal);
+  return patiently(() => readStructured<T>(streamStructured(opts), signal), { signal, onWait: (ms) => console.warn(`[engine] asked to slow down; asking again in ${ms / 1000} s`) });
 }
 
 /** A structured call's NDJSON read to its result (or its error, thrown). Stopped, the stream is cancelled, which ends the call. */
@@ -289,7 +291,7 @@ export async function readStructured<T>(res: Response, signal?: AbortSignal): Pr
         if (!line) continue;
         const msg = JSON.parse(line) as { type: string; data?: unknown; model?: string; error?: string; message?: string };
         if (msg.type === "result") return { data: msg.data as T, model: msg.model };
-        if (msg.type === "error") throw new Error(msg.message ?? msg.error ?? "Qalam AI couldn't answer.");
+        if (msg.type === "error") throw Object.assign(new Error(msg.message ?? msg.error ?? "Qalam AI couldn't answer."), { code: msg.error });
       }
     }
     if (signal?.aborted) throw Object.assign(new Error("Stopped."), { name: "AbortError" });

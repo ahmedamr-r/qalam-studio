@@ -13,6 +13,7 @@ import { packedPieces, packFor, search, showsUp, type Hit } from "../index/searc
 import { orgGraph } from "@/hub/graph";
 import { filingShape, topicShape, type Topic } from "@/hub/topics";
 import { chooseFolder, createOrg, currentOrg, listOrgs, openFolder, qalamHome, rememberOrg, storeFor } from "./home";
+import { openSample } from "./sample";
 import { noticesNow } from "./notices";
 import { spaceBoards } from "./map";
 import { needsNow } from "./needs";
@@ -50,6 +51,12 @@ import { decideProblem, draftProblems } from "./problems";
 import { decideSolution, draftSolutions, solutionsView, type SolutionsCard } from "./solutions";
 import { draftTests, type TestsRequest } from "./tests";
 import { aboutTopic, lookOnline } from "./posts";
+import { scanNow, startScan, steerQuestions, steerScan, stopScan } from "./scan";
+import { steerRound } from "@/scan/steer";
+import { briefRequestOf, writeCardBrief } from "./briefs";
+import { firstBuild, keepAnswers, keepAudience, planAudiences, planQuestions, scanShare, writeBrief } from "./scan-plan";
+import { scanRequest, type ScanTarget } from "@/scan/session";
+import type { ScanSaid } from "@/scan/steer";
 import { addRepo, answerFromCode, codeView, readRepo, removeRepo, type NewRepo } from "../code";
 import { GOAL_LEVERS, type GoalLever } from "@/goals/types";
 import { meShape } from "@/org/you";
@@ -91,7 +98,7 @@ export function orgRoutes(): Hono<Env> {
     const current = await currentOrg();
     const orgs = await listOrgs();
     // None yet (the first run): the window welcomes them instead.
-    return c.json({ home: qalamHome(), current: current?.id ?? null, orgs: orgs.map(({ id, name, dir, shape }) => ({ id, name, dir, ...(shape ? { shape } : {}) })) });
+    return c.json({ home: qalamHome(), current: current?.id ?? null, orgs: orgs.map(({ id, name, dir, shape, sample }) => ({ id, name, dir, ...(shape ? { shape } : {}), ...(sample ? { sample } : {}) })) });
   });
   r.post("/api/orgs", async (c) => {
     const { name, shape } = (await c.req.json().catch(() => ({}))) as { name?: string; shape?: unknown };
@@ -99,6 +106,7 @@ export function orgRoutes(): Hono<Env> {
     return c.json(await createOrg(name, undefined, orgShape(shape) ?? undefined));
   });
   /** Open a folder as an organization: the one given, or one picked with the Mac's own picker. */
+  r.post("/api/orgs/sample", async (c) => c.json(await openSample()));
   r.post("/api/orgs/open", async (c) => {
     let { path: dir } = (await c.req.json().catch(() => ({}))) as { path?: string };
     if (!dir) {
@@ -129,8 +137,8 @@ export function orgRoutes(): Hono<Env> {
   });
 
   const infoOf = (store: OrgStore) => {
-    const { id, name, shape } = store.info;
-    return { id, name, dir: store.dir, ...(shape ? { shape } : {}) };
+    const { id, name, shape, sample } = store.info;
+    return { id, name, dir: store.dir, ...(shape ? { shape } : {}), ...(sample ? { sample } : {}) };
   };
   r.get("/api/org/:org/info", (c) => c.json(infoOf(c.get("store"))));
   /** Rename it, or say who it is: a company or team, or one person on their own. */
@@ -976,6 +984,127 @@ export function orgRoutes(): Hono<Env> {
     const store = c.get("store");
     return c.json({ org: store.info.name, market: await store.getMarket(), session: await marketSession(store) });
   });
+  // What people complain about: an idea or a product, read and filed (./scan.ts).
+  r.get("/api/org/:org/scan", async (c) => c.json({ session: await scanNow(c.get("store")) }));
+  r.post("/api/org/:org/scan", async (c) => {
+    if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't read what people complain about." }, 503);
+    const req = scanRequest(await c.req.json().catch(() => null));
+    if (!req) return bad("Say what you want to build, or name a product");
+    return c.json({ session: await startScan(c.get("store"), req, { tab: tabOf(c.req.raw.headers) }) });
+  });
+  r.delete("/api/org/:org/scan", (c) => {
+    stopScan(c.get("store"));
+    return c.json({ ok: true });
+  });
+  // While it reads: the questions as it starts, and what they say.
+  r.post("/api/org/:org/scan/ask", async (c) => {
+    const req = scanRequest(await c.req.json().catch(() => null));
+    if (!req) return bad("Nothing to look at");
+    if (!aiConfigured()) return c.json({ questions: steerRound(req.target) });
+    return c.json({ questions: await steerQuestions(req, c.req.raw.signal) });
+  });
+  r.post("/api/org/:org/scan/steer", async (c) => c.json({ session: await steerScan(c.get("store"), await c.req.json().catch(() => null), { tab: c.req.header("x-qalam-tab") }) }));
+  // From its problems to what to build first (./scan-plan.ts): each step answers what it found, and the chat keeps it.
+  const planOf = (b: { target?: unknown; sources?: unknown; told?: unknown } | null): { target: ScanTarget; sources: string[]; told: ScanSaid[] } | null => {
+    const req = scanRequest({ target: b?.target, told: b?.told });
+    const sources = Array.isArray(b?.sources) ? b.sources.filter((x): x is string => typeof x === "string" && ID.test(x)).slice(0, 20) : [];
+    return req && sources.length ? { target: req.target, sources, told: req.told ?? [] } : null;
+  };
+  r.post("/api/org/:org/scan/questions", async (c) => {
+    const plan = planOf(await c.req.json().catch(() => null));
+    if (!plan) return bad("No scan to go on");
+    if (!aiConfigured()) return c.json({ questions: [] });
+    return c.json({ questions: await planQuestions(c.get("store"), plan, c.req.raw.signal) });
+  });
+  r.post("/api/org/:org/scan/answers", async (c) => {
+    const b = (await c.req.json().catch(() => null)) as { said?: unknown; title?: unknown } | null;
+    const said = (Array.isArray(b?.said) ? b.said : []).map((x: { question?: unknown; answer?: unknown }) => ({ question: clipped(x?.question, 300), answer: typeof x?.answer === "string" ? x.answer.slice(0, 4000) : "" })).slice(0, 6);
+    return c.json({ source: await keepAnswers(c.get("store"), said, clipped(b?.title, 200) || "Your answers") });
+  });
+  r.post("/api/org/:org/scan/audiences", async (c) => {
+    const b = (await c.req.json().catch(() => null)) as { target?: unknown; sources?: unknown; answers?: unknown } | null;
+    const plan = planOf(b);
+    if (!plan) return bad("No scan to go on");
+    if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't read who this is for." }, 503);
+    return c.json({ audiences: await planAudiences(c.get("store"), { ...plan, answers: typeof b?.answers === "string" ? b.answers.slice(0, 4000) : "" }, c.req.raw.signal) });
+  });
+  r.post("/api/org/:org/scan/audience", async (c) => {
+    const b = (await c.req.json().catch(() => null)) as { name?: unknown; about?: unknown; refs?: unknown } | null;
+    const name = clipped(b?.name, 120);
+    if (!name) return bad("Say who it's for");
+    const refs = Array.isArray(b?.refs) ? b.refs.filter((x): x is string => typeof x === "string").slice(0, 12) : [];
+    await keepAudience(c.get("store"), { name, about: clipped(b?.about, 300), refs });
+    return c.json({ ok: true });
+  });
+  // A card's brief: written, listed for the canvas's tiles, read, taken off.
+  r.get("/api/org/:org/briefs", async (c) => c.json({ briefs: await c.get("store").listBriefs() }));
+  r.get("/api/org/:org/briefs/:id", async (c) => {
+    const brief = await c.get("store").getBrief(c.req.param("id"));
+    return brief ? c.json({ brief }) : c.json({ error: "not_found", message: "No such brief" }, 404);
+  });
+  r.post("/api/org/:org/briefs", async (c) => {
+    const req = briefRequestOf(await c.req.json().catch(() => null));
+    if (!req) return bad("Send the card it's for");
+    return c.json({ brief: await writeCardBrief(c.get("store"), req, c.req.raw.signal, undefined, { tab: c.req.header("x-qalam-tab") }) });
+  });
+  r.delete("/api/org/:org/briefs/:id", async (c) => {
+    await c.get("store").removeBrief(c.req.param("id"), { tab: c.req.header("x-qalam-tab") });
+    return c.json({ ok: true });
+  });
+  r.post("/api/org/:org/scan/share", async (c) => {
+    const plan = planOf(await c.req.json().catch(() => null));
+    if (!plan) return bad("No scan to go on");
+    return c.json({ problems: await scanShare(c.get("store"), plan.sources) });
+  });
+  r.post("/api/org/:org/scan/brief", async (c) => {
+    const b = (await c.req.json().catch(() => null)) as { target?: unknown; sources?: unknown; card?: unknown; topic?: unknown; draft?: unknown; audience?: unknown; about?: unknown; goal?: { title?: unknown; metric?: unknown }; answers?: unknown; why?: unknown; later?: unknown; asked?: { platform?: unknown; exists?: unknown; needs?: unknown }; known?: unknown } | null;
+    const plan = planOf(b);
+    const audience = clipped(b?.audience, 120);
+    const topic = clipped(b?.topic, 60);
+    const draft = clipped(b?.draft, 60);
+    const card = clipped(b?.card, 200);
+    if (!plan || !audience || !card || !ID.test(topic) || !ID.test(draft)) return bad("Nothing to write a brief from");
+    const list = (v: unknown) => (Array.isArray(v) ? v : []);
+    const brief = await writeBrief(
+      c.get("store"),
+      {
+        target: plan.target,
+        sources: plan.sources,
+        card,
+        topic,
+        draft,
+        audience,
+        about: clipped(b?.about, 300),
+        goal: { title: clipped(b?.goal?.title, 200), metric: clipped(b?.goal?.metric, 200) },
+        answers: typeof b?.answers === "string" ? b.answers.slice(0, 4000) : "",
+        why: clipped(b?.why, 600),
+        later: list(b?.later).slice(0, 4).map((l: { draft?: unknown; why?: unknown }) => ({ draft: clipped(l?.draft, 60), why: clipped(l?.why, 600) })),
+        asked: { platform: clipped(b?.asked?.platform, 200), exists: clipped(b?.asked?.exists, 400), needs: clipped(b?.asked?.needs, 60) },
+        // As the scan said it, to be shown beside what people said; only web addresses go in as links.
+        known: list(b?.known).slice(0, 20).flatMap((k: { kind?: unknown; name?: unknown; text?: unknown; title?: unknown; url?: unknown }) => {
+          const url = clipped(k?.url, 500);
+          const text = clipped(k?.text, 500);
+          if (!text || !/^https?:\/\//i.test(url) || (k?.kind !== "product" && k?.kind !== "published")) return [];
+          const name = clipped(k?.name, 120);
+          return [{ kind: k.kind, text, url, title: clipped(k?.title, 200), ...(name ? { name } : {}) }];
+        }),
+      },
+      c.req.raw.signal,
+    );
+    return c.json({ brief });
+  });
+  r.post("/api/org/:org/scan/first", async (c) => {
+    const b = (await c.req.json().catch(() => null)) as { target?: unknown; sources?: unknown; audience?: unknown; refs?: unknown; answers?: unknown; answersSource?: unknown; topic?: unknown } | null;
+    const plan = planOf(b);
+    const audience = clipped(b?.audience, 120);
+    if (!plan || !audience) return bad("Say who it's for");
+    if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't draft what to build." }, 503);
+    const refs = Array.isArray(b?.refs) ? b.refs.filter((x): x is string => typeof x === "string").slice(0, 60) : [];
+    return c.json({
+      build: await firstBuild(c.get("store"), { ...plan, audience, refs, answers: typeof b?.answers === "string" ? b.answers.slice(0, 4000) : "", ...(typeof b?.answersSource === "string" && ID.test(b.answersSource) ? { answersSource: b.answersSource } : {}), ...(typeof b?.topic === "string" && ID.test(b.topic) ? { topic: b.topic } : {}) }, c.req.raw.signal),
+    });
+  });
+
   r.post("/api/org/:org/market/company", async (c) => {
     if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't look the company up." }, 503);
     const b = (await c.req.json().catch(() => null)) as { site?: unknown; said?: unknown } | null;

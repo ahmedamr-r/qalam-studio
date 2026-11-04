@@ -1,12 +1,13 @@
 import { Onboarding } from "../onboarding/Onboarding";
+import { StartFlow } from "../start/StartFlow";
 
 /**
- * The welcome, like OpenClaw's QuickStart: Qalam finds the Claude this Mac already has and makes a
- * short real call to it, then they name the organization and go on to its goals (the setup page),
- * all as one conversation with Qalam AI (src/ui/onboarding). Opened when there's no organization
- * yet, for a new one from the organization menu (?new=1), and to check the setup again
+ * The welcome: who it's for, then what to read (../start). Opened when there's no organization yet
+ * and for a new one from the organization menu (?new=1). Setting it up in detail (?full=1, ?for=) is
+ * the conversation with Qalam AI in panels (../onboarding), and so is checking the setup again
  * (?verify=1), which only tests and reports.
  */
 export default function WelcomePage() {
-  return <Onboarding route="welcome" />;
+  const q = new URLSearchParams(window.location.search);
+  return q.has("full") || q.has("for") || q.has("verify") ? <Onboarding route="welcome" /> : <StartFlow />;
 }

@@ -23,22 +23,22 @@ let dir: string;
 let store: OrgStore;
 
 beforeEach(async () => {
-  dir = path.join(await mkdtemp(path.join(tmpdir(), "qalam-market-")), "Tagaddod");
-  store = await OrgStore.create(dir, { id: "org1", name: "Tagaddod", createdAt: 1 });
+  dir = path.join(await mkdtemp(path.join(tmpdir(), "qalam-market-")), "Example Co");
+  store = await OrgStore.create(dir, { id: "org1", name: "Example Co", createdAt: 1 });
 });
 afterEach(async () => {
   store.dispose();
   await rm(path.dirname(dir), { recursive: true, force: true });
 });
 
-const site = { url: "https://tagaddod.com/", title: "Tagaddod", text: "Tagaddod collects used cooking oil from homes and restaurants in Cairo and Giza, and turns it into biodiesel. Households get points they spend in our partner shops for every litre they hand in. ".repeat(2) };
+const site = { url: "https://example.com/", title: "Example Co", text: "Example Co collects used cooking oil from homes and restaurants in Cairo and Giza, and turns it into biodiesel. Households get points they spend in our partner shops for every litre they hand in. ".repeat(2) };
 
 const deps = (o: { web?: boolean; facts?: unknown } = {}): MarketDeps => ({
   research: vi.fn(async (_req, emit) => {
-    emit("Searched the web: Tagaddod");
-    return o.web === false ? null : { notes: "- Tagaddod collects used oil [Tagaddod](https://tagaddod.com/)", sources: [{ title: "Tagaddod", url: "https://tagaddod.com/" }], steps: [] };
+    emit("Searched the web: Example Co");
+    return o.web === false ? null : { notes: "- Example Co collects used oil [Example Co](https://example.com/)", sources: [{ title: "Example Co", url: "https://example.com/" }], steps: [] };
   }),
-  read: vi.fn(async (l) => (l.url.startsWith("https://tagaddod.com") ? { ref: "", ...site } : null)),
+  read: vi.fn(async (l) => (l.url.startsWith("https://example.com") ? { ref: "", ...site } : null)),
   structured: vi.fn(async () => ({
     data: o.facts ?? {
       facts: [
@@ -63,20 +63,20 @@ async function settled() {
 describe("looking the company up in the first run", () => {
   it("reads its site and what the web says, keeps the facts found on the page, and leaves them to check", async () => {
     const d = deps();
-    const started = await lookUpCompany(store, { site: "tagaddod.com" }, { deps: d });
-    expect(started.company).toMatchObject({ state: "looking", site: "tagaddod.com" });
+    const started = await lookUpCompany(store, { site: "example.com" }, { deps: d });
+    expect(started.company).toMatchObject({ state: "looking", site: "example.com" });
     const s = await settled();
-    expect(s.company).toMatchObject({ state: "ready", pages: [{ url: "https://tagaddod.com/" }] });
+    expect(s.company).toMatchObject({ state: "ready", pages: [{ url: "https://example.com/" }] });
     expect(s.company!.facts.map((f) => [f.text, f.by, f.url])).toEqual([
-      ["Collects used cooking oil from homes and restaurants in Cairo and Giza.", "qalam", "https://tagaddod.com/"],
-      ["Gives households points for each litre.", "qalam", "https://tagaddod.com/"],
+      ["Collects used cooking oil from homes and restaurants in Cairo and Giza.", "qalam", "https://example.com/"],
+      ["Gives households points for each litre.", "qalam", "https://example.com/"],
     ]);
-    expect(s.company!.steps).toContain("Searched the web: Tagaddod");
+    expect(s.company!.steps).toContain("Searched the web: Example Co");
     expect(d.read).toHaveBeenCalledTimes(1);
   });
 
   it("writes what they keep (a fixed one in their words, as theirs) and fills the About's empty fields", async () => {
-    await lookUpCompany(store, { site: "tagaddod.com" }, { deps: deps() });
+    await lookUpCompany(store, { site: "example.com" }, { deps: deps() });
     const [does, model] = (await settled()).company!.facts;
     const s = await settleCompany(store, [{ id: does.id, keep: true, text: "Collects used cooking oil from homes and restaurants across Egypt." }, { id: model.id, keep: false }], ["Founded in 2016."], { deps: deps({ web: false }) });
     expect(s.company).toMatchObject({ state: "settled", kept: 2 });
@@ -88,7 +88,7 @@ describe("looking the company up in the first run", () => {
       ["Collects used cooking oil from homes and restaurants across Egypt.", "you"],
       ["Founded in 2016.", "you"],
     ]);
-    expect(await readFile(path.join(dir, "hub/market.md"), "utf8")).toContain("([Tagaddod](https://tagaddod.com/))");
+    expect(await readFile(path.join(dir, "hub/market.md"), "utf8")).toContain("([Example Co](https://example.com/))");
     expect((await store.getAbout()).context).toBe("Collects used cooking oil from homes and restaurants across Egypt. Founded in 2016.");
   });
 
@@ -168,7 +168,7 @@ describe("competitors and the domain in the first run", () => {
 });
 
 describe("a person's edits from the canvas", () => {
-  const fact = { id: "f1", text: "Collects used oil in Cairo", field: "does" as const, by: "qalam" as const, at: 1, url: "https://tagaddod.com/", title: "Tagaddod", quote: "Collects used oil in Cairo" };
+  const fact = { id: "f1", text: "Collects used oil in Cairo", field: "does" as const, by: "qalam" as const, at: 1, url: "https://example.com/", title: "Example Co", quote: "Collects used oil in Cairo" };
 
   beforeEach(async () => {
     await store.changeMarket((m) => ({ ...m, company: [fact] }));
@@ -208,7 +208,7 @@ describe("what a draft hears about the company", () => {
     const text = await companyContext(store);
     expect(text.match(/Collects used oil in Cairo/g)).toHaveLength(1);
     expect(text).toContain("- Founded in 2013");
-    expect(text).toContain("Tagaddod's competitors: Delta Oil.");
+    expect(text).toContain("Example Co's competitors: Delta Oil.");
   });
 
   it("says nothing when nothing's known", async () => {

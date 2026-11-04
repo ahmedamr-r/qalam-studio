@@ -26,6 +26,12 @@ export async function refreshHealth() {
   }
 }
 
+/** Whether Qalam AI has no engine to run on here. Asked once if the page hasn't heard yet; a core not answering doesn't say so. */
+export async function engineMissing(): Promise<boolean> {
+  if (!useHealthState.getState().rows) await refreshHealth();
+  return !!useHealthState.getState().rows?.some((r) => r.id === "engine" && r.dot === "bad");
+}
+
 export async function fixHealth(id: string) {
   useHealthState.setState({ loading: true });
   try {

@@ -24,6 +24,8 @@ export interface OrgListing {
   name: string;
   dir: string;
   shape?: OrgShape;
+  /** The project "Try it with a sample" opened. */
+  sample?: true;
 }
 
 interface Registry {
@@ -40,7 +42,7 @@ const writeRegistry = (home: string, r: Registry) => atomicWrite(registryFile(ho
 
 async function orgAt(dir: string): Promise<OrgListing | null> {
   const info = await readJson<OrgInfo>(path.join(dir, "org.json"));
-  return info?.qalam === "org/1" && info.id ? { id: info.id, name: info.name, dir, ...(info.shape ? { shape: info.shape } : {}) } : null;
+  return info?.qalam === "org/1" && info.id ? { id: info.id, name: info.name, dir, ...(info.shape ? { shape: info.shape } : {}), ...(info.sample ? { sample: true as const } : {}) } : null;
 }
 
 export async function listOrgs(home = qalamHome()): Promise<OrgListing[]> {

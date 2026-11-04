@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import clsx from "clsx";
-import { Cable, Milestone, Moon, Network, NotebookText, PanelLeft, Search, Target, Workflow, type LucideIcon } from "lucide-react";
+import { Cable, Compass, ListChecks, Milestone, Moon, Network, NotebookText, PanelLeft, Search, Target, Workflow, type LucideIcon } from "lucide-react";
 import { useGoals } from "@/goals/client";
 import { runCommand } from "@/commands/registry";
 import { usePagePalette } from "@/commands/pages";
@@ -21,6 +21,8 @@ import type { Space } from "./spaces";
 import { useCurrentOrg, useFrame } from "./store";
 import { navigate } from "../nav";
 import { composeIn } from "../space/chat/compose";
+import { openChecklist } from "../space/checklist-state";
+import { startTour } from "../space/tour-state";
 
 /*
  * ⌘K on a page: one field that finds the organization's canvases, Decisions and Connections, the
@@ -94,6 +96,8 @@ function Palette({ space }: { space: Space }) {
     add("Actions", "find-goal", "Find a goal with Qalam AI", <QalamAIGlyph size={14} />, onCanvas(find("goal")), undefined, ["help", "suggest", "goal", "questions"]);
     add("Actions", "find-problem", "Find a problem with Qalam AI", <QalamAIGlyph size={14} />, onCanvas(find("problem")), undefined, ["help", "suggest", "problem", "questions"]);
     add("Actions", "dump", "Brain dump", <QalamAIGlyph size={14} />, onCanvas(() => composeIn({ mode: "dump" })), undefined, ["paste", "thinking", "notes", "place"]);
+    add("Actions", "tour", "Show the walkthrough", <Compass {...ICON} />, onCanvas(startTour), undefined, ["tour", "help", "guide", "intro", "onboarding"]);
+    add("Actions", "checklist", "Show the checklist", <ListChecks {...ICON} />, onCanvas(openChecklist), undefined, ["get started", "checklist", "onboarding", "prd"]);
     // Grouped as listed; within a group, the best match first, and a few per group.
     const groups = [...new Set(out.map((x) => x.group))];
     const ranked = groups.flatMap((g) =>

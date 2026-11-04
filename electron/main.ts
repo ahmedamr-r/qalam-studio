@@ -179,7 +179,10 @@ function createWindow() {
     webPreferences,
   });
   win.once("ready-to-show", () => {
-    if (!HIDDEN) win.show();
+    if (HIDDEN) return;
+    win.show();
+    // Started from a terminal (`npx qalam-studio`), it would open behind that terminal.
+    app.focus({ steal: true });
   });
   // Edits save 400 ms after they settle: give the page a moment to finish before the window goes.
   // Holding the close back cancels a quit under way, so Quit asks again once the window's gone.

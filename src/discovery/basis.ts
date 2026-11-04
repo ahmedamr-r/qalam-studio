@@ -32,9 +32,15 @@ export function heldBasis(b: Basis, words: string, kind?: string): Basis {
   return b;
 }
 
+/**
+ * What strangers said in public: read elsewhere, whatever else it says. Only the person saying these
+ * are their own product's reviews makes them what people said (`basis: "said"`).
+ */
+export const isPublic = (s: { kind?: string; basis?: Basis }) => s.kind === "post" && s.basis !== "said";
+
 /** A point's basis: the person's word on its source, else what the reader said, else what its source's kind has always meant. */
 export function basisOf(s: { kind?: string; basis?: Basis }, q: { basis?: Basis }): Basis {
-  if (s.kind === "post") return "read";
+  if (isPublic(s)) return "read";
   return s.basis ?? q.basis ?? (s.kind === "dump" ? "own" : "said");
 }
 

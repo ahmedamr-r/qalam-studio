@@ -19,7 +19,7 @@ const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object"
 const clip = (v: unknown, max: number) => (typeof v === "string" ? one(v).slice(0, max) : "");
 const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 
-/** A website as an address (a bare "tagaddod.com" gets https://); null when it isn't one. */
+/** A website as an address (a bare "example.com" gets https://); null when it isn't one. */
 export function siteUrl(site: string | undefined | null): string | null {
   const s = (site ?? "").trim();
   if (!s || /\s/.test(s)) return null;

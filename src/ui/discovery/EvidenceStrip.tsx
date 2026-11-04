@@ -14,7 +14,8 @@ const STRENGTH: Record<Strength, string> = { strong: "Strong", growing: "Growing
 const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
 
 export function EvidenceStrip({ s }: { s: EvidenceSummary }) {
-  const word = s.quotes ? STRENGTH[strengthOf(s)] : s.ours ? "Your words only" : "Nothing backs it";
+  const word = s.quotes ? STRENGTH[strengthOf(s)] : s.ours ? (s.online || s.read ? "Not from customers yet" : "Your words only") : s.online ? "Only people online" : s.read ? "Only read elsewhere" : "Nothing backs it";
+  const elsewhere = [s.online ? plural(s.online, "post") + " online" : "", s.read ? `${s.read} read elsewhere` : ""].filter(Boolean).join(" · ");
   return (
     <div role="group" aria-label="What backs this card" className="flex flex-col gap-[8px] rounded-lg bg-muted px-[10px] py-[8px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
       <div className="flex items-center gap-[12px]">
@@ -30,7 +31,7 @@ export function EvidenceStrip({ s }: { s: EvidenceSummary }) {
               </span>
             </Tip>
           ) : (
-            <span className="text-fg-muted">{s.read ? `${s.read} read elsewhere` : "Nothing outside the team yet"}</span>
+            <span className="text-fg-muted">{elsewhere || "Nothing outside the team yet"}</span>
           )}
           <span className={s.against ? "text-warning" : "text-fg-subtle"}>{s.against ? `${s.against} against` : "Nothing against"}</span>
         </span>

@@ -1,3 +1,4 @@
+import { useBriefs } from "./briefs";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import { ArrowRight, ChevronDown, X } from "lucide-react";
@@ -88,6 +89,7 @@ export function useCardFacts(id: string | null): CardFacts | null {
   // Answers drafted with count as what it rests on; answers left half-way are picked up by its draft.
   const asked = useSources((s) => (!id ? null : s.list.some((x) => x.answers?.card === id && x.answers.done) ? "done" : s.list.some((x) => x.answers?.card === id) ? "half" : null));
   const feeds = useFeeds((s) => s.list);
+  const brief = useBriefs((s) => (id ? s.list.find((b) => b.card === id)?.id : undefined));
   return useMemo(() => {
     if (!id || !isOstCard(node)) return null;
     const card = node.meta.ost;
@@ -97,6 +99,7 @@ export function useCardFacts(id: string | null): CardFacts | null {
     const goal = thing?.type === "goal" && inputs ? goalById(inputs.tree, thing.goal) : undefined;
     return {
       kind: card.kind,
+      ...(brief ? { brief } : {}),
       evidence: evidenceSummary(card),
       page: need ? { topic: need.topic, strength: strengthOf(need), quotes: need.quotes, sources: need.sources, mix: need.mix } : null,
       under: { solutions: kids.filter((k) => k === "solution").length, tests: kids.filter((k) => k === "test").length },

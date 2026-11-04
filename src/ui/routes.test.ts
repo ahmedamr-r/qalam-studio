@@ -31,6 +31,8 @@ describe("routeOf", () => {
   it("reads an organization's setup page, only inside it", () => {
     expect(routeOf(setupHref("R02vmeVH"))).toEqual({ kind: "setup", org: "R02vmeVH" });
     expect(routeOf("/o/R02vmeVH/setup/")).toEqual({ kind: "setup", org: "R02vmeVH" });
+    expect(routeOf("/o/R02vmeVH/start")).toEqual({ kind: "start", org: "R02vmeVH" });
+    expect(routeOf("/start")).toEqual({ kind: "missing" });
     expect(routeOf("/setup")).toEqual({ kind: "missing" });
     expect(routeOf("/o/R02vmeVH/setup/x")).toEqual({ kind: "missing" });
   });

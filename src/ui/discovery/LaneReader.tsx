@@ -7,12 +7,16 @@ import { glideToLayer, onCanvasReady } from "./canvas";
 import { useSources } from "./sources";
 import { useDiscovery } from "./store";
 import FeedReader from "./FeedReader";
+import BriefReader from "./BriefReader";
 
 /*
  * A source from the board's sources lane, read in place of the right panel (src/ui/sources/Reader.tsx): what
  * it backs on this board as chips, its words, or its own part of a brain dump, with each card's
  * quotes marked, and a pressed chip takes you to its card.
  */
+
+/** A brief reads as a document does. */
+const BRIEF_W = 520;
 
 const KIND: Record<OstKind, Back["kind"]> = { outcome: "goal", opportunity: "problem", solution: "solution", test: "test" };
 
@@ -29,6 +33,8 @@ export default function LaneReader() {
   }, [key, item]);
   // A feed's tile opens the feed, not a source.
   if (item?.feed) return <FeedReader item={item} />;
+  // A brief's tile opens the brief.
+  if (item?.brief) return <BriefReader key={item.key} item={item} />;
   const source = item ? (list.find((s) => s.id === item.sourceId) ?? visiting.find((s) => s.id === item.sourceId)) : undefined;
   if (!item || !source || !lane) return null;
   const backs = lane.edges.flatMap((e): Back[] => {
@@ -64,5 +70,6 @@ export function useReaderWidth(): number | null {
   // Read when what's being read changes, not on every edit (the board's shell uses it).
   const key = useDiscovery((s) => s.reading);
   const item = key ? boardLane().items.find((i) => i.key === key) : undefined;
+  if (item?.brief) return BRIEF_W;
   return item ? readerWidth(item.part?.from ?? item.mark) : null;
 }

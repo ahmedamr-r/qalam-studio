@@ -111,7 +111,8 @@ export const isAIIdea = (card: Pick<OstCard, "kind" | "createdBy" | "evidence">)
   card.kind === "solution" && card.createdBy === "ai" && !ownBacking(card).some((e) => e.kind === "answer" || e.kind === "quote" || e.kind === "dump");
 
 /** The evidence chip's words on a card ("" when a card has nothing to say about it). */
-export function evidenceLabel(card: Pick<OstCard, "kind" | "createdBy" | "evidence">): string {
+export function evidenceLabel(card: Pick<OstCard, "kind" | "createdBy" | "evidence" | "pageBacking">): string {
+  if (card.pageBacking) return card.pageBacking;
   const against = againstCount(card);
   const tail = against ? ` · ${against} against` : "";
   const online = onlineCount(card);

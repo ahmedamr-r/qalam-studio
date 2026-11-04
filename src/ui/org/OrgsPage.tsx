@@ -12,6 +12,7 @@ import Toasts from "../toast";
 import { SpaceTile } from "../frame/OrgPlaces";
 import { bootRetryDelay } from "../welcome/steps";
 import { openFolderAsOrg } from "./OrgSwitcher";
+import { trySample } from "./sample";
 
 /*
  * Where Qalam opens: the organizations on this computer, the one opened last first. Opening one
@@ -84,6 +85,11 @@ export default function OrgsPage() {
                   <FolderOpen {...ICON} className="mr-[6px]" />
                   Open a folder…
                 </Button>
+                {state.kind === "ready" && !state.orgs.some((o) => o.sample) && (
+                  <Button variant="ghost" size="sm" onClick={() => void trySample()}>
+                    Try it with a sample
+                  </Button>
+                )}
               </div>
             </div>
           </main>
@@ -105,7 +111,7 @@ function OrgCard({ org, last }: { org: OrgRef; last: boolean }) {
       <span className="flex min-w-0 flex-1 flex-col gap-[2px]">
         <span className="flex items-center gap-[8px]">
           <span className="truncate text-title font-medium text-fg">{org.name}</span>
-          {org.shape === "solo" && <span className="shrink-0 text-caption text-fg-subtle">On your own</span>}
+          {org.shape === "solo" && !org.sample && <span className="shrink-0 text-caption text-fg-subtle">On your own</span>}
           {last && <span className="shrink-0 text-caption text-fg-subtle">Opened last</span>}
         </span>
         <span className="truncate text-caption text-fg-subtle" title={org.dir}>

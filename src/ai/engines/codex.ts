@@ -114,7 +114,8 @@ export function codexError(raw: string, model: string): EngineError {
   if (code === "invalid_json_schema") return new EngineError("schema", said);
   if (code === "model_not_found" || /model.*not (supported|found)/i.test(said)) return new EngineError("no_model", `Codex can't run ${model || "that model"} with this sign-in. Pick another in Connections.`);
   if (status === 401 || /not logged in|log ?in again|unauthori[sz]ed|sign in/i.test(said)) return new EngineError("auth", "Codex isn't signed in. Run codex login in a terminal, then test again.");
-  if (status === 429 || /usage limit|rate limit|too many requests/i.test(said)) return new EngineError("rate_limited", `Codex says to wait: ${said}`);
+  if (/usage limit/i.test(said)) return new EngineError("rate_limited", `Codex says to wait: ${said}`);
+  if (status === 429 || /rate limit|too many requests/i.test(said)) return new EngineError("rate_limited", "OpenAI asked Codex to slow down, which happens most on a Free plan. Wait a few minutes and try again.");
   return new EngineError(status ? `api_${status}` : "api_error", said.slice(0, 400));
 }
 

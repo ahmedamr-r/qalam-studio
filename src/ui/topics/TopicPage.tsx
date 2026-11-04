@@ -1,3 +1,4 @@
+import { useWords } from "../frame/store";
 import { backingWords, pieceBasis, type Basis, type BasisCounts } from "@/discovery/basis";
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import clsx from "clsx";
@@ -51,6 +52,7 @@ const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1).trim
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export default function TopicView({ id, space }: { id: string; space: Space }) {
+  const { whole } = useWords();
   const [view, setView] = useState<TopicView | null>(null);
   const [missing, setMissing] = useState(false);
   const [org, setOrg] = useState<OrgRef | null>(null);
@@ -188,7 +190,7 @@ export default function TopicView({ id, space }: { id: string; space: Space }) {
                 </Menu>
               }
             />
-            <p className="text-caption text-fg-muted">{[...(productNames.length ? productNames : ["Whole organization"]), `updated ${ago(t.updatedAt)}`].join(" · ")}</p>
+            <p className="text-caption text-fg-muted">{[...(productNames.length ? productNames : [whole]), `updated ${ago(t.updatedAt)}`].join(" · ")}</p>
             {elsewhere && (
               <a href={canvasPageHref({ page: t.id }, itemSpace(t.products, undefined))} className="self-start text-caption text-fg-muted hover:text-fg hover:underline">
                 Open it on its own canvas

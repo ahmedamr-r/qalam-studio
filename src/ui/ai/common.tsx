@@ -19,7 +19,7 @@ export const elapsed = (ms: number) => {
 };
 
 /** A Qalam AI run in progress: glyph, shimmering status, elapsed timer and an indeterminate bar. */
-export function Progress({ tokens, started, label }: { tokens: number; started: number; label: string }) {
+export function Progress({ tokens, started, label, note }: { tokens: number; started: number; label: string; note?: string }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 250);
@@ -33,7 +33,7 @@ export function Progress({ tokens, started, label }: { tokens: number; started: 
         <span className="ml-auto font-normal text-fg-subtle tnum">{elapsed(now - started)}</span>
       </div>
       <div className="ds-shimmer h-[3px] rounded-full" />
-      <div className="text-micro text-fg-subtle tnum">{tokens ? `~${tokens.toLocaleString()} tokens streamed` : "Waiting for the model…"}</div>
+      <div className="text-micro text-fg-subtle tnum">{note ?? (tokens ? `~${tokens.toLocaleString()} tokens streamed` : "Waiting for the model…")}</div>
     </div>
   );
 }

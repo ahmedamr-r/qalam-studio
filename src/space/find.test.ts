@@ -30,7 +30,7 @@ describe("Help me find one, from what's known about the domain", () => {
     struggles: [{ id: "s1", text: "Households find pickups hard to schedule.", by: "qalam" as const, at: 1 }],
     gone: [],
   };
-  const m = findQuestionsMaterial({ what: "goal", org: "Tagaddod", about: "Collects used cooking oil.", market });
+  const m = findQuestionsMaterial({ what: "goal", org: "Example Co", about: "Collects used cooking oil.", market });
 
   it("tells the call the company, its competitors and its domain", () => {
     expect(m.text).toContain("a first goal: an outcome the team is trying to move");
@@ -63,12 +63,12 @@ describe("a find's source, readable on its own", () => {
       { id: "skip", title: "Anything else?", why: "", multi: false, options: [], recommended: [], allowOther: false },
       { id: "num", title: "Which number would you watch?", why: "", multi: false, options: [], recommended: [], allowOther: false },
     ];
-    const r = findTranscript(qs, { who: "restaurants", skip: "", num: "Tons collected per month" }, { what: "goal", org: "Tagaddod" });
-    expect(r.text).toBe("Finding a goal for Tagaddod: Qalam AI asked, and you answered.\n\nWho sells you the most oil, households or restaurants?\nrestaurants\n\nWhich number would you watch?\nTons collected per month");
+    const r = findTranscript(qs, { who: "restaurants", skip: "", num: "Tons collected per month" }, { what: "goal", org: "Example Co" });
+    expect(r.text).toBe("Finding a goal for Example Co: Qalam AI asked, and you answered.\n\nWho sells you the most oil, households or restaurants?\nrestaurants\n\nWhich number would you watch?\nTons collected per month");
     const s = partSpans(r.text, r.parts);
     expect(s.theirs.map(([a, b]) => r.text.slice(a, b))).toEqual(["restaurants", "Tons collected per month"]);
     // The answer after its question, not the same word inside the question.
     expect(s.theirs[0][0]).toBeGreaterThan(r.text.indexOf("restaurants?"));
-    expect(s.heads.map(([a, b]) => r.text.slice(a, b))).toEqual(["Finding a goal for Tagaddod: Qalam AI asked, and you answered.", "Who sells you the most oil, households or restaurants?", "Which number would you watch?"]);
+    expect(s.heads.map(([a, b]) => r.text.slice(a, b))).toEqual(["Finding a goal for Example Co: Qalam AI asked, and you answered.", "Who sells you the most oil, households or restaurants?", "Which number would you watch?"]);
   });
 });

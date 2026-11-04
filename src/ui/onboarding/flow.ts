@@ -5,7 +5,6 @@ import { connectorsDb, type ConnectorState } from "@/org/connectors";
 import { createOrg, currentOrg, type OrgRef } from "@/org/client";
 import { orgShape, type OrgShape } from "@/org/words";
 import { engineDb, type EngineKind, type EngineTest, type EngineView } from "@/org/engine";
-import { isKeyed } from "@/ai/engine-kinds";
 import { chooseVoice, loadVoice } from "@/org/voice";
 import { loadYou, setYourName, type Me } from "@/org/you";
 import { voiceSettled, type VoiceChoice } from "@/voice/model";
@@ -19,7 +18,7 @@ import type { ProblemPart } from "./canvas";
 import { isAddress } from "./thread";
 import { openKnow, useKnow } from "../setup/know";
 import { openSetup, useSetup } from "../setup/setup";
-import { changesThings, setupStep, stepAfter, welcomeMode, type SetupStep, type WelcomeMode } from "../welcome/steps";
+import { changesThings, engineGivesWay, setupStep, stepAfter, welcomeMode, type SetupStep, type WelcomeMode } from "../welcome/steps";
 import { engineShown, lab } from "@/lab";
 import { loadMarket, lookForCompetitors, lookUpCompany, settleCompany, settleCompetitors, useMarket } from "@/org/market";
 import { loadOrgContext } from "@/org/context";
@@ -114,20 +113,20 @@ export function pickShape(shape: OrgShape) {
   useFirstRun.setState({ shape });
 }
 
-/** Which engine the welcome picks when the live one has no key: Claude Code signed in, then a key kept here, then a model on this computer. */
+/** Which engine the welcome picks when the live one can't run (`engineGivesWay`): Claude Code signed in, then Codex, then a key kept here, then a model on this computer. */
 const FIRST_CHOICE: EngineKind[] = ["cli", "codex", "api", "openai", "gemini", "openrouter", "ollama", "lmstudio"];
 
 /** How long an engine's passed test counts for a new organization on the same computer. */
 const RECENT = 60 * 60 * 1000;
 
-/** What this computer has, tested with a short real call: an engine reached with a key that has none gives way to the first that's ready. */
+/** What this computer has, tested with a short real call: an engine that can't run gives way to the first that's ready. */
 export async function checkEngine() {
   const { mode } = useFirstRun.getState();
   setEngine({ checking: true, error: null });
   try {
     let v = await engineDb.view();
     const stateOf = (k: EngineKind) => (k === "cli" ? (v.claude.found && v.claude.signedIn ? "ready" : null) : (v.options?.find((o) => o.kind === k)?.state ?? null));
-    if (changesThings(mode) && isKeyed(v.kind) && !v.key) {
+    if (changesThings(mode) && engineGivesWay(v)) {
       const next = FIRST_CHOICE.find((k) => k !== v.kind && engineShown(k) && stateOf(k) === "ready");
       if (next) v = await engineDb.choose(next);
     }

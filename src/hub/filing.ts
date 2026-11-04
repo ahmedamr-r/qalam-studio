@@ -49,6 +49,8 @@ export interface FilingTotals {
   disputed: number;
   /** The pages that changed, newest change last. */
   pages: { id: string; title: string; kind: TopicKind }[];
+  /** Lines left out because their quoted words or numbers aren't in what they cite. */
+  unbacked?: number;
 }
 
 interface Item {
@@ -169,7 +171,7 @@ async function fileOne(deps: FilingDeps, items: Item[], product: string | null, 
 
   const body: TopicsRequest = { product: deps.productLine(product).slice(0, 2000), topics, pages: pagesIn, material, needs, ...(org ? { context: org.context } : {}) };
   const data = await deps.call(body, signal);
-  const filing = sanitizeFiling(data, sent, { products: product ? [product] : [] });
+  const filing = sanitizeFiling(data, sent, { products: product ? [product] : [], unbacked: () => void (totals.unbacked = (totals.unbacked ?? 0) + 1) });
   const filed: Record<string, string[]> = {};
   for (const it of items) filed[it.s.id] = [...(filed[it.s.id] ?? []), it.q.id];
   const r = await deps.file(filing, materialName(items.map((it) => it.s.title)), filed);

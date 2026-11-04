@@ -18,12 +18,13 @@ import { useSources } from "../../discovery/sources";
 import { ChatComposer, ChatThread } from "../../chat/ChatThread";
 import { attachFiles, clearAttachments, docsCheck, readyDocs, useAttach } from "../../chat/attach";
 import { AttachmentChips, SourceMenu } from "../../chat/SourcePicker";
-import { toggleChat, useWords } from "../../frame/store";
+import { toggleChat, useCurrentOrg, useWords } from "../../frame/store";
+import { SampleIntro } from "../../org/SampleIntro";
 import type { Space } from "../../frame/spaces";
 import { ASK_EVENT, takeAskNext } from "../../org/ask-next";
 import { PARTS } from "./parts";
-import { clearMode, useCompose } from "./compose";
-import { answerFind, answerNumber, ask, clearChat, findQuestionsOf, findWith, numberQuestions, openChat, send, stopTurn, turnOf, useCanvasChat } from "./store";
+import { clearMode, composeIn, useCompose } from "./compose";
+import { answerBrief, answerFind, answerNumber, answerPlan, answerSteer, ask, briefQuestionsOf, clearChat, findQuestionsOf, findWith, leaveSteer, numberQuestions, openChat, planQuestionsOf, send, steerQuestionsOf, stopTurn, turnOf, useCanvasChat } from "./store";
 
 /*
  * Qalam AI's chat on the left of a space's canvas, as Figma keeps its panel there: one box for
@@ -36,7 +37,7 @@ import { answerFind, answerNumber, ask, clearChat, findQuestionsOf, findWith, nu
 export const CHAT_W = 420;
 
 /** What the box is for when a button set it (src/space/route.ts's modes), in a word on the box. */
-const MODE_LABEL: Record<ChatMode, string> = { ask: "A question", dump: "Brain dump", take: "To take in", goal: "A goal", problem: "A problem" };
+const MODE_LABEL: Record<ChatMode, string> = { ask: "A question", dump: "Brain dump", take: "To take in", goal: "A goal", problem: "A problem", scan: "An idea or a product" };
 
 export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
   useEffect(() => void openChat(space), [space]);
@@ -49,7 +50,10 @@ export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
   // What's running: an ask or a capture, or a brain dump's call.
   const busy = running(chat) ?? (dumpBusy ? (chat.turns.find((t) => t.job.kind === "dump" && t.job.source === dumpBusy) ?? null) : null);
   const waiting = asking(chat, dumpOf);
+  // The questions while a scan reads don't wait for it, and it doesn't wait for them.
+  const steering = !!waiting && "steer" in waiting;
   const { org } = useWords();
+  const sample = useCurrentOrg()?.sample;
   const attached = useAttach((s) => s.items);
   const compose = useCompose();
   // Docs picked for another canvas don't come along.
@@ -82,6 +86,7 @@ export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
     <section
       aria-label="Qalam AI"
       data-ask-bar
+      data-tour="chat"
       className={clsx("q-glass flex shrink-0 flex-col overflow-hidden rounded-xl bg-panel", over ? "absolute top-0 bottom-[8px] left-[8px] z-30 max-w-[calc(100%-16px)] shadow-floating" : "shadow-panel")}
       style={{ width: CHAT_W }}
     >
@@ -105,9 +110,15 @@ export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
           onCancel={() => busy && stopTurn(busy.id)}
           parts={PARTS}
           empty={
-            loaded && (
+            loaded &&
+            (sample ? (
+              <SampleIntro />
+            ) : (
               <div className="flex flex-col gap-[10px] pt-[8px]">
                 <p className="text-body text-fg">Ask what your {org} knows, or bring something to the canvas.</p>
+                <button type="button" className={clsx(r.replyChip, "self-start")} onClick={() => composeIn({ mode: "scan" })}>
+                  <QalamAIGlyph size={12} /> Look into an idea or a product
+                </button>
                 <p className="text-caption text-fg-muted">A question is answered from its problem pages, sources, boards and decisions. Reports, research, interviews and tickets go into problems&apos; pages, each saying what it is; your thinking is read and placed as cards; a goal or a problem is worded for the canvas, for you to use or change.</p>
                 <div className="flex flex-wrap gap-[6px]">
                   {(["goal", "problem"] as FindWhat[]).map((w) => (
@@ -117,14 +128,20 @@ export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
                   ))}
                 </div>
               </div>
-            )
+            ))
           }
           // The box stays at the bottom wherever it shows (with Stop while a goal's look runs before its questions); a round of questions flows after the thread.
-          pinned={!waiting || !!busy}
+          pinned={!waiting || (!!busy && !steering)}
           footer={
-            waiting && !busy ? (
-              "number" in waiting ? (
+            waiting && (!busy || steering) ? (
+              "steer" in waiting ? (
+                <SteerRound key={waiting.turn.id} turn={waiting.turn.id} />
+              ) : "brief" in waiting ? (
+                <BriefRound key={waiting.turn.id} turn={waiting.turn.id} />
+              ) : "number" in waiting ? (
                 <NumberRound key={waiting.turn.id} turn={waiting.turn.id} />
+              ) : "plan" in waiting ? (
+                <PlanRound key={waiting.turn.id} turn={waiting.turn.id} />
               ) : "find" in waiting ? (
                 <FindRound key={`${waiting.turn.id}:${waiting.find}`} turn={waiting.turn.id} what={waiting.find} />
               ) : (
@@ -167,6 +184,7 @@ export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
                 if (t.length > DUMP_MAX_CHARS) return `That's over ${DUMP_MAX_CHARS.toLocaleString()} characters: paste the most useful part, or bring it as a doc.`;
                 const docs = docsCheck(t, attached, null);
                 if (docs) return docs;
+                if (compose.mode === "scan") return t.trim().length >= 2 ? null : "Name a product, or say what you want to build.";
                 if (compose.mode === "dump" && !readyDocs(attached).length && t.trim().length < 40) return "Write a few sentences more: what you think, and why.";
                 return readyDocs(attached).length || t.trim().length >= 3 ? null : "Write a little more.";
               }}
@@ -224,6 +242,53 @@ function FindForm({ turn, what }: { turn: string; what: FindWhat }) {
   );
 }
 
+/** The questions while a scan reads, each one skippable. If it finishes before they start on them, they go: what's still wanted is asked later. */
+function SteerRound({ turn }: { turn: string }) {
+  const questions = useMemo(() => steerQuestionsOf(turn).map(toQuestion), [turn]);
+  const [form, setForm] = useState<FlowState>(() => initialFlow(questions));
+  const untouched = useRef(form);
+  const over = useCanvasChat((s) => {
+    const j = s.chat.turns.find((t) => t.id === turn)?.job;
+    return j?.kind === "scan" && !!j.session && j.session.state !== "reading";
+  });
+  useEffect(() => {
+    if (over && form === untouched.current) leaveSteer(turn);
+  }, [over, form, turn]);
+  const answerOf = (f: FlowState, q: (typeof questions)[number]) => {
+    const a = f.answers[q.id];
+    if (!a) return "";
+    const said = summarize(q, a);
+    return said === "Skipped" || said === "—" || said === "None" ? "" : said;
+  };
+  return <Questionnaire title="While I read" questions={questions} state={form} onChange={setForm} onSubmit={(f) => answerSteer(turn, Object.fromEntries(questions.map((q) => [q.id, answerOf(f, q)])))} />;
+}
+
+/** What the brief still lacks, asked just before it's written; every one can be skipped. */
+function BriefRound({ turn }: { turn: string }) {
+  const questions = useMemo(() => briefQuestionsOf(turn).map(toQuestion), [turn]);
+  const [form, setForm] = useState<FlowState>(() => initialFlow(questions));
+  const answerOf = (f: FlowState, q: (typeof questions)[number]) => {
+    const a = f.answers[q.id];
+    if (!a) return "";
+    const said = summarize(q, a);
+    return said === "Skipped" || said === "—" || said === "None" ? "" : said;
+  };
+  return <Questionnaire title="For the brief" questions={questions} state={form} onChange={setForm} onSubmit={(f) => void answerBrief(turn, Object.fromEntries(questions.map((q) => [q.id, answerOf(f, q)])))} />;
+}
+
+/** The questions before working out who it's for and what comes first; every one can be skipped. */
+function PlanRound({ turn }: { turn: string }) {
+  const questions = useMemo(() => planQuestionsOf(turn).map(toQuestion), [turn]);
+  const [form, setForm] = useState<FlowState>(() => initialFlow(questions));
+  const answerOf = (f: FlowState, q: (typeof questions)[number]) => {
+    const a = f.answers[q.id];
+    if (!a) return "";
+    const said = summarize(q, a);
+    return said === "Skipped" || said === "—" || said === "None" ? "" : said;
+  };
+  return <Questionnaire title="Before I work out what comes first" questions={questions} state={form} onChange={setForm} onSubmit={(f) => void answerPlan(turn, Object.fromEntries(questions.map((q) => [q.id, answerOf(f, q)])))} review={{ submitLabel: "Send answers" }} />;
+}
+
 /** A goal's number, asked once a problem's goal is picked: what's left out is suggested. */
 function NumberRound({ turn }: { turn: string }) {
   const questions = useMemo(() => numberQuestions(turn).map(toQuestion), [turn]);
@@ -262,7 +327,7 @@ function DumpRound({ source, dumpOf }: { source: string; dumpOf: DumpOf }) {
 /** The chat folded: a pill at the canvas's top-left brings it back. */
 export function ChatPill() {
   return (
-    <button type="button" onClick={() => toggleChat(true)} className="q-item q-press q-glass absolute top-[12px] left-[12px] z-10 inline-flex h-[32px] items-center gap-[6px] rounded-lg bg-raised px-[10px] text-caption font-medium text-fg shadow-floating hover:bg-hover">
+    <button type="button" data-tour="chat" onClick={() => toggleChat(true)} className="q-item q-press q-glass absolute top-[12px] left-[12px] z-10 inline-flex h-[32px] items-center gap-[6px] rounded-lg bg-raised px-[10px] text-caption font-medium text-fg shadow-floating hover:bg-hover">
       <QalamAIGlyph size={12} /> Qalam AI
     </button>
   );

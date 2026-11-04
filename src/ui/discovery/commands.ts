@@ -379,6 +379,20 @@ export function registerDiscoveryCommands() {
       },
     },
     {
+      id: "discovery.write-brief",
+      label: "Write a brief",
+      category: "discovery",
+      keywords: ["prd", "brief", "spec", "requirements", "coding agent", "qalam ai"],
+      enabled: () => {
+        const k = oneCard() ? cardOf(s().doc, oneCard())?.kind : null;
+        return k === "outcome" || k === "opportunity" || k === "solution" ? true : "Select a goal, a problem or a solution";
+      },
+      run: () => {
+        const id = oneCard();
+        if (id) void import("../space/chat/store").then((m) => m.briefFor(id));
+      },
+    },
+    {
       id: "discovery.design-this",
       label: "Design this…",
       category: "discovery",

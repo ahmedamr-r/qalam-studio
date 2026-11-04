@@ -25,6 +25,7 @@ import { CHAT_KEY, chatOf, type CanvasChat } from "@/space/chat";
 import { marketFromMarkdown, marketToMarkdown } from "@/market/market-md";
 import type { Market } from "@/market/types";
 import type { MarketSession } from "@/market/session";
+import type { ScanSession } from "@/scan/session";
 import type { FeedLog } from "@/feeds/feeds";
 import type { JobLog } from "@/goals/jobs";
 import { sameTopic } from "@/hub/topics";
@@ -39,6 +40,7 @@ import type { FirstRunView } from "@/org/first-run";
 import type { Me } from "@/org/you";
 import type { OrgShape } from "@/org/words";
 import type { SolutionsFile } from "@/discovery/solutions";
+import { briefFile, briefFromFile, type BriefMeta } from "@/discovery/brief";
 import { assetExt, assetType, decodeProject, decodeSource, docVersion, encodeProject, encodeSource, isLocalField, recordVersion, splitLocal, type LocalFields } from "./codecs";
 import { assetHash, atomicWrite, contentHash, inside, locked, lockedAll, readJson, slugify, stableStringify, uniqueName } from "./fsx";
 
@@ -56,6 +58,8 @@ export interface OrgInfo {
   createdAt: number;
   /** A company or team, or one person on their own idea (src/org/words.ts); none: made before shapes, a team. */
   shape?: OrgShape;
+  /** The project "Try it with a sample" opened (server/org/sample.ts). */
+  sample?: true;
 }
 
 export type OrgEvent = { tab?: string } & (
@@ -88,6 +92,10 @@ export type OrgEvent = { tab?: string } & (
   | { kind: "map"; key: string; removed?: boolean }
   /** What's known about the company, its competitors and its domain changed (hub/market.md), or the first run's lookups moved on (`session`). */
   | { kind: "market"; session?: boolean }
+  /** A scan of what people complain about moved on (chats/scan/session.json). */
+  | { kind: "scan" }
+  /** A card's brief was written or taken off (hub/briefs/). */
+  | { kind: "brief" }
   /** What people see in a product changed (hub/seen/<key>.md), or a reading of screenshots moved on (`reading`). */
   | { kind: "seen"; key: string; removed?: boolean; reading?: boolean }
   | { kind: "notice" }
@@ -236,6 +244,12 @@ export class OrgStore {
   async setShape(shape: OrgShape) {
     if (this.org.shape === shape) return;
     this.org = { ...this.org, shape };
+    await this.write(this.abs("org.json"), stableStringify(this.org));
+    this.emit({ kind: "org" });
+  }
+
+  async markSample() {
+    this.org = { ...this.org, sample: true };
     await this.write(this.abs("org.json"), stableStringify(this.org));
     this.emit({ kind: "org" });
   }
@@ -854,6 +868,43 @@ export class OrgStore {
   // What each product does today, from its code (hub/maps/<key>.md), and the repositories this
   // computer reads for them (.qalam/local).
 
+  // The briefs written for cards on the canvas (hub/briefs/<slug>.md, src/discovery/brief.ts): one a card, a file of its own to open or hand over.
+
+  async listBriefs(): Promise<BriefMeta[]> {
+    const names = await readdir(this.abs("hub/briefs")).catch(() => [] as string[]);
+    const out: BriefMeta[] = [];
+    for (const n of names.filter((x) => x.endsWith(".md")).sort()) {
+      const b = briefFromFile(await readFile(this.abs(`hub/briefs/${n}`), "utf8").catch(() => ""), `hub/briefs/${n}`);
+      if (b) out.push(b.meta);
+    }
+    return out;
+  }
+
+  async getBrief(id: string): Promise<{ meta: BriefMeta; body: string } | null> {
+    const meta = (await this.listBriefs()).find((b) => b.id === id);
+    if (!meta) return null;
+    return briefFromFile(await readFile(this.abs(meta.file), "utf8").catch(() => ""), meta.file);
+  }
+
+  /** A card's brief: written again, it stays in its file and keeps its id. */
+  async putBrief(m: Omit<BriefMeta, "id" | "file">, body: string, opts: { tab?: string } = {}): Promise<BriefMeta> {
+    const dir = this.abs("hub/briefs");
+    const had = (await this.listBriefs()).find((b) => b.card === m.card);
+    const used = new Set(await readdir(dir).catch(() => [] as string[]));
+    const name = had ? path.basename(had.file) : uniqueName(slugify(m.title, "brief"), ".md", (n) => used.has(n));
+    const id = had?.id ?? nanoid(10);
+    await this.write(path.join(dir, name), briefFile({ ...m, id }, body));
+    this.emit({ kind: "brief", tab: opts.tab });
+    return { ...m, id, file: `hub/briefs/${name}` };
+  }
+
+  async removeBrief(id: string, opts: { tab?: string } = {}): Promise<void> {
+    const meta = (await this.listBriefs()).find((b) => b.id === id);
+    if (!meta) return;
+    await rm(this.abs(meta.file), { force: true });
+    this.emit({ kind: "brief", tab: opts.tab });
+  }
+
   private mapFile(key: string) {
     if (!/^[A-Za-z0-9_.-]{1,140}$/.test(key) || key.startsWith(".")) throw new NotFoundError("No such map");
     return this.abs(`hub/maps/${key}.md`);
@@ -982,6 +1033,24 @@ export class OrgStore {
       return s;
     });
     this.emit({ kind: "market", session: true, tab: opts.tab });
+    return next;
+  }
+
+  // A scan of what people complain about (server/org/scan.ts): this computer's, out of Git.
+
+  getScanSession(): Promise<ScanSession | null> {
+    return readJson<ScanSession>(this.abs("chats/scan/session.json"));
+  }
+
+  /** Change or start the scan under its lock; every change is announced, so the window follows along. */
+  async changeScanSession(fn: (s: ScanSession | null) => ScanSession, opts: { tab?: string } = {}): Promise<ScanSession> {
+    const file = this.abs("chats/scan/session.json");
+    const next = await locked(file, async () => {
+      const s = fn(await readJson<ScanSession>(file));
+      await atomicWrite(file, stableStringify(s));
+      return s;
+    });
+    this.emit({ kind: "scan", tab: opts.tab });
     return next;
   }
 

@@ -1,5 +1,5 @@
 import type { FoundGoal } from "@/goals/found";
-import { basisOf, type Basis } from "./basis";
+import { basisOf, type Basis, isPublic } from "./basis";
 import { newId } from "@/doc/factory";
 import type { OstCard, OstEvidence } from "./types";
 import { clock, type TranscriptMeta, type TranscriptSegment } from "./transcript";
@@ -291,7 +291,7 @@ export function quoteEvidence(source: Pick<SourceRecord, "id" | "title"> & { kin
     ...(q.time ? { time: [q.time[0], q.time[1]] as [number, number] } : {}),
     ...(opts.against ? { stance: "against" as const } : {}),
     // Someone online said it: it backs a card, but never makes it more than Assumed alone.
-    ...(source.kind === "post" ? { online: true } : basis === "said" || (source.kind === "dump" && basis === "own") ? {} : { basis }),
+    ...(isPublic(source) ? { online: true } : basis === "said" || (source.kind === "dump" && basis === "own") ? {} : { basis }),
     ...(source.kind === "dump" && source.dump?.file ? { file: true as const } : {}),
     addedBy,
     at: opts.now ?? Date.now(),

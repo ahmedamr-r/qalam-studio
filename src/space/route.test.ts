@@ -42,4 +42,10 @@ describe("what a message to the canvas's chat is for", () => {
     expect(titleFrom("  More riders\n  finish   trips ")).toBe("More riders finish trips");
     expect(titleFrom("x".repeat(300))).toHaveLength(200);
   });
+
+  it("reads an app's link alone as what its users complain about", () => {
+    expect(routeOf({ text: "https://apps.apple.com/us/app/x/id11", docs: [] })).toEqual({ job: "scan" });
+    expect(routeOf({ text: "https://apps.apple.com/us/app/x/id11", docs: [{}] })).toEqual({ job: "take" });
+    expect(routeOf({ text: "a meal planner", docs: [], mode: "scan" })).toEqual({ job: "scan" });
+  });
 });

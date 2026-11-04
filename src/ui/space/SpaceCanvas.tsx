@@ -15,7 +15,8 @@ import { IconBtn, Spinner, Tip } from "../controls";
 import { onCanvasReady } from "../discovery/canvas";
 import { useSources } from "../discovery/sources";
 import { startSpaceCanvas } from "./boot";
-import { consumeHomeParams } from "./links";
+import { CanvasChecklist } from "./Checklist";
+import { consumeChatParams, consumeHomeParams } from "./links";
 import { useAddress } from "../nav";
 import { SourcesDock } from "./SourcesDock";
 import { showDock, useDock } from "./dock";
@@ -123,7 +124,9 @@ export function SpaceCanvas({ org, space, inputs, sources }: { org: string | nul
   // A move in place that asks the canvas something (a card, drafts, a problem under a goal): done once it's open.
   const address = useAddress();
   useEffect(() => {
-    if (ready) onCanvasReady(() => void consumeHomeParams());
+    if (!ready) return;
+    consumeChatParams();
+    onCanvasReady(() => void consumeHomeParams());
   }, [ready, address]);
 
   if (engine === "failed") return <Waiting failed />;
@@ -133,9 +136,10 @@ export function SpaceCanvas({ org, space, inputs, sources }: { org: string | nul
   return (
     <div className="flex h-full w-full">
       {dock && <SourcesDock onClose={() => showDock(false)} />}
-      <div className="relative min-w-0 flex-1">
+      <div className="@container relative min-w-0 flex-1">
         <CanvasView />
-        <div className="q-glass absolute bottom-[12px] left-[12px] z-[8] flex items-center gap-[2px] rounded-lg bg-raised p-[2px] shadow-floating">
+        <CanvasChecklist />
+        <div data-tour="bar" className="q-glass absolute bottom-[12px] left-[12px] z-[8] flex items-center gap-[2px] rounded-lg bg-raised p-[2px] shadow-floating">
           <button
             ref={sourcesButton}
             type="button"

@@ -240,7 +240,7 @@ const items = (raw: unknown, key: string): Record<string, unknown>[] => {
  * become that page; a new topic with no line kept isn't started. `products`: the material's, for
  * the pages it starts.
  */
-export function sanitizeFiling(raw: unknown, sent: FilingSent, o: { products?: string[] } = {}): Filing {
+export function sanitizeFiling(raw: unknown, sent: FilingSent, o: { products?: string[]; /** A line left out because its quoted words or numbers aren't in what it cites. */ unbacked?: () => void } = {}): Filing {
   const out = emptyFiling();
   /** Where each id the answer may name lands: a page ("<id>") or a page to start ("new:<key>"). */
   const target = new Map<string, string>();
@@ -296,7 +296,10 @@ export function sanitizeFiling(raw: unknown, sent: FilingSent, o: { products?: s
     const cited = cite(a.cites);
     if (!where || !section || !cited.length) continue;
     const text = checkWords(a.text, cited);
-    if (!text) continue;
+    if (!text) {
+      o.unbacked?.();
+      continue;
+    }
     const have = linesOn.get(where) ?? [];
     if (have.includes(sameWords(text)) || have.length >= TOPIC_LIMITS.linesPerTopic) continue;
     have.push(sameWords(text));

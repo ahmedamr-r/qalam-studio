@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { DumpSession } from "@/discovery/dump";
 import type { AskAnswer } from "@/hub/ask";
-import { asking, chatKey, chatOf, emptyChat, MAX_TURNS, running, threadOf, withJob, withTurn, type ChatTurn } from "./chat";
+import { emptyScan } from "@/scan/session";
+import { asking, chatKey, chatOf, emptyChat, MAX_TURNS, running, scanTurn, threadOf, withJob, withTurn, type ChatTurn, type ScanJob } from "./chat";
 
 const answer: AskAnswer = { question: "Why do parents stop?", answer: "The window.", claims: [], unknowns: [], how: "packed", at: 1 };
 const turn = (id: string, job: ChatTurn["job"], said = "Why do parents stop ordering?"): ChatTurn => ({ id, at: 1, said, job });
@@ -46,6 +47,31 @@ describe("the canvas's chat", () => {
   });
 });
 
+describe("a scan from the first run", () => {
+  const session = emptyScan({ kind: "product", name: "Basket", mine: true }, 5000);
+  const told = [{ question: "What are you trying to move?", answer: "Retention" }];
+
+  it("reads as if it had been asked for in the chat, with nothing left to ask", () => {
+    const t = scanTurn(session.target, "Basket", session, told);
+    expect(t).toMatchObject({ id: "scan-5000", at: 5000, said: "Basket" });
+    expect(t.job).toMatchObject({ kind: "scan", asked: 5000, ask: { step: "done" }, mine: true, told });
+    const kept = chatOf(withTurn(emptyChat(), t));
+    expect(kept.turns).toHaveLength(1);
+    expect(kept.turns[0].job).toMatchObject({ kind: "scan", session: { state: "reading" } });
+  });
+
+  it("isn't theirs unless they said so", () => {
+    const idea = emptyScan({ kind: "idea", said: "A planner" }, 1);
+    const job = scanTurn(idea.target, "A planner", idea).job as ScanJob;
+    expect(job.mine).toBeUndefined();
+    expect(job.told).toBeUndefined();
+  });
+
+  it("is the same turn when it's written again after an answer", () => {
+    expect(scanTurn(session.target, "Basket", session).id).toBe(scanTurn(session.target, "Basket", session, told).id);
+  });
+});
+
 describe("a brain dump in the canvas's chat", () => {
   const session = (over: Partial<DumpSession>): DumpSession => ({ v: 1, phase: "asking", understanding: "Riders give up when the car moves away.", challenges: [], buckets: [{ questions: [], form: { current: null, answers: {}, visited: [], editing: false, submitted: false } } as never], anchor: null, ...over });
   const dumpTurn = (source: string): ChatTurn => ({ id: "d", at: 1, said: "My thinking…", job: { kind: "dump", source } });
@@ -82,6 +108,21 @@ describe("a brain dump in the canvas's chat", () => {
     expect(asking(c, (id) => session({ phase: id === "s1" ? "asking" : "review" }))).toMatchObject({ source: "s1" });
     expect(asking(c, () => session({}))?.turn.id).toBe("b");
     expect(asking(c, () => session({ phase: "placed" }))).toBeNull();
+  });
+
+  it("asks its questions while a scan reads, and they don't survive a page closing before they're written", () => {
+    const scan = (ask: NonNullable<ScanJob["ask"]>, error?: string): ScanJob => ({ kind: "scan", target: { kind: "idea", said: "A meal planner" }, asked: 1, ask, ...(error ? { error } : {}) });
+    const chat = (job: ScanJob) => ({ v: 1 as const, turns: [{ id: "a", said: "A meal planner", at: 1, job }] });
+    expect(asking(chat(scan({ step: "asking", questions: [] })), () => null)).toMatchObject({ steer: true });
+    expect(asking(chat(scan({ step: "writing" })), () => null)).toBeNull();
+    expect(asking(chat(scan({ step: "done" })), () => null)).toBeNull();
+    expect(asking(chat(scan({ step: "asking", questions: [] }, "It failed")), () => null)).toBeNull();
+    const planned = (brief: NonNullable<NonNullable<ScanJob["plan"]>["brief"]>): ScanJob => ({ ...scan({ step: "done" }), plan: { step: "placed", brief } });
+    expect(asking(chat(planned({ step: "asking", questions: [] })), () => null)).toMatchObject({ brief: true });
+    expect(running(chat(planned({ step: "writing" })))).not.toBeNull();
+    expect((chatOf(chat(planned({ step: "writing" }))).turns[0].job as ScanJob).plan?.brief).toEqual({ step: "failed", error: "It stopped when the page closed." });
+    const after = chatOf(chat(scan({ step: "writing" })));
+    expect((after.turns[0].job as ScanJob).ask).toEqual({ step: "done" });
   });
 
   it("asks code's opening questions first when they want help finding one, then reads the answers as a dump", () => {
@@ -180,5 +221,43 @@ describe("short statements and what came of them", () => {
       expect(c.turns[0].job).toMatchObject({ step: "failed" });
       expect(c.turns[1].job).toMatchObject({ step: "suggested", suggestion: null });
     });
+  });
+
+  it("follows a scan from what the core says, and keeps it running until it ends", () => {
+    const target = { kind: "idea" as const, said: "A meal planner" };
+    const session = (state: "reading" | "done" | "failed" | "stopped", error?: string) => ({ v: 1 as const, state, at: 1, target, steps: [], competitors: [], read: [], skipped: { reddit: 0, before: 0, articles: 0, unreadable: 0 }, checked: { kept: 0, notFound: 0, unbacked: 0 }, problems: [], thin: false, ...(error ? { error } : {}) });
+    const parts = (job: ChatTurn["job"]) => threadOf({ v: 1, turns: [turn("s", job, "A meal planner")] })[1].parts.map((p) => (p.type === "data" ? p.name : "text"));
+    expect(parts({ kind: "scan", target, asked: 1 })).toEqual(["scanning"]);
+    expect(parts({ kind: "scan", target, asked: 1, session: session("reading") })).toEqual(["scanning"]);
+    expect(parts({ kind: "scan", target, asked: 1, session: session("done") })).toEqual(["scanned"]);
+    expect(parts({ kind: "scan", target, asked: 1, session: session("failed", "Limit reached") })).toEqual(["text", "scanAgain"]);
+    expect(parts({ kind: "scan", target, asked: 1, session: session("stopped") })).toEqual(["text", "scanAgain"]);
+    expect(parts({ kind: "scan", target, asked: 1, error: "No engine" })).toEqual(["text", "scanAgain"]);
+    const runs = (job: ChatTurn["job"]) => running({ v: 1, turns: [turn("s", job)] })?.id ?? null;
+    expect(runs({ kind: "scan", target, asked: 1 })).toBe("s");
+    expect(runs({ kind: "scan", target, asked: 1, session: session("done") })).toBeNull();
+    expect(runs({ kind: "scan", target, asked: 1, error: "No engine" })).toBeNull();
+    // Waiting on where it goes: nothing runs yet.
+    expect(parts({ kind: "scan", target, asked: 1, where: true })).toEqual(["scanWhere"]);
+    expect(runs({ kind: "scan", target, asked: 1, where: true })).toBeNull();
+    // The steps after it: asked in the box, running while worked out, and a page closing stops them.
+    const done = session("done");
+    expect(parts({ kind: "scan", target, asked: 1, session: done, plan: { step: "audiences" } })).toEqual(["scanned", "scanPlan"]);
+    expect(runs({ kind: "scan", target, asked: 1, session: done, plan: { step: "picking" } })).toBe("s");
+    expect(runs({ kind: "scan", target, asked: 1, session: done, plan: { step: "picked" } })).toBeNull();
+    expect(asking({ v: 1, turns: [turn("s", { kind: "scan", target, asked: 1, session: done, plan: { step: "asking" } })] }, () => null)).toMatchObject({ plan: true });
+    expect(chatOf({ v: 1, turns: [turn("s", { kind: "scan", target, asked: 1, session: done, plan: { step: "picking" } })] }).turns[0].job).toMatchObject({ plan: { step: "failed" } });
+    // It goes on in the core: a reload still shows it running, until the core says.
+    expect(chatOf({ v: 1, turns: [turn("s", { kind: "scan", target, asked: 1 })] }).turns[0].job).toEqual({ kind: "scan", target, asked: 1 });
+  });
+  it("says what a message needs when there's no engine, with nothing running", () => {
+    const c = withTurn(emptyChat(), turn("n", { kind: "noEngine", mode: "ask" }));
+    const [you, reply] = threadOf(c);
+    expect(you.role).toBe("user");
+    expect(reply.parts[0]).toMatchObject({ type: "text" });
+    expect(reply.parts[1]).toMatchObject({ type: "data", name: "noEngine", data: { turn: "n" } });
+    expect(running(c)).toBeFalsy();
+    // It outlives a reload as it was.
+    expect(chatOf({ v: 1, turns: c.turns }).turns[0].job).toEqual({ kind: "noEngine", mode: "ask" });
   });
 });

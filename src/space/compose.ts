@@ -9,7 +9,7 @@ import { rankForGoal } from "@/goals/problems";
 import { ordered } from "@/goals/tree";
 import type { Goal, GoalTree } from "@/goals/types";
 import type { Notice } from "@/hub/checks";
-import type { RankedNeed } from "@/hub/needs";
+import { needShort, type RankedNeed } from "@/hub/needs";
 import { sameTopic } from "@/hub/topics";
 import { inSpace, type Space } from "@/ui/frame/spaces";
 
@@ -145,8 +145,9 @@ export function composeSpace(o: SpaceInput, makeId: () => string = newId): Space
     }
   };
 
-  const addProblem = (id: string, need: Pick<RankedNeed, "topic" | "title" | "sources">, by: Bearing["by"] | null, parent: string | null, goal: string | null, tag: string) => {
-    add(id, newCard("opportunity", { title: need.title, createdBy: by === "qalam" ? "ai" : "user" }), parent, { type: "problem", topic: need.topic, goal });
+  const addProblem = (id: string, need: Pick<RankedNeed, "topic" | "title" | "sources"> & Partial<Pick<RankedNeed, "quotes" | "online">>, by: Bearing["by"] | null, parent: string | null, goal: string | null, tag: string) => {
+    const backed = needShort(need);
+    add(id, newCard("opportunity", { title: need.title, createdBy: by === "qalam" ? "ai" : "user", ...(backed ? { pageBacking: backed } : {}) }), parent, { type: "problem", topic: need.topic, goal });
     out.virtual.add(id);
     out.faint.add(id);
     if (need.sources < 2) out.fainter.add(id);

@@ -15,6 +15,7 @@ import { openStores, type IdbStore } from "@/ui/idb";
 import { newProject, type Project } from "@/projects/model";
 import { announceFromElsewhere, flushAlso } from "@/projects/session";
 import { useSources } from "@/ui/discovery/sources";
+import { useBriefs } from "@/ui/discovery/briefs";
 import { sourcesDb } from "@/discovery/db";
 import { allCards } from "@/discovery/tree";
 import type { Space } from "@/ui/frame/spaces";
@@ -250,10 +251,13 @@ function rowsFor(doc: Doc) {
 }
 const sameGroups = (a: { head: string; cards: string[] }[], b: { head: string; cards: string[] }[]) => a.length === b.length && a.every((g, i) => g.head === b[i].head && g.cards.join() === b[i].cards.join());
 
+/** The cards with a brief, whose tiles the layout makes room for. */
+const briefCards = () => new Set(useBriefs.getState().list.map((b) => b.card));
+
 function laidOut(doc: Doc): Doc {
   const lanes = useStudio.getState().view.sources;
   const { groups, rows } = lanes ? rowsFor(doc) : { groups: groupsOf(doc, isGoalCard), rows: undefined };
-  const { doc: laid, slots } = layoutSpace(doc, { column: inColumn, isGoal: isGoalCard, lanes: rows });
+  const { doc: laid, slots } = layoutSpace(doc, { column: inColumn, isGoal: isGoalCard, lanes: rows, ...(lanes ? { briefs: briefCards() } : {}) });
   useSpaceView.setState({ groups, slots });
   return laid;
 }
@@ -269,7 +273,7 @@ export function previewLayout(doc: Doc, goals: ReadonlySet<string> = new Set()):
   const groups = groupsOf(next, isGoal);
   // Its own lane rows (the canvas's are remembered for the canvas as it is).
   const rows = useStudio.getState().view.sources ? laneRows(laneOf(next, useSources.getState().list, groups).items) : undefined;
-  const { doc: laid, slots } = layoutSpace(next, { column: inColumn, isGoal, lanes: rows });
+  const { doc: laid, slots } = layoutSpace(next, { column: inColumn, isGoal, lanes: rows, ...(rows ? { briefs: briefCards() } : {}) });
   return { doc: laid, groups, slots };
 }
 
@@ -315,6 +319,7 @@ function install() {
   });
   useStudio.subscribe((s, prev) => s.view.sources !== prev.view.sources && relayoutSpace());
   useSources.subscribe((s, prev) => s.list !== prev.list && relayoutSpace());
+  useBriefs.subscribe((s, prev) => s.list !== prev.list && relayoutSpace());
   document.addEventListener("visibilitychange", () => document.visibilityState === "hidden" && void flushSpace());
   window.addEventListener("pagehide", () => {
     keepLeft();

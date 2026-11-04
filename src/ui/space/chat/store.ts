@@ -13,7 +13,7 @@ import { askOrganization } from "@/org/ask";
 import { captureIngested, decideFoundGoal, setSourceBasis } from "@/org/capture";
 import { orgFetch, orgJson } from "@/org/client";
 import type { Ingested } from "@/discovery/ingest/core";
-import { chatKey, chatOf, emptyChat, withJob, withTurn, type CanvasChat, type ChatDoc, type ChatJob, type ChatTurn, type FiledPage, type FocusGoal, type GoalForJob, type GoalForOn, type TakenDoc } from "@/space/chat";
+import { chatKey, chatOf, emptyChat, withJob, withTurn, type CanvasChat, type ChatDoc, type ChatJob, type ChatTurn, type FiledPage, type FocusGoal, type GoalForJob, type GoalForOn, type BriefState, type ScanJob, type ScanPlan, type TakenDoc } from "@/space/chat";
 import { cardForPage, pageOf } from "@/space/pages";
 import { DUMP_WORDS, routeOf, titleFrom, wordsIn, type ChatMode } from "@/space/route";
 import { FIND_MIN, findRound, findText, findTranscript, type FindWhat } from "@/space/find";
@@ -24,6 +24,28 @@ import { goalsForProblem, lookForGoal, suggestGoalNumber } from "@/org/goal-work
 import { knowsMarket } from "@/market/types";
 import { loadMarket, useMarket } from "@/org/market";
 import { useSpaceView } from "@/space/view";
+import { onOrgChange } from "@/org/live";
+import { needsDb } from "@/org/needs";
+import { otherReading, requestOf, scanInput } from "@/scan/input";
+import type { ScanTarget } from "@/scan/session";
+import { notAsked, steerAnswers, steerRound, type ScanSaid } from "@/scan/steer";
+import { briefRound, type BriefAsked } from "@/discovery/brief";
+import { writeCardBrief } from "@/org/briefs";
+import { briefRequest } from "../../discovery/brief-request";
+import { loadBriefs } from "../../discovery/briefs";
+import { glideToLayer, onCanvasReady } from "../../discovery/canvas";
+import { firstBuild, writeBrief, keepAnswers, keepAudience, planAudiences, planQuestions, scanNow, startScan, steerQuestions, steerScan, stopScan } from "@/org/scan";
+import { firstGoal, sameTarget, scanRound, SUGGESTED_GOAL, type GoalAction, type ScanAudience } from "@/scan/plan";
+import { projectName } from "@/scan/input";
+import { draftBacking, draftCards } from "@/discovery/solutions";
+import { decideDraft } from "@/org/solutions";
+import { quoteEvidence } from "@/discovery/sources";
+import { sourcesDb } from "@/discovery/db";
+import { createOrg } from "@/org/client";
+import { orgHref } from "@/projects/model";
+import { handWords } from "../handoff";
+import { problemCard } from "../../topics/start-board";
+import { visitSources } from "../../discovery/sources";
 import { newId } from "@/doc/factory";
 import { docPart, docRef, guessVoice, joinParts, type SentDoc } from "../../chat/attach";
 import type { Basis } from "@/discovery/basis";
@@ -37,6 +59,7 @@ import { show } from "../links";
 import { placeFor, writeCard } from "../new";
 import { useCompose } from "./compose";
 import { toggleChat } from "../../frame/store";
+import { engineMissing } from "../../frame/useHealth";
 
 /*
  * Qalam AI's chat beside a space's canvas, in the window: the canvas's turns (src/space/chat.ts),
@@ -60,9 +83,13 @@ interface ChatState {
   live: Record<string, Live>;
   /** "Help me find one" asked for a canvas whose chat isn't loaded yet: started as it loads. */
   pending: { key: string; what: FindWhat } | null;
+  /** Words for a scan from a canvas whose chat isn't loaded yet (the first run's box): started as it loads. */
+  pendingScan: { key: string; said: string } | null;
+  /** A goal asked for by the address before the chat has loaded: started as it loads. */
+  pendingGoal: { card: string; topic?: string } | null;
 }
 
-export const useCanvasChat = create<ChatState>(() => ({ key: null, space: null, chat: emptyChat(), loaded: false, live: {}, pending: null }));
+export const useCanvasChat = create<ChatState>(() => ({ key: null, space: null, chat: emptyChat(), loaded: false, live: {}, pending: null, pendingScan: null, pendingGoal: null }));
 
 const st = () => useCanvasChat.getState();
 const ctrls = new Map<string, AbortController>();
@@ -77,6 +104,15 @@ function save() {
     saving = null;
     void orgFetch(`/canvas-chat/${key}`, { method: "PUT", json: chat }).catch(() => {});
   }, 400);
+}
+
+/** Now: what's about to run in the core shouldn't depend on the page staying open 400 ms more. */
+function saveNow() {
+  const { key, chat } = st();
+  if (!key) return Promise.resolve();
+  if (saving) clearTimeout(saving);
+  saving = null;
+  return orgFetch(`/canvas-chat/${key}`, { method: "PUT", json: chat }).catch(() => {});
 }
 
 function change(fn: (c: CanvasChat) => CanvasChat) {
@@ -99,7 +135,19 @@ export async function openChat(space: string | null) {
   const pending = st().pending;
   if (pending?.key === key) {
     useCanvasChat.setState({ pending: null });
-    findWith(pending.what, space);
+    void findWith(pending.what, space);
+  }
+  const goal = st().pendingGoal;
+  if (goal) {
+    useCanvasChat.setState({ pendingGoal: null });
+    goalWith(goal.card, goal.topic);
+  }
+  // A scan started before the page closed went on in the core: where it's got to.
+  void followScan();
+  const words = st().pendingScan;
+  if (words?.key === key) {
+    useCanvasChat.setState({ pendingScan: null });
+    void runAs(null, words.said, "scan");
   }
 }
 
@@ -167,10 +215,12 @@ export function send(text: string, docs: readonly SentDoc[]): boolean {
 /** A turn's words taken one way: as a new turn, or (`at`) a turn taken another way than it was. */
 export async function runAs(at: string | null, said: string, mode: ChatMode, docs: readonly SentDoc[] = []): Promise<void> {
   if (at) stopTurn(at);
-  if (mode === "ask") return ask(said, at);
   if (mode === "goal" || mode === "problem") return void addCard(at, said, mode);
+  if (await engineMissing()) return void jobAt(at, said, { kind: "noEngine", mode });
+  if (mode === "ask") return ask(said, at);
   if (mode === "take") return takeIn(at, said, docs);
   if (mode === "dump") return dumpIt(at, said, docs);
+  if (mode === "scan") return scanIt(at, said);
 }
 
 /** Words sent to the chat from elsewhere (the first run's idea), taken as `mode`. */
@@ -182,6 +232,353 @@ export function sendToChat(text: string, mode: ChatMode) {
 export function retake(id: string, mode: ChatMode) {
   const t = turnOf(id);
   if (t) void runAs(id, t.said, mode);
+}
+
+// ---------------------------------------------------------------------------
+// What people complain about
+
+/** Words from the one box (the first run's, the empty canvas's): into this canvas's chat, once it's loaded. */
+export function scanFrom(said: string, space: string | null) {
+  toggleChat(true);
+  const key = chatKey(space);
+  if (st().key !== key || !st().loaded) return useCanvasChat.setState({ pendingScan: { key, said } });
+  void runAs(null, said, "scan");
+}
+
+/** An idea or a product read for what people complain about. It runs in the core; this follows it. */
+async function scanIt(at: string | null, said: string, target: ScanTarget | null = scanInput(said), told?: readonly ScanSaid[]) {
+  if (!target) return void jobAt(at, said, { kind: "choose", first: "problem" });
+  // Another scan's problems are here: two unrelated products would run together on one page.
+  const other = !at && st().chat.turns.some((t) => t.job.kind === "scan" && t.job.session?.state === "done" && t.job.session.problems.length > 0 && !sameTarget(t.job.target, target));
+  if (other) return void jobAt(at, said, { kind: "scan", target, asked: Date.now(), where: true });
+  const id = jobAt(at, said, { kind: "scan", target, asked: Date.now(), ...(told?.length ? { told: [...told] } : {}) });
+  void saveNow();
+  try {
+    const session = await startScan({ ...requestOf(target, said, typeof navigator === "undefined" ? "" : navigator.language), ...(told?.length ? { told: [...told] } : {}) });
+    change((c) => withJob(c, id, (j) => (j.kind === "scan" ? { ...j, session } : j)));
+    void followScan();
+    // Asked again, what they've said still stands.
+    if (!told?.length) void askWhileReading(id, target);
+  } catch (e) {
+    change((c) => withJob(c, id, (j) => (j.kind === "scan" ? { ...j, error: message(e) } : j)));
+  }
+}
+
+/** The questions as it starts. It's reading already, and nothing waits on them. */
+async function askWhileReading(id: string, target: ScanTarget) {
+  const set = (fn: (j: ScanJob) => ScanJob) => change((c) => withJob(c, id, (j) => (j.kind === "scan" ? fn(j) : j)));
+  set((j) => ({ ...j, ask: { step: "writing" } }));
+  const questions = await steerQuestions(target).catch(() => steerRound(target));
+  set((j) => (j.ask?.step === "writing" && (!j.session || j.session.state === "reading") ? { ...j, ask: { step: "asking", questions } } : j.ask?.step === "writing" ? { ...j, ask: { step: "done" } } : j));
+}
+
+/** The questions the box asks while it reads. */
+export const steerQuestionsOf = (id: string) => scanJob(id)?.ask?.questions ?? [];
+
+/** Their answers: heard by what's left to read, and not asked again. */
+export function answerSteer(id: string, answers: Readonly<Record<string, string>>) {
+  const said = steerAnswers(steerQuestionsOf(id), answers);
+  change((c) => withJob(c, id, (j) => (j.kind === "scan" ? { ...j, ask: { step: "done" }, ...(said.length ? { told: [...(j.told ?? []), ...said] } : {}) } : j)));
+  if (said.length) void steerScan({ said }).catch(() => {});
+}
+
+/** The questions go, unanswered: it finished before they started on them. */
+export const leaveSteer = (id: string) => change((c) => withJob(c, id, (j) => (j.kind === "scan" && j.ask?.step === "asking" ? { ...j, ask: { step: "done" } } : j)));
+
+/** Not what they meant: an app or a competitor it found, taken off before it's read into anything. */
+export const steerOff = (name: string) => void steerScan({ off: [name] }).catch(() => {});
+
+let followingScan: (() => void) | null = null;
+/** The window and the core share a clock on this computer; a little room all the same. */
+const CLOCK_SLACK = 1000;
+
+/** The newest scan still reading takes the core's word on how it stands; the panel opens on what it found. */
+async function followScan() {
+  followingScan ??= onOrgChange((c) => {
+    if (c.kind === "scan") void followScan();
+  });
+  const open = [...st().chat.turns].reverse().find((t) => t.job.kind === "scan" && !t.job.error && !t.job.where && (!t.job.session || t.job.session.state === "reading"));
+  if (!open) return;
+  const session = await scanNow().catch(() => null);
+  // An answer about an earlier scan (asked just before this one started) says nothing about this one.
+  if (!session || open.job.kind !== "scan" || session.at < open.job.asked - CLOCK_SLACK) return;
+  change((c) => withJob(c, open.id, (j) => (j.kind === "scan" ? { ...j, session } : j)));
+  if (session.state === "done" && session.problems.length) openProblems();
+}
+
+/** The panel on the ranked problems (src/ui/home/Home.tsx hears this). */
+export const PANEL_EVENT = "qalam:panel";
+export const openProblems = () => window.dispatchEvent(new CustomEvent(PANEL_EVENT, { detail: "problems" }));
+
+/** The same words read the other way: an idea as a product's name, or the other way round. */
+export function scanOtherWay(id: string) {
+  const t = turnOf(id);
+  if (t?.job.kind !== "scan") return;
+  const other = otherReading(t.job.target, t.said);
+  if (!other) return;
+  stopTurn(id);
+  void scanIt(id, t.said, other);
+}
+
+/** It goes in this project anyway: they know what they're mixing. */
+export function scanHere(id: string) {
+  const t = turnOf(id);
+  if (t?.job.kind === "scan") void scanIt(id, t.said, t.job.target);
+}
+
+/** It gets a project of its own, whose canvas starts it. */
+export async function scanInNewProject(id: string) {
+  const t = turnOf(id);
+  if (t?.job.kind !== "scan") return;
+  try {
+    const org = await createOrg(projectName(t.job.target), "solo");
+    await fetch(`/api/org/${encodeURIComponent(org.id)}/first-run`, { method: "POST" }).catch(() => {});
+    handWords(t.said);
+    dropTurn(id);
+    window.location.assign(`${orgHref(org.id)}?scan=1`);
+  } catch (e) {
+    change((c) => withJob(c, id, (j) => (j.kind === "scan" ? { ...j, where: undefined, error: message(e) } : j)));
+  }
+}
+
+/** Again, as it was read, and what they said still stands. */
+export function scanAgain(id: string) {
+  const t = turnOf(id);
+  if (t?.job.kind === "scan") void scanIt(id, t.said, t.job.target, t.job.told);
+}
+
+/** They say the product is theirs: its reviews are its customers' words, and what rests on them moves to "We know". */
+export async function scanIsMine(id: string) {
+  const t = turnOf(id);
+  if (t?.job.kind !== "scan" || !t.job.session) return;
+  const reviews = t.job.session.read.filter((r) => r.kind === "reviews" && r.sourceId);
+  await Promise.all(reviews.map((r) => setSourceBasis(r.sourceId!, "said")));
+  change((c) => withJob(c, id, (j) => (j.kind === "scan" ? { ...j, mine: true } : j)));
+}
+
+// ---------------------------------------------------------------------------
+// From a scan's problems to what to build first
+
+const scanJob = (id: string): ScanJob | null => {
+  const j = turnOf(id)?.job;
+  return j?.kind === "scan" ? j : null;
+};
+const plan = (id: string, fn: (p: ScanPlan) => ScanPlan) => change((c) => withJob(c, id, (j) => (j.kind === "scan" && j.plan ? { ...j, plan: fn(j.plan) } : j)));
+export const planOf = (j: ScanJob) => ({ target: j.target, sources: (j.session?.read ?? []).flatMap((r) => (r.sourceId ? [r.sourceId] : [])), ...(j.told?.length ? { told: j.told } : {}) });
+/** What it's working out now, or that it stopped. */
+const stoppedPlan = (id: string, e: unknown) => {
+  const aborted = (e as Error).name === "AbortError";
+  plan(id, (p) => ({ ...p, step: "failed", error: aborted ? "You stopped it." : message(e) }));
+};
+
+/** Work out what to build first: the questions first, in the box. */
+export async function planStart(id: string) {
+  const j = scanJob(id);
+  if (!j) return;
+  change((c) => withJob(c, id, (x) => (x.kind === "scan" ? { ...x, plan: { step: "questioning" } } : x)));
+  const ctrl = begin(id);
+  let answered = false;
+  try {
+    const questions = await planQuestions(planOf(j), ctrl.signal);
+    // They've answered all there is: straight on to who it's for.
+    answered = !questions.length && !!j.told?.length;
+    if (!answered) plan(id, (p) => ({ ...p, step: "asking", questions: questions.length ? questions : scanRound() }));
+  } catch (e) {
+    if ((e as Error).name === "AbortError") return stoppedPlan(id, e);
+    plan(id, (p) => ({ ...p, step: "asking", questions: notAsked(scanRound(), j.told ?? []) }));
+  } finally {
+    end(id);
+  }
+  if (answered) void answerPlan(id, {});
+}
+
+/** The questions the box asks now. */
+export const planQuestionsOf = (id: string) => scanJob(id)?.plan?.questions ?? notAsked(scanRound(), scanJob(id)?.told ?? []);
+
+/** Their answers, kept as their own words, then who the quotes show. Everything may be skipped. */
+export async function answerPlan(id: string, answers: Readonly<Record<string, string>>) {
+  const j = scanJob(id);
+  if (!j?.plan) return;
+  const said = [...(j.told ?? []), ...planQuestionsOf(id).map((q) => ({ question: q.title, answer: (answers[q.id] ?? "").trim() })).filter((x) => x.answer)];
+  const words = said.map((x) => `${x.question} ${x.answer}`).join("\n");
+  plan(id, (p) => ({ ...p, step: "reading", answers: words }));
+  const ctrl = begin(id);
+  try {
+    const source = said.length ? await keepAnswers(said, `Your answers: ${projectName(j.target)}`).catch(() => null) : null;
+    const audiences = await planAudiences({ ...planOf(j), answers: words }, ctrl.signal);
+    plan(id, (p) => ({ ...p, step: "audiences", audiences, ...(source ? { answersSource: source } : {}) }));
+  } catch (e) {
+    stoppedPlan(id, e);
+  } finally {
+    end(id);
+  }
+}
+
+// A brief: what it lacks first, in the box, then written, then a tile under its card.
+
+const briefNow = (id: string) => {
+  const j = turnOf(id)?.job;
+  return j?.kind === "brief" ? j.brief : j?.kind === "scan" ? j.plan?.brief : undefined;
+};
+const setBrief = (id: string, brief: BriefState) => change((c) => withJob(c, id, (j) => (j.kind === "brief" ? { ...j, brief } : j.kind === "scan" && j.plan ? { ...j, plan: { ...j.plan, brief } } : j)));
+
+/** A brief for a card on the canvas (a goal, a problem or a solution), asked in the chat. */
+export function briefFor(card: string) {
+  toggleChat(true);
+  if (!st().loaded) return;
+  const open = st().chat.turns.some((t) => t.job.kind === "brief" && t.job.card === card && (t.job.brief.step === "asking" || t.job.brief.step === "writing"));
+  if (open) return;
+  const title = cardTitle(card);
+  addTurn(`Write a brief for “${title}”`, { kind: "brief", card, title, brief: { step: "asking", questions: briefRound() } });
+}
+
+/** A scan's first pick: on the canvas first, since a brief's tile hangs under its card. */
+export async function briefStart(id: string) {
+  if (scanJob(id)?.plan?.step !== "placed") await placeFirstBuild(id);
+  if (scanJob(id)?.plan?.step === "placed") setBrief(id, { step: "asking", questions: briefRound() });
+}
+
+/** Asked again: what it lacks, again. */
+export const briefAgain = (id: string) => setBrief(id, { step: "asking", questions: briefRound() });
+
+export const briefQuestionsOf = (id: string) => briefNow(id)?.questions ?? briefRound();
+
+/** Their answers, then the brief: what's decided, and the features one call works out. Everything may be skipped. */
+export async function answerBrief(id: string, answers: Readonly<Record<string, string>>) {
+  const job = turnOf(id)?.job;
+  if (!job) return;
+  const asked: BriefAsked = { ...(answers.platform ? { platform: answers.platform } : {}), ...(answers.exists ? { exists: answers.exists } : {}), ...(answers.needs ? { needs: answers.needs } : {}) };
+  setBrief(id, { step: "writing" });
+  const ctrl = begin(id);
+  try {
+    const meta = await (job.kind === "brief" ? writeForCard(job.card, asked, ctrl.signal) : job.kind === "scan" ? writeForPick(job, asked, ctrl.signal) : null);
+    if (!meta) return setBrief(id, { step: "failed", error: "What it was written from has gone." });
+    await loadBriefs();
+    setBrief(id, { step: "ready", id: meta.id, file: meta.file });
+    onCanvasReady((c) => glideToLayer(c, meta.card));
+  } catch (e) {
+    setBrief(id, { step: "failed", error: (e as Error).name === "AbortError" ? "You stopped it." : message(e) });
+  } finally {
+    end(id);
+  }
+}
+
+const writeForCard = (card: string, asked: BriefAsked, signal: AbortSignal) => {
+  const req = briefRequest(studio().doc, card, asked);
+  return req ? writeCardBrief(req, signal) : null;
+};
+
+function writeForPick(j: ScanJob, asked: BriefAsked, signal: AbortSignal) {
+  const p = j.plan;
+  const d = p?.build?.drafts.find((x) => x.id === p.chosen);
+  if (!p?.build || !p.audience || !p.goal || !p.card || !d) return null;
+  const pick = p.build.pick;
+  const goal = firstGoal(p.audience.name, p.goal.action, p.goal.reach, p.goal.of);
+  const about = p.audiences?.find((a) => a.name === p.audience?.name)?.about;
+  return writeBrief(
+    {
+      ...planOf(j),
+      card: p.card,
+      topic: p.build.topic,
+      draft: d.id,
+      audience: p.audience.name,
+      ...(about ? { about } : {}),
+      goal: { title: goal.title, metric: goal.metric },
+      answers: p.answers ?? "",
+      why: pick?.draft === d.id ? pick.why : "",
+      later: p.build.drafts.filter((x) => x.id !== d.id).map((x) => ({ draft: x.id, why: pick?.later.find((l) => l.draft === x.id)?.why ?? "" })),
+      asked,
+      known: j.session?.known ?? [],
+    },
+    signal,
+  );
+}
+
+/** Who they'll build for: one the quotes show, or their own words. On to a first goal. */
+export function pickAudience(id: string, a: ScanAudience | { name: string }) {
+  const name = a.name.trim();
+  if (!name) return;
+  const refs = "quotes" in a ? a.quotes.map((q) => q.ref) : [];
+  void keepAudience({ name, ...("about" in a && a.about ? { about: a.about } : {}), refs }).catch(() => {});
+  plan(id, (p) => ({ ...p, step: "goal", audience: { name, refs }, goal: { action: "sign-up", reach: SUGGESTED_GOAL.reach, of: SUGGESTED_GOAL.of } }));
+}
+
+/** The first goal as they've set it. */
+export function setPlanGoal(id: string, goal: { action: GoalAction; reach: number; of: number }) {
+  plan(id, (p) => ({ ...p, goal }));
+}
+
+/** Their first goal taken: one solution drafted and picked for them. */
+export async function planFirst(id: string, topic?: string) {
+  const j = scanJob(id);
+  if (!j?.plan?.audience) return;
+  plan(id, (p) => ({ ...p, step: "picking", error: undefined }));
+  const ctrl = begin(id);
+  try {
+    const build = await firstBuild({ ...planOf(j), audience: j.plan.audience.name, refs: j.plan.audience.refs, answers: j.plan.answers ?? "", ...(j.plan.answersSource ? { answersSource: j.plan.answersSource } : {}), ...(topic ? { topic } : {}) }, ctrl.signal);
+    if (!build?.drafts.length) return plan(id, (p) => ({ ...p, step: "failed", error: build?.note || "I found no solution I could stand behind for this problem." }));
+    plan(id, (p) => ({ ...p, step: "picked", build, chosen: build.pick?.draft ?? build.drafts[0].id }));
+  } catch (e) {
+    stoppedPlan(id, e);
+  } finally {
+    end(id);
+  }
+}
+
+/** Where a plan that stopped carries on. */
+export function planAgain(id: string) {
+  const p = scanJob(id)?.plan;
+  if (!p) return;
+  if (p.audience) return void planFirst(id);
+  if (p.questions) return plan(id, (x) => ({ ...x, step: "asking", error: undefined }));
+  void planStart(id);
+}
+
+/** Another draft first: it's theirs to say. */
+export const chooseDraft = (id: string, draft: string) => plan(id, (p) => ({ ...p, chosen: draft }));
+
+/** On the canvas in one undo step: the first goal, its problem under it, the solution and its test. */
+export async function placeFirstBuild(id: string) {
+  const p = scanJob(id)?.plan;
+  const d = p?.build?.drafts.find((x) => x.id === p.chosen);
+  if (!p?.build || !p.audience || !p.goal || !d) return;
+  const c = await problemCard(p.build.topic);
+  if (!c) return;
+  const goal = firstGoal(p.audience.name, p.goal.action, p.goal.reach, p.goal.of);
+  const goalNode = makeCardNode(newCard("outcome", { title: goal.title, metric: { name: goal.metric, unit: "people", direction: "increase", baseline: null, current: null, target: goal.target } }));
+  const { solution, test } = draftCards(d);
+  const quotes = p.build.quotes;
+  const backing = draftBacking(d, (ref) => quotes[ref] ?? null, Date.now(), newId);
+  const evidence = [...backing.words];
+  await visitSources(backing.quotes.map((q) => q.sourceId));
+  for (const q of backing.quotes) {
+    const s = await sourcesDb.get(q.sourceId).catch(() => null);
+    const quote = s?.quotes.find((x) => x.id === q.quoteId);
+    if (s && quote) evidence.push(quoteEvidence(s, quote, "ai"));
+  }
+  const solutionNode = makeCardNode({ ...solution, evidence });
+  const doc = studio().doc;
+  const sameCard = (k: string) => !k.startsWith("topic:") && doc.nodes[k]?.meta.ost?.kind === "opportunity" && doc.nodes[k].meta.ost.title === c.title;
+  const already = Object.keys(doc.nodes).find(sameCard);
+  const problemNode = already ? null : makeCardNode(newCard("opportunity", { title: c.title, evidence: c.evidence }));
+  const faint = [...useSpaceView.getState().things].flatMap(([card, t]) => (t.type === "problem" && t.topic === p.build!.topic ? [card] : []));
+  studio().mutate((x) => {
+    for (const f of faint) {
+      const parent = x.nodes[f]?.parentId;
+      const list = parent ? x.nodes[parent].children : x.roots;
+      const at = list.indexOf(f);
+      if (at >= 0) list.splice(at, 1);
+      delete x.nodes[f];
+    }
+    addCardIn(x, goalNode, null);
+    if (already) moveCardsIn(x, [already], goalNode.id);
+    else addCardIn(x, problemNode!, goalNode.id);
+    addCardIn(x, solutionNode, already ?? problemNode!.id);
+    if (test) addCardIn(x, makeCardNode(test), solutionNode.id);
+  });
+  void decideDraft(p.build.topic, d.id, "accepted").catch(() => {});
+  plan(id, (x) => ({ ...x, step: "placed", card: solutionNode.id }));
+  show(solutionNode.id);
 }
 
 // ---------------------------------------------------------------------------
@@ -209,12 +606,14 @@ async function dumpIt(at: string | null, said: string, docs: readonly SentDoc[],
 const FIND_SAID: Record<FindWhat, string> = { goal: "Help me find a goal", problem: "Help me find a problem" };
 
 /** "Help me find one" on `space`'s canvas: code's opening questions in the box (one at a time: an open one is kept). */
-export function findWith(what: FindWhat, space: string | null) {
+export async function findWith(what: FindWhat, space: string | null): Promise<void> {
   toggleChat(true);
   const key = chatKey(space);
-  if (st().key !== key || !st().loaded) return useCanvasChat.setState({ pending: { key, what } });
+  if (st().key !== key || !st().loaded) return void useCanvasChat.setState({ pending: { key, what } });
   const open = st().chat.turns.find((t) => t.job.kind === "find");
   if (open?.job.kind === "find" && open.job.what === what) return;
+  // Before they answer anything: it would be read by what isn't there.
+  if (await engineMissing()) return void addTurn(FIND_SAID[what], { kind: "noEngine", mode: null });
   if (open) dropTurn(open.id);
   // With the company and its domain known, Qalam AI asks from them; else code's own questions.
   const known = knowsMarket(useMarket.getState().market);
@@ -334,12 +733,26 @@ function backingOf(card: string): string[] {
  */
 export function goalWith(card: string, topic?: string) {
   toggleChat(true);
-  if (!st().loaded) return;
+  if (!st().loaded) return void useCanvasChat.setState({ pendingGoal: { card, ...(topic ? { topic } : {}) } });
   const open = st().chat.turns.some((t) => t.job.kind === "goalfor" && t.job.card === card && t.job.step !== "done" && t.job.step !== "failed");
   if (open) return;
   const title = cardTitle(card);
   const id = addTurn(`Find the goal “${title}” could move`, { kind: "goalfor", card, title, ...(topic ? { topic } : {}), step: "looking" });
   void lookForGoals(id, false);
+}
+
+/** A problem's page put on the canvas as a card, and the chat finding a goal it could move. */
+export async function goalForProblem(topic: string) {
+  const { workOnNeed } = await import("../SpacePanel");
+  const card = await workOnNeed(topic);
+  if (card) goalWith(card, topic);
+}
+
+/** The same from the best-backed problem, for where nothing has been picked. */
+export async function goalForTopProblem() {
+  const top = await needsDb.list().then((n) => n.needs[0]?.topic, () => undefined);
+  if (top) await goalForProblem(top);
+  else openProblems();
 }
 
 /** Look for the goals it could move (`look`: the ones on the canvas are ruled out, so the web). */
@@ -712,4 +1125,5 @@ export function stopTurn(id: string) {
   ctrls.get(id)?.abort();
   const j = turnOf(id)?.job;
   if (j?.kind === "dump" && useDump.getState().busy?.sourceId === j.source) stopDump(j.source);
+  if (j?.kind === "scan" && (!j.session || j.session.state === "reading")) void stopScan().catch(() => {});
 }

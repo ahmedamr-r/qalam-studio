@@ -122,6 +122,8 @@ export interface OstCard {
   v: 1;
   kind: OstKind;
   title: string;
+  /** A problem's page drawn on the canvas: what's behind it, in a few words (never saved: such a card is on no board). */
+  pageBacking?: string;
   description?: string;
   stage: OstStage;
   /** When it got its stage (stamped by the decision recorder): how long a test has run, an idea waited. */

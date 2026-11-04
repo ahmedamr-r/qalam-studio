@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { dot } from "@/hub/fuse";
-import { models } from "./client";
+import { missingRunner, models } from "./client";
 
 /**
  * The real models, in their own process: run with QALAM_MODEL_TESTS=1 (they download on first use,
@@ -18,4 +18,14 @@ describe.skipIf(!process.env.QALAM_MODEL_TESTS)("the models process", () => {
     const scores = await m.rank("What is the capital of France?", ["Paris is the capital of France.", "Bananas are rich in potassium."]);
     expect(scores[0]).toBeGreaterThan(scores[1]);
   }, 180_000);
+});
+
+describe("what runs the models", () => {
+  it("is known to be missing only by what the worker hit", () => {
+    expect(missingRunner("Cannot find package 'node-llama-cpp' imported from /x/out/models.js")).toBe(true);
+    expect(missingRunner("ERR_MODULE_NOT_FOUND: node-llama-cpp")).toBe(true);
+    expect(missingRunner("The models took too long")).toBe(false);
+    expect(missingRunner("Cannot find package 'other'")).toBe(false);
+    expect(missingRunner("node-llama-cpp: out of memory")).toBe(false);
+  });
 });

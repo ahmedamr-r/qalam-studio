@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { needEvidence, needLine, needSummary, onlyPeopleSaid, rankNeeds, strengthOf, weeklyCounts, type NeedInput, type PieceFacts, type ShownOn } from "./needs";
+import { needEvidence, needLine, needShort, needSummary, onlyPeopleSaid, rankNeeds, strengthOf, weeklyCounts, type NeedInput, type PieceFacts, type ShownOn } from "./needs";
 import type { Topic, TopicLine } from "./topics";
 
 const DAY = 86_400_000;
@@ -67,9 +67,11 @@ describe("what to work on next", () => {
     const s = needSummary(t, input([t], pieces));
     expect(s).toMatchObject({ quotes: 3, sources: 3, mix: { said: 1, measured: 1, studied: 1 }, read: 1 });
     expect(strengthOf(s)).toBe("strong");
-    expect(needLine(s)).toBe("1 quote · 1 measured · 1 studied · 3 sources");
+    expect(needLine(s)).toBe("1 quote · 1 measured · 1 studied · 3 sources · 1 read elsewhere");
     expect(needLine({ quotes: 0, sources: 0 })).toBe("Nothing outside the team yet");
     expect(needLine({ quotes: 2, sources: 1 })).toBe("2 quotes · 1 source");
+    expect(needLine({ quotes: 0, sources: 0, online: 14, onlineSources: 3 })).toBe("14 quotes from people online · 3 sources");
+    expect([needShort({ quotes: 2, sources: 1 }), needShort({ quotes: 0, online: 8 }), needShort({})]).toEqual(["2 quotes · 1 source", "8 quotes online", ""]);
     expect(onlyPeopleSaid(s.mix)).toBe(false);
     expect(onlyPeopleSaid({ said: 2 })).toBe(true);
     expect(onlyPeopleSaid(undefined)).toBe(true);

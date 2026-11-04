@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import clsx from "clsx";
-import { AudioLines, Check, FileText, Globe, Maximize, Minus, PenLine, Plus, X } from "lucide-react";
+import { AudioLines, Check, FileText, Globe, Maximize, Minus, PenLine, Plus, ScrollText, X } from "lucide-react";
 import { brandOn, logoFor } from "@/connectors/logos";
 import { KIND_LABEL } from "@/discovery/kinds";
 import { CARD_LOOK, DASH, FOOTER, type Kind, KIND_MARK, KIND_TOKEN, MARK_STROKE, SOURCE, type SourceIcon, sourceMark, sourceTile, STATE, TAG, TOOL, WIRE, wireCurve, wireIn, wireOut } from "@/discovery/look";
@@ -43,7 +43,7 @@ interface View {
   k: number;
 }
 
-const ICONS: Record<SourceIcon, typeof PenLine> = { "pen-line": PenLine, globe: Globe, "file-text": FileText, "audio-lines": AudioLines };
+const ICONS: Record<SourceIcon, typeof PenLine> = { "pen-line": PenLine, globe: Globe, "file-text": FileText, "audio-lines": AudioLines, "scroll-text": ScrollText };
 
 /** A source's mark, small, beside its name (the reader's head): its connector's logo, else what it is (sourceMark). */
 export function SourceMark({ doc }: { doc: SetupDoc | undefined }) {

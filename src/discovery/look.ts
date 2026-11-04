@@ -93,7 +93,7 @@ export function wireCurve(x1: number, y1: number, x2: number, y2: number): [numb
 }
 
 /** The icons a source without a logo shows (Lucide's names). */
-export type SourceIcon = "pen-line" | "globe" | "file-text" | "audio-lines";
+export type SourceIcon = "pen-line" | "globe" | "file-text" | "audio-lines" | "scroll-text";
 
 /**
  * A source's mark, by what it's from (a connector's id, "said", "dump", "page", "url", "computer", a
@@ -106,5 +106,6 @@ export function sourceMark(mark: string | undefined): { logo: string } | { icon:
   if (logo?.kind === "audio") return { icon: "audio-lines" };
   if (mark === "said" || mark === "dump") return { icon: "pen-line" };
   if (mark === "page" || mark === "url") return { icon: "globe" };
+  if (mark === "brief") return { icon: "scroll-text" };
   return { icon: "file-text" };
 }

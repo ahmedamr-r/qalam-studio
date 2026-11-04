@@ -58,6 +58,8 @@ export interface Extracted {
   goalNumbers: { sourceId: string; number: GoalNumber }[];
   /** Goals it points to, where the call was asked (src/goals/found.ts). */
   foundGoals: { sourceId: string; goal: FoundGoal }[];
+  /** Quotes the call gave that code couldn't find word for word in what it read. */
+  notFound?: number;
 }
 
 /**
@@ -83,6 +85,7 @@ export function sanitizeExtract(raw: unknown, chunks: CallChunk[], taken: Map<st
     const ch = byRef.get(typeof q.chunkId === "string" ? q.chunkId : "");
     if (!ch || typeof q.text !== "string" || (perChunk.get(ch.c.ref) ?? 0) >= EXTRACT_LIMITS.quotesPerChunk) continue;
     const m = ch.find(q.text);
+    if (!m) out.notFound = (out.notFound ?? 0) + 1;
     if (!m || m.words.length > EXTRACT_LIMITS.quoteChars) continue;
     const at = ch.c.start;
     const span: [number, number] = [at + m.span[0], at + m.span[1]];
@@ -93,7 +96,8 @@ export function sanitizeExtract(raw: unknown, chunks: CallChunk[], taken: Map<st
     perChunk.set(ch.c.ref, (perChunk.get(ch.c.ref) ?? 0) + 1);
     // A speaker only as the source writes them.
     const named = clip(q.speaker, EXTRACT_LIMITS.speaker);
-    const speaker = named && !/^(null|none|unknown|n\/a)$/i.test(named) ? ch.find(named, 2)?.words : undefined;
+    // Never who said it in public: a stranger's name there is their username.
+    const speaker = ch.c.kind !== "post" && named && !/^(null|none|unknown|n\/a)$/i.test(named) ? ch.find(named, 2)?.words : undefined;
     const kind: QuoteKind = QUOTE_KINDS.includes(q.kind as QuoteKind) ? (q.kind as QuoteKind) : "need";
     const page = pageAt(ch.c.pages, span[0]);
     const basis = isBasis(q.basis) ? heldBasis(q.basis, m.words, ch.c.kind) : undefined;

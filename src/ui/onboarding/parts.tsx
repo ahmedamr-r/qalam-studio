@@ -35,6 +35,7 @@ import { Dictated } from "../voice/MicButton";
 import { ParakeetInstall } from "../voice/ParakeetInstall";
 import { wordsFor } from "@/org/words";
 import { FoundGoalRow } from "../chat/FoundGoalRow";
+import { trySample } from "../org/sample";
 import { checkEngine, decideGoal, engineChanged, finishFirstRun, findCompetitors, goStep, keepCompetitors, keepFacts, lookAgain, noWebsite, skipCompetitors, startOnCanvas, takeAs, openKeyField, pickDoor, pickShape, saveVoice, saveYou, saveYours, skipEngine, togglePick, useFirstRun } from "./flow";
 import { useMarket } from "@/org/market";
 import { FIELD_LABEL, type Competitor, type MarketLine } from "@/market/types";
@@ -125,6 +126,11 @@ function EnginePart({ data }: { data: PartData }) {
           {changes && !e.keyOpen && (
             <button type="button" className={r.replyChip} onClick={() => openKeyField(true)}>
               Use another engine
+            </button>
+          )}
+          {changes && (
+            <button type="button" className={r.replyChip} onClick={() => void trySample()}>
+              Try it with a sample
             </button>
           )}
           {changes && (

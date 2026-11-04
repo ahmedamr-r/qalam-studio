@@ -63,6 +63,16 @@ describe("a board's sources lane", () => {
     expect(lane.edges.find((e) => e.to === goal)?.quotes).toEqual(["q1"]);
   });
 
+  it("draws a brief where the layout said, wired down from its card, and only while its card shows", () => {
+    const { doc, kids } = board();
+    const lane = laneOf(doc, [], undefined, [], [{ id: "b1", card: kids, title: "Brief title", line: "Brief · 3 features", x: 40, y: 500 }, { id: "b2", card: "gone", title: "Gone", line: "Brief", x: 0, y: 0 }]);
+    expect(lane.items).toHaveLength(1);
+    expect(lane.items[0]).toMatchObject({ key: "brief:b1", mark: "brief", title: "Brief title", line: "Brief · 3 features", x: 40, y: 500, brief: { id: "b1", card: kids } });
+    expect(lane.edges).toEqual([{ id: `brief:b1>${kids}`, from: "brief:b1", to: kids, quotes: [], kind: "brief" }]);
+    // A card lights its brief, as it lights its sources.
+    expect(litBy(lane, kids)?.items.has("brief:b1")).toBe(true);
+  });
+
   it("puts a feed in the column too, its cords to the cards it watches dashed and carrying no quotes", () => {
     const { doc, kids } = board();
     const lane = laneOf(doc, [dump, notion], undefined, [

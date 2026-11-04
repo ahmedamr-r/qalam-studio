@@ -68,3 +68,37 @@ How it's put together:
 - **The ad-hoc `.dmg` window:** its background is `build/dmg-open-anyway.tiff`, rendered at 1x and 2x from `build/dmg-open-anyway.html` with `pnpm exec electron scripts/render-dmg.mjs`. The page writes around where Finder puts the icons (electron-builder's layout), so keep those spots clear when you change it.
 
 The installed app checks for updates unless `QALAM_NO_UPDATES=1` is set.
+
+## Publishing to npm
+
+`npx qalam-studio` runs the package on npm. It has to be published from an Apple silicon Mac with Xcode's Swift, on the repo's Node (`nvm use`): `prepack` builds everything and stops if the Mac helpers are missing (`scripts/check-pack.mjs`).
+
+1. Bump `version` in `package.json`. npm keeps a version's number for good once it's used, so publishing can't really be taken back.
+2. See what would go, with `npm publish --dry-run`. Then try it with empty caches, the way a stranger would:
+
+   ```bash
+   npm pack
+   ```
+
+   ```bash
+   npm_config_cache=$(mktemp -d) electron_config_cache=$(mktemp -d) QALAM_HOME=$(mktemp -d) npx --yes --package=./qalam-studio-<version>.tgz qalam-studio
+   ```
+
+3. `npm login`, then `npm publish`, which asks you to approve it in the browser. npm may take a few minutes to make a version available: on the first publish it answered with a placeholder, `0.0.0-stage`, for about 5 minutes, and `npx` gets that until it's done, so check `npm view qalam-studio version` before telling anyone.
+4. Try the real thing, again with empty caches:
+
+   ```bash
+   npm_config_cache=$(mktemp -d) electron_config_cache=$(mktemp -d) QALAM_HOME=$(mktemp -d) npx --yes qalam-studio@latest
+   ```
+
+`npm audit` on an install reports 2 critical and 2 high in `simple-git` (November 2026). It comes through `node-llama-cpp`, at its newest, with no fix available. `node-llama-cpp` only uses it to clone llama.cpp at a fixed address when it has to build from source, so nothing from outside reaches it. `npx` doesn't print this, but `npm install` does, so someone may ask.
+
+### When a release is a launch
+
+Each step is public, so go in this order, and don't start one until the one before it is done:
+
+1. Publish to npm, and try it (above), including pressing Send and going to another app: a window out of sight behaves differently, and nothing but a real window shows it.
+2. Merge into `main` and push, since the README says `npx qalam-studio` works.
+3. Tag the version and push the tag, then publish the draft release `release.yml` makes, so the Mac app the README links to has the same loop.
+4. Change GitHub's description to the README's first sentence.
+
