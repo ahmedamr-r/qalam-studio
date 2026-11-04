@@ -136,7 +136,7 @@ export function Questionnaire({ questions, state, onChange, onSubmit, review, ti
   };
 
   return (
-    <div ref={box} className={qr.card} onKeyDown={onKey}>
+    <div ref={box} className={clsx(qr.card, "q-rise")} onKeyDown={onKey}>
       <div ref={head} className="flex flex-col gap-[8px]">
         <div className="flex items-center justify-between gap-[8px]">
           <span className={clsx(qr.caption, "min-w-0")}>
@@ -453,7 +453,7 @@ function ReviewStep({ questions, answers, title, onEdit, children }: { questions
 /** Submitted answers, folded, for the chat history. */
 export function AnswersSummary({ questions, answers, label: text = "Your answers" }: { questions: Question[]; answers: Answers; label?: string }) {
   return (
-    <details className="group/answers rounded-lg px-[10px] text-caption shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
+    <details className="q-fold group/answers rounded-lg px-[10px] text-caption shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
       <summary className="flex h-[30px] cursor-pointer list-none items-center gap-[6px] font-medium text-fg-muted hover:text-fg [&::-webkit-details-marker]:hidden">
         <ChevronRight size={12} {...icon} className="shrink-0 text-fg-subtle transition-transform duration-fast group-open/answers:rotate-90" />
         {text} <span className="font-normal text-fg-subtle tnum">({questions.length})</span>

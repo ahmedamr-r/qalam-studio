@@ -37,8 +37,9 @@ let armed = false;
 
 /**
  * Boot gate: globals.css disables every transition until <html data-motion-ready>, so panels and
- * indicators restored from storage do not animate in. Call once the studio has mounted; it arms
- * after two frames. Also pauses CSS loops while the tab is hidden (data-doc-hidden).
+ * indicators restored from storage do not animate in. Every page must call it: App.tsx does, and a
+ * Screens project's studio once it has mounted. It arms after two frames, and also pauses CSS loops
+ * while the tab is hidden (data-doc-hidden).
  */
 export function armMotion() {
   if (!hasDOM() || armed) return;

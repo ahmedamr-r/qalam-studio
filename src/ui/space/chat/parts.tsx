@@ -521,7 +521,7 @@ function OpeningPart({ data }: { data: PartData }) {
   const said = t?.job.kind === "dump" ? t.job.find?.said : undefined;
   if (!said?.length) return null;
   return (
-    <details className="group/answers rounded-lg px-[10px] text-caption shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
+    <details className="q-fold group/answers rounded-lg px-[10px] text-caption shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
       <summary className="flex h-[30px] cursor-pointer list-none items-center gap-[6px] font-medium text-fg-muted hover:text-fg [&::-webkit-details-marker]:hidden">Your answers ({said.length})</summary>
       <dl className="flex flex-col gap-[8px] pb-[10px]">
         {said.map((s, i) => (

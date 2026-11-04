@@ -10,6 +10,7 @@ import { routeOf, type Route } from "./routes";
 import { movedTo, pageMovedTo } from "./frame/spaces";
 import { currentSpace, lastSpace } from "./frame/useSpace";
 import StudioLoader, { CaptureLoader, HomeLoader, OrgsLoader, SeenLoader, PageSuspense, PlaceLoader, SetupLoader, SystemProjectLoader, WelcomeLoader } from "./StudioLoader";
+import { armMotion } from "./motion";
 import { startInPlace } from "./nav";
 import { bootRetryDelay } from "./welcome/steps";
 import { boardHomeHref } from "./space/href";
@@ -24,6 +25,10 @@ export function App() {
   // What v0.1 hides is read before any page draws (src/lab.ts), the welcome's too.
   const [labReady, setLabReady] = useState(false);
   useEffect(() => void loadLab(bootRetryDelay).then(() => setLabReady(true)), []);
+  // Transitions come on once a page can draw; a Screens project's studio does this itself, after its boot fade.
+  useEffect(() => {
+    if (labReady && route.kind !== "project") armMotion();
+  }, [labReady, route.kind]);
   const ready = state.kind === "ready" ? state.org.id : null;
   useEffect(() => {
     if (!ready) return;

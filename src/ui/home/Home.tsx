@@ -246,7 +246,7 @@ export default function Home({ product: productId = null }: { product?: string |
               if (showsPage) closePage();
               else setAsked(null);
             }}
-            className={clsx("q-glass flex shrink-0 flex-col overflow-y-auto rounded-xl bg-app shadow-panel", "max-[1179px]:absolute max-[1179px]:top-0 max-[1179px]:right-[8px] max-[1179px]:bottom-[8px] max-[1179px]:z-30 max-[1179px]:max-w-[calc(100%-16px)] max-[1179px]:shadow-floating")}
+            className={clsx("q-glass q-fade flex shrink-0 flex-col overflow-y-auto rounded-xl bg-app shadow-panel", "max-[1179px]:absolute max-[1179px]:top-0 max-[1179px]:right-[8px] max-[1179px]:bottom-[8px] max-[1179px]:z-30 max-[1179px]:max-w-[calc(100%-16px)] max-[1179px]:shadow-floating")}
             // A source being read takes the panel over, wider for a document than a conversation.
             style={{ width: panelW }}
           >

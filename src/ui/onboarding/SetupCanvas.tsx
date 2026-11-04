@@ -282,6 +282,10 @@ export function SetupCanvas({
   const focus = selected ?? hovered;
   const lit = useMemo(() => (focus && canvas.nodes.some((n) => n.id === focus) ? pathOf(canvas, focus) : null), [focus, canvas]);
   const byId = useMemo(() => new Map(canvas.nodes.map((n) => [n.id, n])), [canvas]);
+  // Each card's place among those that came with it, so a lone new card doesn't wait its turn.
+  const arrived = useRef(new Map<string, number>());
+  let fresh = 0;
+  for (const n of canvas.nodes) if (!arrived.current.has(n.id)) arrived.current.set(n.id, fresh++);
 
   return (
     <div
@@ -307,26 +311,27 @@ export function SetupCanvas({
           ))}
         </svg>
         {canvas.nodes.map((n) => (
-          <NodeCard
-            key={n.id}
-            n={n}
-            dim={!!lit && !lit.nodes.has(n.id)}
-            hot={(!!lit && lit.nodes.has(n.id)) || hovered === n.id}
-            hovered={hovered === n.id}
-            selected={selected === n.id}
-            onHover={(on) => setHovered((h) => (on ? n.id : h === n.id ? null : h))}
-            onClick={() => {
-              if (n.kind === "source") return onOpen(n);
-              // A place or a goal opens its panel too; a problem lights its path.
-              if (n.kind === "place" || n.kind === "goal") {
-                onSelect(n.id);
-                return onOpen(n);
-              }
-              onSelect(selected === n.id ? null : n.id);
-            }}
-            working={working}
-            act={act}
-          />
+          <div key={n.id} className="q-arrive contents" style={{ "--i": arrived.current.get(n.id) } as CSSProperties}>
+            <NodeCard
+              n={n}
+              dim={!!lit && !lit.nodes.has(n.id)}
+              hot={(!!lit && lit.nodes.has(n.id)) || hovered === n.id}
+              hovered={hovered === n.id}
+              selected={selected === n.id}
+              onHover={(on) => setHovered((h) => (on ? n.id : h === n.id ? null : h))}
+              onClick={() => {
+                if (n.kind === "source") return onOpen(n);
+                // A place or a goal opens its panel too; a problem lights its path.
+                if (n.kind === "place" || n.kind === "goal") {
+                  onSelect(n.id);
+                  return onOpen(n);
+                }
+                onSelect(selected === n.id ? null : n.id);
+              }}
+              working={working}
+              act={act}
+            />
+          </div>
         ))}
       </div>
       {empty && (
@@ -364,7 +369,7 @@ function Wire({ e, a, b, state }: { e: CanvasEdge; a: CanvasNode; b: CanvasNode;
   const [c1x, c1y, c2x, c2y] = wireCurve(from.x, from.y, to.x, to.y);
   const tone = state === "lit" ? "var(--color-selection)" : "var(--color-wire)";
   return (
-    <g opacity={state === "dim" ? WIRE.dim : 1}>
+    <g className="q-arrive-wire" opacity={state === "dim" ? WIRE.dim : 1}>
       <path d={`M ${from.x} ${from.y} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${to.x} ${to.y}`} fill="none" stroke={tone} strokeWidth={state === "lit" ? WIRE.lit : WIRE.width} strokeDasharray={e.kind === "under" ? DASH.under : e.kind === "in" ? DASH.in : undefined} />
       {/* A dot where it meets a card (and leaves one); a source's port is drawn on its tile. */}
       {a.kind !== "source" && <circle cx={from.x} cy={from.y} r={WIRE.dot} fill="var(--color-card)" stroke={tone} strokeWidth={WIRE.width} />}

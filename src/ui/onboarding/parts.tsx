@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import clsx from "clsx";
 import { Check, ChevronRight, Link2, RotateCcw, Star, Target } from "lucide-react";
 import { CHALLENGE_LABEL } from "@/discovery/dump";
@@ -392,7 +392,7 @@ function PushbackPart() {
               </span>
             </span>
             {words && (
-              <details className="group/words text-caption text-fg-subtle">
+              <details className="q-fold group/words text-caption text-fg-subtle">
                 <summary className="flex cursor-pointer list-none items-center gap-[4px] hover:text-fg-muted [&::-webkit-details-marker]:hidden">
                   <ChevronRight size={11} {...ICON} className="transition-transform duration-fast group-open/words:rotate-90" /> Your words
                 </summary>
@@ -815,9 +815,9 @@ const hostOf = (url: string) => {
 };
 
 /** One fact: what it's about, its sentence (theirs once fixed), the page it was read on, and Keep, Fix or Drop. */
-function FactRow({ f, kept, text, editing, open, onKeep, onEdit, onText }: { f: MarketLine; kept: boolean; text: string; editing: boolean; open: boolean; onKeep: (on: boolean) => void; onEdit: (on: boolean) => void; onText: (t: string) => void }) {
+function FactRow({ i, f, kept, text, editing, open, onKeep, onEdit, onText }: { i: number; f: MarketLine; kept: boolean; text: string; editing: boolean; open: boolean; onKeep: (on: boolean) => void; onEdit: (on: boolean) => void; onText: (t: string) => void }) {
   return (
-    <li className={clsx(qr.inset, "flex flex-col gap-[4px] px-[10px] py-[8px]", !kept && "opacity-60")}>
+    <li style={{ "--i": i } as CSSProperties} className={clsx(qr.inset, "flex flex-col gap-[4px] px-[10px] py-[8px]", !kept && "opacity-60")}>
       <span className="flex items-center gap-[6px] text-micro text-fg-subtle">
         <span>{f.field ? FIELD_LABEL[f.field] : "About it"}</span>
         {f.url ? (
@@ -887,10 +887,11 @@ function FactsPart({ data }: { data: PartData }) {
   const kept = facts.filter((f) => !dropped.has(f.id)).length;
   return (
     <div className="flex w-full flex-col gap-[8px]">
-      <ul className="flex w-full flex-col gap-[6px]">
-        {facts.map((f) => (
+      <ul className="q-stagger flex w-full flex-col gap-[6px]">
+        {facts.map((f, i) => (
           <FactRow
             key={f.id}
+            i={i}
             f={f}
             open={open}
             kept={!open || !dropped.has(f.id)}
@@ -929,9 +930,9 @@ function FactsPart({ data }: { data: PartData }) {
 }
 
 /** A competitor found (its site, what it does) or named by them: kept, or taken off. */
-function RivalRow({ c, kept, open, onKeep }: { c: Competitor; kept: boolean; open: boolean; onKeep?: (on: boolean) => void }) {
+function RivalRow({ i, c, kept, open, onKeep }: { i: number; c: Competitor; kept: boolean; open: boolean; onKeep?: (on: boolean) => void }) {
   return (
-    <li className={clsx(qr.inset, "flex flex-col gap-[4px] px-[10px] py-[8px]", !kept && "opacity-60")}>
+    <li style={{ "--i": i } as CSSProperties} className={clsx(qr.inset, "flex flex-col gap-[4px] px-[10px] py-[8px]", !kept && "opacity-60")}>
       <span className="flex min-w-0 items-center gap-[6px]">
         <span className={clsx("truncate text-body font-medium text-fg", !kept && "line-through")}>{c.name}</span>
         {c.url ? (
@@ -972,12 +973,12 @@ function RivalsPart({ data }: { data: PartData }) {
   const kept = found.filter((c) => !off.has(c.id)).length + mine.length;
   return (
     <div className="flex w-full flex-col gap-[8px]">
-      <ul className="flex w-full flex-col gap-[6px]">
-        {found.map((c) => (
-          <RivalRow key={c.id} c={c} open={open} kept={!open || !off.has(c.id)} onKeep={(on) => setOff((d) => (on ? new Set([...d].filter((x) => x !== c.id)) : new Set([...d, c.id])))} />
+      <ul className="q-stagger flex w-full flex-col gap-[6px]">
+        {found.map((c, i) => (
+          <RivalRow key={c.id} i={i} c={c} open={open} kept={!open || !off.has(c.id)} onKeep={(on) => setOff((d) => (on ? new Set([...d].filter((x) => x !== c.id)) : new Set([...d, c.id])))} />
         ))}
-        {mine.map((c) => (
-          <RivalRow key={c.id} c={c} open={false} kept />
+        {mine.map((c, i) => (
+          <RivalRow key={c.id} i={found.length + i} c={c} open={false} kept />
         ))}
       </ul>
       {open && (

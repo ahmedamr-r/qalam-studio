@@ -634,6 +634,10 @@ input, textarea { caret-color: var(--color-fg-accent); }
 .q-rise { animation: q-lift-in var(--dur-base) var(--ease-out-quint) both; }
 .q-fade { animation: q-fade-in var(--dur-fast) var(--ease-out-quad) both; }
 .q-stagger > * { animation: q-pop-in var(--dur-fast) var(--ease-out-quint) both; animation-delay: calc(min(var(--i, 0), 8) * 30ms); }
+/* The first run's canvas: cards arrive one after another, then their wires. Rare, so it can take its time. `backwards` leaves
+   a card's own opacity free once it's in (a dimmed path). */
+.q-arrive > [data-node] { animation: q-pop-in var(--dur-base) var(--ease-out-quint) backwards; animation-delay: calc(min(var(--i, 0), 8) * 30ms); }
+.q-arrive-wire { animation: q-fade-in var(--dur-base) var(--ease-out-quad) 120ms backwards; }
 
 /* Hover highlight: 0ms in, 150ms out (rows, menu items, icon buttons, palette rows) */
 .q-item { transition: background-color var(--dur-fast) var(--ease-out-quad), color var(--dur-fast) var(--ease-out-quad); }
@@ -676,6 +680,19 @@ input, textarea { caret-color: var(--color-fg-accent); }
 /* Flyout chevron flips while its menu is open */
 .q-chevron { transition: rotate var(--dur-fast) var(--ease-out-quad); }
 [data-state="open"] > .q-chevron, [aria-expanded="true"] > .q-chevron { rotate: 180deg; }
+
+/* A fold opens on its height and fades in, and closes a step faster. A browser without these just snaps. */
+@supports (interpolate-size: allow-keywords) {
+  .q-fold { interpolate-size: allow-keywords; }
+  .q-fold::details-content {
+    block-size: 0; opacity: 0; overflow: clip;
+    transition: block-size calc(var(--dur-move) * 0.75) var(--ease-out-quint), opacity var(--dur-quick) var(--ease-out-quad), content-visibility calc(var(--dur-move) * 0.75) allow-discrete;
+  }
+  .q-fold[open]::details-content {
+    block-size: auto; opacity: 1;
+    transition: block-size var(--dur-move) var(--ease-out-quint), opacity var(--dur-fast) var(--ease-out-quad), content-visibility var(--dur-move) allow-discrete;
+  }
+}
 
 /* Checkbox check draws (pathLength="1") */
 .q-check path { stroke-dasharray: 1; stroke-dashoffset: 0; }
