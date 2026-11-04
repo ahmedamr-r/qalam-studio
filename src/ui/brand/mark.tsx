@@ -1,15 +1,11 @@
 import clsx from "clsx";
-import { NUQTA_PATH, PENCIL_PATH } from "./pencil";
+import { MARK_PATH, MARK_STROKE } from "./geometry";
 
-/*
- * Qalam Studio mark: a pencil whose point is a nuqta (src/ui/brand/pencil.ts), filled here; only the
- * Qalam AI glyph shows it hollow. Colour comes from `currentColor` (the top bar uses text-accent).
- */
+/* Qalam Studio mark: a q in one stroke (./geometry.ts). Colour comes from `currentColor` (the top bar uses text-mark). */
 export function QalamMark({ size = 16, className }: { size?: 16 | 20; className?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" role="img" aria-label="Qalam Studio" className={className}>
-      <path fillRule="evenodd" d={PENCIL_PATH} />
-      <path d={NUQTA_PATH} />
+    <svg width={size} height={size} viewBox="0 0 24 24" role="img" aria-label="Qalam Studio" className={className}>
+      <path d={MARK_PATH} fill="none" stroke="currentColor" strokeWidth={MARK_STROKE} strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

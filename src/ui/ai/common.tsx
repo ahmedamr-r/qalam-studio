@@ -18,7 +18,7 @@ export const elapsed = (ms: number) => {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 };
 
-/** A Qalam AI run in progress: glyph, shimmering status, elapsed timer and an indeterminate bar. */
+/** A Qalam AI run in progress, on one line: glyph, shimmering status, what's come back so far and how long it's been. What to expect goes under it. */
 export function Progress({ tokens, started, label, note }: { tokens: number; started: number; label: string; note?: string }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -26,14 +26,16 @@ export function Progress({ tokens, started, label, note }: { tokens: number; sta
     return () => clearInterval(t);
   }, []);
   return (
-    <div className="flex flex-col gap-[8px] rounded-lg bg-muted px-[12px] py-[10px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]" role="status">
+    <div className="q-sheet flex flex-col gap-[4px] rounded-xl px-[12px] py-[10px]" role="status">
       <div className="flex items-center gap-[10px] text-caption font-medium">
-        <QalamAIGlyph size={14} />
+        <QalamAIGlyph size={14} className="shrink-0" />
         <span className="q-shimmer-text min-w-0 truncate">{label}</span>
-        <span className="ml-auto font-normal text-fg-subtle tnum">{elapsed(now - started)}</span>
+        <span className="ml-auto shrink-0 font-normal text-fg-muted tnum">
+          {tokens ? `${tokens < 1000 ? tokens : `${(tokens / 1000).toFixed(1)}k`} tokens · ` : ""}
+          {elapsed(now - started)}
+        </span>
       </div>
-      <div className="ds-shimmer h-[3px] rounded-full" />
-      <div className="text-micro text-fg-subtle tnum">{note ?? (tokens ? `~${tokens.toLocaleString()} tokens streamed` : "Waiting for the model…")}</div>
+      {note && <p className="text-micro text-fg-muted">{note}</p>}
     </div>
   );
 }

@@ -31,7 +31,7 @@ import {
   Waypoints,
 } from "lucide-react";
 import type { DecisionKind, Group, NodeKind } from "@/knowledge/types";
-import { NUQTA_PATH, PENCIL_PATH } from "../brand/pencil";
+import { AI_NUQTA_PATH, AI_SMALL_NUQTA_PATH } from "../brand/geometry";
 
 /**
  * One icon per kind of knowledge (what it is), coloured by its group (where it came from). Used by
@@ -40,11 +40,11 @@ import { NUQTA_PATH, PENCIL_PATH } from "../brand/pencil";
 
 type Icon = ComponentType<SVGProps<SVGSVGElement> & { size?: number | string; strokeWidth?: number | string; absoluteStrokeWidth?: boolean }>;
 
-/** Qalam AI's pencil, for decisions (the studio's AI mark; never a sparkle). */
-export const PencilIcon: Icon = ({ size = 24, strokeWidth: _s, absoluteStrokeWidth: _a, ...rest }) => (
+/** Qalam AI's nuqtas, for decisions (the studio's AI mark; never a sparkle). */
+export const NuqtasIcon: Icon = ({ size = 24, strokeWidth: _s, absoluteStrokeWidth: _a, ...rest }) => (
   <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" aria-hidden {...rest}>
-    <path d={PENCIL_PATH} />
-    <path d={NUQTA_PATH} />
+    <path d={AI_NUQTA_PATH} />
+    <path d={AI_SMALL_NUQTA_PATH} />
   </svg>
 );
 
@@ -70,7 +70,7 @@ export const KIND_ICON: Record<NodeKind, Icon> = {
   research: Globe,
   source: Link,
   chat: MessageSquareText,
-  decision: PencilIcon,
+  decision: NuqtasIcon,
   token: Hexagon,
   component: Shapes,
   screen: Smartphone,
@@ -98,7 +98,7 @@ export const GROUP_ICON: Record<Group, Icon> = {
   system: Ruler,
   learned: Lightbulb,
   research: Globe,
-  decision: PencilIcon,
+  decision: NuqtasIcon,
   anchor: Smartphone,
 };
 

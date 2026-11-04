@@ -1,12 +1,11 @@
 import { useId } from "react";
-import { NUQTA_HOLE_PATH, NUQTA_PATH, PENCIL_AXIS, PENCIL_PATH } from "./pencil";
+import { AI_AXIS, AI_HOLE_PATH, AI_NUQTA_PATH, AI_SMALL_NUQTA_PATH } from "./geometry";
 
 /*
- * Qalam AI's glyph: the studio's pencil (src/ui/brand/pencil.ts) with its nuqta point hollow, Qalam
- * AI's suggestion still being written. The hollow fills when a run completes (`done` → [data-done]
- * .q-nuqta-hole scales 0→1 on the bouncy spring). Below 16px the hollow would close up, so the
- * nuqta is drawn filled. tone="ink" sits on the saffron Generate button; "current" takes the text
- * colour. Never the ✦ sparkle.
+ * Qalam AI's glyph: a pair of nuqtas (./geometry.ts), the big one an outline, as the mark is a
+ * stroke: Qalam AI's suggestion still being written. The hollow fills when a run completes (`done`
+ * → [data-done] .q-nuqta-hole scales 0→1 on the bouncy spring). tone="ink" sits on the saffron
+ * Generate button; "current" takes the text colour. Never the ✦ sparkle.
  */
 export function QalamAIGlyph({
   size = 16,
@@ -21,7 +20,6 @@ export function QalamAIGlyph({
 }) {
   const id = "qai" + useId().replace(/[^a-zA-Z0-9_-]/g, ""); // safe inside url(#…)
   const fill = tone === "gradient" ? `url(#${id})` : "currentColor";
-  const small = size < 16;
   return (
     <svg
       width={size}
@@ -34,24 +32,16 @@ export function QalamAIGlyph({
     >
       {tone === "gradient" && (
         <defs>
-          {/* One gradient across the whole glyph, eraser (lapis) to point (saffron). */}
-          <linearGradient id={id} gradientUnits="userSpaceOnUse" {...PENCIL_AXIS}>
-            <stop offset="0" stopColor="#5379fd" />
-            <stop offset=".45" stopColor="#ea4ca4" />
-            <stop offset=".75" stopColor="#fd6940" />
-            <stop offset="1" stopColor="#f9b73f" />
+          {/* One gradient across the whole glyph, in the theme's two periwinkles. */}
+          <linearGradient id={id} gradientUnits="userSpaceOnUse" {...AI_AXIS}>
+            <stop offset="0" stopColor="var(--ai-glyph-1)" />
+            <stop offset="1" stopColor="var(--ai-glyph-2)" />
           </linearGradient>
         </defs>
       )}
-      <path fill={fill} fillRule="evenodd" d={PENCIL_PATH} />
-      {small ? (
-        <path fill={fill} d={NUQTA_PATH} />
-      ) : (
-        <>
-          <path fill={fill} fillRule="evenodd" d={`${NUQTA_PATH} ${NUQTA_HOLE_PATH}`} />
-          <path fill={fill} className="q-nuqta-hole" d={NUQTA_HOLE_PATH} />
-        </>
-      )}
+      <path fill={fill} fillRule="evenodd" d={`${AI_NUQTA_PATH} ${AI_HOLE_PATH}`} />
+      <path fill={fill} className="q-nuqta-hole" d={AI_HOLE_PATH} />
+      <path fill={fill} d={AI_SMALL_NUQTA_PATH} />
     </svg>
   );
 }

@@ -24,7 +24,7 @@
 
    Ink on paper: warm near-black surfaces (OKLCH hue 75, chroma <= .009), one
    gold-leaf accent (saffron) used like gilding, functional blue for canvas
-   selection, and the four-pigment Illumination reserved for Qalam AI.
+   selection, and the Illumination's cool nacre reserved for Qalam AI.
 
    MECHANISM (one, on purpose):
    - Dark values are declared in `@theme static`. Tailwind emits them on
@@ -111,6 +111,9 @@
   --color-line: rgb(255 255 255 / 0.085);
   --color-line-subtle: rgb(255 255 255 / 0.055);
   --color-line-strong: rgb(255 255 255 / 0.15);
+
+  /* The Qalam mark (src/ui/brand/). Not the accent: the mark is in the Desk's indigo. */
+  --color-mark: #eef2ff;
 
   /* Brand accent: saffron. ONE fill per view (Generate). */
   --color-accent: #f8af3d;
@@ -294,11 +297,12 @@
   --canvas-wash: var(--grain), radial-gradient(135% 115% at 8% -6% in oklab, var(--wash-1) 0%, var(--wash-2) 45%, var(--wash-3) 100%);
 
   /* Qalam AI · Illumination
-     --ai-gradient       saturated manuscript pigments, ONLY as glyph fills <= 16px
-     --ai-gradient-soft  nacre key: cursor tag fill, shimmer band, rings, glow */
-  --ai-lapis: #5379fd;  --ai-rose: #ea4ca4;  --ai-vermilion: #fd6940;  --ai-saffron: #f9b73f;
+     --ai-glyph-*        the glyph's two periwinkles (src/ui/brand/ai-glyph.tsx)
+     --ai-gradient       the same, ONLY as small marks <= 16px
+     --ai-gradient-soft  nacre key: cursor tag fill, rings, glow */
+  --ai-glyph-1: #bcc9ff;  --ai-glyph-2: #93a6ff;
   --ai-1: #9ab0ff;  --ai-2: #c9a8ff;  --ai-3: #f2a8cb;  --ai-4: #ffd29a;
-  --ai-gradient: linear-gradient(135deg, #5379fd 0%, #ea4ca4 45%, #fd6940 75%, #f9b73f 100%);
+  --ai-gradient: linear-gradient(135deg, var(--ai-glyph-1) 0%, var(--ai-glyph-2) 100%);
   --ai-gradient-soft: linear-gradient(110deg, var(--ai-1) 0%, var(--ai-2) 35%, var(--ai-3) 68%, var(--ai-4) 100%);
   --ai-conic: conic-gradient(from var(--ai-angle, 0deg), var(--ai-1), var(--ai-2), var(--ai-3), var(--ai-4), var(--ai-1));
   --ai-glow: 0 0 24px -6px rgb(201 168 255 / 0.30);  /* lilac, alpha capped at .30 */
@@ -385,6 +389,8 @@
   --color-fg-faint: #a19e9a;
   --color-fg-accent: #975d04;
 
+  --color-mark: #22367f;
+
   --color-line: rgb(0 0 0 / 0.09);
   --color-line-subtle: rgb(0 0 0 / 0.06);
   --color-line-strong: rgb(0 0 0 / 0.16);
@@ -466,6 +472,8 @@
   --shell-ink-faint: #6c6863;
   --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 .04 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 
+  --ai-glyph-1: #4a67e0;  --ai-glyph-2: #2f49c0;
+
   /* Light rings use the saturated stops (nacre vanishes on white); the tag keeps nacre with ink text. */
   --ai-conic: conic-gradient(from var(--ai-angle, 0deg), #4f6bff, #8b5cf6, #e0559b, #e3971f, #4f6bff);
   --ai-glow: 0 0 22px -6px rgb(139 92 246 / 0.28);
@@ -534,7 +542,7 @@ input, textarea { caret-color: var(--color-fg-accent); }
 
 /* Legacy form classes stay UNLAYERED, as today, so existing call sites render the same. */
 .ds-input, .ds-textarea {
-  border-radius: 6px; background: var(--color-field); border: 0; box-shadow: none;
+  border-radius: 8px; background: var(--color-field); border: 0; box-shadow: none;
   font-size: 13px; color: var(--color-fg); outline: none; width: 100%; min-width: 0;
   transition: box-shadow var(--dur-fast) var(--ease-out-quad), background-color var(--dur-fast) var(--ease-out-quad);
 }
@@ -718,7 +726,7 @@ input, textarea { caret-color: var(--color-fg-accent); }
 /* ---- Qalam AI signature ---------------------------------------------------- */
 /* Status text: fg-subtle base with a nacre band */
 .q-shimmer-text {
-  background: linear-gradient(90deg, var(--color-fg-subtle) 0%, var(--color-fg-subtle) 35%, var(--color-fg) 46%, var(--ai-3) 50%, var(--color-fg) 54%, var(--color-fg-subtle) 65%, var(--color-fg-subtle) 100%);
+  background: linear-gradient(90deg, var(--color-fg-subtle) 0%, var(--color-fg-subtle) 35%, var(--color-fg) 46%, var(--ai-1) 50%, var(--color-fg) 54%, var(--color-fg-subtle) 65%, var(--color-fg-subtle) 100%);
   background-size: 250% 100%; -webkit-background-clip: text; background-clip: text; color: transparent;
   animation: q-shimmer-text var(--dur-ai-shimmer) linear infinite;
 }
