@@ -106,6 +106,9 @@ export function firstAnswerProblem(path: StartPath, raw: string): string | null 
   return "Say what you want to build, in a few words.";
 }
 
+/** What's found isn't all there is: more can come in later. A company may have analytics; an idea has none yet. */
+export const moreLine = (path: StartPath) => `This is only a start. Add ${path === "company" ? "interviews, docs, notes or your analytics" : "interviews, notes or docs"} any time from the canvas, to find more problems and goals.`;
+
 /** Their first answer, as the chat's turn shows it. */
 export const saidOf = (t: ScanTarget) => (t.kind === "idea" ? t.said : t.name || t.app || "");
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { steerRound } from "@/scan/steer";
-import { answerSaid, firstAnswerProblem, meFrom, pathOfShape, saidOf, shapeOfPath, startQuestions, startTarget, WHO_TITLE } from "./start";
+import { answerSaid, firstAnswerProblem, meFrom, moreLine, pathOfShape, saidOf, shapeOfPath, startQuestions, startTarget, WHO_TITLE } from "./start";
 
 const q = (path: "company" | "idea", id: string) => startQuestions(path).find((x) => x.id === id)!;
 
@@ -67,6 +67,17 @@ describe("the questions after it", () => {
     expect(meFrom(q("company", "role"), "Growth lead")).toEqual({ position: "other", title: "Growth lead" });
     expect(meFrom(q("company", "move"), "Revenue")).toBeNull();
     expect(meFrom(q("company", "role"), " ")).toBeNull();
+  });
+});
+
+describe("what's found isn't all there is", () => {
+  it("says more can come in later, problems and goals both", () => {
+    for (const path of ["company", "idea"] as const) expect(moreLine(path)).toMatch(/any time from the canvas, to find more problems and goals\.$/);
+  });
+
+  it("offers analytics only to a company, since an idea has none yet", () => {
+    expect(moreLine("company")).toContain("analytics");
+    expect(moreLine("idea")).not.toContain("analytics");
   });
 });
 

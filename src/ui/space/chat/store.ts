@@ -25,6 +25,7 @@ import { knowsMarket } from "@/market/types";
 import { loadMarket, useMarket } from "@/org/market";
 import { useSpaceView } from "@/space/view";
 import { onOrgChange } from "@/org/live";
+import { needsDb } from "@/org/needs";
 import { otherReading, requestOf, scanInput } from "@/scan/input";
 import type { ScanTarget } from "@/scan/session";
 import { notAsked, steerAnswers, steerRound, type ScanSaid } from "@/scan/steer";
@@ -84,9 +85,11 @@ interface ChatState {
   pending: { key: string; what: FindWhat } | null;
   /** Words for a scan from a canvas whose chat isn't loaded yet (the first run's box): started as it loads. */
   pendingScan: { key: string; said: string } | null;
+  /** A goal asked for by the address before the chat has loaded: started as it loads. */
+  pendingGoal: { card: string; topic?: string } | null;
 }
 
-export const useCanvasChat = create<ChatState>(() => ({ key: null, space: null, chat: emptyChat(), loaded: false, live: {}, pending: null, pendingScan: null }));
+export const useCanvasChat = create<ChatState>(() => ({ key: null, space: null, chat: emptyChat(), loaded: false, live: {}, pending: null, pendingScan: null, pendingGoal: null }));
 
 const st = () => useCanvasChat.getState();
 const ctrls = new Map<string, AbortController>();
@@ -133,6 +136,11 @@ export async function openChat(space: string | null) {
   if (pending?.key === key) {
     useCanvasChat.setState({ pending: null });
     void findWith(pending.what, space);
+  }
+  const goal = st().pendingGoal;
+  if (goal) {
+    useCanvasChat.setState({ pendingGoal: null });
+    goalWith(goal.card, goal.topic);
   }
   // A scan started before the page closed went on in the core: where it's got to.
   void followScan();
@@ -725,12 +733,26 @@ function backingOf(card: string): string[] {
  */
 export function goalWith(card: string, topic?: string) {
   toggleChat(true);
-  if (!st().loaded) return;
+  if (!st().loaded) return void useCanvasChat.setState({ pendingGoal: { card, ...(topic ? { topic } : {}) } });
   const open = st().chat.turns.some((t) => t.job.kind === "goalfor" && t.job.card === card && t.job.step !== "done" && t.job.step !== "failed");
   if (open) return;
   const title = cardTitle(card);
   const id = addTurn(`Find the goal “${title}” could move`, { kind: "goalfor", card, title, ...(topic ? { topic } : {}), step: "looking" });
   void lookForGoals(id, false);
+}
+
+/** A problem's page put on the canvas as a card, and the chat finding a goal it could move. */
+export async function goalForProblem(topic: string) {
+  const { workOnNeed } = await import("../SpacePanel");
+  const card = await workOnNeed(topic);
+  if (card) goalWith(card, topic);
+}
+
+/** The same from the best-backed problem, for where nothing has been picked. */
+export async function goalForTopProblem() {
+  const top = await needsDb.list().then((n) => n.needs[0]?.topic, () => undefined);
+  if (top) await goalForProblem(top);
+  else openProblems();
 }
 
 /** Look for the goals it could move (`look`: the ones on the canvas are ruled out, so the web). */

@@ -5,7 +5,7 @@ import { addCardIn, makeCardNode, newCard } from "@/discovery/ops";
 import { sameTopic } from "@/hub/topics";
 import { useSpaceView } from "@/space/view";
 import { glideToLayer, onCanvasReady } from "../discovery/canvas";
-import { findWith, scanFrom, sendToChat } from "./chat/store";
+import { findWith, goalForProblem, scanFrom, sendToChat } from "./chat/store";
 import { composeIn } from "./chat/compose";
 import { takeWords } from "./handoff";
 import { currentSpace } from "../frame/useSpace";
@@ -34,9 +34,10 @@ import { addMaterial } from "./new";
  *   ?take=goal|problem    their words from the first run, taken as a goal or a problem
  *   ?scan=1               the first run's one box: their words read for what people complain about
  *   ?panel=problems       the panel open on that section (read by ../home/Home.tsx as it opens)
+ *   ?goalfor=<topic>      that problem on the canvas, and the chat finding a goal it could move
  */
 
-const KEYS = ["card", "board", "then", "problem", "under", "review", "source", "idea", "add", "write", "take", "panel"];
+const KEYS = ["card", "board", "then", "problem", "under", "review", "source", "idea", "add", "write", "take", "panel", "goalfor"];
 
 /**
  * What the address hands straight to the chat, taken once the canvas's cards are in rather than once
@@ -74,6 +75,7 @@ export async function consumeHomeParams() {
   const idea = get("idea");
   const take = get("take");
   const write = get("write");
+  const goalFor = get("goalfor");
   if (get("add") === "1") addMaterial();
   for (const k of KEYS) p.delete(k);
   // The kept drafts read the address themselves (src/ui/discovery/solutions.ts).
@@ -107,6 +109,7 @@ export async function consumeHomeParams() {
   }
   // From the first run's start: the box for one in mind, or their words taken as one.
   if (write === "1") composeIn({});
+  if (goalFor) void goalForProblem(goalFor);
   if (take === "goal" || take === "problem") {
     const text = takeWords();
     if (text) void sendToChat(text, take);
@@ -130,13 +133,16 @@ export function show(id: string, o: { select?: boolean } = {}) {
 }
 
 /** A goal page's "Work on it": the problem under the card (a goal's), once; one there already is just shown. */
-export async function addProblem(topic: string, under: string | null) {
+export async function addProblem(topic: string, under: string | null): Promise<string | null> {
   const c = await problemCard(topic);
-  if (!c) return;
+  if (!c) return null;
   const doc = studio().doc;
   const parent = under && isOstCard(doc.nodes[under]) ? under : null;
   const there = Object.values(doc.nodes).find((n) => isOstCard(n) && n.meta.ost?.kind === "opportunity" && !n.id.startsWith("topic:") && sameTopic(n.meta.ost.title, c.title));
-  if (there) return show(there.id);
+  if (there) {
+    show(there.id);
+    return there.id;
+  }
   const node = makeCardNode(newCard("opportunity", { title: c.title, evidence: c.evidence }));
   const t = parent ? useSpaceView.getState().things.get(parent) : undefined;
   const faint = `topic:${t?.type === "goal" ? t.goal : "none"}:${topic}`;
@@ -150,6 +156,7 @@ export async function addProblem(topic: string, under: string | null) {
     addCardIn(d, node, parent);
   });
   show(node.id);
+  return node.id;
 }
 
 /** Placements load as the canvas opens: wait a little for them. */

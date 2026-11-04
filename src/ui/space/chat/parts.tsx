@@ -35,7 +35,8 @@ import { useTopics } from "../../topics/list";
 import { useWords } from "../../frame/store";
 import { show } from "../links";
 import { FoundGoalRow } from "../../chat/FoundGoalRow";
-import { anotherFile, briefAgain, briefStart, changeDocBasis, chooseDraft, decideDocGoal, dropTurn, leaveFile, leaveFit, lookPastFits, openProblems, pickAudience, placeFirstBuild, placeStatement, planAgain, planFirst, planOf, planStart, retake, retryGoalFor, scanAgain, scanHere, scanInNewProject, scanIsMine, scanOtherWay, setPlanGoal, settleNumber, steerOff, stopTurn, takeAsBasis, takeFit, takeGoalNumber, takeIdea, turnOf, useCanvasChat } from "./store";
+import { moreLine } from "@/onboarding/start";
+import { goalForTopProblem, anotherFile, briefAgain, briefStart, changeDocBasis, chooseDraft, decideDocGoal, dropTurn, leaveFile, leaveFit, lookPastFits, openProblems, pickAudience, placeFirstBuild, placeStatement, planAgain, planFirst, planOf, planStart, retake, retryGoalFor, scanAgain, scanHere, scanInNewProject, scanIsMine, scanOtherWay, setPlanGoal, settleNumber, steerOff, stopTurn, takeAsBasis, takeFit, takeGoalNumber, takeIdea, turnOf, useCanvasChat } from "./store";
 import { titleFrom } from "@/space/route";
 import { otherReading, projectName } from "@/scan/input";
 import { firstGoal, GOAL_ACTIONS, riskiest, type GoalAction, type ScanAudience } from "@/scan/plan";
@@ -1273,6 +1274,7 @@ function ScannedPart({ data }: { data: PartData }) {
         </p>
       )}
       {s.noWeb && <p className="text-caption text-fg-subtle">There's no web search here, so I read only what I can reach directly.</p>}
+      <p className="text-caption text-fg-muted">{moreLine(job.mine ? "company" : "idea")}</p>
       <KnownFold known={s.known ?? []} />
       {!s.thin && s.problems.length > 0 && <ShareBlock job={job} />}
       <ReplyChips>
@@ -1284,6 +1286,11 @@ function ScannedPart({ data }: { data: PartData }) {
         {(s.problems.length > 0 || already) && (
           <button type="button" className={s.thin || job.plan ? r.replyChipPrimary : r.replyChip} onClick={openProblems}>
             See them ranked
+          </button>
+        )}
+        {!s.thin && s.problems.length > 0 && (
+          <button type="button" className={r.replyChip} onClick={() => void goalForTopProblem()}>
+            Find goals for a problem
           </button>
         )}
         {s.thin && !already && (

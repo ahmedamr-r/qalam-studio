@@ -6,7 +6,7 @@ import { currentOrg } from "@/org/client";
 import { needsDb } from "@/org/needs";
 import { scanNow, steerQuestions, steerScan } from "@/org/scan";
 import { lineOf, LINE_MS, phaseOf, POSE_OF, readSoFar, scanProgress } from "@/onboarding/reading";
-import { answerSaid, meFrom, pathOfShape, startQuestions, WHO_TITLE, type StartChoice, type StartPath, type StartQuestion } from "@/onboarding/start";
+import { answerSaid, meFrom, moreLine, pathOfShape, startQuestions, WHO_TITLE, type StartChoice, type StartPath, type StartQuestion } from "@/onboarding/start";
 import { orgHref } from "@/projects/model";
 import { peopleQuotes, type ScanSession } from "@/scan/session";
 import { isOff } from "@/scan/steer";
@@ -66,12 +66,17 @@ function Question({ q, at, session, home, onDone, choices, loading }: { q: Start
   );
 }
 
-function Results({ s, canvas, onAgain }: { s: ScanSession; canvas: string; onAgain: () => void }) {
-  // Best backed first, as the panel will list them; the scan itself keeps them in the order they were filed.
-  const [ranked, setRanked] = useState<string[] | null>(null);
+function Results({ s, path, canvas, onAgain }: { s: ScanSession; path: StartPath; canvas: string; onAgain: () => void }) {
+  // Best backed first, as the panel will list them. The scan itself keeps them in the order they were filed, so with no ranking (no search index) they aren't numbered.
+  const [top, setTop] = useState<{ ranked: boolean; items: { topic: string; title: string }[] } | null>(null);
+  const [picked, setPicked] = useState<string | null>(null);
   useEffect(() => {
-    if (s.state === "done") void needsDb.list().then((n) => setRanked(n.needs.map((x) => x.title)), () => setRanked(s.problems.map((p) => p.title)));
+    if (s.state !== "done") return;
+    const filed = { ranked: false, items: s.problems.map((p) => ({ topic: p.id, title: p.title })) };
+    void needsDb.list().then((n) => setTop(n.needs.length ? { ranked: true, items: n.needs.map((x) => ({ topic: x.topic, title: x.title })) } : filed), () => setTop(filed));
   }, [s.state, s.at]);
+  const items = top?.items.slice(0, 3) ?? [];
+  const chosen = picked ?? items[0]?.topic;
   const people = peopleQuotes(s.read);
   const said = people === 1 ? "1 quote" : `${people} quotes`;
   const n = s.problems.length;
@@ -95,26 +100,42 @@ function Results({ s, canvas, onAgain }: { s: ScanSession; canvas: string; onAga
   if (phase === "thin")
     return (
       <Stage pose={pose} line={line} home={canvas} title="I found little">
-        <p className="text-body text-fg-muted">{n ? `${n === 1 ? "1 problem" : `${n} problems`} from ${said}, so I won't call it a pattern yet.` : "Nothing I could read spoke to this, so I won't call it a pattern."} On the canvas you can add what you already have, or try it worded another way.</p>
+        <p className="text-body text-fg-muted">{n ? `${n === 1 ? "1 problem" : `${n} problems`} from ${said}, so I won't call it a pattern yet.` : "Nothing I could read spoke to this, so I won't call it a pattern."} On the canvas you can try it worded another way.</p>
         <a href={canvas} className={clsx(r.button, r.buttonPrimary, "self-start")}>
           Go to the canvas
         </a>
+        <p className="text-caption text-fg-muted">{moreLine(path)}</p>
       </Stage>
     );
   return (
     <Stage pose={pose} line={line} home={canvas} title={`${n} problems, from ${said}`}>
-      <ol className="q-stagger flex flex-col gap-[8px]">
-        {(ranked ?? []).slice(0, 3).map((title, i) => (
-          <li key={title} className="flex gap-[10px] rounded-lg bg-raised px-[12px] py-[10px] text-body text-fg shadow-button">
-            <span className="tnum text-fg-subtle">{i + 1}</span>
-            {title}
-          </li>
-        ))}
-      </ol>
+      <fieldset className="flex flex-col gap-[8px]">
+        <legend className="mb-[8px] text-body text-fg-muted">Pick one to find a goal it could move.</legend>
+        <div className="q-stagger flex flex-col gap-[8px]">
+          {items.map((p, i) => (
+            <label key={p.topic} className={clsx("q-item flex cursor-pointer items-start gap-[10px] rounded-lg px-[12px] py-[10px] text-body text-fg has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accent", chosen === p.topic ? "bg-accent-subtle shadow-[inset_0_0_0_1px_var(--color-accent)]" : "bg-raised shadow-button hover:bg-elevated light:hover:bg-muted")}>
+              <input type="radio" name="problem" className="sr-only" checked={chosen === p.topic} onChange={() => setPicked(p.topic)} />
+              <span aria-hidden="true" className={clsx("mt-[3px] grid size-[14px] shrink-0 place-items-center rounded-full", chosen === p.topic ? "bg-accent" : "shadow-[inset_0_0_0_1px_var(--color-fg-subtle)]")}>
+                {chosen === p.topic && <span className="size-[5px] rounded-full bg-accent-fg" />}
+              </span>
+              {top?.ranked && <span className="tnum text-fg-subtle">{i + 1}</span>}
+              <span dir="auto">{p.title}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
       <p className="text-caption text-fg-muted">{s.target.kind === "product" && s.target.mine ? "Your own app's reviews count as your customers' words; the rest is what people say publicly." : "This is what people say publicly: a place to start, not proof."}</p>
-      <a href={`${canvas}?panel=problems`} className={clsx(r.button, r.buttonPrimary, "self-start")}>
-        See them
-      </a>
+      <div className="flex flex-wrap items-center gap-[8px]">
+        {chosen && (
+          <a href={`${canvas}?goalfor=${encodeURIComponent(chosen)}`} className={clsx(r.button, r.buttonPrimary)}>
+            Find goals for this problem
+          </a>
+        )}
+        <a href={`${canvas}?panel=problems`} className={clsx(r.button, r.buttonSecondary)}>
+          See all {n}
+        </a>
+      </div>
+      <p className="text-caption text-fg-muted">{moreLine(path)}</p>
     </Stage>
   );
 }
@@ -231,5 +252,5 @@ export default function Reading() {
 
   if (q) return <Question key={q.id} q={q} at={question!} session={session} home={canvas} onDone={answered} choices={q.id === "who" ? who.options.map((label) => ({ label })) : q.choices} loading={q.id === "who" && who.loading} />;
   if (session.state === "reading") return <AtWork s={session} now={now} canvas={canvas} />;
-  return <Results s={session} canvas={canvas} onAgain={() => void readAgain(session).then(setSession, () => {})} />;
+  return <Results s={session} path={path} canvas={canvas} onAgain={() => void readAgain(session).then(setSession, () => {})} />;
 }
