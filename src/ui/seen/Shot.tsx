@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import clsx from "clsx";
 import { X } from "lucide-react";
 import { create } from "zustand";
@@ -81,7 +82,8 @@ export function ShotZoom() {
     return () => window.removeEventListener("keydown", onKey);
   }, [shot]);
   if (!shot) return null;
-  return (
+  // Through a portal: a glass panel (q-glass) would trap anything fixed inside it.
+  return createPortal(
     <div role="dialog" aria-label={label} className="fixed inset-0 z-[70] grid place-items-center bg-overlay p-[32px]" onClick={() => useZoom.setState({ shot: null })}>
       <div className="relative flex max-h-full flex-col items-center gap-[8px]" onClick={(e) => e.stopPropagation()}>
         <div className="flex w-full items-center gap-[8px] text-body font-medium text-fg">
@@ -100,6 +102,7 @@ export function ShotZoom() {
           )}
         </span>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

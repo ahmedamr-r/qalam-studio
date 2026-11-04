@@ -54,7 +54,7 @@ export default function OrgsPage() {
           <span className="px-[8px] text-body font-medium text-fg">Organizations</span>
         </header>
         <div className="relative min-h-0 px-[8px] pb-[8px]">
-          <main className="h-full overflow-y-auto rounded-xl bg-app shadow-panel">
+          <main className="q-glass h-full overflow-y-auto rounded-xl bg-app shadow-panel">
             <div className={clsx(r.pageMain, "max-w-[640px] gap-[20px] pt-[48px]")}>
               <h1 className="text-display font-semibold text-fg">Your organizations</h1>
               {state.kind === "error" ? (

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { createPortal } from "react-dom";
 import clsx from "clsx";
 import { X } from "lucide-react";
 import { GROUPS } from "@/connectors/catalog";
@@ -267,7 +268,8 @@ function OwnApp({ c, onClose, onKept }: { c: ConnectorState; onClose: () => void
     }
   };
   const step = (n: number) => <span className="grid size-[20px] shrink-0 place-items-center rounded-full bg-field text-micro font-medium text-fg-muted tnum">{n}</span>;
-  return (
+  // Through a portal: a glass panel (q-glass) would trap anything fixed inside it.
+  return createPortal(
     <>
       <div className={r.overlay} data-state="open" onPointerDown={busy ? undefined : onClose} />
       <div role="dialog" aria-label={`Set up ${c.label}`} data-state="open" className={clsx(r.dialog, "flex flex-col")}>
@@ -310,7 +312,8 @@ function OwnApp({ c, onClose, onKept }: { c: ConnectorState; onClose: () => void
         </ol>
         {error && <p className="px-[16px] pb-[12px] text-caption text-danger">{error}</p>}
       </div>
-    </>
+    </>,
+    document.body,
   );
 }
 
@@ -350,7 +353,8 @@ function BringIn({ c, onClose }: { c: ConnectorState; onClose: () => void }) {
       setBusy(null);
     }
   };
-  return (
+  // Through a portal: a glass panel (q-glass) would trap anything fixed inside it.
+  return createPortal(
     <>
       <div className={r.overlay} data-state="open" onPointerDown={busy === "import" ? undefined : onClose} />
       <div role="dialog" aria-label={`Bring in from ${c.label}`} data-state="open" className={clsx(r.dialog, "flex max-h-[74vh] flex-col")}>
@@ -435,6 +439,7 @@ function BringIn({ c, onClose }: { c: ConnectorState; onClose: () => void }) {
           </>
         )}
       </div>
-    </>
+    </>,
+    document.body,
   );
 }

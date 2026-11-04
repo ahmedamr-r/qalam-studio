@@ -41,4 +41,32 @@ describe("the Desk's colours", () => {
       expect(contrastRatio(light["--color-card"], light[stop])).toBeGreaterThanOrEqual(1.09);
     }
   });
+
+  it("keeps a glass panel's text readable over whatever lies behind it", () => {
+    const css = readFileSync(new URL("./globals.css", import.meta.url), "utf8");
+    const saturation = Number(/--glass-filter:[^;]*saturate\(([\d.]+)\)/.exec(css)![1]);
+    const [darkGlass, lightGlass] = [...css.matchAll(/--glass:\s*rgb\((\d+) (\d+) (\d+) \/ ([\d.]+)\)/g)].map((m) => m.slice(1).map(Number));
+    const cases = [
+      { t: dark, glass: darkGlass },
+      { t: light, glass: lightGlass },
+    ];
+    for (const { t, glass } of cases)
+      for (const behind of ["--shell-1", "--shell-glow", "--shell-2", "--shell-3", "--wash-1", "--color-card"]) {
+        const seen = throughGlass(t[behind], glass, saturation);
+        for (const ink of ["--color-fg", "--color-fg-muted", "--color-fg-subtle", "--color-fg-accent", "--color-ai", "--color-selection-label", "--color-success", "--color-warning", "--color-danger"])
+          expect([behind, ink, contrastRatio(t[ink], seen) >= 4.5]).toEqual([behind, ink, true]);
+      }
+  });
 });
+
+/** What a colour behind a glass panel looks like through it: CSS's saturate(), then the tint over it. */
+function throughGlass(hex: string, [tr, tg, tb, alpha]: number[], s: number): string {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const saturated = [
+    (0.213 + 0.787 * s) * r + (0.715 - 0.715 * s) * g + (0.072 - 0.072 * s) * b,
+    (0.213 - 0.213 * s) * r + (0.715 + 0.285 * s) * g + (0.072 - 0.072 * s) * b,
+    (0.213 - 0.213 * s) * r + (0.715 - 0.715 * s) * g + (0.072 + 0.928 * s) * b,
+  ];
+  const mixed = [tr, tg, tb].map((tint, i) => Math.round(Math.min(255, Math.max(0, tint * alpha + saturated[i] * (1 - alpha)))));
+  return `#${mixed.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+}

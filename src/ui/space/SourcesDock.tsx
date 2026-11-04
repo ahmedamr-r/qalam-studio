@@ -9,7 +9,7 @@ import SourcesPanel, { SourcesHeaderActions } from "../discovery/SourcesPanel";
  */
 export function SourcesDock({ onClose }: { onClose: () => void }) {
   return (
-    <aside aria-label="Sources" className="flex w-[300px] shrink-0 flex-col border-r border-line-subtle bg-panel">
+    <aside aria-label="Sources" className="q-glass flex w-[300px] shrink-0 flex-col border-r border-line-subtle bg-panel">
       <PanelHeader title="Sources">
         <SourcesHeaderActions />
         <IconBtn size="sm" label="Close the sources" onClick={onClose}>

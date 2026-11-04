@@ -53,7 +53,7 @@ export function PageFrame({
         <FrameTopBar crumbs={trail} right={right} space={space} />
         {/* Toasts sit over the page, bottom-centre (no toolbar here to clear). A page of panels lays its own on the Desk. */}
         <div className={clsx("relative min-h-0 min-w-0", !fill && "px-[8px] pb-[8px]")} style={{ "--toolbar-h": "0px" } as CSSProperties}>
-          <main className={fill ? "h-full overflow-hidden" : "h-full overflow-y-auto rounded-xl bg-app shadow-panel"}>{children}</main>
+          <main className={fill ? "h-full overflow-hidden" : "q-glass h-full overflow-y-auto rounded-xl bg-app shadow-panel"}>{children}</main>
           <Toasts />
         </div>
       </div>

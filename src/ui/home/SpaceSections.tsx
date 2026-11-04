@@ -43,7 +43,7 @@ export interface SectionButton {
 /** The panel's sections as buttons on the canvas, so it stays closed until one's asked for. */
 export function SectionButtons({ buttons, open, onPick, children }: { buttons: SectionButton[]; open: SpaceSection | null; onPick: (s: SpaceSection) => void; /** Before them: what can't wait to be opened. */ children?: ReactNode }) {
   return (
-    <div className="absolute top-[12px] right-[12px] z-[8] flex max-w-[calc(100%-24px)] flex-wrap items-center justify-end gap-[2px] rounded-lg bg-raised p-[2px] shadow-floating">
+    <div className="q-glass absolute top-[12px] right-[12px] z-[8] flex max-w-[calc(100%-24px)] flex-wrap items-center justify-end gap-[2px] rounded-lg bg-raised p-[2px] shadow-floating">
       {children}
       {buttons.map((b) => {
         const Icon = SECTION_ICON[b.id];

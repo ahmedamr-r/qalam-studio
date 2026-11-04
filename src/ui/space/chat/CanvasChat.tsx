@@ -82,7 +82,7 @@ export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
     <section
       aria-label="Qalam AI"
       data-ask-bar
-      className={clsx("flex shrink-0 flex-col overflow-hidden rounded-xl bg-panel", over ? "absolute top-0 bottom-[8px] left-[8px] z-30 max-w-[calc(100%-16px)] shadow-floating" : "shadow-panel")}
+      className={clsx("q-glass flex shrink-0 flex-col overflow-hidden rounded-xl bg-panel", over ? "absolute top-0 bottom-[8px] left-[8px] z-30 max-w-[calc(100%-16px)] shadow-floating" : "shadow-panel")}
       style={{ width: CHAT_W }}
     >
       <header className="flex h-[40px] shrink-0 items-center gap-[8px] pr-[8px] pl-[16px]">
@@ -262,7 +262,7 @@ function DumpRound({ source, dumpOf }: { source: string; dumpOf: DumpOf }) {
 /** The chat folded: a pill at the canvas's top-left brings it back. */
 export function ChatPill() {
   return (
-    <button type="button" onClick={() => toggleChat(true)} className="q-item absolute top-[12px] left-[12px] z-10 inline-flex h-[32px] items-center gap-[6px] rounded-lg bg-raised px-[10px] text-caption font-medium text-fg shadow-floating hover:bg-hover">
+    <button type="button" onClick={() => toggleChat(true)} className="q-item q-glass absolute top-[12px] left-[12px] z-10 inline-flex h-[32px] items-center gap-[6px] rounded-lg bg-raised px-[10px] text-caption font-medium text-fg shadow-floating hover:bg-hover">
       <QalamAIGlyph size={12} /> Qalam AI
     </button>
   );

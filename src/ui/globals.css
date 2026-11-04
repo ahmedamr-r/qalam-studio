@@ -66,6 +66,7 @@
    the Desk (section 8; shell-tokens.test.ts holds these), at each gradient's brightest stop
      dark   shell #293d6c: fg 9.3 · bar's muted and subtle 4.75 · canvas #171e2c: fg-subtle 4.6 · card 1.15
      light  shell #bfd7ff: fg 11.9 · bar's muted and subtle 5.3 · canvas, its darkest #eceef0: fg-subtle 4.75 · sel-label 4.6
+     glass, over whatever lies behind a panel at its worst: dark fg-subtle 4.66 · danger 4.9   light danger 4.5 · success 4.5 · fg-subtle 4.8
    ΔE (OKLab×100): selection vs saffron 38 · vs every agent >= 15 · AI rose vs danger 20 ·
                    saffron vs warning 8.6 (warnings ALWAYS carry an icon; lint dot is a ring)
    ========================================================================== */
@@ -275,12 +276,17 @@
   --elev-button-accent: inset 0 1px 0 rgb(255 255 255 / 0.38), inset 0 -1px 0 rgb(120 70 0 / 0.25), 0 0 0 1px rgb(0 0 0 / 0.5), 0 1px 2px rgb(0 0 0 / 0.4);
   --elev-button-pressed: inset 0 1px 1px rgb(0 0 0 / 0.18), 0 0 0 1px rgb(0 0 0 / 0.55);
   --elev-focus-field: inset 0 0 0 1px var(--color-focus), 0 0 0 3px var(--color-focus-halo);
-  --elev-panel: inset 0 1px 0 rgb(255 255 255 / 0.07), 0 0 0 1px rgb(0 0 0 / 0.35), 0 8px 28px rgb(0 0 0 / 0.28);
+  --elev-panel: inset 0 1px 0 rgb(255 255 255 / 0.13), inset 0 0 0 1px rgb(255 255 255 / 0.06), 0 0 0 1px rgb(0 0 0 / 0.3), 0 12px 32px rgb(0 0 0 / 0.3);
 
   /* The Desk (section 8): one hue, indigo (OKLCH 265), behind every page's panels. Never lilac or
      rose (Qalam AI's), never saffron (the one accent). The grain keeps a dark gradient from banding. */
   --shell-1: #293d6c;  --shell-2: #131e37;  --shell-3: #07090f;
+  --shell-glow: #1c2c52;  /* the far corner's light, so a panel there has something to show through */
   --wash-1: #171e2c;   --wash-2: #14171d;   --wash-3: #0f1012;
+  /* Glass: a dark tint lets more of the indigo through for the same lightness as a paler one. */
+  --glass: rgb(6 6 7 / 0.6);
+  --glass-filter: blur(28px) saturate(1.5);
+  --glass-foot: #090c14;  /* what a chat panel's foot looks like through the glass, near enough */
   --shell-ink-subtle: #b0adaa;
   --shell-ink-faint: #8a8681;
   --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 .06 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
@@ -445,10 +451,13 @@
   --elev-button-invert: inset 0 1px 0 rgb(255 255 255 / 0.14), 0 0 0 1px rgb(0 0 0 / 0.9), 0 1px 2px rgb(0 0 0 / 0.2);
   --elev-button-accent: inset 0 1px 0 rgb(255 255 255 / 0.45), 0 0 0 1px rgb(150 90 0 / 0.35), 0 1px 2px rgb(0 0 0 / 0.12);
   --elev-button-pressed: inset 0 1px 2px rgb(0 0 0 / 0.16), 0 0 0 1px rgb(0 0 0 / 0.14);
-  --elev-panel: 0 0 0 1px rgb(0 0 0 / 0.07), 0 6px 22px rgb(20 30 70 / 0.08);
+  --elev-panel: inset 0 1px 0 rgb(255 255 255 / 0.9), inset 0 0 0 1px rgb(255 255 255 / 0.5), 0 0 0 1px rgb(20 30 70 / 0.08), 0 8px 28px rgb(20 30 70 / 0.1);
 
   --shell-1: #bfd7ff;  --shell-2: #dde8ff;  --shell-3: #f1f3f8;
+  --shell-glow: #cfdfff;
   --wash-1: #edf5ff;   --wash-2: #edf1f8;   --wash-3: #eceef0;
+  --glass: rgb(255 255 255 / 0.65);
+  --glass-foot: #f7f9fe;
   --shell-ink-subtle: #55524e;
   --shell-ink-faint: #6c6863;
   --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 .04 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
@@ -881,7 +890,28 @@ input, textarea { caret-color: var(--color-fg-accent); }
       reads as it did. Only backgrounds; cards, buttons, tags and text stay as they are. Each sits
       on a bg-* of its own, which shows where a browser can't draw these.
    --------------------------------------------------------------------------- */
-.q-shell { background-image: var(--grain), radial-gradient(110% 130% at 0% 0% in oklab, var(--shell-1) 0%, var(--shell-2) 40%, var(--shell-3) 100%); }
+.q-shell { background-image: var(--grain), radial-gradient(75% 90% at 100% 100% in oklab, var(--shell-glow) 0%, transparent 100%), radial-gradient(110% 130% at 0% 0% in oklab, var(--shell-1) 0%, var(--shell-2) 40%, var(--shell-3) 100%); }
 .q-canvas-wash { background-image: var(--canvas-wash); }
 /* The top bar lies on the brightest part: its quieter text goes a step stronger. */
 .q-shell-bar { --color-fg-subtle: var(--shell-ink-subtle); --color-fg-faint: var(--shell-ink-faint); }
+
+/* Glass: panels and what floats on the canvas. Its bg-* stays underneath, for a browser without
+   backdrop-filter and for someone who asks for less transparency. What's inside stays solid (the
+   composer, question cards, fields, menus), and the canvas itself isn't glass, so cards and labels
+   keep their contrast. A backdrop-filter traps position: fixed inside it, so anything fixed that
+   a panel opens goes through a portal. */
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .q-glass { background-color: var(--glass); -webkit-backdrop-filter: var(--glass-filter); backdrop-filter: var(--glass-filter); }
+  /* A composer pinned over the thread: what scrolls under it fades out, with no solid band's hard edge. */
+  .q-glass-foot { background-color: transparent; }
+  .q-glass-foot.sticky { isolation: isolate; }
+  .q-glass-foot.sticky::before {
+    content: ""; position: absolute; inset: -14px -18px 0; z-index: -1;
+    background-image: linear-gradient(to bottom, transparent, var(--glass-foot) 20px);
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .q-glass { background-color: revert-layer; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .q-glass-foot { background-color: revert-layer; }
+  .q-glass-foot.sticky::before { display: none; }
+}
