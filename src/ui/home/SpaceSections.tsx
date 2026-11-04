@@ -43,12 +43,12 @@ export interface SectionButton {
 /** The panel's sections as buttons on the canvas, so it stays closed until one's asked for. */
 export function SectionButtons({ buttons, open, onPick, children }: { buttons: SectionButton[]; open: SpaceSection | null; onPick: (s: SpaceSection) => void; /** Before them: what can't wait to be opened. */ children?: ReactNode }) {
   return (
-    <div className="q-glass absolute top-[12px] right-[12px] z-[8] flex max-w-[calc(100%-24px)] flex-wrap items-center justify-end gap-[2px] rounded-lg bg-raised p-[2px] shadow-floating">
+    <div className="q-glass absolute top-[12px] right-[12px] z-[8] flex max-w-[calc(100%-24px)] flex-wrap items-center justify-end gap-[2px] rounded-xl bg-raised p-[3px] shadow-floating">
       {children}
       {buttons.map((b) => {
         const Icon = SECTION_ICON[b.id];
         return (
-          <button key={b.id} type="button" aria-pressed={open === b.id} onClick={() => onPick(b.id)} className={clsx("q-item q-press flex h-[24px] items-center gap-[6px] rounded-md px-[8px] text-caption whitespace-nowrap", open === b.id ? "bg-selection-subtle text-selection-label" : "text-fg-muted hover:bg-hover hover:text-fg")}>
+          <button key={b.id} type="button" aria-pressed={open === b.id} onClick={() => onPick(b.id)} className={clsx("q-item q-press flex h-[28px] items-center gap-[6px] rounded-lg px-[10px] text-caption whitespace-nowrap", open === b.id ? "bg-selection-subtle text-selection-label" : "text-fg-muted hover:bg-hover hover:text-fg")}>
             <Icon size={13} absoluteStrokeWidth strokeWidth={1.5} />
             {b.label}
             {!!b.count && <span className={clsx("tnum", open !== b.id && "text-fg-subtle")}>{b.count}</span>}

@@ -11,7 +11,7 @@ export function Splash({ children, error }: { children?: ReactNode; error?: Reac
   return (
     <div className="flex w-[280px] flex-col items-center gap-[20px] text-center">
       <div className="flex items-center gap-[10px]">
-        <QalamMark size={20} className="text-accent" />
+        <QalamMark size={20} className="text-mark" />
         <Wordmark />
       </div>
       {error ? (

@@ -26,6 +26,10 @@ describe("the Desk's colours", () => {
     }
   });
 
+  it("keeps the mark clear on the shell's brightest part", () => {
+    for (const t of [dark, light]) expect(contrastRatio(t["--color-mark"], t["--shell-1"])).toBeGreaterThanOrEqual(4.5);
+  });
+
   it("keeps what's drawn on a canvas readable wherever it lies on the wash", () => {
     for (const t of [dark, light])
       for (const stop of ["--wash-1", "--wash-2", "--wash-3"]) {

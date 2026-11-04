@@ -135,14 +135,14 @@ export function SpaceCanvas({ org, space, inputs, sources }: { org: string | nul
       {dock && <SourcesDock onClose={() => showDock(false)} />}
       <div className="relative min-w-0 flex-1">
         <CanvasView />
-        <div className="q-glass absolute bottom-[12px] left-[12px] z-[8] flex items-center gap-[2px] rounded-lg bg-raised p-[2px] shadow-floating">
+        <div className="q-glass absolute bottom-[12px] left-[12px] z-[8] flex items-center gap-[2px] rounded-xl bg-raised p-[3px] shadow-floating">
           <button
             ref={sourcesButton}
             type="button"
             aria-pressed={dock}
             data-sources-button
             onClick={() => showDock(!dock)}
-            className={clsx("q-item q-press flex h-[24px] items-center gap-[6px] rounded-md px-[8px] text-caption", dock ? "bg-selection-subtle text-selection-label" : "text-fg-muted hover:bg-hover hover:text-fg")}
+            className={clsx("q-item q-press flex h-[28px] items-center gap-[6px] rounded-lg px-[10px] text-caption", dock ? "bg-selection-subtle text-selection-label" : "text-fg-muted hover:bg-hover hover:text-fg")}
           >
             <FileText size={13} {...ICON} />
             Sources
@@ -151,26 +151,25 @@ export function SpaceCanvas({ org, space, inputs, sources }: { org: string | nul
           <SourceFlights target={sourcesButton} />
           {/* Written on the canvas: under the goal picked, else at the top (../space/new.ts). */}
           <Tip label="A goal, typed on the canvas (under the goal picked)">
-            <button type="button" onClick={() => writeCard("outcome")} className="q-item q-press flex h-[24px] items-center gap-[6px] rounded-md px-[8px] text-caption text-fg-muted hover:bg-hover hover:text-fg">
+            <button type="button" onClick={() => writeCard("outcome")} className="q-item q-press flex h-[28px] items-center gap-[6px] rounded-lg px-[10px] text-caption text-fg-muted hover:bg-hover hover:text-fg">
               <Plus size={13} {...ICON} />
               Goal
             </button>
           </Tip>
           <Tip label="A problem, typed on the canvas (under the goal or problem picked)">
-            <button type="button" onClick={() => writeCard("opportunity")} className="q-item q-press flex h-[24px] items-center gap-[6px] rounded-md px-[8px] text-caption text-fg-muted hover:bg-hover hover:text-fg">
+            <button type="button" onClick={() => writeCard("opportunity")} className="q-item q-press flex h-[28px] items-center gap-[6px] rounded-lg px-[10px] text-caption text-fg-muted hover:bg-hover hover:text-fg">
               <Plus size={13} {...ICON} />
               Problem
             </button>
           </Tip>
           <span aria-hidden className="mx-[2px] h-[16px] w-px bg-line-subtle" />
-          <IconBtn size="sm" label="Zoom out" onClick={() => zoomBy(0.8)}>
+          <IconBtn label="Zoom out" onClick={() => zoomBy(0.8)}>
             <Minus size={13} {...ICON} />
           </IconBtn>
-          <IconBtn size="sm" label="Zoom in" onClick={() => zoomBy(1.25)}>
+          <IconBtn label="Zoom in" onClick={() => zoomBy(1.25)}>
             <Plus size={13} {...ICON} />
           </IconBtn>
           <IconBtn
-            size="sm"
             label="Show it all"
             onClick={() => {
               const c = getController();
@@ -185,7 +184,7 @@ export function SpaceCanvas({ org, space, inputs, sources }: { org: string | nul
             type="button"
             aria-pressed={lanes}
             onClick={() => studio().setView({ sources: !lanes })}
-            className={clsx("q-item q-press flex h-[24px] items-center gap-[6px] rounded-md px-[8px] text-caption", lanes ? "bg-selection-subtle text-selection-label" : "text-fg-muted hover:bg-hover hover:text-fg")}
+            className={clsx("q-item q-press flex h-[28px] items-center gap-[6px] rounded-lg px-[10px] text-caption", lanes ? "bg-selection-subtle text-selection-label" : "text-fg-muted hover:bg-hover hover:text-fg")}
           >
             <Cable size={13} {...ICON} />
             Sources and wires

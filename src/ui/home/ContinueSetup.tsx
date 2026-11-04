@@ -10,7 +10,7 @@ import { loadVoice } from "@/org/voice";
 import { loadYou, useYou } from "@/org/you";
 import { voiceSettled, type VoiceView } from "@/voice/model";
 import { setupHref } from "@/projects/model";
-import { NUQTA_PATH, PENCIL_PATH } from "../brand/pencil";
+import { AI_NUQTA_PATH, AI_SMALL_NUQTA_PATH } from "../brand/geometry";
 import { r } from "../recipes";
 import { firstRunLeft, WELCOME_STEPS, type SetupStep } from "../welcome/steps";
 
@@ -135,8 +135,8 @@ function SetupPicture({ done, of }: { done: number; of: number }) {
       {/* Qalam AI */}
       <rect x={78.5} y={10.5} width={110} height={140} rx={6} className="fill-panel stroke-line" />
       <g transform="translate(85 14.5) scale(0.3)">
-        <path fillRule="evenodd" d={PENCIL_PATH} className="fill-ai" />
-        <path d={NUQTA_PATH} className="fill-ai" />
+        <path d={AI_NUQTA_PATH} className="fill-mark" />
+        <path d={AI_SMALL_NUQTA_PATH} className="fill-mark" />
       </g>
       <rect x={96} y={17.5} width={26} height={3} rx={1.5} className="fill-fg-muted" />
       <path d="M79 26.5H188" className="stroke-line-subtle" />

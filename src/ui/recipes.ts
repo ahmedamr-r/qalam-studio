@@ -9,13 +9,13 @@
 
 // Shared by the size alternatives below (see the Buttons section).
 const BUTTON_BASE = "q-press inline-flex shrink-0 items-center justify-center whitespace-nowrap disabled:pointer-events-none disabled:opacity-40";
-const ICON_BUTTON_BASE = "q-item q-press q-press-icon grid shrink-0 place-items-center rounded-md hover:bg-hover hover:text-fg aria-pressed:bg-active aria-pressed:text-fg data-[state=open]:bg-active disabled:text-fg-faint disabled:pointer-events-none";
+const ICON_BUTTON_BASE = "q-item q-press q-press-icon grid shrink-0 place-items-center rounded-lg hover:bg-hover hover:text-fg aria-pressed:bg-active aria-pressed:text-fg data-[state=open]:bg-active disabled:text-fg-faint disabled:pointer-events-none";
 
 const spec = {
   // ── Shell ─────────────────────────────────────────────────────────────
   topBar: "relative flex h-(--topbar-h) shrink-0 items-center border-b border-line-subtle bg-app",
   shellBar: "q-shell-bar relative flex h-(--topbar-h) shrink-0 items-center",  // a page's top bar, on the Desk (q-shell)
-  brandCell: "grid h-full w-(--rail-w) shrink-0 place-items-center text-accent",
+  brandCell: "grid h-full w-(--rail-w) shrink-0 place-items-center text-mark",
   mainMenuTrigger: "q-item q-press inline-flex h-[28px] items-center gap-[6px] rounded-md pl-[4px] pr-[6px] -ml-[4px] hover:bg-hover data-[state=open]:bg-active [&_svg]:text-fg-subtle",
   crumbs: "absolute left-1/2 flex -translate-x-1/2 items-center gap-[6px] whitespace-nowrap text-body text-fg-subtle",
   crumbSep: "text-fg-faint",
@@ -67,7 +67,7 @@ const spec = {
   indent: (depth: number) => ({ paddingLeft: depth * 16 }),
 
   // ── Fields ────────────────────────────────────────────────────────────
-  field: "flex h-(--field-h) min-w-0 items-center gap-[6px] rounded-md bg-field px-[8px] text-caption text-fg tnum transition-[box-shadow,background-color] duration-fast hover:shadow-[inset_0_0_0_1px_var(--color-line)] hover:duration-0 focus-within:bg-panel focus-within:shadow-focus-field focus-within:duration-0",
+  field: "flex h-(--field-h) min-w-0 items-center gap-[6px] rounded-lg bg-field px-[8px] text-caption text-fg tnum transition-[box-shadow,background-color] duration-fast hover:shadow-[inset_0_0_0_1px_var(--color-line)] hover:duration-0 focus-within:bg-panel focus-within:shadow-focus-field focus-within:duration-0",
   fieldInput: "min-w-0 flex-1 bg-transparent outline-none focus-visible:outline-none placeholder:text-fg-faint",
   fieldPrefix: "grid w-[12px] shrink-0 cursor-ew-resize place-items-center text-micro font-medium text-fg-subtle [&_svg]:text-fg-subtle", // scrub handle
   fieldSuffix: "flex items-center gap-[2px] text-micro text-fg-subtle",  // "Fixed ⌄", "Gap", "%"
@@ -80,14 +80,14 @@ const spec = {
   textarea: "ds-textarea",
 
   // ── Controls ──────────────────────────────────────────────────────────
-  segmented: "relative flex h-(--field-h) rounded-md bg-field p-[2px]",
-  segmentedThumb: "q-indicator rounded-sm bg-elevated shadow-raised",     // useSlidingIndicator, axis x
+  segmented: "relative flex h-(--field-h) rounded-lg bg-field p-[2px]",
+  segmentedThumb: "q-indicator rounded-md bg-elevated shadow-raised",     // useSlidingIndicator, axis x
   // Items carry q-press: no transition-* utility here, it would replace q-press's list and drop the scale easing.
-  segmentedItem: "q-item relative z-[1] grid flex-1 place-items-center rounded-sm text-fg-subtle hover:text-fg-muted aria-checked:text-fg data-[state=on]:text-fg",
+  segmentedItem: "q-item relative z-[1] grid flex-1 place-items-center rounded-md text-fg-subtle hover:text-fg-muted aria-checked:text-fg data-[state=on]:text-fg",
   checkbox: "grid size-[14px] shrink-0 place-items-center rounded-sm text-fg-inverse shadow-[inset_0_0_0_1px_var(--color-line-strong)] data-[state=checked]:bg-inverse data-[state=checked]:shadow-none",
   checkboxMark: "q-check",                                                 // <svg class="q-check"><path pathLength={1} d="M20 6 9 17l-5-5"/></svg>
   checkRow: "flex items-center gap-[8px] text-caption text-fg-muted",
-  selectTrigger: "q-item flex h-(--field-h) min-w-0 items-center gap-[6px] rounded-md bg-field pl-[8px] pr-[6px] text-caption text-fg hover:shadow-[inset_0_0_0_1px_var(--color-line)] data-[state=open]:shadow-focus-field [&>svg:last-child]:ml-auto [&>svg:last-child]:text-fg-subtle",
+  selectTrigger: "q-item flex h-(--field-h) min-w-0 items-center gap-[6px] rounded-lg bg-field pl-[8px] pr-[6px] text-caption text-fg hover:shadow-[inset_0_0_0_1px_var(--color-line)] data-[state=open]:shadow-focus-field [&>svg:last-child]:ml-auto [&>svg:last-child]:text-fg-subtle",
 
   // ── Buttons ───────────────────────────────────────────────────────────
   // Sizes are alternatives, never stacked: Tailwind orders same-property utilities by value, not by
@@ -95,8 +95,8 @@ const spec = {
   // variant; a one-off size starts from r.buttonBase and spells out its own height, gap, padding,
   // radius and text size. Variants carry colour and weight only.
   buttonBase: BUTTON_BASE,
-  button: `${BUTTON_BASE} h-[28px] gap-[6px] rounded-md px-[10px] text-body`,
-  buttonSm: `${BUTTON_BASE} h-[24px] gap-[6px] rounded-md px-[8px] text-caption`,
+  button: `${BUTTON_BASE} h-[30px] gap-[6px] rounded-lg px-[12px] text-body`,
+  buttonSm: `${BUTTON_BASE} h-[26px] gap-[6px] rounded-lg px-[10px] text-caption`,
   buttonPrimary: "bg-inverse font-medium text-fg-inverse shadow-button-invert hover:bg-inverse/90 active:shadow-button-pressed",   // every primary action
   buttonBrand: "bg-accent pl-[8px] font-semibold text-accent-fg shadow-button-accent hover:bg-accent-hover active:bg-accent-press active:shadow-button-pressed", // GENERATE ONLY (pl beats px)
   buttonSecondary: "bg-raised font-medium text-fg shadow-button hover:bg-elevated light:hover:bg-muted",
@@ -194,8 +194,8 @@ const spec = {
   composerBar: "flex items-center gap-[4px] pt-[4px] pr-[6px] pb-[6px] pl-[8px]",
   composerRow: "flex items-end gap-[4px] p-[6px]",                        // src/ui/chat's box: the +, the text, then the mic and Send on one row
   composerLine: "min-w-0 flex-1 resize-none bg-transparent p-[4px] text-body leading-[20px] text-fg outline-none focus-visible:outline-none placeholder:text-fg-faint",
-  composerPill: "q-item inline-flex h-[24px] items-center gap-[5px] rounded-md bg-hover px-[7px] text-caption font-medium text-fg-muted shadow-[inset_0_0_0_1px_var(--color-line-subtle)] hover:text-fg",
-  stopButton: "h-[26px] gap-[6px] rounded-md pl-[8px] pr-[4px] text-body",  // + buttonBase + buttonPrimary, with an Esc kbdOnInverse
+  composerPill: "q-item inline-flex h-[26px] items-center gap-[5px] rounded-lg bg-hover px-[8px] text-caption font-medium text-fg-muted shadow-[inset_0_0_0_1px_var(--color-line-subtle)] hover:text-fg",
+  stopButton: "h-[26px] gap-[6px] rounded-lg pl-[8px] pr-[4px] text-body",  // + buttonBase + buttonPrimary, with an Esc kbdOnInverse
 
   // ── Panels (AI surfaces: steps · chat · so far, src/ui/chat) ──────────
   panelBackdrop: "grid h-full min-h-0 gap-[8px] px-[8px] pb-[8px]",
@@ -207,8 +207,8 @@ const spec = {
   chatViewport: "flex min-h-0 flex-1 flex-col gap-[14px] overflow-y-auto px-[18px] pt-[18px]",
   chatYou: "max-w-[min(480px,85%)] self-end whitespace-pre-wrap rounded-[12px_12px_4px_12px] bg-active px-[12px] py-[8px] text-body leading-[20px] text-fg",
   chatFooter: "q-glass-foot mt-auto flex flex-col gap-[8px] bg-panel pb-[14px] pt-[6px]",           // + "sticky bottom-0" for a composer
-  replyChip: "q-item q-press inline-flex h-[28px] items-center gap-[6px] rounded-md bg-raised px-[10px] text-body font-medium text-fg shadow-button hover:bg-elevated light:hover:bg-muted disabled:opacity-50",
-  replyChipPrimary: "q-item q-press inline-flex h-[28px] items-center gap-[6px] rounded-md bg-inverse px-[10px] text-body font-medium text-fg-inverse shadow-button-invert hover:bg-inverse/90 disabled:opacity-50",
+  replyChip: "q-item q-press inline-flex h-[30px] items-center gap-[6px] rounded-lg bg-raised px-[12px] text-body font-medium text-fg shadow-button hover:bg-elevated light:hover:bg-muted disabled:opacity-50",
+  replyChipPrimary: "q-item q-press inline-flex h-[30px] items-center gap-[6px] rounded-lg bg-inverse px-[12px] text-body font-medium text-fg-inverse shadow-button-invert hover:bg-inverse/90 disabled:opacity-50",
 
   // ── Canvas DOM overlays ───────────────────────────────────────────────
   agentTag: "absolute left-[13px] top-[15px] inline-flex h-[20px] items-center whitespace-nowrap rounded-[4px_10px_10px_10px] px-[7px] text-micro font-semibold text-[#141412] shadow-[0_1px_2px_rgb(0_0_0/.25)] [background:var(--ai-gradient-soft)]",
