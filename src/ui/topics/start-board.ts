@@ -8,11 +8,9 @@ import type { OstEvidence } from "@/discovery/types";
 import { emptyDoc } from "@/doc/schema";
 import { changeGoal } from "@/goals/client";
 import type { Goal } from "@/goals/types";
-import { setupLineFor } from "@/org/setup";
 import { topicsDb } from "@/org/topics";
 import { boardHomeHref } from "../space/href";
 import { createProject } from "@/projects/session";
-import { startBoardFor } from "../setup/setup";
 
 const QUOTE = "hub:quote:";
 
@@ -80,13 +78,7 @@ export async function startBoardForNeed(topicId: string, o: { drafts?: SolutionD
  * stage), and a problem to work on can go under it straight away.
  */
 export async function startBoardForGoal(goal: Goal, topicId?: string) {
-  // A goal the setup proposed: its board opens filled with the problems and quotes the setup read.
-  if (!topicId) {
-    const setups = (await sourcesDb.all().catch(() => [] as SourceRecord[])).filter((s) => s.setup?.phase === "done");
-    const found = setupLineFor(goal, setups);
-    if (found && (await startBoardFor(found.source, found.line.id))) return;
-  }
-  // Otherwise on the space's canvas: the goal's card there (its id is the goal's while it has no
+  // On the space's canvas: the goal's card there (its id is the goal's while it has no
   // board), with the problem put under it; adding under it starts its board.
   const card = goal.on?.card ?? goal.id;
   const query = topicId ? `problem=${encodeURIComponent(topicId)}&under=${encodeURIComponent(card)}` : "";

@@ -10,7 +10,7 @@ import { useGoals } from "@/goals/client";
 import type { OrgRef } from "@/org/client";
 import { useOrgContext } from "@/org/context";
 import { browserProjectsToMove, moveBrowserProjects } from "@/org/import-browser";
-import { goalHref, placeHref, setupHref, spaceHref, type Project } from "@/projects/model";
+import { goalHref, placeHref, spaceHref, type Project } from "@/projects/model";
 import { importLegacy } from "@/projects/library";
 import type { SpaceInputs } from "@/space/session";
 import { useSpaceView } from "@/space/view";
@@ -56,7 +56,6 @@ import { CanvasTour } from "../space/Tour";
 import { useNeeds } from "./useNeeds";
 import { lab } from "@/lab";
 import { homeGoals } from "./goals";
-import { ContinueSetup, useFirstRunLeft } from "./ContinueSetup";
 
 /**
  * A space's home (the organization's, or with `product` that product's): its canvas, every goal
@@ -98,7 +97,6 @@ export default function Home({ product: productId = null }: { product?: string |
   const topics = useTopics();
   const { products, about, loaded } = useOrgContext();
   const goalCount = goalTree.goals.length;
-  const left = useFirstRunLeft(sources, org?.shape);
 
   const links = useBearings() ?? NONE;
   // A goal's next job is hidden in v0.1 (src/lab.ts) with the rest of its jobs.
@@ -150,13 +148,8 @@ export default function Home({ product: productId = null }: { product?: string |
   }, []);
   const [toMove, setToMove] = useState<Project[]>([]);
   useEffect(() => void browserProjectsToMove().then(setToMove, () => {}), []);
-  const pendingSetup = sources.filter((s) => s.setup && s.setup.phase !== "done").sort((a, b) => b.addedAt - a.addedAt)[0];
-  const blank = loaded && !products.length && !about.audience.trim() && !about.context.trim() && !goalCount && !about.segments.length;
-  // Starting from a brain dump is one of the doors v0.1 hides (src/lab.ts); one half done still picks up.
-  const setupNote = left === null && !!org && (!!pendingSetup || (blank && lab("doors")));
   const unplaced = goalTree.north ? goalTree.goals.filter((g) => !g.parent && g.id !== goalTree.north && inSpace(g.product, space)).length : 0;
   const buttons: SectionButton[] = [
-    ...(org && left ? [{ id: "setup" as const, label: `Setup · ${left.done} of ${left.of}` }] : setupNote ? [{ id: "setup" as const, label: "Setup" }] : []),
     { id: "problems", label: "Problems", count: (needs?.needs ?? []).filter((n) => inSpace(n.products, space)).length },
     { id: "needs", label: "Needs a look", count: scoped.length + (unplaced ? 1 : 0) + (toMove.length ? 1 : 0) + (legacy ? 1 : 0) },
     { id: "company", label: words.company },
@@ -273,18 +266,6 @@ export default function Home({ product: productId = null }: { product?: string |
               </Suspense>
             ) : (
               <div className="flex flex-col gap-[20px] px-[16px] py-[14px]">
-                {section === "setup" && (
-                  <section aria-labelledby="space-setup" className="flex flex-col gap-[10px]">
-                    <div className="flex items-center justify-between gap-[8px]">
-                      <h2 id="space-setup" className="text-title font-medium">
-                        Setup
-                      </h2>
-                      {closeSection}
-                    </div>
-                    {org && left ? <ContinueSetup org={org} left={left} sources={sources} stacked /> : <SetupNotice org={org} pending={pendingSetup} />}
-                  </section>
-                )}
-
                 {section === "problems" && <SpaceProblems space={space} needs={needs} links={links} tree={goalTree} sources={sources} onFiled={refresh} close={closeSection} />}
 
                 {section === "needs" && (
@@ -439,21 +420,6 @@ function EngineNotice() {
         Qalam AI <span className="text-fg-muted">· {engine.word}</span>
       </a>
     </Tip>
-  );
-}
-
-/** An organization with nothing about it yet can start from a brain dump about the company; one half set up picks up where it was. */
-function SetupNotice({ org, pending }: { org: OrgRef | null; pending?: SourceRecord }) {
-  if (!org) return null;
-  return (
-    <div role="status" className="flex flex-wrap items-center justify-between gap-[12px] rounded-lg bg-raised px-[12px] py-[10px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
-      <p className="text-body text-fg-muted">
-        {pending ? `Setting up ${org.name}: Qalam AI is waiting on you.` : `Tell Qalam AI about ${org.name}, and it sets up the About and the products.`}
-      </p>
-      <a href={pending ? `${setupHref()}?source=${pending.id}` : setupHref()} className={clsx(r.buttonSm, r.buttonSecondary)}>
-        {pending ? "Pick up where you left off" : "Start from a brain dump"}
-      </a>
-    </div>
   );
 }
 

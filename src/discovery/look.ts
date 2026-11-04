@@ -3,14 +3,13 @@ import type { OstKind } from "./types";
 
 /*
  * How cards, sources and wires look on a canvas, said once (pure). Two renderers draw them: a board
- * paints with CanvasKit (src/engine/ost-painter.ts, lane-painter.ts) and the setup's canvas draws
- * HTML over SVG (src/ui/onboarding/SetupCanvas.tsx). Both take their sizes, marks and wires from
+ * paints with CanvasKit (src/engine/ost-painter.ts, lane-painter.ts), taking its sizes, marks and wires from
  * here. Their colours are theme tokens in src/ui/globals.css (`--color-kind-*`, `--color-card*`,
  * `--color-wire`); the board's palette (src/engine/ost-palette.ts) repeats them, and a test keeps
  * the two the same. A change to the look is a change here or there, never in one renderer alone.
  */
 
-/** What a canvas shows a tag for, each kind in its own colour (a place, the About or a product, only on the setup's canvas). */
+/** What a canvas shows a tag for, each kind in its own colour. */
 export type Kind = "goal" | "problem" | "solution" | "test" | "place";
 
 export const KIND_OF: Record<OstKind, Kind> = { outcome: "goal", opportunity: "problem", solution: "solution", test: "test" };
@@ -60,7 +59,7 @@ export const FEED = { dash: [5, 4], badge: 18, badgeSize: 10.5 } as const;
 /** A problem's page drawn on the canvas with no board yet: how faint it is, and how faint with under two sources behind it. */
 export const PAGE_CARD = { faint: 0.6, fainter: 0.42 } as const;
 
-/** A connected tool on the setup's canvas: a source's tile, faint until it brings something in. */
+/** A connected tool: a source's tile, faint until it brings something in. */
 export const TOOL = { faint: 0.6 } as const;
 
 /** Wires' dashes by what they mean: a goal under the goal it feeds, a goal in its place (the About, a product). */

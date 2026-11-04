@@ -1,8 +1,8 @@
 /*
  * The Discovery board's colours. Cards follow the studio's theme while you work (dark cards on
  * the dark canvas), and exports, copied images and the home's thumbnail are always light, so they
- * paste cleanly into docs and slides. Values mirror the theme tokens in src/ui/globals.css, where the
- * setup's canvas reads them in HTML (ost-palette.test.ts fails if the shared ones drift); cards sit
+ * paste cleanly into docs and slides. Values mirror the theme tokens in src/ui/globals.css
+ * (ost-palette.test.ts fails if the shared ones drift); cards sit
  * a step above the canvas in each theme.
  */
 
@@ -43,7 +43,7 @@ export interface OstPalette {
   kindProblem: string;
   kindSolution: string;
   kindTest: string;
-  /** A place (the About, a product): only the setup's canvas draws one, but the look is one. */
+  /** A place (the About, a product): a kind with a colour of its own. */
   kindPlace: string;
 }
 

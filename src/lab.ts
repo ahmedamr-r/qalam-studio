@@ -11,19 +11,11 @@ export const LAB_FEATURES = [
   "design",
   /** The Decisions place and the "why?" prompt (decisions are still recorded). */
   "decisions",
-  /** The first run's You step. */
-  "you",
-  /** The first run's Yours step (which goals are a team member's own). */
-  "yours",
-  /** The first run's Voice step (the mic in the boxes and Connections' Voice card stay). */
-  "voice",
-  /** The setup's "Help me find them" and idea doors. */
-  "doors",
   /** Questions before a draft on a card nothing backs, kept as your answers (src/discovery/questions.ts). */
   "questions",
   /** Engines other than Claude Code, Codex and an Anthropic key. */
   "engines",
-  /** The connectors past docs and analytics (customer voice, build and design), the first run's Connect step, and work status on cards. */
+  /** The connectors past docs and analytics (customer voice, build and design), and work status on cards. */
   "connectors",
   /** Product code: Connections' Product code card, Evidence's product maps. */
   "code",

@@ -9,8 +9,8 @@ describe("moving in place", () => {
     expect(inPlace(routeOf("/o/R02vmeVH/goals"), "other1")).toBe(false);
   });
 
-  it("loads boards, setup, the welcome and the rest in full", () => {
-    for (const path of ["/o/R02vmeVH/d/abc123def0", "/o/R02vmeVH/p/abc123def0", "/o/R02vmeVH/setup", "/welcome", "/capture", "/", "/o/R02vmeVH/products", "/o/R02vmeVH/nope/x", "/o/R02vmeVH/g/g-1", "/o/R02vmeVH/t/Xk2_9aLm0q"])
+  it("loads boards, the welcome and the rest in full", () => {
+    for (const path of ["/o/R02vmeVH/d/abc123def0", "/o/R02vmeVH/p/abc123def0", "/welcome", "/capture", "/", "/o/R02vmeVH/products", "/o/R02vmeVH/nope/x", "/o/R02vmeVH/g/g-1", "/o/R02vmeVH/t/Xk2_9aLm0q"])
       expect(inPlace(routeOf(path), "R02vmeVH")).toBe(false);
   });
 });

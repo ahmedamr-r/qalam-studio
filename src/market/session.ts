@@ -1,10 +1,10 @@
 import type { Competitor, MarketLine } from "./types";
 
 /*
- * The first run's lookups on their way into hub/market.md (chats/market/session.json: this
+ * The lookups on their way into hub/market.md (chats/market/session.json: this
  * computer's, out of Git): each one looking (with what it's doing), ready with what it found for
  * them to check, settled once they did, or failed. Pure; the core runs them (server/org/market.ts)
- * and the window's thread is worked out from it (src/ui/onboarding/thread.ts).
+ * and the Company panel follows it (src/ui/org/CompanyLookUp.tsx).
  */
 
 export type LookState = "looking" | "ready" | "settled" | "failed";

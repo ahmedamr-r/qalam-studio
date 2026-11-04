@@ -15,7 +15,6 @@ const Home = lazy(() => import("./home/Home"));
 const SystemProject = lazy(() => import("./SystemProject"));
 const SeenPage = lazy(() => import("./seen/SeenPage"));
 const SeenReading = lazy(() => import("./seen/SeenReading"));
-const SetupPage = lazy(() => import("./setup/SetupPage"));
 const WelcomePage = lazy(() => import("./welcome/WelcomePage"));
 const Reading = lazy(() => import("./start/Reading"));
 const CapturePage = lazy(() => import("./capture/CapturePage"));
@@ -57,11 +56,6 @@ export function SeenLoader({ seenKey, add }: { seenKey: string; add: boolean }) 
   return add ? <SeenReading seenKey={seenKey} /> : <SeenPage seenKey={seenKey} />;
 }
 
-/** Setting the organization up from a brain dump about it. */
-export function SetupLoader() {
-  return <SetupPage />;
-}
-
 /** One of the organization's places: its decisions (in a product's space with `product`), or its connections. */
 export function PlaceLoader({ place, product = null }: { place: PagePlace; product?: string | null }) {
   if (place === "connections")
@@ -70,7 +64,7 @@ export function PlaceLoader({ place, product = null }: { place: PagePlace; produ
   return <Page product={product} />;
 }
 
-/** The welcome: the first run, a new organization, or checking the setup again. */
+/** The welcome: the first run, or a new organization. */
 export function WelcomeLoader() {
   return <WelcomePage />;
 }

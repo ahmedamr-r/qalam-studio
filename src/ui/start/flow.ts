@@ -7,7 +7,7 @@ import type { ScanSession, ScanTarget } from "@/scan/session";
 import type { ScanSaid } from "@/scan/steer";
 import { chatKey, scanTurn, withTurn, emptyChat } from "@/space/chat";
 import { handWords } from "../space/handoff";
-import { useFirstRun } from "../onboarding/flow";
+import { useEngineCheck } from "./engine";
 
 /*
  * The first run's moves. Reading starts from the first answer, in the core, so the questions after
@@ -27,16 +27,16 @@ const finishFirstRun = (org: string) => fetch(`/api/org/${encodeURIComponent(org
 /** Until it's checked: nothing is started on an engine that may turn out not to be there. */
 export const engineChecked = () =>
   new Promise<void>((done) => {
-    if (!useFirstRun.getState().engine.checking) return done();
-    const stop = useFirstRun.subscribe((s) => {
-      if (s.engine.checking) return;
+    if (!useEngineCheck.getState().checking) return done();
+    const stop = useEngineCheck.subscribe((s) => {
+      if (s.checking) return;
       stop();
       done();
     });
   });
 
 const isReady = () => {
-  const e = useFirstRun.getState().engine;
+  const e = useEngineCheck.getState();
   return !!(e.test ?? e.view?.test)?.ok;
 };
 

@@ -16,13 +16,13 @@ function themes(): { dark: Map<string, string>; light: Map<string, string> } {
 }
 
 describe("the board's palette", () => {
-  it("repeats the theme's tokens exactly, in both themes, so a board and the setup's canvas look the same", () => {
+  it("repeats the theme's tokens exactly, in both themes, so a board looks as the theme says", () => {
     const css = themes();
     for (const theme of ["dark", "light"] as const)
       for (const [key, token] of Object.entries(PALETTE_TOKENS)) expect([theme, token, OST_PALETTE[theme][key as keyof (typeof OST_PALETTE)["dark"]].toUpperCase()]).toEqual([theme, token, css[theme].get(token!)]);
   });
 
-  it("has every kind's colour, as the token the setup's canvas reads", () => {
+  it("has every kind's colour, as a theme token", () => {
     const tokens = new Set(Object.values(PALETTE_TOKENS));
     for (const token of Object.values(KIND_TOKEN)) expect(tokens.has(token)).toBe(true);
   });

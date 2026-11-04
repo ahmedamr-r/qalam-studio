@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { engineShown, lab, labState, setLab } from "./lab";
 import { sourcesFor } from "./ui/chat/attach";
 import { PLACES, placeShown } from "./ui/frame/places";
-import { firstRunLeft, stepAfter, stepsFor } from "./ui/welcome/steps";
 import type { ConnectorState } from "./org/connectors";
 
 afterEach(() => setLab(true));
@@ -10,7 +9,7 @@ afterEach(() => setLab(true));
 describe("what's on", () => {
   it("reads a setting or variable as everything, some features or nothing", () => {
     for (const all of [true, "1", "true", "all"]) expect(labState(all)).toBe(true);
-    expect(labState(["feeds", "voice", "nope"])).toEqual(["feeds", "voice"]);
+    expect(labState(["feeds", "seen", "nope"])).toEqual(["feeds", "seen"]);
     expect(labState("feeds, design")).toEqual(["feeds", "design"]);
     for (const none of [false, undefined, null, "", "0", 3]) expect(labState(none)).toEqual([]);
   });
@@ -30,23 +29,6 @@ describe("with everything hidden (v0.1)", () => {
     expect(["cli", "api", "codex", "openai", "gemini", "openrouter", "ollama", "lmstudio"].filter(engineShown)).toEqual(["cli", "api", "codex"]);
     setLab(true);
     expect(engineShown("ollama")).toBe(true);
-  });
-
-  it("asks only for Qalam AI, a name and a start, then finishes", () => {
-    setLab([]);
-    expect(stepsFor("team").map((s) => s.id)).toEqual(["engine", "name", "company", "competitors", "goals"]);
-    expect(stepAfter("name", "team")).toBe("company");
-    expect(stepAfter("company", "team")).toBe("competitors");
-    expect(stepAfter("competitors", "team")).toBe("goals");
-    expect(stepAfter("goals", "team")).toBeNull();
-    // Picked up from the home: still the goals, never a step that isn't asked.
-    expect(firstRunLeft({ you: false, voice: false, goals: 2, settingUp: false, picked: false, finished: false, shape: "team" })).toEqual({ step: "goals", done: 4, of: 5 });
-  });
-
-  it("asks every step with everything on, and no Yours on your own", () => {
-    expect(stepsFor("team").map((s) => s.id)).toEqual(["engine", "name", "you", "voice", "company", "competitors", "goals", "yours", "connect"]);
-    expect(stepAfter("goals", "solo")).toBe("connect");
-    expect(stepAfter("goals", "team")).toBe("yours");
   });
 
   it("leaves Decisions out of the sidebar", () => {

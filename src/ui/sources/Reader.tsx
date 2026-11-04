@@ -8,7 +8,7 @@ import type { SourcePictures, SourceQuote, TextBlock } from "@/discovery/sources
 import type { SetupDoc } from "@/org/setup";
 import { IconBtn, Spinner } from "../controls";
 import { MarkedText } from "../discovery/MarkedText";
-import { SourceMark } from "../onboarding/SetupCanvas";
+import { SourceMark } from "./SourceMark";
 import { PicturesNote } from "./PicturesNote";
 
 /*

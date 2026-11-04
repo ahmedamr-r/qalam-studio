@@ -40,7 +40,7 @@ export function Stage({ pose, line, home, dots, title, children, foot }: { pose:
   }, [title]);
   return (
     <Tooltip.Provider delayDuration={500} skipDelayDuration={300}>
-      <div className="flex h-screen flex-col overflow-y-auto bg-app text-fg">
+      <div className="q-shell flex h-screen flex-col overflow-y-auto bg-app text-fg">
         <header className="flex h-(--topbar-h) shrink-0 items-center justify-between pr-[16px]">
           <a href={home} aria-label="Qalam" className={r.brandCell}>
             <QalamMark size={20} />

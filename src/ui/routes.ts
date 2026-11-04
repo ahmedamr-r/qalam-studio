@@ -4,7 +4,7 @@ import { isSpacePlace } from "./frame/spaces";
 
 /**
  * The app's pages, read from the address. The frame's pages move in place (src/ui/nav.ts reads
- * the next address here); a board, setup and the welcome are a full page load each.
+ * the next address here); a board and the welcome are a full page load each.
  *
  * Pages live under their organization: /o/<org> is its home, /o/<org>/d/<id> a board. A product's
  * space has its own canvas and places under /o/<org>/products/<id> (src/ui/frame/spaces.ts), and
@@ -27,8 +27,6 @@ export type Route =
   | { kind: "goal"; org: string; id: string }
   /** What people see in a product (its screens and flows, from screenshots), or with `add` reading a batch of screenshots for it. `key`: the product's id, or "org". */
   | { kind: "seen"; org: string; key: string; add?: boolean }
-  /** Setting the organization up from a brain dump about it. */
-  | { kind: "setup"; org: string }
   /** One of the organization's places (src/ui/frame/places.ts): its decisions or connections, in a product's space with `product`. */
   | { kind: "place"; org: string; place: PagePlace; product?: string }
   /** The first run once there's a project: its questions, then the researcher reading. */
@@ -65,7 +63,8 @@ export function routeOf(pathname: string): Route {
   if (!parts.length) return { kind: "root" };
   if (!org && parts.length === 1 && parts[0] === "welcome") return { kind: "welcome" };
   if (!org && parts.length === 1 && parts[0] === "capture") return { kind: "capture" };
-  if (org && parts.length === 1 && parts[0] === "setup") return { kind: "setup", org };
+  // The setup that was here is gone: the first run is the welcome's, the company's facts its panel's.
+  if (org && parts.length === 1 && parts[0] === "setup") return { kind: "org", org, moved: true };
   if (org && parts.length === 1 && parts[0] === "start") return { kind: "start", org };
   if (org && parts[0] === "products") return spaceRoute(org, parts.slice(1));
   if (org && parts.length === 1 && isPagePlace(parts[0])) return { kind: "place", org, place: parts[0] };

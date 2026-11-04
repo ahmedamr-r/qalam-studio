@@ -86,11 +86,9 @@ export const seenHref = (key: string, o: { add?: boolean; org?: string | null } 
   return `${org ? `/o/${org}` : ""}/seen/${encodeURIComponent(key)}${o.add ? "/add" : ""}`;
 };
 
-/** Setting the organization up from a brain dump about it (src/ui/setup). */
-export const setupHref = (org: string | null = linkOrg) => `${org ? `/o/${org}` : ""}/setup`;
 
 /** The welcome (src/ui/welcome): `new` names another organization; `verify` checks the setup again, changing nothing. */
-export const welcomeHref = (mode?: "new" | "verify") => `/welcome${mode ? `?${mode}=1` : ""}`;
+export const welcomeHref = (mode?: "new") => `/welcome${mode ? `?${mode}=1` : ""}`;
 
 /** One of the organization's places (src/ui/frame/places.ts) in its own space; Home is the organization's own address. */
 export const placeHref = (place: Place, org: string | null = linkOrg) => (place === "home" ? orgHref(org) : `${org ? `/o/${org}` : ""}/${place}`);

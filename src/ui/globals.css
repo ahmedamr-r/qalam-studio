@@ -154,7 +154,7 @@
   --color-component: #b6a4ff;
   --color-component-subtle: rgb(147 124 241 / 0.16);
 
-  /* Cards, sources and wires on a canvas (a board and the setup's canvas; src/discovery/look.ts),
+  /* Cards, sources and wires on a canvas (src/discovery/look.ts),
      a step above the canvas. src/engine/ost-palette.ts repeats them; a test keeps the two the same. */
   --color-card: #2a2926;
   --color-card-line: #ffffff1c;
@@ -636,10 +636,6 @@ input, textarea { caret-color: var(--color-fg-accent); }
 .q-researcher { animation: q-researcher 3.6s ease-in-out infinite; }
 .q-fade { animation: q-fade-in var(--dur-fast) var(--ease-out-quad) both; }
 .q-stagger > * { animation: q-pop-in var(--dur-fast) var(--ease-out-quint) both; animation-delay: calc(min(var(--i, 0), 8) * 30ms); }
-/* The first run's canvas: cards arrive one after another, then their wires. Rare, so it can take its time. `backwards` leaves
-   a card's own opacity free once it's in (a dimmed path). */
-.q-arrive > [data-node] { animation: q-pop-in var(--dur-base) var(--ease-out-quint) backwards; animation-delay: calc(min(var(--i, 0), 8) * 30ms); }
-.q-arrive-wire { animation: q-fade-in var(--dur-base) var(--ease-out-quad) 120ms backwards; }
 
 /* Hover highlight: 0ms in, 150ms out (rows, menu items, icon buttons, palette rows) */
 .q-item { transition: background-color var(--dur-fast) var(--ease-out-quad), color var(--dur-fast) var(--ease-out-quad); }

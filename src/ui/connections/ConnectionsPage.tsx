@@ -1,5 +1,4 @@
 import clsx from "clsx";
-import { welcomeHref } from "@/projects/model";
 import { r } from "../recipes";
 import { PageFrame } from "../frame/PageFrame";
 import { EngineCard } from "./EngineCard";
@@ -37,12 +36,7 @@ export default function ConnectionsPage() {
           <VoiceCard />
         </div>
         <div className="flex flex-col gap-[8px]">
-          <div className="flex items-center justify-between gap-[12px]">
-            <h2 className="text-micro font-medium text-fg-subtle">This computer</h2>
-            <a href={welcomeHref("verify")} className="text-caption text-fg-muted hover:text-fg hover:underline">
-              Check the whole setup again
-            </a>
-          </div>
+          <h2 className="text-micro font-medium text-fg-subtle">This computer</h2>
           <ThisMac withEngine={false} />
         </div>
       </div>

@@ -75,7 +75,6 @@ export function OrgSwitcher({ org, onRenamed }: { org: OrgRef; onRenamed: (o: Or
       <MenuItem onSelect={() => window.location.assign(orgsHref())}>All organizations</MenuItem>
       <MenuSeparator />
       <MenuItem onSelect={create}>New organization…</MenuItem>
-      <MenuItem onSelect={() => window.location.assign(welcomeHref("verify"))}>Check the setup…</MenuItem>
       <MenuItem onSelect={() => void openFolderAsOrg()}>Open a folder as an organization…</MenuItem>
       <MenuSeparator />
       <MenuItem onSelect={() => void rename()}>Rename “{org.name}”…</MenuItem>

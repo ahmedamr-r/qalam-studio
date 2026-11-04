@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canvasPageHref, goalHref, openOrgHref, orgHref, placeHref, projectHref, setupHref, spaceHref, spacesHref, topicHref, welcomeHref } from "@/projects/model";
+import { canvasPageHref, goalHref, openOrgHref, orgHref, placeHref, projectHref, spaceHref, spacesHref, topicHref, welcomeHref } from "@/projects/model";
 import { routeOf } from "./routes";
 
 describe("routeOf", () => {
@@ -28,9 +28,9 @@ describe("routeOf", () => {
     expect(routeOf("/o/R02vmeVH/t/a%2Fb")).toEqual({ kind: "missing" });
   });
 
-  it("reads an organization's setup page, only inside it", () => {
-    expect(routeOf(setupHref("R02vmeVH"))).toEqual({ kind: "setup", org: "R02vmeVH" });
-    expect(routeOf("/o/R02vmeVH/setup/")).toEqual({ kind: "setup", org: "R02vmeVH" });
+  it("reads what's left of the setup: its old address moves to the canvas", () => {
+    expect(routeOf("/o/R02vmeVH/setup")).toEqual({ kind: "org", org: "R02vmeVH", moved: true });
+    expect(routeOf("/o/R02vmeVH/setup/")).toEqual({ kind: "org", org: "R02vmeVH", moved: true });
     expect(routeOf("/o/R02vmeVH/start")).toEqual({ kind: "start", org: "R02vmeVH" });
     expect(routeOf("/start")).toEqual({ kind: "missing" });
     expect(routeOf("/setup")).toEqual({ kind: "missing" });
@@ -82,7 +82,7 @@ describe("routeOf", () => {
 
   it("reads the welcome, only outside an organization", () => {
     expect(routeOf(welcomeHref())).toEqual({ kind: "welcome" });
-    expect(routeOf(welcomeHref("verify").split("?")[0])).toEqual({ kind: "welcome" });
+    expect(routeOf(welcomeHref("new").split("?")[0])).toEqual({ kind: "welcome" });
     expect(routeOf("/o/R02vmeVH/welcome")).toEqual({ kind: "missing" });
   });
 

@@ -4,27 +4,19 @@ import { Link2, Pencil, Plus, X } from "lucide-react";
 import { roomIn, type MarketEdit, type MarketSection } from "@/market/edit";
 import { knowsMarket, type MarketLine } from "@/market/types";
 import { editKnown, loadMarket, useMarket } from "@/org/market";
-import { setupHref } from "@/projects/model";
 import { Button, IconBtn } from "../controls";
 import { useCurrentOrg, useWords } from "../frame/store";
 import { r } from "../recipes";
+import { DomainReading, hostOf, LookForRivals, LookUpCompany } from "./CompanyLookUp";
 
 /*
- * What's known about the company on its canvas: the facts and competitors the first run kept, and
- * what was read about its domain (hub/market.md). Each line says where it was read, and a person
+ * What's known about the company on its canvas: the facts and competitors kept, read here on asking
+ * (./CompanyLookUp.tsx), and what was read about its domain (hub/market.md). Each line says where it was read, and a person
  * can fix it, take it off or add their own. Qalam AI hears them as context, never as what customers
  * said. The organization's own, so every canvas shows the same.
  */
 
 const ICON = { absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
-
-const hostOf = (url: string) => {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch {
-    return url;
-  }
-};
 
 const edit = (e: MarketEdit) => void editKnown(e);
 
@@ -144,7 +136,10 @@ export function CompanySection({ close }: { close?: ReactNode }) {
   const words = useWords();
   const { market, loaded, error } = useMarket();
   useEffect(() => void loadMarket(), []);
-  const lookUp = `${setupHref()}?first=1&step=company`;
+  const look = useMarket((m) => m.session.company);
+  const checking = look?.state === "looking" || (look?.state === "ready" && look.facts.length > 0);
+  const rivals = useMarket((m) => m.session.competitors);
+  const checkingRivals = rivals?.state === "looking" || (rivals?.state === "ready" && rivals.found.length > 0);
   const domain = market.aims.length > 0 || market.struggles.length > 0;
   return (
     <section aria-labelledby="space-company" className="flex flex-col gap-[16px]">
@@ -164,22 +159,15 @@ export function CompanySection({ close }: { close?: ReactNode }) {
         </p>
       )}
 
-      {loaded && !knowsMarket(market) && (
-        <div className="flex flex-col items-start gap-[8px] rounded-lg bg-raised px-[12px] py-[10px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
-          <p className="text-caption text-fg-muted">Nothing is kept about it yet. Qalam AI can read its website, or you can add what matters below.</p>
-          <a href={lookUp} className={clsx(r.buttonSm, r.buttonSecondary)}>
-            Look it up
-          </a>
-        </div>
-      )}
+      {loaded && (checking || !market.company.length) && <LookUpCompany />}
 
-      <Group title={`The ${words.company.toLowerCase()}`} section="company" addLabel="Add a fact" empty={!market.company.length}>
+      <Group title={`The ${words.company.toLowerCase()}`} section="company" addLabel="Add a fact" empty={!market.company.length && !checking}>
         {market.company.map((l) => (
           <LineRow key={l.id} line={l} />
         ))}
       </Group>
 
-      <Group title="Competitors" section="competitors" addLabel="Add one" empty={!market.competitors.length}>
+      <Group title="Competitors" section="competitors" addLabel="Add one" empty={!market.competitors.length && !checkingRivals}>
         {market.competitors.map((c) => (
           <div key={c.id} className="flex flex-col gap-[2px]">
             <div className="group relative flex items-center gap-[6px]">
@@ -201,10 +189,12 @@ export function CompanySection({ close }: { close?: ReactNode }) {
             ))}
           </div>
         ))}
+        <LookForRivals offer={!market.competitors.length && !!market.company.length} />
       </Group>
 
       {(domain || knowsMarket(market)) && (
         <>
+          <DomainReading />
           <Group title="What companies like it aim for" section="aims" addLabel="Add" empty={!market.aims.length}>
             {market.aims.map((l) => (
               <LineRow key={l.id} line={l} />

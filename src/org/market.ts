@@ -6,8 +6,8 @@ import { orgFetch, orgJson } from "./client";
 import { onOrgChange } from "./live";
 
 /*
- * What's known about the company, its competitors and its domain (hub/market.md), and the first
- * run's lookups on their way there, in the window: loaded once, then followed as the core moves
+ * What's known about the company, its competitors and its domain (hub/market.md), and the
+ * lookups on their way there, in the window: loaded once, then followed as the core moves
  * them on (server/org/market.ts announces each change).
  */
 

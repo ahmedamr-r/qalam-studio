@@ -4,9 +4,9 @@ import { firstAnswerProblem, firstQuestion, type StartPath } from "@/onboarding/
 import { EngineLogo } from "../brand/ConnectorLogo";
 import { CopyCommand, EngineSetup, whoLine } from "../connections/EngineCard";
 import { trySample } from "../org/sample";
-import { checkEngine, engineChanged, openKeyField, skipEngine, startWelcome, useFirstRun } from "../onboarding/flow";
 import { r } from "../recipes";
 import { CompanyArt, IdeaArt } from "./art";
+import { checkEngine, engineChanged, openKeyField, skipEngine, startWelcome, useEngineCheck } from "./engine";
 import { beginReading } from "./flow";
 import { answerInput, Stage } from "./Stage";
 
@@ -36,7 +36,7 @@ function Card({ title, about, art, onClick }: { title: string; about: string; ar
 
 /** Qalam AI can't answer on this computer: what would let it, and the sample in the meantime. */
 function EngineStep({ home }: { home: string }) {
-  const e = useFirstRun((s) => s.engine);
+  const e = useEngineCheck();
   const [error, setError] = useState<string | null>(null);
   const v = e.view;
   const test = e.test ?? v?.test ?? null;
@@ -114,16 +114,9 @@ function FirstAnswer({ path, home }: { path: StartPath; home: string }) {
           <button type="button" className={clsx(r.buttonSm, r.buttonGhost)} onClick={() => history.back()}>
             Back
           </button>
-          <span className="flex items-center gap-[8px]">
-            {path === "company" && (
-              <a href={`/welcome?${new URLSearchParams(window.location.search).has("new") ? "new=1&" : ""}full=1&for=team`} className={clsx(r.buttonSm, r.buttonGhost)}>
-                Set it up in detail instead
-              </a>
-            )}
-            <button type="submit" disabled={busy} className={clsx(r.button, r.buttonPrimary)}>
-              {busy ? "Starting…" : "Start reading"}
-            </button>
-          </span>
+          <button type="submit" disabled={busy} className={clsx(r.button, r.buttonPrimary)}>
+            {busy ? "Starting…" : "Start reading"}
+          </button>
         </div>
       </form>
     </Stage>
@@ -132,7 +125,7 @@ function FirstAnswer({ path, home }: { path: StartPath; home: string }) {
 
 export function StartFlow() {
   const [path, setPath] = useState<StartPath | null>(() => pathIn(window.location.search));
-  const engine = useFirstRun((s) => s.engine);
+  const engine = useEngineCheck();
   useEffect(() => {
     startWelcome(window.location.search);
     const back = () => setPath(pathIn(window.location.search));
