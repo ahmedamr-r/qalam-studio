@@ -24,7 +24,7 @@ import { composeSpace, isProblemPage, type SpaceDoc } from "./compose";
 import { goalsLast, groupsOf, laneRows, layoutSpace } from "./layout";
 import { splitSpace } from "./split";
 import { addedGoals, sameCards, withContent, withGoals } from "./history";
-import { resetSpaceView, useSpaceView } from "./view";
+import { resetSpaceView, useSpaceView, type SpacePreview } from "./view";
 
 /*
  * A space's canvas in this window (the home): its boards loaded, composed into one document the
@@ -262,13 +262,15 @@ function laidOut(doc: Doc): Doc {
  * The canvas laid out as an edit would lay it out, telling nothing (a review's ghost: drawn where
  * accepting puts it, lanes and all).
  */
-export function previewLayout(doc: Doc, goals: ReadonlySet<string> = new Set()): Doc {
+export function previewLayout(doc: Doc, goals: ReadonlySet<string> = new Set()): SpacePreview {
   // A goal proposed under a goal is laid out as the goal it would be.
   const isGoal = (id: string) => isGoalCard(id) || goals.has(id);
   const next = goalsLast(doc, isGoal);
+  const groups = groupsOf(next, isGoal);
   // Its own lane rows (the canvas's are remembered for the canvas as it is).
-  const rows = useStudio.getState().view.sources ? laneRows(laneOf(next, useSources.getState().list, groupsOf(next, isGoal)).items) : undefined;
-  return layoutSpace(next, { column: inColumn, isGoal, lanes: rows }).doc;
+  const rows = useStudio.getState().view.sources ? laneRows(laneOf(next, useSources.getState().list, groups).items) : undefined;
+  const { doc: laid, slots } = layoutSpace(next, { column: inColumn, isGoal, lanes: rows });
+  return { doc: laid, groups, slots };
 }
 
 /** After every edit on the canvas, in the same undo step: another board's cards kept, everything laid out. */

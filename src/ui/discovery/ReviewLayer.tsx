@@ -136,7 +136,7 @@ function isUnder(doc: { nodes: Record<string, { parentId: string | null }> }, id
 
 function Pill({ children }: { children: ReactNode }) {
   return (
-    <div className="pointer-events-auto absolute top-[12px] left-1/2 flex max-w-[calc(100%-24px)] -translate-x-1/2 items-center gap-[10px] rounded-lg bg-elevated py-[6px] pr-[6px] pl-[10px] text-caption font-medium whitespace-nowrap text-fg shadow-popover q-fade [&>button]:shrink-0" role="status">
+    <div className="pointer-events-auto absolute top-[56px] left-1/2 flex max-w-[calc(100%-24px)] -translate-x-1/2 items-center gap-[10px] rounded-lg bg-elevated py-[6px] pr-[6px] pl-[10px] text-caption font-medium whitespace-nowrap text-fg shadow-popover q-fade [&>button]:shrink-0" role="status">
       {children}
     </div>
   );

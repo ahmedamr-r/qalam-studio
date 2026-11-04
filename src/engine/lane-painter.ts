@@ -23,6 +23,8 @@ export interface LaneRender {
   lit: { items: ReadonlySet<string>; cards: ReadonlySet<string>; edges: ReadonlySet<string> } | null;
   /** The source under the pointer. */
   hover: string | null;
+  /** The cards the wires run to, when they aren't the document's (a review's, laid out as accepting would). */
+  doc?: Doc;
   /** A cord being drawn from a source's port to the pointer (ok: the card under it can take its words). */
   cord?: { from: { x: number; y: number }; to: { x: number; y: number }; ok: boolean } | null;
 }
@@ -102,8 +104,9 @@ export class LanePainter {
   }
 
   /** The wires, behind the cards: out of a source's port, into the card's left. */
-  drawWires(canvas: Canvas, doc: Doc, r: LaneRender, zoom: number) {
+  drawWires(canvas: Canvas, drawn: Doc, r: LaneRender, zoom: number) {
     const p = this.pal;
+    const doc = r.doc ?? drawn;
     const items = new Map(r.lane.items.map((i) => [i.key, i]));
     for (const e of r.lane.edges) {
       const a = items.get(e.from);

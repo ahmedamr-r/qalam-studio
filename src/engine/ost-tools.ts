@@ -58,8 +58,12 @@ export function boardLane(): Lane {
   const goals = useGoals.getState().goals;
   // A space's canvas: one lane per goal's own cards, in the column its layout kept for it.
   const space = useSpaceView.getState();
-  const groups = space.active ? space.groups : undefined;
-  if (laneMemo?.doc === s.doc && laneMemo.list === list && laneMemo.visiting === visiting && laneMemo.feeds === feeds && laneMemo.news === news && laneMemo.goals === goals && laneMemo.groups === groups) return laneMemo.lane;
+  // A review draws the cards where accepting puts them: the lane goes with them, its wires included.
+  const preview = space.active ? space.preview : null;
+  const doc = preview?.doc ?? s.doc;
+  const groups = space.active ? (preview?.groups ?? space.groups) : undefined;
+  const slots = preview?.slots ?? space.slots;
+  if (laneMemo?.doc === doc && laneMemo.list === list && laneMemo.visiting === visiting && laneMemo.feeds === feeds && laneMemo.news === news && laneMemo.goals === goals && laneMemo.groups === groups) return laneMemo.lane;
   const laneFeeds: LaneFeed[] = board
     ? feeds.map((f) => {
         const n = news[f.id];
@@ -69,10 +73,10 @@ export function boardLane(): Lane {
       })
     : [];
   const placed = groups?.map((g) => {
-    const slot = space.slots.get(g.head);
+    const slot = slots.get(g.head);
     return slot ? { ...g, x: slot.x, top: slot.y } : g;
   });
-  laneMemo = { doc: s.doc, list, visiting, feeds, news, goals, groups, lane: laneOf(s.doc, [...list, ...visiting], placed, laneFeeds) };
+  laneMemo = { doc, list, visiting, feeds, news, goals, groups, lane: laneOf(doc, [...list, ...visiting], placed, laneFeeds) };
   return laneMemo.lane;
 }
 
@@ -455,5 +459,6 @@ export function createOstTools(): CanvasDelegate {
 /** What the lane lights: a source under the pointer (or open in the reader), else the selected cards' sources. */
 function laneRender(lane: Lane, focus: string | null): LaneRender {
   const lit = litBy(lane, focus) ?? studio().selection.map((id) => litBy(lane, id)).find(Boolean) ?? null;
-  return { lane, lit, hover: focus };
+  const space = useSpaceView.getState();
+  return { lane, lit, hover: focus, doc: (space.active && space.preview?.doc) || undefined };
 }

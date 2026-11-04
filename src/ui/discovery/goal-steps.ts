@@ -1,7 +1,5 @@
 import { feedback } from "@/commands/feedback";
 import { newId } from "@/doc/factory";
-import { boundsOf, worldBounds } from "@/doc/geometry";
-import { useGhosts } from "@/doc/ghosts";
 import { studio } from "@/doc/store";
 import { cardOf, newCard } from "@/discovery/ops";
 import type { Proposal } from "@/discovery/proposals";
@@ -11,8 +9,7 @@ import type { GoalLever } from "@/goals/types";
 import { breakDown, draftProblems, findProblems, goalWork, lookOutside } from "@/org/goal-work";
 import type { DraftWords } from "@/org/solutions";
 import { begin, end, relabel, stopped, type Done } from "./busy";
-import { onCanvasReady } from "./canvas";
-import { REVIEW_TURN, reviewWaits, startReview, type ReviewOrigin } from "./review";
+import { reviewWaits, startReview, type ReviewOrigin } from "./review";
 import { visitSources } from "./sources";
 import { useDiscovery } from "./store";
 
@@ -59,19 +56,8 @@ async function reviewProblems(cardId: string, goal: string, p: Pick<DraftedProbl
 
 /** Proposals under a goal's card under review, in view: false when there's nothing to show or another review is open. */
 function reviewUnder(cardId: string, origin: ReviewOrigin, proposals: Proposal[]): boolean {
-  if (!proposals.length || !startReview(origin, proposals)) return false;
-  // The goal's card and what's drawn under it, framed clear of a panel lying over the canvas.
-  const ids = [cardId, ...proposals.map((p) => p.cardId)];
-  onCanvasReady((c) => {
-    const ghost = useGhosts.getState().list.find((g) => g.turnId === REVIEW_TURN && ids.slice(1).some((id) => g.doc.nodes[id]));
-    if (!ghost) return;
-    const corners = ids.filter((id) => ghost.doc.nodes[id]).flatMap((id) => {
-      const x = worldBounds(ghost.doc, id);
-      return [{ x: x.x, y: x.y }, { x: x.x + x.w, y: x.y + x.h }];
-    });
-    c.glideTo(c.fitCamera(boundsOf(corners), { right: useDiscovery.getState().inset }, 1));
-  });
-  return true;
+  // The goal's card framed with what's drawn under it.
+  return !!proposals.length && startReview(origin, proposals, [cardId]);
 }
 
 /** Run a goal's step as one thing Qalam AI does for its card, saying how it went. */

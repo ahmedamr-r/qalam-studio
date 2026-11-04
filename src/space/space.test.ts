@@ -364,4 +364,35 @@ describe("composed as the map was", () => {
     expect(slot.x + slot.w).toBeLessThan(worldBounds(doc, "p1").x);
     for (const id of Object.keys(doc.nodes)) expect(boxesIntersect(worldBounds(doc, id), slot)).toBe(false);
   });
+
+  it("keeps room for the lane of a goal with no cards under it, beside the goal and clear of its neighbours", async () => {
+    const { boxesIntersect, worldBounds } = await import("@/doc/geometry");
+    const board = boardDoc([
+      ["g", null, "outcome", "More shoppers come back"],
+      ["p", "g", "opportunity", "Bad stories about ordering online"],
+      ["faint", "g", "opportunity", "Items arrive wrong"],
+      ["leaf", "g", "outcome", "First orders arrive complete"],
+      ["lone", null, "outcome", "A goal on its own"],
+    ]);
+    const isGoal = (id: string) => ["g", "leaf", "lone"].includes(id);
+    const { doc, slots } = layoutSpace(board, { isGoal, lanes: new Map([["leaf", 2], ["lone", 1], ["g", 1]]) });
+    const cards = ["g", "p", "faint", "leaf", "lone"].map((id) => worldBounds(doc, id));
+    for (const head of ["leaf", "lone", "g"]) {
+      const slot = slots.get(head)!;
+      expect(slot, head).toBeTruthy();
+      for (const c of cards) expect(boxesIntersect(c, slot)).toBe(false);
+    }
+    // Beside its goal, level with it, not over the sibling on its left.
+    const leaf = worldBounds(doc, "leaf");
+    const beside = slots.get("leaf")!;
+    expect(beside.x + beside.w).toBeLessThan(leaf.x);
+    expect(beside.y).toBe(leaf.y);
+    expect(beside.x).toBeGreaterThan(worldBounds(doc, "faint").x + worldBounds(doc, "faint").w);
+    // A goal alone keeps its lane clear of the tree before it.
+    const lone = worldBounds(doc, "lone");
+    expect(slots.get("lone")!.x + slots.get("lone")!.w).toBeLessThan(lone.x);
+    expect(slots.get("lone")!.x).toBeGreaterThan(worldBounds(doc, "leaf").x + worldBounds(doc, "leaf").w);
+    // With no lanes nothing changes shape: no slots at all.
+    expect(layoutSpace(board, { isGoal }).slots.size).toBe(0);
+  });
 });

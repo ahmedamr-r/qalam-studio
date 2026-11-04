@@ -26,6 +26,9 @@ export interface LayoutOptions {
 
 /** What a goal's sources lane takes on its left, as the layout keeps room for it. */
 const LANE_ROOM = LANE_W + LANE_GAP - GAPS.tb.branchGap;
+/** The same beside a goal with no cards under it: the two are siblings with nothing under them, so a closer gap. */
+const LANE_ROOM_BESIDE = LANE_W + LANE_GAP - GAPS.tb.siblingGap;
+const laneHeight = (rows: number) => rows * (LANE_ITEM_H + LANE_ROW_GAP);
 /** The column of problems no goal covers: one under another. */
 const COLUMN_GAP = 24;
 
@@ -58,10 +61,17 @@ export function layoutSpace(doc: Doc, o: LayoutOptions = {}): { doc: Doc; slots:
   const layoutNode = (id: string): LayoutNode => {
     const n = d.nodes[id] as FrameNode;
     const box = cardBox(n.meta.ost!);
-    const kids = n.meta.ost!.collapsed ? [] : own(id).map(layoutNode);
+    const kids = n.meta.ost!.collapsed
+      ? []
+      : own(id).flatMap((c) => {
+          const kid = layoutNode(c);
+          const rows = o.lanes?.get(c) ?? 0;
+          // A goal with nothing under it has no children to lead: its lane goes beside it, among its siblings.
+          return rows && !kid.kids.length ? [{ id: `lane:${c}`, w: LANE_ROOM_BESIDE, h: laneHeight(rows), kids: [] }, kid] : [kid];
+        });
     const rows = o.lanes?.get(id) ?? 0;
     // The lane's column, first among its children: the goal's own cards start right of it.
-    if (rows && kids.length) kids.unshift({ id: `lane:${id}`, w: LANE_ROOM, h: Math.max(rows * (LANE_ITEM_H + LANE_ROW_GAP), depthOf(id)), kids: [] });
+    if (rows && kids.length) kids.unshift({ id: `lane:${id}`, w: LANE_ROOM, h: Math.max(laneHeight(rows), depthOf(id)), kids: [] });
     return { id, w: box.w, h: box.h, kids };
   };
   /** Sizes, positions relative to each parent card, what's folded away hidden; a lane's column into `slots` (world). */
@@ -88,6 +98,12 @@ export function layoutSpace(doc: Doc, o: LayoutOptions = {}): { doc: Doc; slots:
       continue;
     }
     const t = layoutNode(root);
+    // A tree of one card: its lane goes left of it, clear of the tree before.
+    const rows = o.lanes?.get(root) ?? 0;
+    if (rows && !t.kids.length) {
+      slots.set(root, { x, y: 0, w: LANE_W, h: laneHeight(rows) });
+      x += LANE_W + LANE_GAP;
+    }
     const at = layoutTree(t, { orientation: "tb" });
     let x0 = Infinity;
     let x1 = -Infinity;

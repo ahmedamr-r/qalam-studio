@@ -3,7 +3,12 @@ import { create } from "zustand";
 import { studio, useStudio } from "@/doc/store";
 import type { Doc } from "@/doc/schema";
 import { isOstCard } from "@/doc/board";
-import { boardOfCard, onSpaceCanvas } from "@/space/view";
+import { boardOfCard, onSpaceCanvas, type SpacePreview } from "@/space/view";
+import { worldBounds } from "@/doc/geometry";
+import { cameraShowing } from "@/discovery/framing";
+import { getController } from "../CanvasView";
+import { onCanvasReady } from "./canvas";
+import { useDiscovery } from "./store";
 import { previewLayout } from "@/space/session";
 import { boardsPlacedFor } from "./placements";
 import { useGhosts, type Ghost } from "@/doc/ghosts";
@@ -110,14 +115,22 @@ function fits(p: Proposal, all: Proposal[]): boolean {
 }
 
 /**
- * On a space's canvas: the proposals carried out on the whole canvas, laid out as an edit lays it
- * out (each goal's lane column too), so the ghost is where accepting puts it, not a board's layout.
+ * On a space's canvas: every proposal carried out on the whole canvas at once, laid out as an edit
+ * lays it out (each goal's lane column too), so a ghost is where accepting puts it, not a board's
+ * layout. The trees it changes are drawn from that, and so is any tree it pushes along, or that
+ * tree would sit under the ghost until the proposal is accepted.
  */
-export function spaceGhost(doc: Doc, roots: string[], proposals: Proposal[], evidence: EvidenceOf): Doc | null {
+function spaceGhosts(doc: Doc, proposals: Proposal[]): { ghosts: Ghost[]; preview: SpacePreview | null } {
+  if (!proposals.length) return { ghosts: [], preview: null };
   const goals = new Set(proposals.flatMap((p) => (p.kind === "goal" ? [p.cardId] : [])));
-  const laid = previewLayout(produce(doc, (d) => carryOut(d, proposals, evidence)), goals);
-  const kept = roots.filter((r) => laid.nodes[r]);
-  return kept.length ? { ...laid, roots: kept } : null;
+  const preview = previewLayout(produce(doc, (d) => carryOut(d, proposals, evidenceOf)), goals);
+  const laid = preview.doc;
+  const moved = laid.roots.filter((r) => doc.nodes[r] && isOstCard(laid.nodes[r]) && (laid.nodes[r].x !== doc.nodes[r].x || laid.nodes[r].y !== doc.nodes[r].y));
+  const roots = new Set([...proposals.flatMap((p) => touchedRoots(doc, p, proposals)), ...moved]);
+  const ghost = (r: string, drawn: string[]): Ghost => ({ key: `${REVIEW_TURN}:${r}`, turnId: REVIEW_TURN, index: 0, doc: { ...laid, roots: drawn }, ...(doc.nodes[r] ? { covers: r } : {}) });
+  // A tree a merge or a move took apart still hides under its ghost.
+  const ghosts = [...roots].flatMap((r) => (laid.nodes[r] ? [ghost(r, [r])] : doc.nodes[r] ? [ghost(r, [])] : []));
+  return { ghosts, preview };
 }
 
 /** The board as it would be, as ghosts: trees a move or merge joins are drawn together, then one ghost per tree. */
@@ -160,7 +173,8 @@ function show() {
     useReview.setState({ proposals });
     void keep(useReview.getState().origin);
   }
-  const ghosts = ghostsFor(studio().doc, proposals, REVIEW_TURN, undefined, onSpaceCanvas() ? spaceGhost : proposalDoc);
+  const { ghosts, preview } = onSpaceCanvas() ? spaceGhosts(studio().doc, proposals) : { ghosts: ghostsFor(studio().doc, proposals, REVIEW_TURN, undefined, proposalDoc), preview: null };
+  if (preview !== useSpaceView.getState().preview) useSpaceView.setState({ preview });
   useGhosts.setState((s) => ({ list: [...s.list.filter((g) => g.turnId !== REVIEW_TURN), ...ghosts] }));
   if (!proposals.length) {
     unsubscribe?.();
@@ -229,19 +243,42 @@ export function reviewWaits(): string | null {
   return cur.proposals.length ? WAITS[cur.origin?.kind ?? "sources"] : null;
 }
 
-/** Open a review (false when another one is waiting: one at a time). */
-export function startReview(origin: ReviewOrigin, proposals: Proposal[]): boolean {
+/**
+ * Bring what's under review into view, once the canvas has its new size (a panel may have just
+ * closed): the suggestions as the ghost draws them, and `also` (the card they're for).
+ */
+export function frameReview(also: readonly string[] = []) {
+  onCanvasReady(() =>
+    requestAnimationFrame(() => {
+      const c = getController();
+      if (!c) return;
+      const ghosts = useGhosts.getState().list.filter((g) => g.turnId === REVIEW_TURN);
+      const boxes = [...useReview.getState().proposals.map((p) => p.cardId), ...also].flatMap((id) => {
+        const g = ghosts.find((x) => x.doc.nodes[id]?.visible);
+        return g ? [worldBounds(g.doc, id)] : [];
+      });
+      const to = cameraShowing(boxes, c.cameraGoal, c.viewport, { top: 104, bottom: 56, left: 16, right: useDiscovery.getState().inset + 16 }, (box, insets, maxZoom) => c.fitCamera(box, insets, maxZoom, 24));
+      if (to) c.glideTo(to);
+    }),
+  );
+}
+
+/** Open a review (false when another one is waiting: one at a time). `also`: a card to keep in view with the suggestions. */
+export function startReview(origin: ReviewOrigin, proposals: Proposal[], also: readonly string[] = []): boolean {
   const cur = useReview.getState();
   const same = cur.origin && JSON.stringify(cur.origin) === JSON.stringify(origin);
   if (cur.proposals.length && !same) {
     feedback(reviewWaits()!, { id: "discovery.review" });
     return false;
   }
+  // The same review opened again with nothing new leaves the view where they've put it.
+  const fresh = proposals.some((p) => !cur.proposals.some((q) => q.id === p.id));
   useReview.setState({ origin, proposals });
   // The real cards are under the ghost: nothing of them stays selected.
   studio().select([]);
   show();
   void keep(origin);
+  if (fresh) frameReview(also);
   return true;
 }
 

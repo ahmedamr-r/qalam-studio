@@ -5,7 +5,6 @@ import { Check, Quote, RotateCcw } from "lucide-react";
 import { nanoid } from "nanoid";
 import { studio, useStudio } from "@/doc/store";
 import { isOstCard } from "@/doc/board";
-import { useGhosts } from "@/doc/ghosts";
 import { CHALLENGE_LABEL, type DumpSession } from "@/discovery/dump";
 import { KIND_LABEL } from "@/discovery/kinds";
 import type { Proposal } from "@/discovery/proposals";
@@ -23,10 +22,9 @@ import { Progress } from "../../ai/common";
 import { toQuestion } from "../../ai/plan";
 import { AnswersSummary, qr } from "../../ai/Questionnaire";
 import { QalamAIGlyph } from "../../brand/ai-glyph";
-import { getController } from "../../CanvasView";
 import { placeDump, readAnyway, retryDump, sessionOf, skipRest, useDump } from "../../discovery/dump";
 import { ACCEPT } from "../../discovery/ingest";
-import { REVIEW_TURN, acceptAll, acceptProposals, discardAll, discardProposals, startReview, useReview } from "../../discovery/review";
+import { acceptAll, acceptProposals, discardAll, discardProposals, frameReview, startReview, useReview } from "../../discovery/review";
 import { openSource, sourceOf, useSources } from "../../discovery/sources";
 import { Button, Spinner, Tag, Tip } from "../../controls";
 import { Dots, StatusDot } from "../../viz";
@@ -416,11 +414,6 @@ export function proposedLine(list: readonly Proposal[]): string {
 }
 
 /** Bring the proposals waiting on the canvas into view. */
-function showGhosts() {
-  const c = getController();
-  const ids = useGhosts.getState().list.filter((g) => g.turnId === REVIEW_TURN).flatMap((g) => g.doc.roots);
-  if (c && ids.length) requestAnimationFrame(() => c.glideToFit(ids));
-}
 
 /** A goal or a problem found for them: each one proposed, with where it would go, to accept or leave out here. */
 function FoundList({ list }: { list: Proposal[] }) {
@@ -481,7 +474,7 @@ function ProposedPart({ data }: { data: PartData }) {
           <button type="button" className={r.replyChipPrimary} onClick={acceptAll}>
             Accept all
           </button>
-          <button type="button" className={r.replyChip} onClick={showGhosts}>
+          <button type="button" className={r.replyChip} onClick={() => frameReview()}>
             Show them
           </button>
           <button type="button" className={r.replyChip} onClick={discardAll}>
@@ -496,7 +489,7 @@ function ProposedPart({ data }: { data: PartData }) {
             disabled={other}
             title={other ? "Another review is open on the canvas: settle it first." : undefined}
             onClick={() => {
-              if (startReview({ kind: "dump", sourceId: d.source }, list)) showGhosts();
+              startReview({ kind: "dump", sourceId: d.source }, list);
             }}
           >
             Review them

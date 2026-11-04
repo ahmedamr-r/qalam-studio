@@ -1,3 +1,4 @@
+import type { Doc } from "@/doc/schema";
 import { create } from "zustand";
 import type { Box } from "@/doc/geometry";
 import { studio } from "@/doc/store";
@@ -10,6 +11,13 @@ import type { SpaceTag, SpaceThing } from "./compose";
  * code asks `boardOfCard` instead of the open project, so the same code works on a board's page
  * and on the space's canvas.
  */
+
+/** A canvas laid out: its cards, and each goal's sources lane and where it goes. */
+export interface SpacePreview {
+  doc: Doc;
+  groups: readonly { head: string; cards: string[] }[];
+  slots: ReadonlyMap<string, Box>;
+}
 
 export interface SpaceView {
   /** A space's canvas is what the studio holds (not a board's page). */
@@ -27,11 +35,13 @@ export interface SpaceView {
   /** Each goal's own cards, for its sources lane; `slots` says where its lane goes. */
   groups: readonly { head: string; cards: string[] }[];
   slots: ReadonlyMap<string, Box>;
+  /** While a review is open: the canvas as accepting would leave it, which its ghosts draw and the lane follows. */
+  preview: SpacePreview | null;
   /** The boards it holds: their names and products. */
   boards: ReadonlyMap<string, { name: string; product: string | null }>;
 }
 
-const EMPTY: SpaceView = { active: false, space: null, things: new Map(), boardOf: new Map(), virtual: new Set(), faint: new Set(), fainter: new Set(), tags: new Map(), noticed: new Set(), groups: [], slots: new Map(), boards: new Map() };
+const EMPTY: SpaceView = { preview: null, active: false, space: null, things: new Map(), boardOf: new Map(), virtual: new Set(), faint: new Set(), fainter: new Set(), tags: new Map(), noticed: new Set(), groups: [], slots: new Map(), boards: new Map() };
 
 export const useSpaceView = create<SpaceView>(() => EMPTY);
 export const resetSpaceView = () => useSpaceView.setState(EMPTY, true);

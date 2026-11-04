@@ -42,7 +42,6 @@ import { partialPlace, sanitizePlace, type PlaceContext } from "@/discovery/plac
 import { initialFlow, type FlowState } from "../ai/questionFlow";
 import { openTurn, patchTurn } from "../ai/chats";
 import { appendThought, endAgent, narrate, startAgent, updateAgent } from "../ai/agents";
-import { getController } from "../CanvasView";
 import { canvasProduct } from "@/space/view";
 import { toggleChat } from "../frame/store";
 import { composeIn } from "../space/chat/compose";
@@ -478,9 +477,6 @@ export async function placeDump(sourceId: string) {
       return;
     }
     if (!startReview({ kind: "dump", sourceId }, list)) return void (await setSession(sourceId, (d) => ({ ...d, phase: "ready" })));
-    const c = getController();
-    const ghostIds = useGhosts.getState().list.filter((g) => g.turnId === REVIEW_TURN).flatMap((g) => g.doc.roots);
-    if (c && ghostIds.length) requestAnimationFrame(() => c.glideToFit(ghostIds));
   };
   try {
     const { raw, sample, model } = await call(sourceId, session.file ? `Qalam AI is placing what bears on it from “${session.file.title}”` : session.aim?.goal ? "Qalam AI is finding the problem to focus on in what you said" : session.aim ? `Qalam AI is finding ${session.aim.find === "goal" ? "a goal" : "a problem"} in what you said` : "Qalam AI is placing your brain dump", body, () => sampleRaw(SAMPLE_DUMP_PLACE_RAW, cards), 9000, onDelta);
