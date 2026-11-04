@@ -137,7 +137,7 @@ export function SpaceCanvas({ org, space, inputs, sources }: { org: string | nul
       {dock && <SourcesDock onClose={() => showDock(false)} />}
       <div className="relative min-w-0 flex-1">
         <CanvasView />
-        <div className="absolute bottom-[12px] left-[12px] z-[8] flex items-center gap-[2px] rounded-lg bg-raised p-[2px] shadow-floating">
+        <div data-tour="bar" className="absolute bottom-[12px] left-[12px] z-[8] flex items-center gap-[2px] rounded-lg bg-raised p-[2px] shadow-floating">
           <button
             ref={sourcesButton}
             type="button"

@@ -52,6 +52,7 @@ import { useSpace } from "../frame/useSpace";
 import { glideToLayer, keepInView, onCanvasReady } from "../discovery/canvas";
 import { SpaceCanvas } from "../space/SpaceCanvas";
 import { useWide, WIDE } from "../chat/Panels";
+import { CanvasTour } from "../space/Tour";
 import { useNeeds } from "./useNeeds";
 import { lab } from "@/lab";
 import { homeGoals } from "./goals";
@@ -344,6 +345,7 @@ export default function Home({ product: productId = null }: { product?: string |
           </aside>
         )}
       </div>
+      <CanvasTour />
     </PageFrame>
   );
 }
