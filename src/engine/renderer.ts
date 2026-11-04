@@ -137,6 +137,7 @@ export class Renderer {
   onImageLoaded: (() => void) | null = null;
   /** Chrome colours for the current theme (see chrome.ts), as hex and as CanvasKit colours. */
   private theme: ChromeTheme = DEFAULT_CHROME;
+  private seeThrough = false;
   private colors = new Map<ChromeKey, Float32Array>();
   /** Chrome text (labels, badges, pills) by text, colour and style; laid out to the width last asked for. */
   private chromeCache = new Map<string, { p: Paragraph; width: number }>();
@@ -177,6 +178,11 @@ export class Renderer {
 
   get chromeTheme(): ChromeTheme {
     return this.theme;
+  }
+
+  /** A space's canvas lets what's behind it show (q-canvas-wash); a Screens canvas clears to the canvas colour. */
+  setSeeThrough(on: boolean) {
+    this.seeThrough = on;
   }
 
   /** A chrome colour as a CanvasKit colour (cached until the theme changes), optionally faded. */
@@ -252,7 +258,7 @@ export class Renderer {
     const canvas = surface.getCanvas();
     const ck = this.ck;
     const { camera: cam, doc } = input;
-    canvas.clear(this.c("canvas"));
+    canvas.clear(this.seeThrough ? ck.TRANSPARENT : this.c("canvas"));
 
     const view: Box = { x: cam.x, y: cam.y, w: this.width / cam.zoom, h: this.height / cam.zoom };
     // ⌃P: the design at 1× (its real pixels), scaled up without smoothing.

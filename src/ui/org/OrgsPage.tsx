@@ -46,15 +46,15 @@ export default function OrgsPage() {
   const orgs = state.kind === "ready" ? [...state.orgs].sort((a, b) => Number(b.id === state.current) - Number(a.id === state.current)) : [];
   return (
     <Tooltip.Provider delayDuration={500} skipDelayDuration={300}>
-      <div className="grid h-screen grid-rows-[var(--topbar-h)_minmax(0,1fr)] overflow-hidden bg-app text-fg">
-        <header className={clsx(r.topBar, "min-w-0")} data-region="topbar">
+      <div className="q-shell grid h-screen grid-rows-[var(--topbar-h)_minmax(0,1fr)] overflow-hidden bg-app text-fg">
+        <header className={clsx(r.shellBar, "min-w-0")} data-region="topbar">
           <span className={r.brandCell}>
             <QalamMark size={20} />
           </span>
           <span className="px-[8px] text-body font-medium text-fg">Organizations</span>
         </header>
-        <div className="relative min-h-0">
-          <main className="h-full overflow-y-auto">
+        <div className="relative min-h-0 px-[8px] pb-[8px]">
+          <main className="h-full overflow-y-auto rounded-xl bg-app shadow-panel">
             <div className={clsx(r.pageMain, "max-w-[640px] gap-[20px] pt-[48px]")}>
               <h1 className="text-display font-semibold text-fg">Your organizations</h1>
               {state.kind === "error" ? (

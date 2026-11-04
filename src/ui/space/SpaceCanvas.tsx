@@ -199,7 +199,7 @@ export function SpaceCanvas({ org, space, inputs, sources }: { org: string | nul
 /** While the engine and the boards load (or can't), in the canvas's place. */
 function Waiting({ failed, message }: { failed?: boolean; message?: string }) {
   return (
-    <div className="grid h-full w-full place-items-center bg-canvas text-caption text-fg-subtle">
+    <div className="q-canvas-wash grid h-full w-full place-items-center bg-canvas text-caption text-fg-subtle">
       {failed ? (
         (message ?? "The canvas can't be drawn here.")
       ) : (

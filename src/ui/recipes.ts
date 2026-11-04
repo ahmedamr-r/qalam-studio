@@ -14,6 +14,7 @@ const ICON_BUTTON_BASE = "q-item q-press q-press-icon grid shrink-0 place-items-
 const spec = {
   // ── Shell ─────────────────────────────────────────────────────────────
   topBar: "relative flex h-(--topbar-h) shrink-0 items-center border-b border-line-subtle bg-app",
+  shellBar: "q-shell-bar relative flex h-(--topbar-h) shrink-0 items-center",  // a page's top bar, on the Desk (q-shell)
   brandCell: "grid h-full w-(--rail-w) shrink-0 place-items-center text-accent",
   mainMenuTrigger: "q-item q-press inline-flex h-[28px] items-center gap-[6px] rounded-md pl-[4px] pr-[6px] -ml-[4px] hover:bg-hover data-[state=open]:bg-active [&_svg]:text-fg-subtle",
   crumbs: "absolute left-1/2 flex -translate-x-1/2 items-center gap-[6px] whitespace-nowrap text-body text-fg-subtle",
@@ -197,8 +198,8 @@ const spec = {
   stopButton: "h-[26px] gap-[6px] rounded-md pl-[8px] pr-[4px] text-body",  // + buttonBase + buttonPrimary, with an Esc kbdOnInverse
 
   // ── Panels (AI surfaces: steps · chat · so far, src/ui/chat) ──────────
-  panelBackdrop: "grid h-full min-h-0 gap-[8px] bg-app p-[8px]",
-  panelBox: "flex min-h-0 flex-col overflow-hidden rounded-xl bg-panel shadow-[inset_0_0_0_1px_var(--color-line-subtle)]",
+  panelBackdrop: "grid h-full min-h-0 gap-[8px] px-[8px] pb-[8px]",
+  panelBox: "flex min-h-0 flex-col overflow-hidden rounded-xl bg-panel shadow-panel",
   panelHead: "flex h-[44px] shrink-0 items-center gap-[8px] border-b border-line-subtle pl-[14px] pr-[8px]",
   panelBoxTitle: "truncate text-body font-semibold text-fg",
   panelDrawer: "q-rise absolute bottom-[8px] right-[8px] top-[8px] z-20 flex w-[min(400px,calc(100%-16px))] shadow-floating",

@@ -1,4 +1,5 @@
 import { useEffect, type CSSProperties, type ReactNode } from "react";
+import clsx from "clsx";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { dispatchPageKey } from "@/commands/pages";
 import Toasts from "../toast";
@@ -48,11 +49,11 @@ export function PageFrame({
   const trail = place !== "home" && crumbs?.length ? [{ label: "Canvas", href: spaceHref(here) }, ...crumbs] : crumbs;
   return (
     <Tooltip.Provider delayDuration={500} skipDelayDuration={300}>
-      <div className="grid h-screen grid-rows-[var(--topbar-h)_minmax(0,1fr)] overflow-hidden bg-app text-fg">
+      <div className="q-shell grid h-screen grid-rows-[var(--topbar-h)_minmax(0,1fr)] overflow-hidden bg-app text-fg">
         <FrameTopBar crumbs={trail} right={right} space={space} />
-        {/* Toasts sit over the page, bottom-centre (no toolbar here to clear). */}
-        <div className="relative min-h-0 min-w-0" style={{ "--toolbar-h": "0px" } as CSSProperties}>
-          <main className={fill ? "h-full overflow-hidden" : "h-full overflow-y-auto"}>{children}</main>
+        {/* Toasts sit over the page, bottom-centre (no toolbar here to clear). A page of panels lays its own on the Desk. */}
+        <div className={clsx("relative min-h-0 min-w-0", !fill && "px-[8px] pb-[8px]")} style={{ "--toolbar-h": "0px" } as CSSProperties}>
+          <main className={fill ? "h-full overflow-hidden" : "h-full overflow-y-auto rounded-xl bg-app shadow-panel"}>{children}</main>
           <Toasts />
         </div>
       </div>

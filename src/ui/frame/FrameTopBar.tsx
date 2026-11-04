@@ -22,7 +22,7 @@ export interface Crumb {
 export function FrameTopBar({ crumbs = [], right, space }: { crumbs?: Crumb[]; right?: ReactNode; space?: Space }) {
   const org = useCurrentOrg();
   return (
-    <header className={clsx(r.topBar, "min-w-0")} data-region="topbar">
+    <header className={clsx(r.shellBar, "min-w-0")} data-region="topbar">
       <a href={orgsHref()} aria-label="All organizations" className={r.brandCell}>
         <QalamMark size={20} />
       </a>

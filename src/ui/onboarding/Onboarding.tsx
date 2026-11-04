@@ -287,8 +287,8 @@ export function Onboarding({ route }: { route: "welcome" | "setup" }) {
     );
   return (
     <Tooltip.Provider delayDuration={500} skipDelayDuration={300}>
-      <div className="grid h-screen grid-rows-[var(--topbar-h)_minmax(0,1fr)] overflow-hidden bg-app text-fg" style={{ "--toolbar-h": "104px" } as CSSProperties}>
-        <header className={r.topBar}>
+      <div className="q-shell grid h-screen grid-rows-[var(--topbar-h)_minmax(0,1fr)] overflow-hidden bg-app text-fg" style={{ "--toolbar-h": "104px" } as CSSProperties}>
+        <header className={r.shellBar}>
           <a href={route === "welcome" && fr.mode === "first" ? "/welcome" : orgHref()} aria-label="Qalam" className={r.brandCell}>
             <QalamMark size={20} />
           </a>

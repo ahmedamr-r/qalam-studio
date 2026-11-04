@@ -63,6 +63,9 @@
      focus     #b8740c    3.5 ·  3.8 ·  3.2   (graphic, >= 3:1)
      canvas-label #64605b on canvas 5.3 · sel-label #1f63de on canvas 4.6
      on fills: ink on #f0a226 8.7 · white on #296aea 4.83 · white on #1f63de 5.39 · white on agents 4.9–5.5
+   the Desk (section 8; shell-tokens.test.ts holds these), at each gradient's brightest stop
+     dark   shell #293d6c: fg 9.3 · bar's muted and subtle 4.75 · canvas #171e2c: fg-subtle 4.6 · card 1.15
+     light  shell #bfd7ff: fg 11.9 · bar's muted and subtle 5.3 · canvas, its darkest #eceef0: fg-subtle 4.75 · sel-label 4.6
    ΔE (OKLab×100): selection vs saffron 38 · vs every agent >= 15 · AI rose vs danger 20 ·
                    saffron vs warning 8.6 (warnings ALWAYS carry an icon; lint dot is a ring)
    ========================================================================== */
@@ -187,6 +190,7 @@
   --shadow-button-accent: var(--elev-button-accent);     /* NEW saffron Generate (no bloom) */
   --shadow-button-pressed: var(--elev-button-pressed);   /* NEW :active on invert/accent: the bevel drops */
   --shadow-focus-field: var(--elev-focus-field);         /* NEW 1px focus edge + 3px halo for inputs */
+  --shadow-panel: var(--elev-panel);                     /* a panel lying on the Desk */
 
   /* Radii: px, so the classes measure what they say (html is 13px). Never bare `rounded` (= 3.25px). */
   --radius-xs: 3px;   /* keycaps inside dense menus, swatch inner */
@@ -271,6 +275,16 @@
   --elev-button-accent: inset 0 1px 0 rgb(255 255 255 / 0.38), inset 0 -1px 0 rgb(120 70 0 / 0.25), 0 0 0 1px rgb(0 0 0 / 0.5), 0 1px 2px rgb(0 0 0 / 0.4);
   --elev-button-pressed: inset 0 1px 1px rgb(0 0 0 / 0.18), 0 0 0 1px rgb(0 0 0 / 0.55);
   --elev-focus-field: inset 0 0 0 1px var(--color-focus), 0 0 0 3px var(--color-focus-halo);
+  --elev-panel: inset 0 1px 0 rgb(255 255 255 / 0.07), 0 0 0 1px rgb(0 0 0 / 0.35), 0 8px 28px rgb(0 0 0 / 0.28);
+
+  /* The Desk (section 8): one hue, indigo (OKLCH 265), behind every page's panels. Never lilac or
+     rose (Qalam AI's), never saffron (the one accent). The grain keeps a dark gradient from banding. */
+  --shell-1: #293d6c;  --shell-2: #131e37;  --shell-3: #07090f;
+  --wash-1: #171e2c;   --wash-2: #14171d;   --wash-3: #0f1012;
+  --shell-ink-subtle: #b0adaa;
+  --shell-ink-faint: #8a8681;
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 .06 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --canvas-wash: var(--grain), radial-gradient(135% 115% at 8% -6% in oklab, var(--wash-1) 0%, var(--wash-2) 45%, var(--wash-3) 100%);
 
   /* Qalam AI · Illumination
      --ai-gradient       saturated manuscript pigments, ONLY as glyph fills <= 16px
@@ -431,6 +445,13 @@
   --elev-button-invert: inset 0 1px 0 rgb(255 255 255 / 0.14), 0 0 0 1px rgb(0 0 0 / 0.9), 0 1px 2px rgb(0 0 0 / 0.2);
   --elev-button-accent: inset 0 1px 0 rgb(255 255 255 / 0.45), 0 0 0 1px rgb(150 90 0 / 0.35), 0 1px 2px rgb(0 0 0 / 0.12);
   --elev-button-pressed: inset 0 1px 2px rgb(0 0 0 / 0.16), 0 0 0 1px rgb(0 0 0 / 0.14);
+  --elev-panel: 0 0 0 1px rgb(0 0 0 / 0.07), 0 6px 22px rgb(20 30 70 / 0.08);
+
+  --shell-1: #bfd7ff;  --shell-2: #dde8ff;  --shell-3: #f1f3f8;
+  --wash-1: #edf5ff;   --wash-2: #edf1f8;   --wash-3: #eceef0;
+  --shell-ink-subtle: #55524e;
+  --shell-ink-faint: #6c6863;
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 .04 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 
   /* Light rings use the saturated stops (nacre vanishes on white); the tag keeps nacre with ink text. */
   --ai-conic: conic-gradient(from var(--ai-angle, 0deg), #4f6bff, #8b5cf6, #e0559b, #e3971f, #4f6bff);
@@ -852,3 +873,15 @@ input, textarea { caret-color: var(--color-fg-accent); }
 .q-timeline:focus-visible { outline: none; }
 .q-timeline:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px var(--color-panel), 0 0 0 5px var(--color-focus); }
 .q-timeline:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px var(--color-panel), 0 0 0 5px var(--color-focus); }
+
+/* ---------------------------------------------------------------------------
+   8. The Desk: a page's shell is lit from its top-left corner, and its panels lie on it (an 8px
+      gutter, rounded-xl, shadow-panel). A space's canvas carries a faint echo: about the canvas
+      colour's lightness at its brightest and darker where it falls away, so what's drawn on it
+      reads as it did. Only backgrounds; cards, buttons, tags and text stay as they are. Each sits
+      on a bg-* of its own, which shows where a browser can't draw these.
+   --------------------------------------------------------------------------- */
+.q-shell { background-image: var(--grain), radial-gradient(110% 130% at 0% 0% in oklab, var(--shell-1) 0%, var(--shell-2) 40%, var(--shell-3) 100%); }
+.q-canvas-wash { background-image: var(--canvas-wash); }
+/* The top bar lies on the brightest part: its quieter text goes a step stronger. */
+.q-shell-bar { --color-fg-subtle: var(--shell-ink-subtle); --color-fg-faint: var(--shell-ink-faint); }

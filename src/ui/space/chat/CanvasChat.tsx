@@ -82,7 +82,7 @@ export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
     <section
       aria-label="Qalam AI"
       data-ask-bar
-      className={clsx("flex shrink-0 flex-col border-r border-line-subtle bg-panel", over && "absolute inset-y-0 left-0 z-30 max-w-full shadow-floating")}
+      className={clsx("flex shrink-0 flex-col overflow-hidden rounded-xl bg-panel", over ? "absolute top-0 bottom-[8px] left-[8px] z-30 max-w-[calc(100%-16px)] shadow-floating" : "shadow-panel")}
       style={{ width: CHAT_W }}
     >
       <header className="flex h-[40px] shrink-0 items-center gap-[8px] pr-[8px] pl-[16px]">

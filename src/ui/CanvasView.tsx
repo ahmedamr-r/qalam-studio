@@ -1,4 +1,5 @@
 import { useEffect, useRef, type DragEvent } from "react";
+import clsx from "clsx";
 import { Renderer } from "@/engine/renderer";
 import { Controller } from "@/engine/controller";
 import { onFontsChanged } from "@/engine/fonts";
@@ -22,10 +23,12 @@ export default function CanvasView() {
   const wrap = useRef<HTMLDivElement>(null);
   const board = useProjectType() === "discovery";
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const rendererRef = useRef<Renderer | null>(null);
 
   useEffect(() => {
     const el = canvasRef.current!;
     const renderer = new Renderer(el);
+    rendererRef.current = renderer;
     const controller = new Controller(el, renderer);
     activeController = controller;
     setExportRenderer(renderer);
@@ -64,8 +67,15 @@ export default function CanvasView() {
       renderer.dispose();
       setExportRenderer(null);
       activeController = null;
+      rendererRef.current = null;
     };
   }, []);
+
+  // A board's cards lie on the Desk's wash; a Screens canvas stays one flat colour, for judging a design on.
+  useEffect(() => {
+    rendererRef.current?.setSeeThrough(board);
+    activeController?.render();
+  }, [board]);
 
   /** Where a drag is over the canvas, in world space. */
   const worldOf = (e: DragEvent) => {
@@ -77,7 +87,7 @@ export default function CanvasView() {
     <div
       ref={wrap}
       data-region="canvas"
-      className="relative h-full w-full overflow-hidden bg-canvas"
+      className={clsx("relative h-full w-full overflow-hidden bg-canvas", board && "q-canvas-wash")}
       // No browser menu over the canvas even where ours stays shut (rulers, ⌘-right-click on nothing).
       onContextMenu={(e) => e.preventDefault()}
       onDragOver={(e) => {

@@ -289,7 +289,7 @@ export function SetupCanvas({
       role="group"
       aria-label="Canvas: what you sent, wired to the problems and goals found in it"
       className="relative h-full min-h-0 w-full touch-none overflow-hidden bg-canvas select-none"
-      style={{ cursor: drag.current?.moved ? "grabbing" : "default", backgroundImage: "radial-gradient(var(--color-line-subtle) 1px, transparent 1px)", backgroundSize: `${16 * view.k}px ${16 * view.k}px`, backgroundPosition: `${view.x}px ${view.y}px` }}
+      style={{ cursor: drag.current?.moved ? "grabbing" : "default", backgroundImage: "radial-gradient(var(--color-line-subtle) 1px, transparent 1px), var(--canvas-wash)", backgroundSize: `${16 * view.k}px ${16 * view.k}px, auto, auto`, backgroundPosition: `${view.x}px ${view.y}px, 0 0, 0 0` }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}

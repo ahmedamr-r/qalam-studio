@@ -218,10 +218,10 @@ export default function Home({ product: productId = null }: { product?: string |
   };
   return (
     <PageFrame place="home" space={space} fill>
-      <div className="relative flex h-full min-h-0">
+      <div className="relative flex h-full min-h-0 gap-[8px] px-[8px] pb-[8px]">
         {chatOpen && <CanvasChat space={space} over={!chatDocks} />}
         <div
-          className="relative min-w-0 flex-1"
+          className="relative min-w-0 flex-1 overflow-hidden rounded-xl shadow-panel"
           onPointerDownCapture={() => {
             pressed.current = true;
           }}
@@ -246,7 +246,7 @@ export default function Home({ product: productId = null }: { product?: string |
               if (showsPage) closePage();
               else setAsked(null);
             }}
-            className={clsx("flex shrink-0 flex-col overflow-y-auto border-l border-line-subtle bg-app", "max-[1179px]:absolute max-[1179px]:inset-y-0 max-[1179px]:right-0 max-[1179px]:z-30 max-[1179px]:max-w-full max-[1179px]:shadow-floating")}
+            className={clsx("flex shrink-0 flex-col overflow-y-auto rounded-xl bg-app shadow-panel", "max-[1179px]:absolute max-[1179px]:top-0 max-[1179px]:right-[8px] max-[1179px]:bottom-[8px] max-[1179px]:z-30 max-[1179px]:max-w-[calc(100%-16px)] max-[1179px]:shadow-floating")}
             // A source being read takes the panel over, wider for a document than a conversation.
             style={{ width: panelW }}
           >
