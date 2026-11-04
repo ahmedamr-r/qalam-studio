@@ -142,7 +142,7 @@ export function SpaceCanvas({ org, space, inputs, sources }: { org: string | nul
             aria-pressed={dock}
             data-sources-button
             onClick={() => showDock(!dock)}
-            className={clsx("q-item flex h-[24px] items-center gap-[6px] rounded-md px-[8px] text-caption", dock ? "bg-selection-subtle text-selection-label" : "text-fg-muted hover:bg-hover hover:text-fg")}
+            className={clsx("q-item q-press flex h-[24px] items-center gap-[6px] rounded-md px-[8px] text-caption", dock ? "bg-selection-subtle text-selection-label" : "text-fg-muted hover:bg-hover hover:text-fg")}
           >
             <FileText size={13} {...ICON} />
             Sources
@@ -151,13 +151,13 @@ export function SpaceCanvas({ org, space, inputs, sources }: { org: string | nul
           <SourceFlights target={sourcesButton} />
           {/* Written on the canvas: under the goal picked, else at the top (../space/new.ts). */}
           <Tip label="A goal, typed on the canvas (under the goal picked)">
-            <button type="button" onClick={() => writeCard("outcome")} className="q-item flex h-[24px] items-center gap-[6px] rounded-md px-[8px] text-caption text-fg-muted hover:bg-hover hover:text-fg">
+            <button type="button" onClick={() => writeCard("outcome")} className="q-item q-press flex h-[24px] items-center gap-[6px] rounded-md px-[8px] text-caption text-fg-muted hover:bg-hover hover:text-fg">
               <Plus size={13} {...ICON} />
               Goal
             </button>
           </Tip>
           <Tip label="A problem, typed on the canvas (under the goal or problem picked)">
-            <button type="button" onClick={() => writeCard("opportunity")} className="q-item flex h-[24px] items-center gap-[6px] rounded-md px-[8px] text-caption text-fg-muted hover:bg-hover hover:text-fg">
+            <button type="button" onClick={() => writeCard("opportunity")} className="q-item q-press flex h-[24px] items-center gap-[6px] rounded-md px-[8px] text-caption text-fg-muted hover:bg-hover hover:text-fg">
               <Plus size={13} {...ICON} />
               Problem
             </button>
@@ -185,7 +185,7 @@ export function SpaceCanvas({ org, space, inputs, sources }: { org: string | nul
             type="button"
             aria-pressed={lanes}
             onClick={() => studio().setView({ sources: !lanes })}
-            className={clsx("q-item flex h-[24px] items-center gap-[6px] rounded-md px-[8px] text-caption", lanes ? "bg-selection-subtle text-selection-label" : "text-fg-muted hover:bg-hover hover:text-fg")}
+            className={clsx("q-item q-press flex h-[24px] items-center gap-[6px] rounded-md px-[8px] text-caption", lanes ? "bg-selection-subtle text-selection-label" : "text-fg-muted hover:bg-hover hover:text-fg")}
           >
             <Cable size={13} {...ICON} />
             Sources and wires

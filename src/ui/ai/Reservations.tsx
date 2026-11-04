@@ -62,7 +62,7 @@ export default function Reservations({ vp }: { vp: Vp }) {
   );
 }
 
-const fade = "data-[state=open]:animate-[q-fade-in_var(--dur-fast)_var(--ease-out-quad)_both] data-[state=closed]:animate-[q-fade-out_var(--dur-base)_var(--ease-in-quad)_forwards]";
+const fade = "data-[state=open]:animate-[q-fade-in_var(--dur-fast)_var(--ease-out-quad)_both] data-[state=closed]:animate-[q-fade-out_var(--dur-base)_var(--ease-out-quint)_forwards]";
 
 /** A frame being drafted: the light stage with the platform's layout, its name label, the ring and the sweep. */
 function Placeholder({ h, box, zoom, leaving }: { h: Held; box: ReservedBox; zoom: number; leaving: boolean }) {

@@ -262,7 +262,7 @@ function DumpRound({ source, dumpOf }: { source: string; dumpOf: DumpOf }) {
 /** The chat folded: a pill at the canvas's top-left brings it back. */
 export function ChatPill() {
   return (
-    <button type="button" onClick={() => toggleChat(true)} className="q-item q-glass absolute top-[12px] left-[12px] z-10 inline-flex h-[32px] items-center gap-[6px] rounded-lg bg-raised px-[10px] text-caption font-medium text-fg shadow-floating hover:bg-hover">
+    <button type="button" onClick={() => toggleChat(true)} className="q-item q-press q-glass absolute top-[12px] left-[12px] z-10 inline-flex h-[32px] items-center gap-[6px] rounded-lg bg-raised px-[10px] text-caption font-medium text-fg shadow-floating hover:bg-hover">
       <QalamAIGlyph size={12} /> Qalam AI
     </button>
   );

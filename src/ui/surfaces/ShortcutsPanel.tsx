@@ -154,7 +154,7 @@ function Panel({ open, entered, box }: { open: boolean; entered: boolean; box: {
       ? "opacity var(--dur-fast) var(--ease-out-quad)"
       : entered
         ? "translate calc(var(--dur-move) * 1.5) var(--ease-drawer), opacity var(--dur-fast) var(--ease-out-quad)"
-        : "translate var(--dur-move) var(--ease-in-quad), opacity var(--dur-fast) var(--ease-in-quad)",
+        : "translate var(--dur-move) var(--ease-out-quint), opacity var(--dur-fast) var(--ease-out-quint)",
   };
 
   const last = lastRun ? getCommand(lastRun.id) : undefined;

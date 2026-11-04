@@ -4,7 +4,7 @@ import { ChevronDown, ChevronLeft, ChevronRight, CircleAlert, Plus, X } from "lu
 import { formatKeys } from "@/commands/registry";
 import { QalamAIGlyph } from "../brand/ai-glyph";
 import { r } from "../recipes";
-import { Button, Checkbox, Kbd, Tag } from "../controls";
+import { Button, Checkbox, Kbd } from "../controls";
 import { Dictated } from "../voice/MicButton";
 import { ToolSuggestion } from "./ToolSuggestion";
 import {
@@ -42,23 +42,26 @@ import {
 const icon = { absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 
 /**
- * The AI question-card language (the critique card on the canvas uses the same strings): a lilac
- * card with a hairline in the AI tone, the glyph + step caption, a medium-weight question, option
- * cards on raised fills (the picked one tinted like every selected option card), invert radios.
+ * The question-card language (the chat's other cards and the critique card use the same strings):
+ * a quiet sheet on the panel in neutral ink, the glyph with what it's for, a medium-weight question,
+ * option cards on the sheet (the picked one in selection blue, as every selected option card),
+ * invert radios. Qalam AI's rose stays for its own marks: a card of questions is mostly theirs to read.
  */
 export const qr = {
-  card: "flex flex-col gap-[10px] rounded-lg bg-ai-subtle p-[12px] shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--color-ai)_18%,transparent)]",
-  caption: "flex items-center gap-[6px] text-micro font-medium text-ai tnum",
-  question: "text-body leading-[20px] font-medium text-fg",
+  card: "q-sheet flex flex-col gap-[12px] rounded-xl p-[14px]",
+  caption: "flex items-center gap-[6px] text-caption font-medium text-fg-muted tnum",
+  question: "text-title font-medium text-fg",
   why: "text-caption text-fg-muted",
   /** Option card: add `optionIdle` or `optionSelected` (they set the fill and the ring). */
   option: "q-item flex w-full items-start gap-[10px] rounded-lg px-[10px] py-[8px] text-left",
-  optionIdle: "bg-raised shadow-[inset_0_0_0_1px_var(--color-line-subtle)] hover:bg-elevated light:hover:bg-muted",
+  /** On an option that's a button (not one holding a field, where pressing to type shouldn't move it). */
+  optionPress: "q-press q-press-card",
+  optionIdle: "bg-sheet shadow-[inset_0_0_0_1px_var(--color-line-subtle)] hover:bg-hover",
   optionSelected: r.optionCardSelected,
   radio: "mt-[2px] grid size-[14px] shrink-0 place-items-center rounded-full shadow-[inset_0_0_0_1px_var(--color-line-strong)] transition-colors duration-quick",
   radioOn: "bg-inverse shadow-none",
   radioDot: "size-[6px] rounded-full bg-fg-inverse q-fade",
-  inset: "rounded-lg bg-raised shadow-[inset_0_0_0_1px_var(--color-line-subtle)]",
+  inset: "q-sheet rounded-lg",
   textBtn: "q-item inline-flex h-[22px] items-center gap-[2px] rounded-sm px-[6px] text-caption font-medium text-fg-muted hover:bg-hover hover:text-fg",
 } as const;
 
@@ -136,21 +139,23 @@ export function Questionnaire({ questions, state, onChange, onSubmit, review, ti
     <div ref={box} className={qr.card} onKeyDown={onKey}>
       <div ref={head} className="flex flex-col gap-[8px]">
         <div className="flex items-center justify-between gap-[8px]">
-          <span className={qr.caption} aria-live="polite">
+          <span className={clsx(qr.caption, "min-w-0")}>
             <QalamAIGlyph size={12} />
+            <span className="truncate">{title ?? (q?.source === "ai" ? "Qalam AI asks" : "A question")}</span>
+          </span>
+          <span className="shrink-0 text-caption text-fg-muted tnum" aria-live="polite">
             {cur === REVIEW ? `Review · step ${index} of ${total}` : `Step ${index} of ${total}`}
           </span>
-          {title && <span className="truncate text-micro text-fg-subtle">{title}</span>}
         </div>
         <div className="flex gap-[3px]" aria-hidden>
           {Array.from({ length: total }, (_, i) => (
-            <span key={i} className={clsx("h-[3px] flex-1 rounded-full transition-colors duration-base", i + 1 < index ? "bg-ai" : i + 1 === index ? "bg-ai/45" : "bg-ai/15")} />
+            <span key={i} className={clsx("h-[2px] flex-1 rounded-full transition-colors duration-base", i + 1 < index ? "bg-fg-muted" : i + 1 === index ? "bg-fg" : "bg-active")} />
           ))}
         </div>
       </div>
 
-      {/* Each step rises in; the one before is gone at once. */}
-      <div ref={step} key={cur} tabIndex={-1} className="q-rise flex flex-col gap-[10px] outline-none">
+      {/* Each step fades in, with no movement (Enter goes through them); the one before is gone at once. */}
+      <div ref={step} key={cur} tabIndex={-1} className="q-fade flex flex-col gap-[10px] outline-none">
         {cur === REVIEW || !q ? (
           <ReviewStep questions={questions} answers={state.answers} title={review?.title} onEdit={(id) => dispatch({ type: "edit", id })}>
             {review?.extra}
@@ -159,11 +164,6 @@ export function Questionnaire({ questions, state, onChange, onSubmit, review, ti
         ) : (
           <>
             <div className="flex flex-col gap-[4px]">
-              {q.source === "ai" && (
-                <span className="mb-[2px]">
-                  <Tag tone="ai">Qalam AI asks</Tag>
-                </span>
-              )}
               <p className={qr.question} dir="auto">
                 {q.title}
               </p>
@@ -245,14 +245,18 @@ function SingleStep({ q, a, onAnswer }: { q: SingleQuestion; a: Answer; onAnswer
   return (
     <div className="flex flex-col gap-[6px]" role="radiogroup" aria-label={q.title}>
       {q.options.map((o, i) => (
-        <button key={o.value} type="button" role="radio" aria-checked={value === o.value} onClick={() => onAnswer({ kind: "single", value: o.value, other })} className={cardCls(value === o.value)}>
+        <button key={o.value} type="button" role="radio" aria-checked={value === o.value} onClick={() => onAnswer({ kind: "single", value: o.value, other })} className={clsx(cardCls(value === o.value), qr.optionPress)}>
           <Radio on={value === o.value} />
           <span className="min-w-0 flex-1">
             <span className="flex flex-wrap items-center gap-[6px]">
               <span className="text-body font-medium text-fg" dir="auto">
                 {o.label}
               </span>
-              {q.recommended === o.value && <Tag tone="ai">Recommended</Tag>}
+              {q.recommended === o.value && (
+                <span className="inline-flex items-center gap-[4px] text-micro text-fg-muted">
+                  <QalamAIGlyph size={12} /> Recommended
+                </span>
+              )}
             </span>
             {o.description && (
               <span className="mt-[2px] block text-caption text-fg-muted" dir="auto">

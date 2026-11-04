@@ -116,7 +116,7 @@ function Palette({ space }: { space: Space }) {
   return (
     <>
       <div aria-hidden className="fixed inset-0 z-40" onPointerDown={close} />
-      <div role="dialog" aria-label="Search and go to" data-state="open" className={r.palette}>
+      <div role="dialog" aria-label="Search and go to" className={r.palette}>
         <div className={r.paletteInputRow}>
           <Search size={16} absoluteStrokeWidth strokeWidth={1.25} />
           <input

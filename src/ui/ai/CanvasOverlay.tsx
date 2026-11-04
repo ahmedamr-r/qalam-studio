@@ -139,7 +139,7 @@ function CritiquePill({ vp }: { vp: { w: number; h: number } }) {
   return (
     <div
       data-hidden={!resting || undefined}
-      className="absolute top-0 left-0 z-[3] transition-opacity delay-[80ms] duration-fast ease-out-quad data-[hidden]:pointer-events-none data-[hidden]:opacity-0 data-[hidden]:delay-0 data-[hidden]:duration-quick data-[hidden]:ease-in-quad"
+      className="absolute top-0 left-0 z-[3] transition-opacity delay-[80ms] duration-fast ease-out-quad data-[hidden]:pointer-events-none data-[hidden]:opacity-0 data-[hidden]:delay-0 data-[hidden]:duration-quick data-[hidden]:ease-out-quint"
       style={{ transform: `translate(${x}px, ${y}px)` }}
     >
       <div className="flex -translate-x-full items-center gap-[6px]">

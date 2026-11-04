@@ -3,7 +3,7 @@
  * Everything is px (html is 13px, so the rem scale is off by 3.25px per step) and every colour is a
  * theme token, so recipes work in dark and light alike. Motion lives in the .q-* classes:
  *   q-item   hover fill 0ms in / 150ms out        q-press (+ q-press-icon)  scale .97 (.94) on press
- *   q-menu / q-pop / q-flyout / q-tip / q-dialog / q-palette / q-toast  Radix data-state enter + exit
+ *   q-menu / q-pop / q-flyout / q-tip / q-dialog / q-toast  Radix data-state enter + exit
  * Shortcut keys come from the commands registry (formatKeys), never typed by hand: <Kbd keys={…}/>.
  */
 
@@ -137,7 +137,7 @@ const spec = {
   dialogFooter: "flex justify-end gap-[8px] border-t border-line-subtle px-[16px] py-[12px]",
   heroTitle: "text-hero font-semibold [font-variation-settings:'opsz'_32]",
   card: "rounded-xl bg-raised shadow-floating",                           // canvas cards: critique, FlagTips, follow
-  optionCardSelected: "bg-accent-subtle shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--color-accent)_40%,transparent)]",
+  optionCardSelected: "bg-selection-subtle shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--color-selection)_55%,transparent)]",
 
   // ── Tags ──────────────────────────────────────────────────────────────
   tag: "inline-flex h-[20px] items-center gap-[4px] rounded-sm px-[6px] text-micro font-medium",
@@ -150,10 +150,10 @@ const spec = {
   // never a saffron tag
 
   // ── ⌘K palette (no scrim) ─────────────────────────────────────────────
-  palette: "q-palette fixed left-1/2 top-[88px] z-50 w-[min(600px,calc(100vw-32px))] -translate-x-1/2 overflow-hidden rounded-xl bg-elevated shadow-modal",
+  palette: "fixed left-1/2 top-[88px] z-50 w-[min(600px,calc(100vw-32px))] -translate-x-1/2 overflow-hidden rounded-xl bg-elevated shadow-modal",
   paletteInputRow: "flex h-[48px] items-center gap-[10px] border-b border-line-subtle pl-[16px] pr-[12px] [&>svg]:text-fg-subtle",
   paletteInput: "flex-1 bg-transparent text-input text-fg outline-none focus-visible:outline-none placeholder:text-fg-faint",
-  paletteList: "q-palette-results relative max-h-[min(480px,60vh)] overflow-y-auto px-[6px] pt-[4px] pb-[6px]",
+  paletteList: "relative max-h-[min(480px,60vh)] overflow-y-auto px-[6px] pt-[4px] pb-[6px]",
   paletteGroup: "px-[10px] pt-[10px] pb-[4px] text-micro font-medium text-fg-subtle",
   paletteRow: "relative z-[1] flex h-[36px] items-center gap-[10px] rounded-lg pl-[10px] pr-[8px] text-body text-fg [&>svg]:text-fg-subtle aria-selected:[&>svg]:text-fg",
   paletteHighlight: "q-indicator rounded-lg bg-active shadow-[inset_0_0_0_1px_var(--color-line)]", // data-glide="fast" on pointer, data-instant on keys
@@ -207,8 +207,8 @@ const spec = {
   chatViewport: "flex min-h-0 flex-1 flex-col gap-[14px] overflow-y-auto px-[18px] pt-[18px]",
   chatYou: "max-w-[min(480px,85%)] self-end whitespace-pre-wrap rounded-[12px_12px_4px_12px] bg-active px-[12px] py-[8px] text-body leading-[20px] text-fg",
   chatFooter: "q-glass-foot mt-auto flex flex-col gap-[8px] bg-panel pb-[14px] pt-[6px]",           // + "sticky bottom-0" for a composer
-  replyChip: "q-item inline-flex h-[28px] items-center gap-[6px] rounded-md bg-raised px-[10px] text-body font-medium text-fg shadow-button hover:bg-elevated light:hover:bg-muted disabled:opacity-50",
-  replyChipPrimary: "q-item inline-flex h-[28px] items-center gap-[6px] rounded-md bg-inverse px-[10px] text-body font-medium text-fg-inverse shadow-button-invert hover:bg-inverse/90 disabled:opacity-50",
+  replyChip: "q-item q-press inline-flex h-[28px] items-center gap-[6px] rounded-md bg-raised px-[10px] text-body font-medium text-fg shadow-button hover:bg-elevated light:hover:bg-muted disabled:opacity-50",
+  replyChipPrimary: "q-item q-press inline-flex h-[28px] items-center gap-[6px] rounded-md bg-inverse px-[10px] text-body font-medium text-fg-inverse shadow-button-invert hover:bg-inverse/90 disabled:opacity-50",
 
   // ── Canvas DOM overlays ───────────────────────────────────────────────
   agentTag: "absolute left-[13px] top-[15px] inline-flex h-[20px] items-center whitespace-nowrap rounded-[4px_10px_10px_10px] px-[7px] text-micro font-semibold text-[#141412] shadow-[0_1px_2px_rgb(0_0_0/.25)] [background:var(--ai-gradient-soft)]",

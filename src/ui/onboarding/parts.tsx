@@ -476,7 +476,7 @@ function YouPart({ data }: { data: PartData }) {
           <span className="text-caption text-fg-muted">Your position at {org}</span>
           <div className="grid grid-cols-2 gap-[6px]" role="radiogroup" aria-label={`Your position at ${org}`}>
             {POSITIONS.map((o) => (
-              <button key={o.value} type="button" role="radio" aria-checked={p === o.value} className={cardCls(p === o.value)} onClick={() => setPosition(o.value)}>
+              <button key={o.value} type="button" role="radio" aria-checked={p === o.value} className={clsx(cardCls(p === o.value), qr.optionPress)} onClick={() => setPosition(o.value)}>
                 <Radio on={p === o.value} />
                 <span className="text-body font-medium text-fg">{o.label}</span>
               </button>

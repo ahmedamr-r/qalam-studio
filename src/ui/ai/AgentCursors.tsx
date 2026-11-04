@@ -177,7 +177,7 @@ function Cursor({ vp, target, color, name, activity, text, leaving }: CursorProp
       <div
         data-state={leaving ? "closed" : "open"}
         style={enter}
-        className="origin-top-left data-[state=closed]:animate-[q-fade-out_var(--dur-fast)_var(--ease-in-quad)_forwards] data-[state=open]:animate-[q-pop-in_var(--dur-spring-bouncy)_var(--ease-spring-bouncy)_both]"
+        className="origin-top-left data-[state=closed]:animate-[q-fade-out_var(--dur-fast)_var(--ease-out-quint)_forwards] data-[state=open]:animate-[q-pop-in_var(--dur-spring-bouncy)_var(--ease-spring-bouncy)_both]"
       >
         <svg width="16" height="18" viewBox="0 0 16 18" className="drop-shadow-[0_1px_1.5px_rgb(0_0_0/0.3)]">
           <path d="M1.5 1.5 14 8.2 8.2 9.6 5.6 15.4Z" fill={agentColor(color)} stroke="var(--color-agent-ink)" strokeWidth="1.25" strokeLinejoin="round" />

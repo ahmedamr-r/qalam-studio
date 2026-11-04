@@ -33,7 +33,7 @@ export function ToolSuggestion({ ask, question, onFill }: { ask: ToolAsk; questi
   if (!tools.length) return null;
   return (
     // Its own keys: Enter on a button here isn't the card's Next, and 1–9 aren't its options.
-    <div className="flex flex-col gap-[6px] rounded-md bg-raised px-[8px] py-[6px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]" onKeyDown={(e) => e.stopPropagation()}>
+    <div className="flex flex-col gap-[6px] border-t border-line-subtle pt-[10px]" onKeyDown={(e) => e.stopPropagation()}>
       <div role="group" aria-label={ask.kind === "numbers" ? "Get it from your analytics" : "Get it from your docs"} className="flex flex-wrap items-center gap-[6px]">
         <span className="text-micro text-fg-subtle">{ask.kind === "numbers" ? "Your analytics may have this" : "Your docs may have this"}</span>
         {tools.map((c) => (

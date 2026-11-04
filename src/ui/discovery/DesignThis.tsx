@@ -142,7 +142,7 @@ function Card({ id }: { id: string }) {
 
 function Choice({ on, label, onPick, disabled }: { on: boolean; label: string; onPick: () => void; disabled?: boolean }) {
   return (
-    <button type="button" role="radio" aria-checked={on} disabled={disabled} onClick={onPick} className={clsx(qr.option, on ? qr.optionSelected : qr.optionIdle, "items-center py-[6px] disabled:opacity-50")}>
+    <button type="button" role="radio" aria-checked={on} disabled={disabled} onClick={onPick} className={clsx(qr.option, qr.optionPress, on ? qr.optionSelected : qr.optionIdle, "items-center py-[6px] disabled:opacity-50")}>
       <span className={clsx(qr.radio, "mt-0", on && qr.radioOn)}>{on && <span className={qr.radioDot} />}</span>
       <span className="text-caption text-fg">{label}</span>
     </button>

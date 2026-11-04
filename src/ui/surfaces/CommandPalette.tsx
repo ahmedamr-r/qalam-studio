@@ -12,7 +12,7 @@ import { revealLayers } from "../pages";
 import type { Doc, SceneNode } from "@/doc/schema";
 import { r } from "../recipes";
 import { Kbd, CommandKbd } from "../controls";
-import { reducedMotion, usePresence, useSlidingIndicator } from "../motion";
+import { useSlidingIndicator } from "../motion";
 import { QalamAIGlyph } from "../brand";
 import { layerKind } from "../layerKind";
 import { CATEGORY_LABEL, CommandIcon } from "./icons";
@@ -57,9 +57,7 @@ const AI_ICON = <QalamAIGlyph size={16} />;
 const ASK_KEYS = () => formatKeys(kb("⌘↵"));
 
 export default function CommandPalette() {
-  const open = useSurfaces((s) => s.palette);
-  const p = usePresence<HTMLDivElement>(open);
-  return p.mounted ? <Palette state={p.state} presenceRef={p.ref} /> : null;
+  return useSurfaces((s) => s.palette) ? <Palette /> : null;
 }
 
 function commandRow(c: Command, query: string, group: RowGroup): Row | null {
@@ -207,19 +205,15 @@ function buildRows(query: string, doc: Doc, selection: string[], recent: string[
   return rows;
 }
 
-function Palette({ state, presenceRef }: { state: "open" | "closed"; presenceRef: (el: HTMLDivElement | null) => void }) {
-  const open = state === "open";
+function Palette() {
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const [via, setVia] = useState<"key" | "pointer" | "query">("query");
   const [flash, setFlash] = useState<string | null>(null);
   const [shake, setShake] = useState<string | null>(null);
-  const panel = useRef<HTMLDivElement | null>(null);
+  const panel = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const footerBtn = useRef<HTMLButtonElement>(null);
-  const content = useRef<HTMLDivElement>(null);
-  const [height, setHeight] = useState<number | null>(null);
-  const [armed, setArmed] = useState(false);
   const pending = useRef<Row | null>(null);
 
   useRegistry((s) => s.version);
@@ -247,29 +241,11 @@ function Palette({ state, presenceRef }: { state: "open" | "closed"; presenceRef
 
   // Clicking anywhere else closes it (no scrim: the click still lands).
   useEffect(() => {
-    if (!open) return;
     const down = (e: PointerEvent) => {
       if (panel.current && !panel.current.contains(e.target as Node)) closePalette();
     };
     window.addEventListener("pointerdown", down, true);
     return () => window.removeEventListener("pointerdown", down, true);
-  }, [open]);
-
-  // The results animate their height (not on the first frame, not with reduced motion).
-  useLayoutEffect(() => {
-    const el = content.current;
-    if (!el) return;
-    const list = containerRef.current;
-    const pad = list ? parseFloat(getComputedStyle(list).paddingTop) + parseFloat(getComputedStyle(list).paddingBottom) : 0;
-    const measure = () => setHeight(Math.min(el.offsetHeight + pad, Math.min(480, window.innerHeight * 0.6)));
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    const t = requestAnimationFrame(() => setArmed(true));
-    return () => {
-      ro.disconnect();
-      cancelAnimationFrame(t);
-    };
   }, []);
 
   // Keyboard moves keep the highlighted row in view.
@@ -279,7 +255,7 @@ function Palette({ state, presenceRef }: { state: "open" | "closed"; presenceRef
   }, [current, via, containerRef]);
 
   const runRow = (row: Row | undefined) => {
-    if (!row || !open) return;
+    if (!row) return;
     if (row.disabled) {
       // Says why in the HUD; the row shakes instead of closing.
       feedback(row.disabled, { id: `palette:${row.key}` });
@@ -337,19 +313,8 @@ function Palette({ state, presenceRef }: { state: "open" | "closed"; presenceRef
   };
 
   let lastGroup: RowGroup | null = null;
-  const reduce = reducedMotion();
   return (
-    <div
-      ref={(el) => {
-        panel.current = el;
-        presenceRef(el);
-      }}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Actions"
-      data-state={state}
-      className={clsx(r.palette, "z-[60]")}
-    >
+    <div ref={panel} role="dialog" aria-modal="true" aria-label="Actions" className={clsx(r.palette, "z-[60]")}>
       <div className={r.paletteInputRow}>
         <Search size={18} absoluteStrokeWidth strokeWidth={1.25} aria-hidden />
         <input
@@ -373,71 +338,66 @@ function Palette({ state, presenceRef }: { state: "open" | "closed"; presenceRef
         />
         <Kbd keys={formatKeys(kb("Esc"))} size="sm" />
       </div>
-      <div
-        className="q-palette-results"
-        style={{ height: height ?? undefined, transition: !armed || reduce ? "none" : undefined } as CSSProperties}
-      >
-        <div ref={containerRef} id="qalam-palette-list" role="listbox" aria-label="Results" className={clsx(r.paletteList, "h-full")}>
-          <span ref={indicatorRef} aria-hidden data-glide={via === "pointer" ? "fast" : undefined} className={clsx(r.paletteHighlight, "inset-x-[6px] w-auto data-[hidden]:opacity-0")} />
-          <div ref={content} className="pb-[2px]">
-            {rows.map((row, i) => {
-              const head = row.group !== lastGroup ? row.group : null;
-              lastGroup = row.group;
-              const isActive = row === current;
-              return (
-                <div key={row.key}>
-                  {head && (
-                    <div className={r.paletteGroup} role="presentation">
-                      {head}
-                    </div>
-                  )}
-                  <div
-                    id={`qp-${row.key}`}
-                    data-row={row.key}
-                    role="option"
-                    aria-selected={isActive}
-                    aria-disabled={row.disabled ? true : undefined}
-                    data-indicator-active={isActive || undefined}
-                    onPointerMove={() => {
-                      if (i === active && via === "pointer") return;
-                      setVia("pointer");
-                      setActive(i);
-                    }}
-                    onPointerDown={(e) => e.preventDefault()}
-                    onClick={() => runRow(row)}
-                    onAnimationEnd={() => {
-                      if (shake === row.key) setShake(null);
-                      if (flash === row.key) finishRun();
-                    }}
-                    style={{ "--q-flash": "var(--color-line-strong)" } as CSSProperties}
-                    className={clsx(r.paletteRow, "cursor-default", flash === row.key && "q-flash-run rounded-lg", shake === row.key && "q-shake")}
-                  >
-                    {row.icon}
-                    <span className={clsx("min-w-0 shrink-0 truncate max-w-[60%]", row.disabled ? "text-fg-subtle" : query.trim() && row.hits.length ? "text-fg-muted" : "text-fg")}>
-                      {highlightRuns(row.label, row.disabled ? [] : row.hits).map((run, k) =>
-                        run.hit ? (
-                          <span key={k} className="font-medium text-fg">
-                            {run.text}
-                          </span>
-                        ) : (
-                          <span key={k}>{run.text}</span>
-                        ),
-                      )}
-                    </span>
-                    {row.sub && <span className={clsx(r.paletteSub, "min-w-0 truncate")}>{row.sub}</span>}
-                    <span className="ml-auto flex shrink-0 items-center gap-[10px] pl-[12px]">
-                      {row.disabled ? (
-                        <span className={clsx(r.paletteState, "max-w-[220px] truncate")}>{row.disabled}</span>
-                      ) : (
-                        row.state && <span className={r.paletteState}>{row.state}</span>
-                      )}
-                      {row.keys && <Kbd keys={row.keys} className={clsx(row.disabled && "opacity-50")} />}
-                    </span>
+      <div ref={containerRef} id="qalam-palette-list" role="listbox" aria-label="Results" className={r.paletteList}>
+        <span ref={indicatorRef} aria-hidden data-glide={via === "pointer" ? "fast" : undefined} className={clsx(r.paletteHighlight, "inset-x-[6px] w-auto data-[hidden]:opacity-0")} />
+        <div className="pb-[2px]">
+          {rows.map((row, i) => {
+            const head = row.group !== lastGroup ? row.group : null;
+            lastGroup = row.group;
+            const isActive = row === current;
+            return (
+              <div key={row.key}>
+                {head && (
+                  <div className={r.paletteGroup} role="presentation">
+                    {head}
                   </div>
+                )}
+                <div
+                  id={`qp-${row.key}`}
+                  data-row={row.key}
+                  role="option"
+                  aria-selected={isActive}
+                  aria-disabled={row.disabled ? true : undefined}
+                  data-indicator-active={isActive || undefined}
+                  onPointerMove={() => {
+                    if (i === active && via === "pointer") return;
+                    setVia("pointer");
+                    setActive(i);
+                  }}
+                  onPointerDown={(e) => e.preventDefault()}
+                  onClick={() => runRow(row)}
+                  onAnimationEnd={() => {
+                    if (shake === row.key) setShake(null);
+                    if (flash === row.key) finishRun();
+                  }}
+                  style={{ "--q-flash": "var(--color-line-strong)" } as CSSProperties}
+                  className={clsx(r.paletteRow, "cursor-default", flash === row.key && "q-flash-run rounded-lg", shake === row.key && "q-shake")}
+                >
+                  {row.icon}
+                  <span className={clsx("min-w-0 shrink-0 truncate max-w-[60%]", row.disabled ? "text-fg-subtle" : query.trim() && row.hits.length ? "text-fg-muted" : "text-fg")}>
+                    {highlightRuns(row.label, row.disabled ? [] : row.hits).map((run, k) =>
+                      run.hit ? (
+                        <span key={k} className="font-medium text-fg">
+                          {run.text}
+                        </span>
+                      ) : (
+                        <span key={k}>{run.text}</span>
+                      ),
+                    )}
+                  </span>
+                  {row.sub && <span className={clsx(r.paletteSub, "min-w-0 truncate")}>{row.sub}</span>}
+                  <span className="ml-auto flex shrink-0 items-center gap-[10px] pl-[12px]">
+                    {row.disabled ? (
+                      <span className={clsx(r.paletteState, "max-w-[220px] truncate")}>{row.disabled}</span>
+                    ) : (
+                      row.state && <span className={r.paletteState}>{row.state}</span>
+                    )}
+                    {row.keys && <Kbd keys={row.keys} className={clsx(row.disabled && "opacity-50")} />}
+                  </span>
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            );
+          })}
         </div>
       </div>
       <div className={r.paletteFooter}>

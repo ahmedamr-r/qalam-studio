@@ -57,16 +57,39 @@ describe("the Desk's colours", () => {
           expect([behind, ink, contrastRatio(t[ink], seen) >= 4.5]).toEqual([behind, ink, true]);
       }
   });
+
+  it("keeps a question card's text readable on its sheet, a picked option's too", () => {
+    const css = readFileSync(new URL("./globals.css", import.meta.url), "utf8");
+    const saturation = Number(/--glass-filter:[^;]*saturate\(([\d.]+)\)/.exec(css)![1]);
+    const rgba = (name: string) => [...css.matchAll(new RegExp(`${name}:\\s*rgb\\((\\d+) (\\d+) (\\d+) \\/ ([\\d.]+)\\)`, "g"))].map((m) => m.slice(1).map(Number));
+    const [glass, sheet, picked] = [rgba("--glass"), rgba("--color-sheet"), rgba("--color-selection-subtle")];
+    [dark, light].forEach((t, i) => {
+      for (const behind of ["--shell-1", "--shell-glow", "--shell-2", "--shell-3"]) {
+        const onSheet = over(sheet[i], throughGlass(t[behind], glass[i], saturation));
+        for (const surface of [onSheet, over(picked[i], onSheet)])
+          for (const ink of ["--color-fg", "--color-fg-muted", "--shell-ink-subtle"]) expect([behind, ink, contrastRatio(t[ink], surface) >= 4.5]).toEqual([behind, ink, true]);
+      }
+    });
+  });
 });
 
+const channels = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+const toHex = (c: number[]) => `#${c.map((v) => Math.round(Math.min(255, Math.max(0, v))).toString(16).padStart(2, "0")).join("")}`;
+
+/** A translucent colour over a solid one. */
+function over([tr, tg, tb, alpha]: number[], hex: string): string {
+  return toHex(channels(hex).map((v, i) => [tr, tg, tb][i] * alpha + v * (1 - alpha)));
+}
+
 /** What a colour behind a glass panel looks like through it: CSS's saturate(), then the tint over it. */
-function throughGlass(hex: string, [tr, tg, tb, alpha]: number[], s: number): string {
-  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
-  const saturated = [
-    (0.213 + 0.787 * s) * r + (0.715 - 0.715 * s) * g + (0.072 - 0.072 * s) * b,
-    (0.213 - 0.213 * s) * r + (0.715 + 0.285 * s) * g + (0.072 - 0.072 * s) * b,
-    (0.213 - 0.213 * s) * r + (0.715 - 0.715 * s) * g + (0.072 + 0.928 * s) * b,
-  ];
-  const mixed = [tr, tg, tb].map((tint, i) => Math.round(Math.min(255, Math.max(0, tint * alpha + saturated[i] * (1 - alpha)))));
-  return `#${mixed.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+function throughGlass(hex: string, glass: number[], s: number): string {
+  const [r, g, b] = channels(hex);
+  return over(
+    glass,
+    toHex([
+      (0.213 + 0.787 * s) * r + (0.715 - 0.715 * s) * g + (0.072 - 0.072 * s) * b,
+      (0.213 - 0.213 * s) * r + (0.715 + 0.285 * s) * g + (0.072 - 0.072 * s) * b,
+      (0.213 - 0.213 * s) * r + (0.715 - 0.715 * s) * g + (0.072 + 0.928 * s) * b,
+    ]),
+  );
 }

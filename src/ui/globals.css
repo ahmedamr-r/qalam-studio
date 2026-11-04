@@ -86,6 +86,7 @@
   --color-elevated: #1a1917;     /* menus, popovers, tooltips, palette, toast */
   --color-field: rgb(255 255 255 / 0.045); /* inputs, number fields, search */
   --color-muted: #151412;        /* static tinted blocks: notes, bubbles, skeleton base, diff cards */
+  --color-sheet: rgb(255 255 255 / 0.045); /* a quiet surface in a glass panel: question cards, the chat's rows (q-sheet) */
   --color-hover: rgb(255 255 255 / 0.05);
   --color-active: rgb(255 255 255 / 0.08); /* pressed, open trigger, ACTIVE TOOL KEY, current tab */
   --color-selected: rgb(255 255 255 / 0.07); /* neutral selected row: chats, lists, pages */
@@ -116,7 +117,7 @@
   --color-accent-hover: #fec25e;
   --color-accent-press: #eb9f2c;  /* NEW */
   --color-accent-fg: #141412;
-  --color-accent-subtle: rgb(248 175 61 / 0.12); /* selected option cards (with border-accent/40) and text selection only */
+  --color-accent-subtle: rgb(248 175 61 / 0.12); /* the design tool's picked cards (with border-accent/40) and text selection only */
   --color-focus: #f8af3d;
   --color-focus-halo: rgb(248 175 61 / 0.18);    /* NEW 3px halo around a focused field */
 
@@ -227,7 +228,6 @@
   --ease-out-cubic: cubic-bezier(0.215, 0.61, 0.355, 1);
   --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-out-expo: cubic-bezier(0.19, 1, 0.22, 1);
-  --ease-in-quad: cubic-bezier(0.55, 0.085, 0.68, 0.53);
   --ease-in-out-quart: cubic-bezier(0.77, 0, 0.175, 1);
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
   /* ζ≈0.78, ~2% overshoot: indicators, chat window, toasts, rail marker */
@@ -287,6 +287,7 @@
   --glass: rgb(6 6 7 / 0.6);
   --glass-filter: blur(28px) saturate(1.5);
   --glass-foot: #090c14;  /* what a chat panel's foot looks like through the glass, near enough */
+  --elev-sheet: inset 0 1px 0 rgb(255 255 255 / 0.05), inset 0 0 0 1px var(--color-line-subtle);
   --shell-ink-subtle: #b0adaa;
   --shell-ink-faint: #8a8681;
   --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 .06 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
@@ -323,7 +324,7 @@
   --field-h: 28px;
   --toolbar-h: 44px;
 
-  /* Durations: exits are 0.6–0.75× enters */
+  /* Durations: exits are 0.6–0.75× enters, and start at once too (ease-out): ease-in holds back the very moment someone's watching */
   --dur-instant: 0ms;      /* hover-in on rows, menu items, icon buttons */
   --dur-quick: 100ms;      /* press, colour, menus, context menu */
   --dur-fast: 150ms;       /* hover-out, tooltip in, small exits */
@@ -345,6 +346,7 @@
   --motion-menu-scale: 0.97;
   --motion-press-scale: 0.97;
   --motion-press-scale-icon: 0.94;
+  --motion-press-scale-card: 0.99;  /* a wide option card: .97 would read as a jump */
   --motion-soft-scale: 0.98;   /* exits (pop, dialog, palette) and the toast rise */
   --motion-chat-scale: 0.97;
   --motion-swap-scale: 0.8;    /* the outgoing icon of a flyout pick */
@@ -363,6 +365,7 @@
   --color-elevated: #ffffff;
   --color-field: rgb(0 0 0 / 0.04);
   --color-muted: #f3f2f0;
+  --color-sheet: rgb(255 255 255 / 0.72);
   --color-hover: rgb(0 0 0 / 0.04);
   --color-active: rgb(0 0 0 / 0.07);
   --color-selected: rgb(0 0 0 / 0.06);
@@ -458,6 +461,7 @@
   --wash-1: #edf5ff;   --wash-2: #edf1f8;   --wash-3: #eceef0;
   --glass: rgb(255 255 255 / 0.65);
   --glass-foot: #f7f9fe;
+  --elev-sheet: inset 0 0 0 1px var(--color-line-subtle), 0 1px 2px rgb(20 30 70 / 0.05);
   --shell-ink-subtle: #55524e;
   --shell-ink-faint: #6c6863;
   --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 .04 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
@@ -479,7 +483,7 @@
 @media (prefers-reduced-motion: reduce) {
   :root:not([data-motion="full"]) {
     --motion-shift: 0px; --motion-shift-lg: 0px; --motion-pop-scale: 1; --motion-menu-scale: 1;
-    --motion-press-scale: 1; --motion-press-scale-icon: 1;
+    --motion-press-scale: 1; --motion-press-scale-icon: 1; --motion-press-scale-card: 1;
     --motion-soft-scale: 1; --motion-chat-scale: 1; --motion-swap-scale: 1;
     --dur-move: 0ms; --dur-move-spring: 0ms; --dur-ai-orbit: 0s; --dur-ai-shimmer: 0s;
     --ease-spring: var(--ease-out-quad); --ease-spring-bouncy: var(--ease-out-quad);
@@ -488,7 +492,7 @@
 /* In-app override (Settings > Reduce motion): same values. */
 :root[data-motion="reduced"] {
   --motion-shift: 0px; --motion-shift-lg: 0px; --motion-pop-scale: 1; --motion-menu-scale: 1;
-  --motion-press-scale: 1; --motion-press-scale-icon: 1;
+  --motion-press-scale: 1; --motion-press-scale-icon: 1; --motion-press-scale-card: 1;
   --motion-soft-scale: 1; --motion-chat-scale: 1; --motion-swap-scale: 1;
   --dur-move: 0ms; --dur-move-spring: 0ms; --dur-ai-orbit: 0s; --dur-ai-shimmer: 0s;
   --ease-spring: var(--ease-out-quad); --ease-spring-bouncy: var(--ease-out-quad);
@@ -579,17 +583,17 @@ input, textarea { caret-color: var(--color-fg-accent); }
 /* Popovers (pickers, token editors, color popover): 200ms in, 100ms out */
 .q-pop { transform-origin: var(--radix-popper-transform-origin, center); }
 .q-pop[data-state="open"]   { animation: q-pop-in var(--dur-base) var(--ease-out-quint) both; }
-.q-pop[data-state="closed"] { animation: q-pop-out var(--dur-quick) var(--ease-in-quad) forwards; }
+.q-pop[data-state="closed"] { animation: q-pop-out var(--dur-quick) var(--ease-out-quint) forwards; }
 
 /* Menus, selects, context menu, main menu: 100ms in from the click point / trigger, 100ms fade out */
 .q-menu { transform-origin: var(--radix-popper-transform-origin, top left); }
 .q-menu[data-state="open"]   { animation: q-menu-in var(--dur-quick) var(--ease-out-quad) both; }
-.q-menu[data-state="closed"] { animation: q-fade-out var(--dur-quick) var(--ease-in-quad) forwards; }
+.q-menu[data-state="closed"] { animation: q-fade-out var(--dur-quick) var(--ease-out-quint) forwards; }
 
 /* Toolbar flyout: grows up out of the toolbar, origin bottom-centre */
 .q-flyout { transform-origin: var(--radix-popper-transform-origin, 50% 100%); }
 .q-flyout[data-state="open"]   { animation: q-flyout-in 140ms var(--ease-out-quint) both; }
-.q-flyout[data-state="closed"] { animation: q-fade-out var(--dur-quick) var(--ease-in-quad) forwards; }
+.q-flyout[data-state="closed"] { animation: q-fade-out var(--dur-quick) var(--ease-out-quint) forwards; }
 
 /* Tooltip: animate delayed-open only; instant-open and closed never animate (no overlap while scrubbing) */
 .q-tip { transform-origin: var(--radix-tooltip-content-transform-origin, center); }
@@ -598,23 +602,20 @@ input, textarea { caret-color: var(--color-fg-accent); }
 
 /* Modal dialogs (workspace, Generate, AlertDialog) */
 .q-overlay[data-state="open"]   { animation: q-fade-in var(--dur-base) var(--ease-out-quad) both; }
-.q-overlay[data-state="closed"] { animation: q-fade-out var(--dur-fast) var(--ease-in-quad) forwards; }
+.q-overlay[data-state="closed"] { animation: q-fade-out var(--dur-fast) var(--ease-out-quint) forwards; }
 .q-dialog[data-state="open"]    { animation: q-pop-in var(--dur-base) var(--ease-out-quint) both; }
-.q-dialog[data-state="closed"]  { animation: q-pop-out var(--dur-fast) var(--ease-in-quad) forwards; }
+.q-dialog[data-state="closed"]  { animation: q-pop-out var(--dur-fast) var(--ease-out-quint) forwards; }
 .q-dialog[data-nope]            { animation: q-nope var(--dur-fast) var(--ease-out-quad); }
 
-/* ⌘K palette: no scrim, 175ms in, 120ms out; results height eases */
-.q-palette[data-state="open"]   { animation: q-pop-in 175ms var(--ease-out-quint) both; --from-x: 0; --from-y: 0; }
-.q-palette[data-state="closed"] { animation: q-pop-out 120ms var(--ease-in-quad) forwards; }
-.q-palette-results { transition: height var(--dur-moderate) var(--ease-out-quint); overflow: hidden; }
+/* The ⌘K palette has no motion on purpose: it's opened from the keyboard all day, and has no scrim. */
 
 /* Toast / shortcut HUD: rises on the spring; replaces in place (no stacking for HUD) */
 .q-toast[data-state="open"]   { animation: q-rise-in var(--dur-spring) var(--ease-spring) both; }
-.q-toast[data-state="closed"] { animation: q-drop-out var(--dur-fast) var(--ease-in-quad) forwards; }
+.q-toast[data-state="closed"] { animation: q-drop-out var(--dur-fast) var(--ease-out-quint) forwards; }
 /* Swipe to dismiss (toast.tsx writes --swipe-x): `translate` composes with the keyframes' transform */
 .q-toast[data-swipe="move"]   { translate: var(--swipe-x, 0) 0; }
 .q-toast[data-swipe="cancel"] { translate: 0 0; transition: translate var(--dur-move) var(--ease-out-quint); }
-.q-toast[data-swipe="end"]    { translate: var(--swipe-x, 0) 0; animation: q-fade-out var(--dur-fast) var(--ease-in-quad) forwards; }
+.q-toast[data-swipe="end"]    { translate: var(--swipe-x, 0) 0; animation: q-fade-out var(--dur-fast) var(--ease-out-quint) forwards; }
 
 /* Chat window: stays mounted; data-open + inert. Rises out of the Qalam AI button (--origin-x). */
 .q-chat {
@@ -626,7 +627,7 @@ input, textarea { caret-color: var(--color-fg-accent); }
 }
 .q-chat:not([data-open]) {
   opacity: 0; visibility: hidden; transform: translateY(var(--motion-shift-lg)) scale(var(--motion-chat-scale));
-  transition: opacity var(--dur-fast) var(--ease-in-quad), transform var(--dur-fast) var(--ease-in-quad), visibility 0s linear var(--dur-fast);
+  transition: opacity var(--dur-fast) var(--ease-out-quint), transform var(--dur-fast) var(--ease-out-quint), visibility 0s linear var(--dur-fast);
 }
 
 /* Enter for new content: chat turns, tab switch content, pen hint bar */
@@ -642,6 +643,7 @@ input, textarea { caret-color: var(--color-fg-accent); }
 .q-press { transition: scale var(--dur-fast) var(--ease-out-quad), background-color var(--dur-fast) var(--ease-out-quad), color var(--dur-fast) var(--ease-out-quad), box-shadow var(--dur-quick) var(--ease-out-quad); }
 .q-press:active:not(:disabled):not([aria-disabled="true"]) { scale: var(--motion-press-scale); transition-duration: var(--dur-quick); }
 .q-press-icon:active:not(:disabled):not([aria-disabled="true"]) { scale: var(--motion-press-scale-icon); }
+.q-press-card:active:not(:disabled):not([aria-disabled="true"]) { scale: var(--motion-press-scale-card); }
 /* With q-item: hover fill snaps in (0ms) while the scale release keeps its 150ms. Order = q-press transition list. */
 .q-press.q-item:hover { transition-duration: var(--dur-fast), 0ms, 0ms, var(--dur-quick); }
 
@@ -845,7 +847,7 @@ input, textarea { caret-color: var(--color-fg-accent); }
 /* Boot: the chrome fades in once, staggered by --boot-delay (Studio.tsx). `backwards`, not `both`:
    a finished animation must not keep a stacking context around the toolbar or panels. */
 .q-boot { animation: q-fade-in var(--dur-moderate) var(--ease-out-quint) backwards; animation-delay: var(--boot-delay, 0ms); }
-.q-boot-screen[data-state="closed"] { animation: q-fade-out var(--dur-slow) var(--ease-in-quad) forwards; pointer-events: none; }
+.q-boot-screen[data-state="closed"] { animation: q-fade-out var(--dur-slow) var(--ease-out-quint) forwards; pointer-events: none; }
 @media (prefers-reduced-motion: reduce) { :root:not([data-motion="full"]) .q-boot { animation-delay: 0ms; } }
 :root[data-motion="reduced"] .q-boot { animation-delay: 0ms; }
 
@@ -896,9 +898,9 @@ input, textarea { caret-color: var(--color-fg-accent); }
 .q-shell-bar { --color-fg-subtle: var(--shell-ink-subtle); --color-fg-faint: var(--shell-ink-faint); }
 
 /* Glass: panels and what floats on the canvas. Its bg-* stays underneath, for a browser without
-   backdrop-filter and for someone who asks for less transparency. What's inside stays solid (the
-   composer, question cards, fields, menus), and the canvas itself isn't glass, so cards and labels
-   keep their contrast. A backdrop-filter traps position: fixed inside it, so anything fixed that
+   backdrop-filter and for someone who asks for less transparency. The composer, fields and menus
+   inside stay solid, a question card is a quiet sheet (q-sheet), and the canvas itself isn't glass,
+   so cards and labels keep their contrast. A backdrop-filter traps position: fixed inside it, so anything fixed that
    a panel opens goes through a portal. */
 @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
   .q-glass { background-color: var(--glass); -webkit-backdrop-filter: var(--glass-filter); backdrop-filter: var(--glass-filter); }
@@ -914,4 +916,9 @@ input, textarea { caret-color: var(--color-fg-accent); }
   .q-glass { background-color: revert-layer; -webkit-backdrop-filter: none; backdrop-filter: none; }
   .q-glass-foot { background-color: revert-layer; }
   .q-glass-foot.sticky::before { display: none; }
+}
+/* A sheet in a glass panel: a question card, a row in the chat. In a layer, so a hover:bg-* still wins.
+   It can lie near the shell's brightest part, so its quieter text goes a step stronger, as the top bar's. */
+@layer components {
+  .q-sheet { background-color: var(--color-sheet); box-shadow: var(--elev-sheet); --color-fg-subtle: var(--shell-ink-subtle); --color-fg-faint: var(--shell-ink-faint); }
 }
