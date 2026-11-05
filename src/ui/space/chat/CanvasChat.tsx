@@ -281,7 +281,9 @@ function BriefRound({ turn }: { turn: string }) {
     const said = summarize(q, a);
     return said === "Skipped" || said === "—" || said === "None" ? "" : said;
   };
-  return <Questionnaire title="For the brief" questions={questions} state={form} onChange={setForm} onSubmit={(f) => void answerBrief(turn, Object.fromEntries(questions.map((q) => [q.id, answerOf(f, q)])))} />;
+  const job = turnOf(turn)?.job;
+  const shape = job?.kind === "brief" ? job.shape : undefined;
+  return <Questionnaire title={shape === "message" ? "For the message plan" : shape === "steps" ? "For the steps" : "For the brief"} questions={questions} state={form} onChange={setForm} onSubmit={(f) => void answerBrief(turn, Object.fromEntries(questions.map((q) => [q.id, answerOf(f, q)])))} />;
 }
 
 /** The questions before working out who it's for and what comes first; every one can be skipped. */

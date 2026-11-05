@@ -37,6 +37,7 @@ Bring anything to the chat beside the canvas, in a project of its own or one you
 - **Your own thinking** is a brain dump. Qalam AI says what it took from it, pushes back where it won't hold up, asks a few rounds of questions, and proposes cards for the canvas.
 - **A goal or a problem in your words** is worded as a proper statement for you to use, edit, or replace with your own.
 - **A question** is answered from everything there, with each quote checked.
+- **Something to work out**, such as "what should I build, what modules?", runs like plan mode: it looks on the web, asks what it can't tell, then proposes cards for you to accept. A solution can be a change to the product, a new feature, a new product with its modules, a message or campaign, or a service you run by hand, and one card can help several problems across goals.
 
 On the canvas, **Draft solutions** on a problem proposes two to four, each with its riskiest assumptions and one test. **Find the problem to focus on** on a goal looks on the web for what usually keeps goals like it from moving, asks you about it, and proposes the problems to work on first. Notion and analytics tools (PostHog, Amplitude, Mixpanel) can be connected in Connections, and a question that one could answer offers it.
 
@@ -54,6 +55,7 @@ Arabic and English both work, and there's a mic in every box.
 
 In Qalam the model proposes, and code decides what's kept.
 - **Words:** a point is kept only where code finds it word for word in the source.
+- **Ideas:** Qalam AI can propose a card with nothing behind it, and it says so: Assumed, from your answers, read online, or its own idea. It's never shown as what people said.
 - **Numbers:** a number is kept only where the source has it, and a measured point must have one.
 - **What you know:** "We know" takes what people said, what you measured or studied, and what a test showed. Someone else's report and the team's own thinking stay under **We believe**.
 - **The web:** what Qalam AI reads on the web is kept only where its words are on the page it names. It's never counted as your own evidence.

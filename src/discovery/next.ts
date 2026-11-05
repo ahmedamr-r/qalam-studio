@@ -1,6 +1,6 @@
 import { backingWords, type BasisCounts } from "./basis";
 import type { EvidenceSummary } from "./evidence";
-import type { OstKind } from "./types";
+import type { OstKind, SolutionType } from "./types";
 import type { Strength } from "@/hub/needs";
 import { lab } from "@/lab";
 
@@ -10,7 +10,7 @@ import { lab } from "@/lab";
  * a step is picked (src/ui/discovery/next.ts). What v0.1 hides (src/lab.ts) isn't offered.
  */
 
-export type StepId = "draft-solutions" | "draft-tests" | "design-this" | "page" | "pass-line" | "next-job" | "find-problems" | "break-down" | "review-parts" | "others" | "find-backing" | "watch" | "connect" | "add-file" | "questions" | "draft-problems" | "review-problems" | "focus" | "find-goal" | "write-brief" | "open-brief";
+export type StepId = "draft-solutions" | "draft-tests" | "design-this" | "page" | "pass-line" | "next-job" | "find-problems" | "break-down" | "review-parts" | "others" | "find-backing" | "watch" | "connect" | "add-file" | "questions" | "draft-problems" | "review-problems" | "focus" | "find-goal" | "write-brief" | "open-brief" | "word-message" | "run-steps" | "plan-modules";
 
 export interface NextStep {
   id: StepId;
@@ -28,6 +28,8 @@ export interface NextStep {
 /** What's known about a card, from what the canvas has loaded. */
 export interface CardFacts {
   kind: OstKind;
+  /** A solution: what it is, which says what comes next for it. */
+  solutionType?: SolutionType;
   evidence: EvidenceSummary;
   /** A problem's page, and how much it rests on. */
   page: { topic: string; strength: Strength; quotes: number; sources: number; mix?: BasisCounts } | null;
@@ -105,22 +107,29 @@ export function nextSteps(f: CardFacts): NextStep[] {
   switch (f.kind) {
     case "opportunity": {
       const bare = thin(f);
-      // Asking first is hidden in v0.1 (src/lab.ts): a card nothing backs still leads with what the organization has.
-      const asks = lab("questions") && (bare || !!f.asking);
+      // With nothing behind it, asking comes first, and looks online: a draft doesn't need evidence, so it asks instead of coming back with little.
+      const asks = bare || !!f.asking;
       const draft: NextStep = { id: "draft-solutions", label: "Draft solutions", hint: asks && f.asking ? "Picks up your answers where you left them" : asks ? "Asks a few questions first" : f.under.solutions ? "More ways to solve it, each with a test" : "Ways to solve it, each with a test", ai: true, ...(asks ? { asks } : {}) };
       const page: NextStep | null = f.page ? { id: "page", label: "Its page", hint: "Everything known about it" } : null;
       // No goal above it: which one solving it would move, its own or one found, and that goal's number.
       const goal: NextStep | null = f.underGoal ? null : { id: "find-goal", label: "Find the goal it could move", hint: "Your goals first, then the web, then its number", ai: true };
       // Nothing behind it yet: what the organization has first, when it has something.
       if ((asks || bare) && ground.find) push(ground.find, draft, brief, goal, ground.watch, ground.file, page);
-      else push(draft, brief, goal, ground.find, ground.watch, ground.file, page, asks || !lab("questions") ? null : QUESTIONS);
+      else push(draft, brief, goal, ground.find, ground.watch, ground.file, page, asks ? null : QUESTIONS);
       break;
     }
     case "solution":
       // Hidden in v0.1 (src/lab.ts): Draft solutions gave it a test already, and Design this is the design tool.
       if (lab("tests")) push({ id: "draft-tests", label: "Draft its tests", hint: f.under.tests ? "More of what it assumes, and a test" : "What it assumes, and a test of the riskiest", ai: true });
       if (lab("design")) push({ id: "design-this", label: "Design this", hint: "Screens built on what it rests on" });
-      push(brief, ground.find);
+      // What it is says what comes next: what's built gets a brief, a message its wording, what's done by hand its steps.
+      if (f.solutionType === "message") out.unshift(f.brief ? { id: "open-brief", label: "Its message plan", hint: "Under this card on the canvas" } : { id: "word-message", label: "Word the message", hint: "What to say, on which channel, with which tool", ai: true });
+      else if (f.solutionType === "service") out.unshift(f.brief ? { id: "open-brief", label: "Its steps", hint: "Under this card on the canvas" } : { id: "run-steps", label: "Steps to run this week", hint: "Who does what, and how you'll know it worked", ai: true });
+      else {
+        if (f.solutionType === "product" && !f.under.solutions) out.unshift({ id: "plan-modules", label: "Work out its modules", hint: "Qalam AI asks, looks online, then proposes them", ai: true });
+        push(brief);
+      }
+      push(ground.find);
       break;
     case "test":
       if (f.suggested) out.push({ id: "pass-line", label: "Use the suggested pass line" });
@@ -132,9 +141,11 @@ export function nextSteps(f: CardFacts): NextStep[] {
       // A goal's extras are hidden in v0.1 (src/lab.ts): its problems found among the pages stay, and grounding it.
       const extras = lab("goals");
       // What was proposed for it before waits to be decided before it's asked for again.
-      const asks = lab("questions") && (thin(f) || !!f.asking);
+      const asks = thin(f) || !!f.asking;
       const asking = !asks ? null : f.asking ? "Picks up your answers where you left them" : "Asks a few questions first";
-      const parts: NextStep | null = !extras ? null : g.pending ? { id: "review-parts", label: `Review the ${plural(g.pending, "goal")} proposed under it`, hint: "From breaking it down" } : { id: "break-down", label: "Break it down", hint: asking ?? "Goals under it that make its number", ai: true, ...(asks ? { asks } : {}) };
+      // Break it down must add up to the goal's number, so it stays strict, and asking first before it stays behind its switch.
+      const partsAsk = asks && lab("questions");
+      const parts: NextStep | null = !extras ? null : g.pending ? { id: "review-parts", label: `Review the ${plural(g.pending, "goal")} proposed under it`, hint: "From breaking it down" } : { id: "break-down", label: "Break it down", hint: (partsAsk ? asking : null) ?? "Goals under it that make its number", ai: true, ...(partsAsk ? { asks: true } : {}) };
       const drafted: NextStep | null = !extras ? null : g.drafted ? { id: "review-problems", label: `Review the ${plural(g.drafted, "problem")} drafted for it`, hint: "From drafting its problems" } : { id: "draft-problems", label: "Draft its problems", hint: asking ?? (g.behind ? "More problems that would move it" : "Problems that would move it, from your material"), ai: true, ...(asks ? { asks } : {}) };
       // The problem to focus on, found with them in the chat: it asks, looks on the web, then proposes problems under it.
       const focus: NextStep = { id: "focus", label: "Find the problem to focus on", hint: "Qalam AI asks you and looks on the web", ai: true };

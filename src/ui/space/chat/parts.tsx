@@ -9,6 +9,7 @@ import { CHALLENGE_LABEL, type DumpSession } from "@/discovery/dump";
 import { KIND_LABEL } from "@/discovery/kinds";
 import type { Proposal } from "@/discovery/proposals";
 import type { AskAnswer, AskClaim, AskUnknown } from "@/hub/ask";
+import type { BriefShape } from "@/discovery/brief";
 import { answersOf, planLine } from "@/space/plan";
 import { DUMP_WORDS, wordsIn, type ChatMode } from "@/space/route";
 import { claimStrip } from "@/hub/ask";
@@ -1578,13 +1579,16 @@ function PickedStep({ id, plan }: { id: string; plan: ScanPlan }) {
 }
 
 /** A brief: what it lacks, being written, then a tile on the canvas to open or copy. */
-function BriefStep({ id, brief }: { id: string; brief: BriefState }) {
+const BRIEF_WORD: Record<BriefShape, string> = { build: "brief", message: "message plan", steps: "list of steps" };
+
+function BriefStep({ id, brief, shape = "build" }: { id: string; brief: BriefState; shape?: BriefShape }) {
+  const word = BRIEF_WORD[shape];
   const [copied, setCopied] = useState(false);
   const started = useCanvasChat((s) => s.live[id]?.started);
   // Not known yet is not gone.
   const kept = useBriefs((s) => !s.loaded || s.list.some((b) => b.id === brief.id));
-  if (brief.step === "asking") return <p className="text-body text-fg">A few things for the brief. Skip any you can't answer.</p>;
-  if (brief.step === "writing") return <Progress label="Writing the brief" started={started ?? Date.now()} tokens={0} note="This takes under a minute." />;
+  if (brief.step === "asking") return <p className="text-body text-fg">A few things for the {word}. Skip any you can't answer.</p>;
+  if (brief.step === "writing") return <Progress label={`Writing the ${word}`} started={started ?? Date.now()} tokens={0} note="This takes under a minute." />;
   if (brief.step === "failed")
     return (
       <div className="flex flex-col gap-[6px]">
@@ -1599,7 +1603,7 @@ function BriefStep({ id, brief }: { id: string; brief: BriefState }) {
   if (!kept)
     return (
       <div className="flex flex-col gap-[6px]">
-        <p className="text-body text-fg-muted">This brief has been taken off the canvas.</p>
+        <p className="text-body text-fg-muted">This {word} has been taken off the canvas.</p>
         <ReplyChips>
           <button type="button" className={r.replyChip} onClick={() => briefAgain(id)}>
             Write it again
@@ -1617,14 +1621,14 @@ function BriefStep({ id, brief }: { id: string; brief: BriefState }) {
       });
   return (
     <div className="flex flex-col gap-[6px]">
-      <p className="text-body text-fg">The brief is on the canvas, under its card. Click it there to read it.</p>
+      <p className="text-body text-fg">The {word} is on the canvas, under its card. Click it there to read it.</p>
       {brief.id && (
         <ReplyChips>
           <button type="button" className={r.replyChipPrimary} onClick={() => openBrief(brief.id!)}>
             Open it
           </button>
           <button type="button" className={r.replyChip} onClick={copy}>
-            {copied ? "Copied" : "Copy for your coding agent"}
+            {copied ? "Copied" : shape === "build" ? "Copy for your coding agent" : "Copy it"}
           </button>
         </ReplyChips>
       )}
@@ -1634,7 +1638,7 @@ function BriefStep({ id, brief }: { id: string; brief: BriefState }) {
 
 function BriefPart({ data }: { data: PartData }) {
   const t = useTurn(data.turn);
-  return t?.job.kind === "brief" ? <BriefStep id={t.id} brief={t.job.brief} /> : null;
+  return t?.job.kind === "brief" ? <BriefStep id={t.id} brief={t.job.brief} shape={t.job.shape} /> : null;
 }
 
 /** From a scan's problems to what to build first, the step it's on and what's settled. */

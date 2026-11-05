@@ -74,6 +74,13 @@ describe("what code keeps of a goal's drafted problems", () => {
     expect(on("q3")).toBe("read");
   });
 
+  it("says a problem drawn only from what was read online came from there, and takes its words as sent", () => {
+    const m = problemsMaterial(input({ read: [{ text: "Shoppers abandon baskets at checkout", quote: "70% abandon at checkout" }] }));
+    expect(m.text).toContain("- w1 · Shoppers abandon baskets at checkout · “70% abandon at checkout”");
+    const { drafts } = sanitizeProblems({ problems: [problem("Shoppers abandon 70% of baskets at checkout", ["w1"], { why: "“70% abandon at checkout” is what it costs." })], note: "" }, m, { now: 1, id });
+    expect(drafts[0]).toMatchObject({ title: "Shoppers abandon 70% of baskets at checkout", came: "read", cites: [], why: "“70% abandon at checkout” is what it costs." });
+  });
+
   it("drops a problem whose title has nothing left, or that's behind the goal or on a page already, or proposed twice", () => {
     const m = problemsMaterial(input());
     const dropped: string[] = [];

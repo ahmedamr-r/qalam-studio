@@ -32,7 +32,7 @@ import { needsDb } from "@/org/needs";
 import { otherReading, requestOf, scanInput } from "@/scan/input";
 import type { ScanTarget } from "@/scan/session";
 import { notAsked, steerAnswers, steerRound, type ScanSaid } from "@/scan/steer";
-import { briefRound, type BriefAsked } from "@/discovery/brief";
+import { briefRound, type BriefAsked, type BriefShape } from "@/discovery/brief";
 import { writeCardBrief } from "@/org/briefs";
 import { briefRequest } from "../../discovery/brief-request";
 import { loadBriefs } from "../../discovery/briefs";
@@ -431,14 +431,23 @@ const briefNow = (id: string) => {
 };
 const setBrief = (id: string, brief: BriefState) => change((c) => withJob(c, id, (j) => (j.kind === "brief" ? { ...j, brief } : j.kind === "scan" && j.plan ? { ...j, plan: { ...j.plan, brief } } : j)));
 
-/** A brief for a card on the canvas (a goal, a problem or a solution), asked in the chat. */
-export function briefFor(card: string) {
+/** A New product's modules: worked out as a plan, in the chat. */
+export function modulesFor(card: string) {
+  toggleChat(true);
+  if (st().loaded) void runAs(null, `What modules should “${cardTitle(card)}” have?`, "plan");
+}
+
+/** What's written for a card, as a turn says it. */
+const BRIEF_ASK: Record<BriefShape, (title: string) => string> = { build: (t) => `Write a brief for “${t}”`, message: (t) => `Word the message for “${t}”`, steps: (t) => `Steps to run for “${t}”` };
+
+/** A brief for a card on the canvas (a goal, a problem or a solution), a message plan or steps to run, asked in the chat. */
+export function briefFor(card: string, shape: BriefShape = "build") {
   toggleChat(true);
   if (!st().loaded) return;
   const open = st().chat.turns.some((t) => t.job.kind === "brief" && t.job.card === card && (t.job.brief.step === "asking" || t.job.brief.step === "writing"));
   if (open) return;
   const title = cardTitle(card);
-  addTurn(`Write a brief for “${title}”`, { kind: "brief", card, title, brief: { step: "asking", questions: briefRound() } });
+  addTurn(BRIEF_ASK[shape](title), { kind: "brief", card, title, ...(shape !== "build" ? { shape } : {}), brief: { step: "asking", questions: briefRound(shape) } });
 }
 
 /** A scan's first pick: on the canvas first, since a brief's tile hangs under its card. */
@@ -448,9 +457,13 @@ export async function briefStart(id: string) {
 }
 
 /** Asked again: what it lacks, again. */
-export const briefAgain = (id: string) => setBrief(id, { step: "asking", questions: briefRound() });
+const briefShape = (id: string): BriefShape => {
+  const j = turnOf(id)?.job;
+  return j?.kind === "brief" ? (j.shape ?? "build") : "build";
+};
+export const briefAgain = (id: string) => setBrief(id, { step: "asking", questions: briefRound(briefShape(id)) });
 
-export const briefQuestionsOf = (id: string) => briefNow(id)?.questions ?? briefRound();
+export const briefQuestionsOf = (id: string) => briefNow(id)?.questions ?? briefRound(briefShape(id));
 
 /** Their answers, then the brief: what's decided, and the features one call works out. Everything may be skipped. */
 export async function answerBrief(id: string, answers: Readonly<Record<string, string>>) {
@@ -460,7 +473,7 @@ export async function answerBrief(id: string, answers: Readonly<Record<string, s
   setBrief(id, { step: "writing" });
   const ctrl = begin(id);
   try {
-    const meta = await (job.kind === "brief" ? writeForCard(job.card, asked, ctrl.signal) : job.kind === "scan" ? writeForPick(job, asked, ctrl.signal) : null);
+    const meta = await (job.kind === "brief" ? writeForCard(job.card, asked, ctrl.signal, job.shape) : job.kind === "scan" ? writeForPick(job, asked, ctrl.signal) : null);
     if (!meta) return setBrief(id, { step: "failed", error: "What it was written from has gone." });
     await loadBriefs();
     setBrief(id, { step: "ready", id: meta.id, file: meta.file });
@@ -472,8 +485,8 @@ export async function answerBrief(id: string, answers: Readonly<Record<string, s
   }
 }
 
-const writeForCard = (card: string, asked: BriefAsked, signal: AbortSignal) => {
-  const req = briefRequest(studio().doc, card, asked);
+const writeForCard = (card: string, asked: BriefAsked, signal: AbortSignal, shape?: BriefShape) => {
+  const req = briefRequest(studio().doc, card, asked, shape);
   return req ? writeCardBrief(req, signal) : null;
 };
 

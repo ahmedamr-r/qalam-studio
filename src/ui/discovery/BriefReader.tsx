@@ -44,7 +44,7 @@ export default function BriefReader({ item }: { item: LaneItem }) {
       window.setTimeout(() => setCopied(false), 1600);
     });
   };
-  const again = () => void import("../space/chat/store").then((m) => m.briefFor(card));
+  const again = () => void import("../space/chat/store").then((m) => m.briefFor(card, b?.meta.shape ?? "build"));
   const remove = () => {
     void removeBrief(id).then(() => {
       close();

@@ -143,6 +143,14 @@ describe("what code keeps of a plan", () => {
     expect(cards.map((c) => [c.title, c.under])).toEqual([["A new way", { card: "P1" }]]);
   });
 
+  it("takes the quote marks off a line some models wrap whole, and leaves wording inside one alone", () => {
+    const wrapped = keep([card({ title: "'Monthly review action email'", type: "message", description: "‘It reminds them to come back.’" })], { doubt: "'Nobody has said they would pay.'" });
+    expect(wrapped.cards[0]).toMatchObject({ title: "Monthly review action email", description: "It reminds them to come back." });
+    expect(wrapped.doubt).toBe("Nobody has said they would pay.");
+    expect(keep([card({ title: "Send a ‘Plan it for me’ button to owners", type: "feature" })]).cards[0].title).toBe("Send a ‘Plan it for me’ button to owners");
+    expect(keep([card({ title: "Owners' own review wall", type: "feature" })]).cards[0].title).toBe("Owners' own review wall");
+  });
+
   it("doesn't propose a solution the canvas has", () => {
     expect(keep([card({ title: "Text after a visit", type: "message" })]).cards).toEqual([]);
   });

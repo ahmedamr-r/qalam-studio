@@ -32,6 +32,8 @@ export interface ProblemsInput {
   pages: string[];
   /** The words a problem may rest on: customers', people online's, and the team's. */
   pieces: { ref: string; text: string; label: string; source: string | null; evidence: boolean; online?: boolean; basis?: Basis }[];
+  /** What was read on the web while asking: others' words, never evidence. */
+  read?: { text: string; url?: string; title?: string; quote?: string }[];
 }
 
 type Piece = ProblemsInput["pieces"][number];
@@ -39,6 +41,8 @@ type Piece = ProblemsInput["pieces"][number];
 export interface ProblemsSent {
   text: string;
   pieces: Map<string, Piece>;
+  /** What was read on the web, by id (w…). */
+  read: Set<string>;
   /** What's there already, by title: behind the goal, or on a page. */
   known: string[];
   /** Every word it was sent, its ids taken out: what a draft's quoted words and numbers must come from. */
@@ -98,9 +102,17 @@ export function problemsMaterial(o: ProblemsInput): ProblemsSent {
     out.push(`- ${id} · ${whose(p)} · ${one(p.label)} · “${one(p.text)}”`);
   }
   if (!pieces.size) out.push("(no words yet)");
+  const read = new Set<string>();
+  if (o.read?.length) {
+    out.push("", "What was read on the web about goals like it (id · the line · its words). Others' words, never evidence about these customers:");
+    o.read.slice(0, PROBLEM_LIMITS.pieces).forEach((l, i) => {
+      read.add(`w${i + 1}`);
+      out.push(`- w${i + 1} · ${one(l.text)}${l.quote ? ` · “${one(l.quote)}”` : ""}`);
+    });
+  }
   const text = out.join("\n");
   // What words and numbers may come from: the material without its ids ("q5" isn't a 5 anyone said).
-  return { text: withCompany(text, o.company), pieces, known: [...behind, ...pages], hay: text.replace(/(^|\s)q\d+ ·/gm, "$1") };
+  return { text: withCompany(text, o.company), pieces, read, known: [...behind, ...pages], hay: text.replace(/(^|\s)[qw]\d+ ·/gm, "$1") };
 }
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
@@ -114,7 +126,7 @@ const strs = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is st
 export function sanitizeProblems(raw: unknown, m: ProblemsSent, o: { now: number; id: () => string }, dropped?: (why: string, item: unknown) => void): { drafts: ProblemDraft[]; note: string } {
   const drafts: ProblemDraft[] = [];
   const drop = (why: string, x: unknown) => void dropped?.(why, x);
-  const said = (v: unknown, max: number) => holdWords(withoutIds(v, () => undefined, "q"), m.hay, { max, shape: "prose" }).text;
+  const said = (v: unknown, max: number) => holdWords(withoutIds(v, () => undefined, "qw"), m.hay, { max, shape: "prose" }).text;
   for (const x of Array.isArray(rec(raw).problems) ? (rec(raw).problems as unknown[]) : []) {
     if (drafts.length >= PROBLEM_LIMITS.problems) {
       drop("over the limit", x);
@@ -123,7 +135,7 @@ export function sanitizeProblems(raw: unknown, m: ProblemsSent, o: { now: number
     const p = rec(x);
     const cited = [...new Set(strs(p.cites).filter((r) => m.pieces.has(r)))].map((r) => m.pieces.get(r)!);
     // Its title as Qalam AI put it where what it cites holds its quoted words and numbers; else its first quote's words, customers' first.
-    const put = withoutIds(p.title, () => undefined, "q");
+    const put = withoutIds(p.title, () => undefined, "qw");
     const quoted = put && cited.length ? checkWords(put, cited, "", PROBLEM_LIMITS.title) : null;
     // With nothing to cite, what wasn't sent comes out of its title, and a title with nothing left says nothing.
     const title = quoted ? cleanLine(quoted) : cited.length ? titleOf((cited.find((c) => c.evidence) ?? cited[0]).text) : holdWords(put, m.hay, { max: PROBLEM_LIMITS.title, shape: "title" }).text;
@@ -139,7 +151,7 @@ export function sanitizeProblems(raw: unknown, m: ProblemsSent, o: { now: number
     const why = said(p.why, PROBLEM_LIMITS.why);
     if (cited.length && !quoted) drop("its title's words or numbers aren't in what it cites: titled by its first quote", x);
     if (!description || !why) drop("its description's words or numbers aren't in what was sent: kept without it", x);
-    drafts.push({ id: o.id(), title, by: !cited.length || quoted ? "qalam" : "words", description, why, cites: cited.map((c) => c.ref), ...cameFrom(cited, false), at: o.now });
+    drafts.push({ id: o.id(), title, by: !cited.length || quoted ? "qalam" : "words", description, why, cites: cited.map((c) => c.ref), ...cameFrom(cited, strs(p.cites).some((r) => m.read.has(r))), at: o.now });
   }
   const note = said(rec(raw).note, PROBLEM_LIMITS.note);
   const short = drafts.length ? (drafts.length < PROBLEM_LIMITS.enough ? "Qalam AI has only one problem to propose." : "") : "Qalam AI has no new problem to propose.";

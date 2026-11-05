@@ -101,6 +101,15 @@ describe("what a solution reaches", () => {
     ost(doc, solution).helps = [{ to: { card: other, title: "x" }, by: "ai", at: 1 }];
     expect(helpChoices(doc, solution, topicOf).map((c) => c.card)).toEqual([faint]);
   });
+
+  it("offers a problem that's a card as the card, not also as its page", () => {
+    const { doc, solution, faint, goalA, add } = canvas();
+    ost(doc, solution).helps = [];
+    const real = add(newCard("opportunity", { title: "Support gives no real help" }), goalA);
+    const topicOf = (c: string) => (c === faint ? "T1" : undefined);
+    expect(helpChoices(doc, solution, topicOf).map((c) => c.card)).not.toContain(faint);
+    expect(helpChoices(doc, solution, topicOf).map((c) => c.card)).toContain(real);
+  });
 });
 
 describe("the wires", () => {

@@ -21,6 +21,8 @@ export type SolutionsView = SolutionsFile & { quotes: Drafted["quotes"] };
 export interface DraftWords {
   answers?: string;
   found?: string[];
+  /** What was read on the web while asking: others' words, never evidence. */
+  looks?: { text: string; url?: string; title?: string; quote?: string }[];
 }
 
 export async function draftSolutions(req: { topic?: string | null; card?: DraftCard } & DraftWords, onActivity?: (label: string) => void, signal?: AbortSignal): Promise<Drafted> {

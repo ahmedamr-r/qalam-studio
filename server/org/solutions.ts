@@ -39,6 +39,8 @@ const overlap = (near: Set<string>, text: string) => [...words(text)].filter((w)
 export interface DraftWords {
   answers?: string;
   found?: string[];
+  /** What was read on the web while asking, each line checked on its page as it was read: others' words, never evidence. */
+  looks?: { text: string; url?: string; title?: string; quote?: string }[];
 }
 
 /**
@@ -121,6 +123,9 @@ async function solutionsInput(store: OrgStore, topic: Topic | null, card: Soluti
       for (const c of ((await store.getGoalWork(g.id)).outside?.claims ?? []).slice(0, 3)) claims.push({ id: c.id, who: c.who, what: c.what, quote: c.quote });
     }
 
+  // What was read on the web while they were asked: others' words, as what others report is.
+  for (const [i, l] of (w.looks ?? []).entries()) claims.push({ id: `look-${i + 1}`, who: l.title ?? "A page online", what: l.text, quote: l.quote ?? l.text });
+
   // The product's steps nearest the problem's words.
   const products = topic?.products ?? [];
   const steps = (await store.listMaps())
@@ -150,7 +155,7 @@ export async function draftSolutions(store: OrgStore, req: { topic?: string; car
   if (req.topic && !topic) throw new NotFoundError("No such problem");
   if (!topic && !req.card?.title.trim()) throw new NotFoundError("No problem to draft for");
   emit?.("Reading what the problem rests on");
-  const input = await solutionsInput(store, topic, req.card ?? null, { answers: req.answers, found: req.found });
+  const input = await solutionsInput(store, topic, req.card ?? null, { answers: req.answers, found: req.found, looks: req.looks });
   const m = solutionsMaterial({ ...input, company: await companyContext(store) });
   emit?.("Qalam AI is drafting ways to solve it");
   const { data, model } = await structured<unknown>(solutionsCall(m), opts.signal);

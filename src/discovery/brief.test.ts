@@ -10,6 +10,50 @@ const build = { title: "Auto-charge the balance before the date", description: "
 const sent = () => briefMaterial({ about: "What they want to build: A tool that helps wedding photographers get paid on time", audience: "Solo wedding photographers", goal: "5 of 10 solo wedding photographers sign up", asked: { platform: "A web app" }, problems: [problem], words, build, published: ["56% of small businesses have unpaid invoices."] });
 const feature = (o: Record<string, unknown> = {}) => ({ title: "Save a card at booking", why: "“She paid the deposit, then ghosted me” is what it stops.", acceptance: ["A couple can save a card when they book"], data: ["Booking date"], connects: ["A payment provider"], quotes: ["q1"], ...o });
 
+describe("what's written for each type of solution", () => {
+  const data = (o: Partial<BriefData> = {}): BriefData => ({ at: 1, title: "Text after a visit", problems: [], quotes: [], later: [], features: [{ title: "After each job, by SMS", why: "", acceptance: ["‘How did we do? Search us on Google.’"], data: [], connects: ["Twilio"], quotes: [] }], asked: { platform: "SMS", exists: "A list of 40 customers" }, known: [], ...o });
+
+  it("writes a message plan with what to send and how it goes out, and nothing for a coding agent", () => {
+    const md = briefMarkdown(data({ shape: "message" }));
+    expect(md).toContain("# Message plan: Text after a visit");
+    expect(md).toContain("## What to send");
+    expect(md).toContain("Say:\n\n> How did we do? Search us on Google.");
+    expect(md).toContain("It goes out through: Twilio.");
+    expect(md).toContain("- First on: SMS.");
+    expect(md).toContain("- To whom, and with what: A list of 40 customers.");
+    expect(md).toContain("Rests on nothing anyone has said yet");
+    expect(md).not.toContain("coding agent");
+  });
+
+  it("writes steps to run, and a brief to build as it always has", () => {
+    const steps = briefMarkdown(data({ shape: "steps" }));
+    expect(steps).toContain("# Steps to run: Text after a visit");
+    expect(steps).toContain("## The steps");
+    expect(steps).toContain("- Run by: SMS.");
+    expect(steps).not.toContain("coding agent");
+    const build = briefMarkdown(data());
+    expect(build).toContain("# Brief: Text after a visit");
+    expect(build).toContain("## For the coding agent");
+  });
+
+  it("lists a New product's modules, with what it needs set apart", () => {
+    const md = briefMarkdown(data({ modules: [{ title: "Ask for reviews", how: "SMS through Twilio" }, { title: "Login and billing", needed: true }] }));
+    expect(md).toContain("## Modules");
+    expect(md).toContain("- Ask for reviews: SMS through Twilio");
+    expect(md.indexOf("Needed to run it")).toBeGreaterThan(md.indexOf("Ask for reviews"));
+    expect(md.indexOf("- Login and billing")).toBeGreaterThan(md.indexOf("Needed to run it"));
+  });
+
+  it("asks what each lacks, and keeps what it is in the file", () => {
+    expect(briefRound("message")[0].title).toBe("Which channel first?");
+    expect(briefRound("steps")[0].title).toBe("Who runs it?");
+    expect(briefRound().map((q) => q.id)).toEqual(["platform", "exists", "needs"]);
+    const file = briefFile({ id: "b", card: "c", kind: "solution", title: "T", at: 1, features: 1, shape: "message" }, "Body");
+    expect(briefFromFile(file, "hub/briefs/t.md")?.meta.shape).toBe("message");
+    expect(briefFromFile(briefFile({ id: "b", card: "c", kind: "solution", title: "T", at: 1, features: 1 }, "Body"), "x")?.meta.shape).toBeUndefined();
+  });
+});
+
 describe("what a brief keeps", () => {
   it("keeps a feature resting on a quote it was sent, with something to check it by", () => {
     const [f] = sanitizeBrief({ features: [feature()] }, sent());

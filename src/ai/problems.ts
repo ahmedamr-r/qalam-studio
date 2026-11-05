@@ -23,7 +23,7 @@ Propose 2 to 4 problems, the one that would move the goal most first, each a dif
 - title: the problem as customers have it, what goes wrong and for whom, at most 14 words (Weekly shoppers can't find what they ordered last week).
 - description: one or two sentences: when it happens and what it costs them, in the customers' terms.
 - why: one sentence: how solving it would move the goal.
-- cites: the ids of the words it rests on (q…), customers' words or what's measured first where they say it. Leave this empty when nothing sent bears on it: don't stretch a quote to fit.
+- cites: the ids of the words it rests on (q…), customers' words or what's measured first where they say it, and of what was read on the web that it draws on (w…). Leave this empty when nothing sent bears on it: don't stretch a quote to fit.
 
 A problem is something customers have, never a solution or a feature the team could build. Don't propose a problem that's behind the goal already or that a page has. People online are strangers, never these customers, and what's read elsewhere is about others: a problem resting only on their words is a guess to check.
 
@@ -37,7 +37,7 @@ export const PROBLEMS_SCHEMA = obj({
       title: str("The problem as customers have it, what goes wrong and for whom, at most 14 words"),
       description: str("One or two sentences: when it happens and what it costs them"),
       why: str("One sentence: how solving it would move the goal"),
-      cites: arr(str("An id of the words it rests on: q…"), "What it rests on, best first. [] when nothing sent bears on it"),
+      cites: arr(str("An id of the words it rests on: q…, or what was read online: w…"), "What it rests on, best first. [] when nothing sent bears on it"),
     }),
     "2 to 4 problems, the one that would move the goal most first",
   ),

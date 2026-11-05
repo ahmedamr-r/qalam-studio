@@ -34,7 +34,7 @@ export default function DiscoveryLayer() {
     return () => ro.disconnect();
   }, []);
   return (
-    <div ref={ref} className="pointer-events-none absolute inset-0 z-[7] overflow-hidden">
+    <div ref={ref} className="pointer-events-none absolute inset-0 z-[9] overflow-hidden">
       <TitleEditor />
       {vp.w > 0 && (
         <>

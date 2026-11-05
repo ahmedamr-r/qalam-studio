@@ -263,8 +263,10 @@ export interface PlanDraft {
 export function sanitizePlan(raw: unknown, m: PlanSent, o: { id: () => string }, dropped?: (why: string, item: unknown) => void): PlanDraft {
   const drop = (why: string, x: unknown) => void dropped?.(why, x);
   const name = (ref: string) => m.cards.get(ref)?.title;
+  // Some models put a whole line in quote marks: it's the line, not someone's words.
+  const unwrapped = (v: unknown) => withoutIds(v, name, "acqwn").replace(/^\s*['‘]([^'‘’]*(?:['‘’][^'‘’]+)*?)['’]\s*$/u, "$1");
   const held = (v: unknown, max: number, shape: "title" | "prose", x: unknown) => {
-    const h = holdWords(withoutIds(v, name, "acqwn"), m.hay, { max, shape });
+    const h = holdWords(unwrapped(v), m.hay, { max, shape });
     if (h.cut.length) drop(`words or numbers that aren't in what was sent came out: ${h.cut.join(" | ")}`, x);
     return h.text;
   };
@@ -449,7 +451,7 @@ export function sanitizePlan(raw: unknown, m: PlanSent, o: { id: () => string },
   const named = word(rec(raw).start);
   const startable = (c: PlanCard) => c.kind === "solution" && !c.needed;
   const start = out.get(named) && startable(out.get(named)!) ? named : (cards.find(startable)?.ref ?? null);
-  const doubt = holdWords(withoutIds(rec(raw).doubt, name, "acqwn"), m.hay, { max: PLAN_LIMITS.doubt, shape: "prose" }).text;
+  const doubt = holdWords(unwrapped(rec(raw).doubt), m.hay, { max: PLAN_LIMITS.doubt, shape: "prose" }).text;
   const quotes: Record<string, QuoteRef> = {};
   for (const p of m.pieces.values()) if (p.source && p.ref.startsWith("hub:quote:")) quotes[p.ref] = { sourceId: p.source, quoteId: p.ref.slice("hub:quote:".length) };
   return { cards, start, doubt, quotes };

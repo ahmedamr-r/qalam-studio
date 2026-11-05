@@ -1459,10 +1459,15 @@ const clipped = (v: unknown, max: number) => (typeof v === "string" ? v.replace(
  * The person's words a draft may rest on, by id (the core reads them itself, so nothing the window
  * sends can pass as something someone said): their answers' source, and quotes found on their words.
  */
-function wordsShape(b: { answers?: unknown; found?: unknown } | null): { answers?: string; found?: string[] } {
+function wordsShape(b: { answers?: unknown; found?: unknown; looks?: unknown } | null): { answers?: string; found?: string[]; looks?: { text: string; url?: string; title?: string; quote?: string }[] } {
   const answers = typeof b?.answers === "string" && ID.test(b.answers) ? b.answers : undefined;
   const found = (Array.isArray(b?.found) ? b.found : []).filter((r): r is string => typeof r === "string" && /^hub:quote:[A-Za-z0-9_-]{1,64}$/.test(r)).slice(0, 20);
-  return { ...(answers ? { answers } : {}), ...(found.length ? { found } : {}) };
+  const looks = (Array.isArray(b?.looks) ? b.looks : []).slice(0, 8).flatMap((x: { text?: unknown; url?: unknown; title?: unknown; quote?: unknown }) => {
+    const text = clipped(x?.text, 400);
+    const url = clipped(x?.url, 400);
+    return text ? [{ text, ...(/^https?:\/\//i.test(url) ? { url } : {}), ...(clipped(x.title, 200) ? { title: clipped(x.title, 200) } : {}), ...(clipped(x.quote, 400) ? { quote: clipped(x.quote, 400) } : {}) }] : [];
+  });
+  return { ...(answers ? { answers } : {}), ...(found.length ? { found } : {}), ...(looks.length ? { looks } : {}) };
 }
 
 /**

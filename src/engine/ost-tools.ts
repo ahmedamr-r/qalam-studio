@@ -83,7 +83,7 @@ export function boardLane(): Lane {
   const laneBriefs = space.active
     ? briefs.flatMap((b) => {
         const at = slots.get(`brief:${b.card}`);
-        return at ? [{ id: b.id, card: b.card, title: b.title, line: b.features ? `Brief · ${b.features} ${b.features === 1 ? "feature" : "features"}` : "Brief", x: at.x, y: at.y }] : [];
+        return at ? [{ id: b.id, card: b.card, title: b.title, line: b.shape === "message" ? (b.features ? `Message plan · ${b.features} ${b.features === 1 ? "message" : "messages"}` : "Message plan") : b.shape === "steps" ? (b.features ? `${b.features} ${b.features === 1 ? "step" : "steps"} to run` : "Steps to run") : b.features ? `Brief · ${b.features} ${b.features === 1 ? "feature" : "features"}` : "Brief", x: at.x, y: at.y }] : [];
       })
     : [];
   const lane = laneOf(doc, [...list, ...visiting], placed, laneFeeds, laneBriefs);

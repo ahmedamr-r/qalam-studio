@@ -12,6 +12,7 @@ import type { OstMetric } from "@/discovery/types";
 import type { ScanSession, ScanTarget } from "@/scan/session";
 import type { ScanSaid } from "@/scan/steer";
 import type { GoalAction, ScanAudience } from "@/scan/plan";
+import type { BriefShape } from "@/discovery/brief";
 import type { Drafted, SolutionDraft } from "@/discovery/solutions";
 import type { Proposal } from "@/discovery/proposals";
 import type { PlanLook, PlanRound } from "./plan";
@@ -82,7 +83,7 @@ export type ChatJob =
    */
   | ScanJob
   /** A brief for a card on the canvas: what it lacks asked in the box, then written, then a tile under the card. */
-  | { kind: "brief"; card: string; title: string; brief: BriefState }
+  | { kind: "brief"; card: string; title: string; brief: BriefState; /** What's written: none, a brief to build. */ shape?: BriefShape }
   | PlanJob
   | { kind: "find"; what: FindWhat; error?: string; /** Qalam AI's opening questions, from what's known about the company and its domain (none: code's own). */ questions?: PlanQuestion[]; /** Those being worked out. */ loading?: true; goal?: FocusGoal; look?: FocusLook }
   | GoalForJob;

@@ -1,9 +1,10 @@
 import { isOstCard } from "@/doc/board";
 import type { Doc, FrameNode } from "@/doc/schema";
-import type { BriefAsked, BriefKind } from "@/discovery/brief";
+import type { BriefAsked, BriefKind, BriefShape } from "@/discovery/brief";
 import { isProblemPage } from "@/space/compose";
 import { useSpaceInputs } from "@/space/session";
 import type { OstCard } from "@/discovery/types";
+import { nearestProblem } from "@/discovery/tree";
 import { sameTopic } from "@/hub/topics";
 import { sentEvidence } from "./solutions";
 
@@ -46,7 +47,7 @@ function words(doc: Doc, id: string) {
   };
 }
 
-export function briefRequest(doc: Doc, id: string, asked: BriefAsked) {
+export function briefRequest(doc: Doc, id: string, asked: BriefAsked, shape: BriefShape = "build") {
   const card = cardOf(doc, id);
   if (!card || card.kind === "test") return null;
   const kind = card.kind as BriefKind;
@@ -54,15 +55,22 @@ export function briefRequest(doc: Doc, id: string, asked: BriefAsked) {
   let at: string | null | undefined = parent;
   while (at && isOstCard(doc.nodes[at]) && cardOf(doc, at)?.kind !== "outcome") at = doc.nodes[at].parentId;
   const goal = kind === "outcome" ? card : at ? cardOf(doc, at) : null;
-  const above = parent ? cardOf(doc, parent) : null;
+  const above = parent ? cardOf(doc, nearestProblem(doc, id) ?? parent) : null;
+  const problemId = nearestProblem(doc, id);
+  const modules = kind === "solution" && card.solutionType === "product" ? kidsOf(doc, id).flatMap((k) => {
+    const m = cardOf(doc, k);
+    return m?.kind === "solution" ? [{ title: m.title, ...(m.how ? { how: m.how } : {}), ...(m.needed ? { needed: true } : {}) }] : [];
+  }) : [];
   // A goal's problems, not the goals under it; a problem's solutions.
   const want = kind === "outcome" ? "opportunity" : "solution";
   return {
     card: { ...words(doc, id), id, kind },
     goal: goal?.kind === "outcome" ? { title: goal.title, metric: goal.metric ? metricWords(goal.metric) : null } : null,
-    problem: kind === "solution" && above?.kind === "opportunity" ? words(doc, parent!) : null,
+    problem: kind === "solution" && above?.kind === "opportunity" && problemId ? words(doc, problemId) : null,
     under: kidsOf(doc, id).filter((k) => cardOf(doc, k)?.kind === want).map((k) => words(doc, k)),
     others: kind === "solution" && parent ? kidsOf(doc, parent).filter((k) => k !== id && cardOf(doc, k)?.kind === "solution").map((k) => cardOf(doc, k)!.title) : [],
     asked,
+    ...(shape !== "build" ? { shape } : {}),
+    ...(modules.length ? { modules } : {}),
   };
 }

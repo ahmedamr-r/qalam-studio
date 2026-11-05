@@ -82,9 +82,14 @@ export function helpEdges(doc: Doc, pageCard: PageCard = noPages): LaneEdge[] {
 export function helpChoices(doc: Doc, id: string, topicOf: (card: string) => string | undefined = () => undefined, pageCard: PageCard = noPages): { card: string; to: OstHelpTarget }[] {
   const own = nearestProblem(doc, id);
   const on = new Set(helpedCards(doc, id, pageCard));
-  return Object.values(doc.nodes).flatMap((n) => {
-    if (!isOstCard(n) || n.meta.ost.kind !== "opportunity" || n.id === own || on.has(n.id)) return [];
+  const out: { card: string; to: OstHelpTarget }[] = [];
+  // A problem that's a card is offered as the card, not also as its page; real ones first.
+  const problems = Object.values(doc.nodes).filter((n) => isOstCard(n) && n.meta.ost.kind === "opportunity" && n.id !== own && !on.has(n.id));
+  for (const n of [...problems.filter((p) => !topicOf(p.id)), ...problems.filter((p) => topicOf(p.id))]) {
+    const title = n.meta.ost!.title;
+    if (out.some((c) => sameTopic(c.to.title, title)) || [...on].some((c) => sameTopic(doc.nodes[c].meta.ost!.title, title))) continue;
     const topic = topicOf(n.id);
-    return [{ card: n.id, to: topic ? { topic, title: n.meta.ost.title } : { card: n.id, title: n.meta.ost.title } }];
-  });
+    out.push({ card: n.id, to: topic ? { topic, title } : { card: n.id, title } });
+  }
+  return out;
 }

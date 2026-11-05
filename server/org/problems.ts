@@ -48,6 +48,7 @@ export async function draftProblems(store: OrgStore, goalId: string, req: { card
     behind,
     pages: topics.filter((t) => !linked.has(t.id)).map((t) => t.title),
     pieces,
+    read: req.looks ?? [],
   });
   emit("Qalam AI is drafting the problems behind it");
   const { data, model } = await structured<unknown>(problemsCall(m), opts.signal);
