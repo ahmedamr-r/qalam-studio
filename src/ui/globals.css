@@ -959,6 +959,8 @@ input, textarea { caret-color: var(--color-fg-accent); }
   .q-glass-foot.sticky::before { display: none; }
   .q-glass-head { background-color: revert-layer; background-image: none; }
 }
+/* A page in the canvas's panel: a hairline over each titled section (a boxed one has its own edge), and sections linked to. */
+.q-page-sections > :is(section[aria-labelledby]:not(.rounded-lg), [data-at]) { border-top: 1px solid var(--color-line); padding-top: 20px; }
 /* A sheet in a glass panel: a question card, a row in the chat. In a layer, so a hover:bg-* still wins.
    It can lie near the shell's brightest part, so its quieter text goes a step stronger, as the top bar's. */
 @layer components {
