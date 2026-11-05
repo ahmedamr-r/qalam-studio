@@ -3,7 +3,7 @@ import { emptyDoc, type Doc } from "@/doc/schema";
 import { isOstCard, rootBounds, treeBounds, treeRootOf, visibleCards } from "@/doc/board";
 import { type Pt, boundsOf, isDescendant, worldBounds, worldCorners } from "@/doc/geometry";
 import { reparentIn } from "@/doc/ops";
-import { canHold } from "./kinds";
+import { holdsCard } from "./kinds";
 import { addCardIn, deleteKeepIn, makeCardNode, moveCardsIn, setTargetIn, updateCardIn } from "./ops";
 import { layoutDocTrees, TREE_GAP } from "./pass";
 import { fromSource, hasQuote, quotable } from "./sources";
@@ -203,7 +203,7 @@ export function applyProposal(d: Doc, p: Proposal, evidence: EvidenceOf, o: { pr
     case "card": {
       const parent = p.parentId ? card(p.parentId) : null;
       // A tree of its own starts with a goal, or a problem on its own (the space's canvas draws it on no goal yet).
-      if (d.nodes[p.cardId] || (p.parentId ? !parent || !canHold(parent.kind, p.card.kind) : p.card.kind !== "outcome" && p.card.kind !== "opportunity")) return false;
+      if (d.nodes[p.cardId] || (p.parentId ? !parent || !holdsCard(parent, p.card.kind) : p.card.kind !== "outcome" && p.card.kind !== "opportunity")) return false;
       const ev = resolve(p.backing, evidence);
       // Words it was to rest on are gone (their source was removed); only a need may rest on nothing (Assumed),
       // a solution or test under a card, which rests on the card above it, and a card that says where it came from.

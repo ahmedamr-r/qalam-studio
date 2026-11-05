@@ -4,6 +4,7 @@ import { newId } from "@/doc/factory";
 import { studio } from "@/doc/store";
 import { cardOf } from "@/discovery/ops";
 import { testProposals } from "@/discovery/tests";
+import { nearestProblem } from "@/discovery/tree";
 import type { OstCard } from "@/discovery/types";
 import { metricLine } from "@/goals/goals-md";
 import { draftTests } from "@/org/tests";
@@ -29,7 +30,7 @@ export async function draftTestsFor(cardId: string): Promise<void> {
   const waits = reviewWaits();
   if (waits) return void feedback(waits, { id: "discovery.tests" });
   // The problem it's under, and the nearest goal above it (on the space's canvas the top is the North Star).
-  const problem = node.parentId ? cardOf(doc, node.parentId) : null;
+  const problem = cardOf(doc, nearestProblem(doc, cardId));
   let at = node.parentId;
   while (at && isOstCard(doc.nodes[at]) && cardOf(doc, at)?.kind !== "outcome") at = doc.nodes[at].parentId;
   const goal = at ? cardOf(doc, at) : null;

@@ -12,7 +12,7 @@ import { addCardIn, addChild, addSibling, cardOf, deleteKeepIn, makeCardNode, ne
 import { neighbor, type Dir } from "@/discovery/navigate";
 import { allCards } from "@/discovery/tree";
 import { isAssumed } from "@/discovery/evidence";
-import { CHILD_KINDS, KIND_LABEL, KIND_NOUN, STAGES, canHold } from "@/discovery/kinds";
+import { CHILD_KINDS, KIND_LABEL, KIND_NOUN, STAGES, holdsCard } from "@/discovery/kinds";
 import type { OstKind } from "@/discovery/types";
 import { commandCanvas } from "@/commands/canvas";
 import { useDiscovery } from "./store";
@@ -147,7 +147,7 @@ const addKind = (k: OstKind): Command => ({
     const id = oneCard();
     if (!id) return "Select the card it goes under";
     const c = cardOf(s().doc, id)!;
-    return canHold(c.kind, k) ? true : `${KIND_LABEL[c.kind]} cards don't hold ${PLURAL[k]}`;
+    return holdsCard(c, k) ? true : `${KIND_LABEL[c.kind]} cards don't hold ${PLURAL[k]}`;
   },
   run: () => addChildCard(oneCard()!, k),
 });

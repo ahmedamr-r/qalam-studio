@@ -164,6 +164,15 @@ describe("what code keeps of the drafts", () => {
     expect(keep(answer([], "")).note).toBe("Qalam AI has no new way to propose.");
   });
 
+  it("says what a solution is and how it's done, and a type it doesn't know is no type", () => {
+    const d = keep(answer([draft({ type: "message", how: "SMS, through a tool like Twilio" })])).drafts[0];
+    expect([d.type, d.how]).toEqual(["message", "SMS, through a tool like Twilio"]);
+    expect(draftCards(d).solution).toMatchObject({ solutionType: "message", how: "SMS, through a tool like Twilio" });
+    const bare = keep(answer([draft({ type: "magic", how: "" })])).drafts[0];
+    expect([bare.type, bare.how]).toEqual([undefined, undefined]);
+    expect(draftCards(bare).solution.solutionType).toBeUndefined();
+  });
+
   it("takes ids out of what it wrote", () => {
     const d = keep(answer([draft({ description: "Answers l1 for parents at the m1 step [q2]." })])).drafts[0];
     expect(d.description).toBe("Answers for parents at the Weekly plan screen step.");

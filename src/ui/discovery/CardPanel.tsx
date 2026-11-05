@@ -11,18 +11,18 @@ import { studio, useStudio } from "@/doc/store";
 import { newId } from "@/doc/factory";
 import { isOstCard } from "@/doc/board";
 import { runCommand } from "@/commands/registry";
-import { cardOf, kindsFor, setKindIn, setStage, setTargetIn, updateCardIn } from "@/discovery/ops";
-import { ASSUMPTION_CATEGORIES, ASSUMPTION_HINT, ASSUMPTION_LABEL, KIND_LABEL, STAGES, SUB_OUTCOME_LABEL } from "@/discovery/kinds";
-import { kindLabel } from "@/discovery/tree";
+import { cardOf, kindsFor, setKindIn, setSolutionTypeIn, setStage, setStartIn, setTargetIn, updateCardIn } from "@/discovery/ops";
+import { ASSUMPTION_CATEGORIES, ASSUMPTION_HINT, ASSUMPTION_LABEL, KIND_LABEL, MODULE_LABEL, SOLUTION_TYPE_LABEL, STAGES, SUB_OUTCOME_LABEL } from "@/discovery/kinds";
+import { isModule, kindLabel } from "@/discovery/tree";
 import { CAME_WORDS, evidenceRows, evidenceSummary, isAIIdea, isAssumed } from "@/discovery/evidence";
 import { feedback } from "@/commands/feedback";
-import type { AssumptionCategory, OstCard, OstEvidence, OstMetric, OstStage } from "@/discovery/types";
+import { SOLUTION_TYPES, type AssumptionCategory, type OstCard, type OstEvidence, type OstMetric, type OstStage, type SolutionType } from "@/discovery/types";
 import { parseWorkUrl, workKey } from "@/connectors/work";
 import { MetricSource } from "../numbers/MetricSource";
 import { ConnectorLogo } from "../brand/ConnectorLogo";
 import { QalamAIGlyph } from "../brand";
 import { refreshWork } from "./work";
-import { Button, Field, Hint, IconBtn, Row, Section, Segmented, Select, Tag, Tip } from "../controls";
+import { Button, Checkbox, Field, Hint, IconBtn, Row, Section, Segmented, Select, Tag, Tip } from "../controls";
 import { r } from "../recipes";
 import { Meter } from "../viz";
 import { CommitArea, CommitInput, CommitNumber } from "./fields";
@@ -78,6 +78,7 @@ function OneCard({ id, card }: { id: string; card: OstCard }) {
   const label = useStudio((s) => kindLabel(s.doc, id));
   // Under an outcome, an outcome is a sub-outcome.
   const underOutcome = useStudio((s) => cardOf(s.doc, s.doc.nodes[id]?.parentId)?.kind === "outcome");
+  const underProduct = useStudio((s) => cardOf(s.doc, s.doc.nodes[id]?.parentId)?.solutionType === "product");
   // On a space's canvas a goal's card is the goal (goals.md): it stays one.
   const goalCard = useSpaceView((s) => s.active && s.things.get(id)?.type === "goal");
   return (
@@ -93,7 +94,7 @@ function OneCard({ id, card }: { id: string; card: OstCard }) {
           <CommitArea ariaLabel="Title" value={card.title} placeholder="Name it" onCommit={(v) => edit(id, (c) => void (c.title = v.replace(/\s*\n\s*/g, " ").trim()))} />
           {kinds.length > 1 && !goalCard && (
             <Field label="Kind">
-              <Segmented value={card.kind} options={kinds.map((k) => ({ value: k, label: k === "outcome" && underOutcome ? SUB_OUTCOME_LABEL : KIND_LABEL[k] }))} onChange={(k) => studio().mutate((d) => setKindIn(d, id, k))} />
+              <Segmented value={card.kind} options={kinds.map((k) => ({ value: k, label: k === "outcome" && underOutcome ? SUB_OUTCOME_LABEL : k === "solution" && underProduct ? MODULE_LABEL : KIND_LABEL[k] }))} onChange={(k) => studio().mutate((d) => setKindIn(d, id, k))} />
             </Field>
           )}
           <Field label="Stage">
@@ -118,6 +119,7 @@ function OneCard({ id, card }: { id: string; card: OstCard }) {
         </div>
       </section>
       <NoticedSection id={id} />
+      {card.kind === "solution" && <WhatItIsSection id={id} card={card} />}
       <Section title="Notes">
         <CommitArea voice ariaLabel="Description" value={card.description ?? ""} placeholder="What it means, why it matters" rows={3} onCommit={(v) => edit(id, (c) => (v.trim() ? (c.description = v.trim()) : delete c.description))} />
       </Section>
@@ -333,6 +335,29 @@ function WorkSection({ id, card }: { id: string; card: OstCard }) {
           {busy ? "Asking…" : "Ask again where they stand"}
         </Button>
       )}
+    </Section>
+  );
+}
+
+const SOLUTION_TYPE_OPTIONS = [{ value: "", label: "Not set" }, ...SOLUTION_TYPES.map((t) => ({ value: t, label: SOLUTION_TYPE_LABEL[t] }))] as { value: SolutionType | ""; label: string }[];
+
+/** What a solution is and how it's done. A module is part of its product, so it has no type of its own: it can be what the product needs to run. */
+function WhatItIsSection({ id, card }: { id: string; card: OstCard }) {
+  const module = useStudio((s) => isModule(s.doc, id));
+  return (
+    <Section title="What it is">
+      <div className="flex flex-col gap-[8px]">
+        {!module && (
+          <Field label="Type">
+            <Select<SolutionType | ""> ariaLabel="Type of solution" value={card.solutionType ?? ""} options={SOLUTION_TYPE_OPTIONS} onChange={(v) => studio().mutate((d) => setSolutionTypeIn(d, id, v || null))} />
+          </Field>
+        )}
+        <Field label="How">
+          <CommitArea ariaLabel="How it's done" value={card.how ?? ""} placeholder="How it's done, and with what" rows={2} onCommit={(v) => edit(id, (c) => (v.trim() ? (c.how = v.trim()) : delete c.how))} />
+        </Field>
+        <Checkbox checked={!!card.start} onChange={(on) => studio().mutate((d) => setStartIn(d, id, on))} label={<span className="text-caption text-fg">Start here</span>} />
+        {module && <Checkbox checked={!!card.needed} onChange={(on) => edit(id, (c) => (on ? (c.needed = true) : delete c.needed))} label={<span className="text-caption text-fg">Needed to run it</span>} />}
+      </div>
     </Section>
   );
 }

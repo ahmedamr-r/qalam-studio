@@ -1,4 +1,5 @@
-import { ASSUMPTION_CATEGORIES } from "@/discovery/kinds";
+import { ASSUMPTION_CATEGORIES, SOLUTION_TYPE_HINT } from "@/discovery/kinds";
+import { SOLUTION_TYPES } from "@/discovery/types";
 import type { SolutionsSent } from "@/discovery/solutions";
 
 /**
@@ -21,8 +22,10 @@ export const SOLUTIONS_SYSTEM = `You help a product team find ways to solve one 
 
 You get the problem: what its page says (each line with an id), the words those lines rest on (each saying whose: customers', what's measured or studied, what's read elsewhere, or the team's), the goals it bears on, what others report for those goals, what the product does today, what's on the board under it already, and the person's own ideas.
 
-Propose 2 to 4 solutions, the most promising first, each a different way to solve the problem (not variations of one). For each:
-- title: a short name for what the product would do, at most 10 words (Plan the week's meals from last week's order).
+Propose 2 to 4 solutions, the most promising first, each a different way to solve the problem (not variations of one). A solution needn't be software: it can be a change to the product, a new feature, a new product, a message or campaign (SMS, push, email, social media), or a service or something done by hand. Weigh them against each other, and prefer what's cheapest to try. For each:
+- title: a short name for what would be done, at most 10 words (Plan the week's meals from last week's order).
+- type: what it is (${SOLUTION_TYPE_HINT}).
+- how: a few words on how it's done, naming the kind of tool it would use where it needs one (SMS, through a tool like Twilio). Empty when there's nothing to add.
 - description: one or two sentences: what it does and how it meets the problem, in the customers' terms.
 - cites: the ids of the problem's lines and words it answers (l…, q…), and of the goals, reports and product steps it builds on (g…, c…, m…). Cite what bears on it, and leave this empty when nothing does: don't stretch a line to fit.
 - idea: when it builds on one of the person's own ideas, that idea's id (i…), and then keep its title in their words. "none" otherwise.
@@ -39,7 +42,9 @@ export function solutionsSchema(m: Pick<SolutionsSent, "ideas">) {
   return obj({
     solutions: arr(
       obj({
-        title: str("A short name for what the product would do, at most 10 words"),
+        title: str("A short name for what would be done, at most 10 words"),
+        type: enm(SOLUTION_TYPES, SOLUTION_TYPE_HINT),
+        how: str("A few words on how it's done, naming the kind of tool it would use. Empty when there's nothing to add"),
         description: str("One or two sentences: what it does and how it meets the problem"),
         cites: arr(str("An id it rests on: l…, q…, g…, c…, m…"), "What it rests on, best first. [] when nothing sent bears on it"),
         idea: enm([...m.ideas.keys(), "none"], "The person's own idea it builds on (i…), or none"),

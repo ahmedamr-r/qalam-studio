@@ -4,9 +4,9 @@ import { isOstCard } from "@/doc/board";
 import { type Pt, isDescendant } from "@/doc/geometry";
 import { newId } from "@/doc/factory";
 import { reparentIn } from "@/doc/ops";
-import { CARD_WIDTH, CHILD_KINDS, DEFAULT_STAGE, KIND_LABEL, canHold, defaultChildKind } from "./kinds";
+import { CARD_WIDTH, CHILD_KINDS, DEFAULT_STAGE, KIND_LABEL, defaultChildKind, holdsCard } from "./kinds";
 import { targetScope } from "./tree";
-import type { OstCard, OstKind, OstStage } from "./types";
+import type { OstCard, OstKind, OstStage, SolutionType } from "./types";
 
 /*
  * Editing the tree. The `…In` functions work on a draft inside one `mutate` (so a gesture or a
@@ -69,7 +69,7 @@ export function dropProblem(doc: Doc, ids: string[], target: string | null): str
     const c = cardOf(doc, id);
     if (!c) return "Only cards go in the tree";
     if (id === target || isDescendant(doc, target, id)) return "A card can't go inside itself";
-    if (!canHold(t.kind, c.kind)) return CHILD_KINDS[t.kind].length ? `${KIND_LABEL[t.kind]} cards hold ${CHILD_KINDS[t.kind].map((k) => PLURAL[k]).join(" and ")}` : `${KIND_LABEL[t.kind]} cards hold no other cards`;
+    if (!holdsCard(t, c.kind)) return CHILD_KINDS[t.kind].length ? `${KIND_LABEL[t.kind]} cards hold ${CHILD_KINDS[t.kind].map((k) => PLURAL[k]).join(" and ")}` : `${KIND_LABEL[t.kind]} cards hold no other cards`;
   }
   return null;
 }
@@ -159,7 +159,7 @@ export function kindsFor(doc: Doc, id: string): OstKind[] {
   if (!n || !c) return [];
   const parent = cardOf(doc, n.parentId);
   const kids = n.children.map((k) => cardOf(doc, k)?.kind).filter((k): k is OstKind => !!k);
-  return (["outcome", "opportunity", "solution", "test"] as OstKind[]).filter((k) => (parent ? canHold(parent.kind, k) : true) && kids.every((ck) => canHold(k, ck)));
+  return (["outcome", "opportunity", "solution", "test"] as OstKind[]).filter((k) => (parent ? holdsCard(parent, k) : true) && kids.every((ck) => holdsCard({ kind: k, solutionType: c.solutionType }, ck)));
 }
 
 /** Turn a card into another kind: its words and evidence stay, its stage starts over, fields of the old kind go. */
@@ -176,9 +176,37 @@ export function setKindIn(d: Doc, id: string, kind: OstKind) {
     if (kind !== "solution") {
       delete c.assumptions;
       delete c.designs;
+      delete c.solutionType;
+      delete c.how;
+      delete c.needed;
+      delete c.start;
     }
     if (kind !== "test") delete c.test;
   });
+}
+
+/** Set what a solution is. No longer a New product, its modules move up beside it, as solutions of its problem. */
+export function setSolutionTypeIn(d: Doc, id: string, type: SolutionType | null) {
+  const n = d.nodes[id];
+  const c = cardOf(d, id);
+  if (!n || c?.kind !== "solution") return;
+  if (type) c.solutionType = type;
+  else delete c.solutionType;
+  if (type === "product") return;
+  const modules = n.children.filter((k) => cardOf(d, k)?.kind === "solution");
+  if (!modules.length) return;
+  const at = n.parentId ? listOf(d, n.parentId).indexOf(id) + 1 : undefined;
+  reparentIn(d, modules, n.parentId, at);
+  for (const m of modules) delete cardOf(d, m)?.needed;
+}
+
+/** Where to start: one card on the canvas at a time. */
+export function setStartIn(d: Doc, id: string, on: boolean) {
+  for (const n of Object.values(d.nodes)) if (isOstCard(n) && n.id !== id) delete n.meta.ost.start;
+  const c = cardOf(d, id);
+  if (!c) return;
+  if (on) c.start = true;
+  else delete c.start;
 }
 
 // ---------------------------------------------------------------------------
@@ -191,7 +219,7 @@ export function addChild(parentId: string, kind?: OstKind, data: Partial<OstCard
   if (!p) return null;
   const childKinds = doc.nodes[parentId].children.map((c) => cardOf(doc, c)?.kind).filter((k): k is OstKind => !!k);
   const k = kind ?? defaultChildKind(p, childKinds);
-  if (!k || !canHold(p.kind, k)) return null;
+  if (!k || !holdsCard(p, k)) return null;
   const node = makeCardNode(newCard(k, data));
   studio().mutate((d) => addCardIn(d, node, parentId));
   return node.id;

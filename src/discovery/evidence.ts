@@ -118,8 +118,10 @@ export const isAIIdea = (card: Pick<OstCard, "kind" | "createdBy" | "evidence">)
   card.kind === "solution" && card.createdBy === "ai" && !ownBacking(card).some((e) => e.kind === "answer" || e.kind === "quote" || e.kind === "dump");
 
 /** The evidence chip's words on a card ("" when a card has nothing to say about it). */
-export function evidenceLabel(card: Pick<OstCard, "kind" | "createdBy" | "evidence" | "pageBacking" | "came">): string {
+export function evidenceLabel(card: Pick<OstCard, "kind" | "createdBy" | "evidence" | "pageBacking" | "came" | "needed">): string {
   if (card.pageBacking) return card.pageBacking;
+  // A part the product can't run without doesn't claim anyone asked for it.
+  if (card.needed && !knownBacking(card).length) return "Needed to run it";
   const against = againstCount(card);
   const tail = against ? ` · ${against} against` : "";
   const online = onlineCount(card);

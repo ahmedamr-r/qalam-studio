@@ -22,6 +22,14 @@ export type SolutionStage = "idea" | "testing" | "building" | "shipped" | "dropp
 export type TestStage = "planned" | "running" | "passed" | "failed" | "inconclusive";
 export type OstStage = OutcomeStage | OpportunityStage | SolutionStage | TestStage;
 
+/**
+ * What a solution is: a change to what's there, a new feature, a new product (which holds modules:
+ * solutions under it), a message or campaign (SMS, push, email, social media), or a service or
+ * something done by hand. A card from before has none.
+ */
+export const SOLUTION_TYPES = ["change", "feature", "product", "message", "service"] as const;
+export type SolutionType = (typeof SOLUTION_TYPES)[number];
+
 export type AssumptionCategory = "desirability" | "viability" | "feasibility" | "usability" | "ethical";
 
 /**
@@ -143,6 +151,14 @@ export interface OstCard {
   /** Proposed with nothing that can reach "We know" behind it: it shows as Assumed until something does. */
   came?: Came;
   evidence: OstEvidence[];
+  /** Solutions: what it is. */
+  solutionType?: SolutionType;
+  /** Solutions: how it's done, in words, naming the tools it would use ("SMS, through a tool like Twilio"). */
+  how?: string;
+  /** A module nobody asked for that the product can't run without (login, billing). */
+  needed?: true;
+  /** Where to start: the strongest signal so far, never "the best". One on a canvas. */
+  start?: true;
   /** Solutions: what has to be true for it to work. */
   assumptions?: OstAssumption[];
   /** Solutions: Screens projects it was sent to with Design this. */

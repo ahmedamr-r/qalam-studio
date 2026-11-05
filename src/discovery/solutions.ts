@@ -3,6 +3,7 @@ import { wordsHold, withoutIds } from "@/goals/said";
 import { checkWords, cleanLine, holdWords, sameTopic, sameWords, SECTION_HEADING, type TopicSection } from "@/hub/topics";
 import { quoteFinder } from "./quotes";
 import { ASSUMPTION_CATEGORIES } from "./kinds";
+import { SOLUTION_TYPES, type SolutionType } from "./types";
 import { withCompany } from "@/market/text";
 import { newCard } from "./ops";
 import type { Backing, QuoteRef } from "./proposals";
@@ -20,7 +21,7 @@ import type { AssumptionCategory, Came, OstAssumption, OstCard, OstEvidence } fr
  * fact: its numbers are Qalam AI's suggestion, and only the person sets the bar.
  */
 
-export const SOLUTION_LIMITS = { solutions: 4, enough: 2, assumptions: 4, lines: 16, pieces: 20, goals: 4, claims: 6, steps: 8, cards: 12, ideas: 8, title: 90, description: 420, assumption: 240, what: 160, how: 360, pass: 240, note: 480 } as const;
+export const SOLUTION_LIMITS = { solutions: 4, enough: 2, assumptions: 4, lines: 16, pieces: 20, goals: 4, claims: 6, steps: 8, cards: 12, ideas: 8, title: 90, means: 120, description: 420, assumption: 240, what: 160, how: 360, pass: 240, note: 480 } as const;
 
 export interface SolutionsInput {
   problem: { title: string; topic: string | null };
@@ -87,6 +88,9 @@ export interface SolutionDraft {
   idea: { ref: string; text: string; source: string | null } | null;
   /** Where it came from, when nothing that can reach "We know" backs it. */
   came?: Came;
+  /** What it is, and how it's done in words (none in drafts from before). */
+  type?: SolutionType;
+  how?: string;
   assumptions: DraftAssumption[];
   test: DraftTest | null;
   at: number;
@@ -236,6 +240,8 @@ export function sanitizeSolutions(raw: unknown, m: SolutionsSent, o: { now: numb
       continue;
     }
     const description = held(s.description, SOLUTION_LIMITS.description, "prose", x);
+    const type = SOLUTION_TYPES.find((t) => t === s.type);
+    const means = held(s.how, SOLUTION_LIMITS.means, "prose", x);
     const refs = strs(s.cites);
     const lines = refs.filter((r) => m.lines.has(r));
     const own = refs.filter((r) => m.pieces.has(r));
@@ -289,6 +295,8 @@ export function sanitizeSolutions(raw: unknown, m: SolutionsSent, o: { now: numb
       },
       idea,
       ...cameFrom(pieces.flatMap((r) => sent.get(r) ?? []), claims.length > 0, !!idea),
+      ...(type ? { type } : {}),
+      ...(means ? { how: means } : {}),
       assumptions,
       test,
       at: o.now,
@@ -334,7 +342,7 @@ export function draftBacking(d: SolutionDraft, quoteOf: (pieceRef: string) => Qu
 export function draftCards(d: SolutionDraft): { solution: OstCard; test: OstCard | null } {
   const assumptions: OstAssumption[] = d.assumptions.map((a) => ({ id: a.id, category: a.category, text: a.text, importance: a.importance, addedBy: "ai" }));
   // Their idea is theirs: the card says who drafted it.
-  const solution = newCard("solution", { title: d.title, description: d.description, createdBy: d.idea ? "user" : "ai", ...(d.came ? { came: d.came } : {}), assumptions });
+  const solution = newCard("solution", { title: d.title, description: d.description, createdBy: d.idea ? "user" : "ai", ...(d.came ? { came: d.came } : {}), ...(d.type ? { solutionType: d.type } : {}), ...(d.how ? { how: d.how } : {}), assumptions });
   const test = d.test ? newCard("test", { title: d.test.what, createdBy: "ai", test: { assumptionIds: [d.test.assumption], method: d.test.how, ...(d.test.suggested ? { suggested: { criterion: d.test.suggested } } : {}) } }) : null;
   return { solution, test };
 }
