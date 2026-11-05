@@ -57,12 +57,13 @@ export interface LaneItem {
 
 export interface LaneEdge {
   id: string;
+  /** A lane item, or for `helps` a solution's card. */
   from: string;
   /** A card. */
   to: string;
   quotes: string[];
-  /** A feed's: it watches for the card, its words aren't on it (drawn dashed). A brief's: it was written from the card, down to its tile. */
-  kind?: "feed" | "brief";
+  /** A feed's: it watches for the card, its words aren't on it (drawn dashed). A brief's: it was written from the card, down to its tile. A solution's up to another problem it helps (./helps.ts). */
+  kind?: "feed" | "brief" | "helps";
 }
 
 /** A feed as the lane draws it (src/feeds/feeds.ts): its name, its tool's mark, and the cards on this board it's wired to. */
@@ -181,6 +182,11 @@ export function laneOf(doc: Doc, sources: readonly (LaneSource & { text?: string
     edges.push({ id: `${key}>${b.card}`, from: key, to: b.card, quotes: [], kind: "brief" });
   }
   return { items, edges };
+}
+
+/** The "also helps" wires a hovered card lights: hovering lights only these, where picking a card lights all its wires. */
+export function litByHelps(lane: Lane, id: string | null): Set<string> {
+  return new Set(id ? lane.edges.filter((e) => e.kind === "helps" && (e.from === id || e.to === id)).map((e) => e.id) : []);
 }
 
 /** What a lane item or a card lights: the wires through it and what's at their other ends. */

@@ -6,9 +6,10 @@ import { reparentIn } from "@/doc/ops";
 import { holdsCard } from "./kinds";
 import { addCardIn, deleteKeepIn, makeCardNode, moveCardsIn, setTargetIn, updateCardIn } from "./ops";
 import { layoutDocTrees, TREE_GAP } from "./pass";
+import { withHelp } from "./helps";
 import { fromSource, hasQuote, quotable } from "./sources";
 import { makeSticky } from "./sticky";
-import type { OstAssumption, OstCard, OstEvidence, OstMetric, StickyColor } from "./types";
+import type { OstAssumption, OstCard, OstEvidence, OstHelpTarget, OstMetric, StickyColor } from "./types";
 import type { BreakdownPart } from "@/goals/breakdown";
 
 /*
@@ -52,6 +53,8 @@ export type Proposal = {
    * document; accepting it puts it in goals.md, and the canvas draws it from there.
    */
   | { kind: "goal"; /** The goal's card on the canvas. */ parentId: string; goal: string; part: BreakdownPart; card: OstCard }
+  /** A solution (`cardId`, maybe new) helps another problem too: a dashed wire once accepted (./helps.ts). */
+  | { kind: "helps"; to: OstHelpTarget }
 );
 
 /** A quote as evidence (null when its source or the quote is gone). */
@@ -93,6 +96,8 @@ export function proposalKey(p: Proposal, all: Proposal[] = []): string {
       return `note:${key(p.text)}`;
     case "goal":
       return `goal:${p.goal}:${p.part.id}`;
+    case "helps":
+      return `helps:${parentKey(p.cardId)}:${key(p.to.title)}`;
   }
 }
 
@@ -101,6 +106,7 @@ export function dependsOn(p: Proposal, all: Proposal[]): Proposal[] {
   const pending = (id: string | null) => (id ? all.filter((x) => x.kind === "card" && x.cardId === id) : []);
   if (p.kind === "card" || p.kind === "move") return pending(p.parentId);
   if (p.kind === "note") return pending(p.anchorId);
+  if (p.kind === "helps") return [...pending(p.cardId), ...pending(p.to.card ?? null)];
   return [];
 }
 
@@ -138,6 +144,8 @@ export function underCard(doc: Doc, card: string, list: Proposal[]): Proposal[] 
         return false;
       case "goal":
         return p.parentId === card;
+      case "helps":
+        return added.has(p.cardId) || mine(p.cardId);
       default:
         return mine(p.cardId);
     }
@@ -173,6 +181,7 @@ export function touchedRoots(doc: Doc, p: Proposal, all: Proposal[]): string[] {
     : p.kind === "move" ? [rootOf(p.cardId), p.parentId ? rootOf(p.parentId) : p.cardId]
     : p.kind === "merge" ? [rootOf(p.cardId), rootOf(p.dropId)]
     : p.kind === "note" ? [p.cardId]
+    : p.kind === "helps" ? [rootOf(p.cardId), rootOf(p.to.card ?? null)]
     : [rootOf(p.cardId)];
   return [...new Set(ids.filter((x): x is string => !!x))];
 }
@@ -272,6 +281,14 @@ export function applyProposal(d: Doc, p: Proposal, evidence: EvidenceOf, o: { pr
     case "goal": {
       if (!o.preview || d.nodes[p.cardId] || card(p.parentId)?.kind !== "outcome") return false;
       addCardIn(d, { ...makeCardNode({ ...p.card }), id: p.cardId }, p.parentId);
+      return true;
+    }
+    case "helps": {
+      const c = card(p.cardId);
+      if (c?.kind !== "solution") return false;
+      const list = withHelp(c, p.to, "ai", Date.now());
+      if (!list) return false;
+      c.helps = list;
       return true;
     }
     case "note": {

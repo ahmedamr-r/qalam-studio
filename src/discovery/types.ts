@@ -129,6 +129,22 @@ export interface OstTest {
   result?: string;
 }
 
+/** A problem a solution helps, by its card, or its page when it's only a page on the canvas, and its name (./helps.ts). */
+export interface OstHelpTarget {
+  card?: string;
+  topic?: string;
+  title: string;
+}
+
+/** A problem a solution helps besides the one it hangs under: drawn as a faint dashed wire. */
+export interface OstHelp {
+  to: OstHelpTarget;
+  by: "user" | "ai";
+  /** A person took it off: it's remembered, so Qalam AI doesn't propose it again. */
+  off?: true;
+  at: number;
+}
+
 /**
  * Where a card with nothing to show for it came from, as code worked it out from what it cites:
  * their answers, what was read online, or Qalam AI's own idea. Evidence is better when there is some,
@@ -159,6 +175,8 @@ export interface OstCard {
   needed?: true;
   /** Where to start: the strongest signal so far, never "the best". One on a canvas. */
   start?: true;
+  /** Solutions: the problems it helps besides the one above it. */
+  helps?: OstHelp[];
   /** Solutions: what has to be true for it to work. */
   assumptions?: OstAssumption[];
   /** Solutions: Screens projects it was sent to with Design this. */

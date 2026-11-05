@@ -14,6 +14,7 @@ import { boardsPlacedFor } from "./placements";
 import { useGhosts, type Ghost } from "@/doc/ghosts";
 import { feedback } from "@/commands/feedback";
 import { cardOf } from "@/discovery/ops";
+import { withHelp } from "@/discovery/helps";
 import { hasQuote, quoteEvidence } from "@/discovery/sources";
 import { dropProblem } from "@/discovery/ops";
 import { applyProposal, carryOut, proposalDoc, proposalKey, touchedRoots, withDependents, withNeeds, type EvidenceOf, type Proposal } from "@/discovery/proposals";
@@ -110,6 +111,12 @@ function fits(p: Proposal, all: Proposal[]): boolean {
       // The goal's card is on the canvas, and no goal under it has the same name (taken here or elsewhere).
       const t = useSpaceView.getState().things.get(p.parentId);
       return here(p.parentId) && !doc.nodes[p.cardId] && t?.type === "goal" && t.goal === p.goal && !childrenOf(goalsNow(), p.goal).some((c) => sameTopic(c.title, p.card.title));
+    }
+    case "helps": {
+      // Its solution and its problem are there, or wait on another proposal, and it isn't linked already (or taken off).
+      const c = cardOf(doc, p.cardId);
+      if (!(here(p.cardId) || pending(p.cardId)) || (p.to.card && !here(p.to.card) && !pending(p.to.card))) return false;
+      return !c || !!withHelp(c, p.to, "ai", 0);
     }
   }
 }

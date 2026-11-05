@@ -175,6 +175,8 @@ function label(p: Proposal, all: Proposal[]): string {
       return p.color === "pink" ? "Pushback" : "Open question";
     case "goal":
       return `New sub-goal · ${LEVER_LABEL[p.part.lever]}`;
+    case "helps":
+      return "Also helps";
   }
 }
 
@@ -279,6 +281,12 @@ function Detail({ p }: { p: Proposal }) {
           ))}
           {!p.part.cites.length && <span className="text-micro text-fg-subtle">Rests on the goals above it; nothing in your material yet.</span>}
         </div>
+      );
+    case "helps":
+      return (
+        <span className="text-caption text-fg-muted" dir="auto">
+          Also helps “{p.to.title}”.
+        </span>
       );
   }
 }

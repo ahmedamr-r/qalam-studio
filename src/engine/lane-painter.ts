@@ -1,8 +1,8 @@
 import type { Canvas, CanvasKit, MaskFilter, Paint, Paragraph, Path } from "canvaskit-wasm";
 import { brandOn, logoFor } from "@/connectors/logos";
 import { iconDrawing } from "@/design-system/icons";
-import type { Lane, LaneItem } from "@/discovery/lane";
-import { FEED, SOURCE, sourceMark, sourceTile, WIRE, wireCurve } from "@/discovery/look";
+import { litByHelps, type Lane, type LaneItem } from "@/discovery/lane";
+import { FEED, HELPS, SOURCE, sourceMark, sourceTile, WIRE, wireCurve } from "@/discovery/look";
 import type { Doc } from "@/doc/schema";
 import { worldBounds } from "@/doc/geometry";
 import { getEngine, hexToColor } from "./canvaskit";
@@ -103,12 +103,47 @@ export class LanePainter {
     }
   }
 
-  /** The wires, behind the cards: out of a source's port, into the card's left. */
-  drawWires(canvas: Canvas, drawn: Doc, r: LaneRender, zoom: number) {
+  /** A solution's wire up to another problem it helps: from the top of its card to the bottom of the problem's, faint until it's lit. */
+  private drawHelp(canvas: Canvas, doc: Doc, from: string, to: string, lit: boolean, dim: boolean, zoom: number) {
+    const p = this.pal;
+    const a = worldBounds(doc, from);
+    const b = worldBounds(doc, to);
+    const x1 = a.x + a.w / 2;
+    const y1 = a.y;
+    const x2 = b.x + b.w / 2;
+    const y2 = b.y + b.h;
+    const path = new this.ck.PathBuilder();
+    path.moveTo(x1, y1);
+    path.cubicTo(x1, y1 + (y2 - y1) / 2, x2, y1 + (y2 - y1) / 2, x2, y2);
+    const built = path.detachAndDelete();
+    this.stroke.setColor(this.col(lit ? p.selection : p.line, lit ? 1 : dim ? WIRE.dim : HELPS.rest));
+    this.stroke.setStrokeWidth((lit ? WIRE.lit : WIRE.width) / Math.min(1, zoom));
+    const dash = this.ck.PathEffect.MakeDash(HELPS.dash.map((d) => d / Math.min(1, zoom)), 0);
+    this.stroke.setPathEffect(dash);
+    canvas.drawPath(built, this.stroke);
+    this.stroke.setPathEffect(null);
+    dash?.delete();
+    built.delete();
+    if (!lit) return;
+    this.fill.setColor(this.col(p.card));
+    canvas.drawCircle(x2, y2, WIRE.dot, this.fill);
+    this.stroke.setStrokeWidth(WIRE.width);
+    canvas.drawCircle(x2, y2, WIRE.dot, this.stroke);
+  }
+
+  /** The wires, behind the cards: out of a source's port, into the card's left. `hover`: the card under the pointer, whose "also helps" wires light. */
+  drawWires(canvas: Canvas, drawn: Doc, r: LaneRender, zoom: number, hover: string | null = null) {
     const p = this.pal;
     const doc = r.doc ?? drawn;
     const items = new Map(r.lane.items.map((i) => [i.key, i]));
+    const hovered = litByHelps(r.lane, hover);
     for (const e of r.lane.edges) {
+      if (e.kind === "helps") {
+        if (!doc.nodes[e.from] || !doc.nodes[e.to]) continue;
+        const lit = hovered.has(e.id) || (r.lit?.edges.has(e.id) ?? false);
+        this.drawHelp(canvas, doc, e.from, e.to, lit, !!r.lit && !lit, zoom);
+        continue;
+      }
       const a = items.get(e.from);
       if (!a || !doc.nodes[e.to]) continue;
       const b = worldBounds(doc, e.to);

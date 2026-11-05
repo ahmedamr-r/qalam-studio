@@ -13,7 +13,9 @@ import { isOstCard } from "@/doc/board";
 import { runCommand } from "@/commands/registry";
 import { cardOf, kindsFor, setKindIn, setSolutionTypeIn, setStage, setStartIn, setTargetIn, updateCardIn } from "@/discovery/ops";
 import { ASSUMPTION_CATEGORIES, ASSUMPTION_HINT, ASSUMPTION_LABEL, KIND_LABEL, MODULE_LABEL, SOLUTION_TYPE_LABEL, STAGES, SUB_OUTCOME_LABEL } from "@/discovery/kinds";
+import { activeHelps, goalsReached, helpChoices, helpsTarget, withHelp, withoutHelp } from "@/discovery/helps";
 import { isModule, kindLabel } from "@/discovery/tree";
+import { cardForPage } from "@/space/pages";
 import { CAME_WORDS, evidenceRows, evidenceSummary, isAIIdea, isAssumed } from "@/discovery/evidence";
 import { feedback } from "@/commands/feedback";
 import { SOLUTION_TYPES, type AssumptionCategory, type OstCard, type OstEvidence, type OstMetric, type OstStage, type SolutionType } from "@/discovery/types";
@@ -120,6 +122,7 @@ function OneCard({ id, card }: { id: string; card: OstCard }) {
       </section>
       <NoticedSection id={id} />
       {card.kind === "solution" && <WhatItIsSection id={id} card={card} />}
+      {card.kind === "solution" && <AlsoHelpsSection id={id} card={card} />}
       <Section title="Notes">
         <CommitArea voice ariaLabel="Description" value={card.description ?? ""} placeholder="What it means, why it matters" rows={3} onCommit={(v) => edit(id, (c) => (v.trim() ? (c.description = v.trim()) : delete c.description))} />
       </Section>
@@ -357,6 +360,50 @@ function WhatItIsSection({ id, card }: { id: string; card: OstCard }) {
         </Field>
         <Checkbox checked={!!card.start} onChange={(on) => studio().mutate((d) => setStartIn(d, id, on))} label={<span className="text-caption text-fg">Start here</span>} />
         {module && <Checkbox checked={!!card.needed} onChange={(on) => edit(id, (c) => (on ? (c.needed = true) : delete c.needed))} label={<span className="text-caption text-fg">Needed to run it</span>} />}
+      </div>
+    </Section>
+  );
+}
+
+/** The problems a solution helps besides the one above it, each a wire on the canvas, and the goals that reaches. Taking one off is remembered. */
+function AlsoHelpsSection({ id, card }: { id: string; card: OstCard }) {
+  const doc = useStudio((s) => s.doc);
+  const things = useSpaceView((s) => s.things);
+  const pageCard = (topic: string) => cardForPage({ page: topic }, things);
+  const topicOf = (c: string) => {
+    const t = things.get(c);
+    return t?.type === "problem" ? t.topic : undefined;
+  };
+  const links = activeHelps(card).flatMap((h) => {
+    const at = helpsTarget(h.to, doc, pageCard);
+    return at ? [{ h, at }] : [];
+  });
+  const choices = helpChoices(doc, id, topicOf, pageCard);
+  const goals = goalsReached(doc, id, pageCard).length;
+  return (
+    <Section title={links.length ? `Also helps · ${goals} ${goals === 1 ? "goal" : "goals"} in all` : "Also helps"}>
+      <div className="flex flex-col gap-[6px]">
+        {links.map(({ h, at }) => (
+          <div key={at} className="flex items-center gap-[8px]">
+            <span className="min-w-0 flex-1 truncate text-caption text-fg" dir="auto">
+              {cardOf(doc, at)?.title ?? h.to.title}
+            </span>
+            <IconBtn label="It doesn't help this one" onClick={() => edit(id, (c) => void (c.helps = withoutHelp(c, h.to, Date.now())))}>
+              <X {...ICON} />
+            </IconBtn>
+          </div>
+        ))}
+        {choices.length > 0 && (
+          <Select<string>
+            ariaLabel="Add a problem it helps"
+            value=""
+            options={[{ value: "", label: "Add a problem it helps…" }, ...choices.map((c) => ({ value: c.card, label: c.to.title }))]}
+            onChange={(v) => {
+              const to = choices.find((c) => c.card === v)?.to;
+              if (to) edit(id, (c) => void (c.helps = withHelp(c, to, "user", Date.now()) ?? c.helps));
+            }}
+          />
+        )}
       </div>
     </Section>
   );
