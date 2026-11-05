@@ -176,6 +176,11 @@
   /* A place on the setup's canvas (the About, a product): the stone the About was drawn in. */
   --color-kind-place: #b9ad9b;
 
+  /* How strong a problem's backing is (StrengthSignal in src/ui/viz.tsx). At least 3:1 on a panel. */
+  --color-signal-strong: #3fc168;
+  --color-signal-growing: #e6c04e;
+  --color-signal-thin: #ff8a3d;
+
   /* Agent identities: cursor arrow, tag dot, presence ring. Never saffron, never within ΔE15 of selection. */
   --color-agent-1: #36d2ba;  /* teal */
   --color-agent-2: #ea4ca4;  /* rose */
@@ -442,6 +447,9 @@
   --color-kind-solution: #077a5c;
   --color-kind-test: #0a6c90;
   --color-kind-place: #7a6d5b;
+  --color-signal-strong: #0a7e3a;
+  --color-signal-growing: #a17a00;
+  --color-signal-thin: #b5480a;
 
   --color-agent-1: #0a7f6f;
   --color-agent-2: #c22a76;
@@ -567,6 +575,8 @@ input, textarea { caret-color: var(--color-fg-accent); }
 @keyframes q-rise-in   { from { opacity: 0; transform: translateY(var(--motion-shift-lg)) scale(var(--motion-soft-scale)); } }
 @keyframes q-drop-out  { to { opacity: 0; transform: translateY(var(--motion-shift)); } }
 @keyframes q-lift-in   { from { opacity: 0; transform: translateY(var(--motion-shift)); } }
+@keyframes q-panel-in-x { from { opacity: 0; transform: translateX(calc(var(--motion-shift-lg) * 1.5)); } }
+@keyframes q-panel-back-x { from { opacity: 0; transform: translateX(calc(var(--motion-shift-lg) * -1.5)); } }
 @keyframes q-icon-pop  { from { transform: scale(0.86); } }
 @keyframes q-nope      { 50% { transform: scale(0.98); } }
 @keyframes q-shake     { 20%, 60% { transform: translateX(-3px); } 40%, 80% { transform: translateX(3px); } }
@@ -642,6 +652,9 @@ input, textarea { caret-color: var(--color-fg-accent); }
 
 /* Enter for new content: chat turns, tab switch content, pen hint bar */
 .q-rise { animation: q-lift-in var(--dur-base) var(--ease-out-quint) both; }
+/* The canvas's panel going deeper (a page opened) or back. `backwards`: no transform stays on it, or a pinned head and anything fixed inside would have a new containing block. */
+.q-panel-in { animation: q-panel-in-x var(--dur-base) var(--ease-out-quint) backwards; }
+.q-panel-back { animation: q-panel-back-x var(--dur-base) var(--ease-out-quint) backwards; }
 .q-researcher { animation: q-researcher 3.6s ease-in-out infinite; }
 .q-fade { animation: q-fade-in var(--dur-fast) var(--ease-out-quad) both; }
 .q-stagger > * { animation: q-pop-in var(--dur-fast) var(--ease-out-quint) both; animation-delay: calc(min(var(--i, 0), 8) * 30ms); }
@@ -937,11 +950,14 @@ input, textarea { caret-color: var(--color-fg-accent); }
     content: ""; position: absolute; inset: -14px -18px 0; z-index: -1;
     background-image: linear-gradient(to bottom, transparent, var(--glass-foot) 20px);
   }
+  /* A page's title pinned over the panel: what scrolls under it fades out at its lower edge. */
+  .q-glass-head { background-color: transparent; background-image: linear-gradient(to top, transparent, var(--glass-foot) 10px); }
 }
 @media (prefers-reduced-transparency: reduce) {
   .q-glass { background-color: revert-layer; -webkit-backdrop-filter: none; backdrop-filter: none; }
   .q-glass-foot { background-color: revert-layer; }
   .q-glass-foot.sticky::before { display: none; }
+  .q-glass-head { background-color: revert-layer; background-image: none; }
 }
 /* A sheet in a glass panel: a question card, a row in the chat. In a layer, so a hover:bg-* still wins.
    It can lie near the shell's brightest part, so its quieter text goes a step stronger, as the top bar's. */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SpaceThing } from "./compose";
-import { cardForPage, pageOf, samePage } from "./pages";
+import { cardForPage, pageOf, panelMove, samePage, SECTION } from "./pages";
 
 describe("a page open in a canvas's panel", () => {
   it("reads the page an address opens, and the section it asks for", () => {
@@ -28,5 +28,25 @@ describe("a page open in a canvas's panel", () => {
     expect(cardForPage({ goal: "g1" }, things)).toBe("out1");
     expect(cardForPage({ page: "need-a" }, things)).toBe("topic:g1:need-a");
     expect(cardForPage({ page: "need-b" }, things)).toBeUndefined();
+  });
+});
+
+describe("which way the panel's content moves", () => {
+  const list = { view: SECTION, depth: 0 };
+  const page = (depth: number, id = "a") => ({ view: `page:${id}`, depth });
+  it("goes in from a section to a page and back again", () => {
+    expect(panelMove(list, page(1))).toBe("in");
+    expect(panelMove(page(1), list)).toBe("back");
+  });
+  it("follows the steps between two pages", () => {
+    expect(panelMove(page(1), page(2, "b"))).toBe("in");
+    expect(panelMove(page(2, "b"), page(1))).toBe("back");
+  });
+  it("stays still as the panel opens, closes or nothing changes", () => {
+    const closed = { view: null, depth: 0 };
+    expect(panelMove(closed, page(1))).toBeNull();
+    expect(panelMove(page(1), closed)).toBeNull();
+    expect(panelMove(list, list)).toBeNull();
+    expect(panelMove(page(1), page(1))).toBeNull();
   });
 });

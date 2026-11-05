@@ -101,7 +101,7 @@ export function SpaceProblems({ space, needs, links, tree, sources, onFiled, clo
       ) : !needs.indexed ? (
         <p className="text-caption text-fg-subtle">Ranking problems takes this computer&apos;s search, which isn&apos;t running. Connections says why.</p>
       ) : shown.length ? (
-        <ProblemsList needs={shown} links={links} goals={tree.goals} limit={8} />
+        <ProblemsList needs={shown} limit={8} />
       ) : (
         <p className="text-caption text-fg-muted">{scoped.length ? "None here." : "No problems yet. Bring what you have to the chat (or Sources on the canvas): reports, research, interviews, tickets. Qalam AI files what it states into one page per problem."}</p>
       )}

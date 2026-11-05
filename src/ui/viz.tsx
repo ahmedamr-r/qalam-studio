@@ -1,10 +1,28 @@
 import clsx from "clsx";
+import { strengthBars, strengthOf, type RankedNeed, type Strength } from "@/hub/needs";
 
 /*
- * Small marks that show an amount or a state in place of a sentence: a meter for how strong, a
- * sparkline for how it grew, dots for how many sources, a dot for a status. Neutral by default
- * (saffron is for Generate only); a status dot takes the semantic tones.
+ * Small marks that show an amount or a state in place of a sentence: signal bars for how strong a
+ * problem's backing is, a meter for how far along, a sparkline for how it grew, dots for how many
+ * sources, a dot for a status. Neutral by default (saffron is for Generate only); the signal and a
+ * status dot take their own tones.
  */
+
+const SIGNAL: Record<Strength, string> = { strong: "bg-signal-strong", growing: "bg-signal-growing", thin: "bg-signal-thin", assumed: "bg-line" };
+const BARS = [5, 8, 11, 14];
+
+/** How strong a problem's backing is, as a phone's signal: a bar a source, four fill it, in the colour of how strong that makes it. */
+export function StrengthSignal({ of, label, className }: { of: Pick<RankedNeed, "sources" | "quotes">; label: string; className?: string }) {
+  const lit = strengthBars(of);
+  const tone = SIGNAL[strengthOf(of)];
+  return (
+    <span role="img" aria-label={label} className={clsx("inline-flex h-[14px] shrink-0 items-end gap-[2px]", className)}>
+      {BARS.map((h, i) => (
+        <span key={h} className={clsx("w-[3px] rounded-[1px]", i < lit ? tone : "bg-line")} style={{ height: h }} />
+      ))}
+    </span>
+  );
+}
 
 /** How full something is (0–1), as a short bar; `tone` when how full it is is a warning (a plan's limit near or reached). */
 export function Meter({ value, label, tone, className }: { value: number; label: string; tone?: "warn" | "bad"; className?: string }) {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { needEvidence, needLine, needShort, needSummary, onlyPeopleSaid, rankNeeds, strengthOf, weeklyCounts, type NeedInput, type PieceFacts, type ShownOn } from "./needs";
+import { needEvidence, needLine, needShort, needSummary, onlyPeopleSaid, rankNeeds, strengthBars, strengthOf, weeklyCounts, type NeedInput, type PieceFacts, type ShownOn } from "./needs";
 import type { Topic, TopicLine } from "./topics";
 
 const DAY = 86_400_000;
@@ -10,6 +10,13 @@ const quote = (source: string, at = ago(3), sub: string | null = null): PieceFac
 const line = (id: string, section: TopicLine["section"], cites: string[], over: Partial<TopicLine> = {}): TopicLine => ({ id, section, text: id, by: "qalam", cites, from: [], at: ago(4), ...over });
 const topic = (id: string, over: Partial<Topic> = {}): Topic => ({ id, kind: "need", title: id, products: [], createdAt: ago(30), updatedAt: ago(2), lines: [], history: [], ...over });
 const input = (topics: Topic[], pieces: Record<string, PieceFacts>, shows: Record<string, ShownOn[]> = {}): NeedInput => ({ now: NOW, topics, pieces: new Map(Object.entries(pieces)), shows: new Map(Object.entries(shows)) });
+
+describe("strengthBars", () => {
+  it("lights a bar a source, four at most, and none with nothing that counts behind it", () => {
+    expect([1, 2, 3, 4, 9].map((sources) => strengthBars({ sources, quotes: 5 }))).toEqual([1, 2, 3, 4, 4]);
+    expect(strengthBars({ sources: 2, quotes: 0 })).toBe(0);
+  });
+});
 
 describe("what to work on next", () => {
   it("counts the customer evidence a need's We know lines cite, once each, never the team's brain dump", () => {

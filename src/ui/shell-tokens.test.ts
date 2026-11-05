@@ -70,6 +70,12 @@ describe("the Desk's colours", () => {
       }
   });
 
+  it("keeps a problem's signal bars clear on a panel, in both themes", () => {
+    for (const t of [dark, light])
+      for (const tone of ["strong", "growing", "thin"])
+        for (const surface of ["--color-panel", "--wash-1"]) expect([tone, surface, contrastRatio(t[`--color-signal-${tone}`], t[surface]) >= 3]).toEqual([tone, surface, true]);
+  });
+
   it("keeps a question card's text readable on its sheet, a picked option's too", () => {
     const css = readFileSync(new URL("./globals.css", import.meta.url), "utf8");
     const saturation = Number(/--glass-filter:[^;]*saturate\(([\d.]+)\)/.exec(css)![1]);

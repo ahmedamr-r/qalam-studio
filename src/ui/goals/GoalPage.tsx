@@ -15,7 +15,7 @@ import type { Job } from "@/goals/jobs";
 import type { GoalProblem } from "@/goals/problems";
 import { underOf } from "@/goals/tree";
 import type { Goal } from "@/goals/types";
-import { needLine, strengthFill, strengthOf } from "@/hub/needs";
+import { needLine, strengthOf } from "@/hub/needs";
 import { orgFetch, orgJson } from "@/org/client";
 import { findProblems, type Linked } from "@/org/goal-work";
 import { useOrgContext } from "@/org/context";
@@ -24,7 +24,7 @@ import { canvasPageHref, goalHref, topicHref } from "@/projects/model";
 import { studio } from "@/doc/store";
 import { cardHref } from "../space/href";
 import { addProblem } from "../space/links";
-import { doneWithAt, PanelPageHeader, closePage, scrollToSection } from "../space/page";
+import { doneWithAt, PanelPageHeader, closePage, scrollToSection, usePanelEnter } from "../space/page";
 import { Button, Tip } from "../controls";
 import DecisionRow from "../decisions/DecisionRow";
 import { useCurrentOrg, useWords } from "../frame/store";
@@ -34,7 +34,7 @@ import { QalamAIGlyph } from "../brand";
 import { r } from "../recipes";
 import { confirmDialog, promptDialog } from "../surfaces/dialog";
 import { startBoardForGoal } from "../topics/start-board";
-import { Meter, StatusDot } from "../viz";
+import { Meter, StatusDot, StrengthSignal } from "../viz";
 import { GoalsUnder, OtherAims } from "./Breakdown";
 import { Funnel } from "./Funnel";
 import { Unknowns } from "./Unknowns";
@@ -74,6 +74,7 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const STATUS: Record<Goal["status"], string> = { active: "Active", achieved: "Achieved", paused: "Paused" };
 
 export default function GoalView({ id, space, at }: { id: string; space: Space; at: string | null }) {
+  const enter = usePanelEnter();
   const [page, setPage] = useState<PageData | null>(null);
   const [missing, setMissing] = useState(false);
   const [finding, setFinding] = useState<string | null>(null);
@@ -182,8 +183,7 @@ export default function GoalView({ id, space, at }: { id: string; space: Space; 
   // A goal of another product's is shown here too; its own canvas is one click away.
   const elsewhere = space !== null && g.product !== space;
   return (
-    <div ref={root} className="@container flex flex-col gap-[20px] px-[16px] py-[14px]">
-        <header className="flex flex-col gap-[8px]">
+    <div ref={root} className={clsx("@container flex flex-col gap-[20px] px-[16px] py-[14px]", enter)}>
           <PanelPageHeader
             kind={north ? "North Star" : g.parent ? "Sub-goal" : "Goal"}
             title={g.title}
@@ -233,6 +233,7 @@ export default function GoalView({ id, space, at }: { id: string; space: Space; 
               </div>
             }
           />
+        <header className="-mt-[26px] flex flex-col gap-[8px]">
           <p className="text-caption text-fg-muted">
             {[product ?? words.whole, g.status !== "active" ? STATUS[g.status] : null].filter(Boolean).join(" · ")}
             {page.chain[0] ? (
@@ -371,7 +372,7 @@ function ProblemRow({ p, via, at, funnel, onWork, onUnlink, boardName }: { p: Go
   const strength = strengthOf(p);
   const onThis = p.onBoard ? p.boards.find((b) => boardName(b.board)) : undefined;
   return (
-    <li className="group/problem grid grid-cols-[16px_minmax(0,1fr)_96px_minmax(0,240px)_28px] items-start gap-x-[12px] px-[12px] py-[8px] hover:bg-hover @max-[560px]:grid-cols-[16px_minmax(0,1fr)_minmax(0,120px)_28px] @max-[560px]:[&>.wide]:hidden">
+    <li className="group/problem grid grid-cols-[16px_minmax(0,1fr)_20px_minmax(0,240px)_28px] items-start gap-x-[12px] px-[12px] py-[8px] hover:bg-hover @max-[560px]:grid-cols-[16px_minmax(0,1fr)_minmax(0,120px)_28px] @max-[560px]:[&>.wide]:hidden">
       <Tip label={p.bears === "direct" ? "Bears directly on the number" : "Bears on it around the edges"}>
         <span className="pt-[3px]">
           <StatusDot tone={p.bears === "direct" ? "ok" : "off"} hollow={p.bears !== "direct"} />
@@ -396,10 +397,10 @@ function ProblemRow({ p, via, at, funnel, onWork, onUnlink, boardName }: { p: Go
           </a>
         )}
       </span>
-      <span className="wide pt-[6px]">
+      <span className="wide pt-[3px]">
         <Tip label={`${STRENGTH[strength]}: from ${plural(p.sources, "source")}`}>
           <span>
-            <Meter value={strengthFill(p)} label={`${STRENGTH[strength]}, from ${plural(p.sources, "source")}`} />
+            <StrengthSignal of={p} label={`${STRENGTH[strength]}, from ${plural(p.sources, "source")}`} />
           </span>
         </Tip>
       </span>

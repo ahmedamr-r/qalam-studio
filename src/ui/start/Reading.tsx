@@ -10,6 +10,7 @@ import { answerSaid, meFrom, moreLine, pathOfShape, startQuestions, WHO_TITLE, t
 import { orgHref } from "@/projects/model";
 import { peopleQuotes, type ScanSession } from "@/scan/session";
 import { isOff } from "@/scan/steer";
+import { qr } from "../ai/Questionnaire";
 import { Spinner } from "../controls";
 import { r } from "../recipes";
 import { readAgain, writeScanChat } from "./flow";
@@ -111,14 +112,14 @@ function Results({ s, path, canvas, onAgain }: { s: ScanSession; path: StartPath
     <Stage pose={pose} line={line} home={canvas} title={`${n} problems, from ${said}`}>
       <fieldset className="flex flex-col gap-[8px]">
         <legend className="mb-[8px] text-body text-fg-muted">Pick one to find a goal it could move.</legend>
-        <div className="q-stagger flex flex-col gap-[8px]">
+        <div className="q-stagger flex flex-col gap-[6px]">
           {items.map((p, i) => (
-            <label key={p.topic} className={clsx("q-item flex cursor-pointer items-start gap-[10px] rounded-lg px-[12px] py-[10px] text-body text-fg has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accent", chosen === p.topic ? "bg-accent-subtle shadow-[inset_0_0_0_1px_var(--color-accent)]" : "bg-raised shadow-button hover:bg-elevated light:hover:bg-muted")}>
+            <label key={p.topic} className={clsx(qr.option, "cursor-pointer text-body text-fg has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-selection", chosen === p.topic ? qr.optionSelected : qr.optionIdle)}>
               <input type="radio" name="problem" className="sr-only" checked={chosen === p.topic} onChange={() => setPicked(p.topic)} />
-              <span aria-hidden="true" className={clsx("mt-[3px] grid size-[14px] shrink-0 place-items-center rounded-full", chosen === p.topic ? "bg-accent" : "shadow-[inset_0_0_0_1px_var(--color-fg-subtle)]")}>
-                {chosen === p.topic && <span className="size-[5px] rounded-full bg-accent-fg" />}
+              <span aria-hidden="true" className={clsx(qr.radio, "mt-[3px]", chosen === p.topic && qr.radioOn)}>
+                {chosen === p.topic && <span className={qr.radioDot} />}
               </span>
-              {top?.ranked && <span className="tnum text-fg-subtle">{i + 1}</span>}
+              {top?.ranked && <span className="tnum text-fg-muted">{i + 1}</span>}
               <span dir="auto">{p.title}</span>
             </label>
           ))}

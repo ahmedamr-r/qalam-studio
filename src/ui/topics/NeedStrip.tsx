@@ -1,12 +1,12 @@
 import { useState } from "react";
 import clsx from "clsx";
-import { needLine, strengthFill, strengthOf, type RankedNeed } from "@/hub/needs";
+import { needLine, strengthOf, type RankedNeed } from "@/hub/needs";
 import { topicHref } from "@/projects/model";
 import { cardHref } from "../space/href";
 import { workOnNeed } from "../space/SpacePanel";
 import type { ShowsUpOn } from "@/org/topics";
 import { r } from "../recipes";
-import { Meter, Sparkline, StatusDot } from "../viz";
+import { StatusDot, StrengthSignal } from "../viz";
 
 /*
  * The strip on top of a need's page: how strong its backing is, at a glance. A meter and a word,
@@ -24,21 +24,17 @@ export function NeedStrip({ s, shows }: { s: RankedNeed; shows: ShowsUpOn[] }) {
   const board = s.boards[0];
   const boardName = board && (shows.find((x) => x.board === board.board)?.boardName ?? "A board");
   return (
-    <section aria-label="How strong this need is" className="flex flex-col gap-[10px] rounded-lg bg-panel px-[16px] py-[12px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
+    <section aria-label="How strong this need is" className="q-sheet flex flex-col gap-[10px] rounded-xl px-[16px] py-[12px]">
       <div className="flex flex-wrap items-center gap-x-[16px] gap-y-[8px]">
-        <span className="flex w-[160px] flex-col gap-[6px]">
+        <span className="flex items-center gap-[8px]">
+          <StrengthSignal of={s} label={`${STRENGTH[strength]}, from ${plural(s.sources, "source")}`} />
           <span className="text-body font-medium text-fg">{STRENGTH[strength]}</span>
-          <Meter value={strengthFill(s)} label={`${STRENGTH[strength]}, from ${plural(s.sources, "source")}`} />
         </span>
         <span className="flex flex-col gap-[2px] text-caption tnum">
           <span className="text-fg">{needLine(s)}</span>
           {/* People online back it, below its own customers' words. */}
           {s.quotes > 0 && s.online > 0 && <span className="text-fg-muted">{`${plural(s.online, "quote")} from ${plural(s.onlineSources, "post")} online`}</span>}
           <span className={s.against ? "text-warning" : "text-fg-subtle"}>{s.against ? `${s.against} against` : "Nothing against"}</span>
-        </span>
-        <span className="flex flex-col gap-[2px]">
-          <Sparkline values={s.weeks} width={84} height={20} label={`Quotes added each week, last ${s.weeks.length} weeks: ${s.weeks.join(", ")}`} />
-          <span className="text-micro text-fg-subtle">added, {s.weeks.length} weeks</span>
         </span>
         <span className="ml-auto flex items-center gap-[8px]">
           {board ? (

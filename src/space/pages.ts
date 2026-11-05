@@ -27,3 +27,15 @@ export function cardForPage(ref: PageRef, things: ReadonlyMap<string, SpaceThing
   }
   return undefined;
 }
+
+/** What the panel shows: a section (`SECTION`), a page (its key), or neither, and how many pages are open over the canvas. */
+export type PanelView = { view: string | null; depth: number };
+export const SECTION = "section";
+
+/** Which way the panel's content moves, deeper or back: between a section and a page, or page and page. Nothing as the panel opens or closes, or when a card lies over it. */
+export function panelMove(was: PanelView, now: PanelView): "in" | "back" | null {
+  if (!was.view || !now.view || was.view === now.view) return null;
+  if (was.view === SECTION) return "in";
+  if (now.view === SECTION) return "back";
+  return now.depth < was.depth ? "back" : "in";
+}

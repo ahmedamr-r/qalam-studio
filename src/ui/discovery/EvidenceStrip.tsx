@@ -1,9 +1,9 @@
 import clsx from "clsx";
 import type { EvidenceSummary } from "@/discovery/evidence";
-import { needLine, strengthFill, strengthOf, type Strength } from "@/hub/needs";
+import { needLine, strengthOf, type Strength } from "@/hub/needs";
 import { Tip } from "../controls";
 import { r } from "../recipes";
-import { Meter } from "../viz";
+import { StrengthSignal } from "../viz";
 
 /*
  * What backs a card, in a strip: how strong that is (as a need page's strip counts it), its quotes
@@ -17,11 +17,11 @@ export function EvidenceStrip({ s }: { s: EvidenceSummary }) {
   const word = s.quotes ? STRENGTH[strengthOf(s)] : s.ours ? (s.online || s.read ? "Not from customers yet" : "Your words only") : s.online ? "Only people online" : s.read ? "Only read elsewhere" : "Nothing backs it";
   const elsewhere = [s.online ? plural(s.online, "post") + " online" : "", s.read ? `${s.read} read elsewhere` : ""].filter(Boolean).join(" · ");
   return (
-    <div role="group" aria-label="What backs this card" className="flex flex-col gap-[8px] rounded-lg bg-muted px-[10px] py-[8px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
+    <div role="group" aria-label="What backs this card" className="q-sheet flex flex-col gap-[8px] rounded-xl px-[12px] py-[10px]">
       <div className="flex items-center gap-[12px]">
-        <span className="flex w-[104px] shrink-0 flex-col gap-[6px]">
-          <span className="text-caption font-medium text-fg">{word}</span>
-          <Meter value={strengthFill(s)} label={s.quotes ? `${word}, from ${plural(s.sources, "source")}` : word} />
+        <span className="flex w-[104px] shrink-0 items-center gap-[8px]">
+          <StrengthSignal of={s} label={s.quotes ? `${word}, from ${plural(s.sources, "source")}` : word} />
+          <span className="min-w-0 text-caption font-medium text-fg">{word}</span>
         </span>
         <span className="flex min-w-0 flex-col gap-[2px] text-caption tnum">
           {s.quotes ? (

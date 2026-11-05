@@ -20,7 +20,7 @@ import { r } from "../recipes";
 import { confirmDialog, promptDialog } from "../surfaces/dialog";
 import { itemSpace, type Space } from "../frame/spaces";
 import { boardHref, cardHref } from "../space/href";
-import { closePage, PanelPageHeader } from "../space/page";
+import { closePage, PanelPageHeader, usePanelEnter } from "../space/page";
 import { QalamAIGlyph } from "../brand";
 import { NeedStrip } from "./NeedStrip";
 import { Drafts } from "./Drafts";
@@ -52,6 +52,7 @@ const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1).trim
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export default function TopicView({ id, space }: { id: string; space: Space }) {
+  const enter = usePanelEnter();
   const { whole } = useWords();
   const [view, setView] = useState<TopicView | null>(null);
   const [missing, setMissing] = useState(false);
@@ -166,8 +167,7 @@ export default function TopicView({ id, space }: { id: string; space: Space }) {
   // A page of another product's is shown here too; its own canvas is one click away.
   const elsewhere = space !== null && !t.products.includes(space);
   return (
-    <div className="@container flex flex-col gap-[20px] px-[16px] py-[14px]">
-          <div className="flex flex-col gap-[8px]">
+    <div className={clsx("@container flex flex-col gap-[20px] px-[16px] py-[14px]", enter)}>
             <PanelPageHeader
               kind={TOPIC_KIND_LABEL[t.kind]}
               title={t.title}
@@ -190,6 +190,7 @@ export default function TopicView({ id, space }: { id: string; space: Space }) {
                 </Menu>
               }
             />
+          <div className="-mt-[26px] flex flex-col gap-[8px]">
             <p className="text-caption text-fg-muted">{[...(productNames.length ? productNames : [whole]), `updated ${ago(t.updatedAt)}`].join(" · ")}</p>
             {elsewhere && (
               <a href={canvasPageHref({ page: t.id }, itemSpace(t.products, undefined))} className="self-start text-caption text-fg-muted hover:text-fg hover:underline">

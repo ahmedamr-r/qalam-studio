@@ -190,5 +190,5 @@ export type Strength = "strong" | "growing" | "thin" | "assumed";
 /** How strong a need's backing is, in a word: by how many sources its evidence comes from. */
 export const strengthOf = (n: Pick<RankedNeed, "sources" | "quotes">): Strength => (!n.quotes ? "assumed" : n.sources >= 3 ? "strong" : n.sources === 2 ? "growing" : "thin");
 
-/** How full a need's meter is: four sources or more fill it. */
-export const strengthFill = (n: Pick<RankedNeed, "sources">) => Math.min(1, n.sources / 4);
+/** How many of a need's four signal bars are lit: one a source, none with nothing that counts behind it. */
+export const strengthBars = (n: Pick<RankedNeed, "sources" | "quotes">) => (n.quotes ? Math.min(4, n.sources) : 0);

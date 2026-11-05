@@ -14,7 +14,7 @@ import { goalHref, placeHref, spaceHref, type Project } from "@/projects/model";
 import { importLegacy } from "@/projects/library";
 import type { SpaceInputs } from "@/space/session";
 import { useSpaceView } from "@/space/view";
-import { cardForPage } from "@/space/pages";
+import { cardForPage, SECTION } from "@/space/pages";
 import { Button, IconBtn, Tip } from "../controls";
 import LaneReader, { useReaderWidth } from "../discovery/LaneReader";
 import CordPicker from "../discovery/CordPicker";
@@ -25,7 +25,7 @@ import { useDump } from "../discovery/dump";
 import { useGhosts } from "@/doc/ghosts";
 import { SpaceCardPanel } from "../space/SpacePanel";
 import { show as showCard } from "../space/links";
-import { closePage, usePanelPage } from "../space/page";
+import { PanelPageProvider, closePage, usePanelMove, usePanelPage } from "../space/page";
 import { useMoves } from "../nav";
 import { SpaceConflictBanner } from "../space/ConflictBanner";
 import { r } from "../recipes";
@@ -81,6 +81,9 @@ const PAGE_W = 480;
 const CHAT_DOCKS = 900;
 
 /** The panel's section an address asks for as the canvas opens (the first run's Problems door, a page's link to the company). */
+/** A field keeps Esc for itself. */
+const takesEsc = (t: EventTarget | null) => t instanceof Element && !!t.closest("input, textarea, [contenteditable=true]");
+
 const askedSection = (): SpaceSection | null => {
   const asked = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("panel") : null;
   return asked === "problems" || asked === "company" ? asked : null;
@@ -177,6 +180,21 @@ export default function Home({ product: productId = null }: { product?: string |
   useEffect(() => {
     if (aside.current) aside.current.scrollTop = 0;
   }, [openKey, section]);
+  const move = usePanelMove(showsPage ? openKey : !covered && section ? SECTION : null);
+  // Esc closes a page wherever focus is: the row clicked to open it is gone, so it's rarely in the panel. On the
+  // document, after a menu or tooltip had its say and before the canvas's keys (on the window) let go of nothing.
+  const quiet = move.quiet;
+  useEffect(() => {
+    if (!showsPage) return;
+    const on = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented || e.repeat || takesEsc(e.target) || studio().tool !== "select") return;
+      e.stopPropagation();
+      quiet.current = true;
+      closePage();
+    };
+    document.addEventListener("keydown", on);
+    return () => document.removeEventListener("keydown", on);
+  }, [showsPage, quiet]);
 
   // The panel opening takes the canvas's right side, which may have held the card just picked: it
   // comes back once the press is let go, so a card being dragged doesn't move under the pointer.
@@ -243,14 +261,13 @@ export default function Home({ product: productId = null }: { product?: string |
           <aside
             ref={aside}
             aria-label={reading ? "Reading a source" : picked ? "The picked card" : showsPage ? "A page" : "This space"}
-            // Esc closes a page (not while a field or a menu takes it).
+            // Esc closes a section (a page's is below; not while a field or a menu takes it).
             onKeyDown={(e) => {
-              if ((!showsPage && covered) || e.key !== "Escape" || e.defaultPrevented || (e.target as HTMLElement).closest("input, textarea, [contenteditable=true]")) return;
+              if (covered || e.key !== "Escape" || e.defaultPrevented || takesEsc(e.target)) return;
               e.stopPropagation();
-              if (showsPage) closePage();
-              else setAsked(null);
+              setAsked(null);
             }}
-            className={clsx("q-glass q-fade flex shrink-0 flex-col overflow-y-auto rounded-xl bg-app shadow-panel", "max-[1179px]:absolute max-[1179px]:top-0 max-[1179px]:right-[8px] max-[1179px]:bottom-[8px] max-[1179px]:z-30 max-[1179px]:max-w-[calc(100%-16px)] max-[1179px]:shadow-floating")}
+            className={clsx("q-glass q-fade flex shrink-0 flex-col overflow-x-hidden overflow-y-auto rounded-xl bg-app shadow-panel", "max-[1179px]:absolute max-[1179px]:top-0 max-[1179px]:right-[8px] max-[1179px]:bottom-[8px] max-[1179px]:z-30 max-[1179px]:max-w-[calc(100%-16px)] max-[1179px]:shadow-floating")}
             // A source being read takes the panel over, wider for a document than a conversation.
             style={{ width: panelW }}
           >
@@ -263,11 +280,21 @@ export default function Home({ product: productId = null }: { product?: string |
             ) : picked ? (
               <SpaceCardPanel ids={picked} things={things} tree={goalTree} jobs={jobs} needs={needs?.needs ?? null} />
             ) : open ? (
-              <Suspense fallback={<div className={clsx(r.skeleton, "m-[16px] h-[120px] rounded-lg")} aria-hidden />}>
-                {"goal" in open.ref ? <GoalView key={open.ref.goal} id={open.ref.goal} space={space} at={open.at} /> : <TopicView key={open.ref.page} id={open.ref.page} space={space} />}
-              </Suspense>
+              <PanelPageProvider
+                value={{
+                  close: () => {
+                    setAsked(null);
+                    closePage();
+                  },
+                  enter: move.cls,
+                }}
+              >
+                <Suspense fallback={<div className={clsx(r.skeleton, "m-[16px] h-[120px] rounded-lg")} aria-hidden />}>
+                  {"goal" in open.ref ? <GoalView key={open.ref.goal} id={open.ref.goal} space={space} at={open.at} /> : <TopicView key={open.ref.page} id={open.ref.page} space={space} />}
+                </Suspense>
+              </PanelPageProvider>
             ) : (
-              <div className="flex flex-col gap-[20px] px-[16px] py-[14px]">
+              <div className={clsx("flex flex-col gap-[20px] px-[16px] py-[14px]", move.cls)}>
                 {section === "problems" && <SpaceProblems space={space} needs={needs} links={links} tree={goalTree} sources={sources} onFiled={refresh} close={closeSection} />}
 
                 {section === "needs" && (
@@ -322,7 +349,6 @@ export default function Home({ product: productId = null }: { product?: string |
                   </>
                 )}
 
-                <p className="text-caption text-fg-subtle">{org ? `Saved in ${org.name}, at ${org.dir}.` : "Saved in your organization's folder."}</p>
               </div>
             )}
           </aside>
