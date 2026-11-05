@@ -108,13 +108,17 @@ export class LanePainter {
     const p = this.pal;
     const a = worldBounds(doc, from);
     const b = worldBounds(doc, to);
-    const x1 = a.x + a.w / 2;
-    const y1 = a.y;
-    const x2 = b.x + b.w / 2;
-    const y2 = b.y + b.h;
+    // Up to the problem above it; to one far off to the side, into its near side, where a stacked column doesn't cover the end.
+    const across = Math.abs(b.x + b.w / 2 - (a.x + a.w / 2)) > Math.abs(b.y + b.h / 2 - (a.y + a.h / 2)) + a.w;
+    const right = b.x > a.x;
+    const x1 = across ? (right ? a.x + a.w : a.x) : a.x + a.w / 2;
+    const y1 = across ? a.y + a.h / 2 : a.y;
+    const x2 = across ? (right ? b.x : b.x + b.w) : b.x + b.w / 2;
+    const y2 = across ? b.y + b.h / 2 : b.y + b.h;
     const path = new this.ck.PathBuilder();
     path.moveTo(x1, y1);
-    path.cubicTo(x1, y1 + (y2 - y1) / 2, x2, y1 + (y2 - y1) / 2, x2, y2);
+    if (across) path.cubicTo(x1 + (x2 - x1) / 2, y1, x1 + (x2 - x1) / 2, y2, x2, y2);
+    else path.cubicTo(x1, y1 + (y2 - y1) / 2, x2, y1 + (y2 - y1) / 2, x2, y2);
     const built = path.detachAndDelete();
     this.stroke.setColor(this.col(lit ? p.selection : p.line, lit ? 1 : dim ? WIRE.dim : HELPS.rest));
     this.stroke.setStrokeWidth((lit ? WIRE.lit : WIRE.width) / Math.min(1, zoom));

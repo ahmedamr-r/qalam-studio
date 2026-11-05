@@ -14,8 +14,11 @@ describe("what a message to the canvas's chat is for", () => {
   });
 
   it("asks the organization a question", () => {
-    expect(routeOf({ text: "Why do riders cancel after a driver is assigned?", docs: [] })).toEqual({ job: "ask" });
-    expect(routeOf({ text: "what do drivers say about New Cairo", docs: [] })).toEqual({ job: "ask" });
+    expect(routeOf({ text: "Why do riders cancel after a driver is assigned?", docs: [] })).toEqual({ job: "ask", read: true });
+    expect(routeOf({ text: "what do drivers say about New Cairo", docs: [] })).toEqual({ job: "ask", read: true });
+    // Whether a question asks what's known or asks to work something out is read by a call; a mode set on the box skips it.
+    expect(routeOf({ text: "What should I build? What modules?", docs: [] })).toEqual({ job: "ask", read: true });
+    expect(routeOf({ text: "What should I build? What modules?", docs: [], mode: "plan" })).toEqual({ job: "plan" });
   });
 
   it("takes in any doc, whatever it is, and a paste that reads as who said what", () => {

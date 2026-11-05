@@ -52,7 +52,9 @@ export type ReviewOrigin =
   /** The goals under a goal Qalam AI proposed (Break it down, kept in the goal's work file), and how their numbers make its. */
   | { kind: "breakdown"; goal: string; relation: Relation | null }
   /** The problems behind a goal Qalam AI drafted (kept in the goal's work file), as problems under its card. */
-  | { kind: "problems"; goal: string };
+  | { kind: "problems"; goal: string }
+  /** What a plan in the canvas's chat proposes (kept on its turn). */
+  | { kind: "plan"; turn: string };
 
 export interface ReviewUI {
   origin: ReviewOrigin | null;
@@ -81,7 +83,7 @@ function fits(p: Proposal, all: Proposal[]): boolean {
       return !!c && !!ev && !hasQuote(c, ev.sourceId!, ev.span!, ev.piece);
     }
     case "card": {
-      if (doc.nodes[p.cardId] || (p.parentId && !here(p.parentId) && !pending(p.parentId))) return false;
+      if (doc.nodes[p.cardId] || (p.parentId && !here(p.parentId) && !pending(p.parentId)) || (p.replaces && !here(p.replaces))) return false;
       const quotes = p.backing.quotes.filter((q) => !!evidenceOf(q, false)).length;
       // A solution or a test under a card rests on the problem above it; its own words are extra.
       const under = !!p.parentId && (p.card.kind === "solution" || p.card.kind === "test");
@@ -242,6 +244,7 @@ const WAITS: Record<ReviewOrigin["kind"], string> = {
   tests: "Accept or discard the drafted tests first",
   breakdown: "Accept or discard the goals proposed under it first",
   problems: "Accept or discard the drafted problems first",
+  plan: "Accept or discard what the plan proposes first",
 };
 
 /** What the review that's open waits for, in words (null: none is open). A draft asks before it calls Qalam AI. */
@@ -299,6 +302,7 @@ function fromOf(origin: ReviewOrigin | null, list: Proposal[]): string {
   if (origin?.kind === "tests") return "the drafted tests";
   if (origin?.kind === "breakdown") return "the goals proposed under it";
   if (origin?.kind === "problems") return "the drafted problems";
+  if (origin?.kind === "plan") return "the plan";
   const ids = new Set(list.flatMap((p) => (p.kind === "attach" || p.kind === "against" ? [p.quote.sourceId] : p.kind === "card" ? p.backing.quotes.map((q) => q.sourceId) : [])));
   const titles = [...ids].map((id) => sourceOf(id)?.title).filter((t): t is string => !!t);
   if (!titles.length) return "your sources";
@@ -339,7 +343,7 @@ export function acceptProposals(ids: string[]) {
   if (origin?.kind === "breakdown") return decideParts(ids, true);
   // A drafted solution comes with its test, and a drafted test with the assumptions it tests: they're one draft.
   const tests =
-    origin?.kind === "solutions"
+    origin?.kind === "solutions" || origin?.kind === "plan"
       ? ids.filter((id) => id.startsWith("sol:")).map((id) => `test:${id.slice(4)}`).filter((t) => all.some((p) => p.id === t))
       : origin?.kind === "tests"
         ? ids.filter((id) => id.startsWith("test:")).map((id) => `assume:${id.slice(5)}`).filter((t) => all.some((p) => p.id === t))

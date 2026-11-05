@@ -16,7 +16,7 @@ import { ASSUMPTION_CATEGORIES, ASSUMPTION_HINT, ASSUMPTION_LABEL, KIND_LABEL, M
 import { activeHelps, goalsReached, helpChoices, helpsTarget, withHelp, withoutHelp } from "@/discovery/helps";
 import { isModule, kindLabel } from "@/discovery/tree";
 import { cardForPage } from "@/space/pages";
-import { CAME_WORDS, evidenceRows, evidenceSummary, isAIIdea, isAssumed } from "@/discovery/evidence";
+import { evidenceRows, evidenceSummary, isAIIdea, isAssumed } from "@/discovery/evidence";
 import { feedback } from "@/commands/feedback";
 import { SOLUTION_TYPES, type AssumptionCategory, type OstCard, type OstEvidence, type OstMetric, type OstStage, type SolutionType } from "@/discovery/types";
 import { parseWorkUrl, workKey } from "@/connectors/work";
@@ -112,7 +112,7 @@ function OneCard({ id, card }: { id: string; card: OstCard }) {
               }}
             />
           </Field>
-          {assumed && <Hint>{card.came ? `Qalam AI proposed this from ${card.came === "idea" ? "its own idea" : CAME_WORDS[card.came]}, and nothing from customers or your numbers backs it yet. Add a quote, a source or a note to make it solid.` : "Qalam AI drafted this problem and nothing backs it yet. Add a quote, a source or a note to make it solid."}</Hint>}
+          {assumed && <Hint>{card.came ? `Qalam AI proposed this ${CAME_HINT[card.came]}, and nothing from customers or your numbers backs it yet. Add a quote, a source or a note to make it solid.` : "Qalam AI drafted this problem and nothing backs it yet. Add a quote, a source or a note to make it solid."}</Hint>}
           {!assumed && isAIIdea(card) && (
             <Hint tone="info">
               An idea of Qalam AI&apos;s, not yours. Compare it with other ways to address the need before you build it.
@@ -342,7 +342,11 @@ function WorkSection({ id, card }: { id: string; card: OstCard }) {
   );
 }
 
-const SOLUTION_TYPE_OPTIONS = [{ value: "", label: "Not set" }, ...SOLUTION_TYPES.map((t) => ({ value: t, label: SOLUTION_TYPE_LABEL[t] }))] as { value: SolutionType | ""; label: string }[];
+const CAME_HINT: Record<NonNullable<OstCard["came"]>, string> = { answers: "from your answers", read: "from what it read online", idea: "as its own idea" };
+
+const NOT_SET = "none";
+const SOLUTION_TYPE_OPTIONS = [{ value: NOT_SET, label: "Not set" }, ...SOLUTION_TYPES.map((t) => ({ value: t, label: SOLUTION_TYPE_LABEL[t] }))] as { value: SolutionType | typeof NOT_SET; label: string }[];
+const ADD_HELP = "add";
 
 /** What a solution is and how it's done. A module is part of its product, so it has no type of its own: it can be what the product needs to run. */
 function WhatItIsSection({ id, card }: { id: string; card: OstCard }) {
@@ -352,7 +356,7 @@ function WhatItIsSection({ id, card }: { id: string; card: OstCard }) {
       <div className="flex flex-col gap-[8px]">
         {!module && (
           <Field label="Type">
-            <Select<SolutionType | ""> ariaLabel="Type of solution" value={card.solutionType ?? ""} options={SOLUTION_TYPE_OPTIONS} onChange={(v) => studio().mutate((d) => setSolutionTypeIn(d, id, v || null))} />
+            <Select<SolutionType | typeof NOT_SET> ariaLabel="Type of solution" value={card.solutionType ?? NOT_SET} options={SOLUTION_TYPE_OPTIONS} onChange={(v) => studio().mutate((d) => setSolutionTypeIn(d, id, v === NOT_SET ? null : v))} />
           </Field>
         )}
         <Field label="How">
@@ -396,8 +400,8 @@ function AlsoHelpsSection({ id, card }: { id: string; card: OstCard }) {
         {choices.length > 0 && (
           <Select<string>
             ariaLabel="Add a problem it helps"
-            value=""
-            options={[{ value: "", label: "Add a problem it helps…" }, ...choices.map((c) => ({ value: c.card, label: c.to.title }))]}
+            value={ADD_HELP}
+            options={[{ value: ADD_HELP, label: "Add a problem it helps…" }, ...choices.map((c) => ({ value: c.card, label: c.to.title }))]}
             onChange={(v) => {
               const to = choices.find((c) => c.card === v)?.to;
               if (to) edit(id, (c) => void (c.helps = withHelp(c, to, "user", Date.now()) ?? c.helps));

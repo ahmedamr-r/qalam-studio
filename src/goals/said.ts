@@ -40,7 +40,9 @@ export function withoutIds(text: unknown, name: (ref: string) => string | undefi
     .replace(new RegExp(`\\s*[([]\\s*${id}(?:\\s*[,/;]\\s*${id})*\\s*[)\\]]`, "g"), "")
     .replace(new RegExp(`\\b${id}\\b`, "g"), (ref) => name(ref) ?? "")
     .replace(/\s{2,}/g, " ")
-    .replace(/\s+([.,;:!?'’])/g, "$1")
+    // A gap an id left before punctuation or a possessive; a quote opening on the next word stays apart.
+    .replace(/\s+([.,;:!?])/g, "$1")
+    .replace(/\s+(['’])(?=s\b)/g, "$1")
     .trim();
 }
 

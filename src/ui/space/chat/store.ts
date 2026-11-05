@@ -1,4 +1,7 @@
 import { nanoid } from "nanoid";
+import { startReview, useReview } from "../../discovery/review";
+import { planAhead, planLook, planPropose, planRoute, type PlanAsk } from "@/org/plan";
+import { planOutline, planProposals } from "@/space/plan";
 import { create } from "zustand";
 import { aiStatus } from "@/ai/client";
 import { studio } from "@/doc/store";
@@ -13,7 +16,7 @@ import { askOrganization } from "@/org/ask";
 import { captureIngested, decideFoundGoal, setSourceBasis } from "@/org/capture";
 import { orgFetch, orgJson } from "@/org/client";
 import type { Ingested } from "@/discovery/ingest/core";
-import { chatKey, chatOf, emptyChat, withJob, withTurn, type CanvasChat, type ChatDoc, type ChatJob, type ChatTurn, type FiledPage, type FocusGoal, type GoalForJob, type GoalForOn, type BriefState, type ScanJob, type ScanPlan, type TakenDoc } from "@/space/chat";
+import { chatKey, chatOf, emptyChat, withJob, withTurn, type CanvasChat, type ChatDoc, type ChatJob, type ChatTurn, type FiledPage, type FocusGoal, type GoalForJob, type GoalForOn, type PlanJob, type BriefState, type ScanJob, type ScanPlan, type TakenDoc } from "@/space/chat";
 import { cardForPage, pageOf } from "@/space/pages";
 import { DUMP_WORDS, routeOf, titleFrom, wordsIn, type ChatMode } from "@/space/route";
 import { FIND_MIN, findRound, findText, findTranscript, type FindWhat } from "@/space/find";
@@ -122,6 +125,7 @@ function change(fn: (c: CanvasChat) => CanvasChat) {
 
 /** The chat of the canvas now open (another canvas's goes, and what it was running stops). */
 export async function openChat(space: string | null) {
+  watchReview();
   const key = chatKey(space);
   if (st().key === key) return;
   for (const c of ctrls.values()) c.abort();
@@ -208,6 +212,10 @@ export function send(text: string, docs: readonly SentDoc[]): boolean {
     addTurn(said, { kind: "choose", first: routed.first });
     return true;
   }
+  if (routed.read) {
+    void readQuestion(said);
+    return true;
+  }
   void runAs(null, said, routed.job, docs);
   return true;
 }
@@ -221,6 +229,7 @@ export async function runAs(at: string | null, said: string, mode: ChatMode, doc
   if (mode === "take") return takeIn(at, said, docs);
   if (mode === "dump") return dumpIt(at, said, docs);
   if (mode === "scan") return scanIt(at, said);
+  if (mode === "plan") return workOut(at, said);
 }
 
 /** Words sent to the chat from elsewhere (the first run's idea), taken as `mode`. */
@@ -579,6 +588,156 @@ export async function placeFirstBuild(id: string) {
   void decideDraft(p.build.topic, d.id, "accepted").catch(() => {});
   plan(id, (x) => ({ ...x, step: "placed", card: solutionNode.id }));
   show(solutionNode.id);
+}
+
+// ---------------------------------------------------------------------------
+// Worked out as a plan
+
+const canvasPlan = (id: string) => {
+  const j = turnOf(id)?.job;
+  return j?.kind === "plan" ? j : null;
+};
+const setCanvasPlan = (id: string, fn: (j: PlanJob) => PlanJob) => change((c) => withJob(c, id, (j) => (j.kind === "plan" ? fn(j) : j)));
+
+/** What each call is told: what they asked, the canvas as it is now, and the conversation so far. */
+const planAsk = (id: string): PlanAsk | null => {
+  const t = turnOf(id);
+  const j = canvasPlan(id);
+  return t && j ? { said: t.said, outline: planOutline(studio().doc, useSpaceView.getState().things), rounds: j.rounds, looks: j.looks } : null;
+};
+
+/** Run one stretch of the conversation: until it asks, or has proposed. Stopped, it says so; any other failure offers to try again. */
+async function runCanvasPlan(id: string, stretch: (signal: AbortSignal) => Promise<void>) {
+  const ctrl = begin(id);
+  try {
+    await stretch(ctrl.signal);
+  } catch (e) {
+    const stopped = (e as Error).name === "AbortError" || ctrl.signal.aborted;
+    setCanvasPlan(id, (j) => ({ ...j, step: "failed", error: stopped ? "You stopped it." : message(e) }));
+  } finally {
+    end(id);
+  }
+}
+
+/** A question read first: asking what's known, or asking to work something out. It shows as asking until it's known, and any trouble leaves it a question. */
+async function readQuestion(said: string) {
+  if (await engineMissing()) return void addTurn(said, { kind: "noEngine", mode: "ask" });
+  const id = addTurn(said, { kind: "ask", state: "asking" });
+  const ctrl = begin(id);
+  step(id)("Reading what you're asking");
+  const route = await planRoute(said, AbortSignal.any([ctrl.signal, AbortSignal.timeout(20_000)])).then(
+    (r) => r.route,
+    () => "ask" as const,
+  );
+  end(id);
+  if (ctrl.signal.aborted) return change((c) => withJob(c, id, () => ({ kind: "ask", state: "failed", error: "You stopped it." })));
+  if (route === "plan") workOut(id, said);
+  else void ask(said, id);
+}
+
+/** Taken as a plan: a look around first, then what comes next. */
+function workOut(at: string | null, said: string) {
+  const id = jobAt(at, said, { kind: "plan", step: "looking", rounds: [], looks: [] });
+  void runCanvasPlan(id, async (signal) => {
+    await lookOnce(id, undefined, signal);
+    await ahead(id, signal);
+  });
+}
+
+/** One look, after the round they just answered. A look that fails is let go: the plan goes on with what it has. */
+async function lookOnce(id: string, query: string | undefined, signal: AbortSignal) {
+  const b = planAsk(id);
+  if (!b) return;
+  setCanvasPlan(id, (j) => ({ ...j, step: "looking" }));
+  const look = await planLook({ ...b, ...(query ? { query } : {}) }, step(id), signal).catch((e: unknown) => {
+    if (signal.aborted) throw e;
+    return null;
+  });
+  if (look) setCanvasPlan(id, (j) => ({ ...j, looks: [...j.looks, { ...look, after: j.rounds.length - 1 }] }));
+}
+
+/** What comes next: a round in the box, another look, or the proposal. */
+async function ahead(id: string, signal: AbortSignal) {
+  for (;;) {
+    const b = planAsk(id);
+    if (!b) return;
+    setCanvasPlan(id, (j) => ({ ...j, step: "thinking" }));
+    const next = await planAhead(b, step(id), signal);
+    if (next.action === "ask") return setCanvasPlan(id, (j) => ({ ...j, step: "asking", rounds: [...j.rounds, { questions: next.questions }] }));
+    if (next.action === "ready") return proposeNow(id, signal);
+    await lookOnce(id, next.query, signal);
+  }
+}
+
+/** The proposal: cards on the canvas for review. A problem only a page so far brings its page's words along. */
+async function proposeNow(id: string, signal: AbortSignal) {
+  const b = planAsk(id);
+  if (!b) return;
+  setCanvasPlan(id, (j) => ({ ...j, step: "proposing" }));
+  const d = await planPropose(b, step(id), signal);
+  await visitSources(Object.values(d.quotes).map((q) => q.sourceId));
+  const things = useSpaceView.getState().things;
+  const topics = [...new Set(d.cards.flatMap((c) => {
+    const t = c.under && "card" in c.under ? things.get(c.under.card) : undefined;
+    return t?.type === "problem" ? [t.topic] : [];
+  }))];
+  const pages = Object.fromEntries(await Promise.all(topics.map(async (t) => [t, (await problemCard(t).catch(() => null)) ?? undefined] as const)));
+  const proposals = planProposals(d, { doc: studio().doc, things, pages, now: Date.now(), id: newId });
+  const startCard = d.start ? d.cards.find((c) => c.ref === d.start)?.title : undefined;
+  const done: Partial<PlanJob> = { ...(d.doubt ? { doubt: d.doubt } : {}), ...(startCard ? { start: startCard } : {}), proposals, cards: proposals.flatMap((p) => (p.kind === "card" ? [p.cardId] : [])) };
+  if (!proposals.length) return setCanvasPlan(id, (j) => ({ ...j, ...done, step: "placed" }));
+  setCanvasPlan(id, (j) => ({ ...j, ...done, step: "review" }));
+  startReview({ kind: "plan", turn: id }, proposals);
+}
+
+export const canvasPlanQuestionsOf = (id: string) => canvasPlan(id)?.rounds.at(-1)?.questions ?? [];
+
+/** A round answered: on to what comes next. */
+export function answerCanvasPlan(id: string, answers: Readonly<Record<string, string>>) {
+  setCanvasPlan(id, (j) => ({ ...j, step: "thinking", rounds: j.rounds.map((r, i) => (i === j.rounds.length - 1 ? { ...r, answers: { ...answers } } : r)) }));
+  void runCanvasPlan(id, (signal) => ahead(id, signal));
+}
+
+/** No more questions: it proposes with what it has. */
+export function skipCanvasPlan(id: string) {
+  setCanvasPlan(id, (j) => ({ ...j, step: "proposing", skipped: true, rounds: j.rounds.filter((r) => r.answers) }));
+  void runCanvasPlan(id, (signal) => proposeNow(id, signal));
+}
+
+/** Tried again from where it stopped: what it has read and been told stands. */
+export function retryCanvasPlan(id: string) {
+  const j = canvasPlan(id);
+  if (!j) return;
+  setCanvasPlan(id, (x) => ({ ...x, step: "thinking", error: undefined, rounds: x.rounds.filter((r) => r.answers) }));
+  void runCanvasPlan(id, async (signal) => {
+    if (!j.looks.length) await lookOnce(id, undefined, signal);
+    await ahead(id, signal);
+  });
+}
+
+/** Its proposals brought back to the canvas (a reload, or another review that was in the way). */
+export function showCanvasPlan(id: string) {
+  const j = canvasPlan(id);
+  if (j?.proposals?.length) startReview({ kind: "plan", turn: id }, j.proposals);
+}
+
+/** After a reload: the proposals a plan waited on come back on the canvas. */
+export function resumePlans() {
+  if (useReview.getState().proposals.length) return;
+  const t = [...st().chat.turns].reverse().find((x) => x.job.kind === "plan" && x.job.step === "review" && !!x.job.proposals?.length);
+  if (t) showCanvasPlan(t.id);
+}
+
+/** The review on the canvas is what settles a plan: what's left is kept on its turn, and once nothing is, it says what was taken. Started with the chat, once. */
+let watchingReview = false;
+function watchReview() {
+  if (watchingReview) return;
+  watchingReview = true;
+  useReview.subscribe((s, prev) => {
+    const origin = prev.origin?.kind === "plan" ? prev.origin : s.origin?.kind === "plan" ? s.origin : null;
+    if (!origin || s.proposals === prev.proposals || !canvasPlan(origin.turn)) return;
+    setCanvasPlan(origin.turn, (j) => (s.proposals.length ? { ...j, proposals: s.proposals } : { ...j, proposals: [], step: "placed" }));
+  });
 }
 
 // ---------------------------------------------------------------------------

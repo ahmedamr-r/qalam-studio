@@ -55,6 +55,10 @@ export const TIER_OF = {
   "scan-audience": "decide",
   "scan-pick": "decide",
   "scan-brief": "decide",
+  // Small as it is, it decides what happens next, and through Claude Code Opus at low effort answered in about 2 s where Haiku took about 10.
+  "chat-route": "decide",
+  "plan-next": "decide",
+  "plan-place": "decide",
   // Fetching: the tool-runner makes the calls code planned.
   connector: "fetch",
   numbers: "fetch",

@@ -70,6 +70,8 @@ describe("a call's ids, never in what people read", () => {
     expect(withoutIds("Waiting “almost a week” is exactly the slow first reply g3's 3-hour median counts (l2, l4).", names)).toBe("Waiting “almost a week” is exactly the slow first reply Tutors reply within an hour's 3-hour median counts.");
     expect(withoutIds("t1 moves it, as l7 says.", names)).toBe("Slow replies moves it, as says.");
     expect(withoutIds("Revenue by Q2 for b2b customers", names)).toBe("Revenue by Q2 for b2b customers");
+    expect(withoutIds("Text asks with 'search us on Google' steps", names)).toBe("Text asks with 'search us on Google' steps");
+    expect(withoutIds("Text asks with ‘search us on Google’ steps", names)).toBe("Text asks with ‘search us on Google’ steps");
   });
 });
 

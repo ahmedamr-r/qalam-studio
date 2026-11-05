@@ -45,6 +45,7 @@ import { addFeed, changeFeed, checkFeed, feedsView, refreshFeed } from "./feeds"
 import { feedTarget, type FeedTarget } from "@/feeds/feeds";
 import { breakDown, decidePart, lookOutside } from "./outside";
 import { lookForGoal } from "./focus";
+import { lookForPlan, planBodyOf, planNext, proposePlan, routeQuestion } from "./plan";
 import { goalsForProblem, suggestGoalNumber } from "./moves";
 import type { Benchmark } from "@/goals/outside";
 import { decideProblem, draftProblems } from "./problems";
@@ -383,6 +384,24 @@ export function orgRoutes(): Hono<Env> {
       return failure(e);
     }
   });
+  // Working something out as a plan (server/org/plan.ts): a look on the web, what comes next, and what to propose. The chat keeps the conversation.
+  for (const [path, run] of [
+    ["look", (store: OrgStore, b: NonNullable<ReturnType<typeof planBodyOf>>, query: string | undefined, emit: (label: string) => void, signal: AbortSignal) => lookForPlan(store, { ...b, ...(query ? { query } : {}) }, emit, signal)],
+    ["next", (store: OrgStore, b: NonNullable<ReturnType<typeof planBodyOf>>, _q: string | undefined, emit: (label: string) => void, signal: AbortSignal) => planNext(store, b, emit, signal)],
+    ["propose", (store: OrgStore, b: NonNullable<ReturnType<typeof planBodyOf>>, _q: string | undefined, emit: (label: string) => void, signal: AbortSignal) => proposePlan(store, b, emit, signal)],
+    ["route", (_store: OrgStore, b: NonNullable<ReturnType<typeof planBodyOf>>, _q: string | undefined, _emit: (label: string) => void, signal: AbortSignal) => routeQuestion(b.said, signal)],
+  ] as const)
+    r.post(`/api/org/:org/plan/${path}`, async (c) => {
+      if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't work this out." }, 503);
+      if (rateLimited(c.req.raw)) return c.json({ error: "rate_limited", message: "Too many requests, try again in a few minutes." }, 429);
+      const raw = (await c.req.json().catch(() => ({}))) as { query?: unknown };
+      const b = planBodyOf(raw);
+      if (!b) return c.json({ error: "bad_request", message: "Nothing to work out" }, 400);
+      const query = typeof raw.query === "string" ? raw.query.slice(0, 400) : undefined;
+      const store = c.get("store");
+      return streamed(c.req.raw.signal, (emit, signal) => run(store, b, query, emit, signal));
+    });
+
   // Finding the problem to focus on for a goal (server/org/focus.ts): a look on the web, and with `open`, the first questions to ask.
   r.post("/api/org/:org/goals/:id/focus", async (c) => {
     if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't look this up." }, 503);
