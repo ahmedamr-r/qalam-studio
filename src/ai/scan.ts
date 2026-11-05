@@ -71,7 +71,7 @@ Propose 2 to 4 features, the smallest set that answers it (where a test is named
 - acceptance: 2 to 5 things someone can check to call it done, each one observable ("a couple can save a card when they book"), not how to build it;
 - data: what it has to keep, as plain names of things and their fields; none if it keeps nothing;
 - connects: what it has to connect to, if anything;
-- quotes: the ids of the words (q1…) it answers. A feature nobody's words call for doesn't belong here.
+- quotes: the ids of the words (q1…) it answers, best first. When nobody's words bear on it, leave this empty: the brief says it's an idea to check.
 
 Never recommend a language, framework or database: the coding agent chooses those. Don't add accounts, payments or anything else they said the first version doesn't need. Write in the language the problem is written in.`;
 

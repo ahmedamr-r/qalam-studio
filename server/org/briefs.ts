@@ -10,8 +10,8 @@ import type { OrgStore } from "./store";
 /**
  * A brief for a card on the canvas (src/discovery/brief.ts), in the core. The window sends the card and
  * what's around it, as Draft its tests does; the words go in from what's kept here, a quote only as
- * its source has it. One call for the features, skipped with no words to rest them on, and a call
- * that fails leaves a brief without them: what's known and decided still stands.
+ * its source has it. One call for the features, each saying when nothing backs it, and a call that
+ * fails leaves a brief without them: what's known and decided still stands.
  */
 
 export interface BriefCardWords {
@@ -106,15 +106,13 @@ export async function writeCardBrief(store: OrgStore, req: BriefRequest, signal?
 
   const m = briefMaterial({ about: `What this is a brief for: ${req.card.title}`, ...(goal ? { goal: goal.title } : {}), asked: req.asked, problems, words, ...(chosen ? { build: { title: chosen.title, description: chosen.description, assumptions: chosen.assumptions, test: chosen.tests[0] ?? null } } : {}), options, published: published.map((p) => p.text) });
   let features: BriefData["features"] = [];
-  if (words.length) {
-    try {
-      const dropped: { why: string; item: unknown }[] = [];
-      const { data, model } = await deps.structured<unknown>(briefCall(m.text), signal);
-      features = sanitizeBrief(data, m, (why, item) => dropped.push({ why, item }));
-      await store.putTrace({ id: nanoid(10), projectId: "scan", kind: "scan-brief", at: Date.now(), ...(model ? { model } : {}), answer: data, kept: features.length, dropped } as { id: string; projectId: string }).catch(() => {});
-    } catch (e) {
-      if (signal?.aborted) throw e;
-    }
+  try {
+    const dropped: { why: string; item: unknown }[] = [];
+    const { data, model } = await deps.structured<unknown>(briefCall(m.text), signal);
+    features = sanitizeBrief(data, m, (why, item) => dropped.push({ why, item }));
+    await store.putTrace({ id: nanoid(10), projectId: "scan", kind: "scan-brief", at: Date.now(), ...(model ? { model } : {}), answer: data, kept: features.length, dropped } as { id: string; projectId: string }).catch(() => {});
+  } catch (e) {
+    if (signal?.aborted) throw e;
   }
   const at = Date.now();
   const body = briefMarkdown({ at, title: req.card.title, ...(goal ? { goal } : {}), problems, quotes: words, ...(build ? { build } : {}), options, later: kind === "solution" ? req.others.map((title) => ({ title, why: "" })) : [], features, asked: req.asked, known: [...(await knownOthers(store)), ...published] });

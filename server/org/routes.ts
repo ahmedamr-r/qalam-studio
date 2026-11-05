@@ -1479,9 +1479,9 @@ function solutionsCardShape(x: unknown): SolutionsCard | null {
   const c = x as { title?: unknown; evidence?: unknown; children?: unknown } | null;
   const title = clipped(c?.title, 200);
   if (!c || !title) return null;
-  const evidence = (Array.isArray(c.evidence) ? c.evidence : []).slice(0, 30).flatMap((e: { text?: unknown; piece?: unknown; sourceId?: unknown; sourceTitle?: unknown; kind?: unknown; online?: unknown }) => {
+  const evidence = (Array.isArray(c.evidence) ? c.evidence : []).slice(0, 30).flatMap((e: { text?: unknown; piece?: unknown; sourceId?: unknown; sourceTitle?: unknown; kind?: unknown; online?: unknown; basis?: unknown }) => {
     const text = clipped(e?.text, 1200);
-    return text ? [{ text, kind: clipped(e.kind, 20) || "note", ...(clipped(e.piece, 120) ? { piece: clipped(e.piece, 120) } : {}), ...(clipped(e.sourceId, 64) ? { sourceId: clipped(e.sourceId, 64) } : {}), ...(clipped(e.sourceTitle, 200) ? { sourceTitle: clipped(e.sourceTitle, 200) } : {}), ...(e.online === true ? { online: true } : {}) }] : [];
+    return text ? [{ text, kind: clipped(e.kind, 20) || "note", ...(clipped(e.piece, 120) ? { piece: clipped(e.piece, 120) } : {}), ...(clipped(e.sourceId, 64) ? { sourceId: clipped(e.sourceId, 64) } : {}), ...(clipped(e.sourceTitle, 200) ? { sourceTitle: clipped(e.sourceTitle, 200) } : {}), ...(isBasis(e.basis) ? { basis: e.basis } : {}), ...(e.online === true ? { online: true } : {}) }] : [];
   });
   const children = (Array.isArray(c.children) ? c.children : []).slice(0, 30).flatMap((k: { title?: unknown; kind?: unknown }) => (clipped(k?.title, 200) && (k.kind === "solution" || k.kind === "test") ? [{ title: clipped(k.title, 200), kind: k.kind as "solution" | "test" }] : []));
   return { title, evidence, children };

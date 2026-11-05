@@ -1,5 +1,5 @@
 import { backingWords, evidenceBasis, reachesKnow, type BasisCounts } from "./basis";
-import type { OstCard, OstEvidence } from "./types";
+import type { Came, OstCard, OstEvidence } from "./types";
 
 /*
  * What a card rests on, decided by code from its evidence (pure). An opportunity Qalam AI drafted
@@ -8,7 +8,8 @@ import type { OstCard, OstEvidence } from "./types";
  * never count as a customer's. Words that speak against a card are kept on it and counted, but
  * never back it. What people said online (public posts, reviews) and what's read elsewhere (someone
  * else's report) back a card too, but on their own leave it Assumed until something of the team's
- * own shows it: what its people said, what it measured or studied.
+ * own shows it: what its people said, what it measured or studied. Qalam AI may propose a goal, a
+ * problem or a solution with no evidence at all, and such a card says where it came from (`came`).
  */
 
 export type EvidenceTier = "customer" | "answers" | "note" | "none";
@@ -103,15 +104,21 @@ export function evidenceRows(card: Pick<OstCard, "evidence">): OstEvidence[] {
   return [...card.evidence].sort((a, b) => rank(a) - rank(b));
 }
 
-/** An opportunity Qalam AI drafted that nothing of its own backs yet (dashed on the board): people online alone don't. */
-export const isAssumed = (card: Pick<OstCard, "kind" | "createdBy" | "evidence">) => card.kind === "opportunity" && card.createdBy === "ai" && ownBacking(card).length === 0;
+/** How a card with nothing behind it says where it came from. */
+export const CAME_WORDS: Record<Came, string> = { answers: "your answers", read: "read online", idea: "Qalam AI's idea" };
+
+/**
+ * A card that nothing of its own backs yet (dashed on the board): an opportunity Qalam AI drafted, as
+ * people online alone don't back it, or anything proposed with nothing that can reach "We know".
+ */
+export const isAssumed = (card: Pick<OstCard, "kind" | "createdBy" | "evidence" | "came">) => (card.came ? knownBacking(card).length === 0 : card.kind === "opportunity" && card.createdBy === "ai" && ownBacking(card).length === 0);
 
 /** A solution Qalam AI came up with (not one the builder named). */
 export const isAIIdea = (card: Pick<OstCard, "kind" | "createdBy" | "evidence">) =>
   card.kind === "solution" && card.createdBy === "ai" && !ownBacking(card).some((e) => e.kind === "answer" || e.kind === "quote" || e.kind === "dump");
 
 /** The evidence chip's words on a card ("" when a card has nothing to say about it). */
-export function evidenceLabel(card: Pick<OstCard, "kind" | "createdBy" | "evidence" | "pageBacking">): string {
+export function evidenceLabel(card: Pick<OstCard, "kind" | "createdBy" | "evidence" | "pageBacking" | "came">): string {
   if (card.pageBacking) return card.pageBacking;
   const against = againstCount(card);
   const tail = against ? ` · ${against} against` : "";
@@ -119,6 +126,7 @@ export function evidenceLabel(card: Pick<OstCard, "kind" | "createdBy" | "eviden
   const posts = online ? ` · ${online} ${online === 1 ? "post" : "posts"} online` : "";
   const read = readCount(card);
   const reads = read ? ` · ${read} read elsewhere` : "";
+  if (card.came && isAssumed(card)) return `Assumed · ${CAME_WORDS[card.came]}${posts}${card.came === "read" ? "" : reads}${tail}`;
   if (isAssumed(card)) return against || online || read ? `Assumed${posts}${reads}${tail}` : "Assumed · needs evidence";
   if (isAIIdea(card)) return `Qalam AI idea${tail}`;
   const n = (k: OstEvidence["kind"]) => ownBacking(card).filter((e) => e.kind === k).length;

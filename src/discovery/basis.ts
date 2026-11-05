@@ -59,7 +59,7 @@ export function pieceBasis(p: { sub?: string | null }): Basis {
 
 /** Words on a card: what they rest on (an older card's words say by their kind). */
 export function evidenceBasis(e: { kind: string; basis?: Basis; online?: boolean }): Basis {
-  if (e.online) return "read";
+  if (e.online || e.kind === "read") return "read";
   return e.basis ?? (e.kind === "quote" ? "said" : "own");
 }
 

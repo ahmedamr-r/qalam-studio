@@ -1,7 +1,8 @@
 import type { Basis } from "@/discovery/basis";
-import { whose } from "@/discovery/solutions";
+import { cameFrom, whose } from "@/discovery/solutions";
+import type { Came } from "@/discovery/types";
 import type { QuoteRef } from "@/discovery/proposals";
-import { checkWords, cleanLine, sameTopic } from "@/hub/topics";
+import { checkWords, cleanLine, holdWords, sameTopic } from "@/hub/topics";
 import { withCompany } from "@/market/text";
 import { titleOf } from "@/org/setup-groups";
 import { withoutIds } from "./said";
@@ -10,9 +11,11 @@ import { withoutIds } from "./said";
  * Drafting a goal's problems (pure): Qalam AI reads the goal and the goals it feeds, the problems
  * behind it already, the problem pages the organization has, and the words a problem may rest on
  * (customers', people online's, the team's answers when asked), and proposes the customer problems
- * that, solved, would move the goal. Code keeps one only when it rests on words it was sent, isn't
- * behind the goal or on a page already, and its title's quoted words and numbers are in what it
- * cites (else the title is the words of its first quote, as the setup's problems are titled).
+ * that, solved, would move the goal. Evidence is better when there is some, but it isn't asked for:
+ * a problem resting on nothing stays, and says where it came from (`came`). Code leaves out what's
+ * behind the goal or on a page already. A title that cites words keeps its wording where they hold
+ * its quoted words and numbers, else it's the words of its first quote, as the setup's problems are
+ * titled. Anything else loses the quotes and numbers that weren't sent.
  */
 
 export const PROBLEM_LIMITS = { problems: 4, enough: 2, pieces: 24, pages: 30, behind: 20, above: 3, title: 120, description: 360, why: 240, note: 400 } as const;
@@ -53,6 +56,8 @@ export interface ProblemDraft {
   why: string;
   /** The pieces it rests on (refs). */
   cites: string[];
+  /** Where it came from, when nothing that can reach "We know" backs it. */
+  came?: Came;
   at: number;
 }
 
@@ -102,16 +107,14 @@ const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object"
 const strs = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string").map((x) => x.trim()) : []);
 
 /**
- * What code keeps of the answer: at most so many problems, each resting on words it was sent, none
- * there already or proposed twice. `dropped` hears what was left out and why (for the call's trace).
+ * What code keeps of the answer: at most so many problems, none there already or proposed twice,
+ * each saying where it came from when nothing that can reach "We know" backs it. `dropped` hears what
+ * was left out and why (for the call's trace).
  */
 export function sanitizeProblems(raw: unknown, m: ProblemsSent, o: { now: number; id: () => string }, dropped?: (why: string, item: unknown) => void): { drafts: ProblemDraft[]; note: string } {
   const drafts: ProblemDraft[] = [];
   const drop = (why: string, x: unknown) => void dropped?.(why, x);
-  const said = (v: unknown, max: number) => {
-    const text = withoutIds(v, () => undefined, "q");
-    return text && checkWords(text, [], m.hay, max) ? cleanLine(text) : null;
-  };
+  const said = (v: unknown, max: number) => holdWords(withoutIds(v, () => undefined, "q"), m.hay, { max, shape: "prose" }).text;
   for (const x of Array.isArray(rec(raw).problems) ? (rec(raw).problems as unknown[]) : []) {
     if (drafts.length >= PROBLEM_LIMITS.problems) {
       drop("over the limit", x);
@@ -119,25 +122,26 @@ export function sanitizeProblems(raw: unknown, m: ProblemsSent, o: { now: number
     }
     const p = rec(x);
     const cited = [...new Set(strs(p.cites).filter((r) => m.pieces.has(r)))].map((r) => m.pieces.get(r)!);
-    if (!cited.length) {
-      drop("it rests on no words it was sent", x);
-      continue;
-    }
     // Its title as Qalam AI put it where what it cites holds its quoted words and numbers; else its first quote's words, customers' first.
     const put = withoutIds(p.title, () => undefined, "q");
-    const held = put ? checkWords(put, cited, "", PROBLEM_LIMITS.title) : null;
-    const title = held ? cleanLine(held) : titleOf((cited.find((c) => c.evidence) ?? cited[0]).text);
+    const quoted = put && cited.length ? checkWords(put, cited, "", PROBLEM_LIMITS.title) : null;
+    // With nothing to cite, what wasn't sent comes out of its title, and a title with nothing left says nothing.
+    const title = quoted ? cleanLine(quoted) : cited.length ? titleOf((cited.find((c) => c.evidence) ?? cited[0]).text) : holdWords(put, m.hay, { max: PROBLEM_LIMITS.title, shape: "title" }).text;
+    if (!title) {
+      drop("its title says nothing once what wasn't sent is out", x);
+      continue;
+    }
     if (m.known.some((k) => sameTopic(k, title)) || drafts.some((d) => sameTopic(d.title, title))) {
       drop("behind the goal or on a page already, or proposed twice", x);
       continue;
     }
     const description = said(p.description, PROBLEM_LIMITS.description);
     const why = said(p.why, PROBLEM_LIMITS.why);
-    if (!held) drop("its title's words or numbers aren't in what it cites: titled by its first quote", x);
+    if (cited.length && !quoted) drop("its title's words or numbers aren't in what it cites: titled by its first quote", x);
     if (!description || !why) drop("its description's words or numbers aren't in what was sent: kept without it", x);
-    drafts.push({ id: o.id(), title, by: held ? "qalam" : "words", description: description ?? "", why: why ?? "", cites: cited.map((c) => c.ref), at: o.now });
+    drafts.push({ id: o.id(), title, by: !cited.length || quoted ? "qalam" : "words", description, why, cites: cited.map((c) => c.ref), ...cameFrom(cited, false), at: o.now });
   }
-  const note = said(rec(raw).note, PROBLEM_LIMITS.note) ?? "";
-  const short = drafts.length < PROBLEM_LIMITS.enough ? (drafts.length ? "Qalam AI found only one problem it could stand behind." : "Qalam AI found no problem it could stand behind.") : "";
+  const note = said(rec(raw).note, PROBLEM_LIMITS.note);
+  const short = drafts.length ? (drafts.length < PROBLEM_LIMITS.enough ? "Qalam AI has only one problem to propose." : "") : "Qalam AI has no new problem to propose.";
   return { drafts, note: [note, short].filter(Boolean).join(" ") };
 }

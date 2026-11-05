@@ -3,9 +3,10 @@ import type { ProblemsSent } from "@/goals/drafted";
 /**
  * Qalam AI drafting a goal's problems (src/goals/drafted.ts): it reads the goal and the goals it
  * feeds, what's behind it and on the organization's pages already, and the words a problem may
- * rest on, and proposes the customer problems that, solved, would move the goal. Code keeps one
- * only when it rests on words it was sent and isn't there already; a title whose quoted words or
- * numbers aren't in what it cites becomes its first quote's words.
+ * rest on, and proposes the customer problems that, solved, would move the goal. What it cites is
+ * better when it's there, and a problem with nothing to cite stays and says so. Code leaves out what's
+ * there already; a title whose quoted words or numbers aren't in what it cites becomes its first
+ * quote's words, and with nothing cited they come out of the title.
  */
 
 // The answer's schema (every property required, objects closed, no numeric limits)
@@ -22,13 +23,13 @@ Propose 2 to 4 problems, the one that would move the goal most first, each a dif
 - title: the problem as customers have it, what goes wrong and for whom, at most 14 words (Weekly shoppers can't find what they ordered last week).
 - description: one or two sentences: when it happens and what it costs them, in the customers' terms.
 - why: one sentence: how solving it would move the goal.
-- cites: the ids of the words it rests on (q…), at least one, customers' words or what's measured first where they say it.
+- cites: the ids of the words it rests on (q…), customers' words or what's measured first where they say it. Leave this empty when nothing sent bears on it: don't stretch a quote to fit.
 
 A problem is something customers have, never a solution or a feature the team could build. Don't propose a problem that's behind the goal already or that a page has. People online are strangers, never these customers, and what's read elsewhere is about others: a problem resting only on their words is a guess to check.
 
 Use “double quotes” only for words from what you were sent, word for word. Use a number only when it is in what you were sent. Never invent customers, quotes or facts about them.
 
-In what you write, name what you mean by its words, never by its id: the ids are for cites only. If nothing you could propose rests on what was sent, answer with no problems and say why in the note.`;
+In what you write, name what you mean by its words, never by its id: the ids are for cites only. When little or nothing was sent, propose the problems you think most likely anyway, each with empty cites: the card will say it's a guess to check. The note says so in a sentence.`;
 
 export const PROBLEMS_SCHEMA = obj({
   problems: arr(
@@ -36,11 +37,11 @@ export const PROBLEMS_SCHEMA = obj({
       title: str("The problem as customers have it, what goes wrong and for whom, at most 14 words"),
       description: str("One or two sentences: when it happens and what it costs them"),
       why: str("One sentence: how solving it would move the goal"),
-      cites: arr(str("An id of the words it rests on: q…"), "At least one"),
+      cites: arr(str("An id of the words it rests on: q…"), "What it rests on, best first. [] when nothing sent bears on it"),
     }),
-    "2 to 4 problems, the one that would move the goal most first. [] when nothing rests on what was sent",
+    "2 to 4 problems, the one that would move the goal most first",
   ),
-  note: str("One sentence for the person: what the problems have in common, or why there are none"),
+  note: str("One sentence for the person: what the problems have in common, or that they're guesses to check when little was sent"),
 });
 
 /** The call, as the core's structured() runs it. */

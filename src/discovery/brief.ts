@@ -1,4 +1,6 @@
 import type { PlanQuestion } from "@/ai/plan";
+import { withoutIds } from "@/goals/said";
+import { holdWords } from "@/hub/topics";
 import { midSentence } from "@/scan/plan";
 import type { ScanKnown } from "@/scan/session";
 import { draftWords } from "./solutions";
@@ -82,9 +84,10 @@ export function briefMaterial(o: { about: string; audience?: string; goal?: stri
 }
 
 /**
- * What code keeps of the features: at most 4, each resting on a quote it was sent. A feature is a plan,
- * so its own numbers aren't checked and words in “” that nobody said become wording it proposes; why
- * it's worth building is a claim about what's known, so its words and numbers must be in what was sent.
+ * What code keeps of the features: at most 4. A feature rests on the quotes it was sent where any bear
+ * on it, and with none it says so. A feature is a plan, so its own numbers aren't checked and words in
+ * “” that nobody said become wording it proposes; why it's worth building is a claim about what's
+ * known, so a quote or number in it that wasn't sent comes out.
  */
 export function sanitizeBrief(raw: unknown, m: BriefSent, dropped?: (why: string, item: unknown) => void): BriefFeature[] {
   const words = draftWords(m.hay, () => undefined, "q");
@@ -93,14 +96,10 @@ export function sanitizeBrief(raw: unknown, m: BriefSent, dropped?: (why: string
     if (out.length >= BRIEF_LIMITS.features) break;
     const f = rec(x);
     const title = words(f.title, BRIEF_LIMITS.title, true);
-    const why = words(f.why, BRIEF_LIMITS.why);
+    const why = holdWords(withoutIds(f.why, () => undefined, "q"), m.hay, { max: BRIEF_LIMITS.why, shape: "prose" }).text;
     const quotes = [...new Set(list(f.quotes).map((q) => (typeof q === "string" ? q.trim() : "")))].flatMap((q) => m.words.get(q) ?? []).slice(0, BRIEF_LIMITS.quotes);
-    if (!title || !why) {
+    if (!title) {
       dropped?.("its words or numbers aren't in what was sent", x);
-      continue;
-    }
-    if (!quotes.length) {
-      dropped?.("it rests on nothing anyone said", x);
       continue;
     }
     const lines = (v: unknown, max: number) => list(v).flatMap((l) => words(l, BRIEF_LIMITS.line, true) ?? []).slice(0, max);
@@ -160,12 +159,12 @@ export function briefMarkdown(b: BriefData): string {
   if (b.features.length) {
     out.push("", "## What to build", "", "Suggested from the above, not anything anyone asked for. Change whatever doesn't fit.");
     b.features.forEach((f, i) => {
-      out.push("", `### ${i + 1}. ${one(f.title)}`, "", one(f.why), "", "Done when:", "", ...f.acceptance.map((a) => `- [ ] ${one(a)}`));
+      out.push("", `### ${i + 1}. ${one(f.title)}`, ...(f.why ? ["", one(f.why)] : []), "", "Done when:", "", ...f.acceptance.map((a) => `- [ ] ${one(a)}`));
       if (f.data.length) out.push("", `It keeps: ${f.data.map(one).join("; ")}.`);
       if (f.connects.length) out.push("", `It connects to: ${f.connects.map(one).join("; ")}.`);
-      out.push("", "Rests on:", "", ...f.quotes.map(quoteLine));
+      out.push("", ...(f.quotes.length ? ["Rests on:", "", ...f.quotes.map(quoteLine)] : ["Rests on nothing anyone has said yet: it's an idea to check."]));
     });
-  } else if (!b.quotes.length) out.push("", "## What to build", "", "Nothing backs this yet, so there's nothing to suggest building from. Find what backs it first.");
+  } else if (!b.quotes.length) out.push("", "## What to build", "", "Nothing backs this yet, and no features were suggested. Find what backs it, or write the brief again.");
   if (b.build?.wrong) out.push("", "## What has to be true", "", one(b.build.wrong));
   if (b.build?.test) {
     out.push("", "## Test it first", "", `${one(b.build.test.what)}. ${one(b.build.test.how)}`);

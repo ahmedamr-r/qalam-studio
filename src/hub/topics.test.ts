@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { topicFromMarkdown, topicToMarkdown } from "./topic-md";
-import { applyFiling, checkWords, emptyFiling, isEvidence, isOnline, sameTopic, sanitizeFiling, type Citable, type FilingSent, type Topic } from "./topics";
+import { applyFiling, checkWords, emptyFiling, holdWords, isEvidence, isOnline, sameTopic, sanitizeFiling, valuesIn, type Citable, type FilingSent, type Topic } from "./topics";
 
 const AT = new Date(2026, 9, 27, 12).getTime();
 
@@ -114,6 +114,89 @@ describe("what code stands behind", () => {
   it("knows two titles for the same topic", () => {
     expect(sameTopic("Delivery windows are too wide", "delivery windows are too wide.")).toBe(true);
     expect(sameTopic("Evening slots sell out", "Morning slots sell out")).toBe(false);
+  });
+});
+
+describe("reading a number", () => {
+  it("doesn't read digits run on from a letter as one, except after a currency's capitals", () => {
+    expect(valuesIn("B2B and P2P in Q4, on H1, with q5")).toEqual([]);
+    expect(valuesIn("AED200 and 9am and 2M")).toEqual([200, 9, 2, 2_000_000]);
+  });
+
+  it("reads Arabic-Indic and Persian digits as the same number", () => {
+    expect(valuesIn("٣٠%")).toEqual([30]);
+    expect(valuesIn("۱۲ نفر")).toEqual([12]);
+    expect(checkWords("حوالي ٣٠ شخصا", [{ text: "about 30 people" }])).toBe("حوالي ٣٠ شخصا");
+    expect(checkWords("حوالي ٤٠ شخصا", [{ text: "about 30 people" }])).toBeNull();
+  });
+
+  it("lets a B2B title through a check with no 2 anywhere", () => {
+    expect(checkWords("A B2B tool for Q4", [{ text: "nothing with digits" }])).toBe("A B2B tool for Q4");
+  });
+});
+
+describe("what a generated line keeps", () => {
+  const hay = "Every Sunday I spend an hour. We lost 12 customers, 30% of them in March. It costs $50 a month.";
+
+  it.each([
+    // In a title, what wasn't sent comes out with what leads it; the rest stays.
+    ["Cut churn in half by 45%", "Cut churn in half"],
+    ["Reach 98% open rates on texts", "Reach open rates on texts"],
+    ["Send 3 texts to each customer", "Send texts to each customer"],
+    ["Offer a 2-week trial to owners", "Offer a trial to owners"],
+    ["Charge $99 a month for the toolkit", "Charge for the toolkit"],
+    ["Give owners 24/7 support for reviews", "Give owners support for reviews"],
+    ["A “Plan it for me” button for parents", "A button for parents"],
+    // What was sent stays, and so do things that only look like numbers.
+    ["Win back the 12 customers lost", "Win back the 12 customers lost"],
+    ["Keep 30% of them for $50 a month", "Keep 30% of them for $50 a month"],
+    ["A B2B tool for Q4", "A B2B tool for Q4"],
+    ["A “I spend an hour” reminder for parents", "A “I spend an hour” reminder for parents"],
+    ["A ‘Plan it for me’ button", "A ‘Plan it for me’ button"],
+    ["Meal kits", "Meal kits"],
+  ])("title %s", (raw, want) => {
+    expect(holdWords(raw, hay, { max: 90, shape: "title" }).text).toBe(want);
+  });
+
+  it.each([
+    ["5 of 10 pay"],
+    ["Get 5 of 10"],
+    ["“Nobody said this” now"],
+    [""],
+  ])("drops a title with under 3 words left: %s", (raw) => {
+    expect(holdWords(raw, hay, { max: 90, shape: "title" }).text).toBe("");
+  });
+
+  it("says what came out of a title, and keeps its capital", () => {
+    expect(holdWords("95% of owners want a monthly report", hay, { max: 90, shape: "title" })).toEqual({ text: "Owners want a monthly report", cut: ["95%"] });
+    expect(holdWords("Over 95% of owners want a monthly report", hay, { max: 90, shape: "title" })).toEqual({ text: "Owners want a monthly report", cut: ["Over 95%"] });
+  });
+
+  it("cuts a long title at a word, tidied", () => {
+    expect(holdWords("Send every customer a short message with steps and", hay, { max: 44, shape: "title" }).text).toBe("Send every customer a short message");
+  });
+
+  it("drops only the sentence that says what wasn't sent", () => {
+    const h = holdWords("It saves an hour. Open rates are 98%. “Nobody said this” is why. It keeps “I spend an hour” in mind.", hay, { max: 400, shape: "prose" });
+    expect(h.text).toBe("It saves an hour. It keeps “I spend an hour” in mind.");
+    expect(h.cut).toEqual(["Open rates are 98%.", "“Nobody said this” is why."]);
+  });
+
+  it("keeps a sentence ending inside a quote whole, and takes a number in a found quote as the quote's", () => {
+    expect(holdWords("They said “We lost 12 customers, 30% of them in March.” It matters.", hay, { max: 400, shape: "prose" }).text).toBe("They said “We lost 12 customers, 30% of them in March.” It matters.");
+  });
+
+  it("drops a sentence with its quotation marks left open", () => {
+    expect(holdWords("They said “I spend an hour. It matters.", hay, { max: 400, shape: "prose" }).text).toBe("");
+  });
+
+  it("keeps as many whole sentences as fit, and nothing cut in half", () => {
+    expect(holdWords("It saves an hour. It saves a lot more than that too.", hay, { max: 20, shape: "prose" }).text).toBe("It saves an hour.");
+    expect(holdWords("It saves a lot more than that too.", hay, { max: 10, shape: "prose" }).text).toBe("");
+  });
+
+  it("has nothing to say about what isn't text", () => {
+    expect(holdWords(undefined, hay, { max: 90, shape: "prose" })).toEqual({ text: "", cut: [] });
   });
 });
 

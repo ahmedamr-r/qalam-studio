@@ -1,4 +1,4 @@
-import { evidenceBasis, pieceBasis, reachesKnow } from "@/discovery/basis";
+import { evidenceBasis, pieceBasis, reachesKnow, type Basis } from "@/discovery/basis";
 import { nanoid } from "nanoid";
 import { companyContext } from "./company";
 import { solutionsCall } from "@/ai/solutions";
@@ -25,7 +25,7 @@ import { NotFoundError, type OrgStore } from "./store";
 /** A card on a board asking, with or without a page of its own: its words, and what's under it already. */
 export interface SolutionsCard {
   title: string;
-  evidence: { text: string; piece?: string; sourceId?: string; sourceTitle?: string; kind: string; online?: boolean }[];
+  evidence: { text: string; piece?: string; sourceId?: string; sourceTitle?: string; kind: string; online?: boolean; basis?: Basis }[];
   children: { title: string; kind: "solution" | "test" }[];
 }
 

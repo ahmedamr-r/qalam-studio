@@ -206,9 +206,9 @@ export function applyProposal(d: Doc, p: Proposal, evidence: EvidenceOf, o: { pr
       if (d.nodes[p.cardId] || (p.parentId ? !parent || !canHold(parent.kind, p.card.kind) : p.card.kind !== "outcome" && p.card.kind !== "opportunity")) return false;
       const ev = resolve(p.backing, evidence);
       // Words it was to rest on are gone (their source was removed); only a need may rest on nothing (Assumed),
-      // and a solution or test under a card, which rests on the card above it.
+      // a solution or test under a card, which rests on the card above it, and a card that says where it came from.
       const under = !!p.parentId && (p.card.kind === "solution" || p.card.kind === "test");
-      if (!ev.length && !under && (p.backing.quotes.length + p.backing.words.length > 0 || p.card.kind !== "opportunity")) return false;
+      if (!ev.length && !under && !p.card.came && (p.backing.quotes.length + p.backing.words.length > 0 || p.card.kind !== "opportunity")) return false;
       addCardIn(d, { ...makeCardNode({ ...p.card, evidence: ev.map((e) => ({ ...e })) }, p.at), id: p.cardId }, p.parentId);
       return true;
     }

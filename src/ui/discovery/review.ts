@@ -84,7 +84,7 @@ function fits(p: Proposal, all: Proposal[]): boolean {
       const quotes = p.backing.quotes.filter((q) => !!evidenceOf(q, false)).length;
       // A solution or a test under a card rests on the problem above it; its own words are extra.
       const under = !!p.parentId && (p.card.kind === "solution" || p.card.kind === "test");
-      return quotes + p.backing.words.length > 0 || (p.card.kind === "opportunity" && !p.backing.quotes.length) || under;
+      return quotes + p.backing.words.length > 0 || (p.card.kind === "opportunity" && !p.backing.quotes.length) || under || !!p.card.came;
     }
     case "assumption": {
       const c = cardOf(doc, p.cardId);

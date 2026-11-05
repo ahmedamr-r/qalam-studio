@@ -60,13 +60,27 @@ describe("what code keeps of a goal's drafted problems", () => {
     expect(dropped).toEqual(["its description's words or numbers aren't in what was sent: kept without it"]);
   });
 
-  it("leaves out a problem resting on nothing sent, one behind the goal or on a page already, and one proposed twice", () => {
+  it("keeps a problem resting on nothing sent, saying it's Qalam AI's idea, with what wasn't sent out of its title", () => {
+    const m = problemsMaterial(input());
+    const { drafts } = sanitizeProblems({ problems: [problem("Shoppers lose 45 minutes rebuilding a basket", ["q7"], { description: "It takes “an hour” a week. Nobody likes it.", why: "Fewer give up." })], note: "" }, m, { now: 1, id });
+    expect(drafts[0]).toMatchObject({ title: "Shoppers lose minutes rebuilding a basket", by: "qalam", cites: [], came: "idea", description: "Nobody likes it.", why: "Fewer give up." });
+  });
+
+  it("says a problem resting only on their answers or people online came from there, and nothing when customers back it", () => {
+    const m = problemsMaterial(input());
+    const on = (cite: string) => sanitizeProblems({ problems: [problem("Weekly shoppers rebuild their basket", [cite])], note: "" }, m, { now: 1, id }).drafts[0].came;
+    expect(on("q1")).toBeUndefined();
+    expect(on("q2")).toBe("answers");
+    expect(on("q3")).toBe("read");
+  });
+
+  it("drops a problem whose title has nothing left, or that's behind the goal or on a page already, or proposed twice", () => {
     const m = problemsMaterial(input());
     const dropped: string[] = [];
     const { drafts, note } = sanitizeProblems(
       {
         problems: [
-          problem("Shoppers can't reorder", ["q7"]),
+          problem("“Nobody said this” 40%", ["q7"]),
           problem("Late-night orders arrive missing items", ["q1"]),
           problem("Substitutions break trust", ["q1"]),
           problem("Weekly shoppers rebuild their basket", ["q1"]),
@@ -79,9 +93,9 @@ describe("what code keeps of a goal's drafted problems", () => {
       (why) => dropped.push(why),
     );
     expect(drafts.map((d) => d.title)).toEqual(["Weekly shoppers rebuild their basket"]);
-    expect(dropped.filter((w) => w === "it rests on no words it was sent")).toHaveLength(1);
+    expect(dropped.filter((w) => w.startsWith("its title says nothing"))).toHaveLength(1);
     expect(dropped.filter((w) => w.startsWith("behind the goal"))).toHaveLength(3);
-    expect(note).toBe("They all come from Sara’s interview. Qalam AI found only one problem it could stand behind.");
+    expect(note).toBe("They all come from Sara’s interview. Qalam AI has only one problem to propose.");
   });
 
   it("keeps at most so many", () => {

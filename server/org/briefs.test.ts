@@ -74,12 +74,12 @@ describe("a brief for a card", () => {
     expect(body).not.toContain("## Build first");
   });
 
-  it("takes a quote only as its source has it, and asks no model with no words to rest a feature on", async () => {
+  it("takes a quote only as its source has it, and still asks for features with no words to rest them on", async () => {
     let asked = 0;
     const meta = await writeCardBrief(store, { card: { ...words({ title: "Bare", evidence: [{ text: "Words its source never had.", kind: "quote", sourceId: "s1" }] }), id: "c3", kind: "solution" }, goal: null, problem: null, under: [], others: [], asked: {} }, undefined, asks(() => asked++));
     const { body } = (await store.getBrief(meta.id))!;
     expect(body).not.toContain("Words its source never had");
-    expect(asked).toBe(0);
+    expect(asked).toBe(1);
     expect(body).toContain("Nothing backs this yet");
   });
 

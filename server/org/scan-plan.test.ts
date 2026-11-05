@@ -160,7 +160,7 @@ describe("from a scan's problems to what comes first", () => {
     };
     const base = (topic: string) => ({ target, sources: ["s1"], card: "card1", topic, draft: "d1", audience: "Night nurses", goal: { title: "5 of 10 night nurses sign up", metric: "Signed up, of 10 asked" }, answers: "", why: "It answers the night shift directly.", later: [{ draft: "d2", why: "It can wait." }], asked: { platform: "A web app" }, known: [] });
 
-    it("writes a file from what's kept, each feature resting on quotes, and reads the draft itself", async () => {
+    it("writes a file from what's kept, a feature with no quotes saying so, and reads the draft itself", async () => {
       const topic = await put();
       let heard = "";
       const r = await writeBrief(store, base(topic), undefined, {
@@ -174,12 +174,13 @@ describe("from a scan's problems to what comes first", () => {
       });
       expect(heard).toContain("It runs first: A web app");
       expect(heard).toContain("As a night nurse I never know when to eat on my shift.");
-      expect(r?.features).toBe(1);
+      expect(r?.features).toBe(2);
       expect(r?.card).toBe("card1");
       expect(r?.file).toMatch(/^hub\/briefs\/draft-d1.*\.md$/);
       const { body } = (await store.getBrief(r!.id))!;
       expect(body).toContain("# Brief: Draft d1");
       expect(body).toContain("- Draft d2: It can wait.");
+      expect(body).toContain("Rests on nothing anyone has said yet: it's an idea to check.");
       expect(body).toContain("“As a night nurse I never know when to eat on my shift.” ([Reviews](https://x.example))");
       expect(await readFile(path.join(dir, r!.file), "utf8")).toContain(body);
     });

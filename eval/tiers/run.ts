@@ -353,7 +353,8 @@ async function casesFor(dir: string, problems: string[], docs?: string): Promise
         raw: [raw],
         // Each solution, its assumptions and its test count once.
         returned: proposed.reduce((x, s) => x + 1 + list(s.assumptions).length + (s.test ? 1 : 0), 0),
-        kept: drafts.reduce((x, d) => x + 1 + d.assumptions.length + (d.test ? 1 : 0), 0),
+        // Every draft stays now, saying when nothing backs it: what holds a tier is what rests on the problem's own lines or words.
+        kept: drafts.filter((d) => d.cites.lines.length + d.cites.pieces.length > 0).reduce((x, d) => x + 1 + d.assumptions.length + (d.test ? 1 : 0), 0),
         items: drafts.map((d) => `${one(d.title)} · ${d.assumptions.length} assumptions${d.test ? ` · test: ${one(d.test.what)}` : ""}`),
       };
     },

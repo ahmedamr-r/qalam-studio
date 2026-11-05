@@ -332,16 +332,16 @@ export function registerDiscoveryCommands() {
     },
     {
       id: "discovery.select-assumed",
-      label: "Select the assumed problems",
+      label: "Select the assumed cards",
       category: "discovery",
       keywords: ["evidence", "assumed", "unproven"],
-      enabled: () => (allCards(s().doc).some((c) => isAssumed(c.card)) ? true : "No assumed problems"),
+      enabled: () => (allCards(s().doc).some((c) => isAssumed(c.card)) ? true : "No assumed cards"),
       run: () => {
         const ids = allCards(s().doc)
           .filter((c) => isAssumed(c.card) && s().doc.nodes[c.id].visible)
           .map((c) => c.id);
         s().select(ids);
-        feedback(`${ids.length} assumed ${ids.length === 1 ? "problem" : "problems"}: attach evidence to make them solid`, { id: "discovery.assumed" });
+        feedback(`${ids.length} assumed ${ids.length === 1 ? "card" : "cards"}: attach evidence to make them solid`, { id: "discovery.assumed" });
       },
     },
     {

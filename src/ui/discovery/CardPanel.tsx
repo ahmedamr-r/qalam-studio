@@ -14,7 +14,7 @@ import { runCommand } from "@/commands/registry";
 import { cardOf, kindsFor, setKindIn, setStage, setTargetIn, updateCardIn } from "@/discovery/ops";
 import { ASSUMPTION_CATEGORIES, ASSUMPTION_HINT, ASSUMPTION_LABEL, KIND_LABEL, STAGES, SUB_OUTCOME_LABEL } from "@/discovery/kinds";
 import { kindLabel } from "@/discovery/tree";
-import { evidenceRows, evidenceSummary, isAIIdea, isAssumed } from "@/discovery/evidence";
+import { CAME_WORDS, evidenceRows, evidenceSummary, isAIIdea, isAssumed } from "@/discovery/evidence";
 import { feedback } from "@/commands/feedback";
 import type { AssumptionCategory, OstCard, OstEvidence, OstMetric, OstStage } from "@/discovery/types";
 import { parseWorkUrl, workKey } from "@/connectors/work";
@@ -109,8 +109,8 @@ function OneCard({ id, card }: { id: string; card: OstCard }) {
               }}
             />
           </Field>
-          {assumed && <Hint>Qalam AI drafted this problem and nothing backs it yet. Add a quote, a source or a note to make it solid.</Hint>}
-          {isAIIdea(card) && (
+          {assumed && <Hint>{card.came ? `Qalam AI proposed this from ${card.came === "idea" ? "its own idea" : CAME_WORDS[card.came]}, and nothing from customers or your numbers backs it yet. Add a quote, a source or a note to make it solid.` : "Qalam AI drafted this problem and nothing backs it yet. Add a quote, a source or a note to make it solid."}</Hint>}
+          {!assumed && isAIIdea(card) && (
             <Hint tone="info">
               An idea of Qalam AI&apos;s, not yours. Compare it with other ways to address the need before you build it.
             </Hint>
@@ -337,9 +337,9 @@ function WorkSection({ id, card }: { id: string; card: OstCard }) {
   );
 }
 
-const SOURCE: Record<OstEvidence["kind"], string> = { answer: "From your answers", note: "Your note", quote: "Quote", dump: "From your brain dump" };
+const SOURCE: Record<OstEvidence["kind"], string> = { answer: "From your answers", note: "Your note", quote: "Quote", dump: "From your brain dump", read: "Read online" };
 /** Whose words a row is when no one is named: the team's own, by kind. */
-const SHORT: Record<OstEvidence["kind"], string> = { answer: "Your answer", note: "Your note", quote: "Quote", dump: "Brain dump" };
+const SHORT: Record<OstEvidence["kind"], string> = { answer: "Your answer", note: "Your note", quote: "Quote", dump: "Brain dump", read: "Read online" };
 /** A source's title up to its first comma or bracket ("Support tickets, week of Oct 6": "Support tickets"), for a row's narrow label. */
 const shortTitle = (title: string) => title.split(/\s*[,(]/)[0].trim() || title;
 const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
@@ -401,7 +401,7 @@ function EvidenceSection({ id, card }: { id: string; card: OstCard }) {
 function EvidenceRow({ id, e }: { id: string; e: OstEvidence }) {
   const [open, setOpen] = useState(false);
   const against = e.stance === "against";
-  const who = e.kind === "quote" ? (e.speaker ?? (e.sourceTitle ? shortTitle(e.sourceTitle) : SHORT.quote)) : e.answerId?.startsWith("ask:") ? SHORT.answer : SHORT[e.kind];
+  const who = e.kind === "quote" ? (e.speaker ?? (e.sourceTitle ? shortTitle(e.sourceTitle) : SHORT.quote)) : e.kind === "read" && e.sourceTitle ? shortTitle(e.sourceTitle) : e.answerId?.startsWith("ask:") ? SHORT.answer : SHORT[e.kind];
   const Mark = e.kind === "quote" ? Quote : PenLine;
   return (
     <li className="flex flex-col">
@@ -421,7 +421,17 @@ function EvidenceRow({ id, e }: { id: string; e: OstEvidence }) {
             {e.text}
           </blockquote>
           <figcaption className="flex items-start gap-[8px] text-micro text-fg-subtle">
-            <span className="min-w-0 flex-1">{fromSource(e) && e.sourceId ? <SourceCite e={e} /> : SOURCE[e.kind]}</span>
+            <span className="min-w-0 flex-1">
+              {fromSource(e) && e.sourceId ? (
+                <SourceCite e={e} />
+              ) : e.url && /^https?:\/\//i.test(e.url) ? (
+                <a href={e.url} target="_blank" rel="noreferrer" className="underline decoration-fg/20 underline-offset-2 hover:text-fg">
+                  {e.sourceTitle ?? SOURCE[e.kind]}
+                </a>
+              ) : (
+                SOURCE[e.kind]
+              )}
+            </span>
             <button type="button" className="shrink-0 hover:text-danger" onClick={() => edit(id, (c) => void (c.evidence = c.evidence.filter((x) => x.id !== e.id)))}>
               Remove
             </button>

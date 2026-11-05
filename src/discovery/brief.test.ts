@@ -18,17 +18,17 @@ describe("what a brief keeps", () => {
     expect(f.acceptance).toEqual(["A couple can save a card when they book"]);
   });
 
-  it("drops a feature resting on nothing, on an id it wasn't sent, or with nothing to check", () => {
+  it("keeps a feature resting on nothing, with no quotes to show, and drops one with nothing to check", () => {
     const why: string[] = [];
     const kept = sanitizeBrief({ features: [feature({ quotes: [] }), feature({ quotes: ["q99"] }), feature({ acceptance: [] })] }, sent(), (w) => why.push(w));
-    expect(kept).toEqual([]);
-    expect(why).toEqual(["it rests on nothing anyone said", "it rests on nothing anyone said", "nothing to check it by"]);
+    expect(kept.map((f) => f.quotes)).toEqual([[], []]);
+    expect(why).toEqual(["nothing to check it by"]);
   });
 
-  it("holds why it's worth building to what was sent, numbers and quoted words alike", () => {
-    expect(sanitizeBrief({ features: [feature({ why: "It saves photographers 40% of what they lose." })] }, sent())).toEqual([]);
-    expect(sanitizeBrief({ features: [feature({ why: "“Couples never pay on time” is what people say." })] }, sent())).toEqual([]);
-    expect(sanitizeBrief({ features: [feature({ why: "A balance can go unpaid for 3 months." })] }, sent())).toHaveLength(1);
+  it("holds why it's worth building to what was sent: what wasn't comes out, and the feature stays", () => {
+    expect(sanitizeBrief({ features: [feature({ why: "It saves photographers 40% of what they lose." })] }, sent())[0].why).toBe("");
+    expect(sanitizeBrief({ features: [feature({ why: "“Couples never pay on time” is what people say." })] }, sent())[0].why).toBe("");
+    expect(sanitizeBrief({ features: [feature({ why: "A balance can go unpaid for 3 months." })] }, sent())[0].why).toBe("A balance can go unpaid for 3 months.");
   });
 
   it("takes a feature's own numbers as a plan, and words nobody said as wording it proposes", () => {

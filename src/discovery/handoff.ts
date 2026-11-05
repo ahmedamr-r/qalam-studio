@@ -39,7 +39,7 @@ export function buildHandoff(doc: Doc, cardId: string, from: { projectId: string
     .filter(({ e }) => e.stance !== "against")
     .filter(({ e }, i, a) => a.findIndex((x) => x.e.text === e.text) === i)
     .slice(0, 6)
-    .map(({ e, about }) => ({ text: e.text, source: e.kind === "quote" && e.sourceTitle ? `${e.sourceTitle}${e.speaker ? `, ${e.speaker}` : ""}` : SOURCE[e.kind], about }));
+    .map(({ e, about }) => ({ text: e.text, source: e.kind === "quote" && e.sourceTitle ? `${e.sourceTitle}${e.speaker ? `, ${e.speaker}` : ""}` : e.kind === "read" ? (e.sourceTitle ?? "read online") : SOURCE[e.kind], about }));
   const assumptions = [...(sol.assumptions ?? [])]
     .sort((a, b) => (b.importance ?? 2) * (4 - (b.evidence ?? 1)) - (a.importance ?? 2) * (4 - (a.evidence ?? 1)))
     .slice(0, 6)
