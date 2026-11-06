@@ -23,7 +23,9 @@ export type DecisionKind =
   /** Qalam AI's proposals were accepted. */
   | "accept"
   /** Qalam AI's proposals were discarded. */
-  | "discard";
+  | "discard"
+  /** A choice settled while Qalam AI asked before proposing (src/asking/): hard to undo, surprising without its context, made through a real trade-off. `detail.instead` says what it was instead of. */
+  | "choice";
 
 export interface KnewThen {
   /** The card's evidence, as its chip says it ("3 quotes · 1 against", "Assumed · needs evidence"). */
@@ -68,7 +70,7 @@ export interface Decision {
   undone?: boolean;
 }
 
-export const DECISION_KINDS: readonly DecisionKind[] = ["target", "stage", "drop", "merge", "move", "metric", "accept", "discard"];
+export const DECISION_KINDS: readonly DecisionKind[] = ["target", "stage", "drop", "merge", "move", "metric", "accept", "discard", "choice"];
 
 /** The month file a decision goes in (decisions/<YYYY-MM>.md), in this computer's time. */
 export function monthOf(at: number): string {

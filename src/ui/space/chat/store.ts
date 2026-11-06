@@ -2,7 +2,7 @@ import { nanoid } from "nanoid";
 import { startReview, useReview } from "../../discovery/review";
 import { planAhead, planLook, planPropose, planRoute, type PlanAsk } from "@/org/plan";
 import { planOutline, planProposals } from "@/space/plan";
-import { answersOf, currentRound, decideTerm, emptyAsking, foundOf, fromBuckets, fromPlanRounds, loaded, looksOf, startLookup, theirWords } from "@/asking/engine";
+import { answersOf, currentRound, decideChoice, decideTerm, emptyAsking, foundOf, fromBuckets, fromPlanRounds, loaded, looksOf, startLookup, theirWords } from "@/asking/engine";
 import { OPEN_ID, answered, answersRecord, openQuestion, type AskFor, type CardAnswers } from "@/discovery/questions";
 import { DUMP_ROLES } from "@/discovery/dump";
 import { sharedWords } from "@/discovery/near";
@@ -13,6 +13,7 @@ import { lookOnline } from "@/org/online";
 import { boardOfCard, productOfCard } from "@/space/view";
 import { addSourceRecord, updateSource } from "../../discovery/sources";
 import { keptAnswers, useAskingIn } from "../../discovery/ask";
+import { recordChoice } from "../../decisions/recorder";
 import { attachQuoteRefs } from "../../discovery/drop";
 import { draftSolutionsFor } from "../../discovery/solutions";
 import { breakDownFor, draftProblemsFor } from "../../discovery/goal-steps";
@@ -1245,6 +1246,18 @@ export async function decideDraftTerm(id: string, term: string, keep: boolean) {
   draftHost(id).set((s) => decideTerm(s, term, keep));
   if (keep && !(await editTerm({ op: "add", term: t.term, means: t.means, avoid: t.avoid, by: "qalam" }))) draftHost(id).set((s) => ({ ...s, terms: s.terms.map((x) => (x.id === term ? { ...x, state: undefined } : x)) }));
 }
+
+/** A decision an interview offered (lab "decisions"): kept with the decisions, on its card's board else the chat's, or left out. */
+function decideChoiceIn(h: AskingHost, choice: string, keep: boolean, card: string | null) {
+  const c = h.get()?.choices.find((x) => x.id === choice);
+  if (!c || c.state) return;
+  h.set((s) => decideChoice(s, choice, keep));
+  if (keep) recordChoice({ choice: c.choice, why: c.why, instead: c.instead, card });
+}
+export const decidePlanChoice = (id: string, choice: string, keep: boolean) => decideChoiceIn(planHost(id), choice, keep, null);
+export const decideDraftChoice = (id: string, choice: string, keep: boolean) => decideChoiceIn(draftHost(id), choice, keep, draftJob(id)?.card ?? null);
+export const decideBriefChoice = (id: string, choice: string, keep: boolean) => decideChoiceIn(briefHost(id), choice, keep, briefCard(id));
+export const decideScanChoice = (id: string, choice: string, keep: boolean) => decideChoiceIn(scanPlanHost(id), choice, keep, null);
 
 /** Its proposals brought back to the canvas (a reload, or another review that was in the way). */
 export function showCanvasPlan(id: string) {

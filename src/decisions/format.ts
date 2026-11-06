@@ -28,6 +28,8 @@ export function decisionToMarkdown(d: Decision): string {
   const lines: string[] = [`## ${dayOf(d.at)} · ${oneLine(d.what)}${d.undone ? " (undone)" : ""} · ${oneLine(d.boardName)}`, `<!-- ${MARK} ${json} -->`, ""];
   if (d.by === "qalam") lines.push("*Proposed by Qalam AI, accepted by you.*", "");
   lines.push(`**Why:** ${why?.trim() ? oneLine(why) : "—"}`);
+  // A choice settled while Qalam AI asked: what it was chosen instead of.
+  if (d.kind === "choice" && typeof d.detail?.instead === "string" && d.detail.instead.trim()) lines.push("", `**Instead of:** ${oneLine(d.detail.instead)}`);
   const k = d.knew;
   if (k) {
     const facts = [

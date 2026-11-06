@@ -28,6 +28,7 @@ import { QalamAIGlyph } from "../../brand/ai-glyph";
 import { SiteIcon, SiteStack } from "../../brand/SiteIcon";
 import { confirmDump, offDump, placeDump, readAnyway, retryDump, sessionOf, useDump } from "../../discovery/dump";
 import { fromBuckets } from "@/asking/engine";
+import { lab } from "@/lab";
 import type { AskingState } from "@/asking/types";
 import { ACCEPT } from "../../discovery/ingest";
 import { acceptAll, acceptProposals, discardAll, discardProposals, frameReview, startReview, useReview } from "../../discovery/review";
@@ -40,7 +41,7 @@ import { useWords } from "../../frame/store";
 import { show } from "../links";
 import { FoundGoalRow } from "../../chat/FoundGoalRow";
 import { moreLine } from "@/onboarding/start";
-import { answerWhose, goalForTopProblem, anotherFile, briefAgain, briefStart, changeDocBasis, chooseDraft, decideDocGoal, dropTurn, leaveFile, leaveFit, lookPastFits, openProblems, pickAudience, placeFirstBuild, placeStatement, planAgain, planFirst, planOf, planStart, retake, retryGoalFor, scanAgain, scanHere, scanInNewProject, scanIsMine, scanOtherWay, setPlanGoal, settleNumber, steerOff, stopTurn, takeAsBasis, takeFit, takeGoalNumber, takeIdea, turnOf, useCanvasChat, retryCanvasPlan, runAs, showCanvasPlan, stopAskingPlan, confirmCanvasPlan, offCanvasPlan, decidePlanTerm, confirmDraft, decideDraftTerm, draftGo, draftNow, offDraft, retryDraft, confirmBrief, offBrief, decideBriefTerm, confirmScan, offScan, decideScanTerm } from "./store";
+import { answerWhose, goalForTopProblem, anotherFile, briefAgain, briefStart, changeDocBasis, chooseDraft, decideDocGoal, dropTurn, leaveFile, leaveFit, lookPastFits, openProblems, pickAudience, placeFirstBuild, placeStatement, planAgain, planFirst, planOf, planStart, retake, retryGoalFor, scanAgain, scanHere, scanInNewProject, scanIsMine, scanOtherWay, setPlanGoal, settleNumber, steerOff, stopTurn, takeAsBasis, takeFit, takeGoalNumber, takeIdea, turnOf, useCanvasChat, retryCanvasPlan, runAs, showCanvasPlan, stopAskingPlan, confirmCanvasPlan, offCanvasPlan, decidePlanTerm, confirmDraft, decideDraftTerm, draftGo, draftNow, offDraft, retryDraft, confirmBrief, offBrief, decideBriefTerm, confirmScan, offScan, decideScanTerm, decidePlanChoice, decideDraftChoice, decideBriefChoice, decideScanChoice } from "./store";
 import { AnsweredRound, FoundInProject, SettledCard } from "../../asking/AskRound";
 import { titleFrom } from "@/space/route";
 import { otherReading, projectName } from "@/scan/input";
@@ -601,7 +602,7 @@ function DraftSettledPart({ data }: { data: PartData }) {
   const id = String(data.turn);
   const j = useTurn(id)?.job;
   if (j?.kind !== "draft") return null;
-  return <SettledCard state={j.asking} go={draftGo(j.step)} onGo={() => confirmDraft(id)} onOff={() => offDraft(id)} onTerm={(t, keep) => void decideDraftTerm(id, t, keep)} />;
+  return <SettledCard state={j.asking} go={draftGo(j.step)} onGo={() => confirmDraft(id)} onOff={() => offDraft(id)} onTerm={(t, keep) => void decideDraftTerm(id, t, keep)} {...(lab("decisions") ? { onChoice: (c: string, keep: boolean) => decideDraftChoice(id, c, keep) } : {})} />;
 }
 
 function DraftRetryPart({ data }: { data: PartData }) {
@@ -642,7 +643,7 @@ function AskSettledPart({ data }: { data: PartData }) {
   const id = String(data.turn);
   const state = usePlanAsking(id);
   if (!state) return null;
-  return <SettledCard state={state} go="Propose" onGo={() => confirmCanvasPlan(id)} onOff={() => offCanvasPlan(id)} onTerm={(t, keep) => void decidePlanTerm(id, t, keep)} />;
+  return <SettledCard state={state} go="Propose" onGo={() => confirmCanvasPlan(id)} onOff={() => offCanvasPlan(id)} onTerm={(t, keep) => void decidePlanTerm(id, t, keep)} {...(lab("decisions") ? { onChoice: (c: string, keep: boolean) => decidePlanChoice(id, c, keep) } : {})} />;
 }
 
 /** What a plan proposes: in a line, where to start, what it doubts, and what to do with it. Open on the canvas, or there to bring back. */
@@ -1742,7 +1743,7 @@ function BriefStep({ id, brief, shape = "build" }: { id: string; brief: BriefSta
     return (
       <div className="flex flex-col gap-[8px]">
         {before}
-        <SettledCard state={s} go={`Write the ${word}`} onGo={() => confirmBrief(id)} onOff={() => offBrief(id)} onTerm={(t, keep) => void decideBriefTerm(id, t, keep)} />
+        <SettledCard state={s} go={`Write the ${word}`} onGo={() => confirmBrief(id)} onOff={() => offBrief(id)} onTerm={(t, keep) => void decideBriefTerm(id, t, keep)} {...(lab("decisions") ? { onChoice: (c: string, keep: boolean) => decideBriefChoice(id, c, keep) } : {})} />
       </div>
     );
   if (brief.step === "writing")
@@ -1824,7 +1825,7 @@ function ScanPlanPart({ data }: { data: PartData }) {
       )}
       {p.step === "questioning" && <Progress label={live?.steps.at(-1) ?? "Working out what to ask"} started={live?.started ?? t.at} tokens={0} note="Then who it's for." />}
       {p.step === "asking" && <p className="text-body text-fg">Answer what you can, or take my picks. Skip any you can't answer.</p>}
-      {p.step === "settled" && p.asking && <SettledCard state={p.asking} go="Work out who it's for" onGo={() => confirmScan(t.id)} onOff={() => offScan(t.id)} onTerm={(term, keep) => void decideScanTerm(t.id, term, keep)} />}
+      {p.step === "settled" && p.asking && <SettledCard state={p.asking} go="Work out who it's for" onGo={() => confirmScan(t.id)} onOff={() => offScan(t.id)} onTerm={(term, keep) => void decideScanTerm(t.id, term, keep)} {...(lab("decisions") ? { onChoice: (c: string, keep: boolean) => decideScanChoice(t.id, c, keep) } : {})} />}
       {p.step === "reading" && <Progress label="Reading who these people are" started={live?.started ?? t.at} tokens={0} note="This takes under a minute." />}
       {p.step === "audiences" && <AudiencesStep id={t.id} list={p.audiences ?? []} />}
       {p.step === "goal" && p.audience && p.goal && <GoalStep id={t.id} name={p.audience.name} goal={p.goal} />}

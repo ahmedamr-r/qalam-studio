@@ -195,3 +195,13 @@ describe("the decision log's Markdown", () => {
     expect(decisionsFromMarkdown(broken)).toEqual([]);
   });
 });
+
+describe("a choice settled while Qalam AI asked", () => {
+  it("is written with what it was instead of, and reads back as it was", () => {
+    const d: Decision = { id: "c1", at: Date.UTC(2026, 10, 6, 12), kind: "choice", board: "chat", boardName: "The chat", product: null, card: null, cardTitle: "", what: "Parents first, offices later", detail: { instead: "Both at once" }, by: "you", big: false, why: "Families reorder every week" };
+    const md = decisionToMarkdown(d);
+    expect(md).toContain("**Why:** Families reorder every week");
+    expect(md).toContain("**Instead of:** Both at once");
+    expect(decisionsFromMarkdown(appendEntries(null, "2026-11", [d]))).toEqual([d]);
+  });
+});

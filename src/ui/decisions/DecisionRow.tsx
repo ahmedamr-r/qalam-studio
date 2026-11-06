@@ -42,6 +42,12 @@ export default function DecisionRow({ d, board }: { d: Decision; board?: { name:
           {facts && <span className="truncate">{facts}</span>}
         </p>
       )}
+      {d.kind === "choice" && typeof d.detail?.instead === "string" && d.detail.instead && (
+        <p className="text-caption text-fg-muted" dir="auto">
+          <span className="text-fg-subtle">Instead of: </span>
+          {d.detail.instead}
+        </p>
+      )}
       {editing ? (
         <WhyEditor d={d} onDone={() => setEditing(false)} />
       ) : d.why ? (

@@ -249,6 +249,18 @@ export function recordAccepted(chosen: Proposal[], from: string, apply: () => st
   }
 }
 
+/**
+ * A choice settled while Qalam AI asked before proposing (src/asking/), kept with the decisions when
+ * the person says so: what was chosen, why in their words, and what it was instead of. Its board is
+ * its card's, else the chat's.
+ */
+export function recordChoice(c: { choice: string; why: string; instead: string; card?: string | null }) {
+  const at = c.card ? boardContext()?.boardOf?.(c.card) : null;
+  const title = c.card ? (cardOf(studio().doc, c.card)?.title ?? "") : "";
+  const d: Decision = { id: nanoid(10), at: Date.now(), kind: "choice", ...(at ?? { board: "chat", boardName: "The chat", product: null }), card: at && c.card ? c.card : null, cardTitle: title.slice(0, 200), what: c.choice.slice(0, 300), detail: { instead: c.instead.slice(0, 300) }, by: "you", big: false, why: c.why.slice(0, 500) };
+  send(() => orgFetch("/decisions", { method: "POST", json: { decisions: [d] } }));
+}
+
 /** Discarding Qalam AI's proposals is a decision too: what it proposed, and that you left it. */
 export function recordDiscarded(gone: Proposal[], from: string) {
   if (!gone.length) return;
