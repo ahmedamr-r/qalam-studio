@@ -5,7 +5,8 @@ import { addCardIn, makeCardNode, newCard } from "@/discovery/ops";
 import { sameTopic } from "@/hub/topics";
 import { useSpaceView } from "@/space/view";
 import { glideToLayer, onCanvasReady } from "../discovery/canvas";
-import { findWith, goalForProblem, scanFrom, sendToChat } from "./chat/store";
+import { findWith, goalForProblem, scanFrom, sendToChat, startFrom } from "./chat/store";
+import { takeStart } from "@/org/start";
 import { composeIn } from "./chat/compose";
 import { takeWords } from "./handoff";
 import { currentSpace } from "../frame/useSpace";
@@ -49,15 +50,19 @@ export function consumeChatParams() {
   const p = u.searchParams;
   const find = p.get("find");
   const scan = p.get("scan");
-  if (!find && !scan) return;
+  const start = p.get("start");
+  if (!find && !scan && !start) return;
   p.delete("find");
   p.delete("scan");
+  p.delete("start");
   history.replaceState(history.state, "", `${u.pathname}${p.size ? `?${p}` : ""}${u.hash}`);
   if (find === "goal" || find === "problem") void findWith(find, currentSpace());
   if (scan === "1") {
     const text = takeWords();
     if (text) scanFrom(text, currentSpace());
   }
+  // The start page's box: what it handed over, taken once (a reload finds nothing there).
+  if (start === "1") void takeStart().then((h) => h && startFrom(h, currentSpace()), () => {});
 }
 
 export async function consumeHomeParams() {

@@ -7,7 +7,8 @@ import { orgFetch, orgPath } from "@/org/client";
 
 export const ASSET_PREFIX = "asset:";
 
-async function hash(buf: ArrayBuffer): Promise<string> {
+/** An asset's name: the first 12 bytes of its SHA-256, in hex. */
+export async function assetHash(buf: ArrayBuffer): Promise<string> {
   const d = new Uint8Array(await crypto.subtle.digest("SHA-256", buf));
   return [...d.slice(0, 12)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
@@ -20,12 +21,21 @@ const kept = new Set<string>();
 /** Store a blob (deduplicated by content) and return its "asset:" reference. */
 export async function putAsset(blob: Blob): Promise<string> {
   const buf = await blob.arrayBuffer();
-  const key = await hash(buf);
+  const key = await assetHash(buf);
   if (!kept.has(key)) {
     await orgFetch(`/assets/${key}`, { method: "PUT", body: buf, headers: { "content-type": blob.type || "application/octet-stream" } });
     kept.add(key);
   }
   return ASSET_PREFIX + key;
+}
+
+/** Kept in a project named by its id (the start page's box, before this window has one): its hash. */
+export async function putAssetIn(org: string, blob: Blob, type = blob.type): Promise<string> {
+  const buf = await blob.arrayBuffer();
+  const key = await assetHash(buf);
+  const r = await fetch(`/api/org/${encodeURIComponent(org)}/assets/${key}`, { method: "PUT", body: buf, headers: { "content-type": type || "application/octet-stream" } });
+  if (!r.ok) throw new Error(((await r.json().catch(() => ({}))) as { message?: string }).message ?? `Couldn't keep the picture (${r.status}).`);
+  return key;
 }
 
 /** The address an image is served from (immutable: the browser caches it). */

@@ -52,7 +52,51 @@ async function pdfInCore(bytes: ArrayBuffer, o: IngestOpts): Promise<Awaited<Ret
   }
 }
 
+/** The core's NDJSON answer: its steps heard, its result returned, its error thrown in words. */
+async function streamedIngest(res: Response, o: IngestOpts): Promise<Ingested> {
+  if (!res.ok && !res.headers.get("content-type")?.includes("ndjson")) {
+    const j = (await res.json().catch(() => ({}))) as { message?: string };
+    throw new IngestError(j.message ?? `It couldn't be read (${res.status}).`);
+  }
+  if (!res.body) throw new IngestError("Nothing came back for it.");
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) throw new IngestError("It stopped before it was read.");
+    buf += dec.decode(value, { stream: true });
+    for (let nl = buf.indexOf("\n"); nl >= 0; nl = buf.indexOf("\n")) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (!line) continue;
+      const msg = JSON.parse(line) as { type: string; label?: string; data?: unknown; message?: string };
+      if (msg.type === "activity" && msg.label) o.onStep?.(msg.label);
+      else if (msg.type === "result") return msg.data as Ingested;
+      else if (msg.type === "error") throw new IngestError(msg.message ?? "It couldn't be read.");
+    }
+  }
+}
+
+/**
+ * A picture, read in the core: the words printed in it, checked on this Mac, and what Qalam AI
+ * understands it to be (server/image.ts). It needs a project to keep the picture in.
+ */
+async function imageInCore(bytes: ArrayBuffer, type: string, name: string, o: IngestOpts): Promise<Ingested> {
+  const { orgPath } = await import("@/org/client");
+  const res = await fetch(await orgPath("/image"), { method: "POST", headers: { "content-type": type || "application/octet-stream", "x-qalam-title": encodeURIComponent(name) }, body: bytes, signal: o.signal });
+  return streamedIngest(res, o);
+}
+
+/** A picture already kept in the project (the start page's box held it), read as one dropped here is. */
+export async function readHeldImage(asset: string, title: string, o: IngestOpts = {}): Promise<Ingested> {
+  const { orgPath } = await import("@/org/client");
+  const res = await fetch(await orgPath("/image"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ asset, title }), signal: o.signal });
+  return streamedIngest(res, o);
+}
+
 const browser = (o: IngestOpts = {}): Readers => ({
+  image: (bytes, type, name) => imageInCore(bytes, type, name, o),
   pdf: async (bytes) => (lab("pictures") && (await pdfInCore(bytes, o))) || (await import("./pdf")).readPdf(bytes),
   docx: async (bytes) => (await import("./docx")).readDocx(bytes),
   html: async (text) => (await import("./html")).htmlToText(text),

@@ -45,13 +45,27 @@ export class CantReachFiles extends Error {
 
 /** Work in this organization (from the address); null: the one opened last. */
 export function chooseOrg(id: string | null) {
+  orgless = false;
   if (chosen === id && org) return;
   chosen = id;
   org = null;
 }
 
+/** This window works in no organization (the start page's box, before Send). */
+let orgless = false;
+
+/**
+ * Nothing here belongs to an organization yet: the start page, which makes its own. Without this,
+ * a window opened to start a new one would read and write the one opened last.
+ */
+export function noOrgHere() {
+  orgless = true;
+  org = null;
+}
+
 /** The org this window works in: the one in its address, or the one opened last (none the first time: NoOrgYet). */
 export function currentOrg(): Promise<OrgRef> {
+  if (orgless) return Promise.reject(new NoOrgYet());
   org ??= fetch("/api/orgs")
     .then(async (r) => {
       if (!r.ok) throw new CantReachFiles(r.status);

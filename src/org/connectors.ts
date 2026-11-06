@@ -6,7 +6,7 @@ import type { InsightNumbers } from "@/connectors/numbers";
 import type { WorkStatus } from "@/connectors/work";
 import type { Ingested } from "@/discovery/ingest/core";
 import type { OstWork } from "@/discovery/types";
-import { orgPath } from "./client";
+import { NoOrgYet, orgPath } from "./client";
 
 /*
  * Connectors in the window (server/connectors): their state on this computer, connecting one
@@ -96,6 +96,16 @@ async function streamed<T>(res: Response, on: (line: { type: string; label?: str
 
 type View = { checkedAt: number | null; connectors: ConnectorState[] };
 
+/** A connector's picker address: the organization's, or its own where there's none yet (the start page). */
+async function pickerPath(id: string, verb: "browse" | "look" | "read"): Promise<string> {
+  try {
+    return await orgPath(`/connectors/${id}/${verb}`);
+  } catch (e) {
+    if (e instanceof NoOrgYet) return `/api/connectors/${id}/${verb === "read" ? "items" : verb}`;
+    throw e;
+  }
+}
+
 export const connectorsDb = {
   list: () => fetch("/api/connectors").then((r) => json<View>(r)),
   /** Ask Claude Code which it has (it checks each, about twenty seconds). */
@@ -110,15 +120,15 @@ export const connectorsDb = {
   keepApp: (id: string, clientId: string, clientSecret?: string) => send(`/api/connectors/${id}/app`, "PUT", { clientId, ...(clientSecret ? { clientSecret } : {}) }).then((r) => json<View>(r)),
   search: async (id: string, query: string) => json<{ hits: Hit[] }>(await send(await orgPath(`/connectors/${id}/search`), "POST", { query })),
   /** What was opened lately (no place), a folder's items (`folder`, null: the top) or a search (`query`). Through Claude Code, a run each; kept five minutes. */
-  browse: async (id: string, at: { query?: string; folder?: string | null }, force = false) => json<{ hits: Hit[] }>(await send(await orgPath(`/connectors/${id}/browse`), "POST", { ...at, ...(force ? { force } : {}) })),
+  browse: async (id: string, at: { query?: string; folder?: string | null }, force = false) => json<{ hits: Hit[] }>(await send(await pickerPath(id, "browse"), "POST", { ...at, ...(force ? { force } : {}) })),
   /** Qalam AI looks inside it: searches of its own, then picks by titles and snippets. Nothing is read. */
   look: async (id: string, about: string, onActivity: (label: string) => void, signal?: AbortSignal) => {
-    const res = await fetch(await orgPath(`/connectors/${id}/look`), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ about }), signal });
+    const res = await fetch(await pickerPath(id, "look"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ about }), signal });
     return streamed<{ hits: LookedHit[]; searched: string[] }>(res, (m) => m.type === "activity" && m.label && onActivity(m.label));
   },
   /** The picked items' words, not taken in; `onActivity` hears how it's going. */
   read: async (id: string, hits: Hit[], onActivity?: (label: string) => void, signal?: AbortSignal): Promise<ReadItem[]> => {
-    const res = await fetch(await orgPath(`/connectors/${id}/read`), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ hits }), signal });
+    const res = await fetch(await pickerPath(id, "read"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ hits }), signal });
     return (await streamed<{ items: ReadItem[] }>(res, (m) => m.type === "activity" && m.label && onActivity?.(m.label))).items;
   },
   /** Takes each picked item in; `onActivity` hears how it's going. */

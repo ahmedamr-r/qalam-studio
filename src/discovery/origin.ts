@@ -23,7 +23,7 @@ export function markOf(source: Pick<SourceRecord, "kind" | "origin" | "dump">, p
   return connectorOfOrigin(source.origin) ?? source.kind;
 }
 
-const TYPE_WORD: Record<string, string> = { pdf: "PDF", doc: "Doc", docx: "Word", sheet: "Sheet", slides: "Slides", text: "Text", markdown: "Markdown", paste: "Text" };
+const TYPE_WORD: Record<string, string> = { pdf: "PDF", doc: "Doc", docx: "Word", sheet: "Sheet", slides: "Slides", text: "Text", markdown: "Markdown", paste: "Text", image: "Picture" };
 
 /** A part of a dump in words: "Your words", "Web page", "Google Drive · PDF · 12 pages". */
 export function partLine(doc: Pick<SetupDoc, "from" | "type" | "pages"> | undefined): string {

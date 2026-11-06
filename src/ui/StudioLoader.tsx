@@ -16,7 +16,6 @@ const SystemProject = lazy(() => import("./SystemProject"));
 const SeenPage = lazy(() => import("./seen/SeenPage"));
 const SeenReading = lazy(() => import("./seen/SeenReading"));
 const WelcomePage = lazy(() => import("./welcome/WelcomePage"));
-const Reading = lazy(() => import("./start/Reading"));
 const CapturePage = lazy(() => import("./capture/CapturePage"));
 const OrgsPage = lazy(() => import("./org/OrgsPage"));
 const ConnectionsPage = lazy(() => import("./connections/ConnectionsPage"));
@@ -67,11 +66,6 @@ export function PlaceLoader({ place, product = null }: { place: PagePlace; produ
 /** The welcome: the first run, or a new organization. */
 export function WelcomeLoader() {
   return <WelcomePage />;
-}
-
-/** The first run once there's a project: its questions, then the researcher reading. */
-export function StartLoader() {
-  return <Reading />;
 }
 
 /** Quick capture, into the inbox (the menu bar's capture window). */

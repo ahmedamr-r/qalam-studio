@@ -17,7 +17,7 @@ import type { CardAnswers } from "./questions";
  */
 
 /** `post`: what people said in public (a thread, reviews): people online, not the organization's own customers. */
-export type SourceKind = "pdf" | "docx" | "markdown" | "text" | "paste" | "url" | "connector" | "interview" | "dump" | "post";
+export type SourceKind = "pdf" | "docx" | "markdown" | "text" | "paste" | "url" | "connector" | "interview" | "dump" | "post" | "image";
 
 export const SOURCE_KIND_LABEL: Record<SourceKind, string> = {
   pdf: "PDF",
@@ -30,7 +30,36 @@ export const SOURCE_KIND_LABEL: Record<SourceKind, string> = {
   interview: "Interview",
   dump: "Brain dump",
   post: "People online",
+  image: "Picture",
 };
+
+/** What a picture shows, as Qalam AI reads it. */
+export const IMAGE_SHOWS = ["screen", "reviews", "chat", "chart", "table", "document", "photo", "other"] as const;
+export type ImageShows = (typeof IMAGE_SHOWS)[number];
+
+/**
+ * A picture kept as a source (server/image.ts). Its text is only the words printed in it, found on
+ * this Mac, which is all a quote can rest on; what it shows and the lines here are Qalam AI's
+ * reading of it, shown and heard as that, never something a card rests on.
+ */
+export interface SourceImage {
+  /** The picture, as the project's asset (its hash). */
+  asset: string;
+  type: string;
+  w?: number;
+  h?: number;
+  shows: ImageShows;
+  /** Qalam AI's reading: what's in it, a line each. */
+  reading: string[];
+  /** A product's name printed in it. */
+  product?: string;
+  /** Who said which line is Qalam AI's pairing of the printed words. */
+  paired?: true;
+  /** What wasn't read: no words could be checked here (`no-reader`), or Qalam AI couldn't look (`no-vision`, `failed`). */
+  unread?: ("no-reader" | "no-vision" | "failed")[];
+  /** What Qalam AI said that code couldn't find in the picture, and why it was left out. */
+  left?: { said: string; why: string }[];
+}
 
 /** What a point shows: about the customer (a pain, a need…), or `finding`: what a measurement, a study or a report states. */
 export const QUOTE_KINDS = ["pain", "need", "desire", "behavior", "idea", "finding"] as const;
@@ -139,6 +168,8 @@ export interface SourceRecord {
   blocks?: TextBlock[];
   /** A PDF's pictures: which were read into the text, what was left out of them, which weren't read. */
   pictures?: SourcePictures;
+  /** A picture: the picture itself, and Qalam AI's reading of it. */
+  image?: SourceImage;
   /** Only the start of a longer text was kept. */
   truncated?: boolean;
   /** Interviews: where each stretch of speech sits in `text` and when it was said, and who spoke. */

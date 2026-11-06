@@ -132,6 +132,7 @@ export function ChatComposer({
   attached,
   onFiles,
   sendEmpty,
+  variant = "dock",
 }: {
   placeholder: string;
   label: string;
@@ -150,8 +151,11 @@ export function ChatComposer({
   attached?: ReactNode;
   onFiles?: (files: File[]) => void;
   sendEmpty?: boolean;
+  /** "hero": the start page's one box, larger and on its own. */
+  variant?: "dock" | "hero";
 }) {
   const aui = useAui();
+  const hero = variant === "hero";
   const [over, setOver] = useState(false);
   const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
   const [problem, setProblem] = useState<string | null>(null);
@@ -164,7 +168,7 @@ export function ChatComposer({
   return (
     <div className="flex flex-col gap-[4px]">
       <ComposerPrimitive.Root
-        className={clsx(r.composer, over && "shadow-focus-field")}
+        className={clsx(hero ? r.composerHero : r.composer, over && "shadow-focus-field")}
         data-busy={running || undefined}
         onDragOver={(e) => {
           if (!onFiles || disabled || !hasFiles(e)) return;
@@ -194,7 +198,7 @@ export function ChatComposer({
         }}
       >
         {attached}
-        <div className={r.composerRow}>
+        <div className={hero ? r.composerHeroRow : r.composerRow}>
           {plus}
           <ComposerPrimitive.Input
             ref={input}
@@ -202,12 +206,19 @@ export function ChatComposer({
             placeholder={placeholder}
             disabled={disabled}
             submitMode={submit}
-            minRows={submit === "ctrlEnter" ? 3 : 1}
+            minRows={submit === "ctrlEnter" ? 3 : hero ? 2 : 1}
             maxRows={12}
             unstable_focusOnRunStart={false}
             cancelOnEscape={false}
             dir="auto"
-            className={r.composerLine}
+            className={clsx(r.composerLine, hero && "text-title leading-[22px]")}
+            onPaste={(e) => {
+              // A picture or a file pasted joins the box as a dropped one does; words paste as words.
+              const files = Array.from(e.clipboardData?.files ?? []);
+              if (!onFiles || disabled || !files.length) return;
+              e.preventDefault();
+              onFiles(files);
+            }}
             onKeyDown={(e) => {
               if (running && e.key === "Escape") {
                 e.preventDefault();
@@ -217,7 +228,7 @@ export function ChatComposer({
               onKeyDown?.(e, (t) => aui.composer.setText(t));
             }}
           />
-          <span className="flex h-[28px] shrink-0 items-center gap-[4px]">
+          <span className={clsx("flex shrink-0 items-center gap-[4px]", hero ? "h-[32px]" : "h-[28px]")}>
             {chip}
             {!disabled && !running && <MicButton size="md" field={input} onText={speechInto(input, (t) => aui.composer.setText(t))} />}
             {running ? (
@@ -225,8 +236,8 @@ export function ChatComposer({
                 Stop <Kbd keys={STOP} size="sm" onInverse />
               </button>
             ) : (
-              <button type="submit" disabled={disabled} aria-label="Send" title={`Send (${(submit === "enter" ? SEND : SEND_LONG).join("")})`} className={clsx(r.iconButtonBase, "size-[28px] bg-inverse text-fg-inverse hover:bg-inverse/90 hover:text-fg-inverse disabled:bg-hover")}>
-                <ArrowUp size={16} strokeWidth={2} />
+              <button type="submit" disabled={disabled} aria-label="Send" title={`Send (${(submit === "enter" ? SEND : SEND_LONG).join("")})`} className={clsx(r.iconButtonBase, hero ? "size-[32px] rounded-full" : "size-[28px]", "bg-inverse text-fg-inverse hover:bg-inverse/90 hover:text-fg-inverse disabled:bg-hover")}>
+                <ArrowUp size={hero ? 18 : 16} strokeWidth={2} />
               </button>
             )}
           </span>
@@ -235,6 +246,18 @@ export function ChatComposer({
       {problem && <p className="px-[4px] text-caption text-danger">{problem}</p>}
       {hint && <p className="-mt-[6px] truncate px-[4px] text-micro text-fg-subtle">{hint}</p>}
     </div>
+  );
+}
+
+const NO_MESSAGES: ChatMessage[] = [];
+
+/** The composer on its own, with no thread above it (the start page's box): an empty conversation to sit in. */
+export function LoneComposer(props: Parameters<typeof ChatComposer>[0]) {
+  const runtime = useExternalStoreRuntime({ messages: NO_MESSAGES, isRunning: false, convertMessage: toLike, onNew: async () => {} });
+  return (
+    <AssistantRuntimeProvider runtime={runtime}>
+      <ChatComposer {...props} />
+    </AssistantRuntimeProvider>
   );
 }
 

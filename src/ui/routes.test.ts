@@ -31,7 +31,8 @@ describe("routeOf", () => {
   it("reads what's left of the setup: its old address moves to the canvas", () => {
     expect(routeOf("/o/R02vmeVH/setup")).toEqual({ kind: "org", org: "R02vmeVH", moved: true });
     expect(routeOf("/o/R02vmeVH/setup/")).toEqual({ kind: "org", org: "R02vmeVH", moved: true });
-    expect(routeOf("/o/R02vmeVH/start")).toEqual({ kind: "start", org: "R02vmeVH" });
+    // The researcher's questions that were here are gone too: the start page goes straight to the canvas.
+    expect(routeOf("/o/R02vmeVH/start")).toEqual({ kind: "org", org: "R02vmeVH", moved: true });
     expect(routeOf("/start")).toEqual({ kind: "missing" });
     expect(routeOf("/setup")).toEqual({ kind: "missing" });
     expect(routeOf("/o/R02vmeVH/setup/x")).toEqual({ kind: "missing" });

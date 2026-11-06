@@ -172,20 +172,20 @@ describe("short statements and what came of them", () => {
   });
 
   it("lists the pages what customers said went into, and says when none took it", () => {
-    const took = (pages: number, quotes: number) => threadOf(withTurn(emptyChat(), turn("t", { kind: "take", state: "done", sources: ["a"], pages: Array.from({ length: pages }, (_, i) => ({ id: `p${i}`, title: `Page ${i}` })), quotes }, "")))[1].parts;
+    const took = (pages: number, quotes: number) => threadOf(withTurn(emptyChat(), turn("t", { kind: "take", state: "done", sources: ["a"], pages: Array.from({ length: pages }, (_, i) => ({ id: `p${i}`, title: `Page ${i}` })), quotes }, ""))).at(-1)!.parts;
     expect(took(2, 5)).toEqual([{ type: "text", text: "I kept 1 source. 5 quotes from customers went into these problems' pages:" }, { type: "data", name: "pages", data: { turn: "t" } }]);
     expect(took(0, 0)).toEqual([{ type: "text", text: "I kept 1 source, but found nothing customers said in it." }]);
     expect(running(withTurn(emptyChat(), turn("t", { kind: "take", state: "taking", sources: [], pages: [], quotes: 0 }, "")))?.id).toBe("t");
   });
 
   it("says what each document was read as, and what it went into", () => {
-    const reply = (j: Partial<Extract<ChatTurn["job"], { kind: "take" }>>) => threadOf(withTurn(emptyChat(), turn("t", { kind: "take", state: "done", sources: ["a"], pages: [], quotes: 1, docs: [{ source: "a", title: "Funnel", points: { measured: 1 } }], ...j }, "")))[1].parts;
+    const reply = (j: Partial<Extract<ChatTurn["job"], { kind: "take" }>>) => threadOf(withTurn(emptyChat(), turn("t", { kind: "take", state: "done", sources: ["a"], pages: [], quotes: 1, docs: [{ source: "a", title: "Funnel", points: { measured: 1 } }], ...j }, ""))).at(-1)!.parts;
     expect(reply({})).toEqual([{ type: "data", name: "taken", data: { turn: "t" } }]);
     expect(reply({ pages: [{ id: "p", title: "Leaving at payment" }] })).toEqual([{ type: "data", name: "taken", data: { turn: "t" } }, { type: "text", text: "It went into this problem's page:" }, { type: "data", name: "pages", data: { turn: "t" } }]);
   });
 
   it("says a doc read as their own thinking before its brain dump's reply", () => {
-    const parts = threadOf(withTurn(emptyChat(), turn("t", { kind: "dump", source: "s", asOwn: { title: "Strategy" } }, "")))[1].parts;
+    const parts = threadOf(withTurn(emptyChat(), turn("t", { kind: "dump", source: "s", asOwn: { title: "Strategy" } }, ""))).at(-1)!.parts;
     expect(parts[0]).toEqual({ type: "data", name: "asOwn", data: { turn: "t" } });
   });
 
@@ -259,5 +259,29 @@ describe("short statements and what came of them", () => {
     expect(running(c)).toBeFalsy();
     // It outlives a reload as it was.
     expect(chatOf({ v: 1, turns: c.turns }).turns[0].job).toEqual({ kind: "noEngine", mode: "ask" });
+  });
+});
+
+describe("the start page's turns", () => {
+  const turn = (id: string, said: string, job: ChatTurn["job"]): ChatTurn => ({ id, at: 1, said, job });
+
+  it("keeps a whose question, and shows no message of theirs for a turn with none", () => {
+    const c = chatOf({ v: 1, turns: [turn("s", "Basket", { kind: "scan", target: { kind: "product", name: "Basket" }, asked: 1 }), turn("w", "", { kind: "whose", ask: "product", name: "Basket", scan: "s" })] });
+    expect(c.turns.map((t) => t.job.kind)).toEqual(["scan", "whose"]);
+    const t = threadOf(c);
+    expect(t.map((m) => m.id)).toEqual(["s:you", "s:ai", "w:ai"]);
+    expect(t[2].parts).toEqual([{ type: "text", text: "Is Basket yours, or are you looking into it?" }, { type: "data", name: "whose", data: { turn: "w" } }]);
+  });
+
+  it("says what was answered, and asks who it's for when no product is named", () => {
+    const answered = threadOf(withTurn(emptyChat(), turn("w", "", { kind: "whose", ask: "product", name: "Basket", answer: "ours" })));
+    expect(answered[0].parts).toEqual([{ type: "text", text: "Then Basket's reviews count as your customers' words." }]);
+    const shape = threadOf(withTurn(emptyChat(), turn("w", "", { kind: "whose", ask: "shape" })));
+    expect(shape[0].parts[0]).toEqual({ type: "text", text: "Is this for a team, or just you?" });
+  });
+
+  it("says which docs couldn't be taken in, beside what was", () => {
+    const t = threadOf(withTurn(emptyChat(), turn("t", "", { kind: "take", state: "done", sources: ["a"], pages: [], quotes: 0, docs: [{ source: "a", title: "A", points: {} }], left: [{ title: "b.png", why: "It's over 16 MB." }] })));
+    expect(t[0].parts.at(-1)).toEqual({ type: "text", text: "I couldn't take “b.png”: It's over 16 MB." });
   });
 });

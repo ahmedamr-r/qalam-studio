@@ -4,12 +4,13 @@ import { ArrowLeft, ArrowUpRight, Box, ExternalLink, FlaskConical, Lightbulb, Ta
 import { connectorDef } from "@/connectors/catalog";
 import { partLine } from "@/discovery/origin";
 import { segmentsOf } from "@/discovery/segments";
-import type { SourcePictures, SourceQuote, TextBlock } from "@/discovery/sources";
+import type { SourceImage, SourcePictures, SourceQuote, TextBlock } from "@/discovery/sources";
 import type { SetupDoc } from "@/org/setup";
 import { IconBtn, Spinner } from "../controls";
 import { MarkedText } from "../discovery/MarkedText";
 import { SourceMark } from "./SourceMark";
 import { PicturesNote } from "./PicturesNote";
+import { ImageNote } from "./ImageNote";
 
 /*
  * Reading a source with the words behind each card marked (the setup's canvas and a board's
@@ -55,6 +56,8 @@ export function Reader({
   pages,
   blocks,
   pictures,
+  image,
+  about,
   range,
   backs,
   loading,
@@ -76,6 +79,9 @@ export function Reader({
   blocks?: readonly TextBlock[];
   /** A PDF's pictures: what was read of them and what wasn't. */
   pictures?: SourcePictures;
+  /** A picture: the picture and Qalam AI's reading of it, with `about`. */
+  image?: SourceImage;
+  about?: string;
   range?: [number, number];
   backs: readonly Back[];
   loading?: boolean;
@@ -182,6 +188,7 @@ export function Reader({
           <>
             {!backs.length && <p className="mb-[10px] text-caption text-fg-subtle">Nothing in it backs a card yet.</p>}
             <PicturesNote pictures={pictures} />
+            <ImageNote image={image} about={about} hasText={!!text.trim()} />
             <MarkedText text={text} segments={segments} focus={first} toneOf={(q) => tone.get(q)} blocks={blocks} />
           </>
         )}

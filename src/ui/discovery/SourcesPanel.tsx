@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import clsx from "clsx";
-import { ArrowLeft, Building2, ClipboardPaste, Radio, ExternalLink, FileText, Globe, MessagesSquare, NotebookPen, Plug, Plus, Quote, Trash2, Type, Upload, Users, X } from "lucide-react";
+import { ArrowLeft, Building2, ClipboardPaste, Radio, ExternalLink, FileText, Globe, Image as ImageIcon, MessagesSquare, NotebookPen, Plug, Plus, Quote, Trash2, Type, Upload, Users, X } from "lucide-react";
 import { studio, useStudio } from "@/doc/store";
 import type { Doc } from "@/doc/schema";
 import { newId } from "@/doc/factory";
@@ -34,6 +34,7 @@ import { SpeakersLine, SpeakersStep } from "./SpeakersStep";
 import { openBrainDump } from "./dump";
 import { lab } from "@/lab";
 import { MarkedText } from "./MarkedText";
+import { ImageNote } from "../sources/ImageNote";
 import { pictureAt } from "@/discovery/ingest/pictures";
 import { PicturesNote } from "../sources/PicturesNote";
 import { orgFetch } from "@/org/client";
@@ -51,7 +52,7 @@ import { AddToOrg } from "../org/AddToOrg";
 const ICON = { size: 14, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 const SMALL = { size: 12, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 
-const KIND_ICON: Record<SourceKind, typeof FileText> = { pdf: FileText, docx: FileText, markdown: FileText, text: FileText, paste: ClipboardPaste, url: Globe, connector: Plug, interview: MessagesSquare, dump: NotebookPen, post: Users };
+const KIND_ICON: Record<SourceKind, typeof FileText> = { pdf: FileText, docx: FileText, markdown: FileText, text: FileText, paste: ClipboardPaste, url: Globe, connector: Plug, interview: MessagesSquare, dump: NotebookPen, post: Users, image: ImageIcon };
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
@@ -497,7 +498,7 @@ function DropZone({ onFiles }: { onFiles: (files: File[]) => void }) {
       className={clsx("flex flex-col items-center gap-[8px] rounded-lg px-[12px] py-[16px] text-center [border:1px_dashed_var(--color-line-strong)]", over ? "bg-selection-subtle" : "bg-muted")}
     >
       <Upload {...ICON} className="text-fg-subtle" />
-      <span className="text-caption text-fg-muted">Drop PDF, Word, Markdown, text or caption files (.vtt, .srt)</span>
+      <span className="text-caption text-fg-muted">Drop PDF, Word, Markdown, text, caption files (.vtt, .srt) or pictures</span>
       <Button size="sm" variant="secondary" onClick={() => input.current?.click()}>
         Choose files…
       </Button>
@@ -619,7 +620,14 @@ function SourceView({ source, focus }: { source: SourceRecord; focus?: string })
           )}
         </div>
       ) : (
-        <SourceText source={source} focus={focus} />
+        <>
+          {source.image && (
+            <div className="px-[12px] pt-[10px]">
+              <ImageNote image={source.image} about={source.about} hasText={!!source.text.trim()} />
+            </div>
+          )}
+          <SourceText source={source} focus={focus} />
+        </>
       )}
     </div>
   );

@@ -1,73 +1,50 @@
-import { chooseOrg, createOrg, orgFetch, type OrgRef } from "@/org/client";
-import { saidOf, shapeOfPath, startTarget, type StartPath } from "@/onboarding/start";
+import { createOrg, type OrgRef } from "@/org/client";
+import { startPlan, type BoxDoc } from "@/onboarding/start";
+import type { HandedImage, StartHandoff } from "@/onboarding/handoff";
+import { putAssetIn } from "@/doc/assets";
 import { orgHref } from "@/projects/model";
-import { startScan } from "@/org/scan";
-import { projectName, requestOf } from "@/scan/input";
-import type { ScanSession, ScanTarget } from "@/scan/session";
-import type { ScanSaid } from "@/scan/steer";
-import { chatKey, scanTurn, withTurn, emptyChat } from "@/space/chat";
-import { handWords } from "../space/handoff";
-import { useEngineCheck } from "./engine";
+import { docRef, guessVoice, heldImages, readyDocs, type Attachment } from "../chat/attach";
+import { connectorDef } from "@/connectors/catalog";
 
 /*
- * The first run's moves. Reading starts from the first answer, in the core, so the questions after
- * it can be asked full screen while it goes on; the canvas's chat picks it up from the turn written
- * here, the same as if it had been asked for there.
+ * The first run's moves. The one box's message makes the project and goes to its canvas, where the
+ * chat takes it as its first turns (src/ui/space/chat/store.ts, startFrom). What was attached goes
+ * with it, kept in the project until the canvas takes it (src/onboarding/handoff.ts).
  */
 
-export const startHref = (org: string, question?: number) => `/o/${encodeURIComponent(org)}/start${question !== undefined ? `?q=${question}` : ""}`;
-
-const locale = () => (typeof navigator === "undefined" ? "" : navigator.language);
-
-/** The canvas's chat, holding this scan. A first run's project has no other turns to keep. */
-export const writeScanChat = (target: ScanTarget, session: ScanSession, told?: readonly ScanSaid[]) => orgFetch(`/canvas-chat/${chatKey(null)}`, { method: "PUT", json: withTurn(emptyChat(), scanTurn(target, saidOf(target), session, told)) });
-
 const finishFirstRun = (org: string) => fetch(`/api/org/${encodeURIComponent(org)}/first-run`, { method: "POST" }).catch(() => {});
-
-/** Until it's checked: nothing is started on an engine that may turn out not to be there. */
-export const engineChecked = () =>
-  new Promise<void>((done) => {
-    if (!useEngineCheck.getState().checking) return done();
-    const stop = useEngineCheck.subscribe((s) => {
-      if (s.checking) return;
-      stop();
-      done();
-    });
-  });
-
-const isReady = () => {
-  const e = useEngineCheck.getState();
-  return !!(e.test ?? e.view?.test)?.ok;
-};
 
 /** The project made on an earlier try, so trying again doesn't make another. */
 let made: { key: string; org: OrgRef } | null = null;
 
-/** Starts on the first answer, then on to the questions. It only returns if something went wrong. */
-export async function beginReading(path: StartPath, raw: string): Promise<void> {
-  const target = startTarget(path, raw);
-  if (!target) throw new Error("Say what to look at first.");
-  await engineChecked();
-  const key = `${path}:${JSON.stringify(target)}`;
-  const org = made?.key === key ? made.org : await createOrg(projectName(target), shapeOfPath(path));
-  made = { key, org };
-  // Set up later: its canvas opens, and its chat says what reading needs.
-  if (!isReady()) {
-    handWords(raw.trim());
-    await finishFirstRun(org.id);
-    return window.location.assign(`${orgHref(org.id)}?scan=1`);
-  }
-  chooseOrg(org.id);
-  const session = await startScan(requestOf(target, raw, locale()));
-  await writeScanChat(target, session);
-  await finishFirstRun(org.id);
-  window.location.replace(startHref(org.id, 0));
-}
+/** What the box knows of each doc, for routing and whose it is. */
+export const boxDocs = (items: readonly Attachment[]): BoxDoc[] =>
+  items.filter((a) => a.state === "ready").map((a) => ({ title: a.title, ...(a.held ? { image: true as const } : {}), ...(a.basis ? { basis: a.basis } : {}), ...(connectorDef(a.from)?.group ? { group: connectorDef(a.from)!.group } : {}) }));
 
-/** Read again, with what they've said. */
-export async function readAgain(session: ScanSession): Promise<ScanSession> {
-  const told = session.steer?.said;
-  const next = await startScan({ ...requestOf(session.target, saidOf(session.target), locale()), ...(told?.length ? { told } : {}) });
-  await writeScanChat(session.target, next, told);
-  return next;
+/** A picture's type, by its own or by its name. */
+const pictureType = (f: File) => f.type || ({ png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif", heic: "image/heic", heif: "image/heif" } as Record<string, string>)[f.name.split(".").pop()?.toLowerCase() ?? ""] || "application/octet-stream";
+
+/**
+ * The box's message: the project made, what was attached kept in it, and on to its canvas. False:
+ * nothing it could go with (the box keeps the text). Throws what went wrong, in words.
+ */
+export async function sendStart(text: string, items: readonly Attachment[]): Promise<boolean> {
+  const plan = startPlan(text, boxDocs(items), text.trim() ? guessVoice({ text, title: "" }) : undefined);
+  if (!plan) return false;
+  const docs = readyDocs(items);
+  const held = heldImages(items);
+  const key = JSON.stringify([text.trim(), items.map((a) => a.key)]);
+  const org = made?.key === key ? made.org : await createOrg(plan.name, plan.whose.shape);
+  made = { key, org };
+  const images: HandedImage[] = [];
+  for (const h of held) {
+    const type = pictureType(h.held);
+    images.push({ asset: await putAssetIn(org.id, h.held, type), title: h.title, type, ...(h.at ? { at: h.at } : {}) });
+  }
+  const handoff: StartHandoff = { v: 1, turns: plan.turns, whose: plan.whose, docs: docs.map((d) => ({ ...docRef(d), ingested: d.ingested })), images };
+  const r = await fetch(`/api/org/${encodeURIComponent(org.id)}/start`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(handoff) });
+  if (!r.ok) throw new Error(((await r.json().catch(() => ({}))) as { message?: string }).message ?? `Couldn't start the project (${r.status}).`);
+  await finishFirstRun(org.id);
+  window.location.assign(`${orgHref(org.id)}?start=1`);
+  return true;
 }

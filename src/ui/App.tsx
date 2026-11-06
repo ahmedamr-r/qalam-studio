@@ -9,7 +9,7 @@ import { r } from "./recipes";
 import { routeOf, type Route } from "./routes";
 import { movedTo, pageMovedTo } from "./frame/spaces";
 import { currentSpace, lastSpace } from "./frame/useSpace";
-import StudioLoader, { CaptureLoader, HomeLoader, OrgsLoader, SeenLoader, PageSuspense, PlaceLoader, StartLoader, SystemProjectLoader, WelcomeLoader } from "./StudioLoader";
+import StudioLoader, { CaptureLoader, HomeLoader, OrgsLoader, SeenLoader, PageSuspense, PlaceLoader, SystemProjectLoader, WelcomeLoader } from "./StudioLoader";
 import { armMotion } from "./motion";
 import { startInPlace } from "./nav";
 import { bootRetryDelay } from "./welcome/steps";
@@ -108,7 +108,6 @@ function Page({ route, state, labReady, retry }: { route: Route; state: State; l
   if (state.kind === "missing" || route.kind === "missing") return <Missing title="Page not found" body="There's nothing at this address." />;
   if (route.kind === "org") return <HomeLoader product={route.product} />;
   if (route.kind === "seen") return <SeenLoader seenKey={route.key} add={!!route.add} />;
-  if (route.kind === "start") return <StartLoader />;
   if (route.kind === "place") return <PlaceLoader place={route.place} product={route.product} />;
   if (route.kind === "capture") return <CaptureLoader />;
   if (route.kind !== "project") return null;

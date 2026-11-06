@@ -1,5 +1,7 @@
 import { MARKET_SECTIONS, type MarketEdit } from "@/market/edit";
 import { createReadStream } from "node:fs";
+import { readFile, rename, rm } from "node:fs/promises";
+import path from "node:path";
 import { Readable } from "node:stream";
 import { Hono } from "hono";
 import { sanitizeDecision, type Decision } from "@/decisions/model";
@@ -24,6 +26,8 @@ import { askOrg } from "../ask";
 import { isBasis } from "@/discovery/basis";
 import { captureSource, changeBasis, decideFoundGoal, fileSources, readAsOwn, splitSetupSource } from "../capture";
 import { readPdfPictures } from "../pictures";
+import { IMAGE_MAX, readImage, type ImageInput } from "../image";
+import { imageFrom } from "@/discovery/ingest/image";
 import { MAX_FILE, type Ingested } from "@/discovery/ingest/core";
 import type { Proposal } from "@/discovery/proposals";
 import { picturesFrom } from "@/discovery/ingest/pictures";
@@ -56,6 +60,8 @@ import { steerRound } from "@/scan/steer";
 import { briefRequestOf, writeCardBrief } from "./briefs";
 import { firstBuild, keepAnswers, keepAudience, planAudiences, planQuestions, scanShare, writeBrief } from "./scan-plan";
 import { scanRequest, type ScanTarget } from "@/scan/session";
+import { handoffOf } from "@/onboarding/handoff";
+import { atomicWrite } from "./fsx";
 import type { ScanSaid } from "@/scan/steer";
 import { addRepo, answerFromCode, codeView, readRepo, removeRepo, type NewRepo } from "../code";
 import { GOAL_LEVERS, type GoalLever } from "@/goals/types";
@@ -555,6 +561,26 @@ export function orgRoutes(): Hono<Env> {
     return c.json({ me: c.get("store").me });
   });
   // The first run on this computer: finished or not (the home offers to pick it up until it is), and Finish.
+  // What the start page's box hands this new project's canvas: kept here, taken once (src/onboarding/handoff.ts).
+  r.put("/api/org/:org/start", async (c) => {
+    const h = handoffOf(await c.req.json().catch(() => null), ingestedShape);
+    if (!h) return bad("Not something to start with");
+    await atomicWrite(path.join(c.get("store").dir, ".qalam", "start.json"), JSON.stringify(h));
+    return c.json({ ok: true });
+  });
+  r.delete("/api/org/:org/start", async (c) => {
+    const file = path.join(c.get("store").dir, ".qalam", "start.json");
+    // Claimed by a rename, so two windows can't both start it: the sources would come in twice.
+    const taken = `${file}.${Date.now()}.taken`;
+    try {
+      await rename(file, taken);
+    } catch {
+      return c.json({ start: null });
+    }
+    const raw = await readFile(taken, "utf8").catch(() => "null");
+    await rm(taken, { force: true });
+    return c.json({ start: handoffOf(JSON.parse(raw), ingestedShape) });
+  });
   r.get("/api/org/:org/first-run", (c) => c.json(c.get("store").firstRun));
   r.post("/api/org/:org/first-run", async (c) => c.json(await c.get("store").finishFirstRun()));
 
@@ -721,6 +747,28 @@ export function orgRoutes(): Hono<Env> {
       const r = await captureSource(store, ing, { product, emit, signal, own: b?.own === true, ...(isBasis(b?.basis) ? { basis: b.basis } : {}), holdOwn: b?.holdOwn === true, proposeGoals: b?.proposeGoals === true });
       return job ? { ...r, linked: await noteForJob(store, job, r, emit) } : r;
     });
+  });
+  /**
+   * A picture read here: kept as an asset, its printed words read on this Mac, then what Qalam AI
+   * understands it to be (server/image.ts). Its bytes as they are, or `{asset}` for one the project
+   * keeps already (the start page's box held it). Saying how it's going (NDJSON).
+   */
+  r.post("/api/org/:org/image", async (c) => {
+    if (rateLimited(c.req.raw)) return c.json({ error: "rate_limited", message: "Too many requests, try again in a few minutes." }, 429);
+    const store = c.get("store");
+    const type = (c.req.header("content-type") ?? "").split(";")[0].trim().toLowerCase();
+    let input: ImageInput;
+    if (type === "application/json") {
+      const b = (await c.req.json().catch(() => null)) as { asset?: unknown; title?: unknown } | null;
+      if (typeof b?.asset !== "string" || !HASH.test(b.asset)) return bad("Which picture?");
+      input = { asset: b.asset, name: typeof b.title === "string" && b.title.trim() ? b.title.trim().slice(0, 160) : "Picture" };
+    } else {
+      if (Number(c.req.header("content-length") ?? 0) > IMAGE_MAX) return c.json({ error: "too_large", message: "That picture is over 16 MB." }, 413);
+      const bytes = new Uint8Array(await c.req.arrayBuffer());
+      const name = decodeURIComponent(c.req.header("x-qalam-title") ?? "").trim().slice(0, 160) || "Picture";
+      input = { bytes, type, name };
+    }
+    return streamed(c.req.raw.signal, (emit, signal) => readImage(store, input, { emit, signal }));
   });
   /**
    * A PDF read here rather than in the window, so what's inside its pictures can be read and checked
@@ -1388,7 +1436,9 @@ const KINDS = new Set(Object.keys(SOURCE_KIND_LABEL));
 /** Material a window read (src/discovery/ingest/core.ts Ingested), or null. */
 function ingestedShape(raw: unknown): Ingested | null {
   const i = raw as Record<string, unknown> | null;
-  if (!i || !KINDS.has(i.kind as string) || i.kind === "dump" || typeof i.title !== "string" || !i.title.trim() || typeof i.text !== "string" || !i.text.trim() || i.text.length > MAX_SOURCE_TEXT) return null;
+  // A picture may print nothing (a photo): it's kept for what Qalam AI understands it to be, with no words.
+  const image = i?.kind === "image" ? imageFrom(i.image) : null;
+  if (!i || !KINDS.has(i.kind as string) || i.kind === "dump" || (i.kind === "image" && !image) || typeof i.title !== "string" || !i.title.trim() || typeof i.text !== "string" || (!i.text.trim() && !image) || i.text.length > MAX_SOURCE_TEXT) return null;
   const pages = Array.isArray(i.pages) && i.pages.every((n) => typeof n === "number") ? (i.pages as number[]) : undefined;
   const blocks = Array.isArray(i.blocks) ? textBlocks(i.blocks, i.text.length) : undefined;
   const pictures = picturesFrom(i.pictures, i.text.length);
@@ -1401,6 +1451,7 @@ function ingestedShape(raw: unknown): Ingested | null {
     ...(pages ? { pages } : {}),
     ...(blocks?.length ? { blocks } : {}),
     ...(pictures ? { pictures } : {}),
+    ...(image ? { image, ...(typeof i.about === "string" && i.about.trim() ? { about: i.about.replace(/\s+/g, " ").trim().slice(0, 400) } : {}) } : {}),
     ...(i.truncated === true ? { truncated: true } : {}),
     ...talk,
   };

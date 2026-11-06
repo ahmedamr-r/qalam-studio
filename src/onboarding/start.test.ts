@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { steerRound } from "@/scan/steer";
-import { answerSaid, firstAnswerProblem, meFrom, moreLine, pathOfShape, saidOf, shapeOfPath, startQuestions, startTarget, WHO_TITLE } from "./start";
+import { boxTarget, moreLine, SCAN_MAX, START_PICTURES, startPlan, startProblem, startTarget, stripPreamble, whoseOf, type BoxDoc } from "./start";
 
-const q = (path: "company" | "idea", id: string) => startQuestions(path).find((x) => x.id === id)!;
-
-describe("the first answer", () => {
+describe("what the words say to look at", () => {
   it("makes a company's product theirs, whether it's a name, a site or an App Store link", () => {
     expect(startTarget("company", "Basket")).toEqual({ kind: "product", name: "Basket", mine: true });
     expect(startTarget("company", "linear.app")).toEqual({ kind: "product", name: "Linear", mine: true });
@@ -19,7 +16,6 @@ describe("the first answer", () => {
   it("asks again for a sentence on the company's path", () => {
     const said = "We are a grocery delivery company working in three cities right now";
     expect(startTarget("company", said)).toBeNull();
-    expect(firstAnswerProblem("company", said)).toBe("Just its name or link is enough.");
   });
 
   it("keeps an idea an idea, even when it reads like a name", () => {
@@ -33,40 +29,6 @@ describe("the first answer", () => {
 
   it("wants something to read", () => {
     expect(startTarget("idea", " a ")).toBeNull();
-    expect(firstAnswerProblem("idea", "")).toBeTruthy();
-    expect(firstAnswerProblem("company", "")).toBe("Name the product, or paste its link.");
-    expect(firstAnswerProblem("idea", "A meal planner")).toBeNull();
-  });
-
-  it("says back what they gave", () => {
-    expect(saidOf({ kind: "idea", said: "A planner" })).toBe("A planner");
-    expect(saidOf({ kind: "product", name: "Basket" })).toBe("Basket");
-    expect(saidOf({ kind: "product", name: "", app: "https://x" })).toBe("https://x");
-  });
-});
-
-describe("the questions after it", () => {
-  it("are role and what to move for a company, who and what to find out for an idea", () => {
-    expect(startQuestions("company").map((x) => x.id)).toEqual(["role", "move"]);
-    expect(startQuestions("idea").map((x) => x.id)).toEqual(["who", "want"]);
-  });
-
-  it("ask who in the scan's own words, so the chat doesn't ask it again", () => {
-    expect(steerRound({ kind: "idea", said: "x" }).some((x) => x.title === WHO_TITLE)).toBe(true);
-    expect(q("idea", "who").title).toBe(WHO_TITLE);
-  });
-
-  it("send answers to the scan, but a role stays out of it", () => {
-    expect(answerSaid(q("company", "move"), "Retention")).toEqual([{ question: "What are you trying to move?", answer: "Retention" }]);
-    expect(answerSaid(q("company", "role"), "Product")).toEqual([]);
-    expect(answerSaid(q("idea", "want"), "  ")).toEqual([]);
-  });
-
-  it("turn a role into a position, their own words included", () => {
-    expect(meFrom(q("company", "role"), "Design")).toEqual({ position: "designer" });
-    expect(meFrom(q("company", "role"), "Growth lead")).toEqual({ position: "other", title: "Growth lead" });
-    expect(meFrom(q("company", "move"), "Revenue")).toBeNull();
-    expect(meFrom(q("company", "role"), " ")).toBeNull();
   });
 });
 
@@ -81,12 +43,64 @@ describe("what's found isn't all there is", () => {
   });
 });
 
-describe("the card", () => {
-  it("is the shape the organization keeps", () => {
-    expect(shapeOfPath("company")).toBe("team");
-    expect(shapeOfPath("idea")).toBe("solo");
-    expect(pathOfShape("team")).toBe("company");
-    expect(pathOfShape("solo")).toBe("idea");
-    expect(pathOfShape(undefined)).toBe("idea");
+describe("the one box", () => {
+  it("takes the opening that says whose it is off what's read", () => {
+    expect(stripPreamble("Our app is Basket")).toEqual({ rest: "Basket", cue: "company" });
+    expect(stripPreamble("My idea is a meal planner for nurses")).toEqual({ rest: "a meal planner for nurses", cue: "idea" });
+    expect(stripPreamble("I'm building a meal planner")).toEqual({ rest: "a meal planner", cue: "idea" });
+    expect(stripPreamble("فكرتي هي تطبيق للوجبات")).toEqual({ rest: "تطبيق للوجبات", cue: "idea" });
+    expect(stripPreamble("A meal planner")).toEqual({ rest: "A meal planner", cue: null });
+    expect(stripPreamble("Our app is ")).toEqual({ rest: "Our app is", cue: null });
+  });
+
+  it("reads a product's name after the opening, and a description of theirs as one to look into", () => {
+    expect(boxTarget("Our app is Basket, it delivers groceries").target).toEqual({ kind: "product", name: "Basket", mine: true });
+    expect(boxTarget("We make linear.app").target).toMatchObject({ kind: "product", name: "Linear", mine: true });
+    expect(boxTarget("Our product is a grocery delivery app for families in Riyadh").target).toEqual({ kind: "idea", said: "a grocery delivery app for families in Riyadh" });
+    expect(boxTarget("Basket").target).toEqual({ kind: "product", name: "Basket" });
+  });
+
+  it("says whose it is from their words, and when it can't", () => {
+    const t = (s: string) => boxTarget(s);
+    const whose = (s: string, docs: BoxDoc[] = []) => whoseOf(s, docs, t(s).target, t(s).cue);
+    expect(whose("Our app is Basket")).toEqual({ shape: "team", mine: true, sure: true });
+    expect(whose("Basket")).toEqual({ shape: "solo", mine: false, sure: false, ask: "product" });
+    expect(whose("I'm building a meal planner for night-shift workers")).toEqual({ shape: "solo", mine: false, sure: true });
+    expect(whose("A meal planner for night-shift workers")).toEqual({ shape: "solo", mine: false, sure: true });
+    expect(whose("We see churn after the first order in our grocery app")).toMatchObject({ shape: "team", sure: true });
+    expect(whose("Weekly meal plans for nurses")).toMatchObject({ shape: "solo", sure: true });
+    expect(whose("تطبيقنا اسمه سلة")).toMatchObject({ shape: "team", sure: true });
+    expect(whose("My idea is something we'd sell to our customers")).toEqual({ shape: "team", mine: false, sure: false, ask: "shape" });
+    expect(whose("", [{ title: "Support tickets", group: "voice" }])).toMatchObject({ shape: "team", sure: true });
+    expect(whose("", [{ title: "notes.pdf" }])).toEqual({ shape: "solo", mine: false, sure: false, ask: "shape" });
+  });
+
+  it("turns words alone into a scan, customers' words into a take, and long thinking into a dump", () => {
+    expect(startPlan("Our app is Basket", [])).toEqual({ turns: [{ mode: "scan", said: "Our app is Basket", target: { kind: "product", name: "Basket", mine: true } }], name: "Basket", whose: { shape: "team", mine: true, sure: true } });
+    expect(startPlan("A meal planner for nurses", [])?.turns).toEqual([{ mode: "scan", said: "A meal planner for nurses", target: { kind: "idea", said: "A meal planner for nurses" } }]);
+    expect(startPlan("Sara: it's late\nOmar: always", [], "customers")?.turns).toEqual([{ mode: "take", said: "Sara: it's late\nOmar: always" }]);
+    expect(startPlan("x".repeat(SCAN_MAX + 1), [])?.turns[0].mode).toBe("dump");
+    expect(startPlan("", [])).toBeNull();
+  });
+
+  it("takes docs in, with a scan beside them only when the words name what to look at", () => {
+    const pdf: BoxDoc = { title: "Interviews with nurses.pdf" };
+    expect(startPlan("Here are my notes from last week", [pdf])?.turns).toEqual([{ mode: "take", said: "Here are my notes from last week" }]);
+    expect(startPlan("Our app is Basket", [pdf])?.turns.map((x) => x.mode)).toEqual(["take", "scan"]);
+    expect(startPlan("My idea is a meal planner for nurses", [pdf])?.turns.map((x) => x.mode)).toEqual(["take", "scan"]);
+    expect(startPlan("", [{ title: "Plan.md", basis: "own" }])?.turns).toEqual([{ mode: "dump", said: "" }]);
+  });
+
+  it("names the project from what it looks at, else the first doc, else plainly", () => {
+    expect(startPlan("a meal planner for nurses", [])?.name).toBe("Meal planner for nurses");
+    expect(startPlan("", [{ title: "IMG_2041.png", image: true }, { title: "Nurse_interviews_2026.pdf" }])?.name).toBe("Nurse interviews 2026");
+    expect(startPlan("", [{ title: "IMG_2041.png", image: true }])?.name).toBe("New project");
+  });
+
+  it("says what stops a message", () => {
+    expect(startProblem("", [], "ok")).toMatch(/Say what/);
+    expect(startProblem("", Array.from({ length: START_PICTURES + 1 }, (_, i) => ({ title: `${i}.png`, image: true as const })), "ok")).toMatch(/Up to/);
+    expect(startProblem("Basket", [{ title: "a.pdf" }], "none")).toMatch(/needs to be set up/);
+    expect(startProblem("Basket", [], "none")).toBeNull();
   });
 });

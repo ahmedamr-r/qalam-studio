@@ -4,6 +4,7 @@ import clsx from "clsx";
 import { ArrowUpRight, Check, ChevronDown, ChevronRight, Quote, RotateCcw, X } from "lucide-react";
 import { nanoid } from "nanoid";
 import { studio, useStudio } from "@/doc/store";
+import { assetURL } from "@/doc/assets";
 import { isOstCard } from "@/doc/board";
 import { CHALLENGE_LABEL, type DumpSession } from "@/discovery/dump";
 import { KIND_LABEL } from "@/discovery/kinds";
@@ -35,7 +36,7 @@ import { useWords } from "../../frame/store";
 import { show } from "../links";
 import { FoundGoalRow } from "../../chat/FoundGoalRow";
 import { moreLine } from "@/onboarding/start";
-import { goalForTopProblem, anotherFile, briefAgain, briefStart, changeDocBasis, chooseDraft, decideDocGoal, dropTurn, leaveFile, leaveFit, lookPastFits, openProblems, pickAudience, placeFirstBuild, placeStatement, planAgain, planFirst, planOf, planStart, retake, retryGoalFor, scanAgain, scanHere, scanInNewProject, scanIsMine, scanOtherWay, setPlanGoal, settleNumber, steerOff, stopTurn, takeAsBasis, takeFit, takeGoalNumber, takeIdea, turnOf, useCanvasChat } from "./store";
+import { answerWhose, goalForTopProblem, anotherFile, briefAgain, briefStart, changeDocBasis, chooseDraft, decideDocGoal, dropTurn, leaveFile, leaveFit, lookPastFits, openProblems, pickAudience, placeFirstBuild, placeStatement, planAgain, planFirst, planOf, planStart, retake, retryGoalFor, scanAgain, scanHere, scanInNewProject, scanIsMine, scanOtherWay, setPlanGoal, settleNumber, steerOff, stopTurn, takeAsBasis, takeFit, takeGoalNumber, takeIdea, turnOf, useCanvasChat } from "./store";
 import { titleFrom } from "@/space/route";
 import { otherReading, projectName } from "@/scan/input";
 import { firstGoal, GOAL_ACTIONS, riskiest, type GoalAction, type ScanAudience } from "@/scan/plan";
@@ -44,7 +45,7 @@ import { cardQuotes, readLine, reportHtml, type ReportData, type ShareProblem } 
 import { scanShare } from "@/org/scan";
 import { shareCardPng } from "@/engine/share-card";
 import { isOff } from "@/scan/steer";
-import type { BriefState, ScanJob, ScanPlan } from "@/space/chat";
+import type { BriefState, ScanJob, ScanPlan, WhoseJob } from "@/space/chat";
 import { getBrief } from "@/org/briefs";
 import { openBrief, useBriefs } from "../../discovery/briefs";
 import { addMaterial } from "../new";
@@ -615,6 +616,22 @@ const hostName = (url: string) => {
   }
 };
 
+/** Whose it is, asked after the start page's box: a named product's, or who the project is for. */
+function WhosePart({ data }: { data: PartData }) {
+  const t = useTurn(data.turn);
+  if (t?.job.kind !== "whose" || t.job.answer) return null;
+  const answers: [NonNullable<WhoseJob["answer"]>, string][] = t.job.ask === "product" ? [["ours", "Yes, it's ours"], ["theirs", "No, I'm looking into it"]] : [["team", "A team's"], ["solo", "Just mine"]];
+  return (
+    <ReplyChips>
+      {answers.map(([a, label]) => (
+        <button key={a} type="button" className={r.replyChip} onClick={() => void answerWhose(t.id, a)}>
+          {label}
+        </button>
+      ))}
+    </ReplyChips>
+  );
+}
+
 /** "Help me find one" let go before it's answered. */
 function CancelPart({ data }: { data: PartData }) {
   return (
@@ -785,10 +802,11 @@ function TakenPart({ data }: { data: PartData }) {
         const line = countsLine(d.points);
         return (
           <li key={d.source} className="flex flex-col gap-[2px]">
+            {d.image && <PictureThumb asset={d.image} title={d.title} />}
             <p className="text-body leading-[20px] text-fg" dir="auto">
               {d.about || `“${d.title}”`}
             </p>
-            <p className="text-caption text-fg-muted">{line || "I kept it, but found nothing in it to go on."}</p>
+            <p className="text-caption text-fg-muted">{d.image ? (line ? `What's printed on it: ${line}` : "That's my reading of the picture; nothing printed on it goes to a card yet.") : line || "I kept it, but found nothing in it to go on."}</p>
             {d.pictures && <p className="text-caption text-fg-muted">{d.pictures}.</p>}
             {d.numbers?.map((n) => (
               <p key={n.goal} className="flex flex-wrap items-center gap-x-[6px] text-caption text-fg-muted">
@@ -809,6 +827,19 @@ function TakenPart({ data }: { data: PartData }) {
       })}
     </ul>
   );
+}
+
+/** A picture taken in, small, opening its source's reader. */
+function PictureThumb({ asset, title }: { asset: string; title: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    void assetURL(`asset:${asset}`).then((u) => live && setUrl(u));
+    return () => {
+      live = false;
+    };
+  }, [asset]);
+  return url ? <img src={url} alt={title} className="mb-[4px] max-h-[120px] max-w-[200px] self-start rounded-md object-contain shadow-[inset_0_0_0_1px_var(--color-line-subtle)]" /> : null;
 }
 
 /** A doc that read as their own thinking: it says so, and a way to say it's evidence instead. */
@@ -1635,6 +1666,7 @@ export const PARTS: Record<string, PartComponent> = {
   placed: PlacedPart,
   opening: OpeningPart,
   looked: LookedPart,
+  whose: WhosePart,
   cancel: CancelPart,
   goalFits: GoalFitsPart,
   goalIdeas: GoalIdeasPart,

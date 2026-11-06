@@ -145,6 +145,12 @@ export function sourcePieces(s: SourceRecord, n: Names): Built {
     });
     edges.push({ from: ref, to: src, kind: "in" });
   }
+  // A picture: what Qalam AI understands it to be, heard by search, packs and Ask as its reading, never as a quote.
+  if (s.image && (s.about || s.image.reading.length)) {
+    const ref = `hub:picture:${s.id}`;
+    pieces.push({ ref, type: "context", sub: "picture", text: [s.about, ...s.image.reading].filter(Boolean).join("\n"), line: join(`Qalam AI's reading of a picture they added, ${where}`, forProduct(product, n)), title: s.title, product, source: s.id, at: s.addedAt });
+    edges.push({ from: ref, to: src, kind: "in" });
+  }
   for (const need of s.needs) {
     const ref = `hub:need:${s.id}:${need.id}`;
     pieces.push({ ref, type: "need", text: need.title, line: join(`A need seen in ${where}`, forProduct(product, n)), title: s.title, product, source: s.id, at: s.addedAt });

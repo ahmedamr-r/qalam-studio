@@ -43,6 +43,8 @@ export interface TakenDoc {
   found?: FoundGoal[];
   /** What came of its pictures, in a line. */
   pictures?: string;
+  /** A picture: its asset, for a thumbnail. */
+  image?: string;
 }
 
 /** A problem page material went into. */
@@ -65,7 +67,7 @@ export type ChatJob =
    */
   | { kind: "add"; what: "goal" | "problem"; card: string; under: string | null; state?: "suggesting" | "suggested"; suggestion?: string; why?: string }
   /** Material taken in as sources: read for what it states, filed into problem pages, placed where it fits. `docs`: what each was read as (none: a turn from before). */
-  | { kind: "take"; state: "taking" | "done" | "failed"; sources: string[]; pages: FiledPage[]; quotes: number; docs?: TakenDoc[]; error?: string }
+  | { kind: "take"; state: "taking" | "done" | "failed"; sources: string[]; pages: FiledPage[]; quotes: number; docs?: TakenDoc[]; error?: string; /** Docs that couldn't be read or kept, each with why: the rest went on. */ left?: { title: string; why: string }[] }
   /**
    * Their own thinking as a brain dump: its source's session is how it's going (`error`: it never
    * started; `find`: it answers "Help me find one", with what they said to code's questions;
@@ -82,7 +84,21 @@ export type ChatJob =
   /** A brief for a card on the canvas: what it lacks asked in the box, then written, then a tile under the card. */
   | { kind: "brief"; card: string; title: string; brief: BriefState }
   | { kind: "find"; what: FindWhat; error?: string; /** Qalam AI's opening questions, from what's known about the company and its domain (none: code's own). */ questions?: PlanQuestion[]; /** Those being worked out. */ loading?: true; goal?: FocusGoal; look?: FocusLook }
-  | GoalForJob;
+  | GoalForJob
+  | WhoseJob;
+
+/**
+ * Whose it is, asked after the start page's box when its words didn't say: whether the product
+ * named is theirs (its reviews then count as its customers' words), or who the project is for.
+ * `scan`: the scan turn the answer bears on.
+ */
+export interface WhoseJob {
+  kind: "whose";
+  ask: "product" | "shape";
+  name?: string;
+  scan?: string;
+  answer?: "ours" | "theirs" | "team" | "solo";
+}
 
 /**
  * What people complain about: an idea or a product read in the core (server/org/scan.ts), which goes
@@ -99,6 +115,8 @@ export interface ScanJob {
   error?: string;
   /** Another scan's problems are in this project: where it goes is theirs to say, before it starts. */
   where?: true;
+  /** They said it's theirs while it was still reading: its reviews become its customers' words once it's done. */
+  mineSaid?: true;
   /** The questions while it reads: `writing` them, `asking` in the box, `done` once answered or left. Nothing waits on them. */
   ask?: { step: "writing" | "asking" | "done"; questions?: PlanQuestion[] };
   /** What they've said while it reads: heard by what's left to read, not asked again after. */
@@ -216,7 +234,7 @@ function stopped(j: ChatJob): ChatJob {
   return j;
 }
 
-const KINDS = new Set(["ask", "choose", "noEngine", "add", "take", "dump", "find", "goalfor", "scan", "brief"]);
+const KINDS = new Set(["ask", "choose", "noEngine", "add", "take", "dump", "find", "goalfor", "scan", "brief", "whose"]);
 
 /** A chat as read from its file (what it doesn't know is left out). */
 export function chatOf(raw: unknown): CanvasChat {
@@ -304,6 +322,14 @@ function dumpReply(t: ChatTurn, s: DumpSession | null): ChatPart[] {
   }
 }
 
+/** What Qalam AI says once they've said whose it is. */
+const WHOSE_SAID: Record<NonNullable<WhoseJob["answer"]>, (name?: string) => string> = {
+  ours: (name) => `Then ${name ?? "its"}${name ? "'s" : ""} reviews count as your customers' words.`,
+  theirs: () => "Then its reviews are people online, not your customers.",
+  team: () => "A team's, then.",
+  solo: () => "Just you, then.",
+};
+
 /** What Qalam AI says to a turn, from its job. */
 function replyTo(t: ChatTurn, dumpOf: DumpOf): ChatPart[] {
   const j = t.job;
@@ -321,13 +347,15 @@ function replyTo(t: ChatTurn, dumpOf: DumpOf): ChatPart[] {
       if (j.state === "suggesting") return [part("working", id)];
       if (j.state === "suggested") return [part("statement", id)];
       return [part("added", id)];
-    case "take":
-      if (j.state === "taking") return [part("working", id)];
-      if (j.state === "failed") return [text(j.error ?? "It couldn't be taken in.")];
+    case "take": {
+      const left = j.left?.length ? [text(j.left.map((l) => `I couldn't take “${l.title}”: ${l.why}`).join("\n"))] : [];
+      if (j.state === "taking") return [...left, part("working", id)];
+      if (j.state === "failed") return [...left, text(j.error ?? "It couldn't be taken in.")];
       if (j.docs)
         return [
           part("taken", id),
           ...(j.pages.length ? [text(`It went into ${j.pages.length === 1 ? "this problem's page" : "these problems' pages"}:`), part("pages", id)] : []),
+          ...left,
         ];
       return [
         text(
@@ -338,7 +366,12 @@ function replyTo(t: ChatTurn, dumpOf: DumpOf): ChatPart[] {
               : `I kept ${plural(j.sources.length, "source")}, but found nothing customers said in ${j.sources.length === 1 ? "it" : "them"}.`,
         ),
         ...(j.pages.length ? [part("pages", id)] : []),
+        ...left,
       ];
+    }
+    case "whose":
+      if (j.answer) return [text(WHOSE_SAID[j.answer](j.name))];
+      return [text(j.ask === "product" ? `Is ${j.name ?? "this"} yours, or are you looking into it?` : "Is this for a team, or just you?"), part("whose", id)];
     case "dump": {
       if (j.file?.left) return [text(`You left “${j.file.title}” out.`)];
       const s = dumpOf(j.source);
@@ -382,7 +415,11 @@ function replyTo(t: ChatTurn, dumpOf: DumpOf): ChatPart[] {
 
 /** The conversation, from the turns: each one's words, then what Qalam AI made of it. */
 export function threadOf(c: CanvasChat, dumpOf: DumpOf = () => null): ChatMessage[] {
-  return c.turns.flatMap((t) => [you(t), reply(t, replyTo(t, dumpOf))]);
+  // A turn with no words or docs of theirs (one the start page's box began, a question Qalam AI asks) is Qalam AI's alone.
+  return c.turns.flatMap((t) => {
+    const y = you(t);
+    return y.parts.length ? [y, reply(t, replyTo(t, dumpOf))] : [reply(t, replyTo(t, dumpOf))];
+  });
 }
 
 /** Whose questions the box asks now: the newest "Help me find one" or brain dump waiting on its answers. */

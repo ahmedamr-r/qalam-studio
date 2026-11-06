@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { chooseBase, chooseEngine, chooseModels, chooseTiers, engineModels, engineView, ensureEngine, forgetKey, forgetTavily, liveTest, saveKey, saveTavily } from "../engine";
 import { planLimits } from "../limits";
 import { adapterFor } from "@/ai/engines";
@@ -10,6 +10,7 @@ import { readEventRef } from "@/connectors/analytics";
 import type { Hit } from "@/connectors/recipes";
 import { browseConnector, connectorsView, forgetConnector, importItems, listClaudeCode, readItems, saveToken, searchConnector, viaClaudeCode } from "../connectors";
 import { storeFor } from "../org/home";
+import type { OrgStore } from "../org/store";
 import type { OstWork } from "@/discovery/types";
 import { lookInside } from "../connectors/look";
 import { readInsight, searchEvents, searchInsights, toolsOffered } from "../connectors/numbers";
@@ -183,31 +184,39 @@ export function connectionsRoutes(): Hono {
     }
   });
   // The chat box's picker: what was opened lately, a folder's items or a search, and the picked items' words (not taken in).
-  r.post("/api/org/:org/connectors/:id/browse", async (c) => {
-    if (!(await storeFor(c.req.param("org")))) return c.json({ error: "not_found", message: "No such organization." }, 404);
+  // Under an organization, and on their own for the start page's box, where no project exists yet.
+  const noOrg = (c: Context) => c.json({ error: "not_found", message: "No such organization." }, 404);
+  const browse = async (c: Context) => {
     const { query, folder, force } = (await c.req.json().catch(() => ({}))) as { query?: unknown; folder?: unknown; force?: unknown };
     const at = typeof query === "string" && query.trim() ? { query: query.trim().slice(0, 200) } : folder === null || typeof folder === "string" ? { folder: typeof folder === "string" ? folder.slice(0, 200) : null } : {};
     try {
-      return c.json({ hits: await browseConnector(c.req.param("id"), at, { force: force === true }) });
+      return c.json({ hits: await browseConnector(c.req.param("id")!, at, { force: force === true }) });
     } catch (e) {
       return c.json({ error: "browse_failed", message: e instanceof Error ? e.message : String(e) }, 400);
     }
-  });
+  };
   // Qalam AI looking inside a tool: its picks, by titles and snippets, for the person to add or leave.
-  r.post("/api/org/:org/connectors/:id/look", async (c) => {
-    if (!(await storeFor(c.req.param("org")))) return c.json({ error: "not_found", message: "No such organization." }, 404);
+  const look = async (c: Context) => {
     const { about } = (await c.req.json().catch(() => ({}))) as { about?: unknown };
     if (typeof about !== "string" || !about.trim()) return c.json({ error: "bad_request", message: "What should it look for?" }, 400);
-    return ndjson((emit) => lookInside(c.req.param("id"), about.trim().slice(0, 600), emit, c.req.raw.signal));
-  });
-  r.post("/api/org/:org/connectors/:id/read", async (c) => {
-    const store = await storeFor(c.req.param("org"));
-    if (!store) return c.json({ error: "not_found", message: "No such organization." }, 404);
+    return ndjson((emit) => lookInside(c.req.param("id")!, about.trim().slice(0, 600), emit, c.req.raw.signal));
+  };
+  const read = async (c: Context, store?: OrgStore) => {
     const { hits } = (await c.req.json().catch(() => ({}))) as { hits?: unknown };
     const picked = pickedHits(hits);
     if (!picked.length) return c.json({ error: "bad_request", message: "Pick something to read." }, 400);
-    return ndjson(async (emit) => ({ items: await readItems(c.req.param("id"), picked, emit, store) }));
+    return ndjson(async (emit) => ({ items: await readItems(c.req.param("id")!, picked, emit, store) }));
+  };
+  r.post("/api/org/:org/connectors/:id/browse", async (c) => ((await storeFor(c.req.param("org"))) ? browse(c) : noOrg(c)));
+  r.post("/api/org/:org/connectors/:id/look", async (c) => ((await storeFor(c.req.param("org"))) ? look(c) : noOrg(c)));
+  r.post("/api/org/:org/connectors/:id/read", async (c) => {
+    const store = await storeFor(c.req.param("org"));
+    return store ? read(c, store) : noOrg(c);
   });
+  r.post("/api/connectors/:id/browse", browse);
+  r.post("/api/connectors/:id/look", look);
+  // Not /read: that's a number from an analytics tool.
+  r.post("/api/connectors/:id/items", (c) => read(c));
   r.post("/api/org/:org/connectors/:id/import", async (c) => {
     const store = await storeFor(c.req.param("org"));
     if (!store) return c.json({ error: "not_found", message: "No such organization." }, 404);

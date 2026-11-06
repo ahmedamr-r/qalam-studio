@@ -189,6 +189,8 @@ const EXT: Record<string, string> = {
   "image/jpeg": "jpg",
   "image/webp": "webp",
   "image/gif": "gif",
+  "image/heic": "heic",
+  "image/heif": "heif",
   "image/svg+xml": "svg",
   "image/avif": "avif",
   "application/pdf": "pdf",

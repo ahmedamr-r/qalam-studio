@@ -284,6 +284,8 @@ function newSource(ing: Ingested, o: Pick<CaptureOpts, "product" | "basis">): So
     ...(ing.pages ? { pages: ing.pages } : {}),
     ...(ing.blocks?.length ? { blocks: ing.blocks } : {}),
     ...(ing.pictures ? { pictures: ing.pictures } : {}),
+    // A picture: what Qalam AI understands it to be stays its line, never rewritten by the reading of its words.
+    ...(ing.image ? { image: ing.image, ...(ing.about ? { about: ing.about } : {}) } : {}),
     ...(ing.truncated ? { truncated: true } : {}),
     ...(ing.segments && ing.transcript ? { segments: ing.segments, transcript: ing.transcript } : {}),
     addedAt: Date.now(),

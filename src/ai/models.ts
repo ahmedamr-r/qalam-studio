@@ -24,6 +24,7 @@ export const TIER_OF = {
   research: "read",
   "seen-read": "read",
   "pdf-pictures": "read",
+  "image-read": "read",
   market: "read",
   // Deciding: proposing, asking, pushing back, judging.
   synthesize: "decide",

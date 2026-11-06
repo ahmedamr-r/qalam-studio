@@ -33,6 +33,10 @@ export interface Attachment extends DocRef {
   why?: string;
   /** The person chose whose words it holds (else it's guessed once it's read). */
   chose?: true;
+  /** A picture kept as it is until there's a project to read it in (the start page's box). */
+  held?: File;
+  /** A picture's thumbnail (an object address, let go when it leaves the box). */
+  preview?: string;
 }
 
 /** The connector groups each fit draws on, in order. */
@@ -160,11 +164,33 @@ function stopReading(key: string) {
   reading.delete(key);
 }
 
+/** A picture, by its type or its name (never an SVG: it could run as a page from this origin). */
+export const isPicture = (f: { name: string; type?: string }) => (f.type ? /^image\/(png|jpe?g|webp|gif|heic|heif)$/i.test(f.type) : false) || /\.(png|jpe?g|webp|gif|heic|heif)$/i.test(f.name);
+
+/** Pictures held, not read, while there's no project to read them in (the start page). */
+let holding = false;
+export const holdPictures = (on: boolean) => {
+  holding = on;
+};
+
 /** Files from this computer: each read here, as the home's Add reads them. */
 export function attachFiles(files: File[]) {
-  const fresh = add(files.map((f) => ({ key: `computer:${f.name}:${f.size}:${f.lastModified}`, from: "computer", via: "this computer", title: f.name, at: new Date(f.lastModified).toISOString(), state: "reading" as const })));
+  const keyOf = (f: File) => `computer:${f.name}:${f.size}:${f.lastModified}`;
+  const held = holding ? files.filter(isPicture) : [];
+  const fresh = add(
+    files.map((f) => ({
+      key: keyOf(f),
+      from: "computer",
+      via: "this computer",
+      title: f.name,
+      at: new Date(f.lastModified).toISOString(),
+      ...(held.includes(f) ? { state: "ready" as const, type: "image", held: f } : { state: "reading" as const }),
+      ...(isPicture(f) ? { preview: URL.createObjectURL(f) } : {}),
+    })),
+  );
   for (const a of fresh) {
-    const file = files.find((f) => `computer:${f.name}:${f.size}:${f.lastModified}` === a.key)!;
+    if (a.held) continue;
+    const file = files.find((f) => keyOf(f) === a.key)!;
     const stop = new AbortController();
     reading.set(a.key, stop);
     void import("../discovery/ingest").then(({ ingestFile }) =>
@@ -204,14 +230,21 @@ export const setBasis = (key: string, basis: Basis | undefined) => set(key, { ba
 /** Whose words a doc holds, as the person says. */
 export const setVoice = (key: string, voice: "customers" | "own") => set(key, { voice, chose: true });
 
+const letGo = (a: Attachment) => a.preview && URL.revokeObjectURL(a.preview);
+
 export function removeAttachment(key: string) {
   stopReading(key);
+  useAttach.getState().items.filter((x) => x.key === key).forEach(letGo);
   useAttach.setState((s) => ({ items: s.items.filter((x) => x.key !== key) }));
 }
 export function clearAttachments() {
   for (const key of [...reading.keys()]) stopReading(key);
+  useAttach.getState().items.forEach(letGo);
   useAttach.setState({ items: [] });
 }
+
+/** Pictures held until there's a project to read them in. */
+export const heldImages = (items: readonly Attachment[]): (Attachment & { held: File })[] => items.filter((x): x is Attachment & { held: File } => x.state === "ready" && !!x.held);
 
 /** A doc ready to send: where it came from, its title, its words. */
 export type SentDoc = Attachment & { ingested: Ingested };

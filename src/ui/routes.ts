@@ -30,7 +30,6 @@ export type Route =
   /** One of the organization's places (src/ui/frame/places.ts): its decisions or connections, in a product's space with `product`. */
   | { kind: "place"; org: string; place: PagePlace; product?: string }
   /** The first run once there's a project: its questions, then the researcher reading. */
-  | { kind: "start"; org: string }
   /** The welcome: the first run (no organization yet), a new organization, or checking the setup again. */
   | { kind: "welcome" }
   /** Quick capture, into the organization opened last (the menu bar's capture window). */
@@ -65,7 +64,8 @@ export function routeOf(pathname: string): Route {
   if (!org && parts.length === 1 && parts[0] === "capture") return { kind: "capture" };
   // The setup that was here is gone: the first run is the welcome's, the company's facts its panel's.
   if (org && parts.length === 1 && parts[0] === "setup") return { kind: "org", org, moved: true };
-  if (org && parts.length === 1 && parts[0] === "start") return { kind: "start", org };
+  // The researcher's questions that were here are gone: the start page's box goes straight to the canvas.
+  if (org && parts.length === 1 && parts[0] === "start") return { kind: "org", org, moved: true };
   if (org && parts[0] === "products") return spaceRoute(org, parts.slice(1));
   if (org && parts.length === 1 && isPagePlace(parts[0])) return { kind: "place", org, place: parts[0] };
   if (org && parts.length === 1 && GONE_PLACES.has(parts[0])) return { kind: "org", org, moved: true };

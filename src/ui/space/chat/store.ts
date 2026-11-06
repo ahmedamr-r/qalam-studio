@@ -13,7 +13,11 @@ import { askOrganization } from "@/org/ask";
 import { captureIngested, decideFoundGoal, setSourceBasis } from "@/org/capture";
 import { orgFetch, orgJson } from "@/org/client";
 import type { Ingested } from "@/discovery/ingest/core";
-import { chatKey, chatOf, emptyChat, withJob, withTurn, type CanvasChat, type ChatDoc, type ChatJob, type ChatTurn, type FiledPage, type FocusGoal, type GoalForJob, type GoalForOn, type BriefState, type ScanJob, type ScanPlan, type TakenDoc } from "@/space/chat";
+import { chatKey, chatOf, emptyChat, withJob, withTurn, type CanvasChat, type ChatDoc, type ChatJob, type ChatTurn, type FiledPage, type FocusGoal, type GoalForJob, type GoalForOn, type BriefState, type ScanJob, type ScanPlan, type TakenDoc, type WhoseJob } from "@/space/chat";
+import type { StartHandoff } from "@/onboarding/handoff";
+
+/** A doc taken in: read already, or a picture kept in the project to read now. */
+type TakeDoc = Attachment & ({ ingested: Ingested; asset?: undefined } | { asset: { hash: string; type: string }; ingested?: undefined });
 import { cardForPage, pageOf } from "@/space/pages";
 import { DUMP_WORDS, routeOf, titleFrom, wordsIn, type ChatMode } from "@/space/route";
 import { FIND_MIN, findRound, findText, findTranscript, type FindWhat } from "@/space/find";
@@ -41,13 +45,14 @@ import { draftBacking, draftCards } from "@/discovery/solutions";
 import { decideDraft } from "@/org/solutions";
 import { quoteEvidence } from "@/discovery/sources";
 import { sourcesDb } from "@/discovery/db";
-import { createOrg } from "@/org/client";
+import { createOrg, currentOrg, setOrgShape } from "@/org/client";
+import { setCurrentOrg } from "../../frame/store";
 import { orgHref } from "@/projects/model";
 import { handWords } from "../handoff";
 import { problemCard } from "../../topics/start-board";
 import { visitSources } from "../../discovery/sources";
 import { newId } from "@/doc/factory";
-import { docPart, docRef, guessVoice, joinParts, type SentDoc } from "../../chat/attach";
+import { docPart, docRef, guessVoice, joinParts, type Attachment, type SentDoc } from "../../chat/attach";
 import type { Basis } from "@/discovery/basis";
 import { DUMP_MAX_CHARS } from "@/discovery/dump";
 import { ingestFile, ingestPaste } from "../../discovery/ingest";
@@ -85,11 +90,13 @@ interface ChatState {
   pending: { key: string; what: FindWhat } | null;
   /** Words for a scan from a canvas whose chat isn't loaded yet (the first run's box): started as it loads. */
   pendingScan: { key: string; said: string } | null;
+  /** What the start page's box handed this canvas, held until its chat has loaded. */
+  pendingStart: { key: string; start: StartHandoff } | null;
   /** A goal asked for by the address before the chat has loaded: started as it loads. */
   pendingGoal: { card: string; topic?: string } | null;
 }
 
-export const useCanvasChat = create<ChatState>(() => ({ key: null, space: null, chat: emptyChat(), loaded: false, live: {}, pending: null, pendingScan: null, pendingGoal: null }));
+export const useCanvasChat = create<ChatState>(() => ({ key: null, space: null, chat: emptyChat(), loaded: false, live: {}, pending: null, pendingScan: null, pendingStart: null, pendingGoal: null }));
 
 const st = () => useCanvasChat.getState();
 const ctrls = new Map<string, AbortController>();
@@ -148,6 +155,11 @@ export async function openChat(space: string | null) {
   if (words?.key === key) {
     useCanvasChat.setState({ pendingScan: null });
     void runAs(null, words.said, "scan");
+  }
+  const start = st().pendingStart;
+  if (start?.key === key) {
+    useCanvasChat.setState({ pendingStart: null });
+    void runStart(start.start);
   }
 }
 
@@ -245,16 +257,73 @@ export function scanFrom(said: string, space: string | null) {
   void runAs(null, said, "scan");
 }
 
+/** What the start page's box handed this canvas (src/ui/start/flow.ts): into its chat, once it's loaded. */
+export function startFrom(start: StartHandoff, space: string | null) {
+  toggleChat(true);
+  const key = chatKey(space);
+  if (st().key !== key || !st().loaded) return useCanvasChat.setState({ pendingStart: { key, start } });
+  void runStart(start);
+}
+
+/**
+ * The box's message as this chat's first turns: its docs and pictures taken in, a scan beside them
+ * when the words named what to look at, then whose it is when the words didn't say. They never pass
+ * through the box's own docs (useAttach), which the chat empties as it opens.
+ */
+async function runStart(h: StartHandoff) {
+  if (await engineMissing()) {
+    for (const t of h.turns) addTurn(t.said, { kind: "noEngine", mode: t.mode });
+    return;
+  }
+  const docs: TakeDoc[] = [
+    ...h.docs.map((d) => ({ ...d, key: `start:${d.from}:${d.title}`, via: d.from === "computer" ? "this computer" : d.from, state: "ready" as const })),
+    ...h.images.map((i) => ({ key: `start:image:${i.asset}`, from: "computer", via: "this computer", title: i.title, type: "image", ...(i.at ? { at: i.at } : {}), state: "ready" as const, asset: { hash: i.asset, type: i.type } })),
+  ];
+  // The words show once, on the first turn: a scan beside docs is Qalam AI's own turn.
+  let shown = false;
+  let scan: string | undefined;
+  for (const t of h.turns) {
+    const said = shown ? "" : t.said;
+    shown = shown || !!t.said;
+    if (t.mode === "scan") {
+      void scanIt(null, said, t.target, undefined, t.said);
+      scan = [...st().chat.turns].reverse().find((x) => x.job.kind === "scan")?.id;
+    } else if (t.mode === "take") void takeIn(null, said, docs);
+    else void dumpIt(null, said, docs.filter((d): d is SentDoc => !!d.ingested));
+  }
+  if (h.whose.sure) return;
+  const target = h.turns.find((t) => t.mode === "scan");
+  const name = target?.mode === "scan" && target.target.kind === "product" ? target.target.name || undefined : undefined;
+  const ask = h.whose.ask === "product" && name ? "product" : "shape";
+  addTurn("", { kind: "whose", ask, ...(name ? { name } : {}), ...(scan ? { scan } : {}) });
+}
+
+/** Whose it is, as they answer: the project's shape, and a named product's reviews as its customers' words. */
+export async function answerWhose(id: string, answer: NonNullable<WhoseJob["answer"]>) {
+  const t = turnOf(id);
+  if (t?.job.kind !== "whose" || t.job.answer) return;
+  const scan = t.job.scan;
+  change((c) => withJob(c, id, (j) => (j.kind === "whose" ? { ...j, answer } : j)));
+  const shape = answer === "ours" || answer === "team" ? "team" : "solo";
+  const org = await currentOrg().catch(() => null);
+  if (org && org.shape !== shape) await setOrgShape(shape).then(setCurrentOrg, () => {});
+  if (answer !== "ours" || !scan) return;
+  const s = turnOf(scan);
+  if (s?.job.kind !== "scan" || s.job.mine) return;
+  if (s.job.session?.state === "done") await scanIsMine(scan);
+  else change((c) => withJob(c, scan, (j) => (j.kind === "scan" ? { ...j, mineSaid: true } : j)));
+}
+
 /** An idea or a product read for what people complain about. It runs in the core; this follows it. */
-async function scanIt(at: string | null, said: string, target: ScanTarget | null = scanInput(said), told?: readonly ScanSaid[]) {
+async function scanIt(at: string | null, said: string, target: ScanTarget | null = scanInput(said), told?: readonly ScanSaid[], words = said) {
   if (!target) return void jobAt(at, said, { kind: "choose", first: "problem" });
   // Another scan's problems are here: two unrelated products would run together on one page.
   const other = !at && st().chat.turns.some((t) => t.job.kind === "scan" && t.job.session?.state === "done" && t.job.session.problems.length > 0 && !sameTarget(t.job.target, target));
   if (other) return void jobAt(at, said, { kind: "scan", target, asked: Date.now(), where: true });
-  const id = jobAt(at, said, { kind: "scan", target, asked: Date.now(), ...(told?.length ? { told: [...told] } : {}) });
+  const id = jobAt(at, said, { kind: "scan", target, asked: Date.now(), ...(target.kind === "product" && target.mine ? { mine: true as const } : {}), ...(told?.length ? { told: [...told] } : {}) });
   void saveNow();
   try {
-    const session = await startScan({ ...requestOf(target, said, typeof navigator === "undefined" ? "" : navigator.language), ...(told?.length ? { told: [...told] } : {}) });
+    const session = await startScan({ ...requestOf(target, words, typeof navigator === "undefined" ? "" : navigator.language), ...(told?.length ? { told: [...told] } : {}) });
     change((c) => withJob(c, id, (j) => (j.kind === "scan" ? { ...j, session } : j)));
     void followScan();
     // Asked again, what they've said still stands.
@@ -303,6 +372,8 @@ async function followScan() {
   // An answer about an earlier scan (asked just before this one started) says nothing about this one.
   if (!session || open.job.kind !== "scan" || session.at < open.job.asked - CLOCK_SLACK) return;
   change((c) => withJob(c, open.id, (j) => (j.kind === "scan" ? { ...j, session } : j)));
+  // They said it's theirs while it read: its reviews are its customers' words now that they're kept.
+  if (session.state === "done" && open.job.mineSaid && !open.job.mine) await scanIsMine(open.id);
   if (session.state === "done" && session.problems.length) openProblems();
 }
 
@@ -990,21 +1061,35 @@ export function placeStatement(id: string, title: string) {
  * text that came with it, are kept as their thinking (read as what they believe). A doc nobody said
  * anything about that holds only their thinking goes on to a brain dump: its pushback and rounds.
  */
-async function takeIn(at: string | null, said: string, docs: readonly SentDoc[]) {
+async function takeIn(at: string | null, said: string, docs: readonly TakeDoc[]) {
   const id = jobAt(at, said, { kind: "take", state: "taking", sources: [], pages: [], quotes: 0 }, docs.map(docRef));
   const ctrl = begin(id);
-  const parts: { ing: () => Promise<Ingested>; own: boolean; basis?: Basis; doc?: SentDoc }[] = [];
+  const parts: { ing: () => Promise<Ingested>; own: boolean; basis?: Basis; doc?: SentDoc; title: string; picture?: true }[] = [];
   const voice = said ? guessVoice({ text: said, title: "" }) : "own";
-  if (said && (voice === "customers" || wordsIn(said) >= DUMP_WORDS)) parts.push({ ing: () => ingestPaste(said), own: voice !== "customers" });
-  for (const d of docs) parts.push({ ing: async () => d.ingested, own: d.basis === "own", ...(d.basis ? { basis: d.basis } : {}), doc: d });
+  if (said && (voice === "customers" || wordsIn(said) >= DUMP_WORDS)) parts.push({ ing: () => ingestPaste(said), own: voice !== "customers", title: "Your words" });
+  for (const d of docs) {
+    // A picture kept in the project before it could be read (the start page's box): read now.
+    if (d.asset) parts.push({ ing: () => import("../../discovery/ingest").then((m) => m.readHeldImage(d.asset!.hash, d.title, { onStep: step(id), signal: ctrl.signal })), own: false, title: d.title, picture: true });
+    else if (d.ingested) parts.push({ ing: async () => d.ingested!, own: d.basis === "own", ...(d.basis ? { basis: d.basis } : {}), doc: d as SentDoc, title: d.title });
+  }
   const sources: string[] = [];
   const taken: TakenDoc[] = [];
   const held: SentDoc[] = [];
+  const left: { title: string; why: string }[] = [];
   const pages = new Map<string, FiledPage>();
   let quotes = 0;
   try {
     for (const p of parts) {
-      const ing = await p.ing();
+      // One that can't be read or kept is said so, and the rest go on.
+      let ing: Ingested;
+      try {
+        ing = await p.ing();
+      } catch (e) {
+        if ((e as Error).name === "AbortError") throw e;
+        left.push({ title: p.title, why: message(e) });
+        change((c) => withJob(c, id, (j) => (j.kind === "take" ? { ...j, left: [...left] } : j)));
+        continue;
+      }
       sourceCame(ing.title);
       const r = await captureIngested(ing, { product: st().space, own: p.own, ...(p.basis ? { basis: p.basis } : {}), holdOwn: !!p.doc && !p.basis, proposeGoals: !!p.doc, onActivity: step(id), signal: ctrl.signal });
       if (r.heldOwn) {
@@ -1013,11 +1098,11 @@ async function takeIn(at: string | null, said: string, docs: readonly SentDoc[])
       }
       sources.push(r.sourceId);
       quotes += r.quotes;
-      taken.push({ source: r.sourceId, title: r.title, ...(r.about ? { about: r.about } : {}), points: r.points ?? {}, ...(p.basis ? { basis: p.basis } : {}), ...numbersOf(r), ...(r.foundGoals?.length ? { found: r.foundGoals } : {}), ...(r.pictures ? { pictures: r.pictures } : {}) });
+      taken.push({ source: r.sourceId, title: r.title, ...(r.about ? { about: r.about } : {}), points: r.points ?? {}, ...(p.basis ? { basis: p.basis } : {}), ...numbersOf(r), ...(r.foundGoals?.length ? { found: r.foundGoals } : {}), ...(r.pictures ? { pictures: r.pictures } : {}), ...(ing.image ? { image: ing.image.asset } : {}) });
       for (const f of r.filed?.pages ?? []) if (f.kind === "need") pages.set(f.id, { id: f.id, title: f.title });
       change((c) => withJob(c, id, (j) => (j.kind === "take" ? { ...j, sources: [...sources], pages: [...pages.values()], quotes, docs: [...taken] } : j)));
     }
-    change((c) => withJob(c, id, (j) => (j.kind === "take" ? { ...j, state: "done" } : j)));
+    change((c) => withJob(c, id, (j) => (j.kind === "take" ? (left.length && !sources.length && !held.length ? { ...j, state: "failed", error: "Nothing could be taken in." } : { ...j, state: "done" }) : j)));
   } catch (e) {
     const stopped = (e as Error).name === "AbortError";
     change((c) => withJob(c, id, (j) => (j.kind === "take" ? { ...j, state: "failed", error: stopped ? `You stopped it${sources.length ? `, after keeping ${sources.length}` : ""}.` : `It couldn't be taken in: ${message(e)}` } : j)));

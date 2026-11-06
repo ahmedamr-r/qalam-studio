@@ -1,4 +1,4 @@
-import type { SourceKind, SourcePictures, TextBlock } from "../sources";
+import type { SourceImage, SourceKind, SourcePictures, TextBlock } from "../sources";
 import type { TranscriptMeta, TranscriptSegment } from "../transcript";
 
 /*
@@ -21,6 +21,9 @@ export interface Ingested {
   blocks?: TextBlock[];
   /** A PDF's pictures, as far as they were read. */
   pictures?: SourcePictures;
+  /** A picture: what Qalam AI understands it to be, in a line or two (its reading, never quoted). */
+  about?: string;
+  image?: SourceImage;
   truncated?: boolean;
   /** Interviews. */
   segments?: TranscriptSegment[];
@@ -36,13 +39,19 @@ export const MAX_FILE = 40 * 1024 * 1024;
 /** What files the pickers offer (and the inbox reads). */
 export const XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
-export const ACCEPT = ".pdf,.docx,.xlsx,.md,.markdown,.txt,.text,.csv,.tsv,.vtt,.srt,.html,.htm,application/pdf,text/plain,text/markdown,text/csv,text/html,text/vtt," + DOCX + "," + XLSX;
+export const ACCEPT = ".pdf,.docx,.xlsx,.md,.markdown,.txt,.text,.csv,.tsv,.vtt,.srt,.html,.htm,.png,.jpg,.jpeg,.webp,.gif,.heic,.heif,application/pdf,text/plain,text/markdown,text/csv,text/html,text/vtt,image/png,image/jpeg,image/webp,image/gif,image/heic,image/heif," + DOCX + "," + XLSX;
+
+/** A picture Qalam reads (never an SVG: it could run as a page from this origin). */
+export const PICTURE = /^image\/(png|jpeg|webp|gif|heic|heif)$/;
+const PICTURE_EXT = /^(png|jpe?g|webp|gif|heic|heif)$/;
 
 /** How a place reads what isn't plain text. */
 export interface Readers {
   pdf: (bytes: ArrayBuffer) => Promise<{ text: string; pages: number[]; blocks?: TextBlock[]; pictures?: SourcePictures; title?: string }>;
   docx: (bytes: ArrayBuffer) => Promise<{ text: string }>;
   html: (text: string) => Promise<{ title?: string; text: string }>;
+  /** A picture: read where it can be (the core, on this Mac), whole. None: pictures can't be read here. */
+  image?: (bytes: ArrayBuffer, type: string, name: string) => Promise<Ingested>;
 }
 
 export const stem = (name: string) => name.replace(/\.[^.]+$/, "").trim() || name;
@@ -90,6 +99,11 @@ export async function fromBytes(bytes: ArrayBuffer, type: string, name: string, 
   const head = new Uint8Array(bytes.slice(0, 5));
   const ext = name.split(".").pop()?.toLowerCase() ?? "";
   const web = !!origin && /^https?:/i.test(origin);
+  if (PICTURE.test(type) || PICTURE_EXT.test(ext)) {
+    if (!readers.image) throw new IngestError(`${name} is a picture, and pictures can't be read here.`);
+    return readers.image(bytes, type, name);
+  }
+  if (type === "image/svg+xml" || ext === "svg") throw new IngestError(`${name} is an SVG, which Qalam doesn't read. Save it as a PNG, then add it.`);
   if (type === "application/pdf" || ext === "pdf" || String.fromCharCode(...head) === "%PDF-") {
     const r = await readers.pdf(bytes).catch((e) => {
       // Stopped by the person: nothing to say about the file.
