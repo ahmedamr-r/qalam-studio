@@ -1,5 +1,9 @@
-import { audiencesCall, briefCall, firstPickCall, QUESTIONS_SYSTEM } from "@/ai/scan";
-import { findQuestionsSchema } from "@/ai/find";
+import { audiencesCall, briefCall, firstPickCall } from "@/ai/scan";
+import { askTurnCall } from "@/ai/asking";
+import { sanitizeTurn } from "@/asking/sanitize";
+import type { AskTurn } from "@/asking/types";
+import { askingBlock, checkOf, type AskingInT } from "@/asking/wire";
+import { labOn } from "../lab";
 import type { PlanQuestion } from "@/ai/plan";
 import { structured } from "@/ai/server";
 import { quotePiece, type SourceQuote, type SourceRecord } from "@/discovery/sources";
@@ -62,23 +66,41 @@ export async function planMaterial(store: OrgStore, sources: readonly string[]):
   return { problems, words, published };
 }
 
-/** The questions before it works out who and what: Qalam AI's from what it read, else code's own, and neither what they've answered while it read. */
-export async function planQuestions(store: OrgStore, o: { target: ScanTarget; sources: readonly string[]; told?: readonly ScanSaid[] }, signal?: AbortSignal, deps: ScanPlanDeps = liveDeps): Promise<PlanQuestion[]> {
+/**
+ * A turn of the interview before it works out who and what (src/asking/): what public complaints can't
+ * tell, for as long as it needs, never what they told it while it read. A question's choices stay only
+ * where they're drawn from what was read; else it's asked in their own words. A first turn that can't
+ * be had asks code's own questions instead.
+ */
+export async function askScanPlan(store: OrgStore, o: { target: ScanTarget; sources: readonly string[]; told?: readonly ScanSaid[]; asking: AskingInT }, emit: (label: string) => void, signal?: AbortSignal, deps: ScanPlanDeps = liveDeps): Promise<AskTurn> {
+  emit("Working out what to ask");
   const told = o.told ?? [];
   const { problems, words, published } = await planMaterial(store, o.sources);
   const about = o.target.kind === "idea" ? `What they want to build: ${o.target.said}` : `The product: ${o.target.name}`;
   const text = [about, "", "The problems found:", ...problems.slice(0, 8).map((p) => `- ${p.title}`), "", "What people say, in public:", ...words.slice(0, 24).map((w) => `- ${w.text}`), ...(published.length ? ["", "What's been published around it (someone else's words):", ...published.map((w) => `- ${w}`)] : []), ...(told.length ? ["", "What they've told you already (never ask it again):", toldLines({ said: [...told], off: [] })] : [])].join("\n");
   const m = { text, known: [...problems.map((p) => p.title), ...words.map((w) => w.text), ...published] };
+  const material = [text, "", askingBlock(o.asking)].join("\n");
+  const lab = await labOn();
+  const decisions = lab === true || lab.includes("decisions");
+  const first = !o.asking.rounds.some((r) => !r.by);
   try {
-    const { data, model } = await deps.structured<unknown>({ kind: "find-questions", system: QUESTIONS_SYSTEM, schema: findQuestionsSchema(), effort: "low", maxTokens: 3000, content: [{ type: "text", text }] }, signal);
-    const kept = sanitizeFindQuestions(data, m);
-    await store.putTrace({ id: nanoid(10), projectId: "scan", kind: "scan-questions", at: Date.now(), ...(model ? { model } : {}), answer: data, kept: kept.map((q) => q.title) } as { id: string; projectId: string }).catch(() => {});
-    return notAsked(kept.length ? kept : scanRound(), told);
+    const { data, model } = await deps.structured<unknown>(askTurnCall({ flow: "scan", who: "person", material, kinds: SCAN_KINDS, terms: true, choices: decisions }), signal);
+    const dropped: { why: string; item: unknown }[] = [];
+    const turn = sanitizeTurn(data, checkOf(o.asking, { who: "person", hay: material.replace(/^(\s*- )[\w-]+ ·/gm, "$1"), terms: await store.getTerms(), kinds: SCAN_KINDS, decisions }), (why, item) => dropped.push({ why, item }));
+    // Choices drawn from what was read, else in their own words.
+    const questions = turn.questions.map((q) => {
+      const [kept] = sanitizeFindQuestions({ questions: [q] }, m);
+      return kept ? { ...kept, id: q.id, ...(q.after?.length ? { after: q.after } : {}) } : { ...q, options: [], recommended: [], allowOther: false };
+    });
+    await store.putTrace({ id: nanoid(10), projectId: "asking", kind: "ask-turn", flow: "scan", at: Date.now(), ...(model ? { model } : {}), rounds: o.asking.rounds.length, answer: data, kept: { questions: questions.map((q) => q.title), lookups: turn.lookups, done: turn.done }, dropped } as { id: string; projectId: string }).catch(() => {});
+    return { ...turn, questions };
   } catch (e) {
-    if (signal?.aborted) throw e;
-    return notAsked(scanRound(), told);
+    if (signal?.aborted || !first) throw e;
+    return { questions: notAsked(scanRound(), told).map((q) => ({ ...q, by: "code" as const })), lookups: [], done: false, understood: [], terms: [], choices: [] };
   }
 }
+
+const SCAN_KINDS = ["project", "web"] as const;
 
 /** Their answers as a source of their own words, so drafts can rest on them. Null with nothing answered. */
 export async function keepAnswers(store: OrgStore, said: readonly { question: string; answer: string }[], title: string): Promise<string | null> {

@@ -64,7 +64,7 @@ import { steerRound } from "@/scan/steer";
 import { askBrief, briefRequestOf, writeCardBrief } from "./briefs";
 import { AskingIn } from "@/asking/wire";
 import { askedOf } from "@/discovery/brief";
-import { firstBuild, keepAnswers, keepAudience, planAudiences, planQuestions, scanShare, writeBrief } from "./scan-plan";
+import { askScanPlan, firstBuild, keepAnswers, keepAudience, planAudiences, scanShare, writeBrief } from "./scan-plan";
 import { scanRequest, type ScanTarget } from "@/scan/session";
 import { handoffOf } from "@/onboarding/handoff";
 import { atomicWrite } from "./fsx";
@@ -1104,11 +1104,15 @@ export function orgRoutes(): Hono<Env> {
     const sources = Array.isArray(b?.sources) ? b.sources.filter((x): x is string => typeof x === "string" && ID.test(x)).slice(0, 20) : [];
     return req && sources.length ? { target: req.target, sources, told: req.told ?? [] } : null;
   };
-  r.post("/api/org/:org/scan/questions", async (c) => {
-    const plan = planOf(await c.req.json().catch(() => null));
-    if (!plan) return bad("No scan to go on");
-    if (!aiConfigured()) return c.json({ questions: [] });
-    return c.json({ questions: await planQuestions(c.get("store"), plan, c.req.raw.signal) });
+  // A turn of the interview before what to build first (src/asking/), with what the scan read.
+  r.post("/api/org/:org/scan/plan/ask", async (c) => {
+    const raw = (await c.req.json().catch(() => null)) as { asking?: unknown; target?: unknown; sources?: unknown; told?: unknown } | null;
+    const plan = planOf(raw);
+    const asking = AskingIn.safeParse(raw?.asking);
+    if (!plan || !asking.success) return bad("No scan to go on");
+    if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't ask about this." }, 503);
+    const store = c.get("store");
+    return streamed(c.req.raw.signal, (emit, signal) => askScanPlan(store, { ...plan, asking: asking.data }, emit, signal));
   });
   r.post("/api/org/:org/scan/answers", async (c) => {
     const b = (await c.req.json().catch(() => null)) as { said?: unknown; title?: unknown } | null;

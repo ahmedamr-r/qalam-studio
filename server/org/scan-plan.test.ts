@@ -10,7 +10,10 @@ vi.mock("@/ai/server", () => ({
   structured: () => Promise.reject(new Error("No model in tests")),
 }));
 process.env.QALAM_NO_MODELS = "1";
-const { firstBuild, keepAnswers, keepAudience, planAudiences, planMaterial, planQuestions, scanShare, writeBrief } = await import("./scan-plan");
+vi.mock("../lab", () => ({ labOn: async () => [] }));
+const { askScanPlan, firstBuild, keepAnswers, keepAudience, planAudiences, planMaterial, scanShare, writeBrief } = await import("./scan-plan");
+const { emptyAsking } = await import("@/asking/engine");
+const { askingIn } = await import("@/asking/wire");
 
 let dir: string;
 let store: OrgStore;
@@ -75,29 +78,43 @@ describe("from a scan's problems to what comes first", () => {
     expect(m.published).toEqual([`${text} (A report)`]);
   });
 
-  it("asks code's own questions when Qalam AI's can't be had", async () => {
+  const fresh = () => askingIn(emptyAsking(), { said: "" });
+
+  it("asks code's own questions when Qalam AI's first turn can't be had, and fails a later one for Try again", async () => {
     const d = deps();
     vi.mocked(d.structured).mockRejectedValueOnce(new Error("Limit"));
-    const q = await planQuestions(store, { target, sources: ["s1"] }, undefined, d);
-    expect(q.length).toBe(3);
-    expect(q.every((x) => x.options.length === 0)).toBe(true);
+    const t = await askScanPlan(store, { target, sources: ["s1"], asking: fresh() }, () => {}, undefined, d);
+    expect(t.questions.length).toBe(3);
+    expect(t.questions.every((x) => x.options.length === 0 && x.by === "code")).toBe(true);
+    const later = askingIn({ ...emptyAsking(), rounds: [{ questions: [{ id: "q1", title: "Who first?", why: "", multi: false, options: [], recommended: [], allowOther: true }], form: { answers: {}, current: "review", visited: ["q1"], editing: false, submitted: true }, said: { q1: "Nurses" } }] }, { said: "" });
+    vi.mocked(d.structured).mockRejectedValueOnce(new Error("Limit"));
+    await expect(askScanPlan(store, { target, sources: ["s1"], asking: later }, () => {}, undefined, d)).rejects.toThrow("Limit");
   });
 
   it("doesn't ask again what they answered while it read, and tells Qalam AI not to", async () => {
     const who = "Who do you picture using this first?";
-    const none = await planQuestions(store, { target, sources: ["s1"], told: [{ question: who, answer: "Night nurses" }] }, undefined, { structured: async () => { throw new Error("no"); }, draft: async () => { throw new Error("no"); } });
-    expect(none.map((q) => q.title)).not.toContain(who);
-    expect(none.length).toBeGreaterThan(0);
+    const told = [{ question: who, answer: "Night nurses" }];
+    const none = await askScanPlan(store, { target, sources: ["s1"], told, asking: fresh() }, () => {}, undefined, { structured: async () => { throw new Error("no"); }, draft: async () => { throw new Error("no"); } });
+    expect(none.questions.map((q) => q.title)).not.toContain(who);
+    expect(none.questions.length).toBeGreaterThan(0);
     let heard = "";
-    await planQuestions(store, { target, sources: ["s1"], told: [{ question: who, answer: "Night nurses" }] }, undefined, {
-      structured: (async (call: { content: { text: string }[] }) => {
+    await askScanPlan(store, { target, sources: ["s1"], told, asking: fresh() }, () => {}, undefined, {
+      structured: (async (call: { kind: string; content: { text: string }[] }) => {
         heard = call.content[0].text;
-        return { data: { questions: [] } };
+        expect(call.kind).toBe("ask-turn");
+        return { data: { questions: [], lookups: [], done: true, understood: [], terms: [] } };
       }) as never,
       draft: async () => { throw new Error("no"); },
     });
     expect(heard).toContain("never ask it again");
     expect(heard).toContain("Night nurses");
+  });
+
+  it("keeps a question's choices only where they're drawn from what was read, else asks it open", async () => {
+    const q = (id: string, options: string[]) => ({ id, title: `Question ${id}?`, why: "", multi: false, options: options.map((label, i) => ({ value: `o${i}`, label, description: "" })), recommended: [], allowOther: true, after: [] });
+    const structured = (async () => ({ data: { questions: [q("a", ["Night nurses", "Shift workers"]), q("b", ["Astronauts", "Deep-sea divers"])], lookups: [], done: false, understood: [], terms: [] } })) as never;
+    const t = await askScanPlan(store, { target, sources: ["s1"], asking: fresh() }, () => {}, undefined, { structured, draft: async () => { throw new Error("no"); } });
+    expect(t.questions.find((x) => x.id === "b")?.options).toEqual([]);
   });
 
   it("keeps their answers as their own words, and nothing with nothing answered", async () => {

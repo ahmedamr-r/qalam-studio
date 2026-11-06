@@ -120,6 +120,8 @@ export interface PlanJob {
   rounds: PlanRound[];
   looks: PlanLook[];
   asking?: AskingState;
+  /** Their own answers, kept as a source of their words as it proposed (never filed into problem pages). */
+  answers?: string;
   proposals?: Proposal[];
   /** The cards it proposed: what's on the canvas of them once it's settled is what was taken. */
   cards?: string[];
@@ -209,8 +211,12 @@ export interface BriefState {
 
 /** The steps from a scan's problems to what to build first, each kept so a reload shows it as it was. */
 export interface ScanPlan {
-  step: "questioning" | "asking" | "reading" | "audiences" | "goal" | "picking" | "picked" | "placed" | "failed";
+  /** `questioning`: Qalam AI's turn (or a lookup it waits on); `asking`: a round in the box; `settled`: What we settled. */
+  step: "questioning" | "asking" | "settled" | "reading" | "audiences" | "goal" | "picking" | "picked" | "placed" | "failed";
+  /** The questions a plan from before asked: read as the interview's first round. */
   questions?: PlanQuestion[];
+  /** The interview before who it's for (src/asking/): what they told the scan while it read as an answered round, then Qalam AI's, for as long as it needs. */
+  asking?: AskingState;
   /** Their answers, as words and as a source of their own. */
   answers?: string;
   answersSource?: string;
@@ -300,7 +306,7 @@ function stopped(j: ChatJob): ChatJob {
   if (j.kind === "scan" && j.plan?.brief && briefBack(j.plan.brief) !== j.plan.brief) return { ...j, plan: { ...j.plan, brief: briefBack(j.plan.brief) } };
   if (j.kind === "brief" && briefBack(j.brief) !== j.brief) return { ...j, brief: briefBack(j.brief) };
   // What was being worked out when the page went stops there: they can ask again.
-  if (j.kind === "scan" && j.plan && (j.plan.step === "questioning" || j.plan.step === "reading" || j.plan.step === "picking")) return { ...j, plan: { ...j.plan, step: "failed", error: "It stopped when the page closed." } };
+  if (j.kind === "scan" && j.plan && (j.plan.step === "questioning" || j.plan.step === "reading" || j.plan.step === "picking")) return { ...j, plan: { ...j.plan, ...(j.plan.asking ? { asking: loaded(j.plan.asking) } : {}), step: "failed", error: "It stopped when the page closed." } };
   if (j.kind === "goalfor" && j.step === "looking") return { ...j, step: "failed", error: "It stopped when the page closed." };
   if (j.kind === "plan" && (j.step === "looking" || j.step === "thinking" || j.step === "proposing")) return { ...j, ...(j.asking ? { asking: loaded(j.asking) } : {}), step: "failed", error: "It stopped when the page closed." };
   // Lookups running when the page closed: nothing runs them now.

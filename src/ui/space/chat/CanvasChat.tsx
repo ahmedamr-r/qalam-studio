@@ -26,7 +26,7 @@ import type { Space } from "../../frame/spaces";
 import { ASK_EVENT, takeAskNext } from "../../org/ask-next";
 import { PARTS } from "./parts";
 import { clearMode, composeIn, useCompose } from "./compose";
-import { answerBriefRound, askMeInsteadBrief, briefRoundOf, keepBriefRound, lookItUpBrief, picksBrief, stopAskingBrief, stopBriefLookup, answerCanvasPlan, answerDraft, answerFind, answerNumber, answerPlan, answerSteer, ask, askMeInsteadDraft, askMeInsteadPlan, keepDraftRound, lookItUpDraft, picksDraft, stopAskingDraft, stopDraftLookup, clearChat, findQuestionsOf, findWith, keepPlanRound, leaveSteer, lookItUpPlan, numberQuestions, openChat, picksCanvasPlan, planQuestionsOf, resumePlans, send, steerQuestionsOf, stopAskingPlan, stopPlanLookup, stopTurn, turnOf, useCanvasChat } from "./store";
+import { answerScanRound, askMeInsteadScan, keepScanRound, lookItUpScan, picksScan, scanRoundOf, stopAskingScan, stopScanLookup, answerBriefRound, askMeInsteadBrief, briefRoundOf, keepBriefRound, lookItUpBrief, picksBrief, stopAskingBrief, stopBriefLookup, answerCanvasPlan, answerDraft, answerFind, answerNumber, answerSteer, ask, askMeInsteadDraft, askMeInsteadPlan, keepDraftRound, lookItUpDraft, picksDraft, stopAskingDraft, stopDraftLookup, clearChat, findQuestionsOf, findWith, keepPlanRound, leaveSteer, lookItUpPlan, numberQuestions, openChat, picksCanvasPlan, resumePlans, send, steerQuestionsOf, stopAskingPlan, stopPlanLookup, stopTurn, turnOf, useCanvasChat } from "./store";
 import { AskRound } from "../../asking/AskRound";
 
 /*
@@ -285,12 +285,17 @@ function BriefRound({ turn }: { turn: string }) {
   return <AskRound state={state} title={title} onKeep={(f) => keepBriefRound(turn, f)} onSend={(f) => answerBriefRound(turn, f)} onPicks={(f) => picksBrief(turn, f)} onStop={(f) => stopAskingBrief(turn, f)} onStopLookup={(id) => stopBriefLookup(turn, id)} onLookItUp={() => lookItUpBrief(turn)} onAskMe={() => askMeInsteadBrief(turn)} />;
 }
 
-/** The questions before working out who it's for and what comes first; every one can be skipped. */
+/** The interview before working out who it's for and what comes first (src/asking/): as many rounds as it needs, every question skippable. */
 function PlanRound({ turn }: { turn: string }) {
-  const questions = useMemo(() => planQuestionsOf(turn).map(toQuestion), [turn]);
-  const [form, setForm] = useState<FlowState>(() => initialFlow(questions));
-  const answerOf = (f: FlowState, q: (typeof questions)[number]) => answerWords(q, f.answers[q.id]).text;
-  return <Questionnaire title="Before I work out what comes first" questions={questions} state={form} onChange={setForm} onSubmit={(f) => void answerPlan(turn, Object.fromEntries(questions.map((q) => [q.id, answerOf(f, q)])))} review={{ submitLabel: "Send answers" }} />;
+  const kept = useCanvasChat((s) => {
+    const j = s.chat.turns.find((t) => t.id === turn)?.job;
+    return j?.kind === "scan" ? (j.plan?.asking ?? null) : null;
+  });
+  // A plan from before kept only its questions: they're read as a round.
+  const before = useMemo(() => scanRoundOf(turn), [turn]);
+  const state = kept ?? before;
+  if (!state) return null;
+  return <AskRound state={state} title={state.rounds.filter((r) => !r.said).length > 1 ? undefined : "Before I work out what comes first"} onKeep={(f) => keepScanRound(turn, f)} onSend={(f) => answerScanRound(turn, f)} onPicks={(f) => picksScan(turn, f)} onStop={(f) => stopAskingScan(turn, f)} onStopLookup={(id) => stopScanLookup(turn, id)} onLookItUp={() => lookItUpScan(turn)} onAskMe={() => askMeInsteadScan(turn)} />;
 }
 
 /** The questions before a card's draft (src/asking/): every question it can ask now, Qalam AI's picks in one press, and Stop asking. */

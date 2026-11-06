@@ -6,7 +6,16 @@ import type { ShareProblem } from "@/scan/share";
 import type { ScanKnown, ScanRequest, ScanSession, ScanTarget } from "@/scan/session";
 import type { ScanSaid, ScanSteer } from "@/scan/steer";
 import { NOT_READ, type FirstRead } from "@/scan/input";
-import { orgFetch, orgJson } from "./client";
+import { callAI } from "@/ai/client";
+import type { AskTurn } from "@/asking/types";
+import type { AskingInT } from "@/asking/wire";
+import { orgFetch, orgJson, orgPath } from "./client";
+
+/** A turn of the interview before what to build first (server/org/scan-plan.ts, askScanPlan): the chat keeps the conversation and sends it each time. */
+export async function askScanPlan(p: Plan, asking: AskingInT, onActivity?: (label: string) => void, signal?: AbortSignal): Promise<AskTurn> {
+  const { data } = await callAI<AskTurn>(await orgPath("/scan/plan/ask"), { ...p, asking }, undefined, signal, (e) => e.type === "activity" && onActivity?.(e.label));
+  return data;
+}
 
 /** What people complain about, in the window: the core runs it (server/org/scan.ts) and announces each change. */
 
@@ -30,7 +39,6 @@ export const scanShare = (p: Plan) => post<{ problems: ShareProblem[] }>("/scan/
 export const steerQuestions = (target: ScanTarget, signal?: AbortSignal) => post<{ questions: PlanQuestion[] }>("/scan/ask", { target }, signal).then((r) => r.questions);
 export const steerScan = (more: Partial<ScanSteer>) => post<{ session: ScanSession | null }>("/scan/steer", more).then((r) => r.session);
 
-export const planQuestions = (p: Plan, signal?: AbortSignal) => post<{ questions: PlanQuestion[] }>("/scan/questions", p, signal).then((r) => r.questions);
 export const keepAnswers = (said: { question: string; answer: string }[], title: string) => post<{ source: string | null }>("/scan/answers", { said, title }).then((r) => r.source);
 export const planAudiences = (p: Plan & { answers: string }, signal?: AbortSignal) => post<{ audiences: ScanAudience[] }>("/scan/audiences", p, signal).then((r) => r.audiences);
 export const keepAudience = (a: { name: string; about?: string; refs: string[] }) => post<{ ok: true }>("/scan/audience", a);

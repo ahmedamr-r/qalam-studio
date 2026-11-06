@@ -1,5 +1,5 @@
 import type { PlanQuestion } from "@/ai/plan";
-import { applyTurn, currentRound, emptyAsking, lookupLanded, markRead, nextAfter, startLookup } from "@/asking/engine";
+import { answersOf, applyTurn, askInstead, currentRound, emptyAsking, lookupLanded, markRead, nextAfter, startLookup } from "@/asking/engine";
 import type { AskingState, Lookup } from "@/asking/types";
 import { askingIn } from "@/asking/wire";
 import { research, structured } from "@/ai/server";
@@ -17,7 +17,7 @@ import { realDeps, type MarketDeps } from "../../server/org/market";
 import { readAppReviews, readJson, readPage, readPosts } from "../../server/org/pages";
 import { needsNow } from "../../server/org/needs";
 import { lookForPlan, planNext, proposePlan, routeQuestion, type PlanBody } from "../../server/org/plan";
-import { firstBuild, keepAnswers, keepAudience, planAudiences, planQuestions, writeBrief } from "../../server/org/scan-plan";
+import { askScanPlan, firstBuild, keepAnswers, keepAudience, planAudiences, writeBrief } from "../../server/org/scan-plan";
 import { scanToEnd, steerQuestions, type ScanDeps } from "../../server/org/scan";
 import type { OrgStore } from "../../server/org/store";
 import type { Player } from "./player";
@@ -222,10 +222,30 @@ export async function scanFlow(store: OrgStore, p: Persona, player: Player, t: T
   const out: ScanRun = { ...base, startAsked: allTold, session, questions: [steer], problems };
   if (!sources.length) return out;
   const plan = { target, sources, told: allTold };
-  const questions = await planQuestions(store, plan, signal);
-  out.questions.push(questions);
-  const answers = await player.fill(questions, { flow: "scan-plan", round: 0 }, signal);
-  const said2 = [...allTold, ...questions.map((q) => ({ question: q.title, answer: (answers[q.id] ?? "").trim() })).filter((x) => x.answer)];
+  // The interview before what to build first, as the app runs it (src/asking/), under the bench's own guard; lookups land empty here.
+  let s: AskingState = emptyAsking();
+  let made = 0;
+  for (let turns = 0; turns < BENCH_TURNS; ) {
+    for (const l of s.lookups.filter((x) => x.state === "running")) s = lookupLanded(s, l.id, { lines: [] });
+    const next = nextAfter(s);
+    if (next === "end") break;
+    if (next === "offer") {
+      s = askInstead(s);
+      continue;
+    }
+    if (next === "ask") {
+      const r = currentRound(s)!;
+      out.questions.push(r.questions);
+      const answers = await player.fill(r.questions, { flow: "scan-plan", round: s.rounds.length - 1 }, signal);
+      s = { ...s, rounds: s.rounds.map((x, i) => (i === s.rounds.length - 1 ? { ...x, said: answers, form: { ...x.form, submitted: true } } : x)) };
+      continue;
+    }
+    if (next === "wait") continue;
+    turns++;
+    s = markRead(s);
+    s = applyTurn(s, await askScanPlan(store, { ...plan, asking: askingIn(s, { said: "" }) }, () => {}, signal), { now: Date.now(), id: (p) => `${p}${++made}` });
+  }
+  const said2 = [...allTold, ...answersOf(s).filter((a) => a.how === "own" && a.text).map((a) => ({ question: a.question, answer: a.text }))];
   const words = said2.map((x) => `${x.question} ${x.answer}`).join("\n");
   const answersSource = said2.length ? await keepAnswers(store, said2, `Your answers: ${said.slice(0, 60)}`).catch(() => null) : null;
   const audiences = await planAudiences(store, { ...plan, answers: words }, signal);

@@ -40,7 +40,7 @@ import { useWords } from "../../frame/store";
 import { show } from "../links";
 import { FoundGoalRow } from "../../chat/FoundGoalRow";
 import { moreLine } from "@/onboarding/start";
-import { answerWhose, goalForTopProblem, anotherFile, briefAgain, briefStart, changeDocBasis, chooseDraft, decideDocGoal, dropTurn, leaveFile, leaveFit, lookPastFits, openProblems, pickAudience, placeFirstBuild, placeStatement, planAgain, planFirst, planOf, planStart, retake, retryGoalFor, scanAgain, scanHere, scanInNewProject, scanIsMine, scanOtherWay, setPlanGoal, settleNumber, steerOff, stopTurn, takeAsBasis, takeFit, takeGoalNumber, takeIdea, turnOf, useCanvasChat, retryCanvasPlan, runAs, showCanvasPlan, stopAskingPlan, confirmCanvasPlan, offCanvasPlan, decidePlanTerm, confirmDraft, decideDraftTerm, draftGo, draftNow, offDraft, retryDraft, confirmBrief, offBrief, decideBriefTerm } from "./store";
+import { answerWhose, goalForTopProblem, anotherFile, briefAgain, briefStart, changeDocBasis, chooseDraft, decideDocGoal, dropTurn, leaveFile, leaveFit, lookPastFits, openProblems, pickAudience, placeFirstBuild, placeStatement, planAgain, planFirst, planOf, planStart, retake, retryGoalFor, scanAgain, scanHere, scanInNewProject, scanIsMine, scanOtherWay, setPlanGoal, settleNumber, steerOff, stopTurn, takeAsBasis, takeFit, takeGoalNumber, takeIdea, turnOf, useCanvasChat, retryCanvasPlan, runAs, showCanvasPlan, stopAskingPlan, confirmCanvasPlan, offCanvasPlan, decidePlanTerm, confirmDraft, decideDraftTerm, draftGo, draftNow, offDraft, retryDraft, confirmBrief, offBrief, decideBriefTerm, confirmScan, offScan, decideScanTerm } from "./store";
 import { AnsweredRound, FoundInProject, SettledCard } from "../../asking/AskRound";
 import { titleFrom } from "@/space/route";
 import { otherReading, projectName } from "@/scan/input";
@@ -1815,8 +1815,16 @@ function ScanPlanPart({ data }: { data: PartData }) {
     <div className="flex flex-col gap-[8px] pt-[4px]">
       {p.audience && p.step !== "audiences" && <Settled label="For" value={p.audience.name} />}
       {goal && p.step !== "goal" && <Settled label="First goal" value={goal} />}
-      {p.step === "questioning" && <Progress label="Working out what to ask" started={live?.started ?? t.at} tokens={0} note="A few short questions, then who it's for." />}
-      {p.step === "asking" && <p className="text-body text-fg">A few questions first. Skip any you can't answer.</p>}
+      {/* The interview so far (src/asking/): each round of theirs answered (what they told the scan while it read isn't shown again), and what their project had. */}
+      {p.asking && (p.step === "questioning" || p.step === "asking" || p.step === "settled" || p.step === "reading") && (
+        <>
+          {p.asking.rounds.map((r, i) => (r.said || (p.step === "asking" && i === p.asking!.rounds.length - 1) ? null : <AnsweredRound key={i} state={p.asking!} index={i} />))}
+          <FoundInProject state={p.asking} />
+        </>
+      )}
+      {p.step === "questioning" && <Progress label={live?.steps.at(-1) ?? "Working out what to ask"} started={live?.started ?? t.at} tokens={0} note="Then who it's for." />}
+      {p.step === "asking" && <p className="text-body text-fg">Answer what you can, or take my picks. Skip any you can't answer.</p>}
+      {p.step === "settled" && p.asking && <SettledCard state={p.asking} go="Work out who it's for" onGo={() => confirmScan(t.id)} onOff={() => offScan(t.id)} onTerm={(term, keep) => void decideScanTerm(t.id, term, keep)} />}
       {p.step === "reading" && <Progress label="Reading who these people are" started={live?.started ?? t.at} tokens={0} note="This takes under a minute." />}
       {p.step === "audiences" && <AudiencesStep id={t.id} list={p.audiences ?? []} />}
       {p.step === "goal" && p.audience && p.goal && <GoalStep id={t.id} name={p.audience.name} goal={p.goal} />}

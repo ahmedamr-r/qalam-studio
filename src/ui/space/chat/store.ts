@@ -22,7 +22,8 @@ import type { AskingState, Lookup } from "@/asking/types";
 import { askingIn } from "@/asking/wire";
 import { hostOf } from "@/ai/research-shared";
 import { editTerm, useTerms } from "@/org/terms";
-import type { FlowState } from "../../ai/questionFlow";
+import { initialFlow, type FlowState } from "../../ai/questionFlow";
+import { toQuestion } from "../../ai/plan";
 import { answer, askMeInstead, confirm, generateNow, goOn, keepRound, lookItUp, off, picks, projectLookup, startLookups, stopAsking, stopLookup, stopLookups, type AskingHost, type Paused } from "../../asking/run";
 import { create } from "zustand";
 import { aiStatus } from "@/ai/client";
@@ -57,14 +58,14 @@ import { onOrgChange } from "@/org/live";
 import { needsDb } from "@/org/needs";
 import { otherReading, requestOf, scanInput } from "@/scan/input";
 import type { ScanTarget } from "@/scan/session";
-import { notAsked, steerAnswers, steerRound, type ScanSaid } from "@/scan/steer";
+import { steerAnswers, steerRound, type ScanSaid } from "@/scan/steer";
 import { briefRound, type BriefAsked, type BriefShape } from "@/discovery/brief";
 import { askBriefTurn, writeCardBrief } from "@/org/briefs";
 import { briefRequest } from "../../discovery/brief-request";
 import { loadBriefs } from "../../discovery/briefs";
 import { glideToLayer, onCanvasReady } from "../../discovery/canvas";
-import { firstBuild, writeBrief, keepAnswers, keepAudience, namesSomething, readFirstAnswer, planAudiences, planQuestions, scanNow, startScan, steerQuestions, steerScan, stopScan } from "@/org/scan";
-import { firstGoal, sameTarget, scanRound, SUGGESTED_GOAL, type GoalAction, type ScanAudience } from "@/scan/plan";
+import { askScanPlan, firstBuild, writeBrief, keepAnswers, keepAudience, namesSomething, readFirstAnswer, planAudiences, scanNow, startScan, steerQuestions, steerScan, stopScan } from "@/org/scan";
+import { firstGoal, sameTarget, SUGGESTED_GOAL, type GoalAction, type ScanAudience } from "@/scan/plan";
 import { projectName } from "@/scan/input";
 import { nameAfterRead } from "@/onboarding/start";
 import { draftBacking, draftCards } from "@/discovery/solutions";
@@ -479,48 +480,106 @@ const stoppedPlan = (id: string, e: unknown) => {
   plan(id, (p) => ({ ...p, step: "failed", error: aborted ? "You stopped it." : message(e) }));
 };
 
-/** Work out what to build first: the questions first, in the box. */
-export async function planStart(id: string) {
-  const j = scanJob(id);
-  if (!j) return;
-  change((c) => withJob(c, id, (x) => (x.kind === "scan" ? { ...x, plan: { step: "questioning" } } : x)));
-  const ctrl = begin(id);
-  let answered = false;
-  try {
-    const questions = await planQuestions(planOf(j), ctrl.signal);
-    // They've answered all there is: straight on to who it's for.
-    answered = !questions.length && !!j.told?.length;
-    if (!answered) plan(id, (p) => ({ ...p, step: "asking", questions: questions.length ? questions : scanRound() }));
-  } catch (e) {
-    if ((e as Error).name === "AbortError") return stoppedPlan(id, e);
-    plan(id, (p) => ({ ...p, step: "asking", questions: notAsked(scanRound(), j.told ?? []) }));
-  } finally {
-    end(id);
-  }
-  if (answered) void answerPlan(id, {});
+/** What they told the scan while it read, as the interview's first round, answered (src/asking/). */
+function toldRound(told: readonly ScanSaid[]): AskingState {
+  const s = emptyAsking();
+  if (!told.length) return s;
+  const questions = told.map((t, i) => ({ id: `told${i + 1}`, title: t.question, why: "", multi: false, options: [], recommended: [], allowOther: true, by: "code" as const }));
+  return { ...s, rounds: [{ questions, form: { ...initialFlow(questions.map(toQuestion), false), submitted: true }, said: Object.fromEntries(told.map((t, i) => [`told${i + 1}`, t.answer])) }] };
 }
 
-/** The questions the box asks now. */
-export const planQuestionsOf = (id: string) => scanJob(id)?.plan?.questions ?? notAsked(scanRound(), scanJob(id)?.told ?? []);
-
-/** Their answers, kept as their own words, then who the quotes show. Everything may be skipped. */
-export async function answerPlan(id: string, answers: Readonly<Record<string, string>>) {
+/** The scan plan's interview: kept on the plan, or made from a plan from before (its questions as the first round). */
+const scanAsking = (id: string): AskingState | null => {
   const j = scanJob(id);
-  if (!j?.plan) return;
-  const said = [...(j.told ?? []), ...planQuestionsOf(id).map((q) => ({ question: q.title, answer: (answers[q.id] ?? "").trim() })).filter((x) => x.answer)];
-  const words = said.map((x) => `${x.question} ${x.answer}`).join("\n");
-  plan(id, (p) => ({ ...p, step: "reading", answers: words }));
+  const p = j?.plan;
+  if (!p) return null;
+  if (p.asking) return p.asking;
+  const s = toldRound(j.told ?? []);
+  return p.questions ? { ...s, rounds: [...s.rounds, { questions: p.questions.map((q) => ({ ...q, by: "code" as const })), form: initialFlow(p.questions.map(toQuestion), false) }] } : s;
+};
+
+/** The interview's host before what to build first: its turns read what the scan read, its lookups, and who the quotes show at the end. */
+export const scanPlanHost = (id: string): AskingHost => ({
+  key: id,
+  get: () => scanAsking(id),
+  set: (fn) => {
+    const s = scanAsking(id);
+    if (s) plan(id, (p) => ({ ...p, asking: fn(s) }));
+  },
+  turn: (s, signal) => {
+    const j = scanJob(id);
+    if (!j) throw new Error("The scan has gone.");
+    return askScanPlan(planOf(j), askingIn(s, { said: j.target.kind === "idea" ? j.target.said : "", terms: useTerms.getState().terms }), step(id), signal);
+  },
+  lookup: async (l, signal) => {
+    if (l.kind === "project") return projectLookup(l);
+    const j = scanJob(id);
+    const about = j?.target.kind === "idea" ? j.target.said : (j?.target.name ?? "");
+    const look = await planLook({ said: `What people do about this: ${about}`.slice(0, 4000), outline: [], rounds: [], looks: [], ...(l.query ? { query: l.query } : {}) }, undefined, signal);
+    return { look, lines: look.lines.map((x, i) => ({ ref: `${l.id}-${i + 1}`, text: x.text, from: x.url ? hostOf(x.url) : "a page", whose: "a page online", ...(x.url ? { url: x.url } : {}), ...(x.quote ? { quote: x.quote } : {}) })) };
+  },
+  generate: (s, signal) => audiencesNow(id, s, signal),
+  status: (st) => {
+    plan(id, (p) => (p.step === "reading" ? p : { ...p, step: "questioning" }));
+    step(id)(st === "thinking" ? "Working out what to ask" : "Looking it up before asking more");
+  },
+});
+
+/** One stretch of the interview: until it asks, shows what's settled, or has found who the quotes show. */
+async function runScanPlanAsk(id: string, stretch: (signal: AbortSignal) => Promise<Paused | void>) {
   const ctrl = begin(id);
   try {
-    const project = (await currentOrg().catch(() => null))?.name ?? projectName(j.target);
-    const source = said.length ? await keepAnswers(said, `Your answers: ${project}`).catch(() => null) : null;
-    const audiences = await planAudiences({ ...planOf(j), answers: words }, ctrl.signal);
-    plan(id, (p) => ({ ...p, step: "audiences", audiences, ...(source ? { answersSource: source } : {}) }));
+    const why = await stretch(ctrl.signal);
+    if (why === "ask" || why === "offer") plan(id, (p) => ({ ...p, step: "asking" }));
+    else if (why === "settled") plan(id, (p) => ({ ...p, step: "settled" }));
   } catch (e) {
+    if ((e as Error).name === "AbortError" || ctrl.signal.aborted) stopLookups(id);
     stoppedPlan(id, e);
   } finally {
     end(id);
   }
+}
+
+/** Work out what to build first: the interview first, in the box; what they told the scan while it read is never asked again. */
+export function planStart(id: string) {
+  const j = scanJob(id);
+  if (!j) return;
+  change((c) => withJob(c, id, (x) => (x.kind === "scan" ? { ...x, plan: { step: "questioning", asking: toldRound(x.told ?? []) } } : x)));
+  void runScanPlanAsk(id, (signal) => goOn(scanPlanHost(id), signal));
+}
+
+/** The interview's done: their own answers kept as a source of their words (Qalam AI's picks never are), then who the quotes show. */
+async function audiencesNow(id: string, s: AskingState, signal: AbortSignal) {
+  const j = scanJob(id);
+  if (!j?.plan) return;
+  const said = answersOf(s).filter((a) => a.how === "own" && a.text).map((a) => ({ question: a.question, answer: a.text }));
+  const words = said.map((x) => `${x.question} ${x.answer}`).join("\n");
+  plan(id, (p) => ({ ...p, step: "reading", answers: words }));
+  step(id)("Reading who these people are");
+  const project = (await currentOrg().catch(() => null))?.name ?? projectName(j.target);
+  const source = said.length ? await keepAnswers(said, `Your answers: ${project}`).catch(() => null) : null;
+  const audiences = await planAudiences({ ...planOf(j), answers: words }, signal);
+  plan(id, (p) => ({ ...p, step: "audiences", audiences, ...(source ? { answersSource: source } : {}) }));
+}
+
+export const scanRoundOf = (id: string) => scanAsking(id);
+export const keepScanRound = (id: string, form: FlowState) => keepRound(scanPlanHost(id), form);
+export const answerScanRound = (id: string, form: FlowState) => void runScanPlanAsk(id, (signal) => answer(scanPlanHost(id), form, signal));
+export const picksScan = (id: string, form: FlowState) => void runScanPlanAsk(id, (signal) => picks(scanPlanHost(id), form, signal));
+export const stopAskingScan = (id: string, form: FlowState | null) => void runScanPlanAsk(id, (signal) => stopAsking(scanPlanHost(id), form, signal));
+export const confirmScan = (id: string) => void runScanPlanAsk(id, (signal) => confirm(scanPlanHost(id), signal));
+export const lookItUpScan = (id: string) => void runScanPlanAsk(id, (signal) => lookItUp(scanPlanHost(id), signal));
+export const askMeInsteadScan = (id: string) => void runScanPlanAsk(id, (signal) => askMeInstead(scanPlanHost(id), signal));
+export const stopScanLookup = (id: string, lookup: string) => stopLookup(id, lookup);
+export function offScan(id: string) {
+  off(scanPlanHost(id));
+  plan(id, (p) => ({ ...p, step: "asking" }));
+}
+export async function decideScanTerm(id: string, term: string, keep: boolean) {
+  const t = scanAsking(id)?.terms.find((x) => x.id === term);
+  if (!t) return;
+  scanPlanHost(id).set((s) => decideTerm(s, term, keep));
+  if (keep && !(await editTerm({ op: "add", term: t.term, means: t.means, avoid: t.avoid, by: "qalam" }))) scanPlanHost(id).set((s) => ({ ...s, terms: s.terms.map((x) => (x.id === term ? { ...x, state: undefined } : x)) }));
 }
 
 // A brief: what it lacks first, in the box, then written, then a tile under its card.
@@ -889,6 +948,13 @@ async function proposeNow(id: string, signal: AbortSignal) {
   const b = planAsk(id);
   if (!b) return;
   setCanvasPlan(id, (j) => ({ ...j, step: "proposing" }));
+  // Their own answers, kept as a source of their words (not filed into the problem pages; Qalam AI's picks never are).
+  const j0 = canvasPlan(id);
+  if (j0?.asking && !j0.answers) {
+    const said = answersOf(j0.asking).filter((a) => a.how === "own" && a.text).map((a) => ({ question: a.question, answer: a.text }));
+    const source = said.length ? await keepAnswers(said, `Your answers: ${turnOf(id)?.said ?? "a plan"}`.slice(0, 200)).catch(() => null) : null;
+    if (source) setCanvasPlan(id, (j) => ({ ...j, answers: source }));
+  }
   const d = await planPropose(b, step(id), signal);
   await visitSources(Object.values(d.quotes).map((q) => q.sourceId));
   const things = useSpaceView.getState().things;
