@@ -70,8 +70,9 @@ export async function planQuestions(store: OrgStore, o: { target: ScanTarget; so
   const text = [about, "", "The problems found:", ...problems.slice(0, 8).map((p) => `- ${p.title}`), "", "What people say, in public:", ...words.slice(0, 24).map((w) => `- ${w.text}`), ...(published.length ? ["", "What's been published around it (someone else's words):", ...published.map((w) => `- ${w}`)] : []), ...(told.length ? ["", "What they've told you already (never ask it again):", toldLines({ said: [...told], off: [] })] : [])].join("\n");
   const m = { text, known: [...problems.map((p) => p.title), ...words.map((w) => w.text), ...published] };
   try {
-    const { data } = await deps.structured<unknown>({ kind: "find-questions", system: QUESTIONS_SYSTEM, schema: findQuestionsSchema(), effort: "low", maxTokens: 3000, content: [{ type: "text", text }] }, signal);
+    const { data, model } = await deps.structured<unknown>({ kind: "find-questions", system: QUESTIONS_SYSTEM, schema: findQuestionsSchema(), effort: "low", maxTokens: 3000, content: [{ type: "text", text }] }, signal);
     const kept = sanitizeFindQuestions(data, m);
+    await store.putTrace({ id: nanoid(10), projectId: "scan", kind: "scan-questions", at: Date.now(), ...(model ? { model } : {}), answer: data, kept: kept.map((q) => q.title) } as { id: string; projectId: string }).catch(() => {});
     return notAsked(kept.length ? kept : scanRound(), told);
   } catch (e) {
     if (signal?.aborted) throw e;

@@ -306,8 +306,10 @@ export async function findQuestions(store: OrgStore, what: FindWhat, signal?: Ab
   if (!knowsMarket(market)) return [];
   const about = await store.getAbout();
   const m = findQuestionsMaterial({ what, org: store.info.name, about: [about.context, about.audience].filter((x) => x.trim()).join(" "), market });
-  const { data } = await deps.structured<unknown>(findQuestionsCall(m), signal);
-  return sanitizeFindQuestions(data, m);
+  const { data, model } = await deps.structured<unknown>(findQuestionsCall(m), signal);
+  const questions = sanitizeFindQuestions(data, m);
+  await store.putTrace({ id: nanoid(10), projectId: "market", kind: "find-questions", at: Date.now(), ...(model ? { model } : {}), what, answer: data, kept: questions.map((q) => q.title) } as { id: string; projectId: string }).catch(() => {});
+  return questions;
 }
 
 // ---------------------------------------------------------------------------

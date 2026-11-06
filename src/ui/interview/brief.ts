@@ -1,6 +1,6 @@
 import type { BriefAnswer, FollowUp } from "@/design-system/interview/sanitize";
 import type { Platform } from "@/design-system/platform";
-import { OTHER, resolvedAnswers, summarize, type Answers, type FlowState, type Question } from "../ai/questionFlow";
+import { answerWords, resolvedAnswers, type Answers, type FlowState, type Question } from "../ai/questionFlow";
 
 /**
  * The brand brief: questions a brand designer asks before drawing anything. Narrative first (what
@@ -86,11 +86,7 @@ export const BRIEF_QUESTIONS: Question[] = [
 /** The answers as the model reads them: question, then the designer's words. */
 export function briefAnswers(questions: Question[], answers: Answers): BriefAnswer[] {
   const all = resolvedAnswers(questions, answers);
-  return questions.map((q) => {
-    const a = all[q.id];
-    const text = a.kind === "text" ? a.text.trim() : a.kind === "skipped" ? "" : summarize(q, a);
-    return { id: q.id, question: q.title, answer: text === "—" ? "" : text };
-  });
+  return questions.map((q) => ({ id: q.id, question: q.title, answer: answerWords(q, all[q.id]).text }));
 }
 
 /** What the designer picked for platform and languages (it overrides the model's reading). */
@@ -121,11 +117,5 @@ export function followUpQuestions(f: FollowUp[]): Question[] {
 /** Follow-up answers in the designer's words. */
 export function followUpAnswers(questions: Question[], flow: FlowState): BriefAnswer[] {
   const all = resolvedAnswers(questions, flow.answers);
-  return questions.map((q) => {
-    const a = all[q.id];
-    let text = "";
-    if (a.kind === "text") text = a.text.trim();
-    else if (a.kind === "single" && q.kind === "single") text = a.value === OTHER ? (a.other ?? "").trim() : (q.options.find((o) => o.value === a.value)?.label ?? "");
-    return { id: q.id, question: q.title, answer: text };
-  });
+  return questions.map((q) => ({ id: q.id, question: q.title, answer: answerWords(q, all[q.id]).text }));
 }

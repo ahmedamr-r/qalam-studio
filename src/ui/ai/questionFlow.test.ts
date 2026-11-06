@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { OTHER, REVIEW, addCustom, answerOf, initialFlow, optionAt, position, reduceFlow, setGroup, summarize, validate, type Answers, type FlowAction, type FlowState, type Question } from "./questionFlow";
+import { OTHER, REVIEW, addCustom, answerOf, answerWords, initialFlow, optionAt, position, reduceFlow, setGroup, summarize, validate, type Answers, type FlowAction, type FlowState, type Question } from "./questionFlow";
 
 /** Q2 only when Q1 isn't "a"; Q3 optional. */
 function questions(answers: Answers): Question[] {
@@ -127,5 +127,39 @@ describe("questionnaire flow", () => {
     const q1 = questions({})[0];
     expect([1, 2, 3, 4].map((n) => optionAt(q1, n))).toEqual(["a", "b", OTHER, null]);
     expect(optionAt(questions({})[1], 1)).toBeNull();
+  });
+});
+
+describe("answerWords: an answer as the model reads it", () => {
+  const single: Question = { kind: "single", id: "who", title: "Who?", options: [{ value: "a", label: "Night riders", description: "Riders on night shifts" }, { value: "b", label: "New riders" }], other: { label: "Something else" } };
+  const multi: Question = { kind: "multi", id: "tools", title: "Which tools?", groups: [{ id: "g", label: "Tools", options: ["SMS", "Email", "Push", "WhatsApp", "Calls", "Letters"].map((label, i) => ({ value: `t${i}`, label })), custom: { placeholder: "" } }] };
+  const text: Question = { kind: "text", id: "know", title: "What do you know?" };
+
+  it("keeps every choice of a long multi answer, where summarize cuts it", () => {
+    const a = { kind: "multi" as const, values: ["t0", "t1", "t2", "t3", "t4", "t5"], custom: [] };
+    expect(answerWords(multi, a)).toEqual({ text: "SMS; Email; Push; WhatsApp; Calls; Letters", typed: "", how: "own" });
+    expect(summarize(multi, a)).toContain("+2 more");
+  });
+
+  it("gives a choice's label, never its description, and what they typed apart", () => {
+    expect(answerWords(single, { kind: "single", value: "a" })).toEqual({ text: "Night riders", typed: "", how: "own" });
+    expect(answerWords(single, { kind: "single", value: OTHER, other: " Day shifts " })).toEqual({ text: "Day shifts", typed: "Day shifts", how: "own" });
+    expect(answerWords(multi, { kind: "multi", values: ["t0"], custom: [" Fax "] })).toEqual({ text: "SMS; Fax", typed: "Fax", how: "own" });
+    expect(answerWords(text, { kind: "text", text: " Half the tickets " })).toEqual({ text: "Half the tickets", typed: "Half the tickets", how: "own" });
+  });
+
+  it("says when it's Qalam AI's pick, unless they added words of their own", () => {
+    expect(answerWords(single, { kind: "single", value: "a", pick: true }).how).toBe("pick");
+    expect(answerWords(multi, { kind: "multi", values: ["t0"], custom: [], pick: true }).how).toBe("pick");
+    expect(answerWords(multi, { kind: "multi", values: ["t0"], custom: ["Fax"], pick: true }).how).toBe("own");
+  });
+
+  it("leaves skipped, untouched and empty answers", () => {
+    const left = { text: "", typed: "", how: "left" };
+    expect(answerWords(single, undefined)).toEqual(left);
+    expect(answerWords(single, { kind: "skipped" })).toEqual(left);
+    expect(answerWords(single, { kind: "single", value: "" })).toEqual(left);
+    expect(answerWords(multi, { kind: "multi", values: [], custom: [] })).toEqual(left);
+    expect(answerWords(text, { kind: "text", text: "  " })).toEqual(left);
   });
 });

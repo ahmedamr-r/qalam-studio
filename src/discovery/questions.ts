@@ -1,7 +1,7 @@
 import type { PlanQuestion } from "@/ai/plan";
 import { withoutIds } from "@/goals/said";
 import { sanitizeAsked, toQuestion, type PlanBucket } from "@/ui/ai/plan";
-import { OTHER, initialFlow, resolvedAnswers, type Answer, type Question } from "@/ui/ai/questionFlow";
+import { answerWords, initialFlow, resolvedAnswers, type Answer, type Question } from "@/ui/ai/questionFlow";
 import { DUMP_ROLES, type DumpRole } from "./dump";
 import type { SourceQuote, SourceRecord } from "./sources";
 import type { OstKind } from "./types";
@@ -53,13 +53,7 @@ export function sanitizeCardQuestions(raw: unknown): { questions: PlanQuestion[]
 }
 
 /** The person's own answer to one question: what they typed, else the choices they picked (never Qalam AI's descriptions of them). */
-export function theirWords(q: Question, a: Answer | undefined): string {
-  if (!a || a.kind === "skipped") return "";
-  if (a.kind === "text" && q.kind === "text") return a.text.trim();
-  if (a.kind === "single" && q.kind === "single") return a.value === OTHER ? (a.other?.trim() ?? "") : (q.options.find((o) => o.value === a.value)?.label ?? "");
-  if (a.kind === "multi" && q.kind === "multi") return [...q.groups.flatMap((g) => g.options.filter((o) => a.values.includes(o.value)).map((o) => o.label)), ...a.custom.map((c) => c.trim()).filter(Boolean)].join("; ");
-  return "";
-}
+export const theirWords = (q: Question, a: Answer | undefined): string => answerWords(q, a).text;
 
 /** Every answer given so far, round by round: the question and the person's words (skipped ones left out). */
 export function answered(rounds: PlanBucket[]): { questionId: string; question: string; words: string }[] {

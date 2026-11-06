@@ -5,7 +5,7 @@ import { isOstCard, treeRootOf } from "@/doc/board";
 import type { DumpCardInput } from "@/ai/discovery";
 import type { PlanQuestion } from "@/ai/plan";
 import { answerText, sanitizeAsked, toQuestion, type PlanBucket } from "@/ui/ai/plan";
-import { OTHER, initialFlow, resolvedAnswers, type Answer, type FlowState, type Question } from "@/ui/ai/questionFlow";
+import { answerWords, initialFlow, resolvedAnswers, type FlowState } from "@/ui/ai/questionFlow";
 import { quoteFinder } from "./quotes";
 import type { QuoteKind, SourceQuote, TextBlock } from "./sources";
 import { allCards, childCards } from "./tree";
@@ -445,22 +445,6 @@ export const withRoles = (quotes: SourceQuote[], roles: DumpFollowup["roles"]): 
     return role ? { ...q, role, kind: quoteKind(role) } : q;
   });
 
-/** What the builder typed themselves (not an option Qalam AI wrote): the only answer words a card may rest on. */
-function typed(q: Question, a: Answer): string {
-  if (a.kind === "text") return a.text.trim();
-  if (a.kind === "single" && a.value === OTHER) return a.other?.trim() ?? "";
-  if (a.kind === "multi") return a.custom.join("; ");
-  return "";
-}
-
-/** What they said to a question: the choice they picked (its label, never its description) or what they typed. */
-function picked(q: Question, a: Answer): string {
-  if (a.kind === "text") return a.text.trim();
-  if (a.kind === "single" && q.kind === "single") return a.value === OTHER ? (a.other?.trim() ?? "") : (q.options.find((o) => o.value === a.value)?.label ?? "");
-  if (a.kind === "multi" && q.kind === "multi") return [...q.groups.flatMap((g) => g.options.filter((o) => a.values.includes(o.value)).map((o) => o.label)), ...a.custom].join("; ");
-  return "";
-}
-
 /** One answer of a round: its question, the answer in words, and the words the builder typed. */
 export interface DumpAnswer {
   questionId: string;
@@ -479,9 +463,12 @@ export function roundAnswers(s: Pick<Rounds, "buckets">): DumpAnswer[][] {
     const asked = b.form.submitted ? qs : qs.filter((q) => b.form.answers[q.id]);
     const answers = resolvedAnswers(qs, b.form.answers);
     return asked.map((q) => {
-      // One they left stays empty: the calls read it as skipped, never as a preference.
-      const said = picked(q, answers[q.id]).slice(0, 600);
-      return { questionId: q.id, question: q.title, answer: said ? answerText(q, answers[q.id]).slice(0, 600) : "", words: typed(q, answers[q.id]).slice(0, 600), said };
+      // One they left stays empty: the calls read it as skipped, never as a preference. What they said is
+      // the choice they picked (its label) or what they typed; `words` only what they typed, the only answer
+      // words a card may rest on.
+      const w = answerWords(q, answers[q.id]);
+      const said = w.text.slice(0, 600);
+      return { questionId: q.id, question: q.title, answer: said ? answerText(q, answers[q.id]).slice(0, 600) : "", words: w.typed.slice(0, 600), said };
     });
   });
 }

@@ -1,6 +1,6 @@
 import type { BriefAnswer, BriefTopic } from "@/doc/schema";
 import type { FollowUp } from "@/design-system/interview/sanitize";
-import { OTHER, resolvedAnswers, summarize, type Answers, type FlowState, type Question } from "@/ui/ai/questionFlow";
+import { answerWords, resolvedAnswers, type Answers, type FlowState, type Question } from "@/ui/ai/questionFlow";
 
 /**
  * The product interview a Discovery board starts from: six questions a product coach asks before
@@ -82,14 +82,7 @@ export interface InterviewAnswer {
 /** The answers in the builder's words (a skipped one is empty). */
 export function interviewAnswers(questions: Question[], answers: Answers): InterviewAnswer[] {
   const all = resolvedAnswers(questions, answers);
-  return questions.map((q) => {
-    const a = all[q.id];
-    let text = "";
-    if (a.kind === "text") text = a.text.trim();
-    else if (a.kind === "single" && q.kind === "single") text = a.value === OTHER ? (a.other ?? "").trim() : (q.options.find((o) => o.value === a.value)?.label ?? "");
-    else if (a.kind !== "skipped") text = summarize(q, a);
-    return { id: q.id, question: q.title, answer: text === "—" ? "" : text };
-  });
+  return questions.map((q) => ({ id: q.id, question: q.title, answer: answerWords(q, all[q.id]).text }));
 }
 
 /** Qalam AI's follow-ups as questions: its likely answers to pick from, or the builder's own words. */

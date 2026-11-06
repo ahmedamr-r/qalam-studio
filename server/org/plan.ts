@@ -78,14 +78,16 @@ export async function lookForPlan(store: OrgStore, b: PlanBody & { query?: strin
 export async function planNext(store: OrgStore, b: PlanBody, emit: (label: string) => void, signal: AbortSignal, deps: Pick<MarketDeps, "structured"> = realDeps): Promise<PlanNext> {
   emit("Working out what to ask");
   const text = planNextMaterial({ org: store.info.name, about: await aboutLine(store), said: b.said, outline: b.outline, rounds: b.rounds, looks: b.looks, company: await companyContext(store) });
-  const data = await deps.structured<unknown>(planNextCall(text), signal).then(
-    (r) => r.data,
+  const { data, model } = await deps.structured<unknown>(planNextCall(text), signal).then(
+    (r) => r,
     (e: unknown) => {
       if (signal.aborted) throw e;
-      return { action: "ask" };
+      return { data: { action: "ask" }, model: undefined, failed: true };
     },
   );
-  return sanitizeNext(data, b);
+  const next = sanitizeNext(data, b);
+  await store.putTrace({ id: nanoid(10), projectId: "plan", kind: "plan-next", at: Date.now(), ...(model ? { model } : {}), rounds: b.rounds.length, looks: b.looks.length, answer: data, kept: next.action === "ask" ? { ask: next.questions.map((q) => q.title) } : next } as { id: string; projectId: string }).catch(() => {});
+  return next;
 }
 
 /** The words behind the problems on the canvas: each problem's page, by the card's words where it has no page of its own. */

@@ -26,7 +26,7 @@ export interface DraftWords {
 }
 
 export async function draftSolutions(req: { topic?: string | null; card?: DraftCard } & DraftWords, onActivity?: (label: string) => void, signal?: AbortSignal): Promise<Drafted> {
-  const body = { ...(req.topic ? { topic: req.topic } : {}), ...(req.card ? { card: req.card } : {}), ...(req.answers ? { answers: req.answers } : {}), ...(req.found?.length ? { found: req.found } : {}) };
+  const body = { ...(req.topic ? { topic: req.topic } : {}), ...(req.card ? { card: req.card } : {}), ...(req.answers ? { answers: req.answers } : {}), ...(req.found?.length ? { found: req.found } : {}), ...(req.looks?.length ? { looks: req.looks } : {}) };
   const { data } = await callAI<Drafted>(await orgPath("/solutions"), body, undefined, signal, (e) => e.type === "activity" && onActivity?.(e.label));
   return data;
 }

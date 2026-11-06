@@ -10,7 +10,7 @@ import { IconBtn, Spinner } from "../../controls";
 import { MenuItem } from "../../menu";
 import { toQuestion } from "../../ai/plan";
 import { Questionnaire } from "../../ai/Questionnaire";
-import { initialFlow, summarize, type FlowState } from "../../ai/questionFlow";
+import { answerWords, initialFlow, type FlowState } from "../../ai/questionFlow";
 import type { FindWhat } from "@/space/find";
 import { r } from "../../recipes";
 import { answerRound, resumeDumps, saveRound, sessionOf, useDump } from "../../discovery/dump";
@@ -232,12 +232,7 @@ function FindForm({ turn, what }: { turn: string; what: FindWhat }) {
   }, [turn, what]);
   const [form, setForm] = useState<FlowState>(() => initialFlow(questions));
   // A choice is their answer in its own words; skipped and empty ones are left out.
-  const answerOf = (f: FlowState, q: (typeof questions)[number]) => {
-    const a = f.answers[q.id];
-    if (!a) return "";
-    const said = summarize(q, a);
-    return said === "Skipped" || said === "—" || said === "None" ? "" : said;
-  };
+  const answerOf = (f: FlowState, q: (typeof questions)[number]) => answerWords(q, f.answers[q.id]).text;
   return (
     <Questionnaire
       title={goal ? "To find the problem to focus on" : what === "goal" ? "To find a goal" : "To find a problem"}
@@ -262,12 +257,7 @@ function SteerRound({ turn }: { turn: string }) {
   useEffect(() => {
     if (over && form === untouched.current) leaveSteer(turn);
   }, [over, form, turn]);
-  const answerOf = (f: FlowState, q: (typeof questions)[number]) => {
-    const a = f.answers[q.id];
-    if (!a) return "";
-    const said = summarize(q, a);
-    return said === "Skipped" || said === "—" || said === "None" ? "" : said;
-  };
+  const answerOf = (f: FlowState, q: (typeof questions)[number]) => answerWords(q, f.answers[q.id]).text;
   return <Questionnaire title="While I read" questions={questions} state={form} onChange={setForm} onSubmit={(f) => answerSteer(turn, Object.fromEntries(questions.map((q) => [q.id, answerOf(f, q)])))} />;
 }
 
@@ -275,12 +265,7 @@ function SteerRound({ turn }: { turn: string }) {
 function BriefRound({ turn }: { turn: string }) {
   const questions = useMemo(() => briefQuestionsOf(turn).map(toQuestion), [turn]);
   const [form, setForm] = useState<FlowState>(() => initialFlow(questions));
-  const answerOf = (f: FlowState, q: (typeof questions)[number]) => {
-    const a = f.answers[q.id];
-    if (!a) return "";
-    const said = summarize(q, a);
-    return said === "Skipped" || said === "—" || said === "None" ? "" : said;
-  };
+  const answerOf = (f: FlowState, q: (typeof questions)[number]) => answerWords(q, f.answers[q.id]).text;
   const job = turnOf(turn)?.job;
   const shape = job?.kind === "brief" ? job.shape : undefined;
   return <Questionnaire title={shape === "message" ? "For the message plan" : shape === "steps" ? "For the steps" : "For the brief"} questions={questions} state={form} onChange={setForm} onSubmit={(f) => void answerBrief(turn, Object.fromEntries(questions.map((q) => [q.id, answerOf(f, q)])))} />;
@@ -290,12 +275,7 @@ function BriefRound({ turn }: { turn: string }) {
 function PlanRound({ turn }: { turn: string }) {
   const questions = useMemo(() => planQuestionsOf(turn).map(toQuestion), [turn]);
   const [form, setForm] = useState<FlowState>(() => initialFlow(questions));
-  const answerOf = (f: FlowState, q: (typeof questions)[number]) => {
-    const a = f.answers[q.id];
-    if (!a) return "";
-    const said = summarize(q, a);
-    return said === "Skipped" || said === "—" || said === "None" ? "" : said;
-  };
+  const answerOf = (f: FlowState, q: (typeof questions)[number]) => answerWords(q, f.answers[q.id]).text;
   return <Questionnaire title="Before I work out what comes first" questions={questions} state={form} onChange={setForm} onSubmit={(f) => void answerPlan(turn, Object.fromEntries(questions.map((q) => [q.id, answerOf(f, q)])))} review={{ submitLabel: "Send answers" }} />;
 }
 
@@ -303,12 +283,7 @@ function PlanRound({ turn }: { turn: string }) {
 function CanvasPlanRound({ turn }: { turn: string }) {
   const questions = useMemo(() => canvasPlanQuestionsOf(turn).map(toQuestion), [turn]);
   const [form, setForm] = useState<FlowState>(() => initialFlow(questions));
-  const answerOf = (f: FlowState, q: (typeof questions)[number]) => {
-    const a = f.answers[q.id];
-    if (!a) return "";
-    const said = summarize(q, a);
-    return said === "Skipped" || said === "—" || said === "None" ? "" : said;
-  };
+  const answerOf = (f: FlowState, q: (typeof questions)[number]) => answerWords(q, f.answers[q.id]).text;
   return <Questionnaire title="Before I propose it" questions={questions} state={form} onChange={setForm} onSubmit={(f) => answerCanvasPlan(turn, Object.fromEntries(questions.map((q) => [q.id, answerOf(f, q)])))} review={{ submitLabel: "Send answers" }} />;
 }
 
@@ -316,12 +291,7 @@ function CanvasPlanRound({ turn }: { turn: string }) {
 function NumberRound({ turn }: { turn: string }) {
   const questions = useMemo(() => numberQuestions(turn).map(toQuestion), [turn]);
   const [form, setForm] = useState<FlowState>(() => initialFlow(questions));
-  const answerOf = (f: FlowState, q: (typeof questions)[number]) => {
-    const a = f.answers[q.id];
-    if (!a) return "";
-    const said = summarize(q, a);
-    return said === "Skipped" || said === "—" || said === "None" ? "" : said;
-  };
+  const answerOf = (f: FlowState, q: (typeof questions)[number]) => answerWords(q, f.answers[q.id]).text;
   return <Questionnaire title="Its number" questions={questions} state={form} onChange={setForm} onSubmit={(f) => void answerNumber(turn, Object.fromEntries(questions.map((q) => [q.id, answerOf(f, q)])))} review={{ submitLabel: "Send answers" }} />;
 }
 

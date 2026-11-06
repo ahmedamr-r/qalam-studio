@@ -61,7 +61,11 @@ export async function lookForGoal(store: OrgStore, goalId: string, o: { query?: 
   emit("Qalam AI is working out what to ask you");
   const m = focusQuestionsMaterial({ org, about: aboutLine, goal, chain, market, lines });
   const questions = await deps.structured<unknown>(focusQuestionsCall(m), signal).then(
-    (r) => sanitizeFindQuestions(r.data, m),
+    async (r) => {
+      const kept = sanitizeFindQuestions(r.data, m);
+      await store.putTrace({ id: nanoid(10), projectId: "goals", kind: "focus-questions", at: Date.now(), ...(r.model ? { model: r.model } : {}), goal: goalId, answer: r.data, kept: kept.map((q) => q.title) } as { id: string; projectId: string }).catch(() => {});
+      return kept;
+    },
     (e: unknown) => {
       if (signal.aborted) throw e;
       return [];

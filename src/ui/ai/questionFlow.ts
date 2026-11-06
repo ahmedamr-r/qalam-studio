@@ -71,9 +71,10 @@ export interface TextQuestion extends QBase {
 
 export type Question = SingleQuestion | MultiQuestion | TextQuestion;
 
+/** `pick`: Qalam AI's recommendation, taken with one press for the whole round, and not changed since. */
 export type Answer =
-  | { kind: "single"; value: string; other?: string }
-  | { kind: "multi"; values: string[]; custom: string[] }
+  | { kind: "single"; value: string; other?: string; pick?: true }
+  | { kind: "multi"; values: string[]; custom: string[]; pick?: true }
   | { kind: "text"; text: string }
   | { kind: "skipped" };
 export type Answers = Record<string, Answer>;
@@ -259,7 +260,39 @@ export function optionAt(q: Question, n: number): string | null {
   return null;
 }
 
-/** An answer in a few words, for the review step and the chat. */
+/** How an answer was given: their own pick or words, Qalam AI's pick they agreed to with one press, or left unanswered. */
+export type AnswerHow = "own" | "pick" | "left";
+
+/**
+ * An answer as the model reads it and as it's kept: every label it picked (never a description), nothing
+ * cut, what they typed apart from what they picked, and how it was given. A skipped, untouched or empty
+ * answer is left. Words they typed make it theirs even beside a pick.
+ */
+export function answerWords(q: Question, a: Answer | undefined): { text: string; typed: string; how: AnswerHow } {
+  const left = { text: "", typed: "", how: "left" as const };
+  if (!a || a.kind === "skipped") return left;
+  if (a.kind === "text") {
+    const t = a.text.trim();
+    return t ? { text: t, typed: t, how: "own" } : left;
+  }
+  if (a.kind === "single" && q.kind === "single") {
+    if (a.value === OTHER) {
+      const t = a.other?.trim() ?? "";
+      return t ? { text: t, typed: t, how: "own" } : left;
+    }
+    const label = q.options.find((o) => o.value === a.value)?.label ?? "";
+    return label ? { text: label, typed: "", how: a.pick ? "pick" : "own" } : left;
+  }
+  if (a.kind === "multi" && q.kind === "multi") {
+    const labels = q.groups.flatMap((g) => g.options.filter((o) => a.values.includes(o.value)).map((o) => o.label));
+    const custom = a.custom.map((c) => c.trim()).filter(Boolean);
+    if (!labels.length && !custom.length) return left;
+    return { text: [...labels, ...custom].join("; "), typed: custom.join("; "), how: a.pick && !custom.length ? "pick" : "own" };
+  }
+  return left;
+}
+
+/** An answer in a few words, for the review step and the chat. Never for the model: a long multi answer is cut ("+N more"); use answerWords. */
 export function summarize(q: Question, a: Answer): string {
   if (a.kind === "skipped") return "Skipped";
   if (a.kind === "single" && q.kind === "single") {

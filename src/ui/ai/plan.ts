@@ -79,9 +79,10 @@ const withTool = (tool: ToolAsk | undefined) => (tool ? { tool } : {});
 
 /**
  * A bucket of the model's questions, checked: unique, safe ids; 2–4 options, or none for an open
- * question; recommendations that point at an option; at most BUCKET_MAX.
+ * question; recommendations that point at an option; at most `max` (BUCKET_MAX unless the caller asks
+ * every question it can, as the asking engine does).
  */
-export function sanitizeQuestions(raw: unknown): PlanQuestion[] {
+export function sanitizeQuestions(raw: unknown, o: { max?: number } = {}): PlanQuestion[] {
   const ids = new Set<string>([PLATFORM_Q, REVIEW]);
   return (Array.isArray(raw) ? raw : [])
     .map((q: Record<string, unknown>, i: number) => {
@@ -115,7 +116,7 @@ export function sanitizeQuestions(raw: unknown): PlanQuestion[] {
     })
     // A single option is no choice; no options at all is an open question.
     .filter((q) => q.title && q.options.length !== 1)
-    .slice(0, BUCKET_MAX);
+    .slice(0, o.max ?? BUCKET_MAX);
 }
 
 /** The model's market standard, checked: this screen's step in the flow, changes of a known kind. */
@@ -180,7 +181,7 @@ export function isNumberRanges(options: readonly { label: string }[]): boolean {
 export const openNumbers = (q: PlanQuestion): PlanQuestion => (isNumberRanges(q.options) ? { ...q, multi: false, options: [], recommended: [], allowOther: false } : q);
 
 /** Questions about someone's own work, as code keeps them. The design side's plan has choices of its own: `sanitizeQuestions`. */
-export const sanitizeAsked = (raw: unknown): PlanQuestion[] => sanitizeQuestions(raw).map(openNumbers);
+export const sanitizeAsked = (raw: unknown, o: { max?: number } = {}): PlanQuestion[] => sanitizeQuestions(raw, o).map(openNumbers);
 
 /**
  * A question about someone's own work, as the questionnaire asks it. Their answers become what cards
