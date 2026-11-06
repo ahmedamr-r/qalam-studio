@@ -4,7 +4,7 @@ import { Check, X } from "lucide-react";
 import { countsEvents } from "@/connectors/analytics";
 import type { InsightNumbers } from "@/connectors/numbers";
 import type { Hit } from "@/connectors/recipes";
-import { numberLine, passageLine, passagesFor, toolConnected, toolsForAsk, type ToolAsk } from "@/connectors/suggest";
+import { findIn, numberLine, passageLine, passagesFor, searchedAlone, toolConnected, toolsForAsk, type FindDeps, type ToolAsk, type ToolFind } from "@/connectors/suggest";
 import { connectorsDb, numbersDb, type ConnectorState } from "@/org/connectors";
 import { ConnectorLogo } from "../brand/ConnectorLogo";
 import { Browse, useConnectorView } from "../chat/SourcePicker";
@@ -16,8 +16,10 @@ import { StatusDot } from "../viz";
 
 /*
  * Under a question a tool could answer better than memory: the tools that fit. One that isn't
- * connected connects right here; a connected one is searched for the question, and what the person
- * picks goes in their answer, for them to read and change. Nothing is fetched until they ask.
+ * connected connects right here. A connected one Qalam reaches itself is searched as the question
+ * shows (no tokens), and what it has is listed under it; one reached through Claude Code is searched
+ * on a press. Whatever the person picks goes in their answer, for them to read and change; nothing
+ * goes there on its own.
  */
 
 const ICON = { size: 12, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
@@ -31,9 +33,11 @@ export function ToolSuggestion({ ask, question, onFill }: { ask: ToolAsk; questi
   const tools = view ? toolsForAsk(ask, view.connectors) : [];
   const open = tools.find((c) => c.id === openId) ?? null;
   if (!tools.length) return null;
+  const alone = tools.filter(searchedAlone);
   return (
     // Its own keys: Enter on a button here isn't the card's Next, and 1–9 aren't its options.
     <div className="flex flex-col gap-[6px] border-t border-line-subtle pt-[10px]" onKeyDown={(e) => e.stopPropagation()}>
+      {alone.length > 0 && <Found tools={alone} ask={ask} question={question} onFill={onFill} />}
       <div role="group" aria-label={ask.kind === "numbers" ? "Get it from your analytics" : "Get it from your docs"} className="flex flex-wrap items-center gap-[6px]">
         <span className="text-micro text-fg-subtle">{ask.kind === "numbers" ? "Your analytics may have this" : "Your docs may have this"}</span>
         {tools.map((c) => (
@@ -55,6 +59,91 @@ export function ToolSuggestion({ ask, question, onFill }: { ask: ToolAsk; questi
           {!toolConnected(open) ? <ConnectActions c={open} onView={(v: View) => setView(v)} /> : ask.kind === "numbers" ? <FetchNumber key={open.id} c={open} first={ask.lookFor ?? ""} onFill={onFill} /> : <FetchDoc key={open.id} c={open} asked={`${question} ${ask.lookFor ?? ""}`.trim()} onFill={onFill} onClose={() => setOpenId(null)} />}
         </div>
       )}
+    </div>
+  );
+}
+
+/** The window's calls for a search on its own (src/connectors/suggest.ts, findIn). */
+const FIND: FindDeps = {
+  browse: (id, query) => connectorsDb.browse(id, { query }).then((r) => r.hits),
+  read: (id, hits) => connectorsDb.read(id, hits).then((items) => items.map((it) => ({ id: it.id, text: it.ingested?.text }))),
+  charts: (id, query) => numbersDb.insights(query, id).then((r) => r.hits),
+  numbers: (id, ref) => numbersDb.read(ref, id),
+};
+
+/** A search kept five minutes, so going back to a question doesn't search again. */
+const searched = new Map<string, { at: number; finds: Promise<ToolFind[]> }>();
+function findOnce(c: ConnectorState, ask: ToolAsk, question: string): Promise<ToolFind[]> {
+  const key = `${c.id}|${ask.kind}|${ask.lookFor ?? ""}|${question}`;
+  const had = searched.get(key);
+  if (had && Date.now() - had.at < 5 * 60_000) return had.finds;
+  const finds = findIn(c, ask, question, FIND);
+  searched.set(key, { at: Date.now(), finds });
+  finds.catch(() => searched.delete(key));
+  return finds;
+}
+
+/** What the tools Qalam reaches itself have on the question, searched as it shows: each picked into the answer, never put there on its own. */
+function Found({ tools, ask, question, onFill }: { tools: ConnectorState[]; ask: ToolAsk; question: string; onFill: (line: string) => void }) {
+  const [found, setFound] = useState<Record<string, ToolFind[] | "looking" | "failed">>({});
+  const [used, setUsed] = useState<ReadonlySet<string>>(new Set());
+  const ids = tools.map((c) => c.id).join(",");
+  useEffect(() => {
+    let alive = true;
+    for (const c of tools) {
+      setFound((f) => ({ ...f, [c.id]: f[c.id] ?? "looking" }));
+      findOnce(c, ask, question).then(
+        (finds) => alive && setFound((f) => ({ ...f, [c.id]: finds })),
+        () => alive && setFound((f) => ({ ...f, [c.id]: "failed" })),
+      );
+    }
+    return () => {
+      alive = false;
+    };
+    // The tools by id: the list is made again on every draw.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ids, ask.kind, ask.lookFor, question]);
+  return (
+    <div role="group" aria-label={ask.kind === "numbers" ? "Numbers found for it" : "Found in your docs"} className="flex flex-col gap-[6px]">
+      {tools.map((c) => {
+        const f = found[c.id];
+        // A search that failed says nothing here: the tool's button below searches by hand.
+        if (!f || f === "failed") return null;
+        if (f === "looking")
+          return (
+            <p key={c.id} className="inline-flex items-center gap-[6px] text-micro text-fg-muted">
+              <Spinner size={12} /> <span className="q-shimmer-text">Looking in {c.label}…</span>
+            </p>
+          );
+        if (!f.length) return <p key={c.id} className="text-micro text-fg-subtle">{ask.kind === "numbers" ? `No saved chart in ${c.label} for it.` : `Nothing in ${c.label} on it.`}</p>;
+        return (
+          <div key={c.id} className="flex flex-col gap-[2px]">
+            <span className="flex items-center gap-[6px] px-[6px] text-micro text-fg-subtle">
+              <ConnectorLogo id={c.id} size={16} decorative /> Found in {c.label}: pick what answers it
+            </span>
+            {f.map((x) => (
+              <button
+                key={x.key}
+                type="button"
+                disabled={used.has(x.key)}
+                className={LINE}
+                onClick={() => {
+                  onFill(x.line);
+                  setUsed((u) => new Set(u).add(x.key));
+                }}
+              >
+                <span className="flex w-full items-start gap-[6px] text-caption text-fg" dir="auto">
+                  {used.has(x.key) && <Check {...ICON} className="mt-[2px] shrink-0 text-fg-muted" />}
+                  <span className={clsx("min-w-0", ask.kind === "numbers" ? "tnum font-medium" : "line-clamp-3")}>{x.text}</span>
+                </span>
+                <span className="w-full truncate text-micro text-fg-subtle" dir="auto">
+                  {x.from}
+                </span>
+              </button>
+            ))}
+          </div>
+        );
+      })}
     </div>
   );
 }

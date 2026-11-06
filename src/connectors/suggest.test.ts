@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { setLab } from "@/lab";
 import type { ConnectorState } from "@/org/connectors";
 import { fillAnswer, OTHER, type Question } from "@/ui/ai/questionFlow";
@@ -6,7 +6,8 @@ import { sanitizeQuestions, toQuestion } from "@/ui/ai/plan";
 import { amplitudeCount, amplitudeEvents, amplitudeNumbers, amplitudePlaces, chartNumbers, countsEvents, eventRef, firstProject, fitCall, NUMBER_RECIPES, posthogEvents, readEventRef, savedCharts } from "./analytics";
 import { sanitizePicks, sanitizeSearches } from "./look";
 import { notionHits, notionText } from "./recipes";
-import { numberLine, passagesFor, toolAsk, toolsForAsk } from "./suggest";
+import { findIn, numberLine, passagesFor, searchedAlone, toolAsk, toolsForAsk } from "./suggest";
+import type { Hit } from "./recipes";
 
 const tool = (o: Partial<ConnectorState>) => ({ id: "x", label: "X", group: "docs", imports: false, numbers: false, needsClient: false, via: null, tone: "off", claudeCode: null, ...o }) as ConnectorState;
 
@@ -232,5 +233,33 @@ describe("browsing Notion", () => {
   it("reads a page as its own words, without the tool's wrapping", () => {
     expect(notionText(page)).toBe("Intro line.\n\n[Team] - notes");
     expect(notionText(JSON.stringify({ text: "Plain words." }))).toBe("Plain words.");
+  });
+});
+
+describe("a connected tool searched on its own for a question", () => {
+  const notion = tool({ id: "notion", label: "Notion", group: "docs", imports: true, via: "oauth", tone: "ok" });
+  const none = { browse: async () => [], read: async () => [], charts: async () => [], numbers: async () => ({ series: [] }) };
+
+  it("searches only a tool Qalam reaches itself, never one through Claude Code or one not connected", () => {
+    expect(searchedAlone(notion)).toBe(true);
+    expect(searchedAlone(tool({ via: "google", tone: "ok" }))).toBe(true);
+    expect(searchedAlone(tool({ via: "claude-code", tone: "ok" }))).toBe(false);
+    expect(searchedAlone(tool({ via: "oauth", tone: "off" }))).toBe(false);
+  });
+
+  it("reads the first pages its own search finds, and lists only the passages that bear on the question, as lines for the answer", async () => {
+    const hits: Hit[] = [{ id: "p1", title: "Churn review" }, { id: "f", title: "Folder", folder: true }, { id: "p2", title: "Pricing notes" }, { id: "x", title: "Video", type: "other" }];
+    const read = vi.fn(async (_id: string, hs: Hit[]) => hs.map((h) => ({ id: h.id, text: h.id === "p1" ? "Monthly churn was 4.1% in September, up from 3.2% in August.\n\nThe team offsite is in May, in the mountains this year." : "Prices went up in March for every plan we sell." })));
+    const finds = await findIn(notion, { kind: "docs", lookFor: "monthly churn" }, "What's your monthly churn?", { ...none, browse: async () => hits, read });
+    expect(read.mock.calls[0][1].map((h) => h.id)).toEqual(["p1", "p2"]);
+    expect(finds).toEqual([{ key: "p1:0", text: "Monthly churn was 4.1% in September, up from 3.2% in August.", from: "Churn review", line: "“Monthly churn was 4.1% in September, up from 3.2% in August.” (Churn review, from Notion)" }]);
+  });
+
+  it("reads the first saved charts for their numbers, leaving out one that can't be read", async () => {
+    const posthog = tool({ id: "posthog", label: "PostHog", group: "numbers", numbers: true, via: "oauth", tone: "ok" });
+    const charts = async () => [{ id: "c1", title: "Activation" }, { id: "c2", title: "Broken" }];
+    const numbers = async (_id: string, ref: string) => (ref === "c1" ? { name: "Activation rate", series: [{ label: "Value", value: 0.31 }] } : Promise.reject(new Error("No one number")));
+    expect(await findIn(posthog, { kind: "numbers", lookFor: "activation" }, "Where does activation stand?", { ...none, charts, numbers })).toEqual([{ key: "c1:Value", text: "0.31", from: "Activation rate", line: "0.31 (Activation rate, from PostHog)" }]);
+    expect(await findIn(posthog, { kind: "numbers" }, "Where does activation stand?", none)).toEqual([]);
   });
 });

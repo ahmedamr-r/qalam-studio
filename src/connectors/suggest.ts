@@ -1,6 +1,8 @@
 import { sharedWords } from "@/discovery/near";
 import { connectorShown } from "@/lab";
 import type { ConnectorState } from "@/org/connectors";
+import type { InsightNumbers } from "./numbers";
+import type { Hit } from "./recipes";
 
 /*
  * A question that a tool could answer better than memory (pure): Qalam AI, or code for its own
@@ -71,3 +73,69 @@ export function numberLine(value: number, o: { series: string; chart: string; to
 
 /** A passage as an answer: its words, and the page and tool they're from. */
 export const passageLine = (passage: string, o: { title: string; tool: string }) => `“${passage}” (${o.title}, from ${o.tool})`;
+
+// ---------------------------------------------------------------------------
+// Searched on its own: what a connected tool has on a question, listed under it to pick from
+
+/**
+ * A tool searched as soon as a question needing it shows: one Qalam reaches itself (its own sign-in, a
+ * token, Drive's API), which costs no tokens and answers in seconds. Through Claude Code a call takes
+ * about a minute, so that one waits for a press, and so does counting an event (it leaves a draft in
+ * Amplitude).
+ */
+export const searchedAlone = (c: Pick<ConnectorState, "via" | "tone">) => toolConnected(c) && c.via !== "claude-code";
+
+/** What a tool had on a question: its words (a passage, or a number), where it's from, and the line that goes in the answer when it's picked. */
+export interface ToolFind {
+  key: string;
+  text: string;
+  from: string;
+  line: string;
+}
+
+/** The calls a search needs, from the window. */
+export interface FindDeps {
+  browse(id: string, query: string): Promise<Hit[]>;
+  read(id: string, hits: Hit[]): Promise<{ id: string; text?: string }[]>;
+  charts(id: string, query: string): Promise<Hit[]>;
+  numbers(id: string, ref: string): Promise<InsightNumbers>;
+}
+
+/** Pages read, charts read, and finds listed, at most. */
+const PAGES = 3;
+const CHARTS = 3;
+const FINDS = 6;
+
+/** A page's passages that bear on what was asked: sharing two telling words with it, nearest first. */
+export function nearPassages(text: string, asked: string, count = 2): string[] {
+  return passagesFor(text, asked, count + 4)
+    .filter((p) => sharedWords(p, asked) >= 2)
+    .slice(0, count);
+}
+
+/**
+ * Search a tool for a question, as a person would: docs by the tool's own search, the first few pages
+ * read by code, and the passages that bear on it; analytics by its saved charts, the first few read for
+ * their numbers. Nothing is kept and nothing is put in the answer: the person picks.
+ */
+export async function findIn(c: Pick<ConnectorState, "id" | "label">, ask: ToolAsk, question: string, d: FindDeps): Promise<ToolFind[]> {
+  const query = (ask.lookFor || question).slice(0, 120);
+  if (ask.kind === "docs") {
+    const hits = (await d.browse(c.id, query)).filter((h) => !h.folder && h.type !== "other").slice(0, PAGES);
+    if (!hits.length) return [];
+    const asked = `${question} ${ask.lookFor ?? ""}`;
+    const read = await d.read(c.id, hits);
+    return read
+      .flatMap((it) => {
+        const hit = hits.find((h) => h.id === it.id);
+        return hit && it.text ? nearPassages(it.text, asked).map((p, i) => ({ key: `${hit.id}:${i}`, text: p, from: hit.title, line: passageLine(p, { title: hit.title, tool: c.label }) })) : [];
+      })
+      .slice(0, FINDS);
+  }
+  const charts = (await d.charts(c.id, query)).filter((h) => !h.folder).slice(0, CHARTS);
+  const read = await Promise.all(charts.map((h) => d.numbers(c.id, h.id).then((n) => ({ h, n }), () => null)));
+  return read
+    .flatMap((x) => (x ? x.n.series.map((s) => ({ h: x.h, chart: x.n.name ?? x.h.title, s })) : []))
+    .map(({ h, chart, s }) => ({ key: `${h.id}:${s.label}`, text: String(s.value), from: s.label && s.label !== chart && s.label !== "Value" ? `${s.label}, ${chart}` : chart, line: numberLine(s.value, { series: s.label, chart, tool: c.label }) }))
+    .slice(0, FINDS);
+}
