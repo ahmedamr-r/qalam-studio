@@ -183,7 +183,7 @@ export default function GoalView({ id, space, at }: { id: string; space: Space; 
   // A goal of another product's is shown here too; its own canvas is one click away.
   const elsewhere = space !== null && g.product !== space;
   return (
-    <div ref={root} className={clsx("@container flex flex-col gap-[20px] px-[16px] py-[14px]", enter)}>
+    <div ref={root} className={clsx("q-page-sections @container flex flex-col gap-[20px] px-[16px] py-[14px]", enter)}>
           <PanelPageHeader
             kind={north ? "North Star" : g.parent ? "Sub-goal" : "Goal"}
             title={g.title}

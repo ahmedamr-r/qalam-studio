@@ -1,7 +1,7 @@
 import { BASES, BASIS_LABEL, countsLine, isBasis, mainBasis, type Basis } from "@/discovery/basis";
 import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
-import { Check, Quote, RotateCcw, X } from "lucide-react";
+import { ArrowUpRight, Check, ChevronDown, ChevronRight, Quote, RotateCcw, X } from "lucide-react";
 import { nanoid } from "nanoid";
 import { studio, useStudio } from "@/doc/store";
 import { isOstCard } from "@/doc/board";
@@ -24,6 +24,7 @@ import { Progress } from "../../ai/common";
 import { toQuestion } from "../../ai/plan";
 import { AnswersSummary, qr } from "../../ai/Questionnaire";
 import { QalamAIGlyph } from "../../brand/ai-glyph";
+import { SiteIcon, SiteStack } from "../../brand/SiteIcon";
 import { placeDump, readAnyway, retryDump, sessionOf, skipRest, useDump } from "../../discovery/dump";
 import { ACCEPT } from "../../discovery/ingest";
 import { acceptAll, acceptProposals, discardAll, discardProposals, frameReview, startReview, useReview } from "../../discovery/review";
@@ -657,7 +658,8 @@ function JustAnswerPart({ data }: { data: PartData }) {
 /**
  * What Qalam AI read on the web while finding a goal's problem: what it looked up, and each line
  * the pages bear out, with where (others' words, never what a card rests on). The opening look is
- * the find turn's; the later ones are its dump's, after the round they followed.
+ * the find turn's; the later ones are its dump's, after the round they followed. Folded to one row,
+ * with the sites' icons, as a run of steps is: each line opens on its page's own words and link.
  */
 function LookedPart({ data }: { data: PartData }) {
   const t = useTurn(data.turn);
@@ -665,26 +667,55 @@ function LookedPart({ data }: { data: PartData }) {
   const look = t?.job.kind === "find" ? t.job.look : t?.job.kind === "plan" ? t.job.looks[Number(data.look)] : data.look !== undefined ? d?.s.looks?.[Number(data.look)] : undefined;
   if (!look) return null;
   if (look.noWeb) return <p className="text-body leading-[20px] text-fg">I can&apos;t look on the web here, so I&apos;ll go by what you tell me.</p>;
-  const what = look.query ? `I looked up “${look.query}”` : t?.job.kind === "plan" ? "I looked on the web for what people do about this" : "I looked on the web for what usually gets in the way of goals like this";
+  const what = look.query ? `Looked up “${look.query}”` : t?.job.kind === "plan" ? "Looked on the web for what people do about this" : "Looked on the web for what gets in the way of goals like this";
   if (!look.lines.length) return <p className="text-body leading-[20px] text-fg">{what}, but nothing on the pages I read held up.</p>;
+  const urls = look.lines.flatMap((l) => (l.url ? [l.url] : []));
+  const n = look.lines.length;
   return (
-    <div className="flex flex-col gap-[8px]">
-      <p className="text-body leading-[20px] text-fg">{what}. What the pages say (others&apos; words, not your customers&apos;):</p>
-      <ul className="flex flex-col gap-[6px]">
-        {look.lines.map((l) => (
-          <li key={l.id} className={clsx(qr.inset, "flex flex-col gap-[2px] px-[10px] py-[8px]")}>
-            <span className="text-caption leading-[18px] text-fg" dir="auto">
-              {l.text}
-            </span>
-            {l.url && (
-              <a href={l.url} target="_blank" rel="noreferrer" className="truncate text-micro text-fg-subtle hover:text-fg" title={l.quote ? `“${l.quote}”` : l.url}>
-                {l.title || hostName(l.url)}
-              </a>
-            )}
-          </li>
-        ))}
-      </ul>
-    </div>
+    <details className="q-fold group/look">
+      <summary className="-mx-[6px] flex h-[30px] cursor-pointer list-none items-center gap-[8px] rounded-lg px-[6px] text-body text-fg-muted hover:text-fg [&::-webkit-details-marker]:hidden">
+        <SiteStack urls={urls} />
+        <span className="min-w-0 truncate text-fg" dir="auto">
+          {what}
+        </span>
+        <span className="tnum shrink-0 text-caption text-fg-subtle">
+          {n} {n === 1 ? "finding" : "findings"}
+        </span>
+        <ChevronDown size={14} strokeWidth={1.75} className="shrink-0 transition-[rotate] duration-fast group-open/look:rotate-180" />
+      </summary>
+      <div className="flex flex-col gap-[6px] pt-[4px]">
+        <ul className={clsx(qr.inset, "flex flex-col divide-y divide-line-subtle overflow-hidden")}>
+          {look.lines.map((l) => (
+            <li key={l.id}>
+              <details className="q-fold group/line">
+                <summary className="flex cursor-pointer list-none items-start gap-[8px] px-[10px] py-[8px] hover:bg-hover [&::-webkit-details-marker]:hidden">
+                  <SiteIcon url={l.url} className="mt-[1px]" />
+                  <span className="min-w-0 flex-1 truncate text-caption leading-[18px] text-fg group-open/line:whitespace-normal" dir="auto">
+                    {l.text}
+                  </span>
+                  <ChevronRight size={14} strokeWidth={1.75} className="mt-[2px] shrink-0 text-fg-subtle transition-[rotate] duration-fast group-open/line:rotate-90" />
+                </summary>
+                <div className="flex flex-col gap-[4px] pb-[10px] pl-[34px] pr-[10px]">
+                  {l.quote && l.quote !== l.text && (
+                    <p className="text-caption leading-[18px] text-fg-muted" dir="auto">
+                      “{l.quote}”
+                    </p>
+                  )}
+                  {l.url && (
+                    <a href={l.url} target="_blank" rel="noreferrer" className="inline-flex min-w-0 items-center gap-[4px] self-start text-micro text-fg-subtle hover:text-fg" title={l.url}>
+                      <span className="truncate">{l.title || hostName(l.url)}</span>
+                      {l.title && <span className="shrink-0">· {hostName(l.url)}</span>}
+                      <ArrowUpRight size={11} strokeWidth={1.75} className="shrink-0" />
+                    </a>
+                  )}
+                </div>
+              </details>
+            </li>
+          ))}
+        </ul>
+        <p className="text-micro text-fg-subtle">Others&apos; words, not your customers&apos;.</p>
+      </div>
+    </details>
   );
 }
 
