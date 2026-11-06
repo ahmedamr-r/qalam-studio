@@ -131,7 +131,7 @@ export interface SeenMap {
   gone: string[];
 }
 
-export const SEEN_LIMITS = { shots: 60, batch: 10, screens: 160, flows: 12, steps: 15, moves: 40, can: 12, nav: 8, label: 60, name: 60, line: 400, notShown: 4, questions: 4, rounds: 3 } as const;
+export const SEEN_LIMITS = { shots: 60, batch: 10, screens: 160, flows: 12, steps: 15, moves: 40, can: 12, nav: 8, label: 60, name: 60, line: 400, notShown: 4 } as const;
 
 /** The key of the organization's own map. */
 export const ORG_SEEN = "org";

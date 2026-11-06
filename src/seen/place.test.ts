@@ -170,3 +170,12 @@ describe("placing screenshots in flows", () => {
     expect(steps).toEqual({ slot: "acme__basket/slot" });
   });
 });
+
+describe("placing asks for as long as it needs", () => {
+  it("keeps every question it can ask now, with no cap on a round", () => {
+    const asks = ["Is “Your basket is empty” the first screen people see?", "Does “Your basket is empty” show after checkout?", "Can people search from “Your basket is empty”?", "Does “Start shopping” go to the home screen?", "Is “Your basket is empty” shown to new customers only?"];
+    const five = asks.map((ask) => ({ shots: ["s6"], ask, why: "It has no items.", options: [], words: [{ id: "s6", words: "Your basket is empty" }] }));
+    const kept = sanitizePlace({ ...answer, questions: five }, placeMaterial(input()), { answers: [] });
+    expect(kept.questions.filter((q) => q.by === "qalam")).toHaveLength(5);
+  });
+});

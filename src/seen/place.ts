@@ -387,7 +387,7 @@ export function sanitizePlace(raw: unknown, m: PlaceSent, o: { answers: SeenAnsw
     theirs.push({ id: "", ask: text, why, shots: about.map((n) => n.shot), marks, options: options.length >= 2 ? options : [], by: "qalam" });
   }
 
-  const questions = [...codeSame, ...theirs, ...codeMoves].slice(0, SEEN_LIMITS.questions).map((q, k) => ({ ...q, id: `q${k + 1}` }));
+  const questions = [...codeSame, ...theirs, ...codeMoves].map((q, k) => ({ ...q, id: `q${k + 1}` }));
   return { groups, states, flows, code, questions, ready: r.ready === true && !questions.length };
 }
 

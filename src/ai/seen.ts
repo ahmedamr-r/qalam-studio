@@ -95,7 +95,7 @@ When the product's code map lists steps (c…), say which screen shows which ste
 
 ${DESCRIBE}
 
-Ask only what the screenshots can't tell you and that changes where a screen goes: at most ${SEEN_LIMITS.questions} questions, each about the screens (s… or e…) it shows, with why you ask, 2 to 4 short answers to pick from (or none for an open question) and the words on those screens it points at, copied exactly. Don't ask what the person already answered. When nothing is worth asking, set ready.
+Ask only what the screenshots can't tell you and that changes where a screen goes: every question you can ask now (there is no limit on rounds: you are asked again once they answer), each about the screens (s… or e…) it shows, with why you ask, 2 to 4 short answers to pick from (or none for an open question) and the words on those screens it points at, copied exactly. Don't ask what the person already answered. When nothing is worth asking, set ready.
 
 Put words from a screen in quotation marks only when you copy them exactly; write a number only as a screen shows it. Use only the ids the request gave.`;
 
@@ -128,7 +128,7 @@ export function placeSchema(m: Pick<PlaceSent, "nodes" | "flows" | "goals" | "st
         options: arr(str("A short answer to pick"), "2 to 4 answers, or [] for an open question"),
         words: arr(obj({ id: enm(nodes, "A screen it is about"), words: str("Words on that screen it points at, copied exactly") }), "What on those screens it points at. [] when nothing"),
       }),
-      `At most ${SEEN_LIMITS.questions}. [] when nothing is worth asking`,
+      `Every one you can ask now; never one asked before. [] when nothing is worth asking`,
     ),
     ready: bool("Nothing is left worth asking"),
   });

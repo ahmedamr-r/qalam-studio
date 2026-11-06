@@ -202,10 +202,9 @@ async function placeRound(store: OrgStore, key: string, deps: SeenDeps, r: SeenR
     const im = await imageOf(store, deps, t.ref, THUMB_SIDE, "jpeg");
     if (im) thumbs.set(t.ref, im);
   }
-  const last = r.rounds.length + 1 >= SEEN_LIMITS.rounds;
   const { data, model } = await deps.ask(placeCall(m, thumbs));
   const dropped: { why: string; item: unknown }[] = [];
-  const kept = sanitizePlace(data, m, { answers, last }, (why, item) => dropped.push({ why, item }));
+  const kept = sanitizePlace(data, m, { answers }, (why, item) => dropped.push({ why, item }));
   const { map, steps } = proposalOf(before, kept, { key, product: r.product, notes: r.notes, shots, now: Date.now() });
   await store
     .putTrace({ id: nanoid(10), projectId: "seen", kind: "seen-place", at: Date.now(), ...(model ? { model } : {}), key, nodes: [...m.nodes].map(([id, n]) => ({ id, ref: n.ref })), answers, answer: data, kept: { flows: kept.flows.length, questions: kept.questions.length, groups: kept.groups.filter((g) => g.length > 1).length }, dropped } as { id: string; projectId: string })
