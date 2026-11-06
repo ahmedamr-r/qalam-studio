@@ -25,6 +25,10 @@ import {
   withPieceReliance,
 } from "./discovery";
 import { SAMPLE_ANSWERS, SAMPLE_DUMP_TEXT } from "./fixtures-discovery";
+import { interviewTurnCall } from "./discovery";
+import { emptyAsking } from "@/asking/engine";
+import { sanitizeTurn } from "@/asking/sanitize";
+import { askingIn } from "@/asking/wire";
 
 /** Structured outputs need every property required and no open objects. */
 function openRequired(node: unknown, path = "#"): string[] {
@@ -61,13 +65,14 @@ describe("Discovery requests", () => {
     expect(p.solutions.items!.properties.answerId.anyOf![0].enum).toEqual(["product", "pains", "follow-1"]);
   });
 
-  it("accepts the interview, with at most three follow-ups", () => {
+  it("accepts the interview, with as many answers to its rounds as fit the guard on size", () => {
     const answers = SAMPLE_ANSWERS.map(({ id, question, answer }) => ({ id, question, answer }));
     expect(DiscoveryBody.safeParse({ stage: "followups", answers }).success).toBe(true);
     expect(DiscoveryBody.safeParse({ stage: "draft", answers, followUps: [] }).success).toBe(true);
     expect(DiscoveryBody.safeParse({ stage: "draft", answers: [] }).success).toBe(false);
-    const four = Array.from({ length: 4 }, (_, i) => ({ id: `f${i}`, question: "Q", answer: "A" }));
-    expect(DiscoveryBody.safeParse({ stage: "draft", answers, followUps: four }).success).toBe(false);
+    const more = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `f${i}`, question: "Q", answer: "A" }));
+    expect(DiscoveryBody.safeParse({ stage: "draft", answers, followUps: more(12) }).success).toBe(true);
+    expect(DiscoveryBody.safeParse({ stage: "draft", answers, followUps: more(41) }).success).toBe(false);
     expect(DiscoveryBody.safeParse({ stage: "draft", answers: [{ id: "x", question: "Q", answer: "a".repeat(2001) }] }).success).toBe(false);
     expect(DiscoveryBody.safeParse({ stage: "grow", answers }).success).toBe(false);
   });
@@ -284,5 +289,21 @@ describe("calls that carry what the organization knows", () => {
     expect(place.properties.quotes.items.properties.pieceId.enum).toEqual(["k1"]);
     expect(Object.keys((dumpPlaceSchema({ ...ids, quotes: [] }) as unknown as typeof place).properties)).not.toContain("quotes");
     expect(openRequired(place)).toEqual([]);
+  });
+});
+
+describe("a turn of the board's interview after its own questions", () => {
+  it("reads their answers and the conversation, asks with the shared rules, and never looks anything up", () => {
+    const answers = SAMPLE_ANSWERS.map(({ id, question, answer }) => ({ id, question, answer }));
+    const asking = askingIn(emptyAsking(), { said: "" });
+    const b = DiscoveryBody.parse({ stage: "interview-turn", answers, asking });
+    if (b.stage !== "interview-turn") throw new Error("stage");
+    const { call, check } = interviewTurnCall(b);
+    expect(call.kind).toBe("ask-turn");
+    expect(call.content[0].text).toContain(answers[0].answer.trim().slice(0, 30));
+    expect(check.kinds).toEqual([]);
+    const t = sanitizeTurn({ questions: [{ id: "who", title: "Which customers first?", why: "", multi: false, options: [], recommended: [], allowOther: true, after: [] }], lookups: [{ id: "x", kind: "web", query: "q" }], done: false, understood: [], terms: [] }, check, () => {});
+    expect(t.questions.map((q) => q.title)).toEqual(["Which customers first?"]);
+    expect(t.lookups).toEqual([]);
   });
 });

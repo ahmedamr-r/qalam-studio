@@ -3,9 +3,10 @@ import clsx from "clsx";
 import { ArrowLeft, FileUp, MessagesSquare, Network, NotebookPen, Play, X } from "lucide-react";
 import { studio, useStudio } from "@/doc/store";
 import { addCardIn, makeCardNode, newCard } from "@/discovery/ops";
-import { CORE_QUESTIONS, followUpQuestions, interviewAnswers, type InterviewAnswer } from "@/discovery/interview";
+import { CORE_QUESTIONS, interviewAnswers, type InterviewAnswer } from "@/discovery/interview";
+import { answersOf, awaitsConfirm, currentRound, emptyAsking, loaded } from "@/asking/engine";
+import type { AskingState } from "@/asking/types";
 import { SAMPLE_ANSWERS } from "@/ai/fixtures-discovery";
-import type { FollowUp } from "@/design-system/interview/sanitize";
 import { updateProject, useProject } from "@/projects/session";
 import type { DiscoveryState } from "@/discovery/types";
 import { initialFlow, type FlowState } from "../ai/questionFlow";
@@ -17,7 +18,9 @@ import { QalamAIGlyph } from "../brand/ai-glyph";
 import { confirmDialog } from "../surfaces/dialog";
 import { getController } from "../CanvasView";
 import { draftTree, hasOutcome, stopDraft, treeFor } from "./draft";
-import { runFollowups } from "./ai";
+import { runInterviewTurn } from "./ai";
+import { answer, askMeInstead, confirm, goOn, keepRound, lookItUp, off, picks, stopAsking, type AskingHost, type Paused } from "../asking/run";
+import { AskRound, SettledCard } from "../asking/AskRound";
 import { useDiscovery } from "./store";
 import { openBrainDump } from "./dump";
 import { startTitleEdit } from "./editing";
@@ -216,15 +219,18 @@ function saveInterview(patch: Partial<NonNullable<DiscoveryState["interview"]>>,
 function Interview({ followups }: { followups: boolean }) {
   const saved = useProject((s) => s.project?.discovery?.interview);
   const [flow, setFlow] = useState<FlowState>(() => saved?.flow ?? initialFlow(CORE_QUESTIONS));
-  const [fq, setFq] = useState<FollowUp[]>(() => saved?.followUps?.questions ?? []);
-  const [fflow, setFflow] = useState<FlowState | null>(() => saved?.followUps?.flow ?? null);
+  // After its own questions, the interview (src/asking/): Qalam AI's rounds, for as long as it needs.
+  const [asking, setAsking] = useState<AskingState | null>(() => (saved?.asking ? loaded(saved.asking) : null));
+  const live = useRef(asking);
+  live.current = asking;
   const [busy, setBusy] = useState<{ started: number; tokens: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const ctrl = useRef<AbortController | null>(null);
   useEffect(() => () => ctrl.current?.abort(), []);
 
-  const answers = (): InterviewAnswer[] => interviewAnswers(CORE_QUESTIONS, flow.answers);
-  const followAnswers = (qs: FollowUp[], f: FlowState): InterviewAnswer[] => interviewAnswers(followUpQuestions(qs), f.answers).map((a) => ({ ...a, id: `follow-${a.id}` }));
+  const answers = (f: FlowState = flow): InterviewAnswer[] => interviewAnswers(CORE_QUESTIONS, f.answers);
+  // Only their own words reach the draft, which quotes them: Qalam AI's picks only steered what it asked.
+  const own = (s: AskingState): InterviewAnswer[] => answersOf(s).flatMap((a) => (a.how === "own" && a.text ? [{ id: `follow-${a.id}`.slice(0, 40), question: a.question.slice(0, 400), answer: a.text.slice(0, 2000) }] : [])).slice(0, 40);
 
   const draft = async (core: InterviewAnswer[], more: InterviewAnswer[]) => {
     const replace = await replaceOk();
@@ -232,23 +238,30 @@ function Interview({ followups }: { followups: boolean }) {
     void draftTree({ answers: core, followUps: more, replace });
   };
 
-  const onCore = async (done: FlowState) => {
-    setFlow(done);
-    saveInterview({ flow: done }, true);
-    setError(null);
-    const core = interviewAnswers(CORE_QUESTIONS, done.answers);
+  const host = (core: InterviewAnswer[]): AskingHost => ({
+    key: "board-interview",
+    get: () => live.current,
+    set: (fn) => {
+      const next = fn(live.current ?? emptyAsking());
+      live.current = next;
+      setAsking(next);
+      saveInterview({ asking: next });
+    },
+    turn: (s, signal) => runInterviewTurn(core, s, { signal, onProgress: (tokens) => setBusy((b) => (b ? { ...b, tokens } : b)) }),
+    lookup: async () => ({ lines: [] }),
+    generate: async (s) => void draft(core, own(s)),
+  });
+
+  /** On from where the interview is, until a round, What we settled, or the draft. */
+  const go = async (step: (h: AskingHost, signal: AbortSignal) => Promise<Paused>, core = answers()) => {
     const c = new AbortController();
     ctrl.current = c;
+    setError(null);
     setBusy({ started: Date.now(), tokens: 0 });
     try {
-      const qs = await runFollowups(core, { signal: c.signal, onProgress: (tokens) => setBusy((b) => (b ? { ...b, tokens } : b)) });
+      const why = await step(host(core), c.signal);
       setBusy(null);
-      if (!qs.length) return void draft(core, []);
-      const f = initialFlow(followUpQuestions(qs));
-      setFq(qs);
-      setFflow(f);
-      saveInterview({ followUps: { questions: qs, flow: f } }, true);
-      useDiscovery.setState({ sheet: "followups" });
+      if (why !== "generated") useDiscovery.setState({ sheet: "followups" });
     } catch (e) {
       setBusy(null);
       if ((e as Error).name === "AbortError") return;
@@ -256,10 +269,14 @@ function Interview({ followups }: { followups: boolean }) {
     }
   };
 
-  const onFollow = (done: FlowState) => {
-    setFflow(done);
-    saveInterview({ followUps: { questions: fq, flow: done } }, true);
-    void draft(answers(), followAnswers(fq, done));
+  const onCore = (done: FlowState) => {
+    setFlow(done);
+    saveInterview({ flow: done }, true);
+    const fresh = emptyAsking();
+    live.current = fresh;
+    setAsking(fresh);
+    saveInterview({ asking: fresh }, true);
+    void go((h, signal) => goOn(h, signal), answers(done));
   };
 
   if (busy)
@@ -275,28 +292,36 @@ function Interview({ followups }: { followups: boolean }) {
       </>
     );
 
-  if (followups && fflow)
+  if (followups && asking) {
+    const settled = awaitsConfirm(asking);
     return (
       <>
-        <Header title="A few more questions" onBack={() => useDiscovery.setState({ sheet: "interview" })} />
+        <Header title={settled ? "What we settled" : "A few more questions"} onBack={() => useDiscovery.setState({ sheet: "interview" })} />
         <div className="flex flex-col gap-[12px] p-[16px]">
-          <Questionnaire
-            title="Before Qalam AI drafts"
-            questions={followUpQuestions(fq)}
-            state={fflow}
-            onChange={(f) => {
-              setFflow(f);
-              saveInterview({ followUps: { questions: fq, flow: f } });
-            }}
-            onSubmit={onFollow}
-            review={{ submitLabel: "Draft my tree" }}
-          />
-          <button type="button" className="self-start text-caption font-medium text-fg-muted underline decoration-fg/30 underline-offset-2 hover:text-fg" onClick={() => void draft(answers(), [])}>
-            Skip these and draft now
-          </button>
+          {error && <ErrorNote message={error} />}
+          {settled ? (
+            <SettledCard state={asking} go="Draft my tree" onGo={() => void go((h, signal) => confirm(h, signal))} onOff={() => off(host(answers()))} onTerm={() => {}} />
+          ) : currentRound(asking) || asking.offer ? (
+            <AskRound
+              state={asking}
+              title={asking.rounds.length > 1 ? undefined : "Before Qalam AI drafts"}
+              onKeep={(f) => keepRound(host(answers()), f)}
+              onSend={(f) => void go((h, signal) => answer(h, f, signal))}
+              onPicks={(f) => void go((h, signal) => picks(h, f, signal))}
+              onStop={(f) => void go((h, signal) => stopAsking(h, f, signal))}
+              onStopLookup={() => {}}
+              onLookItUp={() => void go((h, signal) => lookItUp(h, signal))}
+              onAskMe={() => void go((h, signal) => askMeInstead(h, signal))}
+            />
+          ) : (
+            <Button size="sm" variant="secondary" className="self-start" onClick={() => void go((h, signal) => goOn(h, signal))}>
+              Go on
+            </Button>
+          )}
         </div>
       </>
     );
+  }
 
   return (
     <>

@@ -1,9 +1,10 @@
 import { aiStatus, callAI, type AIDelta } from "@/ai/client";
-import type { CallContext } from "@/ai/discovery";
-import { SAMPLE_DRAFT_RAW, SAMPLE_FOLLOWUPS_RAW } from "@/ai/fixtures-discovery";
-import type { FollowUp } from "@/design-system/interview/sanitize";
+import { interviewTurnCall, type CallContext } from "@/ai/discovery";
+import { sanitizeTurn } from "@/asking/sanitize";
+import type { AskTurn, AskingState } from "@/asking/types";
+import { askingIn } from "@/asking/wire";
+import { SAMPLE_DRAFT_RAW } from "@/ai/fixtures-discovery";
 import type { InterviewAnswer } from "@/discovery/interview";
-import { sanitizeFollowups } from "@/discovery/sanitize";
 import { replayStream } from "../ai/replay";
 
 /**
@@ -24,10 +25,15 @@ export async function offline(opts: CallOpts = {}) {
   return !!opts.sample || !(await aiStatus()).ai;
 }
 
-export async function runFollowups(answers: InterviewAnswer[], opts: CallOpts = {}): Promise<FollowUp[]> {
-  if (await offline(opts)) return sanitizeFollowups(SAMPLE_FOLLOWUPS_RAW);
-  const { data } = await callAI<unknown>(PATH, { stage: "followups", answers }, opts.onProgress, opts.signal);
-  return sanitizeFollowups(data);
+/**
+ * A turn of the interview after the product interview's own questions (src/asking/), checked here as
+ * the board's other calls are. Without AI, or for the sample, there's nothing more to ask.
+ */
+export async function runInterviewTurn(answers: InterviewAnswer[], s: AskingState, opts: CallOpts = {}): Promise<AskTurn> {
+  if (await offline(opts)) return { questions: [], lookups: [], done: true, understood: [], terms: [], choices: [] };
+  const b = { stage: "interview-turn" as const, answers, asking: askingIn(s, { said: "" }) };
+  const { data } = await callAI<unknown>(PATH, b, opts.onProgress, opts.signal);
+  return sanitizeTurn(data, interviewTurnCall(b).check, () => {});
 }
 
 /** The draft as the model wrote it (sanitized by the caller); `onDelta` sees it being written. `context`: what the organization already knows. */

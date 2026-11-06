@@ -14,6 +14,7 @@ import {
   dumpPlaceContent,
   dumpPlaceSchema,
   dumpReadCall,
+  interviewTurnCall,
   extractCall,
   followupsContent,
   importTask,
@@ -45,6 +46,8 @@ export async function POST(req: Request) {
   const b = parsed.data;
   // Each stage's kind picks its model (src/ai/models.ts): extracting reads, the rest decide.
   switch (b.stage) {
+    case "interview-turn":
+      return streamStructured(interviewTurnCall(b).call);
     case "followups":
       return streamStructured({ kind: "followups", system: FOLLOWUPS_SYSTEM, schema: FOLLOWUPS_SCHEMA, effort: "medium", maxTokens: 8000, content: [{ type: "text", text: followupsContent(b) }] });
     case "draft":

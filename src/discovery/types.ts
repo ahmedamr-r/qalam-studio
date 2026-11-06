@@ -2,6 +2,7 @@ import type { Basis } from "./basis";
 import type { BriefTopic } from "@/doc/schema";
 import type { FollowUp } from "@/design-system/interview/sanitize";
 import type { FlowState } from "@/ui/ai/questionFlow";
+import type { AskingState } from "@/asking/types";
 
 /*
  * Discovery: an Opportunity Solution Tree (Teresa Torres). One outcome the team can move, the
@@ -226,7 +227,10 @@ export interface DiscoveryState {
   stage: "start" | "interview" | "drafting" | "ready";
   interview?: {
     flow: FlowState;
+    /** Before: one round of follow-ups. */
     followUps?: { questions: FollowUp[]; flow: FlowState };
+    /** The interview after its own questions (src/asking/): Qalam AI's rounds, for as long as it needs. */
+    asking?: AskingState;
     /** Answered with the recorded sample (no AI). */
     sample?: boolean;
   };

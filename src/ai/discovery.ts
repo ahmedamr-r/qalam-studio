@@ -3,7 +3,8 @@ import { BASES, BASIS_WHOSE } from "@/discovery/basis";
 import { QUOTE_KINDS } from "@/discovery/sources";
 import { CHALLENGE_HINT, CHALLENGE_KINDS, DUMP_MAX_CHARS, DUMP_ROLES, ROLE_HINT } from "@/discovery/dump";
 import { QA, questionItem } from "@/ai/plan";
-import { askingRules } from "@/ai/asking";
+import { askTurnCall, askingRules } from "@/ai/asking";
+import { AskingIn, askingBlock, checkOf } from "@/asking/wire";
 import { MAX_RELIED } from "@/ai/reliance";
 
 /**
@@ -73,7 +74,10 @@ const DumpRead = { understanding: text(1200), fragments: z.array(FragmentIn).max
 export const DiscoveryBody = z
   .discriminatedUnion("stage", [
     z.object({ stage: z.literal("followups"), answers: z.array(Answer).min(1).max(12) }),
-    z.object({ stage: z.literal("draft"), answers: z.array(Answer).min(1).max(12), followUps: z.array(Answer).max(3).optional(), context: ContextIn }),
+    // A turn of the interview after the product interview's own questions (src/asking/): as many as it needs.
+    z.object({ stage: z.literal("interview-turn"), answers: z.array(Answer).min(1).max(12), asking: AskingIn }),
+    // Their answers to the interview's turns: a guard on size, not on how many it asked.
+    z.object({ stage: z.literal("draft"), answers: z.array(Answer).min(1).max(12), followUps: z.array(Answer).max(40).optional(), context: ContextIn }),
     z.object({ stage: z.literal("extract"), product: text(2000), focus: text(2200).optional(), chunks: z.array(ChunkIn).min(1).max(8), goals: z.array(z.object({ id: text(12), title: text(300), metric: text(200) })).max(12).optional(), propose: z.array(text(300)).max(60).optional(), context: ContextIn }),
     z.object({ stage: z.literal("synthesize"), product: text(2000), tree: z.array(CardIn).min(1).max(400), quotes: z.array(QuoteIn).min(1).max(150), needs: z.array(NeedIn).max(60), context: ContextIn }),
     z.object({ stage: z.literal("import"), request: z.string().trim().min(3).max(1000), connectors: z.array(z.string().max(64)).min(1).max(8) }),
@@ -240,6 +244,12 @@ export function answersBlock(answers: z.infer<typeof Answer>[], followUps?: z.in
 }
 
 export const followupsContent = (b: Extract<DiscoveryRequest, { stage: "followups" }>) => `${answersBlock(b.answers)}\n\nIs anything missing before you draft the tree?`;
+
+/** A turn of the interview after the product interview's own questions: their answers, then the conversation so far. */
+export function interviewTurnCall(b: Extract<DiscoveryRequest, { stage: "interview-turn" }>) {
+  const material = `${answersBlock(b.answers)}\n\n${askingBlock(b.asking)}`;
+  return { call: askTurnCall({ flow: "interview", who: "builder", material, kinds: [], terms: false, choices: false }), check: checkOf(b.asking, { who: "builder", hay: material.replace(/^(\s*- )[\w-]+ ·/gm, "$1"), kinds: [], decisions: false }) };
+}
 
 export const draftContent = (b: Extract<DiscoveryRequest, { stage: "draft" }>) => [answersBlock(b.answers, b.followUps), ...knowledgeBlock(b.context), "", "Draft the tree."].join("\n");
 
