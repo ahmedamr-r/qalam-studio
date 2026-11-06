@@ -25,6 +25,8 @@ interface QBase {
   optional?: boolean;
   /** Single choice: the option Qalam AI would pick (pre-selected). */
   recommended?: string;
+  /** Single choice: the option Qalam AI would pick, marked and not picked: what they haven't chosen isn't what they said. */
+  suggested?: string;
   /** "ai" = Qalam AI wrote the question from what it saw. */
   source?: "ai" | "studio";
   /** Questions whose answers this one is built from: changing them clears this answer. */

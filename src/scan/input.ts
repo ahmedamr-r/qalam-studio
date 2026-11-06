@@ -46,10 +46,18 @@ export function otherReading(t: ScanTarget, said: string): ScanTarget | null {
   return t.app || text.length < 3 ? null : { kind: "idea", said: text };
 }
 
-const clip = (s: string, max: number) => (s.length > max ? `${s.slice(0, max).replace(/\s+\S*$/, "")}` : s);
+const clip =(s: string, max: number) => (s.length > max ? `${s.slice(0, max).replace(/\s+\S*$/, "")}` : s);
 
-/** A project's name from what they typed, theirs to change later. */
-export const projectName = (t: ScanTarget): string => (t.kind === "product" ? t.name || "My product" : clip(t.said.replace(/^(an?|the)\s+/i, "").replace(/^./, (c) => c.toUpperCase()), 48));
+/**
+ * A project's name with nothing else to go on (no engine to ask): a product's name, or an idea said in
+ * a few words. A sentence about it isn't a name, so it's "My project" until they call it something
+ * (the first read names it when it can, `nameAfterRead`). Theirs to change either way.
+ */
+export const projectName = (t: ScanTarget): string => {
+  if (t.kind === "product") return t.name || "My product";
+  const short = t.said.replace(/^(an?|the)\s+/i, "").trim();
+  return short && short.split(/\s+/).length <= NAME_WORDS && !/[.!?؟]\s*\S/.test(short) ? clip(short.replace(/^./, (c) => c.toUpperCase()), 48) : "My project";
+};
 
 // Countries an idea may name, to look in the right App Store.
 const PLACES: [RegExp, string][] = [
@@ -78,4 +86,40 @@ export function scanCountry(said: string, locale = ""): string {
 /** The request the box's words make. */
 export function requestOf(target: ScanTarget, said: string, locale = ""): ScanRequest {
   return { target, country: scanCountry(said, locale) };
+}
+
+/** Words that plainly say there's no idea yet: no call needed. */
+export const saysNoIdea = (said: string) => /^(?:no idea|none|nothing|idk|dunno|not sure|anything|i (?:don'?t|do not) know|i have no idea|i'?m not sure)(?:\b|$)[\s\S]{0,30}$/i.test(said.trim());
+
+/** How a first answer was read: whether it names anything to read about, a product's own name, and what to call the project. */
+export interface FirstRead {
+  named: boolean;
+  /** A product's own name, as they wrote it. */
+  product: string;
+  /** What to call the project; empty: nothing to go on. */
+  name: string;
+}
+
+/** Read with no call: nothing to go on, so it reads as asked. */
+export const NOT_READ: FirstRead = { named: true, product: "", name: "" };
+
+/**
+ * What code keeps of the small call's reading. Nothing to read about only when it says so, since
+ * reading is what they asked for. A product's name only as they wrote it. A name is a label of a few
+ * words, never a sentence, with no figure they didn't write; it's theirs to change once it's made.
+ */
+export function sanitizeFirstRead(raw: unknown, said: string): FirstRead {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const named = r.said !== "none";
+  const text = said.toLowerCase();
+  const tidy = (v: unknown) => (typeof v === "string" ? v.replace(/\s+/g, " ").replace(/^["“'‘]+|["”'’.。]+$/g, "").trim() : "");
+  const product = tidy(r.product);
+  const name = tidy(r.name);
+  const figures = (s: string) => s.match(/\p{Nd}+/gu) ?? [];
+  const nameHolds = !!name && name.length <= 48 && name.split(" ").length <= NAME_WORDS && !/[.!?؟]\s*\S/.test(name) && figures(name).every((n) => said.includes(n));
+  return {
+    named,
+    product: named && product && product.length <= 60 && text.includes(product.toLowerCase()) ? product : "",
+    name: named && nameHolds ? name : "",
+  };
 }

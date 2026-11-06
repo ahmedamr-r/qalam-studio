@@ -71,6 +71,8 @@ export interface PlaceContext {
   anchor: string | null;
   /** A problem may stand on its own (asked to find problems on the space's canvas, where one needs no goal yet). */
   looseProblems?: boolean;
+  /** They asked for this ("Help me find one", the problem to focus on): what's proposed stays with nothing behind it, and says so as Assumed. */
+  keepBare?: boolean;
   /** Customers' quotes from the organization's knowledge the call was given, by their ids (k…). */
   hub?: Map<string, { quote: QuoteRef; span: [number, number] }>;
   /** The card already rests on these words of that source. */
@@ -203,7 +205,7 @@ export function sanitizePlace(raw: unknown, ctx: PlaceContext, ids: Map<string, 
     if (!title || parent?.titles.has(key(title)) || inTree.has(key(title))) continue;
     if (parent ? parent.added >= L.perParent : trees >= L.trees) continue;
     const backing = backingOf(x);
-    if (!backing.quotes.length && !backing.words.length && kind !== "opportunity") continue;
+    if (!backing.quotes.length && !backing.words.length && kind !== "opportunity" && !ctx.keepBare) continue;
     const description = clip(x.description, L.description);
     const m = kind === "outcome" && x.metric ? metricFields(rec(x.metric), ctx) : {};
     const metric: OstMetric | undefined = m.name ? { name: m.name, direction: m.direction ?? "increase", baseline: m.baseline ?? null, current: m.current ?? m.baseline ?? null, target: m.target ?? null, ...(m.unit ? { unit: m.unit } : {}), ...(m.timeframe ? { timeframe: m.timeframe } : {}) } : undefined;
@@ -379,7 +381,7 @@ export function sanitizePlace(raw: unknown, ctx: PlaceContext, ids: Map<string, 
     const next = kept.filter((p) => {
       if (p.kind === "card") {
         if (!there(p.parentId)) return false;
-        if (p.card.kind !== "opportunity" || p.backing.quotes.length || p.backing.words.length) return true;
+        if (p.card.kind !== "opportunity" || p.backing.quotes.length || p.backing.words.length || ctx.keepBare) return true;
         return kept.some((q) => (q.kind === "card" || q.kind === "move") && q.parentId === p.cardId);
       }
       if (p.kind === "move") return there(p.parentId);

@@ -408,12 +408,13 @@ export async function placeDump(sourceId: string) {
   const { pieces, fields } = readFields(s, cards);
   const answers = roundAnswers(session)
     .flat()
-    .map((a, i) => ({ ref: `a${i + 1}`, answerId: `dump:${sourceId}:${a.questionId}`, question: a.question, answer: a.answer, words: a.words }));
+    .map((a, i) => ({ ref: `a${i + 1}`, answerId: `dump:${sourceId}:${a.questionId}`, question: a.question, answer: a.answer, words: a.words, said: a.said ?? "" }));
   const ctx: PlaceContext = {
     cards,
     pieces,
     sourceId,
-    answers: answers.map(({ ref, answerId, words }) => ({ ref, answerId, words })),
+    // A choice they picked is their answer, in those words (nothing's picked for them: `toQuestion`).
+    answers: answers.map(({ ref, answerId, words, said }) => ({ ref, answerId, words: words || said })),
     said: [s.text, ...answers.map((a) => a.words)].join("\n"),
     settled: new Set(session.dismissed ?? []),
     has: (cardId, span) => {
@@ -422,6 +423,7 @@ export async function placeDump(sourceId: string) {
     },
     anchor: session.anchor,
     looseProblems: session.aim?.find === "problem" && !session.aim.goal,
+    keepBare: !!session.aim,
   };
   // What the organization knows about what the dump says, beyond the board's cards and the dump itself.
   const org = session.sample ? null : await orgContext({ query: s.text.slice(0, 4000), product: packProduct(), budget: PLACE_BUDGET, exclude: [...boardCardRefs(studio().doc), ...s.quotes.map((q) => quotePiece(q.id))] });

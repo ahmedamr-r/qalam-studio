@@ -1,0 +1,6 @@
+step,users_entering,users_leaving,percent_lost
+Basket filled,10000,0,0
+Picked a delivery slot,10000,4400,44
+Address confirmed,5600,560,10
+Payment page reached,5040,454,9
+Order placed,4586,0,0

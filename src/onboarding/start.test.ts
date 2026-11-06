@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { boxTarget, moreLine, SCAN_MAX, START_PICTURES, startPlan, startProblem, startTarget, stripPreamble, whoseOf, type BoxDoc } from "./start";
+import { boxTarget, moreLine, nameAfterRead, SCAN_MAX, START_PICTURES, startPlan, startProblem, startTarget, stripPreamble, targetAfterRead, whoseOf, type BoxDoc } from "./start";
 
 describe("what the words say to look at", () => {
   it("makes a company's product theirs, whether it's a name, a site or an App Store link", () => {
@@ -13,9 +13,24 @@ describe("what the words say to look at", () => {
     expect(startTarget("company", "grocery basket")).toEqual({ kind: "product", name: "grocery basket", mine: true });
   });
 
-  it("asks again for a sentence on the company's path", () => {
+  it("takes a sentence on the company's path as them saying what it does, and finds its name in it when they gave one", () => {
     const said = "We are a grocery delivery company working in three cities right now";
-    expect(startTarget("company", said)).toBeNull();
+    expect(startTarget("company", said)).toEqual({ kind: "idea", said });
+    const named = "Basket, our grocery app for parents";
+    const t = startTarget("company", named)!;
+    expect(t).toEqual({ kind: "idea", said: named });
+    expect(targetAfterRead("company", t, { named: true, product: "Basket", name: "Basket" })).toEqual({ kind: "product", name: "Basket", mine: true });
+    // On their own idea, a name found doesn't make it a product of theirs.
+    expect(targetAfterRead("idea", { kind: "idea", said: named }, { named: true, product: "Basket", name: "Basket" })).toEqual({ kind: "idea", said: named });
+  });
+
+  it("names the project from what they explained, never from the sentence itself", () => {
+    const idea = { kind: "idea" as const, said: "Something to help freelancers chase invoices clients pay late" };
+    expect(nameAfterRead(idea, { named: true, product: "", name: "Freelancer invoice chasing" })).toBe("Freelancer invoice chasing");
+    expect(nameAfterRead(idea, { named: true, product: "", name: "" })).toBe("My project");
+    expect(nameAfterRead(idea, { named: false, product: "", name: "" })).toBe("My project");
+    expect(nameAfterRead({ kind: "product", name: "Basket", mine: true }, { named: true, product: "Basket", name: "Grocery app" })).toBe("Basket");
+    expect(nameAfterRead({ kind: "idea", said: "a meal planner" }, { named: true, product: "", name: "" })).toBe("Meal planner");
   });
 
   it("keeps an idea an idea, even when it reads like a name", () => {

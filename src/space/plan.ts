@@ -11,7 +11,7 @@ import { SOLUTION_TYPES, type AssumptionCategory, type Came, type OstAssumption,
 import type { FocusLook } from "@/goals/focus";
 import { withoutIds } from "@/goals/said";
 import { holdWords, sameTopic, valuesIn } from "@/hub/topics";
-import { sanitizeQuestions } from "@/ui/ai/plan";
+import { sanitizeAsked } from "@/ui/ai/plan";
 import type { SpaceThing } from "./compose";
 
 /*
@@ -79,6 +79,16 @@ export function answersOf(rounds: readonly PlanRound[]): { question: string; ans
   }));
 }
 
+/** What was asked and left: they don't know, or won't say. Nothing can be assumed from it, and it isn't asked again. */
+export function leftOf(rounds: readonly PlanRound[]): string[] {
+  return rounds.flatMap((r) => (r.answers ? r.questions.filter((q) => !(r.answers?.[q.id] ?? "").trim()).map((q) => one(q.title)) : []));
+}
+
+const leftLines = (rounds: readonly PlanRound[]) => {
+  const left = leftOf(rounds);
+  return left.length ? ["", "Asked and left unanswered, so you don't know these. Don't assume an answer:", ...left.map((q) => `- ${q}`)] : [];
+};
+
 const canvasLines = (outline: readonly OutlineCard[], ref: (id: string) => string | undefined) =>
   outline.map((c) => {
     const parent = c.parent ? ref(c.parent) : null;
@@ -119,6 +129,7 @@ export function planNextMaterial(o: { org: string; about?: string; said: string;
     "",
     answers.length ? "What they've told you:" : "They haven't told you anything yet.",
     ...answers.map((a) => `- ${a.question} ${a.answer}`),
+    ...leftLines(o.rounds),
     "",
     `Rounds of questions so far: ${o.rounds.length} of at most ${PLAN_LIMITS.rounds}. Looks at the web after the first: ${o.looks.filter((l) => l.after >= 0).length} of at most ${PLAN_LIMITS.looks}.`,
   ].join("\n");
@@ -148,7 +159,7 @@ export function sanitizeNext(raw: unknown, o: { rounds: readonly PlanRound[]; lo
   const query = one(word(r.look)).slice(0, PLAN_LIMITS.query);
   if (r.action === "look" && query && !noWeb && !justLooked && looked.length < PLAN_LIMITS.looks) return { action: "look", query };
   if (o.rounds.length >= PLAN_LIMITS.rounds) return { action: "ready" };
-  const questions = sanitizeQuestions(r.questions).slice(0, 3).map((q) => ({ ...q, allowOther: true }));
+  const questions = sanitizeAsked(r.questions).slice(0, 3).map((q) => ({ ...q, allowOther: true }));
   if (r.action === "ask" && questions.length) return { action: "ask", questions };
   return !o.rounds.length && r.action !== "ready" ? { action: "ask", questions: planRound() } : { action: "ready" };
 }
@@ -209,7 +220,8 @@ export function planMaterial(o: { org: string; about?: string; said: string; out
     "What was read on the web (id · the line · the page). Others' words, never evidence about these customers:",
     ...(read.size ? [...read].map(([id, l]) => `- ${id} · ${one(l.text)}${l.quote ? ` “${one(l.quote)}”` : ""}${l.url ? ` · ${hostOf(l.url)}` : ""}`) : ["(nothing)"]),
   ].join("\n");
-  const text = o.company?.trim() ? `${body}\n\n${o.company.trim()}` : body;
+  const left = leftLines(o.rounds).join("\n");
+  const text = [body, left.trim(), o.company?.trim()].filter(Boolean).join("\n\n");
   // What words and numbers may come from: the material without its ids.
   return { text, hay: body.replace(/(^|\s)[acqw]\d+ ·/gm, "$1"), cards, pieces, answers, read };
 }

@@ -103,7 +103,7 @@ export const questionItem = (who = "designer", several = "which panels or tools 
     multi: { type: "boolean", description: `Several answers can be picked (e.g. ${several})` },
     options: {
       type: "array",
-      description: `2–4 concrete options written for this product; none for an open question the ${who} answers in their own words`,
+      description: `2–4 concrete options written for this product; none for an open question the ${who} answers in their own words${who === "designer" ? "" : ". A number they may know (a rate, a count, a price, how far it could move) is an open question asking for the figure: never offer ranges as options, since a range loses what they know"}`,
       items: {
         type: "object",
         additionalProperties: false,

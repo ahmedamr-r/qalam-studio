@@ -165,9 +165,51 @@ export function sanitizePlan(raw: unknown, fallback: Platform): PlanResult {
   };
 }
 
-/** One of Qalam AI's questions as the questionnaire asks it. An open question can be skipped. */
+/**
+ * Choices that are ranges of a number: "Under 3%", "3–7%", "Over 7%", with at most one that isn't, such
+ * as "Don't know". Someone who knows it's 3.1% loses that picking one, and nothing can be worked out
+ * from a range.
+ */
+export function isNumberRanges(options: readonly { label: string }[]): boolean {
+  // An id the model left in a label (q1) or a quarter (Q3) isn't a figure.
+  const withFigure = options.filter((o) => /\p{Nd}/u.test(o.label.replace(/\b[a-z]\d+\b/gi, ""))).length;
+  return withFigure >= 2 && withFigure >= options.length - 1;
+}
+
+/** A question of number is asked open, so they can give the figure they have. */
+export const openNumbers = (q: PlanQuestion): PlanQuestion => (isNumberRanges(q.options) ? { ...q, multi: false, options: [], recommended: [], allowOther: false } : q);
+
+/** Questions about someone's own work, as code keeps them. The design side's plan has choices of its own: `sanitizeQuestions`. */
+export const sanitizeAsked = (raw: unknown): PlanQuestion[] => sanitizeQuestions(raw).map(openNumbers);
+
+/**
+ * A question about someone's own work, as the questionnaire asks it. Their answers become what cards
+ * rest on, so nothing is picked for them: Qalam AI's recommendation is marked, not chosen, and Enter on
+ * a card they didn't touch leaves it unanswered. Any of them can be left.
+ */
 export function toQuestion(q: PlanQuestion): Question {
   // What a tool brings back goes in the answer, so a question with a tool always takes words of its own.
+  const open = q.allowOther || !!q.tool;
+  const tool = withTool(q.tool);
+  const base = { id: q.id, title: q.title, why: q.why || undefined, source: "ai" as const, optional: true };
+  if (!q.options.length) return { ...base, kind: "text", placeholder: "Answer in your own words, or skip", maxLength: q.tool ? 1200 : 600, ...tool };
+  if (q.multi) return { ...base, kind: "multi", groups: [{ id: "picks", label: "Pick any", options: q.options, ...(open ? { custom: { placeholder: "Add your own" } } : {}) }], ...tool };
+  return {
+    ...base,
+    kind: "single",
+    options: q.options,
+    ...(q.recommended[0] ? { suggested: q.recommended[0] } : {}),
+    ...(open ? { other: { label: "Something else…", placeholder: "Describe what you want" } } : {}),
+    ...tool,
+  };
+}
+
+/**
+ * A design choice, as the questionnaire asks it: Enter takes Qalam AI's recommendation, since "use your
+ * judgement" is a real answer about a screen and says nothing about customers. With no recommendation
+ * the first option is what's selected, and nothing says it was recommended.
+ */
+function toDesignQuestion(q: PlanQuestion): Question {
   const open = q.allowOther || !!q.tool;
   const tool = withTool(q.tool);
   if (!q.options.length)
@@ -191,7 +233,7 @@ export function toQuestion(q: PlanQuestion): Question {
     why: q.why || undefined,
     source: "ai",
     options: q.options,
-    recommended: q.recommended[0] ?? q.options[0].value,
+    ...(q.recommended[0] ? { recommended: q.recommended[0] } : { default: q.options[0].value }),
     ...(open ? { other: { label: "Something else…", placeholder: "Describe what you want" } } : {}),
     ...tool,
   };
@@ -199,7 +241,7 @@ export function toQuestion(q: PlanQuestion): Question {
 
 /** The first bucket for the designer: the plan's questions, then where the screens will run (unless they already chose). */
 export function planQuestions(plan: PlanResult, platformFixed: boolean): Question[] {
-  const qs = plan.questions.map(toQuestion);
+  const qs = plan.questions.map(toDesignQuestion);
   if (!platformFixed)
     qs.push({
       id: PLATFORM_Q,
@@ -235,7 +277,7 @@ export function bucketsOf(state: PlanState): PlanBucket[] {
 export function bucketQuestions(state: PlanState, i: number): Question[] {
   const b = bucketsOf(state)[i];
   if (!b) return [];
-  return i === 0 && state.result ? planQuestions({ ...state.result, questions: b.questions }, !!state.platformFixed) : b.questions.map(toQuestion);
+  return i === 0 && state.result ? planQuestions({ ...state.result, questions: b.questions }, !!state.platformFixed) : b.questions.map(toDesignQuestion);
 }
 
 /** The first bucket, ready to ask. */
@@ -311,7 +353,7 @@ export function applyFollowup(state: PlanState, f: FollowupResult): PlanState {
     form: undefined,
     error: undefined,
     phase: more ? "asking" : "ready",
-    buckets: more ? [...read, { questions: f.questions, form: initialFlow(f.questions.map(toQuestion)) }] : read,
+    buckets: more ? [...read, { questions: f.questions, form: initialFlow(f.questions.map(toDesignQuestion)) }] : read,
   };
 }
 

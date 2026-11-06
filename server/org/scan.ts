@@ -1,6 +1,6 @@
 import { competitorsCall, pricesCall } from "@/ai/market";
 import type { PlanQuestion } from "@/ai/plan";
-import { appsCall, searchesCall, steerCall } from "@/ai/scan";
+import { appsCall, firstReadCall, searchesCall, steerCall } from "@/ai/scan";
 import type { Ingested } from "@/discovery/ingest/core";
 import { isDiscussion, isReddit, postAddress, refusesReaders } from "@/discovery/ingest/posts";
 import type { OutsidePage } from "@/goals/outside";
@@ -9,6 +9,7 @@ import type { Competitor } from "@/market/types";
 import { focusWith, isOff, sanitizeSteer, steerOf, steerRound, toldLines, withSteer, type ScanSteer } from "@/scan/steer";
 import { emptyScan, isThin, peopleQuotes, sanitizeAppPicks, sanitizeSearches, scanOf, type ScanKnown, type ScanRead, type ScanRequest, type ScanSession } from "@/scan/session";
 import { appLookup, appNameIn, appSearch, appsIn, bestApp, hnComments, hnSearch, hnThreads, popularApps, type AppHit } from "@/scan/sources";
+import { NOT_READ, sanitizeFirstRead, saysNoIdea, type FirstRead } from "@/scan/input";
 import { nanoid } from "nanoid";
 import { captureTogether, type TakenTogether } from "../capture";
 import { readLinks, realDeps, type MarketDeps } from "./market";
@@ -75,6 +76,26 @@ export async function steerScan(store: OrgStore, raw: unknown, opts: { tab?: str
 }
 
 /** The questions as it starts: how Qalam AI took them, from their words alone; code's own when it can't say in time. */
+/**
+ * A first answer read for what it is: whether it names anything to read about, a product's own name,
+ * and what to call the project. Plain words like "no idea" need no call, and any trouble with the call
+ * leaves it reading as asked, named as it was before.
+ */
+export async function readFirstAnswer(said: string, signal: AbortSignal, deps: Pick<ScanDeps, "structured"> = liveDeps): Promise<FirstRead> {
+  const text = said.replace(/\s+/g, " ").trim().slice(0, 1200);
+  if (saysNoIdea(text)) return { named: false, product: "", name: "" };
+  return deps.structured<unknown>(firstReadCall(text), AbortSignal.any([signal, AbortSignal.timeout(SCAN_LIMITS.askMs)])).then(
+    (r) => sanitizeFirstRead(r.data, text),
+    (e: unknown) => {
+      if (signal.aborted) throw e;
+      return NOT_READ;
+    },
+  );
+}
+
+/** Whether what they wrote names anything to read about. With nothing named a scan has nothing to go on. */
+export const namesSomething = async (said: string, signal: AbortSignal, deps: Pick<ScanDeps, "structured"> = liveDeps): Promise<boolean> => (await readFirstAnswer(said, signal, deps)).named;
+
 export async function steerQuestions(req: Pick<ScanRequest, "target">, signal: AbortSignal, deps: Pick<ScanDeps, "structured"> = liveDeps): Promise<PlanQuestion[]> {
   const about = req.target.kind === "idea" ? req.target.said : req.target.name;
   if (!about) return steerRound(req.target);

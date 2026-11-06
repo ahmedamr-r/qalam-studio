@@ -38,10 +38,10 @@ function turnOf(raw: unknown): StartTurn | null {
   const t = rec(raw);
   const said = str(t.said, HANDOFF_LIMITS.said);
   if (said === null) return null;
-  if (t.mode === "take" || t.mode === "dump") return { mode: t.mode, said };
+  if (t.mode === "take" || t.mode === "dump" || t.mode === "plan") return { mode: t.mode, said };
   if (t.mode !== "scan") return null;
   const target = scanRequest({ target: t.target, country: "us" })?.target;
-  return target ? { mode: "scan", said, target } : null;
+  return target ? { mode: "scan", said, target, ...(t.read === true ? { read: true as const } : {}) } : null;
 }
 
 function whoseOf(raw: unknown): Whose {

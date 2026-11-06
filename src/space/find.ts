@@ -2,7 +2,7 @@ import type { PlanQuestion } from "@/ai/plan";
 import type { ToolAsk } from "@/connectors/suggest";
 import { sharedWords } from "@/discovery/near";
 import type { Market } from "@/market/types";
-import { sanitizeQuestions } from "@/ui/ai/plan";
+import { sanitizeAsked } from "@/ui/ai/plan";
 
 /*
  * "Help me find one" in the canvas's chat (src/ui/space/chat/): code asks a few open questions
@@ -114,7 +114,7 @@ export function sanitizeFindQuestions(raw: unknown, m: FindQuestionsSent): PlanQ
     const words = `${label} ${description}`;
     return m.known.some((k) => sharedWords(words, k) >= 2) || (label.split(/\s+/).length <= 2 && m.known.some((k) => sharedWords(label, k) >= 1));
   };
-  return sanitizeQuestions(r.questions)
+  return sanitizeAsked(r.questions)
     .map((q) => {
       const options = q.options.filter((o) => drawn(o.label, o.description));
       return options.length >= 2 ? { ...q, options, recommended: q.recommended.filter((v) => options.some((o) => o.value === v)), allowOther: true } : { ...q, multi: false, options: [], recommended: [], allowOther: false };

@@ -40,7 +40,12 @@ const session = (r: ReturnType<typeof read>["r"]): DumpSession => ({ v: 1, phase
 /** A round answered with Qalam AI's picks, open questions in the founder's words. */
 function answered(s: DumpSession): FlowState {
   const b = s.buckets[s.buckets.length - 1];
-  const answers = Object.fromEntries(b.questions.filter((q) => !q.options.length).map((q) => [q.id, { kind: "text" as const, text: SAMPLE_DUMP_ANSWERS[q.id] ?? "" }]));
+  const answers = Object.fromEntries(
+    b.questions.map((q) => [
+      q.id,
+      q.options.length ? (q.multi ? { kind: "multi" as const, values: q.recommended, custom: [] } : { kind: "single" as const, value: q.recommended[0] ?? q.options[0].value }) : { kind: "text" as const, text: SAMPLE_DUMP_ANSWERS[q.id] ?? "" },
+    ]),
+  );
   return { ...initialFlow(b.questions.map(toQuestion)), answers, submitted: true };
 }
 
@@ -244,11 +249,16 @@ describe("rounds of questions", () => {
     expect(round.map((a) => a.questionId)).toEqual(["which-goal", "subscription-need", "tickets-source", "singles"]);
     expect(round[0].answer).toBe("Weekly reorders (Existing customers coming back every week)");
     expect(round[0].words).toBe("");
+    expect(round[0].said).toBe("Weekly reorders");
+    // One they left stays empty, and reads as skipped: never a preference, never their words.
+    const left = roundAnswers(closeDumpRound(session(r), { ...answered(session(r)), answers: {} }, "analyzing"))[0];
+    expect(left.every((a) => a.answer === "" && a.words === "" && a.said === "")).toBe(true);
     expect(round[2].words).toBe("Omar's guess from a busy week, we never counted them.");
     const brief = briefFromDump("d1", s, 5);
     expect(brief.map((a) => a.id)).toEqual(["dump:d1:which-goal", "dump:d1:subscription-need", "dump:d1:tickets-source", "dump:d1:singles"]);
     // Skipping half-way counts only what was answered.
-    const half = closeDumpRound(session(r), { ...answered(session(r)), submitted: false }, "skipped");
+    const whole = answered(session(r));
+    const half = closeDumpRound(session(r), { ...whole, answers: { "tickets-source": whole.answers["tickets-source"] }, submitted: false }, "skipped");
     expect(half.phase).toBe("ready");
     expect(roundAnswers(half)[0].map((a) => a.questionId)).toEqual(["tickets-source"]);
   });

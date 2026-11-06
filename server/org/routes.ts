@@ -56,7 +56,7 @@ import { decideProblem, draftProblems } from "./problems";
 import { decideSolution, draftSolutions, solutionsView, type SolutionsCard } from "./solutions";
 import { draftTests, type TestsRequest } from "./tests";
 import { aboutTopic, lookOnline } from "./posts";
-import { scanNow, startScan, steerQuestions, steerScan, stopScan } from "./scan";
+import { namesSomething, readFirstAnswer, scanNow, startScan, steerQuestions, steerScan, stopScan } from "./scan";
 import { steerRound } from "@/scan/steer";
 import { briefRequestOf, writeCardBrief } from "./briefs";
 import { firstBuild, keepAnswers, keepAudience, planAudiences, planQuestions, scanShare, writeBrief } from "./scan-plan";
@@ -106,6 +106,12 @@ export function orgRoutes(): Hono<Env> {
     const orgs = await listOrgs();
     // None yet (the first run): the window welcomes them instead.
     return c.json({ home: qalamHome(), current: current?.id ?? null, orgs: orgs.map(({ id, name, dir, shape, sample }) => ({ id, name, dir, ...(shape ? { shape } : {}), ...(sample ? { sample } : {}) })) });
+  });
+  // The first run's first answer, read before there's a project to put it in: what they named, and what to call it.
+  r.post("/api/start/read", async (c) => {
+    const b = (await c.req.json().catch(() => null)) as { said?: unknown } | null;
+    if (typeof b?.said !== "string" || !b.said.trim() || !aiConfigured() || rateLimited(c.req.raw)) return c.json({ named: true, product: "", name: "" });
+    return c.json(await readFirstAnswer(b.said, c.req.raw.signal));
   });
   r.post("/api/orgs", async (c) => {
     const { name, shape } = (await c.req.json().catch(() => ({}))) as { name?: string; shape?: unknown };
@@ -1062,6 +1068,12 @@ export function orgRoutes(): Hono<Env> {
   r.delete("/api/org/:org/scan", (c) => {
     stopScan(c.get("store"));
     return c.json({ ok: true });
+  });
+  // Before it reads: whether their words name anything to read about.
+  r.post("/api/org/:org/scan/named", async (c) => {
+    const b = (await c.req.json().catch(() => null)) as { said?: unknown } | null;
+    if (typeof b?.said !== "string" || !aiConfigured()) return c.json({ named: true });
+    return c.json({ named: await namesSomething(b.said, c.req.raw.signal) });
   });
   // While it reads: the questions as it starts, and what they say.
   r.post("/api/org/:org/scan/ask", async (c) => {

@@ -51,10 +51,12 @@ export function consumeChatParams() {
   const find = p.get("find");
   const scan = p.get("scan");
   const start = p.get("start");
-  if (!find && !scan && !start) return;
+  const plan = p.get("plan");
+  if (!find && !scan && !start && !plan) return;
   p.delete("find");
   p.delete("scan");
   p.delete("start");
+  p.delete("plan");
   history.replaceState(history.state, "", `${u.pathname}${p.size ? `?${p}` : ""}${u.hash}`);
   if (find === "goal" || find === "problem") void findWith(find, currentSpace());
   if (scan === "1") {
@@ -63,6 +65,10 @@ export function consumeChatParams() {
   }
   // The start page's box: what it handed over, taken once (a reload finds nothing there).
   if (start === "1") void takeStart().then((h) => h && startFrom(h, currentSpace()), () => {});
+  if (plan === "1") {
+    const text = takeWords();
+    if (text) scanFrom(text, currentSpace(), "plan");
+  }
 }
 
 export async function consumeHomeParams() {
