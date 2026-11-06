@@ -91,7 +91,7 @@ export interface Fetched {
 }
 
 /** Read a page the board was given (see the top of this file). Throws FetchRefused with a reason the builder can act on. */
-export async function fetchGuarded(raw: string, opts: { transport?: Transport; signal?: AbortSignal; limits?: Partial<typeof FETCH_LIMITS> } = {}): Promise<Fetched> {
+export async function fetchGuarded(raw: string, opts: { transport?: Transport; signal?: AbortSignal; limits?: Partial<typeof FETCH_LIMITS>; /** The types it takes (a page's, by default). */ accept?: (contentType: string) => boolean } = {}): Promise<Fetched> {
   const limits = { ...FETCH_LIMITS, ...opts.limits };
   const transport = opts.transport ?? nodeTransport;
   const timeout = AbortSignal.timeout(limits.timeoutMs);
@@ -123,7 +123,7 @@ export async function fetchGuarded(raw: string, opts: { transport?: Transport; s
         throw new FetchRefused("http", `The page answered with an error (${res.status}).`, 502);
       }
       const contentType = String(res.headers["content-type"] ?? "");
-      if (!readableType(contentType)) {
+      if (!(opts.accept ?? readableType)(contentType)) {
         res.close();
         throw new FetchRefused("unsupported", "That address isn't a web page, a text, a PDF or a Word document.", 415);
       }

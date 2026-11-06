@@ -18,6 +18,7 @@ import * as devImport from "./routes/dev-import";
 import * as discovery from "./routes/discovery";
 import * as extract from "./routes/extract";
 import * as extractDs from "./routes/extract-ds";
+import * as favicon from "./routes/favicon";
 import * as fetchUrl from "./routes/fetch-url";
 import * as fonts from "./routes/fonts";
 import * as generate from "./routes/generate";
@@ -45,6 +46,7 @@ const ROUTES: Record<string, { GET?: Handler; POST?: Handler }> = {
   discovery,
   extract,
   "extract-ds": extractDs,
+  favicon,
   "fetch-url": fetchUrl,
   fonts,
   generate,
