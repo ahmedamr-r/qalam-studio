@@ -61,7 +61,9 @@ import { draftTests, type TestsRequest } from "./tests";
 import { aboutTopic, lookOnline } from "./posts";
 import { namesSomething, readFirstAnswer, scanNow, startScan, steerQuestions, steerScan, stopScan } from "./scan";
 import { steerRound } from "@/scan/steer";
-import { briefRequestOf, writeCardBrief } from "./briefs";
+import { askBrief, briefRequestOf, writeCardBrief } from "./briefs";
+import { AskingIn } from "@/asking/wire";
+import { askedOf } from "@/discovery/brief";
 import { firstBuild, keepAnswers, keepAudience, planAudiences, planQuestions, scanShare, writeBrief } from "./scan-plan";
 import { scanRequest, type ScanTarget } from "@/scan/session";
 import { handoffOf } from "@/onboarding/handoff";
@@ -1139,6 +1141,17 @@ export function orgRoutes(): Hono<Env> {
     if (!req) return bad("Send the card it's for");
     return c.json({ brief: await writeCardBrief(c.get("store"), req, c.req.raw.signal, undefined, { tab: c.req.header("x-qalam-tab") }) });
   });
+  // A turn of the interview before a brief is written (src/asking/): only what what's kept leaves open.
+  r.post("/api/org/:org/briefs/ask", async (c) => {
+    if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't ask about this." }, 503);
+    if (rateLimited(c.req.raw)) return c.json({ error: "rate_limited", message: "Too many requests, try again in a few minutes." }, 429);
+    const raw = (await c.req.json().catch(() => null)) as { request?: unknown; asking?: unknown } | null;
+    const req = briefRequestOf(raw?.request);
+    const asking = AskingIn.safeParse(raw?.asking);
+    if (!req || !asking.success) return bad("Send the card it's for, and what's been asked");
+    const store = c.get("store");
+    return streamed(c.req.raw.signal, (emit, signal) => askBrief(store, req, asking.data, emit, signal));
+  });
   r.delete("/api/org/:org/briefs/:id", async (c) => {
     await c.get("store").removeBrief(c.req.param("id"), { tab: c.req.header("x-qalam-tab") });
     return c.json({ ok: true });
@@ -1171,7 +1184,7 @@ export function orgRoutes(): Hono<Env> {
         answers: typeof b?.answers === "string" ? b.answers.slice(0, 4000) : "",
         why: clipped(b?.why, 600),
         later: list(b?.later).slice(0, 4).map((l: { draft?: unknown; why?: unknown }) => ({ draft: clipped(l?.draft, 60), why: clipped(l?.why, 600) })),
-        asked: { platform: clipped(b?.asked?.platform, 200), exists: clipped(b?.asked?.exists, 400), needs: clipped(b?.asked?.needs, 60) },
+        asked: askedOf(b?.asked),
         // As the scan said it, to be shown beside what people said; only web addresses go in as links.
         known: list(b?.known).slice(0, 20).flatMap((k: { kind?: unknown; name?: unknown; text?: unknown; title?: unknown; url?: unknown }) => {
           const url = clipped(k?.url, 500);

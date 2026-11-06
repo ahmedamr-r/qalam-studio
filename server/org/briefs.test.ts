@@ -9,7 +9,10 @@ vi.mock("@/ai/server", () => ({
   structured: () => Promise.reject(new Error("No model in tests")),
 }));
 process.env.QALAM_NO_MODELS = "1";
-const { briefRequestOf, writeCardBrief } = await import("./briefs");
+vi.mock("../lab", () => ({ labOn: async () => [] }));
+const { askBrief, briefRequestOf, writeCardBrief } = await import("./briefs");
+const { emptyAsking } = await import("@/asking/engine");
+const { askingIn } = await import("@/asking/wire");
 
 let dir: string;
 let store: OrgStore;
@@ -115,5 +118,31 @@ describe("a brief's request", () => {
     expect(body.slice(body.indexOf("## Read elsewhere"))).toContain("Sales-assisted products");
     expect(body).toContain("https://v.example/post");
     expect(body).not.toContain("A line with no page");
+  });
+});
+
+describe("asking before a brief is written", () => {
+  const req = () => briefRequestOf({ card: { ...words({ title: "Night meal planner" }), id: "c1", kind: "solution" }, goal: null, problem: null, under: [], others: [], asked: { platform: "A web app", more: [{ question: "Who first?", answer: "Night nurses on the ward" }, { question: "", answer: "dropped" }] } })!;
+
+  it("keeps what else they said, in their words, for the writer and in the file", async () => {
+    expect(req().asked).toEqual({ platform: "A web app", more: [{ question: "Who first?", answer: "Night nurses on the ward" }] });
+    let heard = "";
+    const meta = await writeCardBrief(store, req(), undefined, asks((t) => (heard = t)));
+    expect(heard).toContain("Who first? Night nurses on the ward");
+    expect((await store.getBrief(meta.id))!.body).toContain("- Who first? Night nurses on the ward");
+  });
+
+  it("asks from what it would be written from, and keeps a turn to what it was sent", async () => {
+    let heard = "";
+    const structured = (async (call: { kind: string; content: { text: string }[] }) => {
+      heard = call.content[0].text;
+      expect(call.kind).toBe("ask-turn");
+      return { data: { questions: [{ id: "q1", title: "What must the first version do?", why: "It decides what waits", multi: false, options: [], recommended: [], allowOther: true, after: [] }], lookups: [{ id: "x", kind: "online", query: "no" }], done: false, understood: [], terms: [] } };
+    }) as never;
+    const t = await askBrief(store, req(), askingIn(emptyAsking(), { said: "" }), () => {}, undefined, { structured });
+    expect(heard).toContain("What's to be written: a brief (a PRD)");
+    expect(heard).toContain("What this is a brief for: Night meal planner");
+    expect(t.questions.map((q) => q.title)).toEqual(["What must the first version do?"]);
+    expect(t.lookups).toEqual([]);
   });
 });

@@ -47,7 +47,26 @@ export interface BriefAsked {
   platform?: string;
   exists?: string;
   needs?: string;
+  /** What else the interview asked before writing, and their own answers (src/asking/): never Qalam AI's picks. */
+  more?: { question: string; answer: string }[];
 }
+
+const clip = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
+
+/** What was asked before writing, as it came in, kept to what it should be. */
+export function askedOf(raw: unknown): BriefAsked {
+  const a = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const more = (Array.isArray(a.more) ? a.more : []).slice(0, 20).flatMap((x) => {
+    const m = x && typeof x === "object" ? (x as Record<string, unknown>) : {};
+    const question = clip(m.question, 300);
+    const answer = clip(m.answer, 1200);
+    return question && answer ? [{ question, answer }] : [];
+  });
+  return { ...(clip(a.platform, 200) ? { platform: clip(a.platform, 200) } : {}), ...(clip(a.exists, 400) ? { exists: clip(a.exists, 400) } : {}), ...(clip(a.needs, 60) ? { needs: clip(a.needs, 60) } : {}), ...(more.length ? { more } : {}) };
+}
+
+/** An answer the interview got, as a line: the question, then their words. */
+const askedLine = (m: { question: string; answer: string }) => `${one(m.question)} ${one(m.answer)}`;
 
 export interface BriefQuote {
   text: string;
@@ -76,7 +95,7 @@ export interface BriefSent {
 /** What the features are worked out from: what's decided, and the words behind it. */
 export function briefMaterial(o: { modules?: readonly string[]; about: string; audience?: string; goal?: string; answers?: string; asked: BriefAsked; problems: readonly { title: string; lines: readonly string[] }[]; words: readonly BriefQuote[]; build?: { title: string; description: string; assumptions: readonly string[]; test?: { what: string; how: string } | null }; options?: readonly string[]; published?: readonly string[] }): BriefSent {
   const words = new Map(o.words.slice(0, BRIEF_LIMITS.words).map((w, i) => [`q${i + 1}`, w]));
-  const asked = [o.asked.platform && `It runs first: ${o.asked.platform}`, o.asked.exists && `What exists already: ${o.asked.exists}`, o.asked.needs && `Accounts or payments in the first version: ${o.asked.needs}`].filter(Boolean) as string[];
+  const asked = [o.asked.platform && `It runs first: ${o.asked.platform}`, o.asked.exists && `What exists already: ${o.asked.exists}`, o.asked.needs && `Accounts or payments in the first version: ${o.asked.needs}`, ...(o.asked.more ?? []).map(askedLine)].filter(Boolean) as string[];
   const b = o.build;
   const hay = [o.about, o.goal ?? "", ...o.problems.flatMap((p) => [p.title, ...p.lines]), ...[...words.values()].map((w) => w.text), o.answers ?? "", ...asked, b?.title ?? "", b?.description ?? "", ...(b?.assumptions ?? []), b?.test?.what ?? "", b?.test?.how ?? "", ...(o.options ?? []), ...(o.published ?? [])].join("\n");
   const text = [
@@ -217,9 +236,11 @@ export function briefMarkdown(b: BriefData): string {
     if (products.length) out.push("", "What others offer and charge:", "", ...products.map((k) => `- ${k.name ? `${one(k.name)}: ` : ""}${one(k.text)} (${asLink({ source: k.title, url: k.url })})`));
     if (published.length) out.push("", "What's been published:", "", ...published.map((k) => `- “${one(k.text)}” (${asLink({ source: k.title, url: k.url })})`));
   }
-  if (shape === "message") out.push("", "## How it goes out", "", ...[b.asked.platform && `- First on: ${one(b.asked.platform)}.`, b.asked.exists && `- To whom, and with what: ${one(b.asked.exists)}.`].filter((x): x is string => !!x), "- Wording in ‘…’ is proposed, yours to change. The quotes are other people's words: don't send them.", "");
-  else if (shape === "steps") out.push("", "## Who runs it", "", ...[b.asked.platform && `- Run by: ${one(b.asked.platform)}.`, b.asked.exists && `- First with: ${one(b.asked.exists)}.`].filter((x): x is string => !!x), "- Do it by hand first, write down what happens, then decide what's worth keeping.", "");
-  else out.push("", "## For the coding agent", "", ...[b.asked.platform && `- It runs first: ${one(b.asked.platform)}.`, b.asked.exists && `- What exists already: ${one(b.asked.exists)}.`, b.asked.needs && `- Accounts or payments in the first version: ${one(b.asked.needs)}.`].filter((x): x is string => !!x), "- Choose the stack yourself: nothing here depends on one.", "- Build the smallest thing that can run the test above, then stop and ask.", "- The quotes are other people's words, here to show what's wanted. Don't copy them into the product.", "");
+  // What else the interview settled, in their words.
+  const more = (b.asked.more ?? []).map((m) => `- ${askedLine(m)}`);
+  if (shape === "message") out.push("", "## How it goes out", "", ...[b.asked.platform && `- First on: ${one(b.asked.platform)}.`, b.asked.exists && `- To whom, and with what: ${one(b.asked.exists)}.`].filter((x): x is string => !!x), ...more, "- Wording in ‘…’ is proposed, yours to change. The quotes are other people's words: don't send them.", "");
+  else if (shape === "steps") out.push("", "## Who runs it", "", ...[b.asked.platform && `- Run by: ${one(b.asked.platform)}.`, b.asked.exists && `- First with: ${one(b.asked.exists)}.`].filter((x): x is string => !!x), ...more, "- Do it by hand first, write down what happens, then decide what's worth keeping.", "");
+  else out.push("", "## For the coding agent", "", ...[b.asked.platform && `- It runs first: ${one(b.asked.platform)}.`, b.asked.exists && `- What exists already: ${one(b.asked.exists)}.`, b.asked.needs && `- Accounts or payments in the first version: ${one(b.asked.needs)}.`].filter((x): x is string => !!x), ...more, "- Choose the stack yourself: nothing here depends on one.", "- Build the smallest thing that can run the test above, then stop and ask.", "- The quotes are other people's words, here to show what's wanted. Don't copy them into the product.", "");
   return out.join("\n");
 }
 

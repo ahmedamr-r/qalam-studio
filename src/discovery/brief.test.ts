@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { briefFile, briefFromFile, briefMarkdown, briefMaterial, briefRound, sanitizeBrief, type BriefData } from "./brief";
+import { askedOf, briefFile, briefFromFile, briefMarkdown, briefMaterial, briefRound, sanitizeBrief, type BriefData } from "./brief";
 
 const words = [
   { text: "She paid the deposit, then ghosted me for 3 months.", source: "DV Info Net", url: "https://dvinfo.example/t/1" },
@@ -163,5 +163,19 @@ describe("a brief's file", () => {
     expect(briefFromFile('---\nqalam: "goals/1"\n---\n', "x")).toBeNull();
     expect(briefFromFile(briefFile(meta, "").replace('"solution"', '"test"'), "x")).toBeNull();
     expect(briefFromFile("", "x")).toBeNull();
+  });
+});
+
+describe("what was asked before a brief is written", () => {
+  it("keeps code's answers and what else they said, each clipped, nothing empty", () => {
+    expect(askedOf({ platform: "  A web app ", needs: "", more: [{ question: "Who first?", answer: "Night nurses" }, { question: "Empty?", answer: "  " }, "nope"], other: 1 })).toEqual({ platform: "A web app", more: [{ question: "Who first?", answer: "Night nurses" }] });
+    expect(askedOf(null)).toEqual({});
+    expect(askedOf({ more: Array.from({ length: 30 }, (_, i) => ({ question: `Q${i}?`, answer: "A" })) }).more).toHaveLength(20);
+  });
+
+  it("puts what else they said in what the features are worked out from, as their words", () => {
+    const m = briefMaterial({ about: "What this is a brief for: X", asked: { more: [{ question: "Who first?", answer: "Night nurses on the ward" }] }, problems: [], words: [] });
+    expect(m.text).toContain("Who first? Night nurses on the ward");
+    expect(m.hay).toContain("Night nurses on the ward");
   });
 });

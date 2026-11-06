@@ -182,9 +182,26 @@ export interface ScanJob {
 }
 
 /** Where a brief stands: `asking` what it lacks, `writing`, then `ready` with which it is, a tile under its card. */
+/** A brief being worked out (Qalam AI's turn, a lookup it waits on) or written. */
+const briefWorking = (b: BriefState) => b.step === "writing" || b.step === "thinking" || b.step === "looking";
+
+/** A brief worked out or written when the page went stops there, its interview kept (with nothing running) for Try again. */
+function briefBack(b: BriefState): BriefState {
+  if (b.step === "writing" || b.step === "thinking" || b.step === "looking") return { ...b, ...(b.asking ? { asking: loaded(b.asking) } : {}), step: "failed", error: "It stopped when the page closed." };
+  return b.asking && b.asking.lookups.some((l) => l.state === "running") ? { ...b, asking: loaded(b.asking) } : b;
+}
+
+/**
+ * A brief, a message plan or steps to run, for a card: the interview first (src/asking/: code's own
+ * questions, then Qalam AI's, for as long as it needs; `thinking`, `looking`, `asking`, `settled`), then
+ * written. `questions`: the questions a brief from before asked, read as the interview's first round.
+ */
 export interface BriefState {
-  step: "asking" | "writing" | "ready" | "failed";
+  step: "asking" | "thinking" | "looking" | "settled" | "writing" | "ready" | "failed";
   questions?: PlanQuestion[];
+  asking?: AskingState;
+  /** Their answers, kept as a source of their own words. */
+  source?: string;
   id?: string;
   file?: string;
   error?: string;
@@ -280,8 +297,8 @@ function stopped(j: ChatJob): ChatJob {
     return rest;
   }
   if (j.kind === "scan" && j.ask?.step === "writing") return { ...j, ask: { step: "done" } };
-  if (j.kind === "scan" && j.plan?.brief?.step === "writing") return { ...j, plan: { ...j.plan, brief: { step: "failed", error: "It stopped when the page closed." } } };
-  if (j.kind === "brief" && j.brief.step === "writing") return { ...j, brief: { step: "failed", error: "It stopped when the page closed." } };
+  if (j.kind === "scan" && j.plan?.brief && briefBack(j.plan.brief) !== j.plan.brief) return { ...j, plan: { ...j.plan, brief: briefBack(j.plan.brief) } };
+  if (j.kind === "brief" && briefBack(j.brief) !== j.brief) return { ...j, brief: briefBack(j.brief) };
   // What was being worked out when the page went stops there: they can ask again.
   if (j.kind === "scan" && j.plan && (j.plan.step === "questioning" || j.plan.step === "reading" || j.plan.step === "picking")) return { ...j, plan: { ...j.plan, step: "failed", error: "It stopped when the page closed." } };
   if (j.kind === "goalfor" && j.step === "looking") return { ...j, step: "failed", error: "It stopped when the page closed." };
@@ -578,8 +595,8 @@ export function asking(c: CanvasChat, dumpOf: DumpOf, first?: string | null): ({
 }
 
 // A goal's opening look runs here (the box offers Stop); the questions it works out are asked after.
-const scanBusy = (j: ScanJob) => (!j.error && !j.where && (!j.session || j.session.state === "reading")) || (!!j.plan && (j.plan.step === "questioning" || j.plan.step === "reading" || j.plan.step === "picking" || j.plan.brief?.step === "writing"));
-const busy = (j: ChatJob) => (j.kind === "scan" && scanBusy(j)) || (j.kind === "brief" && j.brief.step === "writing") || (j.kind === "ask" && j.state === "asking") || (j.kind === "take" && j.state === "taking") || (j.kind === "find" && !!j.goal && !!j.loading) || (j.kind === "goalfor" && (j.step === "looking" || j.step === "suggesting")) || (j.kind === "plan" && (j.step === "looking" || j.step === "thinking" || j.step === "proposing")) || (j.kind === "draft" && (j.phase === "thinking" || j.phase === "looking" || j.phase === "drafting"));
+const scanBusy = (j: ScanJob) => (!j.error && !j.where && (!j.session || j.session.state === "reading")) || (!!j.plan && (j.plan.step === "questioning" || j.plan.step === "reading" || j.plan.step === "picking" || (!!j.plan.brief && briefWorking(j.plan.brief))));
+const busy = (j: ChatJob) => (j.kind === "scan" && scanBusy(j)) || (j.kind === "brief" && briefWorking(j.brief)) || (j.kind === "ask" && j.state === "asking") || (j.kind === "take" && j.state === "taking") || (j.kind === "find" && !!j.goal && !!j.loading) || (j.kind === "goalfor" && (j.step === "looking" || j.step === "suggesting")) || (j.kind === "plan" && (j.step === "looking" || j.step === "thinking" || j.step === "proposing")) || (j.kind === "draft" && (j.phase === "thinking" || j.phase === "looking" || j.phase === "drafting"));
 
 /** What in the chat is still running (the composer offers Stop). */
 export const running = (c: CanvasChat): ChatTurn | null => [...c.turns].reverse().find((t) => busy(t.job)) ?? null;

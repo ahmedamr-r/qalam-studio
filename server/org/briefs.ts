@@ -1,7 +1,12 @@
 import { briefCall } from "@/ai/scan";
 import { structured } from "@/ai/server";
 import { basisOf } from "@/discovery/basis";
-import { briefMarkdown, briefMaterial, sanitizeBrief, type BriefAsked, type BriefData, type BriefKind, type BriefMeta, type BriefQuote, type BriefShape } from "@/discovery/brief";
+import { askedOf, briefMarkdown, briefMaterial, sanitizeBrief, type BriefAsked, type BriefData, type BriefKind, type BriefMeta, type BriefQuote, type BriefShape } from "@/discovery/brief";
+import { askTurnCall } from "@/ai/asking";
+import { sanitizeTurn } from "@/asking/sanitize";
+import type { AskTurn } from "@/asking/types";
+import { askingBlock, checkOf, type AskingInT } from "@/asking/wire";
+import { labOn } from "../lab";
 import { quotePiece, type SourceRecord } from "@/discovery/sources";
 import type { ScanKnown } from "@/scan/session";
 import { nanoid } from "nanoid";
@@ -57,6 +62,45 @@ export async function knownOthers(store: OrgStore): Promise<ScanKnown[]> {
 }
 
 export async function writeCardBrief(store: OrgStore, req: BriefRequest, signal?: AbortSignal, deps: BriefDeps = liveDeps, opts: { tab?: string } = {}): Promise<BriefMeta> {
+  const { m, kind, problems, words, published, build, goal, options } = await briefParts(store, req);
+  let features: BriefData["features"] = [];
+  try {
+    const dropped: { why: string; item: unknown }[] = [];
+    const { data, model } = await deps.structured<unknown>(briefCall(m.text, req.shape ?? "build"), signal);
+    features = sanitizeBrief(data, m, (why, item) => dropped.push({ why, item }));
+    await store.putTrace({ id: nanoid(10), projectId: "scan", kind: "scan-brief", at: Date.now(), ...(model ? { model } : {}), answer: data, kept: features.length, dropped } as { id: string; projectId: string }).catch(() => {});
+  } catch (e) {
+    if (signal?.aborted) throw e;
+  }
+  const at = Date.now();
+  const body = briefMarkdown({ ...(req.shape ? { shape: req.shape } : {}), ...(req.modules?.length ? { modules: req.modules } : {}), at, title: req.card.title, ...(goal ? { goal } : {}), problems, quotes: words, ...(build ? { build } : {}), options, later: kind === "solution" ? req.others.map((title) => ({ title, why: "" })) : [], features, asked: req.asked, known: [...(await knownOthers(store)), ...published] });
+  return store.putBrief({ card: req.card.id, kind, title: req.card.title, at, features: features.length, ...(req.shape && req.shape !== "build" ? { shape: req.shape } : {}) }, body, opts);
+}
+
+const SHAPE_WORDS: Record<BriefShape, string> = { build: "a brief (a PRD) for whoever builds it, their coding agent", message: "a plan for a message: what to send, its wording, the tool it goes through", steps: "the steps to run it this week, by hand" };
+
+/**
+ * A turn of the interview before a brief is written (src/asking/): it reads what the brief would be
+ * written from, and asks only what that leaves open and the brief needs. Never a stack: the coding
+ * agent chooses that.
+ */
+export async function askBrief(store: OrgStore, req: BriefRequest, asking: AskingInT, emit: (label: string) => void, signal?: AbortSignal, deps: BriefDeps = liveDeps): Promise<AskTurn> {
+  emit("Working out what to ask");
+  const { m } = await briefParts(store, req);
+  const material = [`What's to be written: ${SHAPE_WORDS[req.shape ?? "build"]}.`, "", m.text, "", askingBlock(asking)].join("\n");
+  const lab = await labOn();
+  const decisions = lab === true || lab.includes("decisions");
+  const { data, model } = await deps.structured<unknown>(askTurnCall({ flow: "brief", who: "builder", material, kinds: KINDS, terms: true, choices: decisions }), signal);
+  const dropped: { why: string; item: unknown }[] = [];
+  const turn = sanitizeTurn(data, checkOf(asking, { who: "builder", hay: `${m.hay}\n${material.replace(/^(\s*- )[\w-]+ ·/gm, "$1")}`, terms: await store.getTerms(), kinds: KINDS, decisions }), (why, item) => dropped.push({ why, item }));
+  await store.putTrace({ id: nanoid(10), projectId: "asking", kind: "ask-turn", flow: "brief", at: Date.now(), ...(model ? { model } : {}), rounds: asking.rounds.length, answer: data, kept: { questions: turn.questions.map((q) => ({ id: q.id, title: q.title, after: q.after })), lookups: turn.lookups, done: turn.done }, dropped } as { id: string; projectId: string }).catch(() => {});
+  return turn;
+}
+
+const KINDS = ["project", "web"] as const;
+
+/** What a brief is written from: the words kept for the card and what's around it (people's first, what's published apart), its problems, what's decided, and the material the call reads. */
+async function briefParts(store: OrgStore, req: BriefRequest) {
   const sources = await store.listSources();
   const byId = new Map(sources.map((s) => [s.id, s]));
   const byQuote = new Map(sources.flatMap((s) => s.quotes.map((q) => [quotePiece(q.id), { q, s }] as const)));
@@ -114,21 +158,10 @@ export async function writeCardBrief(store: OrgStore, req: BriefRequest, signal?
 
   const moduleLines = (req.modules ?? []).map((x) => `${x.title}${x.how ? `: ${x.how}` : ""}${x.needed ? " (needed to run it)" : ""}`);
   const m = briefMaterial({ ...(moduleLines.length ? { modules: moduleLines } : {}), about: `What this is a brief for: ${req.card.title}`, ...(goal ? { goal: goal.title } : {}), asked: req.asked, problems, words, ...(chosen ? { build: { title: chosen.title, description: chosen.description, assumptions: chosen.assumptions, test: chosen.tests[0] ?? null } } : {}), options, published: published.map((p) => p.text) });
-  let features: BriefData["features"] = [];
-  try {
-    const dropped: { why: string; item: unknown }[] = [];
-    const { data, model } = await deps.structured<unknown>(briefCall(m.text, req.shape ?? "build"), signal);
-    features = sanitizeBrief(data, m, (why, item) => dropped.push({ why, item }));
-    await store.putTrace({ id: nanoid(10), projectId: "scan", kind: "scan-brief", at: Date.now(), ...(model ? { model } : {}), answer: data, kept: features.length, dropped } as { id: string; projectId: string }).catch(() => {});
-  } catch (e) {
-    if (signal?.aborted) throw e;
-  }
-  const at = Date.now();
-  const body = briefMarkdown({ ...(req.shape ? { shape: req.shape } : {}), ...(req.modules?.length ? { modules: req.modules } : {}), at, title: req.card.title, ...(goal ? { goal } : {}), problems, quotes: words, ...(build ? { build } : {}), options, later: kind === "solution" ? req.others.map((title) => ({ title, why: "" })) : [], features, asked: req.asked, known: [...(await knownOthers(store)), ...published] });
-  return store.putBrief({ card: req.card.id, kind, title: req.card.title, at, features: features.length, ...(req.shape && req.shape !== "build" ? { shape: req.shape } : {}) }, body, opts);
+  return { m, kind, problems, words, published, build, goal, options };
 }
 
-const clipped = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
+const clipped =(v: unknown, max: number) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
 const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 
@@ -152,14 +185,13 @@ export function briefRequestOf(raw: unknown): BriefRequest | null {
   const kind = c.kind;
   if (!id || !clipped(c.title, 300) || (kind !== "outcome" && kind !== "opportunity" && kind !== "solution")) return null;
   const g = rec(r.goal);
-  const a = rec(r.asked);
   return {
     card: { ...cardWords(c), id, kind },
     goal: clipped(g.title, 300) ? { title: clipped(g.title, 300), metric: clipped(g.metric, 300) || null } : null,
     problem: rec(r.problem).title ? cardWords(r.problem) : null,
     under: list(r.under).map(cardWords).filter((u) => u.title).slice(0, 12),
     others: list(r.others).map((x) => clipped(x, 300)).filter(Boolean).slice(0, 6),
-    asked: { ...(clipped(a.platform, 200) ? { platform: clipped(a.platform, 200) } : {}), ...(clipped(a.exists, 400) ? { exists: clipped(a.exists, 400) } : {}), ...(clipped(a.needs, 60) ? { needs: clipped(a.needs, 60) } : {}) },
+    asked: askedOf(r.asked),
     ...(r.shape === "message" || r.shape === "steps" ? { shape: r.shape } : {}),
     ...(Array.isArray(r.modules) ? { modules: list(r.modules).slice(0, 12).flatMap((x) => (clipped(rec(x).title, 300) ? [{ title: clipped(rec(x).title, 300), ...(clipped(rec(x).how, 300) ? { how: clipped(rec(x).how, 300) } : {}), ...(rec(x).needed === true ? { needed: true } : {}) }] : [])) } : {}),
   };

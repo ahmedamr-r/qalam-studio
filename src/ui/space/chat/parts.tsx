@@ -40,7 +40,7 @@ import { useWords } from "../../frame/store";
 import { show } from "../links";
 import { FoundGoalRow } from "../../chat/FoundGoalRow";
 import { moreLine } from "@/onboarding/start";
-import { answerWhose, goalForTopProblem, anotherFile, briefAgain, briefStart, changeDocBasis, chooseDraft, decideDocGoal, dropTurn, leaveFile, leaveFit, lookPastFits, openProblems, pickAudience, placeFirstBuild, placeStatement, planAgain, planFirst, planOf, planStart, retake, retryGoalFor, scanAgain, scanHere, scanInNewProject, scanIsMine, scanOtherWay, setPlanGoal, settleNumber, steerOff, stopTurn, takeAsBasis, takeFit, takeGoalNumber, takeIdea, turnOf, useCanvasChat, retryCanvasPlan, runAs, showCanvasPlan, stopAskingPlan, confirmCanvasPlan, offCanvasPlan, decidePlanTerm, confirmDraft, decideDraftTerm, draftGo, draftNow, offDraft, retryDraft } from "./store";
+import { answerWhose, goalForTopProblem, anotherFile, briefAgain, briefStart, changeDocBasis, chooseDraft, decideDocGoal, dropTurn, leaveFile, leaveFit, lookPastFits, openProblems, pickAudience, placeFirstBuild, placeStatement, planAgain, planFirst, planOf, planStart, retake, retryGoalFor, scanAgain, scanHere, scanInNewProject, scanIsMine, scanOtherWay, setPlanGoal, settleNumber, steerOff, stopTurn, takeAsBasis, takeFit, takeGoalNumber, takeIdea, turnOf, useCanvasChat, retryCanvasPlan, runAs, showCanvasPlan, stopAskingPlan, confirmCanvasPlan, offCanvasPlan, decidePlanTerm, confirmDraft, decideDraftTerm, draftGo, draftNow, offDraft, retryDraft, confirmBrief, offBrief, decideBriefTerm } from "./store";
 import { AnsweredRound, FoundInProject, SettledCard } from "../../asking/AskRound";
 import { titleFrom } from "@/space/route";
 import { otherReading, projectName } from "@/scan/input";
@@ -1716,8 +1716,42 @@ function BriefStep({ id, brief, shape = "build" }: { id: string; brief: BriefSta
   const started = useCanvasChat((s) => s.live[id]?.started);
   // Not known yet is not gone.
   const kept = useBriefs((s) => !s.loaded || s.list.some((b) => b.id === brief.id));
-  if (brief.step === "asking") return <p className="text-body text-fg">A few things for the {word}. Skip any you can't answer.</p>;
-  if (brief.step === "writing") return <Progress label={`Writing the ${word}`} started={started ?? Date.now()} tokens={0} note="This takes under a minute." />;
+  // The interview so far (src/asking/): each round answered, and what their project had.
+  const s = brief.asking;
+  const before = s && brief.step !== "ready" && (
+    <>
+      {s.rounds.map((_r, i) => (brief.step === "asking" && i === s.rounds.length - 1 ? null : <AnsweredRound key={i} state={s} index={i} />))}
+      <FoundInProject state={s} />
+    </>
+  );
+  if (brief.step === "asking")
+    return (
+      <div className="flex flex-col gap-[8px]">
+        {before}
+        <p className="text-body text-fg">{s && s.rounds.length > 1 ? `More for the ${word}: answer what you can, or take my picks.` : `A few things for the ${word}. Skip any you can't answer.`}</p>
+      </div>
+    );
+  if (brief.step === "thinking" || brief.step === "looking")
+    return (
+      <div className="flex flex-col gap-[8px]">
+        {before}
+        <Progress label={brief.step === "looking" ? "Looking it up before asking more" : `Working out what else the ${word} needs`} started={started ?? Date.now()} tokens={0} />
+      </div>
+    );
+  if (brief.step === "settled" && s)
+    return (
+      <div className="flex flex-col gap-[8px]">
+        {before}
+        <SettledCard state={s} go={`Write the ${word}`} onGo={() => confirmBrief(id)} onOff={() => offBrief(id)} onTerm={(t, keep) => void decideBriefTerm(id, t, keep)} />
+      </div>
+    );
+  if (brief.step === "writing")
+    return (
+      <div className="flex flex-col gap-[8px]">
+        {before}
+        <Progress label={`Writing the ${word}`} started={started ?? Date.now()} tokens={0} note="This takes under a minute." />
+      </div>
+    );
   if (brief.step === "failed")
     return (
       <div className="flex flex-col gap-[6px]">

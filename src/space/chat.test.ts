@@ -328,3 +328,18 @@ describe("the questions before a card's draft, in the chat", () => {
     expect((chatOf({ v: 1, turns: [draft()] }).turns[0].job as DraftJob).phase).toBe("asking");
   });
 });
+
+describe("a brief's interview after a reload", () => {
+  type Brief = Extract<ChatTurn["job"], { kind: "brief" }>;
+  const live = { id: "l1", kind: "project" as const, query: "x", waits: 1, state: "running" as const, at: 1 };
+  const back = (step: Brief["brief"]["step"]) => (chatOf({ v: 1, turns: [{ id: "b", at: 1, said: "Write a brief", job: { kind: "brief", card: "c", title: "T", brief: { step, asking: { ...emptyAsking(), lookups: [live] } } } }] }).turns[0].job as Brief).brief;
+
+  it("stops what was being worked out or written, and keeps the interview for Try again", () => {
+    expect(back("thinking")).toMatchObject({ step: "failed", error: "It stopped when the page closed." });
+    expect(back("writing").asking?.lookups[0].state).toBe("stopped");
+    // Waiting on them: as it was, nothing left running.
+    expect(back("asking")).toMatchObject({ step: "asking" });
+    expect(back("asking").asking?.lookups[0].state).toBe("stopped");
+    expect(running(chatOf({ v: 1, turns: [{ id: "b", at: 1, said: "x", job: { kind: "brief", card: "c", title: "T", brief: { step: "settled" } } }] }))).toBeFalsy();
+  });
+});

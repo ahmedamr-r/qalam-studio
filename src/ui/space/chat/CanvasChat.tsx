@@ -26,7 +26,7 @@ import type { Space } from "../../frame/spaces";
 import { ASK_EVENT, takeAskNext } from "../../org/ask-next";
 import { PARTS } from "./parts";
 import { clearMode, composeIn, useCompose } from "./compose";
-import { answerBrief, answerCanvasPlan, answerDraft, answerFind, answerNumber, answerPlan, answerSteer, ask, askMeInsteadDraft, askMeInsteadPlan, keepDraftRound, lookItUpDraft, picksDraft, stopAskingDraft, stopDraftLookup, briefQuestionsOf, clearChat, findQuestionsOf, findWith, keepPlanRound, leaveSteer, lookItUpPlan, numberQuestions, openChat, picksCanvasPlan, planQuestionsOf, resumePlans, send, steerQuestionsOf, stopAskingPlan, stopPlanLookup, stopTurn, turnOf, useCanvasChat } from "./store";
+import { answerBriefRound, askMeInsteadBrief, briefRoundOf, keepBriefRound, lookItUpBrief, picksBrief, stopAskingBrief, stopBriefLookup, answerCanvasPlan, answerDraft, answerFind, answerNumber, answerPlan, answerSteer, ask, askMeInsteadDraft, askMeInsteadPlan, keepDraftRound, lookItUpDraft, picksDraft, stopAskingDraft, stopDraftLookup, clearChat, findQuestionsOf, findWith, keepPlanRound, leaveSteer, lookItUpPlan, numberQuestions, openChat, picksCanvasPlan, planQuestionsOf, resumePlans, send, steerQuestionsOf, stopAskingPlan, stopPlanLookup, stopTurn, turnOf, useCanvasChat } from "./store";
 import { AskRound } from "../../asking/AskRound";
 
 /*
@@ -269,14 +269,20 @@ function SteerRound({ turn }: { turn: string }) {
   return <Questionnaire title="While I read" questions={questions} state={form} onChange={setForm} onSubmit={(f) => answerSteer(turn, Object.fromEntries(questions.map((q) => [q.id, answerOf(f, q)])))} />;
 }
 
-/** What the brief still lacks, asked just before it's written; every one can be skipped. */
+/** The brief's interview (src/asking/): code's questions first, then what else it needs, for as long as it needs; every one can be skipped. */
 function BriefRound({ turn }: { turn: string }) {
-  const questions = useMemo(() => briefQuestionsOf(turn).map(toQuestion), [turn]);
-  const [form, setForm] = useState<FlowState>(() => initialFlow(questions));
-  const answerOf = (f: FlowState, q: (typeof questions)[number]) => answerWords(q, f.answers[q.id]).text;
+  const kept = useCanvasChat((s) => {
+    const j = s.chat.turns.find((t) => t.id === turn)?.job;
+    return (j?.kind === "brief" ? j.brief : j?.kind === "scan" ? j.plan?.brief : undefined)?.asking ?? null;
+  });
+  // A brief from before kept only its questions: they're read as the first round.
+  const before = useMemo(() => briefRoundOf(turn), [turn]);
+  const state = kept ?? before;
+  if (!state) return null;
   const job = turnOf(turn)?.job;
   const shape = job?.kind === "brief" ? job.shape : undefined;
-  return <Questionnaire title={shape === "message" ? "For the message plan" : shape === "steps" ? "For the steps" : "For the brief"} questions={questions} state={form} onChange={setForm} onSubmit={(f) => void answerBrief(turn, Object.fromEntries(questions.map((q) => [q.id, answerOf(f, q)])))} />;
+  const title = state.rounds.length > 1 ? undefined : shape === "message" ? "For the message plan" : shape === "steps" ? "For the steps" : "For the brief";
+  return <AskRound state={state} title={title} onKeep={(f) => keepBriefRound(turn, f)} onSend={(f) => answerBriefRound(turn, f)} onPicks={(f) => picksBrief(turn, f)} onStop={(f) => stopAskingBrief(turn, f)} onStopLookup={(id) => stopBriefLookup(turn, id)} onLookItUp={() => lookItUpBrief(turn)} onAskMe={() => askMeInsteadBrief(turn)} />;
 }
 
 /** The questions before working out who it's for and what comes first; every one can be skipped. */

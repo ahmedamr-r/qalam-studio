@@ -59,7 +59,7 @@ import { otherReading, requestOf, scanInput } from "@/scan/input";
 import type { ScanTarget } from "@/scan/session";
 import { notAsked, steerAnswers, steerRound, type ScanSaid } from "@/scan/steer";
 import { briefRound, type BriefAsked, type BriefShape } from "@/discovery/brief";
-import { writeCardBrief } from "@/org/briefs";
+import { askBriefTurn, writeCardBrief } from "@/org/briefs";
 import { briefRequest } from "../../discovery/brief-request";
 import { loadBriefs } from "../../discovery/briefs";
 import { glideToLayer, onCanvasReady } from "../../discovery/canvas";
@@ -544,45 +544,141 @@ const BRIEF_ASK: Record<BriefShape, (title: string) => string> = { build: (t) =>
 export function briefFor(card: string, shape: BriefShape = "build") {
   toggleChat(true);
   if (!st().loaded) return;
-  const open = st().chat.turns.some((t) => t.job.kind === "brief" && t.job.card === card && (t.job.brief.step === "asking" || t.job.brief.step === "writing"));
+  const open = st().chat.turns.some((t) => t.job.kind === "brief" && t.job.card === card && t.job.brief.step !== "ready" && t.job.brief.step !== "failed");
   if (open) return;
   const title = cardTitle(card);
-  addTurn(BRIEF_ASK[shape](title), { kind: "brief", card, title, ...(shape !== "build" ? { shape } : {}), brief: { step: "asking", questions: briefRound(shape) } });
+  addTurn(BRIEF_ASK[shape](title), { kind: "brief", card, title, ...(shape !== "build" ? { shape } : {}), brief: { step: "asking", asking: emptyAsking(briefRound(shape)) } });
 }
 
 /** A scan's first pick: on the canvas first, since a brief's tile hangs under its card. */
 export async function briefStart(id: string) {
   if (scanJob(id)?.plan?.step !== "placed") await placeFirstBuild(id);
-  if (scanJob(id)?.plan?.step === "placed") setBrief(id, { step: "asking", questions: briefRound() });
+  if (scanJob(id)?.plan?.step === "placed") setBrief(id, { step: "asking", asking: emptyAsking(briefRound()) });
 }
 
-/** Asked again: what it lacks, again. */
 const briefShape = (id: string): BriefShape => {
   const j = turnOf(id)?.job;
   return j?.kind === "brief" ? (j.shape ?? "build") : "build";
 };
-export const briefAgain = (id: string) => setBrief(id, { step: "asking", questions: briefRound(briefShape(id)) });
 
-export const briefQuestionsOf = (id: string) => briefNow(id)?.questions ?? briefRound(briefShape(id));
+/** Try again: a turn that failed is taken again, and a brief that was written (or couldn't be) is asked for again from the start. */
+export function briefAgain(id: string) {
+  const b = briefNow(id);
+  if (b?.step === "failed" && b.asking && !b.asking.confirmed) {
+    setBrief(id, { ...b, step: "thinking", error: undefined, asking: loaded(b.asking) });
+    return void runBriefAsk(id, (signal) => goOn(briefHost(id), signal));
+  }
+  setBrief(id, { step: "asking", asking: emptyAsking(briefRound(briefShape(id))) });
+}
 
-/** Their answers, then the brief: what's decided, and the features one call works out. Everything may be skipped. */
-export async function answerBrief(id: string, answers: Readonly<Record<string, string>>) {
+/** A brief's interview (src/asking/): code's questions first, then Qalam AI's; a brief from before reads its questions as the first round. */
+const briefAsking = (id: string): AskingState | null => {
+  const b = briefNow(id);
+  return b ? (b.asking ?? emptyAsking(b.questions ?? briefRound(briefShape(id)))) : null;
+};
+
+/** The card a brief is written for: the turn's, or a scan's first pick once it's on the canvas. */
+const briefCard = (id: string): string | null => {
+  const j = turnOf(id)?.job;
+  return j?.kind === "brief" ? j.card : j?.kind === "scan" ? (j.plan?.card ?? null) : null;
+};
+
+/** Code's own questions' answers, as the brief has always kept them; what else was settled: their words, and Qalam AI's picks they agreed to, marked as such. */
+const CODE_ASKED = new Set(["platform", "exists", "needs"]);
+function askedFrom(s: AskingState): BriefAsked {
+  const answers = answersOf(s);
+  const of = (id: string) => answers.find((a) => a.id === id && a.how !== "left")?.text;
+  const more = answers.filter((a) => a.how !== "left" && a.text && !CODE_ASKED.has(a.id)).map((a) => ({ question: a.question, answer: a.how === "pick" ? `Qalam AI's pick, which they agreed to: ${a.text}` : a.text }));
+  const [platform, exists, needs] = [of("platform"), of("exists"), of("needs")];
+  return { ...(platform ? { platform } : {}), ...(exists ? { exists } : {}), ...(needs ? { needs } : {}), ...(more.length ? { more } : {}) };
+}
+
+/** The interview's host for a brief: its turns through the core, which read what it would be written from; its lookups; the writing at the end. */
+export const briefHost = (id: string): AskingHost => ({
+  key: id,
+  get: () => briefAsking(id),
+  set: (fn) => {
+    const b = briefNow(id);
+    const s = briefAsking(id);
+    if (b && s) setBrief(id, { ...b, asking: fn(s) });
+  },
+  turn: async (s, signal) => {
+    const card = briefCard(id);
+    const req = card ? briefRequest(studio().doc, card, askedFrom(s), turnOf(id)?.job.kind === "brief" ? briefShape(id) : undefined) : null;
+    if (!req) throw new Error("What it would be written from has gone from the canvas.");
+    return askBriefTurn(req, askingIn(s, { said: "", terms: useTerms.getState().terms }), step(id), signal);
+  },
+  lookup: async (l, signal) => {
+    const card = briefCard(id);
+    if (l.kind === "project") return projectLookup(l, { product: card ? productOfCard(card) : null });
+    const look = await planLook({ said: `What's needed to build or run: ${card ? cardTitle(card) : ""}`.slice(0, 4000), outline: [], rounds: [], looks: [], ...(l.query ? { query: l.query } : {}) }, undefined, signal);
+    return { look, lines: look.lines.map((x, i) => ({ ref: `${l.id}-${i + 1}`, text: x.text, from: x.url ? hostOf(x.url) : "a page", whose: "a page online", ...(x.url ? { url: x.url } : {}), ...(x.quote ? { quote: x.quote } : {}) })) };
+  },
+  generate: (s, signal) => writeBriefNow(id, s, signal),
+  status: (st) => {
+    const b = briefNow(id);
+    if (b && b.step !== "writing") setBrief(id, { ...b, step: st });
+    step(id)(st === "thinking" ? "Working out what else it needs" : "Looking it up before asking more");
+  },
+});
+
+/** The interview's done: their answers kept as a source of their own words, then the brief written from what's decided and the features one call works out. */
+async function writeBriefNow(id: string, s: AskingState, signal: AbortSignal) {
   const job = turnOf(id)?.job;
-  if (!job) return;
-  const asked: BriefAsked = { ...(answers.platform ? { platform: answers.platform } : {}), ...(answers.exists ? { exists: answers.exists } : {}), ...(answers.needs ? { needs: answers.needs } : {}) };
-  setBrief(id, { step: "writing" });
+  const b = briefNow(id);
+  if (!job || !b) return;
+  setBrief(id, { ...b, step: "writing" });
+  step(id)("Writing it");
+  const said = answersOf(s).filter((a) => a.how === "own" && a.text).map((a) => ({ question: a.question, answer: a.text }));
+  const title = job.kind === "brief" ? job.title : (briefCard(id) && cardTitle(briefCard(id)!)) || "the first build";
+  const source = b.source ?? (said.length ? await keepAnswers(said, `Your answers: ${title}`).catch(() => null) : null);
+  const asked = askedFrom(s);
+  const meta = await (job.kind === "brief" ? writeForCard(job.card, asked, signal, job.shape) : job.kind === "scan" ? writeForPick(job, asked, signal) : null);
+  if (!meta) return setBrief(id, { ...briefNow(id)!, step: "failed", error: "What it was written from has gone." });
+  await loadBriefs();
+  setBrief(id, { ...briefNow(id)!, step: "ready", id: meta.id, file: meta.file, ...(source ? { source } : {}), error: undefined });
+  onCanvasReady((c) => glideToLayer(c, meta.card));
+}
+
+/** One stretch of a brief's interview: until it asks, shows what's settled, or has written it. */
+async function runBriefAsk(id: string, stretch: (signal: AbortSignal) => Promise<Paused | void>) {
   const ctrl = begin(id);
   try {
-    const meta = await (job.kind === "brief" ? writeForCard(job.card, asked, ctrl.signal, job.shape) : job.kind === "scan" ? writeForPick(job, asked, ctrl.signal) : null);
-    if (!meta) return setBrief(id, { step: "failed", error: "What it was written from has gone." });
-    await loadBriefs();
-    setBrief(id, { step: "ready", id: meta.id, file: meta.file });
-    onCanvasReady((c) => glideToLayer(c, meta.card));
+    const why = await stretch(ctrl.signal);
+    const b = briefNow(id);
+    if (b && (why === "ask" || why === "offer")) setBrief(id, { ...b, step: "asking" });
+    else if (b && why === "settled") setBrief(id, { ...b, step: "settled" });
   } catch (e) {
-    setBrief(id, { step: "failed", error: (e as Error).name === "AbortError" ? "You stopped it." : message(e) });
+    const stopped = (e as Error).name === "AbortError" || ctrl.signal.aborted;
+    if (stopped) stopLookups(id);
+    const b = briefNow(id);
+    if (b) setBrief(id, { ...b, step: "failed", error: stopped ? "You stopped it." : message(e) });
   } finally {
     end(id);
   }
+}
+
+export const briefRoundOf = (id: string) => briefAsking(id);
+export const keepBriefRound = (id: string, form: FlowState) => keepRound(briefHost(id), form);
+export const answerBriefRound = (id: string, form: FlowState) => void runBriefAsk(id, (signal) => answer(briefHost(id), form, signal));
+export const picksBrief = (id: string, form: FlowState) => void runBriefAsk(id, (signal) => picks(briefHost(id), form, signal));
+export const stopAskingBrief = (id: string, form: FlowState | null) => void runBriefAsk(id, (signal) => stopAsking(briefHost(id), form, signal));
+export const confirmBrief = (id: string) => void runBriefAsk(id, (signal) => confirm(briefHost(id), signal));
+export const lookItUpBrief = (id: string) => void runBriefAsk(id, (signal) => lookItUp(briefHost(id), signal));
+export const askMeInsteadBrief = (id: string) => void runBriefAsk(id, (signal) => askMeInstead(briefHost(id), signal));
+export const stopBriefLookup = (id: string, lookup: string) => stopLookup(id, lookup);
+export function offBrief(id: string) {
+  off(briefHost(id));
+  const b = briefNow(id);
+  if (b) setBrief(id, { ...b, step: "asking" });
+}
+
+/** A term a brief's conversation settled: added to the project's words, or left out. */
+export async function decideBriefTerm(id: string, term: string, keep: boolean) {
+  const t = briefAsking(id)?.terms.find((x) => x.id === term);
+  if (!t) return;
+  briefHost(id).set((s) => decideTerm(s, term, keep));
+  if (keep && !(await editTerm({ op: "add", term: t.term, means: t.means, avoid: t.avoid, by: "qalam" }))) briefHost(id).set((s) => ({ ...s, terms: s.terms.map((x) => (x.id === term ? { ...x, state: undefined } : x)) }));
 }
 
 const writeForCard = (card: string, asked: BriefAsked, signal: AbortSignal, shape?: BriefShape) => {
