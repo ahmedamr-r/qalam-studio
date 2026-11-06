@@ -8,7 +8,7 @@ import { r } from "../recipes";
 import { CompanyArt, IdeaArt } from "./art";
 import { checkEngine, engineChanged, openKeyField, skipEngine, startWelcome, useEngineCheck } from "./engine";
 import { beginReading } from "./flow";
-import { answerInput, Stage } from "./Stage";
+import { answerInput, choiceCard, Stage } from "./Stage";
 
 /*
  * The first run: who it's for, as two cards, then what to read. It's in the address, so Back works.
@@ -24,7 +24,7 @@ const STEPS = 4;
 
 function Card({ title, about, art, onClick }: { title: string; about: string; art: React.ReactNode; onClick: () => void }) {
   return (
-    <button type="button" className="q-item q-press flex min-w-0 flex-col gap-[12px] rounded-lg bg-raised p-[16px] text-left shadow-button hover:bg-elevated light:hover:bg-muted" onClick={onClick}>
+    <button type="button" className={choiceCard} onClick={onClick}>
       {art}
       <span className="flex flex-col gap-[2px]">
         <span className="text-title font-medium text-fg">{title}</span>

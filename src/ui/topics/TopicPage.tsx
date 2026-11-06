@@ -167,7 +167,7 @@ export default function TopicView({ id, space }: { id: string; space: Space }) {
   // A page of another product's is shown here too; its own canvas is one click away.
   const elsewhere = space !== null && !t.products.includes(space);
   return (
-    <div className={clsx("@container flex flex-col gap-[20px] px-[16px] py-[14px]", enter)}>
+    <div className={clsx("q-page-sections @container flex flex-col gap-[20px] px-[16px] py-[14px]", enter)}>
             <PanelPageHeader
               kind={TOPIC_KIND_LABEL[t.kind]}
               title={t.title}

@@ -151,7 +151,7 @@ function AtWork({ s, now, canvas }: { s: ScanSession; now: number; canvas: strin
   return (
     <Stage pose={POSE_OF[phase]} line={lineOf(phase, now - s.at)} home={canvas} title={`Reading what people say about ${name}`}>
       <div className="h-[6px] overflow-hidden rounded-full bg-fg/10" role="progressbar" aria-label="Reading">
-        <div className="h-full rounded-full bg-accent transition-[width] duration-1000 ease-linear" style={{ width: `${scanProgress(s, now) * 100}%` }} />
+        <div className="h-full rounded-full bg-fg transition-[width] duration-1000 ease-linear" style={{ width: `${scanProgress(s, now) * 100}%` }} />
       </div>
       <ul className="flex flex-col gap-[6px]">
         {steps.map((x, i) => (
@@ -165,7 +165,7 @@ function AtWork({ s, now, canvas }: { s: ScanSession; now: number; canvas: strin
         <div className="flex flex-wrap items-center gap-[6px]">
           <span className="text-caption text-fg-muted">What people use today:</span>
           {apps.map((c) => (
-            <button key={c.name} type="button" className="q-item inline-flex h-[24px] items-center gap-[6px] rounded-md bg-raised px-[8px] text-caption text-fg shadow-button hover:bg-elevated" aria-label={`Leave ${c.name} out`} title="Not what you meant? Leave it out." onClick={() => void steerScan({ off: [c.name] }).catch(() => {})}>
+            <button key={c.name} type="button" className="q-sheet q-item inline-flex h-[26px] items-center gap-[6px] rounded-lg px-[8px] text-caption text-fg hover:bg-active light:hover:bg-hover" aria-label={`Leave ${c.name} out`} title="Not what you meant? Leave it out." onClick={() => void steerScan({ off: [c.name] }).catch(() => {})}>
               {c.name} <span className="text-fg-subtle">×</span>
             </button>
           ))}
