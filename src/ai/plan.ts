@@ -87,10 +87,8 @@ export interface PlanResult {
 const str = (description: string) => ({ type: "string", description });
 const strs = (description: string) => ({ type: "array", items: { type: "string" }, description });
 
-/** Questions in one bucket, at most. */
+/** Questions in one round of the setup's old interview, kept only for `pnpm eval:tiers` (src/ai/setup.ts). Nothing that asks now has a cap. */
 export const BUCKET_MAX = 6;
-/** Buckets of questions in one plan, at most: the last one's answers are analysed, then Generate runs. */
-export const MAX_BUCKETS = 5;
 
 /** One question in a bucket, as the model writes it (`who` answers it; `several` is when to pick more than one). */
 export const questionItem = (who = "designer", several = "which panels or tools should be visible") => ({
@@ -179,7 +177,7 @@ export const PLAN_SCHEMA: Record<string, unknown> = {
     },
     questions: {
       type: "array",
-      description: `The first bucket of questions: the ones whose answers decide the most now and shape what you'd ask next. At least 1, at most ${BUCKET_MAX}`,
+      description: `The first bucket of questions: the ones whose answers decide the most now and shape what you'd ask next. At least 1, and every one you can ask now`,
       items: QUESTION_ITEM,
     },
   },
@@ -190,7 +188,7 @@ const catalogList = () => CATALOG.map((c) => `- ${c.name}: ${c.description}`).jo
 
 /** How Qalam AI asks: in buckets, for context as well as choices. Shared by the plan and the follow-ups. */
 const QUESTION_RULES = `Questions, in buckets:
-- You ask in buckets. After each bucket the designer answers, you read the answers, and you may ask another bucket, as many times as the design needs. So ask what you need now: the questions whose answers decide the most and shape what you'd ask next (the main task on this screen, who uses it and how expert they are, what content or data it shows, which panels or tools must be visible, which of the market's established patterns to follow when leading products split). Leave the details that depend on those answers for a later bucket. A bucket is one question or several (at most ${BUCKET_MAX}), as many as matter now; never pad it.
+- You ask in buckets. After each bucket the designer answers, you read the answers, and you may ask another bucket, as many times as the design needs. So ask what you need now: the questions whose answers decide the most and shape what you'd ask next (the main task on this screen, who uses it and how expert they are, what content or data it shows, which panels or tools must be visible, which of the market's established patterns to follow when leading products split). Leave the details that depend on those answers for a later bucket. A bucket is one question or several, as many as matter now; never pad it. There is no limit on buckets: you are asked again after each one, until nothing left would change the design.
 - Ask for context only the designer has, not only for choices: an open question (no options, answered in their own words) when they know something you can't look up or guess well, such as their real content or data, what their users struggle with, their business rules or constraints.
 - Never ask what the brief, the chat or an earlier answer already settles, never ask whether to follow the standard, and never ask about colours, fonts or visual style (the design system decides those) or about the platform (the studio asks that itself).
 - Each choice question has 2–4 specific options written for this product (never "Option A"), a one-line description each, and your recommendation. Use multi for "which of these should be visible" questions. Allow a free-text answer where the options can't cover what the designer might want.
@@ -268,7 +266,8 @@ const PlanObject = z.object({
   avoid: z.array(z.string().max(300)).max(8),
   variants: z.array(z.string().max(300)).max(MAX_SCREENS),
   /** Every bucket's answers, in order (the first bucket's "where it runs" is left out). */
-  answers: z.array(QA).max(MAX_BUCKETS * BUCKET_MAX),
+  // A guard on size, not on how many it asks.
+  answers: z.array(QA).max(400),
   /** Research notes on open-source libraries for the gaps (markdown with links). */
   libraries: z.string().max(6000).optional(),
 });
@@ -282,9 +281,9 @@ export const PlanSoFar = PlanObject;
 
 /** The buckets answered so far, oldest first; the last one was just answered and has no analysis yet. */
 export const PlanRounds = z
-  .array(z.object({ answers: z.array(QA).max(BUCKET_MAX + 1), analysis: z.string().max(1500).optional() }))
+  .array(z.object({ answers: z.array(QA).max(60), analysis: z.string().max(1500).optional() }))
   .min(1)
-  .max(MAX_BUCKETS);
+  .max(60);
 export type PlanRoundsT = z.infer<typeof PlanRounds>;
 
 const bullets = (items: string[]) => items.map((x) => `- ${x}`).join("\n");
@@ -386,7 +385,7 @@ export const FOLLOWUP_SCHEMA: Record<string, unknown> = {
     ready: { type: "boolean", description: "true only when another bucket would change nothing on the screen, or the designer said to go ahead or left the rest to you; then questions is empty" },
     questions: {
       type: "array",
-      description: `The next bucket: only questions whose answers would still change the design, at most ${BUCKET_MAX}. Empty when ready`,
+      description: `The next bucket: only questions whose answers would still change the design, every one you can ask now. Empty when ready`,
       items: QUESTION_ITEM,
     },
   },

@@ -15,18 +15,24 @@ import { busy, cancelBusy, interview, renameTo, update, useInterview } from "./s
  * other or are too vague to place, asks up to three follow-ups before reading it back.
  */
 
-/** Read the brief (round 0), or again with the follow-ups answered (round 1). */
-async function read(flow: FlowState, follow?: FlowState, sample?: boolean) {
+/**
+ * Read the brief (round 0), or again with every follow-up answered so far (round n). It asks more for
+ * as long as an axis that matters is unsettled, never a question asked before; Read it back now ends it.
+ */
+async function read(flow: FlowState, follow?: FlowState, sample?: boolean, now = false) {
   const answers = briefAnswers(BRIEF_QUESTIONS, flow.answers);
-  const fq = interview().state.brief?.followUps;
-  const followUps = fq && follow ? followUpAnswers(followUpQuestions(fq.questions), follow) : undefined;
+  const b = interview().state.brief;
+  const fq = b?.followUps;
+  const these = fq && follow ? followUpAnswers(followUpQuestions(fq.questions), follow) : [];
+  const followUps = follow ? [...(b?.answered ?? []), ...these] : [];
+  const round = follow ? (b?.rounds ?? 1) : 0;
   const res = await busy(follow ? "Reading your answers again" : "Reading your brief", (signal, onProgress) =>
-    runRead(answers, followUps, follow ? 1 : 0, practicalFacts(flow.answers), { signal, onProgress, sample: sample ?? interview().state.sample }),
+    runRead(answers, followUps.length ? followUps : undefined, round, practicalFacts(flow.answers), { signal, onProgress, sample: sample ?? interview().state.sample }),
   );
   if (!res) return;
-  if (res.followUps.length && !follow) {
+  if (res.followUps.length && !now) {
     const questions = followUpQuestions(res.followUps);
-    update((s) => ({ ...s, sample: res.sample, brief: { flow, followUps: { questions: res.followUps, flow: initialFlow(questions) } } }));
+    update((s) => ({ ...s, sample: res.sample, brief: { flow, answered: followUps, rounds: round + 1, followUps: { questions: res.followUps, flow: initialFlow(questions) } } }));
     return;
   }
   const name = answers.find((a) => a.id === "name")?.answer || res.read.slots.brand;
@@ -79,7 +85,13 @@ export function BriefStep() {
             }}
             review={{ title: "Ready?", submitLabel: "Read my brief", footnote: "Qalam AI asked these because your answers left them open." }}
           />
-        ) : (
+        ) : null}
+        {!working && follow && (
+          <button type="button" className="self-start text-caption font-medium text-fg-muted underline decoration-fg/30 underline-offset-2 hover:text-fg" onClick={() => void read(flow, follow.flow, undefined, true)}>
+            Read it back now
+          </button>
+        )}
+        {working || follow ? null : (
           <Questionnaire
             questions={BRIEF_QUESTIONS}
             state={flow}

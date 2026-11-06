@@ -27,7 +27,7 @@ async function offline(opts: CallOpts) {
 export async function runRead(
   answers: BriefAnswer[],
   followUps: BriefAnswer[] | undefined,
-  round: 0 | 1,
+  round: number,
   facts: { platform?: ReadBack["platform"]; arabic?: boolean },
   opts: CallOpts = {},
 ): Promise<{ read: ReadBack; followUps: FollowUp[]; sample: boolean }> {

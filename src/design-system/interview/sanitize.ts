@@ -62,7 +62,7 @@ function slotsFrom(v: unknown, brand: string, arabic: boolean): Slots {
 }
 
 /** The read-back, with only the designer's real words as evidence. `answers` must include the follow-ups. */
-export function sanitizeRead(raw: unknown, answers: BriefAnswer[], round: 0 | 1, ids: { name?: string; color?: string } = { name: "name", color: "color" }): { read: ReadBack; followUps: FollowUp[] } {
+export function sanitizeRead(raw: unknown, answers: BriefAnswer[], _round: number, ids: { name?: string; color?: string } = { name: "name", color: "color" }): { read: ReadBack; followUps: FollowUp[] } {
   const r = rec(raw);
   const said = norm(answers.map((a) => a.answer).join(" \n "));
   const allText = answers.map((a) => a.answer).join(" ");
@@ -79,16 +79,14 @@ export function sanitizeRead(raw: unknown, answers: BriefAnswer[], round: 0 | 1,
   const arabic = scriptsIn.includes("arabic") || ARABIC_CHARS.test(allText) || /\barabic\b|عربي/i.test(allText);
   const name = answers.find((a) => a.id === ids.name)?.answer ?? "";
   const lang = rec(r.language);
-  const followUps: FollowUp[] =
-    round === 1
-      ? []
-      : (Array.isArray(r.followUps) ? r.followUps : [])
-          .map((f, i) => {
-            const o = rec(f);
-            return { id: clip(o.id, 30).replace(/[^a-z0-9-]/gi, "").toLowerCase() || `follow-${i + 1}`, question: clip(o.question, 140), why: clip(o.why, 160), options: list(o.options, 4, 60) };
-          })
-          .filter((f) => f.question)
-          .slice(0, 3);
+  // As many rounds as it takes (src/asking/): never a question asked before, so it can't circle.
+  const asked = new Set(answers.map((a) => norm(a.question)));
+  const followUps: FollowUp[] = (Array.isArray(r.followUps) ? r.followUps : [])
+    .map((f, i) => {
+      const o = rec(f);
+      return { id: clip(o.id, 30).replace(/[^a-z0-9-]/gi, "").toLowerCase() || `follow-${i + 1}`, question: clip(o.question, 140), why: clip(o.why, 160), options: list(o.options, 4, 60) };
+    })
+    .filter((f) => f.question && !asked.has(norm(f.question)));
   const domain = DOMAINS.includes(r.domain as Domain) ? (r.domain as Domain) : "other";
   const read: ReadBack = {
     summary: clip(r.summary, 600),

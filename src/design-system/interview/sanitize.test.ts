@@ -37,10 +37,12 @@ describe("reading the brief", () => {
     expect(brandHexFrom("no colour yet")).toBeNull();
   });
 
-  it("asks at most three follow-ups, and none once they're answered", () => {
+  it("asks every follow-up it can, round after round, never one asked before", () => {
     const raw = { ...SAMPLE_READ_RAW, followUps: [1, 2, 3, 4].map((i) => ({ id: `q${i}`, question: `Question ${i}?`, why: "", options: ["a", "b"] })) };
-    expect(sanitizeRead(raw, SAMPLE_ANSWERS, 0).followUps).toHaveLength(3);
-    expect(sanitizeRead(raw, SAMPLE_ANSWERS, 1).followUps).toHaveLength(0);
+    expect(sanitizeRead(raw, SAMPLE_ANSWERS, 0).followUps).toHaveLength(4);
+    // Questions 1 and 2 were answered in round 1: round 2 asks only the others.
+    const answered = [...SAMPLE_ANSWERS, { id: "follow-q1", question: "Question 1?", answer: "a" }, { id: "follow-q2", question: "Question 2?", answer: "b" }];
+    expect(sanitizeRead(raw, answered, 1).followUps.map((f) => f.question)).toEqual(["Question 3?", "Question 4?"]);
   });
 
   it("clamps what's out of range and falls back on unknown values", () => {

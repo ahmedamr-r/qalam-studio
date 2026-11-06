@@ -54,10 +54,11 @@ const FontList = z.array(text(60)).min(1).max(16);
 export const InterviewBody = z.discriminatedUnion("stage", [
   z.object({
     stage: z.literal("read"),
-    /** 0: ask follow-ups if needed; 1: the follow-ups are answered, read for good. */
-    round: z.union([z.literal(0), z.literal(1)]),
+    /** How many rounds of follow-ups were answered before this read (0: the brief alone). No limit: it asks while an axis that matters is unsettled. */
+    round: z.number().int().min(0).max(40),
     answers: z.array(Answer).min(1).max(12),
-    followUps: z.array(Answer).max(3).optional(),
+    // Every follow-up answered so far: a guard on size, not on how many it asks.
+    followUps: z.array(Answer).max(60).optional(),
   }),
   z.object({ stage: z.literal("directions"), read: ReadZ, baseline: KnobsZ, lowAxes: z.array(z.enum(AXES as [string, ...string[]])).max(3), candidates: FontList }),
   z.object({ stage: z.literal("nudge"), text: z.string().trim().min(2).max(400), read: ReadZ, knobs: KnobsZ, locks: z.array(text(30)).max(20), candidates: FontList }),
@@ -101,7 +102,7 @@ export const READ_SCHEMA = obj({
       why: str("One short line: what conflict or gap it resolves"),
       options: strs("2–4 short likely answers the designer can pick (they can also write their own)"),
     }),
-    "Round 0 only, 0–3 questions: only where answers contradict each other or are too vague to set an axis. Usually none. Always [] in round 1",
+    "Only where answers contradict each other or are too vague to set an axis that matters: every one you can ask now, never one asked before. Usually none; [] once nothing that matters is unsettled",
   ),
   summary: str("2 plain sentences back to the designer: what the product is, for whom, and how it should feel"),
   adjectives: strs("3–5 brand adjectives you heard (single words, the designer's own where possible)"),
@@ -204,7 +205,7 @@ export const READ_SYSTEM = `${BASE}
 
 Your task: read the brief.
 - Place each axis from 0 to 1 and say how sure you are. Quote the designer's own words as evidence, copied exactly; no quote, low confidence.
-- Ask follow-ups (round 0 only, at most 3, usually none) only where answers contradict each other ("playful" but "enterprise compliance": playful where?) or are too vague to place an axis that matters. Give 2–4 likely answers for each.
+- Ask follow-ups (usually none, in as many rounds as it takes, never a question asked before) only where answers contradict each other ("playful" but "enterprise compliance": playful where?) or are too vague to place an axis that matters. Give 2–4 likely answers for each.
 - Never invent a brand colour; code reads it from the designer's answer.
 - Fill the content slots with realistic names for the product's market, so preview screens read like the real product.`;
 
@@ -233,7 +234,7 @@ export const readContent = (b: Extract<InterviewRequest, { stage: "read" }>) =>
     ...b.answers.map((a) => `- ${a.question}\n  ${a.answer.trim() || "(skipped)"}`),
     ...(b.followUps?.length ? ["", "Follow-up answers:", ...b.followUps.map((a) => `- ${a.question}\n  ${a.answer.trim() || "(skipped)"}`)] : []),
     "",
-    b.round === 0 ? "Round 0: read the brief, and ask follow-ups only if they are really needed." : "Round 1: the follow-ups are answered. Read the brief for good; ask nothing more.",
+    b.round === 0 ? "Round 0: read the brief, and ask follow-ups only if they are really needed." : `Round ${b.round}: the follow-ups so far are answered. Read the brief again; ask more only where an axis that matters is still unsettled, and never a question asked before. Usually none.`,
   ].join("\n");
 
 const readLines = (r: z.infer<typeof ReadZ>) =>

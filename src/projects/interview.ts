@@ -1,6 +1,6 @@
 import { GENERATOR_VERSION, GROUP_KNOBS, type Direction, type KnobGroup, type KnobId, type Knobs, type ReadBack } from "@/design-system/interview/knobs";
 import { withComponentChoice } from "@/design-system/interview/components";
-import type { FollowUp, KnobDelta, ReviewResult } from "@/design-system/interview/sanitize";
+import type { BriefAnswer, FollowUp, KnobDelta, ReviewResult } from "@/design-system/interview/sanitize";
 import type { FlowState } from "@/ui/ai/questionFlow";
 
 /**
@@ -24,7 +24,8 @@ export interface InterviewState {
   stage: InterviewStage;
   /** The generator the knobs were last shown with (a newer one may draw them a little differently). */
   generatorVersion?: number;
-  brief?: { flow: FlowState; followUps?: { questions: FollowUp[]; flow: FlowState } };
+  /** The brief, the follow-ups being asked, and every follow-up answered in earlier rounds (`rounds`: how many have been asked; no limit). */
+  brief?: { flow: FlowState; followUps?: { questions: FollowUp[]; flow: FlowState }; answered?: BriefAnswer[]; rounds?: number };
   read?: ReadBack;
   /** Answered with the recorded sample (no AI). */
   sample?: boolean;

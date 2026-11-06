@@ -46,7 +46,7 @@ describe("first look at the screenshots", () => {
     expect(s.candidates).toHaveLength(6);
   });
 
-  it("keeps only answerable questions, at most two", () => {
+  it("keeps every answerable question, with no cap", () => {
     const s = sanitizeScan(
       {
         questions: [
@@ -58,7 +58,7 @@ describe("first look at the screenshots", () => {
       },
       ctx,
     );
-    expect(s.questions.map((q) => q.id)).toEqual(["ai-1", "ai-2"]);
+    expect(s.questions.map((q) => q.id)).toEqual(["ai-1", "ai-2", "ai-3"]);
     expect(s.questions[0].options).toEqual(["A", "B", "C", "D"]);
     expect(s.questions[0].recommended).toBe("");
     expect(s.questions[1].recommended).toBe("Theme");

@@ -317,7 +317,7 @@ export const SCAN_SCHEMA: JSONSchema = obj({
   }),
   questions: {
     type: "array",
-    description: "0–2 questions about ambiguities that would change the system. [] when the screenshots are clear.",
+    description: "Every question about ambiguities that would change the system; usually none. [] when the screenshots are clear.",
     items: obj({
       text: str("The question, short and specific to these screens"),
       why: str("What changes in the system depending on the answer"),

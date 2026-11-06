@@ -10,7 +10,6 @@ import { MAX_PATTERNS, sameName } from "./extract-options";
 
 /** Catalog components the first look can report (Stack and Text are on every screen). */
 export const SCAN_COMPONENTS = COMPONENT_NAMES.filter((n) => n !== "Stack" && n !== "Text");
-export const MAX_SCAN_QUESTIONS = 2;
 const FETCH: ScanFetch[] = ["tokens", "components", "extended"];
 
 const text = (v: unknown, max: number) =>
@@ -75,7 +74,6 @@ export function sanitizeScan(raw: unknown, ctx: ScanContext): ScanResult {
     if (!t || options.length < 2) continue;
     const rec = text(q.recommended, 60);
     questions.push({ id: `ai-${questions.length + 1}`, text: t, why: text(q.why, 200), options, recommended: options.includes(rec) ? rec : "" });
-    if (questions.length >= MAX_SCAN_QUESTIONS) break;
   }
 
   const rec = (r.recommendation && typeof r.recommendation === "object" ? r.recommendation : {}) as Record<string, unknown>;

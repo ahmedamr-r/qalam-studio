@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BUCKET_MAX, FOLLOWUP_SCHEMA, MAX_BUCKETS, PLAN_SCHEMA, PlanPayload, PlanRounds, PlanSoFar, followupBlock, followupSystem, planBlock, planSystem, standardTask } from "@/ai/plan";
+import { FOLLOWUP_SCHEMA, PLAN_SCHEMA, PlanPayload, PlanRounds, PlanSoFar, followupBlock, followupSystem, planBlock, planSystem, standardTask } from "@/ai/plan";
 import { GENERATE_BASE } from "@/ai/prompts";
 import { MAX_SCREENS, screensFor } from "@/ai/screen-count";
 import { OTHER, REVIEW, answerOf, initialFlow, reduceFlow, summarize, type Answers, type FlowState } from "./questionFlow";
@@ -201,13 +201,13 @@ describe("market standard first", () => {
 const submitted = (answers: Answers): FlowState => ({ current: REVIEW, answers, visited: [], editing: false, submitted: true });
 
 describe("questions in buckets", () => {
-  it("keeps open questions for context only the designer has, and caps a bucket", () => {
+  it("keeps open questions for context only the designer has, and every question a bucket asks", () => {
     const qs = sanitizeQuestions([
       { id: "pain", title: "What do riders get wrong on this screen today?", why: "Decides what leads", multi: true, options: [], recommended: [], allowOther: false },
       { id: "one", title: "Only one option", why: "", multi: false, options: [{ value: "x", label: "X", description: "" }], recommended: [], allowOther: false },
       ...Array.from({ length: 9 }, (_, i) => ({ id: `q${i}`, title: `Question ${i}`, why: "", multi: false, options: [{ value: "a", label: "A", description: "" }, { value: "b", label: "B", description: "" }], recommended: ["b"], allowOther: false })),
     ]);
-    expect(qs).toHaveLength(BUCKET_MAX);
+    expect(qs).toHaveLength(10);
     expect(qs[0]).toMatchObject({ id: "pain", options: [], multi: false });
     expect(qs.map((q) => q.id)).not.toContain("one");
     // An open question is answered in the designer's words, and can be skipped.
@@ -308,15 +308,15 @@ describe("questions in buckets", () => {
     expect(payload.answers.map((a) => a.question)).toEqual(["What's the main job on this screen?", "Which panels should be visible?", "How long are the clips people trim?"]);
   });
 
-  it("stops asking after the last bucket, and treats an empty bucket as ready", () => {
+  it("asks again after any number of buckets, and treats an empty bucket as ready", () => {
     const result = sanitizePlan(raw, "web");
     const full: PlanState = {
       phase: "analyzing",
       result,
-      buckets: Array.from({ length: MAX_BUCKETS }, () => ({ questions: result.questions, form: initialFlow(planQuestions(result, true)) })),
+      buckets: Array.from({ length: 7 }, () => ({ questions: result.questions, form: initialFlow(planQuestions(result, true)) })),
     };
     const ask = { analysis: "", ready: false, questions: [{ id: "x", title: "One more?", why: "", multi: false, options: [], recommended: [], allowOther: false }] };
-    expect(applyFollowup(full, sanitizeFollowup(ask)).phase).toBe("ready");
+    expect(applyFollowup(full, sanitizeFollowup(ask)).phase).toBe("asking");
     expect(sanitizeFollowup({ ready: false, questions: [] }).ready).toBe(true);
   });
 

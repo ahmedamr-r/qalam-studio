@@ -2,7 +2,7 @@
 import { z } from "zod";
 import type Anthropic from "@anthropic-ai/sdk";
 import { BRIEF_TOPICS } from "@/doc/brief";
-import { MAX_QUESTIONS } from "./critique";
+import { CRITIQUE_GUARD } from "./critique";
 import { ConnectorsField, researchBlock } from "./research-shared";
 
 type Block = Anthropic.Beta.Messages.BetaContentBlockParam;
@@ -37,7 +37,7 @@ export const CritiqueBody = z
         .max(4),
       otherScreens: z.array(z.object({ name: z.string().max(120), goal: z.string().max(310) })).max(12),
     }),
-    transcript: z.array(z.object({ topic: Topic, question: z.string().max(400), answer: z.string().max(610).nullable() })).max(MAX_QUESTIONS + 2),
+    transcript: z.array(z.object({ topic: Topic, question: z.string().max(400), answer: z.string().max(610).nullable() })).max(CRITIQUE_GUARD),
     /** Issues already shown this session, so follow-up turns don't repeat them. */
     reported: z.array(z.string().max(320)).max(20),
     mustConclude: z.boolean(),
@@ -67,7 +67,7 @@ export function buildCritiqueContent(b: CritiqueRequest, opts: { cache: boolean 
   });
   if (b.research) content.push({ type: "text", text: researchBlock(b.research) });
   const turn = b.transcript.length;
-  const conclude = b.mustConclude || turn >= MAX_QUESTIONS;
+  const conclude = b.mustConclude;
   const transcript = turn
     ? b.transcript.map((t, i) => `Q${i + 1} [${t.topic}]: ${t.question}\nA${i + 1}: ${t.answer ?? "(skipped)"}`).join("\n")
     : "(first turn: critique the screens)";
@@ -77,7 +77,7 @@ export function buildCritiqueContent(b: CritiqueRequest, opts: { cache: boolean 
       `Knowledge hub:\n${JSON.stringify(b.brief)}`,
       `This session so far:\n${transcript}`,
       ...(b.reported.length ? [`Issues you already reported this session (don't repeat or rephrase them):\n${b.reported.map((r) => `- ${r}`).join("\n")}`] : []),
-      conclude ? "mustConclude: true. Don't ask another question; give your final verdict now." : `Questions asked so far: ${turn} of at most ${MAX_QUESTIONS}.`,
+      conclude ? "mustConclude: true. Don't ask another question; give your final verdict now." : `Questions asked so far: ${turn}. Ask another only while its answer would change the verdict: there is no limit, and they can ask for the verdict any time.`,
     ].join("\n\n"),
   });
   return content;

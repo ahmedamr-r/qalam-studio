@@ -5,7 +5,7 @@ import { useStudio, studio } from "@/doc/store";
 import { revealLayers } from "./pages";
 import { BRIEF_TOPICS, TOPIC_LABEL, emptyBrief, removeAnswer, updateScreen } from "@/doc/brief";
 import type { GoalVerdict, ProjectBrief, ScreenBrief } from "@/doc/schema";
-import { MAX_QUESTIONS } from "@/ai/critique";
+
 import { Button, Field, Tag } from "./controls";
 import { r } from "./recipes";
 import { QalamAIGlyph } from "./brand/ai-glyph";
@@ -233,7 +233,7 @@ function ScreenEntry({ id, s }: { id: string; s: ScreenBrief }) {
 function SessionStrip({ s }: { s: CritiqueSession }) {
   const names = useStudio((st) => s.screenIds.map((id) => st.doc.nodes[id]?.name ?? s.names[id]).join(", "));
   const status =
-    s.fix?.status === "running" ? "Fixing…" : s.fix?.status === "done" ? "Fixed; critique again to check" : s.status === "busy" ? "Thinking…" : s.status === "asking" ? `Question ${s.transcript.length + 1} of ${MAX_QUESTIONS} is waiting` : s.status === "done" ? "Verdict ready" : "Needs a retry";
+    s.fix?.status === "running" ? "Fixing…" : s.fix?.status === "done" ? "Fixed; critique again to check" : s.status === "busy" ? "Thinking…" : s.status === "asking" ? `Question ${s.transcript.length + 1} is waiting` : s.status === "done" ? "Verdict ready" : "Needs a retry";
   return (
     <div className="q-rise flex items-center gap-[10px] rounded-lg bg-ai-subtle py-[8px] pr-[8px] pl-[10px]">
       <QalamAIGlyph size={16} done={s.status === "done"} />

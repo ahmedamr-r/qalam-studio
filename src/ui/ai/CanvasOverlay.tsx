@@ -14,7 +14,7 @@ import { useReservations } from "@/doc/reservations";
 import type { GoalVerdict } from "@/doc/schema";
 import { useVectorEdit } from "@/engine/vector-state";
 import { useCommand } from "@/commands";
-import { HEURISTIC_LABEL, MAX_QUESTIONS, type CritiqueIssue } from "@/ai/critique";
+import { HEURISTIC_LABEL, type CritiqueIssue } from "@/ai/critique";
 import { Button, IconBtn, Kbd, Tag, Tip } from "../controls";
 import { QalamAIGlyph } from "../brand/ai-glyph";
 import { usePresence } from "../motion";
@@ -531,7 +531,7 @@ function QuestionBlock({ s }: { s: CritiqueSession }) {
   return (
     <div ref={box} className="q-rise flex flex-col gap-[10px] rounded-lg bg-ai-subtle p-[12px] shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--color-ai)_18%,transparent)]">
       <div className="flex items-center gap-[6px] text-micro font-medium text-ai tnum">
-        <QalamAIGlyph size={12} /> Question {s.transcript.length + 1} of {MAX_QUESTIONS}
+        <QalamAIGlyph size={12} /> Question {s.transcript.length + 1}
       </div>
       <p className="text-body leading-[20px] font-medium text-fg" dir="auto">
         {q.text}

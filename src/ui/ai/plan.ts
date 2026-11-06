@@ -1,5 +1,5 @@
 import { callAI, type AIEvent } from "@/ai/client";
-import { BUCKET_MAX, CHANGE_KINDS, MAX_BUCKETS, type FollowupResult, type PlanPayloadT, type PlanQuestion, type PlanResult, type PlanRoundsT, type PlanStandard, type StandardChange } from "@/ai/plan";
+import { CHANGE_KINDS, type FollowupResult, type PlanPayloadT, type PlanQuestion, type PlanResult, type PlanRoundsT, type PlanStandard, type StandardChange } from "@/ai/plan";
 import type { ResearchInfo } from "@/ai/research-shared";
 import { toolAsk, type ToolAsk } from "@/connectors/suggest";
 import { MAX_SCREENS } from "@/ai/screen-count";
@@ -12,7 +12,7 @@ import { FREEFORM_ID } from "@/design-system/freeform";
  * Plan first (Generate): Qalam AI looks up the market standard for the screen, reads the brief
  * against it and says what it understood, then asks the designer questions in buckets. After each
  * bucket it reads the answers, revises the plan and asks another bucket only while answers would
- * still change the design (at most MAX_BUCKETS). Meanwhile it looks up open-source libraries for
+ * still change the design, for as long as it needs. Meanwhile it looks up open-source libraries for
  * parts the catalog can't express. Generate runs once Qalam AI is ready (or the designer skips),
  * with the agreed plan. The state lives on the chat turn, so it survives a reload; the pure parts are tested.
  */
@@ -116,7 +116,7 @@ export function sanitizeQuestions(raw: unknown, o: { max?: number } = {}): PlanQ
     })
     // A single option is no choice; no options at all is an open question.
     .filter((q) => q.title && q.options.length !== 1)
-    .slice(0, o.max ?? BUCKET_MAX);
+    .slice(0, o.max ?? Infinity);
 }
 
 /** The model's market standard, checked: this screen's step in the flow, changes of a known kind. */
@@ -335,7 +335,7 @@ export function sanitizeFollowup(raw: unknown): FollowupResult {
  */
 export function applyFollowup(state: PlanState, f: FollowupResult): PlanState {
   const buckets = bucketsOf(state);
-  const more = !f.ready && f.questions.length > 0 && buckets.length < MAX_BUCKETS;
+  const more = !f.ready && f.questions.length > 0;
   const read = buckets.map((b, i) => (i === buckets.length - 1 ? { ...b, analysis: f.analysis || undefined } : b));
   const r = state.result;
   const result = r && {
@@ -488,7 +488,7 @@ async function readAnswers(t: ChatTurn, state: PlanState, progress: (tokens: num
       // The rounds carry the answers; the research notes already went into the standard.
       plan: { ...plan, answers: [], libraries: undefined, standard: plan.standard && { ...plan.standard, research: undefined } },
       rounds: planRounds(state),
-      last: buckets.length >= MAX_BUCKETS,
+      last: false,
     },
     progress,
     signal,

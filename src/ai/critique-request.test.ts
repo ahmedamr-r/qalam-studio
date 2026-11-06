@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CritiqueBody, IMAGE_BUDGET, buildCritiqueContent, type CritiqueRequest } from "./critique-request";
-import { CRITIQUE_SCHEMA, MAX_QUESTIONS } from "./critique";
+import { CRITIQUE_SCHEMA } from "./critique";
 import { SAMPLE_CRITIQUE_TURNS } from "./fixtures-critique";
 import { briefForRequest, emptyBrief, appendAnswer } from "@/doc/brief";
 import { makeFrame } from "@/doc/factory";
@@ -59,11 +59,14 @@ describe("critique request", () => {
     expect(buildCritiqueContent(body(), { cache: false })[2]).not.toHaveProperty("cache_control");
   });
 
-  it("forces a verdict once the question budget is spent", () => {
-    const transcript = Array.from({ length: MAX_QUESTIONS }, (_, i) => ({ topic: "goal" as const, question: `Q${i}`, answer: i % 2 ? null : "yes" }));
-    const last = buildCritiqueContent(body({ transcript }), { cache: false }).at(-1) as { text: string };
-    expect(last.text).toContain("mustConclude: true");
-    expect(last.text).toContain("(skipped)");
+  it("asks on past six questions while answers change the verdict, and gives it when the designer asks", () => {
+    const transcript = Array.from({ length: 8 }, (_, i) => ({ topic: "goal" as const, question: `Q${i}`, answer: i % 2 ? null : "yes" }));
+    const going = buildCritiqueContent(body({ transcript }), { cache: false }).at(-1) as { text: string };
+    expect(going.text).not.toContain("mustConclude: true");
+    expect(going.text).toContain("there is no limit");
+    expect(going.text).toContain("(skipped)");
+    const asked = buildCritiqueContent(body({ transcript, mustConclude: true }), { cache: false }).at(-1) as { text: string };
+    expect(asked.text).toContain("mustConclude: true");
   });
 
   it("tells follow-up turns what was already reported", () => {

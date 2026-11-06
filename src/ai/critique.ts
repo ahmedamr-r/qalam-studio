@@ -42,8 +42,8 @@ export const HEURISTIC_LABEL: Record<Heuristic, string> = {
   localisation: "Arabic / RTL",
 };
 
-/** Hard cap on questions per session; the server forces a verdict after this many. */
-export const MAX_QUESTIONS = 6;
+/** A guard on a session's size, not a count it stops at: it asks while an answer would change the verdict, and the designer can ask for the verdict any time. */
+export const CRITIQUE_GUARD = 40;
 
 const CRITIQUE_OUTPUT: Record<string, unknown> = {
   type: "object",

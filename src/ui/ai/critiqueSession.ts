@@ -16,7 +16,7 @@ import { critiqueResearchRef, fixContext, recordCritique, recordFix, systemEntri
 import { auditSubtree, lintNodes } from "@/lint/rules";
 import { callAI, aiStatus, AIError, type AIEvent } from "@/ai/client";
 import type { ResearchInfo } from "@/ai/research-shared";
-import { MAX_QUESTIONS, type CritiqueIssue, type CritiqueQuestion, type CritiqueResult, type GoalFit } from "@/ai/critique";
+import { CRITIQUE_GUARD, type CritiqueIssue, type CritiqueQuestion, type CritiqueResult, type GoalFit } from "@/ai/critique";
 import { IMAGE_BUDGET, type CritiqueRequest } from "@/ai/critique-request";
 import type { FixRequest } from "@/ai/critique-fix";
 import type { RestyleResult } from "@/ai/ds-schemas";
@@ -252,7 +252,7 @@ async function runTurn(mustConclude: boolean) {
   }
   const cur = get();
   if (!cur || cur.startedAt !== s.startedAt) return;
-  apply(sanitize(result, cur), { sample, model, forceDone: mustConclude || cur.transcript.length >= MAX_QUESTIONS });
+  apply(sanitize(result, cur), { sample, model, forceDone: mustConclude || cur.transcript.length >= CRITIQUE_GUARD });
   // First turn: the research it ran was given too.
   const notes = !s.transcript.length ? get()?.research?.notes : undefined;
   const manifest = mergeManifest(given?.entries, researchEntries(critiqueResearchRef(s.startedAt), notes));
@@ -359,7 +359,7 @@ export function answer(text: string) {
     d.brief = next;
   }, { history: false });
   patch({ transcript: [...s.transcript, { topic: q.topic, question: q.text, answer: value, answerId }], question: null });
-  void runTurn(s.transcript.length + 1 >= MAX_QUESTIONS);
+  void runTurn(s.transcript.length + 1 >= CRITIQUE_GUARD);
 }
 
 export function skip() {
@@ -367,7 +367,7 @@ export function skip() {
   const q = s?.question;
   if (!s || !q || s.status !== "asking") return;
   patch({ transcript: [...s.transcript, { topic: q.topic, question: q.text, answer: null }], question: null });
-  void runTurn(s.transcript.length + 1 >= MAX_QUESTIONS);
+  void runTurn(s.transcript.length + 1 >= CRITIQUE_GUARD);
 }
 
 /** "Give me the verdict": skip the pending question and conclude. */
