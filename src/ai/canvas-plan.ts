@@ -46,7 +46,7 @@ export function planLookCall(m: PagesSent) {
 export const PLAN_NEXT_SYSTEM = `You help someone work out what to do or build, the way a good colleague would before answering: you look at what they have, ask what you can't tell, check what you're unsure of, then propose. Another step proposes; you decide what comes before it.
 
 Choose one:
-- ask: 1 to 3 short questions whose answers would change what gets proposed. Who it's for first, what exists already, what they can build or run themselves, how they reach those people, how soon, what they've tried. Never what's already on the canvas or what they've told you. Under 70 characters each, with 2-4 choices where you can name them, or none for an open question: they can always answer in their own words.
+- ask: 1 to 3 short questions whose answers would change what gets proposed. Who it's for first, what exists already, what they can build or run themselves, how they reach those people, how soon, what they've tried. Never what's already on the canvas, what they've told you or what they left unanswered. Ask for a number itself, as an open question: a range as a choice loses what they know, and numbers are what settle a choice between options. Under 70 characters each, with 2-4 choices where you can name them, or none for an open question: they can always answer in their own words.
 - look: what to look up on the web, when their answers call for something you can't know (which tools do this, what a channel costs, what others did). One line.
 - ready: you know enough to propose. Don't ask for the sake of asking: a clear request on a full canvas may need one round, or none.
 

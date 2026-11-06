@@ -1,6 +1,6 @@
 import type { PlanQuestion } from "@/ai/plan";
 import { withoutIds } from "@/goals/said";
-import { sanitizeQuestions, toQuestion, type PlanBucket } from "@/ui/ai/plan";
+import { sanitizeAsked, toQuestion, type PlanBucket } from "@/ui/ai/plan";
 import { OTHER, initialFlow, resolvedAnswers, type Answer, type Question } from "@/ui/ai/questionFlow";
 import { DUMP_ROLES, type DumpRole } from "./dump";
 import type { SourceQuote, SourceRecord } from "./sources";
@@ -44,7 +44,7 @@ const clean = (s: string) => withoutIds(s, () => undefined, "qk");
 /** Qalam AI's follow-ups, checked: at most a few, none repeating the open question, its ids out of the words; and what it read the open answer as. */
 export function sanitizeCardQuestions(raw: unknown): { questions: PlanQuestion[]; role: DumpRole | null } {
   const r = rec(raw);
-  const questions = sanitizeQuestions(r.questions)
+  const questions = sanitizeAsked(r.questions)
     .filter((q) => q.id !== OPEN_ID)
     .map((q) => ({ ...q, title: clean(q.title), why: clean(q.why), options: q.options.map((o) => ({ ...o, label: clean(o.label), description: clean(o.description) })) }))
     .filter((q) => q.title && q.options.every((o) => o.label))

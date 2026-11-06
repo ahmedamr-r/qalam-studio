@@ -5,6 +5,7 @@ import type { BriefAsked, BriefMeta } from "@/discovery/brief";
 import type { ShareProblem } from "@/scan/share";
 import type { ScanKnown, ScanRequest, ScanSession, ScanTarget } from "@/scan/session";
 import type { ScanSaid, ScanSteer } from "@/scan/steer";
+import { NOT_READ, type FirstRead } from "@/scan/input";
 import { orgFetch, orgJson } from "./client";
 
 /** What people complain about, in the window: the core runs it (server/org/scan.ts) and announces each change. */
@@ -13,6 +14,12 @@ export const scanNow = () => orgJson<{ session: ScanSession | null }>("/scan").t
 
 export const startScan = (req: ScanRequest) => orgJson<{ session: ScanSession }>("/scan", { method: "POST", json: req }).then((r) => r.session);
 
+/** A first answer read before there's a project: what they named, and what to call it. Any trouble: it reads as asked. */
+export const readFirstAnswer = (said: string): Promise<FirstRead> =>
+  fetch("/api/start/read", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ said }) }).then((r) => (r.ok ? (r.json() as Promise<FirstRead>) : NOT_READ), () => NOT_READ);
+
+/** Whether their words name anything to read about (any trouble: they do, and it reads as asked). */
+export const namesSomething = (said: string, signal?: AbortSignal) => orgJson<{ named: boolean }>("/scan/named", { method: "POST", json: { said }, ...(signal ? { signal } : {}) }).then((r) => r.named, () => true);
 export const stopScan = () => orgFetch("/scan", { method: "DELETE" }).then(() => {});
 
 type Plan = { target: ScanTarget; sources: string[]; told?: ScanSaid[] };

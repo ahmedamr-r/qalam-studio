@@ -544,7 +544,7 @@ Your task: read the builder's latest answers.
 1. Say what they settle, what each changes on the board, and what's still open. Where an answer overrides the dump or an earlier answer, the latest wins: say so.
 2. Revise what you take from the dump, and the roles of the pieces the answers change.
 3. Keep the pushback still open: drop what the answers settled, add what they raised.
-4. Ready, or the next round. Ready when another round would change nothing on the board, or the builder left it to you (skipped, "your call"). Otherwise ask the next round, only where an answer opened something that changes the board. When the request says it was the last round, you're ready: ask nothing.
+4. Ready, or the next round. Ready when another round would change nothing on the board, or the builder said it's your call. A question they skipped, or said they don't know, isn't a decision: assume no answer to it, keep it open, and don't ask it again the same way. Otherwise ask the next round, only where an answer opened something that changes the board. When the request says it was the last round, you're ready: ask nothing.
 
 ${DUMP_QUESTION_RULES}`;
 
@@ -654,7 +654,7 @@ export function dumpPlaceSchema(o: PlaceIds) {
         title: str("Outcomes: a change at most 9 words. Opportunities: the need in the customer's voice, at most 12 words. Solutions: at most 8 words. Tests: what's tried"),
         description: str("One sentence of context, or empty"),
         fragmentIds: arr(fragment, "The pieces of the dump it rests on"),
-        answers: arr(obj({ answerId: enm(ids(o.answers), "Which answer"), quote: str("The builder's words copied exactly from that answer, at least 4 words") }), "Words from their answers it rests on; [] when none"),
+        answers: arr(obj({ answerId: enm(ids(o.answers), "Which answer"), quote: str("The builder's words copied exactly from that answer: at least 4 words, or all of it when it's shorter") }), "Words from their answers it rests on; [] when none"),
         ...(orgQuote ? { pieceIds: arr(orgQuote, "Customers' quotes from the organization's knowledge it rests on; [] when none") } : {}),
         metric: nullable(obj(metric, "Outcomes: the number it moves; null otherwise")),
         assumptions: arr(obj(assumption), "Solutions: 1–3, riskiest first; [] otherwise"),
@@ -775,10 +775,10 @@ export function dumpPlaceContent(b: Extract<DiscoveryRequest, { stage: "dump-pla
     "",
     b.aim
       ? b.aim.find === "goal"
-        ? "Propose 1 to 3 goals (outcome cards) from what they said, each resting on their words, the best first: under the goal it moves when the board has one, else as a tree of its own. Word each as a proper goal, not a label: the change the team wants to see, for whom, in one short sentence (\"More households hand over their used oil every month\"), with its metric only from numbers they gave. Propose nothing else."
+        ? "Propose 1 to 3 goals (outcome cards) from what they said, each resting on their words where it can, the best first: under the goal it moves when the board has one, else as a tree of its own. Word each as a proper goal, not a label: the change the team wants to see, for whom, in one short sentence (\"More households hand over their used oil every month\"), with its metric only from numbers they gave. Where nothing they said bears on one, propose it all the same with no pieces or answers: it shows as an idea to check, so never stretch their words to fit. Propose nothing else."
         : b.aim.under
-          ? `Propose 1 to 3 problems (opportunity cards) under ${b.aim.under}, only there: what keeps it from moving, each resting on their words, the one to focus on first. Word each as a proper problem, not a label: a need, pain or wish in the voice of the people it depends on, in one short sentence ("I never know when the collector will come"). In each one's why, say why it's the one to focus on, from what they said (what you read on the web only as what others report). Propose nothing else.`
-          : "Propose 1 to 3 problems (opportunity cards) from what they said, each resting on their words, the best first: under the goal it bears on when the board has one, else as a tree of its own. Word each as a proper problem, not a label: a need, pain or wish in the customer's voice, in one short sentence (\"I never know when the collector will come\"). Propose nothing else."
+          ? `Propose 1 to 3 problems (opportunity cards) under ${b.aim.under}, only there: what keeps it from moving, each resting on their words where it can, the one to focus on first. Word each as a proper problem, not a label: a need, pain or wish in the voice of the people it depends on, in one short sentence ("I never know when the collector will come"). In each one's why, say why it's the one to focus on, from what they said (what you read on the web only as what others report). Where nothing they said bears on one, propose it all the same with no pieces or answers: it shows as an idea to check, so never stretch their words to fit. Propose nothing else.`
+          : "Propose 1 to 3 problems (opportunity cards) from what they said, each resting on their words where it can, the best first: under the goal it bears on when the board has one, else as a tree of its own. Word each as a proper problem, not a label: a need, pain or wish in the customer's voice, in one short sentence (\"I never know when the collector will come\"). Where nothing they said bears on one, propose it all the same with no pieces or answers: it shows as an idea to check, so never stretch their words to fit. Propose nothing else."
       : b.file
         ? `Place what in the file bears on ${b.file.card}, only under it: when it's an outcome, the needs it shows (opportunities: pains and wishes of the people it's for) under it, and finer outcomes where it names them; when it's an opportunity, finer needs, solutions and tests under it. Attach the pieces that back ${b.file.card} or the cards under it. Change nothing elsewhere on the board.`
         : "Place the brain dump on the board.",

@@ -104,4 +104,16 @@ describe("a brief's request", () => {
     expect(r.under).toEqual([]);
     expect(r.asked).toEqual({ platform: "Web" });
   });
+
+  it("keeps what's read on the web apart from their words, with its page", async () => {
+    const line = { text: "Sales-assisted products see much higher activation rates.", kind: "read", sourceTitle: "A vendor's blog", url: "https://v.example/post" };
+    const req = briefRequestOf({ card: { ...words({ title: "A setup call", evidence: [{ text: "Under 25%", kind: "answer" }, line, { ...line, text: "A line with no page", url: "not a link" }] }), id: "c1", kind: "solution" }, goal: null, problem: null, under: [], others: [], asked: {} })!;
+    const meta = await writeCardBrief(store, req, undefined, answers([]));
+    const { body } = (await store.getBrief(meta.id))!;
+    expect(body).toContain("“Under 25%” (Your words)");
+    expect(body).not.toMatch(/Sales-assisted[^\n]*Your words/);
+    expect(body.slice(body.indexOf("## Read elsewhere"))).toContain("Sales-assisted products");
+    expect(body).toContain("https://v.example/post");
+    expect(body).not.toContain("A line with no page");
+  });
 });

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import { setMe } from "@/goals/client";
 import { onOrgChange } from "@/org/live";
-import { currentOrg } from "@/org/client";
+import { currentOrg, renameOrg } from "@/org/client";
 import { needsDb } from "@/org/needs";
 import { scanNow, steerQuestions, steerScan } from "@/org/scan";
 import { lineOf, LINE_MS, phaseOf, POSE_OF, readSoFar, scanProgress } from "@/onboarding/reading";
@@ -24,6 +24,42 @@ import { answerInput, choiceChip, Stage } from "./Stage";
 
 const STEPS = 4;
 
+/** What the project's called: named from what they wrote, so it's theirs to change, here or later from the organization's menu. */
+function ProjectName() {
+  const [name, setName] = useState<string | null>(null);
+  const [draft, setDraft] = useState<string | null>(null);
+  useEffect(() => void currentOrg().then((o) => setName(o.name), () => {}), []);
+  if (!name) return null;
+  if (draft !== null)
+    return (
+      <form
+        className="flex items-center gap-[6px]"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const next = draft.trim();
+          setDraft(null);
+          if (next && next !== name) void renameOrg(next).then((o) => setName(o.name), () => {});
+        }}
+      >
+        <input autoFocus dir="auto" aria-label="What to call the project" className="ds-input h-[28px] w-[260px]" value={draft} maxLength={80} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Escape" && setDraft(null)} />
+        <button type="submit" className={clsx(r.buttonSm, r.buttonGhost)}>
+          Save
+        </button>
+      </form>
+    );
+  return (
+    <p className="flex flex-wrap items-center gap-[6px] text-caption text-fg-subtle">
+      Saved as{" "}
+      <span className="font-medium text-fg" dir="auto">
+        {name}
+      </span>
+      <button type="button" className={clsx(r.buttonSm, r.buttonGhost)} onClick={() => setDraft(name)}>
+        Rename
+      </button>
+    </p>
+  );
+}
+
 const qIn = () => {
   const q = new URLSearchParams(window.location.search).get("q");
   return q === null ? null : Number(q);
@@ -32,7 +68,7 @@ const qIn = () => {
 function Question({ q, at, session, home, onDone, choices, loading }: { q: StartQuestion; at: number; session: ScanSession | null; home: string; onDone: (answer: string) => void; choices: readonly StartChoice[]; loading: boolean }) {
   const [text, setText] = useState("");
   return (
-    <Stage pose={session ? POSE_OF[phaseOf(session)] : "reading"} line={q.line} home={home} dots={{ at: at + 2, of: STEPS }} title={q.title}>
+    <Stage pose={session ? POSE_OF[phaseOf(session)] : "reading"} line={q.line} home={home} dots={{ at: at + 2, of: STEPS }} title={q.title} foot={<ProjectName />}>
       {(choices.length > 0 || loading) && (
         <div className="flex flex-wrap items-center gap-[8px]">
           {choices.map((c) => (
@@ -109,7 +145,7 @@ function Results({ s, path, canvas, onAgain }: { s: ScanSession; path: StartPath
       </Stage>
     );
   return (
-    <Stage pose={pose} line={line} home={canvas} title={`${n} problems, from ${said}`}>
+    <Stage pose={pose} line={line} home={canvas} title={`${n} problems, from ${said}`} foot={<ProjectName />}>
       <fieldset className="flex flex-col gap-[8px]">
         <legend className="mb-[8px] text-body text-fg-muted">Pick one to find a goal it could move.</legend>
         <div className="q-stagger flex flex-col gap-[6px]">
@@ -149,7 +185,7 @@ function AtWork({ s, now, canvas }: { s: ScanSession; now: number; canvas: strin
   const apps = s.competitors.filter((c) => !isOff(s.steer, c.name));
   const counts = [so.places ? `${so.places} ${so.places === 1 ? "place" : "places"}` : "", so.reviews ? `${so.reviews} reviews` : ""].filter(Boolean).join(" · ");
   return (
-    <Stage pose={POSE_OF[phase]} line={lineOf(phase, now - s.at)} home={canvas} title={`Reading what people say about ${name}`}>
+    <Stage pose={POSE_OF[phase]} line={lineOf(phase, now - s.at)} home={canvas} title={`Reading what people say about ${name}`} foot={<ProjectName />}>
       <div className="h-[6px] overflow-hidden rounded-full bg-fg/10" role="progressbar" aria-label="Reading">
         <div className="h-full rounded-full bg-fg transition-[width] duration-1000 ease-linear" style={{ width: `${scanProgress(s, now) * 100}%` }} />
       </div>

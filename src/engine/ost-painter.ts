@@ -563,7 +563,7 @@ export class OstPainter {
       return;
     }
     const unit = m?.unit ? ` ${m.unit}` : "";
-    const right = range ? `${fmt(range.from)} → ${fmt(range.to)}${unit}` : "No target yet";
+    const right = range ? `${range.from === null ? "?" : fmt(range.from)} → ${fmt(range.to)}${unit}` : "No target yet";
     const rp = this.label(right, nums ? p.ink : p.subtle, 12, nums ? 600 : 500, inner / 2);
     const rw = this.width(rp);
     const lp = this.label(named ? m!.name.trim() : "Its number", p.muted, 12, 500, inner - rw - 8);

@@ -6,7 +6,7 @@ import { helpedCards } from "@/discovery/helps";
 import type { OstCard } from "@/discovery/types";
 import { chatOf, threadOf, type ChatTurn } from "./chat";
 import type { SpaceThing } from "./compose";
-import { answersOf, planMaterial, planNextMaterial, planOutline, planProposals, planRound, planTask, planLine, sanitizeNext, sanitizePlan, sanitizeRoute, type OutlineCard, type PlanLook, type PlanPiece, type PlanRound } from "./plan";
+import { answersOf, leftOf, planMaterial, planNextMaterial, planOutline, planProposals, planRound, planTask, planLine, sanitizeNext, sanitizePlan, sanitizeRoute, type OutlineCard, type PlanLook, type PlanPiece, type PlanRound } from "./plan";
 
 const outline: OutlineCard[] = [
   { id: "G", kind: "outcome", title: "5 of 10 owners pay for it", parent: null, metric: "Paid: target 5" },
@@ -286,4 +286,19 @@ describe("a plan in the chat", () => {
     expect(names("review")).toEqual(["text", "justAnswer", "planLook", "planAnswered", "planLook", "planProposed"]);
     expect(names("failed")).toEqual(["text", "justAnswer", "planLook", "planAnswered", "planLook", "text", "planRetry"]);
   });
+
+describe("what they left unanswered", () => {
+  const left: PlanRound[] = [{ questions: [{ id: "a", title: "Who pays first?", why: "", multi: false, options: [], recommended: [], allowOther: true }, { id: "b", title: "How many engineers?", why: "", multi: false, options: [], recommended: [], allowOther: true }], answers: { a: "Salons", b: "" } }, { questions: [{ id: "c", title: "Not answered yet", why: "", multi: false, options: [], recommended: [], allowOther: true }] }];
+
+  it("is heard as not known, and never as an answer", () => {
+    expect(leftOf(left)).toEqual(["How many engineers?"]);
+    const next = planNextMaterial({ org: "Basket", said: "What now?", outline: [], rounds: left, looks: [] });
+    expect(next).toContain("left unanswered");
+    expect(next).toContain("- How many engineers?");
+    const m = planMaterial({ org: "Basket", said: "What now?", outline: [], rounds: left, looks: [], pieces: [] });
+    expect(m.text).toContain("- How many engineers?");
+    expect(m.hay).not.toContain("How many engineers?");
+    expect([...m.answers.values()].map((a) => a.question)).toEqual(["Who pays first?"]);
+  });
+});
 });

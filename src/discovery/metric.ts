@@ -9,9 +9,8 @@ export function metricProgress(m: OstMetric | undefined): number | null {
   return Math.max(0, Math.min(1, (m.current - m.baseline) / (m.target - m.baseline)));
 }
 
-/** Where an outcome's number goes, from where it started (else where it stands now) to its target: null without both ends. */
-export function metricRange(m: OstMetric | undefined): { from: number; to: number } | null {
-  const from = m?.baseline ?? m?.current ?? null;
-  if (!m || from === null || m.target === null) return null;
-  return { from, to: m.target };
+/** Where an outcome's number goes, from where it started (else where it stands now; null while that isn't known) to its target. Null with no target. */
+export function metricRange(m: OstMetric | undefined): { from: number | null; to: number } | null {
+  if (!m || m.target === null) return null;
+  return { from: m.baseline ?? m.current, to: m.target };
 }

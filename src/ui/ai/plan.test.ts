@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import { BUCKET_MAX, FOLLOWUP_SCHEMA, MAX_BUCKETS, PLAN_SCHEMA, PlanPayload, PlanRounds, PlanSoFar, followupBlock, followupSystem, planBlock, planSystem, standardTask } from "@/ai/plan";
 import { GENERATE_BASE } from "@/ai/prompts";
 import { MAX_SCREENS, screensFor } from "@/ai/screen-count";
-import { OTHER, REVIEW, initialFlow, type Answers, type FlowState } from "./questionFlow";
+import { OTHER, REVIEW, answerOf, initialFlow, reduceFlow, summarize, type Answers, type FlowState } from "./questionFlow";
 import {
   PLATFORM_Q,
+  openNumbers,
+  sanitizeAsked,
   applyFollowup,
   bucketQuestions,
   bucketsOf,
@@ -210,7 +212,46 @@ describe("questions in buckets", () => {
     expect(qs.map((q) => q.id)).not.toContain("one");
     // An open question is answered in the designer's words, and can be skipped.
     expect(toQuestion(qs[0])).toMatchObject({ kind: "text", optional: true });
-    expect(toQuestion(qs[1])).toMatchObject({ kind: "single", recommended: "b" });
+    expect(toQuestion(qs[1])).toMatchObject({ kind: "single", suggested: "b" });
+  });
+
+  it("picks nothing for someone answering about their own work: Enter leaves it unanswered", () => {
+    const options = [{ value: "a", label: "Yes, often", description: "" }, { value: "b", label: "Rarely", description: "" }];
+    const single = toQuestion({ id: "q", title: "Do first orders have problems?", why: "", multi: false, options, recommended: ["a"], allowOther: true });
+    expect(single).toMatchObject({ suggested: "a", optional: true });
+    expect(single).not.toHaveProperty("recommended");
+    const went = reduceFlow(initialFlow([single], false), { type: "next" }, [single], false);
+    expect(went.error).toBeUndefined();
+    expect(summarize(single, answerOf(single, went.state.answers))).toBe("—");
+    const multi = toQuestion({ id: "m", title: "Which of these?", why: "", multi: true, options, recommended: ["a"], allowOther: false });
+    const also = reduceFlow(initialFlow([multi], false), { type: "next" }, [multi], false);
+    expect(also.error).toBeUndefined();
+    expect(summarize(multi, answerOf(multi, also.state.answers))).toBe("None");
+  });
+
+  it("recommends only what Qalam AI recommended", () => {
+    const options = [{ value: "o1", label: "Me", description: "" }, { value: "o2", label: "Someone on the team", description: "" }];
+    expect(toQuestion({ id: "q", title: "Who runs it?", why: "", multi: false, options, recommended: [], allowOther: true })).not.toHaveProperty("suggested");
+    // A design choice still takes Enter, and doesn't say a default was recommended.
+    const plan = { questions: [{ id: "d", title: "Which layout?", why: "", multi: false, options, recommended: [], allowOther: false }] } as never;
+    const [design] = planQuestions(plan, true);
+    expect(design).toMatchObject({ default: "o1" });
+    expect(design).not.toHaveProperty("recommended");
+    const picked = planQuestions({ questions: [{ id: "d", title: "Which layout?", why: "", multi: false, options, recommended: ["o2"], allowOther: false }] } as never, true);
+    expect(picked[0]).toMatchObject({ recommended: "o2" });
+  });
+
+  it("asks a number open: a range as a choice loses what they know", () => {
+    const of = (...labels: string[]) => labels.map((label, i) => ({ value: `o${i}`, label, description: "" }));
+    const q = (labels: string[]) => ({ id: "q", title: "Monthly churn?", why: "", multi: false, options: of(...labels), recommended: ["o0"], allowOther: true });
+    expect(openNumbers(q(["Under 3%", "3–7%", "Over 7%", "Don't know"]))).toMatchObject({ options: [], recommended: [] });
+    expect(openNumbers(q(["١-٣", "٤-١٠"])).options).toEqual([]);
+    expect(openNumbers(q(["First-time riders [q1]", "Riders at airports [q2]"])).options).toHaveLength(2);
+    expect(openNumbers(q(["Q3", "Q4"])).options).toHaveLength(2);
+    expect(openNumbers(q(["In the first 90 days", "After a year", "Spread evenly"])).options).toHaveLength(3);
+    expect(sanitizeAsked([{ id: "c", title: "Churn?", why: "", multi: false, options: of("Under 3%", "Over 3%"), recommended: [], allowOther: false }])[0].options).toEqual([]);
+    // The design side keeps its choices.
+    expect(sanitizeQuestions([{ id: "c", title: "How many?", why: "", multi: false, options: of("1–2", "3–5"), recommended: [], allowOther: false }])[0].options).toHaveLength(2);
   });
 
   it("reads each bucket, revises the plan, and asks again only while answers would change the design", () => {

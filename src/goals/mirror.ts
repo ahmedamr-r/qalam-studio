@@ -47,6 +47,16 @@ export function outcomesOf(doc: Doc): OutcomeAt[] {
   return out;
 }
 
+/** The goal a new outcome card goes under: the nearest card above it that `goalOf` says is a goal. */
+export function goalAbove(doc: Doc, card: string, goalOf: (card: string) => string | undefined): string | null {
+  const nodes = doc.nodes as unknown as Record<string, Node>;
+  for (let up = nodes[card]?.parentId ?? null; up; up = nodes[up]?.parentId ?? null) {
+    const goal = goalOf(up);
+    if (goal) return goal;
+  }
+  return null;
+}
+
 export interface Reconciled {
   /** Cards to bring up to their goal (card id → the goal's copy). */
   toCard: Map<string, GoalCopy>;

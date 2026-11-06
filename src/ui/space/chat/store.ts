@@ -14,7 +14,7 @@ import { changeGoal, goalsNow } from "@/goals/client";
 import { goalById } from "@/goals/tree";
 import { askOrganization } from "@/org/ask";
 import { captureIngested, decideFoundGoal, setSourceBasis } from "@/org/capture";
-import { orgFetch, orgJson } from "@/org/client";
+import { currentOrg, orgFetch, orgJson } from "@/org/client";
 import type { Ingested } from "@/discovery/ingest/core";
 import { chatKey, chatOf, emptyChat, withJob, withTurn, type CanvasChat, type ChatDoc, type ChatJob, type ChatTurn, type FiledPage, type FocusGoal, type GoalForJob, type GoalForOn, type PlanJob, type BriefState, type ScanJob, type ScanPlan, type TakenDoc } from "@/space/chat";
 import { cardForPage, pageOf } from "@/space/pages";
@@ -37,9 +37,10 @@ import { writeCardBrief } from "@/org/briefs";
 import { briefRequest } from "../../discovery/brief-request";
 import { loadBriefs } from "../../discovery/briefs";
 import { glideToLayer, onCanvasReady } from "../../discovery/canvas";
-import { firstBuild, writeBrief, keepAnswers, keepAudience, planAudiences, planQuestions, scanNow, startScan, steerQuestions, steerScan, stopScan } from "@/org/scan";
+import { firstBuild, writeBrief, keepAnswers, keepAudience, namesSomething, readFirstAnswer, planAudiences, planQuestions, scanNow, startScan, steerQuestions, steerScan, stopScan } from "@/org/scan";
 import { firstGoal, sameTarget, scanRound, SUGGESTED_GOAL, type GoalAction, type ScanAudience } from "@/scan/plan";
 import { projectName } from "@/scan/input";
+import { nameAfterRead } from "@/onboarding/start";
 import { draftBacking, draftCards } from "@/discovery/solutions";
 import { decideDraft } from "@/org/solutions";
 import { quoteEvidence } from "@/discovery/sources";
@@ -87,7 +88,7 @@ interface ChatState {
   /** "Help me find one" asked for a canvas whose chat isn't loaded yet: started as it loads. */
   pending: { key: string; what: FindWhat } | null;
   /** Words for a scan from a canvas whose chat isn't loaded yet (the first run's box): started as it loads. */
-  pendingScan: { key: string; said: string } | null;
+  pendingScan: { key: string; said: string; mode?: "plan" } | null;
   /** A goal asked for by the address before the chat has loaded: started as it loads. */
   pendingGoal: { card: string; topic?: string } | null;
 }
@@ -151,7 +152,7 @@ export async function openChat(space: string | null) {
   const words = st().pendingScan;
   if (words?.key === key) {
     useCanvasChat.setState({ pendingScan: null });
-    void runAs(null, words.said, "scan");
+    void runAs(null, words.said, words.mode ?? "scan");
   }
 }
 
@@ -247,11 +248,11 @@ export function retake(id: string, mode: ChatMode) {
 // What people complain about
 
 /** Words from the one box (the first run's, the empty canvas's): into this canvas's chat, once it's loaded. */
-export function scanFrom(said: string, space: string | null) {
+export function scanFrom(said: string, space: string | null, mode?: "plan") {
   toggleChat(true);
   const key = chatKey(space);
-  if (st().key !== key || !st().loaded) return useCanvasChat.setState({ pendingScan: { key, said } });
-  void runAs(null, said, "scan");
+  if (st().key !== key || !st().loaded) return useCanvasChat.setState({ pendingScan: { key, said, ...(mode ? { mode } : {}) } });
+  void runAs(null, said, mode ?? "scan");
 }
 
 /** An idea or a product read for what people complain about. It runs in the core; this follows it. */
@@ -262,6 +263,8 @@ async function scanIt(at: string | null, said: string, target: ScanTarget | null
   if (other) return void jobAt(at, said, { kind: "scan", target, asked: Date.now(), where: true });
   const id = jobAt(at, said, { kind: "scan", target, asked: Date.now(), ...(told?.length ? { told: [...told] } : {}) });
   void saveNow();
+  // Nothing named to read about: reading would go on their sentence, so it's worked out with them instead.
+  if (target.kind === "idea" && !told?.length && !(await namesSomething(said))) return workOut(id, said);
   try {
     const session = await startScan({ ...requestOf(target, said, typeof navigator === "undefined" ? "" : navigator.language), ...(told?.length ? { told: [...told] } : {}) });
     change((c) => withJob(c, id, (j) => (j.kind === "scan" ? { ...j, session } : j)));
@@ -340,7 +343,7 @@ export async function scanInNewProject(id: string) {
   const t = turnOf(id);
   if (t?.job.kind !== "scan") return;
   try {
-    const org = await createOrg(projectName(t.job.target), "solo");
+    const org = await createOrg(nameAfterRead(t.job.target, await readFirstAnswer(t.said)), "solo");
     await fetch(`/api/org/${encodeURIComponent(org.id)}/first-run`, { method: "POST" }).catch(() => {});
     handWords(t.said);
     dropTurn(id);
@@ -413,7 +416,8 @@ export async function answerPlan(id: string, answers: Readonly<Record<string, st
   plan(id, (p) => ({ ...p, step: "reading", answers: words }));
   const ctrl = begin(id);
   try {
-    const source = said.length ? await keepAnswers(said, `Your answers: ${projectName(j.target)}`).catch(() => null) : null;
+    const project = (await currentOrg().catch(() => null))?.name ?? projectName(j.target);
+    const source = said.length ? await keepAnswers(said, `Your answers: ${project}`).catch(() => null) : null;
     const audiences = await planAudiences({ ...planOf(j), answers: words }, ctrl.signal);
     plan(id, (p) => ({ ...p, step: "audiences", audiences, ...(source ? { answersSource: source } : {}) }));
   } catch (e) {

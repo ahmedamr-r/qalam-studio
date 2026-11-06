@@ -4,7 +4,7 @@ import type { BriefAnswer, Doc } from "@/doc/schema";
 import { isOstCard, treeRootOf } from "@/doc/board";
 import type { DumpCardInput } from "@/ai/discovery";
 import type { PlanQuestion } from "@/ai/plan";
-import { answerText, sanitizeQuestions, toQuestion, type PlanBucket } from "@/ui/ai/plan";
+import { answerText, sanitizeAsked, toQuestion, type PlanBucket } from "@/ui/ai/plan";
 import { OTHER, initialFlow, resolvedAnswers, type Answer, type FlowState, type Question } from "@/ui/ai/questionFlow";
 import { quoteFinder } from "./quotes";
 import type { QuoteKind, SourceQuote, TextBlock } from "./sources";
@@ -357,7 +357,7 @@ export function sanitizeRead(raw: unknown, text: string, cards: PlaceCard[], now
     understanding: clip(readable(r.understanding, names), READ_LIMITS.understanding),
     fragments,
     challenges: sanitizeChallenges(r.challenges, (ref) => kept.get(ref), cards, names),
-    questions: readableQuestions(sanitizeQuestions(r.questions), names),
+    questions: readableQuestions(sanitizeAsked(r.questions), names),
     refs: Object.fromEntries(kept),
     bears: r.bears !== false,
     wanted: clip(readable(r.wanted, names), READ_LIMITS.wanted),
@@ -410,7 +410,7 @@ export function sanitizeDumpFollowup(raw: unknown, pieces: { ref: string; q: Sou
     if (quoteId && isRole(x.role)) roles.set(quoteId, x.role);
   }
   const names = namesOf(pieces.map((p): [string, string] => [p.ref, p.q.text]), cards);
-  const questions = readableQuestions(sanitizeQuestions(r.questions), names);
+  const questions = readableQuestions(sanitizeAsked(r.questions), names);
   return {
     analysis: clip(readable(r.analysis, names), 1200),
     understanding: clip(readable(r.understanding, names), READ_LIMITS.understanding),
@@ -478,7 +478,11 @@ export function roundAnswers(s: Pick<Rounds, "buckets">): DumpAnswer[][] {
     // A round counts once it was sent; one left half-way (Skip) counts for what was answered.
     const asked = b.form.submitted ? qs : qs.filter((q) => b.form.answers[q.id]);
     const answers = resolvedAnswers(qs, b.form.answers);
-    return asked.map((q) => ({ questionId: q.id, question: q.title, answer: answerText(q, answers[q.id]).slice(0, 600), words: typed(q, answers[q.id]).slice(0, 600), said: picked(q, answers[q.id]).slice(0, 600) }));
+    return asked.map((q) => {
+      // One they left stays empty: the calls read it as skipped, never as a preference.
+      const said = picked(q, answers[q.id]).slice(0, 600);
+      return { questionId: q.id, question: q.title, answer: said ? answerText(q, answers[q.id]).slice(0, 600) : "", words: typed(q, answers[q.id]).slice(0, 600), said };
+    });
   });
 }
 

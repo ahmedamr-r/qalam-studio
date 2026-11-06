@@ -4,7 +4,7 @@ import type { OstCard, OstMetric } from "@/discovery/types";
 import { goalDecisions } from "./decisions";
 import { goalsFromMarkdown, goalsToMarkdown, metricLine } from "./goals-md";
 import { migrateGoals, outcomeGoalId, textGoalId } from "./migrate";
-import { applyCopy, copyOfGoal, goalSide, reconcile } from "./mirror";
+import { applyCopy, copyOfGoal, goalAbove, goalSide, reconcile } from "./mirror";
 import { goalsText } from "./text";
 import { addGoal, chainOf, childrenOf, ordered, patchGoal, removeGoal, rootsOf, setNorth } from "./tree";
 import type { Goal, GoalTree } from "./types";
@@ -188,6 +188,18 @@ describe("a board's cards and their goals", () => {
     const r = reconcile({ ...base, doc: doc({ o1: { card: card("Reorders", { metric: metric() }) }, o2: { card: card("Second orders"), parent: "o1" }, o3: { card: card("  ") } }), goals, synced: new Map() });
     expect(r.create).toEqual([expect.objectContaining({ id: outcomeGoalId("b", "o2"), parent: "g1", product: "grocery", on: { board: "b", card: "o2" } })]);
     expect(reconcile({ ...base, doc: doc({}), goals, synced: new Map() }).unlink).toEqual(["g1"]);
+  });
+
+  it("hangs new goals made together under each other, past a problem, and leaves one at the top with none", () => {
+    const d = doc({ top: { card: card("Grow revenue") }, chains: { card: card("Revenue from chains"), parent: "top" }, need: { card: card("Can't prove it pays", { kind: "opportunity" }), parent: "chains" }, sign: { card: card("Sign 25 chains"), parent: "need" } });
+    // As the canvas's sync does: walking down, each card goes in the tree before the cards under it are read.
+    const made = new Map<string, string>();
+    const parents = ["top", "chains", "sign"].map((c) => {
+      const parent = goalAbove(d, c, (x) => made.get(x));
+      made.set(c, `g-${c}`);
+      return parent;
+    });
+    expect(parents).toEqual([null, "g-top", "g-chains"]);
   });
 
   it("copies a goal onto a card", () => {

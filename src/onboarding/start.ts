@@ -1,6 +1,6 @@
 import type { OrgShape } from "@/org/words";
 import type { Me } from "@/org/you";
-import { scanInput } from "@/scan/input";
+import { projectName, scanInput, type FirstRead } from "@/scan/input";
 import type { ScanTarget } from "@/scan/session";
 import type { ScanSaid } from "@/scan/steer";
 
@@ -75,17 +75,19 @@ export const startQuestions = (path: StartPath): readonly StartQuestion[] => (pa
 
 export const firstQuestion = (path: StartPath) =>
   path === "company"
-    ? { title: "Which product?", line: "Give me a name. I'll find the people it annoys.", placeholder: "Basket, basket.com or an App Store link" }
+    ? { title: "Which product?", line: "A name, or what it does. I'll find the people it annoys.", placeholder: "Basket, basket.com, or what it does" }
     : { title: "What's the idea?", line: "One sentence is enough. Nobody reads the second.", placeholder: "A meal planner for night-shift workers" };
 
-/** A product's name is a few words, so a sentence on the company's path is asked again. */
+/** A product's name is a few words; more is them saying what it is. */
 const NAME_WORDS = 6;
 
 const one = (s: string) => s.replace(/\s+/g, " ").trim();
 
 /**
- * What to read, from the first answer on the path they picked. Their card decides what's a name and
- * what's an idea, except that a link is always a product, and a product at their company is theirs.
+ * What to read, from the first answer on the path they picked, before it's read for what it is. A link
+ * is always a product, and a product at their company is theirs. A few words on the company's path are
+ * its name; more is them saying what it does, which is read as an idea until the first read finds the
+ * product's own name in it (`targetAfterRead`).
  */
 export function startTarget(path: StartPath, raw: string): ScanTarget | null {
   const text = one(raw);
@@ -93,7 +95,7 @@ export function startTarget(path: StartPath, raw: string): ScanTarget | null {
   const read = scanInput(text);
   if (path === "company") {
     if (read?.kind === "product") return { ...read, mine: true };
-    return text.split(" ").length <= NAME_WORDS ? { kind: "product", name: text, mine: true } : null;
+    return text.split(" ").length <= NAME_WORDS && !/[.!?؟,]/.test(text) ? { kind: "product", name: text, mine: true } : { kind: "idea", said: text };
   }
   if (read?.kind === "product" && (read.app || /[./]/.test(text))) return read;
   return text.length >= 3 ? { kind: "idea", said: text } : null;
@@ -102,8 +104,24 @@ export function startTarget(path: StartPath, raw: string): ScanTarget | null {
 /** What's wrong with the first answer, in words; null when it can be read. */
 export function firstAnswerProblem(path: StartPath, raw: string): string | null {
   if (startTarget(path, raw)) return null;
-  if (path === "company") return one(raw).length < 2 ? "Name the product, or paste its link." : "Just its name or link is enough.";
+  if (path === "company") return "Name the product, say what it does, or paste its link.";
   return "Say what you want to build, in a few words.";
+}
+
+/**
+ * What to read once the first answer is read: on the company's path, a product's own name found in what
+ * they said is the product, and theirs. Otherwise what they said stands.
+ */
+export function targetAfterRead(path: StartPath, t: ScanTarget, read: FirstRead): ScanTarget {
+  if (path === "company" && t.kind === "idea" && read.product) return { kind: "product", name: read.product, mine: true };
+  return t;
+}
+
+/** What the project's called: the name the read found for it, else as before. With nothing named, "My project". It's theirs to change. */
+export function nameAfterRead(t: ScanTarget, read: FirstRead): string {
+  if (!read.named) return "My project";
+  if (t.kind === "product" && t.name) return t.name;
+  return read.name || projectName(t);
 }
 
 /** What's found isn't all there is: more can come in later. A company may have analytics; an idea has none yet. */

@@ -21,7 +21,7 @@ export interface BriefCardWords {
   assumptions: string[];
   tests: { what: string; how: string; suggested: string | null }[];
   /** Its own evidence, as the card has it. */
-  evidence: { text: string; kind: string; sourceId?: string; sourceTitle?: string }[];
+  evidence: { text: string; kind: string; sourceId?: string; sourceTitle?: string; url?: string }[];
   /** Its problem page, where it has one. */
   topic: string | null;
 }
@@ -81,7 +81,11 @@ export async function writeCardBrief(store: OrgStore, req: BriefRequest, signal?
       const s = e.sourceId ? byId.get(e.sourceId) : undefined;
       const q = s?.quotes.find((x) => x.text === e.text);
       if (s && q) keep(s, q.text, basisOf(s, q));
-      else if (!e.sourceId && !seen.has(e.text)) {
+      else if (e.kind === "read") {
+        // A line read on the web: someone else's words, shown apart, and a feature can't rest on it.
+        if (!seen.has(e.text) && e.url && published.length < MAX_PUBLISHED) published.push({ kind: "published", text: e.text, title: e.sourceTitle ?? "", url: e.url });
+        seen.add(e.text);
+      } else if (!e.sourceId && !seen.has(e.text)) {
         // Their own words on the card, a note or an answer: nothing to look up.
         seen.add(e.text);
         words.push({ text: e.text, source: "Your words" });
@@ -135,7 +139,7 @@ const cardWords = (raw: unknown): BriefCardWords => {
     description: clipped(c.description, 2000),
     assumptions: list(c.assumptions).map((a) => clipped(a, 400)).filter(Boolean).slice(0, 8),
     tests: list(c.tests).map((t) => ({ what: clipped(rec(t).what, 300), how: clipped(rec(t).how, 800), suggested: clipped(rec(t).suggested, 300) || null })).filter((t) => t.what).slice(0, 4),
-    evidence: list(c.evidence).map((e) => ({ text: clipped(rec(e).text, 2000), kind: clipped(rec(e).kind, 20), ...(clipped(rec(e).sourceId, 60) ? { sourceId: clipped(rec(e).sourceId, 60) } : {}), ...(clipped(rec(e).sourceTitle, 200) ? { sourceTitle: clipped(rec(e).sourceTitle, 200) } : {}) })).filter((e) => e.text).slice(0, 40),
+    evidence: list(c.evidence).map((e) => ({ text: clipped(rec(e).text, 2000), kind: clipped(rec(e).kind, 20), ...(clipped(rec(e).sourceId, 60) ? { sourceId: clipped(rec(e).sourceId, 60) } : {}), ...(clipped(rec(e).sourceTitle, 200) ? { sourceTitle: clipped(rec(e).sourceTitle, 200) } : {}), ...(/^https?:\/\//i.test(clipped(rec(e).url, 500)) ? { url: clipped(rec(e).url, 500) } : {}) })).filter((e) => e.text).slice(0, 40),
     topic: clipped(c.topic, 60) || null,
   };
 };

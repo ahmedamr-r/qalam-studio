@@ -17,7 +17,12 @@ import { isDescendant } from "@/doc/geometry";
 /** A round answered with Qalam AI's picks, open questions in the founder's words. */
 function answered(s: DumpSession): FlowState {
   const b = s.buckets[s.buckets.length - 1];
-  const answers = Object.fromEntries(b.questions.filter((q) => !q.options.length).map((q) => [q.id, { kind: "text" as const, text: SAMPLE_DUMP_ANSWERS[q.id] ?? "" }]));
+  const answers = Object.fromEntries(
+    b.questions.map((q) => [
+      q.id,
+      q.options.length ? (q.multi ? { kind: "multi" as const, values: q.recommended, custom: [] } : { kind: "single" as const, value: q.recommended[0] ?? q.options[0].value }) : { kind: "text" as const, text: SAMPLE_DUMP_ANSWERS[q.id] ?? "" },
+    ]),
+  );
   return { ...initialFlow(b.questions.map(toQuestion)), answers, submitted: true };
 }
 
@@ -308,5 +313,18 @@ describe("proposals on the board", () => {
       delete d.nodes[id];
     });
     produce(gone, (d) => void expect(applyProposal(d, merge, evidenceOf)).toBe(false));
+  });
+
+  it("keeps what they asked for with nothing behind it, and lets a choice they picked back it", () => {
+    const { ctx, byTitle, cards } = sample();
+    const ref = cards.find((c) => c.id === byTitle("More customers reorder every week"))!.ref;
+    const need = { id: "n1", kind: "opportunity", parentCard: ref, parentNew: null, title: "Fresh food arrives in poor shape", description: "", fragmentIds: [], answers: [], metric: null, assumptions: [], test: null, why: "tickets" };
+    expect(ofKind(sanitizePlace({ cards: [need] }, ctx), "card")).toEqual([]);
+    const kept = ofKind(sanitizePlace({ cards: [need] }, { ...ctx, keepBare: true }), "card");
+    expect(kept.map((p) => p.card.title)).toEqual(["Fresh food arrives in poor shape"]);
+    expect(isAssumed({ ...kept[0].card, evidence: [] })).toBe(true);
+    const asked = { ...ctx, keepBare: true, answers: [{ ref: "a9", answerId: "dump:d:q", words: "Freshness or substitutions" }] };
+    const backed = ofKind(sanitizePlace({ cards: [{ ...need, answers: [{ answerId: "a9", quote: "Freshness or substitutions" }] }] }, asked), "card");
+    expect(backed[0].backing.words.map((w) => w.text)).toEqual(["Freshness or substitutions"]);
   });
 });

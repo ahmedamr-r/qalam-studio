@@ -16,7 +16,7 @@ vi.mock("../index/registry", () => ({
   },
 }));
 
-const { scanNow, scanToEnd, startScan, steerQuestions, steerScan, stopScan } = await import("./scan");
+const { namesSomething, readFirstAnswer, scanNow, scanToEnd, startScan, steerQuestions, steerScan, stopScan } = await import("./scan");
 
 let dir: string;
 let store: OrgStore;
@@ -387,4 +387,22 @@ describe("a scan", () => {
     await vi.waitFor(async () => expect((await store.getScanSession())?.state).toBe("stopped"));
     expect(d.capture).not.toHaveBeenCalled();
   });
+
+describe("whether there's anything to read about", () => {
+  const says = (said: string) => ({ structured: (async () => ({ data: { said } })) as never });
+  const signal = new AbortController().signal;
+
+  it("asks only when the words don't plainly say, and goes on reading if the call fails", async () => {
+    expect(await namesSomething("no idea", signal, { structured: (async () => { throw new Error("no call needed"); }) as never })).toBe(false);
+    expect(await namesSomething("I want to build something that makes money. I know React.", signal, says("none"))).toBe(false);
+    expect(await namesSomething("Something to help freelancers get paid", signal, says("named"))).toBe(true);
+    expect(await namesSomething("a meal planner", signal, { structured: (async () => { throw new Error("down"); }) as never })).toBe(true);
+  });
+
+  it("reads what to call it, kept to a label from what they said", async () => {
+    const said = "Basket, our grocery app for parents";
+    expect(await readFirstAnswer(said, signal, { structured: (async () => ({ data: { said: "named", product: "Basket", name: "Basket" } })) as never })).toEqual({ named: true, product: "Basket", name: "Basket" });
+    expect(await readFirstAnswer(said, signal, { structured: (async () => { throw new Error("down"); }) as never })).toEqual({ named: true, product: "", name: "" });
+  });
+});
 });

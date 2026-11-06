@@ -1,7 +1,7 @@
 import { chooseOrg, createOrg, orgFetch, type OrgRef } from "@/org/client";
-import { saidOf, shapeOfPath, startTarget, type StartPath } from "@/onboarding/start";
+import { nameAfterRead, saidOf, shapeOfPath, startTarget, targetAfterRead, type StartPath } from "@/onboarding/start";
 import { orgHref } from "@/projects/model";
-import { startScan } from "@/org/scan";
+import { readFirstAnswer, startScan } from "@/org/scan";
 import { projectName, requestOf } from "@/scan/input";
 import type { ScanSession, ScanTarget } from "@/scan/session";
 import type { ScanSaid } from "@/scan/steer";
@@ -45,11 +45,15 @@ let made: { key: string; org: OrgRef } | null = null;
 
 /** Starts on the first answer, then on to the questions. It only returns if something went wrong. */
 export async function beginReading(path: StartPath, raw: string): Promise<void> {
-  const target = startTarget(path, raw);
-  if (!target) throw new Error("Say what to look at first.");
+  const first = startTarget(path, raw);
+  if (!first) throw new Error("Say what to look at first.");
   await engineChecked();
+  // Read for what it is first: a name, or them explaining it. The project is named from that, and they can rename it.
+  const read = isReady() ? await readFirstAnswer(raw) : null;
+  const target = read ? targetAfterRead(path, first, read) : first;
+  const name = read ? nameAfterRead(target, read) : projectName(target);
   const key = `${path}:${JSON.stringify(target)}`;
-  const org = made?.key === key ? made.org : await createOrg(projectName(target), shapeOfPath(path));
+  const org = made?.key === key ? made.org : await createOrg(name, shapeOfPath(path));
   made = { key, org };
   // Set up later: its canvas opens, and its chat says what reading needs.
   if (!isReady()) {
@@ -58,6 +62,12 @@ export async function beginReading(path: StartPath, raw: string): Promise<void> 
     return window.location.assign(`${orgHref(org.id)}?scan=1`);
   }
   chooseOrg(org.id);
+  // Nothing named to read about: reading would go on their sentence. The canvas's chat asks what's theirs and works it out with them.
+  if (target.kind === "idea" && read && !read.named) {
+    handWords(raw.trim());
+    await finishFirstRun(org.id);
+    return window.location.assign(`${orgHref(org.id)}?plan=1`);
+  }
   const session = await startScan(requestOf(target, raw, locale()));
   await writeScanChat(target, session);
   await finishFirstRun(org.id);

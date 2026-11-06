@@ -2,7 +2,7 @@ import { studio, useStudio } from "@/doc/store";
 import { cardOf } from "@/discovery/ops";
 import { changeGoal, createGoal, goalsNow } from "@/goals/client";
 import { outcomeGoalId } from "@/goals/migrate";
-import { copyOfCard, copyOfGoal, sameCopy, type GoalCopy } from "@/goals/mirror";
+import { copyOfCard, copyOfGoal, goalAbove, sameCopy, type GoalCopy } from "@/goals/mirror";
 import { allCards } from "@/discovery/tree";
 import { onSpaceComposed } from "@/space/session";
 import { boardOfCard, useSpaceView } from "@/space/view";
@@ -83,19 +83,21 @@ async function syncOnce() {
   }
   // Outcome cards that aren't goals yet, once they're on a board: each becomes a goal under the goal above it.
   const ids = new Set(goals.map((g) => g.id));
+  // The canvas was composed before these: a card made a goal a moment ago, in this pass or the last, is only in the tree. allCards walks down, so a parent comes first.
+  const goalOf = (card: string) => {
+    const t = v.things.get(card);
+    return t?.type === "goal" ? t.goal : goalsNow().goals.find((g) => g.on?.card === card)?.id;
+  };
   for (const { id, card } of allCards(doc)) {
     if (card.kind !== "outcome" || v.things.get(id)?.type === "goal" || !card.title.trim()) continue;
     const board = boardOfCard(id);
     if (!board) continue;
     const gid = outcomeGoalId(board, id);
     if (ids.has(gid)) continue;
-    let up = doc.nodes[id].parentId;
-    while (up && v.things.get(up)?.type !== "goal") up = doc.nodes[up]?.parentId ?? null;
-    const above = up ? v.things.get(up) : undefined;
     const copy = copyOfCard(card);
     ids.add(gid);
     // One at the top goes under the North Star, as a goal made by hand does; the first one is the North Star.
-    const parent = above?.type === "goal" ? above.goal : goalsNow().north;
+    const parent = goalAbove(doc, id, goalOf) ?? goalsNow().north;
     await createGoal({ id: gid, title: copy.title, parent, ...(parent ? {} : { north: "if-none" as const }), product: v.boards.get(board)?.product ?? null, ...(copy.metric ? { metric: copy.metric } : {}), status: copy.stage, on: { board, card: id } }).catch(() => {});
   }
 }
