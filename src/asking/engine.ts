@@ -201,8 +201,11 @@ export const awaitsConfirm = (s: AskingState): boolean => !!s.end && s.rounds.le
 export const looksOf = (s: AskingState): (FocusLook & { after: number })[] =>
   s.lookups.flatMap((l) => (l.kind === "web" && l.state === "done" && l.look ? [{ ...l.look, after: typeof l.waits === "number" ? l.waits - 2 : -1 }] : []));
 
-/** What every project lookup found: the pieces a draft may rest on. */
-export const foundOf = (s: AskingState): FoundLine[] => s.lookups.flatMap((l) => (l.kind === "project" && l.state === "done" ? (l.lines ?? []) : []));
+/** What every project lookup found, and people online's quotes looked up before a draft: the pieces a draft may rest on. */
+export const foundOf = (s: AskingState): FoundLine[] => s.lookups.flatMap((l) => (l.kind !== "web" && l.state === "done" ? (l.lines ?? []) : []));
+
+/** The lookups only the generation waits on, still running (a look in the background before a draft). */
+export const forDraft = (s: AskingState): Lookup[] => s.lookups.filter((l) => running(l) && !forTurns(l));
 
 // ---------------------------------------------------------------------------
 // Kept before: rounds as buckets (a brain dump's, the questions before a draft) or a plan's rounds in words

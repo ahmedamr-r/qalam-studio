@@ -1,6 +1,7 @@
 import { MARKET_SECTIONS, type MarketEdit } from "@/market/edit";
 import { nanoid } from "nanoid";
 import { editTerms, termsEditOf } from "@/terms/edit";
+import { AskCardBody, askCard } from "./ask-card";
 import { createReadStream } from "node:fs";
 import { readFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
@@ -415,6 +416,16 @@ export function orgRoutes(): Hono<Env> {
       const store = c.get("store");
       return streamed(c.req.raw.signal, (emit, signal) => run(store, b, query, emit, signal));
     });
+
+  // A turn of the interview before a card's draft (server/org/ask-card.ts): the chat keeps the conversation.
+  r.post("/api/org/:org/ask/card", async (c) => {
+    if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't ask about this." }, 503);
+    if (rateLimited(c.req.raw)) return c.json({ error: "rate_limited", message: "Too many requests, try again in a few minutes." }, 429);
+    const b = AskCardBody.safeParse(await c.req.json().catch(() => null));
+    if (!b.success) return c.json({ error: "bad_request", message: "Say which card, and what's been asked" }, 400);
+    const store = c.get("store");
+    return streamed(c.req.raw.signal, (emit, signal) => askCard(store, b.data, emit, signal));
+  });
 
   // Finding the problem to focus on for a goal (server/org/focus.ts): a look on the web, and with `open`, the first questions to ask.
   r.post("/api/org/:org/goals/:id/focus", async (c) => {

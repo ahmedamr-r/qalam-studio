@@ -3,6 +3,8 @@ import clsx from "clsx";
 import { PanelLeftClose, SquarePen, X } from "lucide-react";
 import { DUMP_MAX_CHARS } from "@/discovery/dump";
 import { asking, running, threadOf, type DumpOf } from "@/space/chat";
+import { useStudio } from "@/doc/store";
+import { useAskingIn } from "../../discovery/ask";
 import type { ChatMode } from "@/space/route";
 import { useSpaceView } from "@/space/view";
 import { QalamAIGlyph } from "../../brand/ai-glyph";
@@ -24,7 +26,7 @@ import type { Space } from "../../frame/spaces";
 import { ASK_EVENT, takeAskNext } from "../../org/ask-next";
 import { PARTS } from "./parts";
 import { clearMode, composeIn, useCompose } from "./compose";
-import { answerBrief, answerCanvasPlan, answerFind, answerNumber, answerPlan, answerSteer, ask, askMeInsteadPlan, briefQuestionsOf, clearChat, findQuestionsOf, findWith, keepPlanRound, leaveSteer, lookItUpPlan, numberQuestions, openChat, picksCanvasPlan, planQuestionsOf, resumePlans, send, steerQuestionsOf, stopAskingPlan, stopPlanLookup, stopTurn, turnOf, useCanvasChat } from "./store";
+import { answerBrief, answerCanvasPlan, answerDraft, answerFind, answerNumber, answerPlan, answerSteer, ask, askMeInsteadDraft, askMeInsteadPlan, keepDraftRound, lookItUpDraft, picksDraft, stopAskingDraft, stopDraftLookup, briefQuestionsOf, clearChat, findQuestionsOf, findWith, keepPlanRound, leaveSteer, lookItUpPlan, numberQuestions, openChat, picksCanvasPlan, planQuestionsOf, resumePlans, send, steerQuestionsOf, stopAskingPlan, stopPlanLookup, stopTurn, turnOf, useCanvasChat } from "./store";
 import { AskRound } from "../../asking/AskRound";
 
 /*
@@ -50,7 +52,10 @@ export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
   const dumpBusy = useDump((u) => u.busy?.sourceId ?? null);
   // What's running: an ask or a capture, or a brain dump's call.
   const busy = running(chat) ?? (dumpBusy ? (chat.turns.find((t) => t.job.kind === "dump" && t.job.source === dumpBusy) ?? null) : null);
-  const waiting = asking(chat, dumpOf);
+  // The picked card's questions before its draft show first, so "Show it" beside the card leads to them.
+  const picked = useStudio((s) => (s.selection.length === 1 ? s.selection[0] : null));
+  const pickedDraft = useAskingIn((s) => (picked ? s.cards[picked] : null));
+  const waiting = asking(chat, dumpOf, pickedDraft);
   // The questions while a scan reads don't wait for it, and it doesn't wait for them.
   const steering = !!waiting && "steer" in waiting;
   const { org } = useWords();
@@ -148,6 +153,8 @@ export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
                 <PlanRound key={waiting.turn.id} turn={waiting.turn.id} />
               ) : "find" in waiting ? (
                 <FindRound key={`${waiting.turn.id}:${waiting.find}`} turn={waiting.turn.id} what={waiting.find} />
+              ) : "drafting" in waiting ? (
+                <DraftAskRound key={waiting.turn.id} turn={waiting.turn.id} />
               ) : (
                 <DumpRound key={`${waiting.source}:${dumpOf(waiting.source)?.buckets.length}`} source={waiting.source} dumpOf={dumpOf} />
               )
@@ -278,6 +285,27 @@ function PlanRound({ turn }: { turn: string }) {
   const [form, setForm] = useState<FlowState>(() => initialFlow(questions));
   const answerOf = (f: FlowState, q: (typeof questions)[number]) => answerWords(q, f.answers[q.id]).text;
   return <Questionnaire title="Before I work out what comes first" questions={questions} state={form} onChange={setForm} onSubmit={(f) => void answerPlan(turn, Object.fromEntries(questions.map((q) => [q.id, answerOf(f, q)])))} review={{ submitLabel: "Send answers" }} />;
+}
+
+/** The questions before a card's draft (src/asking/): every question it can ask now, Qalam AI's picks in one press, and Stop asking. */
+function DraftAskRound({ turn }: { turn: string }) {
+  const state = useCanvasChat((s) => {
+    const j = s.chat.turns.find((t) => t.id === turn)?.job;
+    return j?.kind === "draft" ? j.asking : null;
+  });
+  if (!state) return null;
+  return (
+    <AskRound
+      state={state}
+      onKeep={(f) => keepDraftRound(turn, f)}
+      onSend={(f) => answerDraft(turn, f)}
+      onPicks={(f) => picksDraft(turn, f)}
+      onStop={(f) => stopAskingDraft(turn, f)}
+      onStopLookup={(id) => stopDraftLookup(turn, id)}
+      onLookItUp={() => lookItUpDraft(turn)}
+      onAskMe={() => askMeInsteadDraft(turn)}
+    />
+  );
 }
 
 /** What a plan can't tell from what it has (src/asking/): every question it can ask now, Qalam AI's picks in one press, and Stop asking. */

@@ -7,10 +7,9 @@ import type { GoalLever } from "@/goals/types";
 import { goalHref, placeHref, topicHref } from "@/projects/model";
 import { navigate } from "../nav";
 import { findBackingFor } from "./backing";
-import { breakDownFor, draftProblemsFor, findProblemsFor, lookOutsideFor, reviewPartsFor, reviewProblemsFor } from "./goal-steps";
-import { draftSolutionsFor } from "./solutions";
+import { askFor } from "./ask";
+import { findProblemsFor, lookOutsideFor, reviewPartsFor, reviewProblemsFor } from "./goal-steps";
 import { useDiscovery } from "./store";
-import { draftTestsFor } from "./tests";
 import { openBrief } from "./briefs";
 
 /*
@@ -29,7 +28,13 @@ const readFolded = () => {
   }
 };
 
-export const useNextSteps = create<{ folded: boolean; /** The step drawn first beside the picked card, for ⌘↵. */ first: { card: string; run: () => void } | null }>(() => ({ folded: readFolded(), first: null }));
+export const useNextSteps = create<{
+  folded: boolean;
+  /** The step drawn first beside the picked card, for ⌘↵. */
+  first: { card: string; run: () => void } | null;
+  /** What's known about the picked card, for ⌘K's steps to go as the box would. */
+  facts: { card: string; facts: CardFacts } | null;
+}>(() => ({ folded: readFolded(), first: null, facts: null }));
 
 export function foldNextSteps(folded: boolean) {
   useNextSteps.setState({ folded });
@@ -47,14 +52,15 @@ export async function runStep(card: string, step: NextStep, f: CardFacts, o: { l
     case "find-problems":
       if (f.goal) await findProblemsFor(card, f.goal.id);
       return;
+    // Every draft asks first, in the canvas's chat: as many rounds as it needs, or none (./ask.ts).
     case "break-down":
-      if (f.goal) await breakDownFor(card, f.goal.id, o.levers ?? []);
+      if (f.goal) askFor(card, "break-down", { levers: o.levers ?? [], thin: !!step.asks });
       return;
     case "review-parts":
       if (f.goal) await reviewPartsFor(card, f.goal.id);
       return;
     case "draft-problems":
-      if (f.goal) await draftProblemsFor(card, f.goal.id);
+      if (f.goal) askFor(card, "draft-problems", { thin: !!step.asks });
       return;
     case "review-problems":
       if (f.goal) await reviewProblemsFor(card, f.goal.id);
@@ -95,9 +101,8 @@ export async function runStep(card: string, step: NextStep, f: CardFacts, o: { l
       if (f.brief) openBrief(f.brief);
       return;
     case "draft-solutions":
-      return draftSolutionsFor(card);
     case "draft-tests":
-      return draftTestsFor(card);
+      return askFor(card, step.id, { thin: !!step.asks });
     case "design-this":
       useDiscovery.setState({ designFor: card });
       return;

@@ -12,7 +12,7 @@ const ids = (f: CardFacts) => others(f).map((s) => s.id);
 describe("a card's next steps", () => {
   it("lead a problem with drafting its solutions, then its page", () => {
     expect(ids(facts())).toEqual(["draft-solutions", "add-file"]);
-    expect(ids(facts({ page: { topic: "late-orders", strength: "thin", quotes: 2, sources: 1 } }))).toEqual(["draft-solutions", "add-file", "page", "questions"]);
+    expect(ids(facts({ page: { topic: "late-orders", strength: "thin", quotes: 2, sources: 1 } }))).toEqual(["draft-solutions", "add-file", "page"]);
   });
 
   it("offer a problem with no goal above it the goal it could move, Qalam AI's to run", () => {
@@ -67,7 +67,7 @@ describe("a card's next steps", () => {
     expect(others(facts(can))[2].label).toBe("Watch Intercom for it");
     // Backed already: drafting first, more of what backs it next.
     const backed = others(facts({ ...can, evidence: { ...none, quotes: 2, sources: 1 } }));
-    expect(backed.map((s) => s.id)).toEqual(["draft-solutions", "find-backing", "watch", "add-file", "questions"]);
+    expect(backed.map((s) => s.id)).toEqual(["draft-solutions", "find-backing", "watch", "add-file"]);
     expect(backed[1].label).toBe("Find more that backs it");
   });
 
@@ -86,20 +86,19 @@ describe("a card's next steps", () => {
     expect(ids(facts({ kind: "outcome", search: true, material: true, tools: ["Slack"], goal: goal({ behind: 1 }) }))).toEqual(["focus", "break-down", "draft-problems", "others", "watch", "add-file"]);
   });
 
-  it("ask first where nothing backs the card, and draft at once once it rests on something", () => {
+  it("start with what they know where nothing backs the card; otherwise Qalam AI asks what it needs, or nothing", () => {
     const thin = others(facts({ tools: [] }));
-    expect(thin[0]).toMatchObject({ id: "draft-solutions", asks: true, hint: "Asks a few questions first" });
-    expect(thin.map((s) => s.id)).not.toContain("questions");
-    // Backed, or answered before: it drafts at once, and the questions stay in More.
+    expect(thin[0]).toMatchObject({ id: "draft-solutions", asks: true, hint: "Asks you first, in the chat" });
+    // Backed, or answered before: no open question first, and no separate step for questions (every draft asks in the chat).
     for (const f of [facts({ tools: [], evidence: { ...none, quotes: 1, sources: 1 } }), facts({ tools: [], answered: true })]) {
       const steps = others(f);
       expect(steps[0].asks).toBeUndefined();
-      expect(steps.at(-1)).toMatchObject({ id: "questions", label: "Answer a few questions first" });
+      expect(steps.map((s) => s.label)).not.toContain("Answer a few questions first");
     }
-    // A goal with nothing behind it asks before drafting its problems and before breaking it down.
+    // A goal with nothing behind it starts with what they know before drafting its problems and before breaking it down.
     expect(others(facts({ kind: "outcome", goal: goal() })).slice(1, 3)).toMatchObject([
-      { id: "draft-problems", asks: true, hint: "Asks a few questions first" },
-      { id: "break-down", asks: true },
+      { id: "draft-problems", asks: true, hint: "Asks you first, in the chat" },
+      { id: "break-down", asks: true, hint: "Asks you first, in the chat" },
     ]);
     expect(others(facts({ kind: "outcome", goal: goal({ behind: 1 }) })).map((s) => s.asks)).toEqual([undefined, undefined, undefined, undefined, undefined]);
   });
@@ -125,20 +124,20 @@ describe("a card's next steps in v0.1 (src/lab.ts)", () => {
     // Nothing behind a problem: what the organization has first, then a draft that asks first, since none of it needs evidence; no tool.
     const thin = others(facts(can));
     expect(thin.map((s) => s.id)).toEqual(["find-backing", "draft-solutions", "add-file"]);
-    expect(thin[1]).toMatchObject({ hint: "Asks a few questions first", asks: true });
+    expect(thin[1]).toMatchObject({ hint: "Asks you first, in the chat", asks: true });
     expect(ids(facts({ tools: [], asking: true, evidence: { ...none, quotes: 2, sources: 1 }, page: { topic: "late-orders", strength: "thin", quotes: 2, sources: 1 } }))).toEqual(["draft-solutions", "add-file", "page"]);
     expect(ids(facts({ ...can, kind: "solution" }))).toEqual(["find-backing"]);
     expect(ids(facts({ ...can, kind: "outcome", pages: 5, goal: goal({ pending: 2, drafted: 1, job: "Ask five families" }) }))).toEqual(["focus", "find-problems", "add-file"]);
     expect(ids(facts({ kind: "outcome", goal: goal() }))).toEqual(["focus", "add-file"]);
   });
 
-  it("bring a feature's steps back once it's on, and Break it down asks first only with the questions on", () => {
+  it("bring a feature's steps back once it's on, each draft asking first with no switch of its own", () => {
     setLab(["tests", "goals"]);
     expect(ids(facts({ kind: "solution" }))).toEqual(["draft-tests"]);
     const steps = others(facts({ kind: "outcome", pages: 5, goal: goal() }));
     expect(steps.map((s) => s.id)).toEqual(["focus", "find-problems", "draft-problems", "break-down", "others", "add-file"]);
-    expect(steps.filter((s) => s.asks).map((s) => s.id)).toEqual(["draft-problems"]);
-    setLab(["questions"]);
+    expect(steps.filter((s) => s.asks).map((s) => s.id)).toEqual(["draft-problems", "break-down"]);
+    setLab([]);
     expect(others(facts())[0]).toMatchObject({ id: "draft-solutions", asks: true });
   });
 });

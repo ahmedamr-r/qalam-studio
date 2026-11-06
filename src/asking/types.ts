@@ -13,8 +13,12 @@ import type { AnswerHow, FlowState } from "@/ui/ai/questionFlow";
 /** Who answers: the asking rules are worded for them. */
 export type AskWho = "person" | "team" | "builder" | "designer";
 
-/** Where a fact is looked up by Qalam AI itself: the project's own material (no tokens), or the web. */
-export type LookupKind = "project" | "web";
+/**
+ * Where a fact is looked up by Qalam AI itself: the project's own material (no tokens), or the web.
+ * `online`: what people say online, kept as sources (lab "online"); only code starts one, in the
+ * background before a draft, never a turn.
+ */
+export type LookupKind = "project" | "web" | "online";
 
 /** A question as the engine keeps it. `after`: the questions or lookups whose answers it waits on. `by: "code"`: code's own. */
 export interface AskQuestion extends PlanQuestion {
@@ -45,7 +49,7 @@ export interface FoundLine {
   url?: string;
   /** A page's own words that bear the line out. */
   quote?: string;
-  /** The piece it is (hub:quote:…), for a project lookup. */
+  /** The piece it is (hub:quote:…), for a project lookup or a quote from people online. */
   piece?: string;
 }
 

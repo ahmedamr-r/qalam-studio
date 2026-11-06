@@ -2,13 +2,28 @@ import { nanoid } from "nanoid";
 import { startReview, useReview } from "../../discovery/review";
 import { planAhead, planLook, planPropose, planRoute, type PlanAsk } from "@/org/plan";
 import { planOutline, planProposals } from "@/space/plan";
-import { decideTerm, emptyAsking, foundOf, fromPlanRounds, loaded, startLookup } from "@/asking/engine";
-import type { AskingState } from "@/asking/types";
+import { answersOf, currentRound, decideTerm, emptyAsking, foundOf, fromBuckets, fromPlanRounds, loaded, looksOf, startLookup, theirWords } from "@/asking/engine";
+import { OPEN_ID, answered, answersRecord, openQuestion, type AskFor, type CardAnswers } from "@/discovery/questions";
+import { DUMP_ROLES } from "@/discovery/dump";
+import { sharedWords } from "@/discovery/near";
+import type { GoalLever } from "@/goals/types";
+import { lab } from "@/lab";
+import { askCardTurn } from "@/org/ask-card";
+import { lookOnline } from "@/org/online";
+import { boardOfCard, productOfCard } from "@/space/view";
+import { addSourceRecord, updateSource } from "../../discovery/sources";
+import { keptAnswers, useAskingIn } from "../../discovery/ask";
+import { attachQuoteRefs } from "../../discovery/drop";
+import { draftSolutionsFor } from "../../discovery/solutions";
+import { breakDownFor, draftProblemsFor } from "../../discovery/goal-steps";
+import { draftTestsFor } from "../../discovery/tests";
+import { fileAfterReading } from "../../topics/filing";
+import type { AskingState, Lookup } from "@/asking/types";
 import { askingIn } from "@/asking/wire";
 import { hostOf } from "@/ai/research-shared";
 import { editTerm, useTerms } from "@/org/terms";
 import type { FlowState } from "../../ai/questionFlow";
-import { answer, askMeInstead, confirm, goOn, keepRound, lookItUp, off, picks, projectLookup, stopAsking, stopLookup, stopLookups, type AskingHost, type Paused } from "../../asking/run";
+import { answer, askMeInstead, confirm, generateNow, goOn, keepRound, lookItUp, off, picks, projectLookup, startLookups, stopAsking, stopLookup, stopLookups, type AskingHost, type Paused } from "../../asking/run";
 import { create } from "zustand";
 import { aiStatus } from "@/ai/client";
 import { studio } from "@/doc/store";
@@ -23,7 +38,7 @@ import { askOrganization } from "@/org/ask";
 import { captureIngested, decideFoundGoal, setSourceBasis } from "@/org/capture";
 import { currentOrg, orgFetch, orgJson } from "@/org/client";
 import type { Ingested } from "@/discovery/ingest/core";
-import { chatKey, chatOf, emptyChat, withJob, withTurn, type CanvasChat, type ChatDoc, type ChatJob, type ChatTurn, type FiledPage, type FocusGoal, type GoalForJob, type GoalForOn, type BriefState, type ScanJob, type ScanPlan, type TakenDoc, type WhoseJob, type PlanJob } from "@/space/chat";
+import { chatKey, chatOf, emptyChat, withJob, withTurn, type CanvasChat, type ChatDoc, type ChatJob, type ChatTurn, type FiledPage, type FocusGoal, type GoalForJob, type GoalForOn, type BriefState, type ScanJob, type ScanPlan, type TakenDoc, type WhoseJob, type PlanJob, type DraftJob } from "@/space/chat";
 import type { StartHandoff } from "@/onboarding/handoff";
 
 /** A doc taken in: read already, or a picture kept in the project to read now. */
@@ -54,7 +69,7 @@ import { projectName } from "@/scan/input";
 import { nameAfterRead } from "@/onboarding/start";
 import { draftBacking, draftCards } from "@/discovery/solutions";
 import { decideDraft } from "@/org/solutions";
-import { quoteEvidence } from "@/discovery/sources";
+import { quoteEvidence, quotePiece } from "@/discovery/sources";
 import { sourcesDb } from "@/discovery/db";
 import { createOrg, setOrgShape } from "@/org/client";
 import { setCurrentOrg } from "../../frame/store";
@@ -207,7 +222,8 @@ function begin(id: string): AbortController {
   return ctrl;
 }
 
-const step = (id: string) => (label: string) => useCanvasChat.setState((s) => (s.live[id] ? { live: { ...s.live, [id]: { ...s.live[id], steps: [...s.live[id].steps, label].slice(-4) } } } : s));
+/** What it's doing now, once: the same words twice in a row (the window's and the route's) show once. */
+const step = (id: string) => (label: string) => useCanvasChat.setState((s) => (s.live[id] && s.live[id].steps.at(-1) !== label ? { live: { ...s.live, [id]: { ...s.live[id], steps: [...s.live[id].steps, label].slice(-4) } } } : s));
 
 function end(id: string) {
   ctrls.delete(id);
@@ -838,6 +854,234 @@ export function retryCanvasPlan(id: string) {
   if (!j) return;
   setCanvasPlan(id, (x) => ({ ...x, step: "thinking", error: undefined, asking: loaded(planAsking(x)) }));
   void runCanvasPlan(id, (signal) => goOn(planHost(id), signal));
+}
+
+// ---------------------------------------------------------------------------
+// Questions before a card's draft (src/asking/, server/org/ask-card.ts): in the chat, then the draft
+
+const draftJob = (id: string) => {
+  const j = turnOf(id)?.job;
+  return j?.kind === "draft" ? j : null;
+};
+const setDraftJob = (id: string, fn: (j: DraftJob) => DraftJob) => change((c) => withJob(c, id, (j) => (j.kind === "draft" ? fn(j) : j)));
+
+const DRAFT_LABEL: Record<AskFor, string> = { "draft-solutions": "Draft solutions", "break-down": "Break it down", "draft-problems": "Draft its problems", "draft-tests": "Draft its tests" };
+const DRAFT_GO: Record<AskFor, string> = { "draft-solutions": "Draft them", "break-down": "Break it down", "draft-problems": "Draft its problems", "draft-tests": "Draft its tests" };
+export const draftGo = (step: AskFor) => DRAFT_GO[step];
+
+/** The titles above a card, nearest first (its problem, its goals). */
+function aboveCard(card: string): string[] {
+  const doc = studio().doc;
+  const out: string[] = [];
+  for (let p = doc.nodes[card]?.parentId; p && out.length < 6; p = doc.nodes[p]?.parentId ?? null) {
+    const c = doc.nodes[p]?.meta.ost;
+    if (c) out.push(`${KIND_LABEL[c.kind]}: ${c.title}`.slice(0, 400));
+  }
+  return out;
+}
+
+/** The answers as a source of their own words (made with the first answer, then kept current); the card rests on it once it's drafted. */
+async function keepDraftAnswers(id: string, done = false): Promise<string | null> {
+  const j = draftJob(id);
+  if (!j) return null;
+  if (!answered(j.asking.rounds).length && !j.source) return null;
+  const t = useSpaceView.getState().things.get(j.card);
+  const found = foundOf(j.asking).flatMap((l) => (l.piece ? [l.piece] : []));
+  const card: CardAnswers = { v: 1, card: j.card, goal: t?.type === "goal" || t?.type === "card" ? t.goal : null, topic: null, step: j.step, buckets: j.asking.rounds, found, ...(done ? { done: true } : {}), at: Date.now() };
+  const sid = j.source ?? newId();
+  const rec = answersRecord({ id: sid, board: boardOfCard(j.card) ?? "", title: `Your answers: ${j.title}`.slice(0, 200), product: productOfCard(j.card), card, role: DUMP_ROLES.find((r) => r === j.role) ?? null, now: Date.now(), quoteId: (q) => `${sid}-${q}` });
+  if (j.source) await updateSource(sid, (s) => ({ ...rec, addedAt: s.addedAt, ...(s.boards ? { boards: s.boards } : {}), ...(s.filed ? { filed: s.filed } : {}) }));
+  else await addSourceRecord(rec);
+  if (!j.source) setDraftJob(id, (x) => ({ ...x, source: sid }));
+  return sid;
+}
+
+/** The interview's host for a card's draft: its turn through the core, its lookups in their project and on the web, the card's own draft at the end. */
+export const draftHost = (id: string): AskingHost => ({
+  key: id,
+  get: () => draftJob(id)?.asking ?? null,
+  set: (fn) => setDraftJob(id, (j) => ({ ...j, asking: fn(j.asking) })),
+  turn: async (s, signal) => {
+    const j = draftJob(id)!;
+    const c = studio().doc.nodes[j.card]?.meta.ost;
+    if (!c) throw new Error("The card isn't on the canvas any more.");
+    await keepDraftAnswers(id);
+    const found = foundOf(s).map((l) => ({ id: l.ref, text: l.text.slice(0, 1200), source: l.from.slice(0, 300), whose: (l.whose ?? "people said").slice(0, 40) })).slice(0, 20);
+    const r = await askCardTurn({ card: { kind: c.kind, title: c.title.slice(0, 400), description: (c.description ?? "").slice(0, 600), above: aboveCard(j.card) }, step: j.step, found, asking: askingIn(s, { said: "", terms: useTerms.getState().terms }) }, step(id), signal);
+    if (r.role) setDraftJob(id, (x) => ({ ...x, role: r.role }));
+    return r;
+  },
+  lookup: async (l, signal) => {
+    const j = draftJob(id)!;
+    if (l.kind === "project") {
+      // Search ranks what's nearest, near or not: only a quote sharing two telling words with the card, their words and what was looked for counts as found, so the draft never rests on one that isn't about it.
+      const r = await projectLookup(l, { product: productOfCard(j.card) });
+      const about = [j.title, studio().doc.nodes[j.card]?.meta.ost?.description ?? "", theirWords(j.asking), l.query].join(" ");
+      const lines = r.lines.filter((x) => sharedWords(about, x.text) >= 2);
+      // What they know, searched: little from customers, and the draft hears what's said further afield too.
+      if (l.id === KNOW && lines.filter((x) => x.whose === "people said").length < 2) lookFurther(id);
+      return { lines };
+    }
+    if (l.kind === "online") {
+      const r = await lookOnline({ title: j.title, words: l.query, product: productOfCard(j.card), place: { board: boardOfCard(j.card), card: j.card } }, undefined, signal);
+      await visitSources(r.sources ?? []);
+      const lines = (r.sources ?? []).flatMap((sid) => {
+        const s = sourceOf(sid);
+        return s ? s.quotes.map((q) => ({ text: q.text, from: s.title, whose: "people online", piece: quotePiece(q.id) })) : [];
+      });
+      if (!lines.length && r.error) throw new Error(r.error);
+      return { lines: lines.slice(0, 10).map((x, i) => ({ ...x, ref: `${l.id}-${i + 1}` })) };
+    }
+    const what = j.step === "draft-problems" || j.step === "break-down" ? "What usually keeps people from reaching this goal" : "Ways to solve this problem";
+    // A look in the background reads the web on the card and what they said; a turn's, on its own query.
+    const said = l.waits === "draft" ? `${what}: ${j.title}.${l.query ? ` They say: ${l.query}` : ""}` : `${what}: ${j.title}`;
+    const look = await planLook({ said: said.slice(0, 4000), outline: [], rounds: [], looks: [], ...(l.waits !== "draft" && l.query ? { query: l.query } : {}) }, undefined, signal);
+    return { look, lines: look.lines.map((x, i) => ({ ref: `${l.id}-${i + 1}`, text: x.text, from: x.url ? hostOf(x.url) : "a page", whose: "a page online", ...(x.url ? { url: x.url } : {}), ...(x.quote ? { quote: x.quote } : {}) })) };
+  },
+  generate: (_s, signal) => runCardDraft(id, signal),
+  status: (s) => {
+    setDraftJob(id, (j) => (j.phase === "drafting" ? j : { ...j, phase: s }));
+    step(id)(s === "thinking" ? "Working out what to ask" : draftJob(id)?.asking.end ? "Reading what the web says on it, for the draft" : "Looking it up before asking more");
+  },
+});
+
+/** Code's own lookup: what they said they know, searched in their project (no tokens), which the next turn reads. */
+const KNOW = "l0";
+
+/** What they said they know about the card, in their own words ("" when they left it). */
+const knownWords = (s: AskingState) => answersOf(s).find((a) => a.id === OPEN_ID && a.how === "own")?.text ?? "";
+
+/** The round with code's open question sent (it comes closed from the box): what they know is searched in their project, and the next turn reads what it found. */
+function searchWhatTheyKnow(id: string) {
+  const j = draftJob(id);
+  if (!j || !j.asking.rounds.at(-1)?.questions.some((q) => q.id === OPEN_ID) || j.asking.lookups.some((l) => l.id === KNOW)) return;
+  const query = [j.title, knownWords(j.asking)].filter(Boolean).join(". ").slice(0, 300);
+  draftHost(id).set((s) => startLookup(s, { id: KNOW, kind: "project", query, waits: s.turns }, Date.now()));
+}
+
+/** Little from customers on it: the web read on what they said (not before Break it down), and people online (a problem, lab "online"), in the background. Only the draft waits on them. */
+function lookFurther(id: string) {
+  const j = draftJob(id);
+  if (!j) return;
+  const said = knownWords(j.asking).slice(0, 300);
+  const looks: Pick<Lookup, "id" | "kind" | "query" | "waits">[] = [];
+  if (j.step !== "break-down") looks.push({ id: "bg-web", kind: "web", query: said, waits: "draft" });
+  if (lab("online") && studio().doc.nodes[j.card]?.meta.ost?.kind === "opportunity") looks.push({ id: "bg-online", kind: "online", query: said, waits: "draft" });
+  draftHost(id).set((s) => looks.reduce((x, l) => (x.lookups.some((y) => y.id === l.id) ? x : startLookup(x, l, Date.now())), s));
+  startLookups(draftHost(id));
+}
+
+/** Draft now, without waiting for what's being read in the background: it goes with what it has. */
+export const draftNow = (id: string) => generateNow(draftHost(id));
+
+const DRAFTING: Record<AskFor, string> = { "draft-solutions": "Drafting solutions", "break-down": "Breaking it down", "draft-problems": "Drafting its problems", "draft-tests": "Drafting its tests" };
+
+/** The interview is done: the card rests on their answers, and its own draft runs with them, what was found on their words and what was read on the web. */
+async function runCardDraft(id: string, signal: AbortSignal) {
+  const j = draftJob(id);
+  if (!j || signal.aborted) return;
+  setDraftJob(id, (x) => ({ ...x, phase: "drafting" }));
+  step(id)(DRAFTING[j.step]);
+  const source = await keepDraftAnswers(id, true);
+  const s = source ? sourceOf(source) : undefined;
+  if (s?.quotes.length && !useSpaceView.getState().virtual.has(j.card)) attachQuoteRefs(j.card, s.quotes.map((q) => ({ sourceId: s.id, quoteId: q.id })), { quiet: true });
+  const looks = looksOf(j.asking).flatMap((l) => l.lines.map((x) => ({ text: x.text, ...(x.url ? { url: x.url } : {}), ...(x.title ? { title: x.title } : {}), ...(x.quote ? { quote: x.quote } : {}) })));
+  const said = { ...(source ? { answers: source } : {}), found: foundOf(j.asking).flatMap((l) => (l.piece ? [l.piece] : [])).slice(0, 20), ...(looks.length ? { looks: looks.slice(0, 8) } : {}) };
+  const t = useSpaceView.getState().things.get(j.card);
+  // The draft says what came of it on its own (a review on the canvas, or why not); the thread says which.
+  const before = useReview.getState().proposals;
+  if (j.step === "draft-solutions") await draftSolutionsFor(j.card, said);
+  else if (j.step === "break-down" && t?.type === "goal") await breakDownFor(j.card, t.goal, j.levers as GoalLever[], said);
+  else if (j.step === "draft-problems" && t?.type === "goal") await draftProblemsFor(j.card, t.goal, said);
+  else if (j.step === "draft-tests") await draftTestsFor(j.card);
+  const opened = useReview.getState().proposals !== before && useReview.getState().proposals.length > 0;
+  // Filed once the draft has read what was there: a page made from their words never races the draft drawn from them.
+  if (source) void fileAfterReading([source], productOfCard(j.card));
+  setDraftJob(id, (x) => ({ ...x, phase: "done", ...(opened ? {} : { none: true as const }) }));
+}
+
+/** One stretch of a card's interview: until it asks, shows what's settled, or has drafted. */
+async function runDraftAsk(id: string, stretch: (signal: AbortSignal) => Promise<Paused | void>) {
+  const ctrl = begin(id);
+  try {
+    const why = await stretch(ctrl.signal);
+    if (why === "ask" || why === "offer") setDraftJob(id, (j) => ({ ...j, phase: "asking" }));
+    else if (why === "settled") setDraftJob(id, (j) => ({ ...j, phase: "settled" }));
+  } catch (e) {
+    const stopped = (e as Error).name === "AbortError" || ctrl.signal.aborted;
+    if (stopped) stopLookups(id);
+    setDraftJob(id, (j) => ({ ...j, phase: "failed", error: stopped ? "You stopped it." : message(e) }));
+  } finally {
+    end(id);
+  }
+}
+
+/**
+ * Ask before a card's draft, in the chat: every draft goes through the interview. A card nothing backs
+ * yet starts with code's own question (what they know about it); otherwise Qalam AI's first turn asks
+ * what it needs, or drafts at once when nothing's open. One conversation per card: a running one is
+ * picked up rather than started again.
+ */
+export function askBeforeDraft(card: string, step: AskFor, o: { levers?: GoalLever[]; thin?: boolean } = {}) {
+  const c = studio().doc.nodes[card]?.meta.ost;
+  if (!c) return;
+  toggleChat(true);
+  if (asked(st().chat)[card]) return;
+  // Answers kept for this draft and not drafted with yet (a chat cleared half-way): the questions pick up there.
+  const kept = keptAnswers(card);
+  const from = kept?.answers?.step === step ? kept : undefined;
+  const asking = from?.answers ? fromBuckets(from.answers.buckets) : emptyAsking(o.thin ? [openQuestion(c.kind)] : []);
+  const role = from?.quotes.find((q) => q.role)?.role ?? null;
+  const id = addTurn(`${DRAFT_LABEL[step]} for “${c.title}”`, { kind: "draft", card, title: c.title, step, phase: currentRound(asking) ? "asking" : "thinking", asking, source: from?.id ?? null, role, levers: o.levers ?? [] });
+  if (!currentRound(asking)) void runDraftAsk(id, (signal) => goOn(draftHost(id), signal));
+}
+
+/** The cards whose draft is being asked about in a chat, each with its turn. */
+function asked(c: CanvasChat): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const t of c.turns) if (t.job.kind === "draft" && t.job.phase !== "done" && t.job.phase !== "failed") out[t.job.card] = t.id;
+  return out;
+}
+
+// The cards being asked about here: their next steps say they're answered in the chat (../../discovery/ask.ts).
+useCanvasChat.subscribe((s, prev) => {
+  if (s.chat === prev.chat) return;
+  const cards = asked(s.chat);
+  const was = useAskingIn.getState().cards;
+  if (Object.keys(cards).length !== Object.keys(was).length || Object.entries(cards).some(([k, v]) => was[k] !== v)) useAskingIn.setState({ cards });
+});
+
+export const keepDraftRound = (id: string, form: FlowState) => keepRound(draftHost(id), form);
+export function answerDraft(id: string, form: FlowState) {
+  keepRound(draftHost(id), form);
+  searchWhatTheyKnow(id);
+  void runDraftAsk(id, (signal) => answer(draftHost(id), form, signal));
+}
+export function picksDraft(id: string, form: FlowState) {
+  keepRound(draftHost(id), form);
+  searchWhatTheyKnow(id);
+  void runDraftAsk(id, (signal) => picks(draftHost(id), form, signal));
+}
+export const stopAskingDraft = (id: string, form: FlowState | null) => void runDraftAsk(id, (signal) => stopAsking(draftHost(id), form, signal));
+export const confirmDraft = (id: string) => void runDraftAsk(id, (signal) => confirm(draftHost(id), signal));
+export const lookItUpDraft = (id: string) => void runDraftAsk(id, (signal) => lookItUp(draftHost(id), signal));
+export const askMeInsteadDraft = (id: string) => void runDraftAsk(id, (signal) => askMeInstead(draftHost(id), signal));
+export const stopDraftLookup = (id: string, lookup: string) => stopLookup(id, lookup);
+export function offDraft(id: string) {
+  off(draftHost(id));
+  setDraftJob(id, (j) => ({ ...j, phase: "asking" }));
+}
+export function retryDraft(id: string) {
+  setDraftJob(id, (j) => ({ ...j, phase: "thinking", error: undefined, asking: loaded(j.asking) }));
+  void runDraftAsk(id, (signal) => goOn(draftHost(id), signal));
+}
+
+/** A term a draft's conversation settled: added to the project's words, or left out. */
+export async function decideDraftTerm(id: string, term: string, keep: boolean) {
+  const t = draftJob(id)?.asking.terms.find((x) => x.id === term);
+  if (!t) return;
+  draftHost(id).set((s) => decideTerm(s, term, keep));
+  if (keep && !(await editTerm({ op: "add", term: t.term, means: t.means, avoid: t.avoid, by: "qalam" }))) draftHost(id).set((s) => ({ ...s, terms: s.terms.map((x) => (x.id === term ? { ...x, state: undefined } : x)) }));
 }
 
 /** Its proposals brought back to the canvas (a reload, or another review that was in the way). */

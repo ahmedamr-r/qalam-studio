@@ -346,10 +346,11 @@ function stubDeps(): MarketDeps {
     read: async () => null,
     structured: (async (call: { kind?: string }) => {
       if (call.kind === "chat-route") return { data: { route: "plan" } };
-      if (call.kind === "plan-next") {
-        if (asked) return { data: { action: "ready", questions: [], look: "" } };
+      // The plan's interview (src/asking/): one round, then nothing left open.
+      if (call.kind === "ask-turn") {
+        if (asked) return { data: { questions: [], lookups: [], done: true, understood: [], terms: [] } };
         asked = true;
-        return { data: { action: "ask", look: "", questions: [{ title: "Who is it for?", why: "", multi: false, options: [], recommended: [], allowOther: true }] } };
+        return { data: { questions: [{ id: "q1", title: "Who is it for?", why: "", multi: false, options: [], recommended: [], allowOther: true, after: [] }], lookups: [], done: false, understood: [], terms: [] } };
       }
       if (call.kind === "plan-place") {
         const card = { under: "", why: "A stub.", type: "none", how: "", needed: "no", helps: [], cites: [], metric: { name: "", target: "" }, assumptions: [], test: { assumption: "", what: "", how: "", pass: "" } };

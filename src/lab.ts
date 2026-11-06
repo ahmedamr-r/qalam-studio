@@ -11,8 +11,6 @@ export const LAB_FEATURES = [
   "design",
   /** The Decisions place and the "why?" prompt (decisions are still recorded). */
   "decisions",
-  /** Questions before a draft on a card nothing backs, kept as your answers (src/discovery/questions.ts). */
-  "questions",
   /** Engines other than Claude Code, Codex and an Anthropic key. */
   "engines",
   /** The connectors past docs and analytics (customer voice, build and design), and work status on cards. */

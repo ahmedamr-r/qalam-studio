@@ -18,11 +18,11 @@ import type { FlowState } from "../ai/questionFlow";
 
 const ICON = { absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 
-const WHERE = { project: "in your project", web: "on the web" } as const;
+const WHERE = { project: "in your project", web: "on the web", online: "at what people say online" } as const;
 
-/** The lookups running for the next turn, each with Stop: what waited on one is asked again without it. */
+/** The lookups running for the next turn, each with Stop: what waited on one is asked again without it. A look in the background only the draft waits on says so. */
 export function Waiting({ lookups, onStop }: { lookups: readonly Lookup[]; onStop: (id: string) => void }) {
-  const running = lookups.filter((l) => l.state === "running" && l.waits !== "draft");
+  const running = lookups.filter((l) => l.state === "running");
   if (!running.length) return null;
   return (
     <div className="flex flex-col gap-[2px] px-[4px]" aria-live="polite">
@@ -31,7 +31,7 @@ export function Waiting({ lookups, onStop }: { lookups: readonly Lookup[]; onSto
           <Spinner size={12} />
           <span className="min-w-0 flex-1 truncate">
             Looking {WHERE[l.kind]}
-            {l.query ? ` for “${l.query}”` : " for what people do about this"} while you answer
+            {l.waits === "draft" ? " on it, for the draft" : `${l.query ? ` for “${l.query}”` : " for what people do about this"} while you answer`}
           </span>
           <IconBtn size="sm" label="Stop this lookup" onClick={() => onStop(l.id)}>
             <X size={12} {...ICON} />
@@ -145,20 +145,21 @@ export function AnsweredRound({ state, index }: { state: AskingState; index: num
   );
 }
 
-/** What lookups in their project found: their own material, by whose words it holds. */
+/** What lookups in their project found, by whose words it holds; and what people online said, looked up before a draft. */
 export function FoundInProject({ state }: { state: AskingState }) {
-  const found = state.lookups.filter((l) => l.kind === "project" && l.state === "done" && l.lines?.length);
+  const found = state.lookups.filter((l) => l.kind !== "web" && l.state === "done" && l.lines?.length);
   if (!found.length) return null;
   const n = found.reduce((t, l) => t + (l.lines?.length ?? 0), 0);
+  const where = found.every((l) => l.kind === "online") ? "Said online" : found.some((l) => l.kind === "online") ? "Found in your project and online" : "Found in your project";
   return (
     <details className="q-fold rounded-lg px-[10px] text-caption shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
       <summary className="flex h-[30px] cursor-pointer list-none items-center gap-[6px] font-medium text-fg-muted hover:text-fg [&::-webkit-details-marker]:hidden">
-        <Search size={12} {...ICON} /> Found in your project · {n} {n === 1 ? "line" : "lines"}
+        <Search size={12} {...ICON} /> {where} · {n} {n === 1 ? "line" : "lines"}
       </summary>
       <div className="flex flex-col gap-[10px] pb-[10px]">
         {found.map((l) => (
           <div key={l.id} className="flex flex-col gap-[4px]">
-            <p className="text-fg-subtle">For “{l.query}”</p>
+            <p className="text-fg-subtle">{l.kind === "online" ? "What people say online about it" : `For “${l.query}”`}</p>
             {l.lines!.map((x) => (
               <p key={x.ref} className="text-fg" dir="auto">
                 “{x.text}” <span className="text-fg-subtle">· {x.from}{x.whose ? `, ${x.whose}` : ""}</span>

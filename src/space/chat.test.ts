@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { DumpSession } from "@/discovery/dump";
 import type { AskAnswer } from "@/hub/ask";
 import { emptyScan } from "@/scan/session";
-import { asking, chatKey, chatOf, emptyChat, MAX_TURNS, running, scanTurn, threadOf, withJob, withTurn, type ChatTurn, type ScanJob } from "./chat";
+import { asking, chatKey, chatOf, emptyChat, MAX_TURNS, running, scanTurn, threadOf, withJob, withTurn, type ChatTurn, type DraftJob, type ScanJob } from "./chat";
+import { emptyAsking } from "@/asking/engine";
+import { openQuestion } from "@/discovery/questions";
 
 const answer: AskAnswer = { question: "Why do parents stop?", answer: "The window.", claims: [], unknowns: [], how: "packed", at: 1 };
 const turn = (id: string, job: ChatTurn["job"], said = "Why do parents stop ordering?"): ChatTurn => ({ id, at: 1, said, job });
@@ -283,5 +285,46 @@ describe("the start page's turns", () => {
   it("says which docs couldn't be taken in, beside what was", () => {
     const t = threadOf(withTurn(emptyChat(), turn("t", "", { kind: "take", state: "done", sources: ["a"], pages: [], quotes: 0, docs: [{ source: "a", title: "A", points: {} }], left: [{ title: "b.png", why: "It's over 16 MB." }] })));
     expect(t[0].parts.at(-1)).toEqual({ type: "text", text: "I couldn't take “b.png”: It's over 16 MB." });
+  });
+});
+
+describe("the questions before a card's draft, in the chat", () => {
+  const base = { kind: "draft" as const, card: "c1", title: "Late orders", step: "draft-solutions" as const, source: null, role: null, levers: [] };
+  const draft = (o: Partial<DraftJob> = {}): ChatTurn => ({ id: "d", at: 1, said: "Draft solutions for “Late orders”", job: { ...base, phase: "asking", asking: emptyAsking([openQuestion("opportunity")]), ...o } });
+  const names = (t: ChatTurn) => threadOf(withTurn(emptyChat(), t)).at(-1)!.parts.map((p) => (p.type === "data" ? p.name : p.text));
+
+  it("asks in the box, then shows what it settled, then the draft; the box holds its round while it asks", () => {
+    expect(names(draft())).toEqual(["Before I draft solutions for “Late orders”: what I can find myself, then what only you can tell me.", "Answer what you can, or take my picks."]);
+    expect(asking(withTurn(emptyChat(), draft()), () => null)).toMatchObject({ drafting: true });
+    const ended = { ...emptyAsking([openQuestion("opportunity")]), end: { by: "done" as const, at: 2 } };
+    expect(names(draft({ phase: "settled", asking: ended })).at(-1)).toBe("draftSettled");
+    expect(names(draft({ phase: "done", asking: ended })).at(-1)).toBe("Drafted: what I proposed went on the canvas, to accept or discard.");
+    expect(names(draft({ phase: "done", asking: ended, none: true })).at(-1)).toBe("Nothing new came of the draft this time.");
+    expect(names(draft({ phase: "failed", error: "No engine" })).slice(-2)).toEqual(["I couldn't finish: No engine", "draftRetry"]);
+  });
+
+  it("shows the picked card's questions first when two drafts wait on them, else the newest", () => {
+    const other: ChatTurn = { ...draft(), id: "d2", job: { ...(draft().job as DraftJob), card: "c2" } };
+    const c = withTurn(withTurn(emptyChat(), draft()), other);
+    expect(asking(c, () => null)?.turn.id).toBe("d2");
+    expect(asking(c, () => null, "d")?.turn.id).toBe("d");
+    // One that isn't asking any more isn't brought forward.
+    expect(asking(withJob(c, "d", (j) => ({ ...(j as DraftJob), phase: "drafting" })), () => null, "d")?.turn.id).toBe("d2");
+  });
+
+  it("offers Draft now only while the draft waits on a look in the background", () => {
+    const bg = { id: "web-draft", kind: "web" as const, query: "", waits: "draft" as const, state: "running" as const, at: 1 };
+    const waiting = { ...emptyAsking(), lookups: [bg], end: { by: "done" as const, at: 2 } };
+    expect(names(draft({ phase: "looking", asking: waiting })).slice(-2)).toEqual(["working", "draftNow"]);
+    // A turn waiting on a lookup it asked for: nothing to draft yet.
+    expect(names(draft({ phase: "looking", asking: { ...waiting, end: undefined } })).at(-1)).toBe("working");
+  });
+
+  it("comes back from a reload stopped where something ran, and as it was where it waited on them", () => {
+    const bg = { id: "web-draft", kind: "web" as const, query: "", waits: "draft" as const, state: "running" as const, at: 1 };
+    const back = chatOf({ v: 1, turns: [draft({ phase: "drafting", asking: { ...emptyAsking(), lookups: [bg] } })] }).turns[0].job as DraftJob;
+    expect(back).toMatchObject({ phase: "failed", error: "It stopped when the page closed." });
+    expect(back.asking.lookups[0].state).toBe("stopped");
+    expect((chatOf({ v: 1, turns: [draft()] }).turns[0].job as DraftJob).phase).toBe("asking");
   });
 });

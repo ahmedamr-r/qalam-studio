@@ -1,4 +1,4 @@
-import { applyTurn, askInstead, awaitsConfirm, closeRound, confirmed, currentRound, endNow, lookupLanded, markRead, nextAfter, offPoint, saveRound, startLookup, takePicks, waitedOn } from "@/asking/engine";
+import { applyTurn, askInstead, awaitsConfirm, closeRound, confirmed, currentRound, endNow, forDraft, lookupLanded, markRead, nextAfter, offPoint, saveRound, startLookup, takePicks, waitedOn } from "@/asking/engine";
 import type { AskTurn, AskingState, FoundLine, Lookup } from "@/asking/types";
 import type { FocusLook } from "@/goals/focus";
 import { orgContext } from "@/org/pack";
@@ -60,6 +60,21 @@ export function stopLookups(key: string) {
   for (const [k, l] of lookups) if (k.startsWith(`${key}:`)) l.ctrl.abort();
 }
 
+/** Until these lookups land. One the state says runs that nothing here runs stopped (a reload), so nothing waits on it. */
+async function waitFor(h: AskingHost, ls: readonly Lookup[], signal: AbortSignal) {
+  const waits = ls.map((l) => lookups.get(`${h.key}:${l.id}`)?.promise);
+  const lost = ls.filter((_, i) => !waits[i]);
+  if (lost.length) h.set((x) => lost.reduce((y, l) => lookupLanded(y, l.id, { stopped: true }), x));
+  await Promise.race([Promise.all(waits.filter(Boolean)), until(signal)]);
+  if (signal.aborted) throw new DOMException("Stopped", "AbortError");
+}
+
+/** Generate now, without waiting for the looks in the background: they stop, and it goes with what it has. */
+export function generateNow(h: AskingHost) {
+  const s = h.get();
+  if (s) for (const l of forDraft(s)) stopLookup(h.key, l.id);
+}
+
 /** On from wherever it is: turns and lookups until a round shows, a lookup is put to them, What we settled waits, or it has generated. */
 export async function goOn(h: AskingHost, signal: AbortSignal): Promise<Paused> {
   for (;;) {
@@ -70,17 +85,18 @@ export async function goOn(h: AskingHost, signal: AbortSignal): Promise<Paused> 
     if (next === "ask" || next === "offer") return next;
     if (next === "end") {
       if (awaitsConfirm(s)) return "settled";
+      // A look in the background the generation waits on: it reads what came back, unless they say go now.
+      if (forDraft(s).length) {
+        h.status?.("looking");
+        await waitFor(h, forDraft(s), signal);
+        continue;
+      }
       await h.generate(s, signal);
       return "generated";
     }
     if (next === "wait") {
       h.status?.("looking");
-      const waits = waitedOn(s).map((l) => lookups.get(`${h.key}:${l.id}`)?.promise);
-      // A lookup the state says runs, that nothing here runs: it stopped (a reload), so nothing waits on it.
-      const lost = waitedOn(s).filter((_, i) => !waits[i]);
-      if (lost.length) h.set((x) => lost.reduce((y, l) => lookupLanded(y, l.id, { stopped: true }), x));
-      await Promise.race([Promise.all(waits.filter(Boolean)), until(signal)]);
-      if (signal.aborted) throw new DOMException("Stopped", "AbortError");
+      await waitFor(h, waitedOn(s), signal);
       continue;
     }
     h.status?.("thinking");

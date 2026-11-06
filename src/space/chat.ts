@@ -18,7 +18,7 @@ import type { Proposal } from "@/discovery/proposals";
 import type { PlanLook, PlanRound } from "./plan";
 import type { ChatMode } from "./route";
 import type { AskingState } from "@/asking/types";
-import { awaitsConfirm, currentRound, loaded } from "@/asking/engine";
+import { awaitsConfirm, currentRound, forDraft, loaded } from "@/asking/engine";
 
 /*
  * Qalam AI's chat on the left of a space's canvas (src/ui/space/chat/), as it's kept: one file per
@@ -89,6 +89,7 @@ export type ChatJob =
   /** A brief for a card on the canvas: what it lacks asked in the box, then written, then a tile under the card. */
   | { kind: "brief"; card: string; title: string; brief: BriefState; /** What's written: none, a brief to build. */ shape?: BriefShape }
   | PlanJob
+  | DraftJob
   | { kind: "find"; what: FindWhat; error?: string; /** Qalam AI's opening questions, from what's known about the company and its domain (none: code's own). */ questions?: PlanQuestion[]; /** Those being worked out. */ loading?: true; goal?: FocusGoal; look?: FocusLook }
   | GoalForJob
   | WhoseJob;
@@ -128,6 +129,30 @@ export interface PlanJob {
   start?: string;
   /** Skipped the questions: it goes by what it has. */
   skipped?: true;
+  error?: string;
+}
+
+/**
+ * Questions before a card's draft (src/asking/, server/org/ask-card.ts): the interview in the chat,
+ * as many rounds as it needs, then the card's own draft (Draft solutions, Draft its problems, Break it
+ * down, its tests). `thinking` a turn, `looking` while a turn waits on a lookup, `asking` a round in the
+ * box, `settled` showing what was settled, `drafting`, then `done`. Its answers are kept as a source of
+ * their own words (`source`), which the card rests on once it's drafted.
+ */
+export interface DraftJob {
+  kind: "draft";
+  card: string;
+  title: string;
+  step: "draft-solutions" | "break-down" | "draft-problems" | "draft-tests";
+  phase: "thinking" | "looking" | "asking" | "settled" | "drafting" | "done" | "failed";
+  asking: AskingState;
+  source: string | null;
+  /** What their words in the first answer are to the tree, as Qalam AI read them. */
+  role: string | null;
+  /** Break it down's levers, picked before the questions. */
+  levers: string[];
+  /** The draft ran and opened nothing new on the canvas (it said why). */
+  none?: true;
   error?: string;
 }
 
@@ -263,12 +288,14 @@ function stopped(j: ChatJob): ChatJob {
   if (j.kind === "plan" && (j.step === "looking" || j.step === "thinking" || j.step === "proposing")) return { ...j, ...(j.asking ? { asking: loaded(j.asking) } : {}), step: "failed", error: "It stopped when the page closed." };
   // Lookups running when the page closed: nothing runs them now.
   if (j.kind === "plan" && j.asking) return { ...j, asking: loaded(j.asking) };
+  if (j.kind === "draft" && (j.phase === "thinking" || j.phase === "looking" || j.phase === "drafting")) return { ...j, asking: loaded(j.asking), phase: "failed", error: "It stopped when the page closed." };
+  if (j.kind === "draft") return { ...j, asking: loaded(j.asking) };
   // A number still being worked out when the page went: theirs to type.
   if (j.kind === "goalfor" && j.step === "suggesting") return { ...j, step: "suggested", suggestion: null };
   return j;
 }
 
-const KINDS = new Set(["ask", "choose", "noEngine", "add", "take", "dump", "find", "goalfor", "scan", "brief", "plan", "whose"]);
+const KINDS = new Set(["ask", "choose", "noEngine", "add", "take", "dump", "find", "goalfor", "scan", "brief", "plan", "draft", "whose"]);
 
 /** A chat as read from its file (what it doesn't know is left out). */
 export function chatOf(raw: unknown): CanvasChat {
@@ -355,6 +382,39 @@ function dumpReply(t: ChatTurn, s: DumpSession | null): ChatPart[] {
       return [...out, part("placed", id)];
     case "failed":
       return [...out, text(s.failed?.error === "Stopped." ? "You stopped me before I finished." : `I couldn't finish: ${s.failed?.error ?? "something went wrong"}`), part("retry", id)];
+  }
+}
+
+const DRAFT_WORDS: Record<DraftJob["step"], string> = { "draft-solutions": "draft solutions", "break-down": "break it down", "draft-problems": "draft its problems", "draft-tests": "draft its tests" };
+
+/** Questions before a card's draft in the thread: each round answered, what was found in their project, What we settled, then the draft. */
+function draftReply(t: ChatTurn, j: DraftJob): ChatPart[] {
+  const id = { turn: t.id };
+  const s = j.asking;
+  const out: ChatPart[] = [text(`Before I ${DRAFT_WORDS[j.step]} for “${j.title}”: what I can find myself, then what only you can tell me.`)];
+  const open = !!currentRound(s);
+  s.rounds.forEach((_r, i) => {
+    if (open && i === s.rounds.length - 1) return;
+    out.push(part("askAnswered", { turn: t.id, round: i }));
+  });
+  // What the web looks found, each folded to a row; then what their project and people online had.
+  for (const l of s.lookups) if (l.kind === "web" && l.state === "done" && l.look) out.push(part("planLook", { turn: t.id, lookup: l.id }));
+  if (s.lookups.some((l) => l.kind !== "web" && l.state === "done" && l.lines?.length)) out.push(part("askFound", id));
+  switch (j.phase) {
+    case "thinking":
+    case "drafting":
+      return [...out, part("working", id)];
+    case "looking":
+      // Asked all it needed, and the draft waits on a look in the background: they can draft now.
+      return s.end && forDraft(s).length ? [...out, part("working", id), part("draftNow", id)] : [...out, part("working", id)];
+    case "asking":
+      return [...out, text(s.offer ? "I'd look this up next, before asking you more. Should I?" : "Answer what you can, or take my picks.")];
+    case "settled":
+      return awaitsConfirm(s) ? [...out, part("draftSettled", id)] : [...out, part("working", id)];
+    case "done":
+      return [...out, text(j.none ? "Nothing new came of the draft this time." : "Drafted: what I proposed went on the canvas, to accept or discard.")];
+    case "failed":
+      return [...out, text(`I couldn't finish: ${j.error ?? "something went wrong"}`), part("draftRetry", id)];
   }
 }
 
@@ -465,6 +525,8 @@ function replyTo(t: ChatTurn, dumpOf: DumpOf): ChatPart[] {
       return [part("brief", id)];
     case "plan":
       return planReply(t, j);
+    case "draft":
+      return draftReply(t, j);
     case "goalfor":
       switch (j.step) {
         case "looking":
@@ -496,7 +558,10 @@ export function threadOf(c: CanvasChat, dumpOf: DumpOf = () => null): ChatMessag
 }
 
 /** Whose questions the box asks now: the newest "Help me find one" or brain dump waiting on its answers. */
-export function asking(c: CanvasChat, dumpOf: DumpOf): ({ turn: ChatTurn } & ({ source: string } | { find: FindWhat } | { number: true } | { plan: true } | { steer: true } | { brief: true } | { planning: true })) | null {
+export function asking(c: CanvasChat, dumpOf: DumpOf, first?: string | null): ({ turn: ChatTurn } & ({ source: string } | { find: FindWhat } | { number: true } | { plan: true } | { steer: true } | { brief: true } | { planning: true } | { drafting: true })) | null {
+  // The picked card's draft, while its questions wait on them, comes before any other round.
+  const mine = first ? c.turns.find((t) => t.id === first) : undefined;
+  if (mine?.job.kind === "draft" && mine.job.phase === "asking") return { turn: mine, drafting: true };
   for (const t of [...c.turns].reverse()) {
     if (t.job.kind === "scan" && t.job.ask?.step === "asking" && !t.job.error) return { turn: t, steer: true };
     if (t.job.kind === "scan" && t.job.plan?.step === "asking") return { turn: t, plan: true };
@@ -504,6 +569,7 @@ export function asking(c: CanvasChat, dumpOf: DumpOf): ({ turn: ChatTurn } & ({ 
     if (t.job.kind === "brief" && t.job.brief.step === "asking") return { turn: t, brief: true };
     if (t.job.kind === "goalfor" && t.job.step === "asking") return { turn: t, number: true };
     if (t.job.kind === "plan" && t.job.step === "asking") return { turn: t, planning: true };
+    if (t.job.kind === "draft" && t.job.phase === "asking") return { turn: t, drafting: true };
     if (t.job.kind === "find") return { turn: t, find: t.job.what };
     if (t.job.kind !== "dump" || t.job.error) continue;
     if (dumpOf(t.job.source)?.phase === "asking") return { turn: t, source: t.job.source };
@@ -513,7 +579,7 @@ export function asking(c: CanvasChat, dumpOf: DumpOf): ({ turn: ChatTurn } & ({ 
 
 // A goal's opening look runs here (the box offers Stop); the questions it works out are asked after.
 const scanBusy = (j: ScanJob) => (!j.error && !j.where && (!j.session || j.session.state === "reading")) || (!!j.plan && (j.plan.step === "questioning" || j.plan.step === "reading" || j.plan.step === "picking" || j.plan.brief?.step === "writing"));
-const busy = (j: ChatJob) => (j.kind === "scan" && scanBusy(j)) || (j.kind === "brief" && j.brief.step === "writing") || (j.kind === "ask" && j.state === "asking") || (j.kind === "take" && j.state === "taking") || (j.kind === "find" && !!j.goal && !!j.loading) || (j.kind === "goalfor" && (j.step === "looking" || j.step === "suggesting")) || (j.kind === "plan" && (j.step === "looking" || j.step === "thinking" || j.step === "proposing"));
+const busy = (j: ChatJob) => (j.kind === "scan" && scanBusy(j)) || (j.kind === "brief" && j.brief.step === "writing") || (j.kind === "ask" && j.state === "asking") || (j.kind === "take" && j.state === "taking") || (j.kind === "find" && !!j.goal && !!j.loading) || (j.kind === "goalfor" && (j.step === "looking" || j.step === "suggesting")) || (j.kind === "plan" && (j.step === "looking" || j.step === "thinking" || j.step === "proposing")) || (j.kind === "draft" && (j.phase === "thinking" || j.phase === "looking" || j.phase === "drafting"));
 
 /** What in the chat is still running (the composer offers Stop). */
 export const running = (c: CanvasChat): ChatTurn | null => [...c.turns].reverse().find((t) => busy(t.job)) ?? null;

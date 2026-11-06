@@ -6,7 +6,6 @@ import {
   DUMP_PLACE_SYSTEM,
   DiscoveryBody,
   FOLLOWUPS_SCHEMA,
-  cardQuestionsCall,
   FOLLOWUPS_SYSTEM,
   draftContent,
   draftSchema,
@@ -56,8 +55,6 @@ export async function POST(req: Request) {
       return streamStructured(synthesizeCall(b));
     case "dump-read":
       return streamStructured(dumpReadCall(b));
-    case "card-questions":
-      return streamStructured(cardQuestionsCall(b));
     case "dump-followup":
       return streamStructured({ kind: "dump-followup", system: DUMP_FOLLOWUP_SYSTEM, schema: dumpFollowupSchema(b.tree.map((c) => c.id), b.fragments.map((f) => f.id), !!b.look), effort: "medium", maxTokens: 8000, content: [{ type: "text", text: dumpFollowupContent(b) }] });
     case "dump-place":

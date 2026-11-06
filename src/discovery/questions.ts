@@ -1,24 +1,21 @@
 import type { PlanQuestion } from "@/ai/plan";
-import { withoutIds } from "@/goals/said";
-import { sanitizeAsked, toQuestion, type PlanBucket } from "@/ui/ai/plan";
-import { answerWords, initialFlow, resolvedAnswers, type Answer, type Question } from "@/ui/ai/questionFlow";
-import { DUMP_ROLES, type DumpRole } from "./dump";
+import { toQuestion, type PlanBucket } from "@/ui/ai/plan";
+import { answerWords, resolvedAnswers } from "@/ui/ai/questionFlow";
+import type { DumpRole } from "./dump";
 import type { SourceQuote, SourceRecord } from "./sources";
 import type { OstKind } from "./types";
 
 /*
- * Questions first (pure): when nothing backs a card, its draft starts by asking. The person goes
- * first, in their own words (code's open question); what they wrote is searched; then Qalam AI asks
- * a few follow-ups with choices. The answers are kept as a source of the person's own words, one
- * quote per answer (what they typed, else the choices they picked, never Qalam AI's descriptions),
- * which the card rests on and the draft cites (src/ui/discovery/ask.ts).
+ * Questions first (pure): every draft of a card asks before it drafts, in the canvas's chat
+ * (src/asking/, src/ui/space/chat/store.ts askBeforeDraft), for as many rounds as it needs, or none.
+ * When nothing backs the card, the person goes first, in their own words (code's open question), and
+ * what they wrote is searched. The answers are kept as a source of the person's own words, one quote
+ * per answer (what they typed, else the choices they picked, never Qalam AI's descriptions or its
+ * picks), which the card rests on and the draft cites.
  */
 
 /** The draft the questions are asked for. */
-export type AskFor = "draft-solutions" | "break-down" | "draft-problems";
-
-/** Qalam AI's follow-ups, at most. */
-export const FOLLOW_UPS = 3;
+export type AskFor = "draft-solutions" | "break-down" | "draft-problems" | "draft-tests";
 
 export const OPEN_ID = "know";
 
@@ -28,41 +25,14 @@ export function openQuestion(kind: OstKind): PlanQuestion {
   return { id: OPEN_ID, title: "What do you know about it?", why, multi: false, options: [], recommended: [], allowOther: false, tool: { kind: "docs" } };
 }
 
-/** The first round: code's open question, not answered yet. */
-export function openRound(kind: OstKind): PlanBucket {
-  const q = openQuestion(kind);
-  return { questions: [q], form: initialFlow([toQuestion(q)], false) };
-}
-
-/** A round of Qalam AI's follow-ups, not answered yet. */
-export const followRound = (questions: PlanQuestion[]): PlanBucket => ({ questions, form: initialFlow(questions.map(toQuestion), false) });
-
-const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
-/** The call's ids out of its words: people never see them. */
-const clean = (s: string) => withoutIds(s, () => undefined, "qk");
-
-/** Qalam AI's follow-ups, checked: at most a few, none repeating the open question, its ids out of the words; and what it read the open answer as. */
-export function sanitizeCardQuestions(raw: unknown): { questions: PlanQuestion[]; role: DumpRole | null } {
-  const r = rec(raw);
-  const questions = sanitizeAsked(r.questions)
-    .filter((q) => q.id !== OPEN_ID)
-    .map((q) => ({ ...q, title: clean(q.title), why: clean(q.why), options: q.options.map((o) => ({ ...o, label: clean(o.label), description: clean(o.description) })) }))
-    .filter((q) => q.title && q.options.every((o) => o.label))
-    .slice(0, FOLLOW_UPS);
-  return { questions, role: DUMP_ROLES.find((x) => x === r.role) ?? null };
-}
-
-/** The person's own answer to one question: what they typed, else the choices they picked (never Qalam AI's descriptions of them). */
-export const theirWords = (q: Question, a: Answer | undefined): string => answerWords(q, a).text;
-
-/** Every answer given so far, round by round: the question and the person's words (skipped ones left out). */
+/** Every answer given so far, round by round: the question and the person's words (skipped ones, and Qalam AI's picks they agreed to, left out: never their words). */
 export function answered(rounds: PlanBucket[]): { questionId: string; question: string; words: string }[] {
   return rounds.flatMap((b) => {
     const qs = b.questions.map(toQuestion);
     const answers = resolvedAnswers(qs, b.form.answers);
     return qs.flatMap((q) => {
-      const words = b.form.answers[q.id] ? theirWords(q, answers[q.id]) : "";
-      return words ? [{ questionId: q.id, question: q.title, words: words.slice(0, 1200) }] : [];
+      const w = b.form.answers[q.id] ? answerWords(q, answers[q.id]) : null;
+      return w && w.how === "own" && w.text ? [{ questionId: q.id, question: q.title, words: w.text.slice(0, 1200) }] : [];
     });
   });
 }

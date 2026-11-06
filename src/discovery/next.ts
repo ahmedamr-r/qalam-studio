@@ -10,7 +10,7 @@ import { lab } from "@/lab";
  * a step is picked (src/ui/discovery/next.ts). What v0.1 hides (src/lab.ts) isn't offered.
  */
 
-export type StepId = "draft-solutions" | "draft-tests" | "design-this" | "page" | "pass-line" | "next-job" | "find-problems" | "break-down" | "review-parts" | "others" | "find-backing" | "watch" | "connect" | "add-file" | "questions" | "draft-problems" | "review-problems" | "focus" | "find-goal" | "write-brief" | "open-brief" | "word-message" | "run-steps" | "plan-modules";
+export type StepId = "draft-solutions" | "draft-tests" | "design-this" | "page" | "pass-line" | "next-job" | "find-problems" | "break-down" | "review-parts" | "others" | "find-backing" | "watch" | "connect" | "add-file" | "draft-problems" | "review-problems" | "focus" | "find-goal" | "write-brief" | "open-brief" | "word-message" | "run-steps" | "plan-modules";
 
 export interface NextStep {
   id: StepId;
@@ -77,8 +77,8 @@ export function thin(f: CardFacts): boolean {
   return false;
 }
 
-/** A few questions first, on any card a draft is for: in More where it doesn't ask on its own. */
-const QUESTIONS: NextStep = { id: "questions", label: "Answer a few questions first", hint: "Then draft with your answers", ai: true };
+/** A draft's hint while nothing backs the card: it asks first, in the chat, or picks up where they left it. */
+const asksHint = (f: CardFacts) => (f.asking ? "Picks up your answers where you left them" : "Asks you first, in the chat");
 
 /** Ways to ground a card: the organization's words, a tool watched for it, a file read for it. */
 function grounding(f: CardFacts): { find: NextStep | null; watch: NextStep | null; file: NextStep } {
@@ -107,15 +107,15 @@ export function nextSteps(f: CardFacts): NextStep[] {
   switch (f.kind) {
     case "opportunity": {
       const bare = thin(f);
-      // With nothing behind it, asking comes first, and looks online: a draft doesn't need evidence, so it asks instead of coming back with little.
+      // Every draft asks first, in the chat, as long as it needs. With nothing behind it, it starts with what they know, and looks on the web: a draft doesn't need evidence, so it asks instead of coming back with little.
       const asks = bare || !!f.asking;
-      const draft: NextStep = { id: "draft-solutions", label: "Draft solutions", hint: asks && f.asking ? "Picks up your answers where you left them" : asks ? "Asks a few questions first" : f.under.solutions ? "More ways to solve it, each with a test" : "Ways to solve it, each with a test", ai: true, ...(asks ? { asks } : {}) };
+      const draft: NextStep = { id: "draft-solutions", label: "Draft solutions", hint: asks ? asksHint(f) : f.under.solutions ? "More ways to solve it, each with a test" : "Ways to solve it, each with a test", ai: true, ...(asks ? { asks } : {}) };
       const page: NextStep | null = f.page ? { id: "page", label: "Its page", hint: "Everything known about it" } : null;
       // No goal above it: which one solving it would move, its own or one found, and that goal's number.
       const goal: NextStep | null = f.underGoal ? null : { id: "find-goal", label: "Find the goal it could move", hint: "Your goals first, then the web, then its number", ai: true };
       // Nothing behind it yet: what the organization has first, when it has something.
       if ((asks || bare) && ground.find) push(ground.find, draft, brief, goal, ground.watch, ground.file, page);
-      else push(draft, brief, goal, ground.find, ground.watch, ground.file, page, asks ? null : QUESTIONS);
+      else push(draft, brief, goal, ground.find, ground.watch, ground.file, page);
       break;
     }
     case "solution":
@@ -142,10 +142,9 @@ export function nextSteps(f: CardFacts): NextStep[] {
       const extras = lab("goals");
       // What was proposed for it before waits to be decided before it's asked for again.
       const asks = thin(f) || !!f.asking;
-      const asking = !asks ? null : f.asking ? "Picks up your answers where you left them" : "Asks a few questions first";
-      // Break it down must add up to the goal's number, so it stays strict, and asking first before it stays behind its switch.
-      const partsAsk = asks && lab("questions");
-      const parts: NextStep | null = !extras ? null : g.pending ? { id: "review-parts", label: `Review the ${plural(g.pending, "goal")} proposed under it`, hint: "From breaking it down" } : { id: "break-down", label: "Break it down", hint: (partsAsk ? asking : null) ?? "Goals under it that make its number", ai: true, ...(partsAsk ? { asks: true } : {}) };
+      const asking = asks ? asksHint(f) : null;
+      // Break it down must add up to the goal's number, so its parts stay strict; it asks first like every draft.
+      const parts: NextStep | null = !extras ? null : g.pending ? { id: "review-parts", label: `Review the ${plural(g.pending, "goal")} proposed under it`, hint: "From breaking it down" } : { id: "break-down", label: "Break it down", hint: asking ?? "Goals under it that make its number", ai: true, ...(asks ? { asks } : {}) };
       const drafted: NextStep | null = !extras ? null : g.drafted ? { id: "review-problems", label: `Review the ${plural(g.drafted, "problem")} drafted for it`, hint: "From drafting its problems" } : { id: "draft-problems", label: "Draft its problems", hint: asking ?? (g.behind ? "More problems that would move it" : "Problems that would move it, from your material"), ai: true, ...(asks ? { asks } : {}) };
       // The problem to focus on, found with them in the chat: it asks, looks on the web, then proposes problems under it.
       const focus: NextStep = { id: "focus", label: "Find the problem to focus on", hint: "Qalam AI asks you and looks on the web", ai: true };

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { answersOf, applyTurn, askInstead, awaitsConfirm, closeRound, currentRound, emptyAsking, endNow, fromPlanRounds, lookupLanded, markRead, nextAfter, offPoint, settledOf, startLookup, takePicks } from "./engine";
+import { answersOf, applyTurn, askInstead, awaitsConfirm, closeRound, currentRound, emptyAsking, endNow, forDraft, foundOf, fromPlanRounds, lookupLanded, markRead, nextAfter, offPoint, settledOf, startLookup, takePicks } from "./engine";
+import { askingIn } from "./wire";
 import type { AskQuestion, AskTurn, AskingState } from "./types";
 
 let n = 0;
@@ -103,5 +104,25 @@ describe("the end, and after it", () => {
     ]);
     expect(s.lookups[0]).toMatchObject({ kind: "web", state: "done" });
     expect(nextAfter(s)).toBe("turn");
+  });
+});
+
+describe("looks in the background before a draft", () => {
+  const bg = (s: AskingState, id: string, kind: "web" | "online") => startLookup(s, { id, kind, query: "the slots fill by noon", waits: "draft" }, 1);
+
+  it("never hold a turn or a round, and only the draft waits on them", () => {
+    const s = bg(emptyAsking(), "bg-web", "web");
+    expect(nextAfter(s)).toBe("turn");
+    expect(forDraft(s).map((l) => l.id)).toEqual(["bg-web"]);
+    // A turn with nothing more to ask ends the interview, the look still running for the draft.
+    const ended = applyTurn(s, turn({ done: true }), o);
+    expect(ended.end?.by).toBe("done");
+    expect(forDraft(lookupLanded(ended, "bg-web", { lines: [] }))).toEqual([]);
+  });
+
+  it("give the draft what people online said, as pieces it may rest on, and never reach the model's turns", () => {
+    const online = lookupLanded(bg(emptyAsking(), "bg-online", "online"), "bg-online", { lines: [{ ref: "bg-online-1", text: "The slots fill by noon", from: "App Store", whose: "people online", piece: "hub:quote:x1" }] });
+    expect(foundOf(online).map((l) => l.piece)).toEqual(["hub:quote:x1"]);
+    expect(askingIn(online, { said: "" }).lookups).toEqual([]);
   });
 });

@@ -40,7 +40,7 @@ import { useWords } from "../../frame/store";
 import { show } from "../links";
 import { FoundGoalRow } from "../../chat/FoundGoalRow";
 import { moreLine } from "@/onboarding/start";
-import { answerWhose, goalForTopProblem, anotherFile, briefAgain, briefStart, changeDocBasis, chooseDraft, decideDocGoal, dropTurn, leaveFile, leaveFit, lookPastFits, openProblems, pickAudience, placeFirstBuild, placeStatement, planAgain, planFirst, planOf, planStart, retake, retryGoalFor, scanAgain, scanHere, scanInNewProject, scanIsMine, scanOtherWay, setPlanGoal, settleNumber, steerOff, stopTurn, takeAsBasis, takeFit, takeGoalNumber, takeIdea, turnOf, useCanvasChat, retryCanvasPlan, runAs, showCanvasPlan, stopAskingPlan, confirmCanvasPlan, offCanvasPlan, decidePlanTerm } from "./store";
+import { answerWhose, goalForTopProblem, anotherFile, briefAgain, briefStart, changeDocBasis, chooseDraft, decideDocGoal, dropTurn, leaveFile, leaveFit, lookPastFits, openProblems, pickAudience, placeFirstBuild, placeStatement, planAgain, planFirst, planOf, planStart, retake, retryGoalFor, scanAgain, scanHere, scanInNewProject, scanIsMine, scanOtherWay, setPlanGoal, settleNumber, steerOff, stopTurn, takeAsBasis, takeFit, takeGoalNumber, takeIdea, turnOf, useCanvasChat, retryCanvasPlan, runAs, showCanvasPlan, stopAskingPlan, confirmCanvasPlan, offCanvasPlan, decidePlanTerm, confirmDraft, decideDraftTerm, draftGo, draftNow, offDraft, retryDraft } from "./store";
 import { AnsweredRound, FoundInProject, SettledCard } from "../../asking/AskRound";
 import { titleFrom } from "@/space/route";
 import { otherReading, projectName } from "@/scan/input";
@@ -589,12 +589,41 @@ function PlanSkipPart({ data }: { data: PartData }) {
   );
 }
 
-/** The plan's interview, from its turn (src/asking/). */
+/** A turn's interview (src/asking/): a plan's, or the questions before a card's draft. */
 const usePlanAsking = (turn: unknown) =>
   useCanvasChat((s) => {
     const j = s.chat.turns.find((t) => t.id === turn)?.job;
-    return j?.kind === "plan" ? (j.asking ?? null) : null;
+    return j?.kind === "plan" ? (j.asking ?? null) : j?.kind === "draft" ? j.asking : null;
   });
+
+/** What the questions before a card's draft settled: draft it, or Something's off. */
+function DraftSettledPart({ data }: { data: PartData }) {
+  const id = String(data.turn);
+  const j = useTurn(id)?.job;
+  if (j?.kind !== "draft") return null;
+  return <SettledCard state={j.asking} go={draftGo(j.step)} onGo={() => confirmDraft(id)} onOff={() => offDraft(id)} onTerm={(t, keep) => void decideDraftTerm(id, t, keep)} />;
+}
+
+function DraftRetryPart({ data }: { data: PartData }) {
+  return (
+    <ReplyChips>
+      <button type="button" className={r.replyChipPrimary} onClick={() => retryDraft(String(data.turn))}>
+        Try again
+      </button>
+    </ReplyChips>
+  );
+}
+
+/** The draft waits on what's being read on the web in the background: draft now, with what it has. */
+function DraftNowPart({ data }: { data: PartData }) {
+  return (
+    <ReplyChips>
+      <button type="button" className={r.replyChip} onClick={() => draftNow(String(data.turn))}>
+        Draft now
+      </button>
+    </ReplyChips>
+  );
+}
 
 /** A round of the interview answered, folded: Qalam AI's picks marked as its own. */
 function AskAnsweredPart({ data }: { data: PartData }) {
@@ -701,10 +730,12 @@ function JustAnswerPart({ data }: { data: PartData }) {
 function LookedPart({ data }: { data: PartData }) {
   const t = useTurn(data.turn);
   const d = useDumpOf(data.turn);
-  const look = t?.job.kind === "find" ? t.job.look : t?.job.kind === "plan" ? t.job.looks[Number(data.look)] : data.look !== undefined ? d?.s.looks?.[Number(data.look)] : undefined;
+  // A draft's: a lookup of its interview, by id.
+  const lookup = t?.job.kind === "draft" ? t.job.asking.lookups.find((l) => l.id === data.lookup) : undefined;
+  const look = lookup ? lookup.look : t?.job.kind === "find" ? t.job.look : t?.job.kind === "plan" ? t.job.looks[Number(data.look)] : data.look !== undefined ? d?.s.looks?.[Number(data.look)] : undefined;
   if (!look) return null;
   if (look.noWeb) return <p className="text-body leading-[20px] text-fg">I can&apos;t look on the web here, so I&apos;ll go by what you tell me.</p>;
-  const what = look.query ? `Looked up “${look.query}”` : t?.job.kind === "plan" ? "Looked on the web for what people do about this" : "Looked on the web for what gets in the way of goals like this";
+  const what = look.query ? `Looked up “${look.query}”` : t?.job.kind === "plan" || t?.job.kind === "draft" ? "Looked on the web for what people do about this" : "Looked on the web for what gets in the way of goals like this";
   if (!look.lines.length) return <p className="text-body leading-[20px] text-fg">{what}, but nothing on the pages I read held up.</p>;
   const urls = look.lines.flatMap((l) => (l.url ? [l.url] : []));
   const n = look.lines.length;
@@ -1810,6 +1841,9 @@ export const PARTS: Record<string, PartComponent> = {
   askAnswered: AskAnsweredPart,
   askFound: AskFoundPart,
   askSettled: AskSettledPart,
+  draftSettled: DraftSettledPart,
+  draftRetry: DraftRetryPart,
+  draftNow: DraftNowPart,
   planProposed: PlanProposedPart,
   planPlaced: PlanPlacedPart,
   planRetry: PlanRetryPart,

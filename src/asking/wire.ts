@@ -3,7 +3,7 @@ import type { Terms } from "@/terms/types";
 import { clashes } from "@/terms/fold";
 import { answersOf, theirWords } from "./engine";
 import type { TurnCheck } from "./sanitize";
-import type { AskingState, LookupKind } from "./types";
+import type { AskingState, Lookup, LookupKind } from "./types";
 
 /*
  * The interview as a route receives it and the model reads it (pure). Every round goes, however many
@@ -50,7 +50,7 @@ export function askingIn(s: AskingState, o: { said: string; terms?: Terms }): As
   const out: AskingInT = {
     rounds,
     lookups: s.lookups
-      .filter((l) => l.waits !== "draft")
+      .filter((l): l is Lookup & { kind: "project" | "web" } => l.waits !== "draft" && l.kind !== "online")
       .map((l) => ({ id: l.id, kind: l.kind, query: clip(one(l.query), 300), state: l.state, lines: (l.lines ?? []).slice(0, 8).map((x) => ({ ref: x.ref, text: clip(one(x.text), 600), from: clip(one(x.from), 200), ...(x.whose ? { whose: x.whose } : {}) })) })),
     held: s.held.map((q) => ({ id: q.id, title: clip(one(q.title), 300), after: q.after ?? [] })),
     understood: s.understood.map((p) => clip(p.text, 300)),
@@ -68,7 +68,7 @@ export function askingIn(s: AskingState, o: { said: string; terms?: Terms }): As
   return out;
 }
 
-const KIND_WORD: Record<LookupKind, string> = { project: "their project", web: "the web" };
+const KIND_WORD: Record<LookupKind, string> = { project: "their project", web: "the web", online: "people online" };
 
 const answerLine = (a: AskingInT["rounds"][number]["asked"][number]) =>
   `- ${a.id} · ${a.title} → ${a.how === "own" ? `“${a.answer}”` : a.how === "pick" ? `your recommendation, which they agreed to with one press: “${a.answer}” (agreement, not their words)` : "left unanswered: they don't know or won't say; don't assume an answer, and don't ask it again"}`;

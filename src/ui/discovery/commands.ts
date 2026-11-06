@@ -1,7 +1,8 @@
 import { refreshFeed, useFeeds } from "./feeds";
 import { useNextSteps } from "./next";
-import { draftSolutionsFor } from "./solutions";
-import { draftTestsFor } from "./tests";
+import { askFor } from "./ask";
+import { thin } from "@/discovery/next";
+import type { AskFor } from "@/discovery/questions";
 import { feedback } from "@/commands/feedback";
 import { getCommand, kb, registerCommands, setCommandGuard, type Command } from "@/commands/registry";
 import { studio } from "@/doc/store";
@@ -40,6 +41,12 @@ const lastCard = () => cards()[cards().length - 1] ?? null;
 const needCard = () => (cards().length ? true : "Select a card");
 const needOneCard = () => (oneCard() ? true : "Select one card");
 const ofKind = (k: OstKind) => () => (oneCard() && cardOf(s().doc, oneCard())?.kind === k ? true : `Select ${KIND_NOUN[k]}`);
+/** A draft for the one card, asked about first in the canvas's chat as its next steps would (starting with what they know when nothing backs it). */
+function draftAsking(step: AskFor) {
+  const id = oneCard();
+  const f = useNextSteps.getState().facts;
+  if (id) askFor(id, step, { thin: f?.card === id && thin(f.facts) });
+}
 
 const PRIORITY = 1;
 const PLURAL: Record<OstKind, string> = { outcome: "goals", opportunity: "problems", solution: "solutions", test: "tests" };
@@ -361,10 +368,7 @@ export function registerDiscoveryCommands() {
       category: "discovery",
       keywords: ["solutions", "ideas", "ideate", "assumptions", "test", "problem", "opportunity", "qalam ai"],
       enabled: ofKind("opportunity"),
-      run: () => {
-        const id = oneCard();
-        if (id) void draftSolutionsFor(id);
-      },
+      run: () => draftAsking("draft-solutions"),
     },
     {
       id: "discovery.draft-tests",
@@ -373,10 +377,7 @@ export function registerDiscoveryCommands() {
       keywords: ["assumptions", "riskiest", "test", "experiment", "validate", "qalam ai"],
       hidden: !lab("tests"),
       enabled: ofKind("solution"),
-      run: () => {
-        const id = oneCard();
-        if (id) void draftTestsFor(id);
-      },
+      run: () => draftAsking("draft-tests"),
     },
     {
       id: "discovery.write-brief",
