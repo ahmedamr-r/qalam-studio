@@ -25,7 +25,7 @@ export async function openFolderAsOrg() {
     if (o) openOrg(o);
   } catch (e) {
     if (e instanceof OrgRequestError && e.status === 400 && /path/i.test(e.message)) {
-      const path = await promptDialog({ title: "Open a folder", body: "Qalam keeps the organization's files in it, next to whatever is there.", label: "The folder's path", placeholder: "~/Projects/basket", confirmLabel: "Open" });
+      const path = await promptDialog({ title: "Open a folder", body: "Qalam keeps the project's files in it, next to whatever is there.", label: "The folder's path", placeholder: "~/Projects/basket", confirmLabel: "Open" });
       if (path) {
         try {
           openOrg((await openOrgFolder(path))!);
@@ -51,31 +51,31 @@ export function OrgSwitcher({ org, onRenamed }: { org: OrgRef; onRenamed: (o: Or
   const create = () => window.location.assign(welcomeHref("new"));
 
   const rename = async () => {
-    const name = await promptDialog({ title: "Rename organization", defaultValue: org.name, confirmLabel: "Rename", validate: (v) => (v.trim() ? null : "Name can't be empty") });
+    const name = await promptDialog({ title: "Rename project", defaultValue: org.name, confirmLabel: "Rename", validate: (v) => (v.trim() ? null : "Name can't be empty") });
     if (name && name !== org.name) onRenamed(await renameOrg(name));
   };
 
   return (
     <Menu
-      label="Organizations"
+      label="Projects"
       className="w-[260px]"
       trigger={
-        <button type="button" className={clsx(r.button, r.buttonGhost, "gap-[6px] px-[8px] text-body font-medium")} aria-label={`Organization: ${org.name}`}>
+        <button type="button" className={clsx(r.button, r.buttonGhost, "gap-[6px] px-[8px] text-body font-medium")} aria-label={`Project: ${org.name}`}>
           {org.name}
           <ChevronDown size={12} absoluteStrokeWidth strokeWidth={1.25} className="text-fg-subtle" />
         </button>
       }
     >
-      <MenuLabel>Organizations</MenuLabel>
+      <MenuLabel>Projects</MenuLabel>
       {(orgs.length ? orgs : [org]).map((o) => (
         <MenuItem key={o.id} checked={o.id === org.id} title={o.dir} onSelect={() => o.id !== org.id && openOrg(o)}>
           {o.name}
         </MenuItem>
       ))}
-      <MenuItem onSelect={() => window.location.assign(orgsHref())}>All organizations</MenuItem>
+      <MenuItem onSelect={() => window.location.assign(orgsHref())}>All projects</MenuItem>
       <MenuSeparator />
-      <MenuItem onSelect={create}>New organization…</MenuItem>
-      <MenuItem onSelect={() => void openFolderAsOrg()}>Open a folder as an organization…</MenuItem>
+      <MenuItem onSelect={create}>New project…</MenuItem>
+      <MenuItem onSelect={() => void openFolderAsOrg()}>Open a folder as a project…</MenuItem>
       <MenuSeparator />
       <MenuItem onSelect={() => void rename()}>Rename “{org.name}”…</MenuItem>
       <MenuItem onSelect={() => void editContext({ kind: "org", name: org.name, about })}>About “{org.name}”…</MenuItem>

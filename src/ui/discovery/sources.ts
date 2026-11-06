@@ -107,7 +107,7 @@ export async function adoptSources(ids: string[]) {
 }
 
 async function persist(s: SourceRecord) {
-  await sourcesDb.put(s).catch(() => feedback("Couldn't save the source to your organization's folder", { kind: "error", id: "discovery.sources" }));
+  await sourcesDb.put(s).catch(() => feedback("Couldn't save the source to your project's folder", { kind: "error", id: "discovery.sources" }));
 }
 
 export async function addSourceRecord(s: SourceRecord) {

@@ -372,7 +372,7 @@ function SaveState() {
   const [dir, setDir] = useState("");
   useEffect(() => void currentOrg().then((o) => setDir(o.dir), () => {}), []);
   return (
-    <Tip label={conflict ? "Not saved: it changed elsewhere too (see the choice at the top)" : `Saved to ${dir || "your organization's folder"}`} side="top">
+    <Tip label={conflict ? "Not saved: it changed elsewhere too (see the choice at the top)" : `Saved to ${dir || "your project's folder"}`} side="top">
       <span className="inline-flex items-center gap-[6px]" aria-live="polite">
         <span aria-hidden className={clsx("size-[6px] rounded-full transition-colors duration-fast", conflict ? "bg-warning" : saving ? "bg-fg-faint" : "bg-success")} />
         {conflict ? "Not saved" : saving ? "Saving…" : "Saved"}
@@ -407,7 +407,7 @@ export function ProjectMissing() {
   return (
     <div className="flex w-[300px] flex-col items-center gap-[12px] text-center">
       <p className="text-title font-medium text-fg">Not found</p>
-      <p className="text-body text-fg-muted">It isn't in this organization's folder. It was deleted, or it's still saved in a browser: the home can bring those in.</p>
+      <p className="text-body text-fg-muted">It isn't in this project's folder. It was deleted, or it's still saved in a browser: the home can bring those in.</p>
       <a href={orgHref()} className={clsx(r.button, r.buttonSecondary)}>
         Back home
       </a>

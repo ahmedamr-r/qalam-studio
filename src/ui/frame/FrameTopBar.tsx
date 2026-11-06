@@ -23,11 +23,11 @@ export function FrameTopBar({ crumbs = [], right, space }: { crumbs?: Crumb[]; r
   const org = useCurrentOrg();
   return (
     <header className={clsx(r.shellBar, "min-w-0")} data-region="topbar">
-      <a href={orgsHref()} aria-label="All organizations" className={r.brandCell}>
+      <a href={orgsHref()} aria-label="All projects" className={r.brandCell}>
         <QalamMark size={20} />
       </a>
       <nav aria-label="Location" className="flex min-w-0 items-center gap-[2px] text-body text-fg-subtle">
-        {org ? <OrgSwitcher org={org} onRenamed={setCurrentOrg} /> : <span className="px-[8px] font-medium text-fg">Organization</span>}
+        {org ? <OrgSwitcher org={org} onRenamed={setCurrentOrg} /> : <span className="px-[8px] font-medium text-fg">Project</span>}
         {space !== undefined && <CanvasMenu space={space} />}
         {crumbs.map((c, i) => (
           <Fragment key={i}>

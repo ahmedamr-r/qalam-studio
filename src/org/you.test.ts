@@ -37,7 +37,8 @@ describe("who's on this computer", () => {
 describe("an organization's words", () => {
   it("a solo project's are a person's own; a team's, or one from before shapes, a team's", () => {
     expect(wordsFor("solo")).toMatchObject({ org: "project", whole: "The whole project", onlyUs: "only you say so" });
-    expect(wordsFor("team")).toMatchObject({ org: "organization", whole: "The whole organization", onlyUs: "only the team says so" });
+    // People read "project" for an organization either way (src/org/words.ts); a team's still says the team.
+    expect(wordsFor("team")).toMatchObject({ org: "project", whole: "The whole project", onlyUs: "only the team says so" });
     expect(wordsFor(undefined)).toEqual(wordsFor("team"));
     expect(orgShape("solo")).toBe("solo");
     expect(orgShape("company")).toBeNull();

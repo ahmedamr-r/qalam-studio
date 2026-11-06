@@ -25,14 +25,14 @@ let chosen: string | null = null;
 /** The organization in the address isn't on this computer. */
 export class OrgMissing extends Error {
   constructor(readonly id: string) {
-    super("This organization isn't on this computer");
+    super("This project isn't on this computer");
   }
 }
 
-/** There's no organization on this computer yet: the first run (the window welcomes them). */
+/** There's no project on this computer yet: the first run (the window welcomes them). */
 export class NoOrgYet extends Error {
   constructor() {
-    super("There's no organization on this computer yet");
+    super("There's no project on this computer yet");
   }
 }
 
@@ -119,7 +119,7 @@ const desktop = () => (globalThis as { qalamDesktop?: { chooseFolder(title: stri
 export async function openOrgFolder(path?: string): Promise<OrgRef | null> {
   let dir = path;
   if (!dir && desktop()) {
-    dir = (await desktop()!.chooseFolder("Choose a folder for the organization")) ?? undefined;
+    dir = (await desktop()!.chooseFolder("Choose a folder for the project")) ?? undefined;
     if (!dir) return null;
   }
   const j = (await (await orgsRequest("/api/orgs/open", dir ? { path: dir } : {})).json()) as OrgRef & { cancelled?: boolean };

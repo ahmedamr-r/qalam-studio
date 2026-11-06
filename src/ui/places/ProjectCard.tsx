@@ -52,7 +52,7 @@ export function ProjectCard({ p, products, onChanged }: { p: Project; products: 
   const remove = async () => {
     const ok = await confirmDialog({
       title: `Delete “${p.name}”?`,
-      body: p.type === "discovery" ? "The board and its chats are removed from the organization's folder. Its sources stay in the organization. This can't be undone." : "Its canvas and chats are removed from the organization's folder. This can't be undone.",
+      body: p.type === "discovery" ? "The board and its chats are removed from the project's folder. Its sources stay in the project. This can't be undone." : "Its canvas and chats are removed from the project's folder. This can't be undone.",
       confirmLabel: p.type === "discovery" ? "Delete board" : "Delete project",
       danger: true,
     });
@@ -111,7 +111,7 @@ export function ProjectCard({ p, products, onChanged }: { p: Project; products: 
           {p.type === "discovery" && (
             <SubMenu label="For" checks>
               <MenuItem checked={!p.product} onSelect={() => void moveTo(null)}>
-                The whole organization
+                The whole project
               </MenuItem>
               {products.map((x) => (
                 <MenuItem key={x.id} checked={p.product === x.id} onSelect={() => void moveTo(x.id)}>

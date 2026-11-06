@@ -104,7 +104,7 @@ function AnswerPart({ data }: { data: PartData }) {
   const unbacked = a.claims.filter((c) => !c.backed);
   return (
     <article className="flex flex-col gap-[12px]">
-      {a.answer ? <p className="text-body leading-[20px] text-fg">{a.answer}</p> : backed.length ? <p className="text-body text-fg-muted">Its summary said more than what it found shows, so it&apos;s left out.</p> : <p className="text-body text-fg-muted">Nothing the organization has backs an answer.</p>}
+      {a.answer ? <p className="text-body leading-[20px] text-fg">{a.answer}</p> : backed.length ? <p className="text-body text-fg-muted">Its summary said more than what it found shows, so it&apos;s left out.</p> : <p className="text-body text-fg-muted">Nothing the project has backs an answer.</p>}
       <Strip a={a} secs={t.job.secs ?? 0} />
       {backed.length > 0 && (
         <section className="flex flex-col gap-[8px]">
@@ -159,7 +159,7 @@ function Strip({ a, secs }: { a: AskAnswer; secs: number }) {
       )}
       {n.unbacked > 0 && <span className="text-warning">{n.unbacked} not backed</span>}
       {n.unknowns > 0 && <span className="text-fg-muted">{plural(n.unknowns, "open question")}</span>}
-      <Tip label={`${a.how === "agent" ? "Qalam AI searched the organization's folder" : "Qalam AI read what the organization's search found"}. Every quote was found word for word where it says.`}>
+      <Tip label={`${a.how === "agent" ? "Qalam AI searched the project's folder" : "Qalam AI read what the project's search found"}. Every quote was found word for word where it says.`}>
         <span className="ml-auto inline-flex items-center gap-[4px] text-fg-subtle">
           <Check size={12} absoluteStrokeWidth strokeWidth={1.5} />
           Checked{secs ? ` · ${secs} s` : ""}

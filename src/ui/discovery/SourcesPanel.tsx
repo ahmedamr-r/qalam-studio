@@ -158,7 +158,7 @@ function SourceRow({ source, quoting }: { source: SourceRecord; quoting: boolean
         </span>
         <span className={clsx("truncate text-micro", quoting ? "q-shimmer-text text-fg-muted" : "text-fg-subtle")}>{quoting ? "Qalam AI is picking out quotes…" : metaOf(source)}</span>
       </span>
-      {/* A space's canvas holds the organization's sources: one goes from the organization, not from a board. */}
+      {/* A space's canvas holds the project's sources: one goes from the project, not from a board. */}
       <span className={r.layerTail} onClick={(e) => e.stopPropagation()}>
         <IconBtn size="sm" label={space ? "Delete the source" : "Remove it from this board"} onClick={() => void (space ? confirmDelete(source) : confirmRemove(source))}>
           <Trash2 {...SMALL} />
@@ -172,7 +172,7 @@ function SourceRow({ source, quoting }: { source: SourceRecord; quoting: boolean
 async function confirmDelete(s: SourceRecord) {
   const ok = await confirmDialog({
     title: `Delete “${s.title}”?`,
-    body: `It's removed from the organization${s.boards?.length ? ` and from ${s.boards.length === 1 ? "the board" : `the ${s.boards.length} boards`} that use it` : ""}. Quotes already on cards stay, without the link back to it.`,
+    body: `It's removed from the project${s.boards?.length ? ` and from ${s.boards.length === 1 ? "the board" : `the ${s.boards.length} boards`} that use it` : ""}. Quotes already on cards stay, without the link back to it.`,
     confirmLabel: "Delete source",
     danger: true,
   });
@@ -184,7 +184,7 @@ async function confirmDelete(s: SourceRecord) {
 }
 
 async function confirmRemove(s: SourceRecord) {
-  const ok = await confirmDialog({ title: `Remove “${s.title}” from this board?`, body: "It stays in the organization's sources, for other boards (and this one again). Its quotes stay on the cards they back.", confirmLabel: "Remove from board" });
+  const ok = await confirmDialog({ title: `Remove “${s.title}” from this board?`, body: "It stays in the project's sources, for other boards (and this one again). Its quotes stay on the cards they back.", confirmLabel: "Remove from board" });
   if (ok) void removeSource(s.id);
 }
 
@@ -204,7 +204,7 @@ function FromOrganization() {
     };
   }, [board]);
   if (!list) return <Spinner />;
-  if (!list.length) return <p className="text-caption text-fg-muted">Every source in the organization is on this board already.</p>;
+  if (!list.length) return <p className="text-caption text-fg-muted">Every source in the project is on this board already.</p>;
   return (
     <ul className="flex max-h-[280px] flex-col gap-[2px] overflow-y-auto">
       {list.map((x) => (
@@ -394,7 +394,7 @@ export function AddSource({ onAdd, compact }: { onAdd?: (inputs: AddInput[]) => 
     ...(tools.length && lab("connectors") ? [{ value: "tool" as const, label: "Tool", icon: Plug }] : []),
     // On a board: the organization's other sources (interviews another board read, say), and a feed to keep watching a tool.
     // (A space's canvas lists the organization's sources already.)
-    ...(onAdd ? [] : [...(space ? [] : [{ value: "org" as const, label: "Organization", icon: Building2 }]), ...(lab("feeds") ? [{ value: "watch" as const, label: "Watch", icon: Radio }] : [])]),
+    ...(onAdd ? [] : [...(space ? [] : [{ value: "org" as const, label: "Project", icon: Building2 }]), ...(lab("feeds") ? [{ value: "watch" as const, label: "Watch", icon: Radio }] : [])]),
   ];
   // Words where there's room for them all, else each mode's mark with its name on hover.
   const options = modes.map(({ value, label, icon: Icon }) => ({

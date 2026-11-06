@@ -360,10 +360,10 @@ async function viaPacked(ix: OrgIndex, q: AskRequest, g: Guide): Promise<{ raw: 
 export async function askOrg(store: OrgStore, q: AskRequest, o: { emit: (label: string) => void; signal: AbortSignal }): Promise<AskAnswer> {
   const ix = indexOf(store);
   if (ix) await ix.settled();
-  o.emit("Reading the organization's guide");
+  o.emit("Reading the project's guide");
   const g = await guide(store, q);
   const agent = backend() === "cli";
-  if (!agent && !ix) throw new Error("Asking needs the organization's search index (Node 24 or the desktop app).");
+  if (!agent && !ix) throw new Error("Asking needs the project's search index (Node 24 or the desktop app).");
   const { raw, model } = agent ? await viaAgent(store, ix, q, g, o.emit, o.signal) : await viaPacked(ix!, q, g);
   o.emit("Checking every quote");
   const found = await lookUp(store, ix, sourcesIn(raw));

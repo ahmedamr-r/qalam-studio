@@ -56,7 +56,7 @@ export function ConnectionsDot({ className }: { className?: string }) {
  */
 export function RailPlaces({ current, product, leave }: { current: Place | null; product: string | null | undefined; leave: (href: string) => void }) {
   return (
-    <div role="group" aria-label="Organization" className="flex flex-col items-center gap-[2px]">
+    <div role="group" aria-label="Project" className="flex flex-col items-center gap-[2px]">
       {RAIL_PLACES.map((id) => {
         const p = PLACES.find((x) => x.id === id)!;
         const Icon = ICONS[id];

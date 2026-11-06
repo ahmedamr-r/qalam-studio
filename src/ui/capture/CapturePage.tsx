@@ -86,7 +86,7 @@ export default function CapturePage() {
               { value: "link", label: "Link" },
             ]}
           />
-          <span className="truncate text-caption text-fg-subtle">Into {org?.name ?? "the organization"}&apos;s inbox</span>
+          <span className="truncate text-caption text-fg-subtle">Into {org?.name ?? "the project"}&apos;s inbox</span>
         </div>
         {kind === "link" && (
           <span className={clsx(r.field, "[-webkit-app-region:no-drag]")}>

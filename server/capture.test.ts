@@ -117,7 +117,7 @@ describe.skipIf(!fts5)("capture, in the core", () => {
     expect((await store.placementsFor("delivery"))[s.id]).toMatchObject([{ kind: "attach", cardId: "n", quote: { sourceId: s.id, quoteId: s.quotes[0].id } }]);
     expect(s.filed).toEqual([s.quotes[0].id]);
     expect((await store.listTopics()).map((t) => t.title)).toEqual(["Delivery windows are too wide"]);
-    expect(steps).toEqual(["Keeping “Sara interview” in the organization", "Reading what it says", "Filing it into the topic pages", "Finding where it fits on 2 boards"]);
+    expect(steps).toEqual(["Keeping “Sara interview” in the project", "Reading what it says", "Filing it into the topic pages", "Finding where it fits on 2 boards"]);
   });
 
   it("keeps what came of a PDF's pictures on the source, and says it in a line", async () => {

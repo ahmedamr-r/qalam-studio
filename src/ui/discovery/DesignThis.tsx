@@ -77,7 +77,7 @@ function Card({ id }: { id: string }) {
       } else {
         // Write only the hand-off: the project's own window owns the rest of its record.
         const fresh = await projectsDb.get(target);
-        if (!fresh) throw new Error("That project isn't in this organization any more.");
+        if (!fresh) throw new Error("That design isn't in this project any more.");
         dest = { ...fresh, handoff };
         await projectsDb.patch(target, { handoff });
       }

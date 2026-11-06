@@ -76,7 +76,7 @@ function Palette({ space }: { space: Space }) {
       if (m) out.push({ key, group, label, hits: m.hits, icon, sub, score: m.score, run });
     };
     // The organization's canvases, then the pages of their own.
-    for (const s of [{ id: null, name: org?.name ?? "Organization" }, ...products]) add("Go to", `space:${s.id ?? ""}`, s.name, <SpaceTile name={s.name || "·"} size="sm" />, () => navigate(spaceHref(s.id)), s.id ? "Product" : wordsFor(org?.shape).whole);
+    for (const s of [{ id: null, name: org?.name ?? "Project" }, ...products]) add("Go to", `space:${s.id ?? ""}`, s.name, <SpaceTile name={s.name || "·"} size="sm" />, () => navigate(spaceHref(s.id)), s.id ? "Product" : wordsFor(org?.shape).whole);
     for (const p of PLACES.filter((p) => (p.id === "decisions" || p.id === "connections") && placeShown(p.id))) {
       const Icon = ICONS[p.id];
       add("Go to", `place:${p.id}`, p.label, <Icon {...ICON} />, () => navigate(spaceHref(space, p.id)));

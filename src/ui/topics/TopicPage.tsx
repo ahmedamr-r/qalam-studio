@@ -99,7 +99,7 @@ export default function TopicView({ id, space }: { id: string; space: Space }) {
     return (
       <div className="flex flex-col gap-[14px] px-[16px] py-[14px]">
         <PanelPageHeader kind="Page" title="This page isn't here" />
-        <p className="text-body text-fg-muted">It was deleted, or its file moved out of the organization&apos;s folder.</p>
+        <p className="text-body text-fg-muted">It was deleted, or its file moved out of the project&apos;s folder.</p>
       </div>
     );
   if (!view) return <div className={clsx(r.skeleton, "m-[16px] h-[120px] rounded-lg")} aria-hidden />;
@@ -157,7 +157,7 @@ export default function TopicView({ id, space }: { id: string; space: Space }) {
     if (title?.trim() && title.trim() !== t.title) change((n) => void (n.title = title.trim().replace(/\s+/g, " ").slice(0, 100)));
   };
   const remove = async () => {
-    const ok = await confirmDialog({ title: `Delete “${t.title}”?`, body: "The page is removed from the organization's folder. The sources and boards its lines rest on stay as they are.", confirmLabel: "Delete page", danger: true });
+    const ok = await confirmDialog({ title: `Delete “${t.title}”?`, body: "The page is removed from the project's folder. The sources and boards its lines rest on stay as they are.", confirmLabel: "Delete page", danger: true });
     if (!ok) return;
     await topicsDb.remove(t.id);
     closePage({ gone: true });

@@ -75,6 +75,6 @@ describe.skipIf(!fts5)("asking the organization with an API key", () => {
     expect(a.claims.map((c) => c.backed)).toEqual([true, true, false, false, false]);
     expect(a.claims[0].support).toEqual([{ source: "hub:quote:sara-7", words: "I can't plan bath time around a four-hour window", label: "Sara · Sara interview", href: "/o/basket/d/delivery?source=sara" }]);
     expect(a.claims[1].support[0]).toMatchObject({ source: "about.md", label: "About Basket" });
-    expect(steps).toEqual(["Reading the organization's guide", "Checking every quote", "Reading the organization's guide", "Checking every quote"]);
+    expect(steps).toEqual(["Reading the project's guide", "Checking every quote", "Reading the project's guide", "Checking every quote"]);
   });
 });

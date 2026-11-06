@@ -137,7 +137,7 @@ async function readAndAsk() {
   if (!a || !card) return;
   patch({ phase: "reading" });
   const said = answered(a.rounds).find((x) => x.questionId === OPEN_ID)?.words ?? "";
-  const ctrl = begin(a.card, STEP[a.step], "Searching your organization for what you said");
+  const ctrl = begin(a.card, STEP[a.step], "Searching your project for what you said");
   if (!ctrl) {
     patch({ phase: "open" });
     return void feedback("Qalam AI is still on another card", { id: "discovery.ask" });

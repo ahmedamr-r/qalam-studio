@@ -34,7 +34,7 @@ export default function QuotePicker() {
   return (
     <aside aria-label="Pick what backs the card" className="flex min-h-0 min-w-0 flex-1 flex-col border-l border-line-subtle bg-panel">
       <div className={clsx(r.panelHeader, "justify-between pl-[12px]")}>
-        <span className="truncate text-caption font-semibold text-fg">What backs it, in your organization</span>
+        <span className="truncate text-caption font-semibold text-fg">What backs it, in your project</span>
         <IconBtn size="sm" label="Close" onClick={close}>
           <X {...ICON} />
         </IconBtn>

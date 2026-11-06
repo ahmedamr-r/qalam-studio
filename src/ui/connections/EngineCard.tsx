@@ -33,7 +33,7 @@ const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
 const JOB: Record<CallKind | "other", string> = {
   extract: "Reading sources",
   topics: "Filing into topic pages",
-  "setup-shape": "Shaping the organization",
+  "setup-shape": "Shaping the project",
   claims: "Checking outside numbers",
   "goal-ideas": "Finding the goal a problem could move",
   "goal-number": "Suggesting a goal's number",

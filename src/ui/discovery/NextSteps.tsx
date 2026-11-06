@@ -375,7 +375,7 @@ function StepRow({ step, main, onRun }: { step: NextStep; main: boolean; onRun: 
 /** The questions before the card's draft: theirs, then Qalam AI's, with what was found on their words. */
 function Asking({ ask }: { ask: Ask }) {
   const round = ask.rounds[ask.rounds.length - 1];
-  const found = [ask.found.length ? `Found ${ask.found.length === 1 ? "1 quote" : `${ask.found.length} quotes`} on it` : ask.phase !== "open" ? "Nothing in your organization on it yet" : "", ask.online?.running ? "looking online…" : (ask.online?.note ?? "")].filter(Boolean).join(" · ");
+  const found = [ask.found.length ? `Found ${ask.found.length === 1 ? "1 quote" : `${ask.found.length} quotes`} on it` : ask.phase !== "open" ? "Nothing in your project on it yet" : "", ask.online?.running ? "looking online…" : (ask.online?.note ?? "")].filter(Boolean).join(" · ");
   return (
     <div className="flex flex-col gap-[6px] pb-[2px]">
       {found && <span className="px-[8px] text-caption text-fg-muted">{found}</span>}

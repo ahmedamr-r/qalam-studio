@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import clsx from "clsx";
 import * as Tooltip from "@radix-ui/react-tooltip";
-import { ArrowRight, FolderOpen, Plus } from "lucide-react";
+import { ArrowRight, FolderOpen } from "lucide-react";
 import { CantReachFiles, listOrgs, type OrgRef } from "@/org/client";
 import { openOrgHref, welcomeHref } from "@/projects/model";
 import { QalamMark } from "../brand";
@@ -12,12 +12,12 @@ import Toasts from "../toast";
 import { SpaceTile } from "../frame/OrgPlaces";
 import { bootRetryDelay } from "../welcome/steps";
 import { openFolderAsOrg } from "./OrgSwitcher";
-import { trySample } from "./sample";
+import { StartBox } from "../start/StartBox";
 
 /*
- * Where Qalam opens: the organizations on this computer, the one opened last first. Opening one
- * lands on the canvas its last tab was on, else its own; a new one goes through the welcome, and
- * any folder can be one. With none yet, the welcome.
+ * Where Qalam opens: the one box that starts a project (../start/StartBox.tsx), then the projects on
+ * this computer (organizations in code), the one opened last first. Opening one lands on the canvas
+ * its last tab was on, else its own; any folder can be one. With none yet, the welcome.
  */
 
 const ICON = { size: 14, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
@@ -52,12 +52,20 @@ export default function OrgsPage() {
           <span className={r.brandCell}>
             <QalamMark size={20} />
           </span>
-          <span className="px-[8px] text-body font-medium text-fg">Organizations</span>
+          <span className="px-[8px] text-body font-medium text-fg">Projects</span>
         </header>
         <div className="relative min-h-0 px-[8px] pb-[8px]">
           <main className="q-glass h-full overflow-y-auto rounded-xl bg-app shadow-panel">
-            <div className={clsx(r.pageMain, "max-w-[640px] gap-[20px] pt-[48px]")}>
-              <h1 className="text-display font-semibold text-fg">Your organizations</h1>
+            <div className={clsx(r.pageMain, "max-w-[680px] gap-[20px] pt-[56px]")}>
+              {/* Starting something new comes first, as a chat's home page does; what's here already is under it. */}
+              <section aria-label="Start a project" className="flex flex-col gap-[16px] pb-[20px]">
+                <div className="flex flex-col items-center gap-[6px] text-center">
+                  <h1 className="text-hero font-medium text-fg">What are you working on?</h1>
+                  <p className="text-title text-fg-muted">Start a new project from your words, files or screenshots, or open one below.</p>
+                </div>
+                <StartBox search="?new=1" sample={state.kind === "ready" && !state.orgs.some((o) => o.sample)} />
+              </section>
+              <h2 className="text-display font-semibold text-fg">Your projects</h2>
               {state.kind === "error" ? (
                 <div className="flex flex-col items-start gap-[10px]">
                   <p className="text-body text-fg-muted">Qalam can&apos;t reach your files. {state.message}</p>
@@ -77,19 +85,10 @@ export default function OrgsPage() {
                 </ul>
               )}
               <div className="flex flex-wrap gap-[8px]">
-                <Button variant="secondary" size="sm" onClick={() => window.location.assign(welcomeHref("new"))}>
-                  <Plus {...ICON} className="mr-[6px]" />
-                  New organization…
-                </Button>
                 <Button variant="ghost" size="sm" onClick={() => void openFolderAsOrg()}>
                   <FolderOpen {...ICON} className="mr-[6px]" />
                   Open a folder…
                 </Button>
-                {state.kind === "ready" && !state.orgs.some((o) => o.sample) && (
-                  <Button variant="ghost" size="sm" onClick={() => void trySample()}>
-                    Try it with a sample
-                  </Button>
-                )}
               </div>
             </div>
           </main>

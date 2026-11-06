@@ -32,7 +32,7 @@ const spec = {
   railLabel: "max-w-[48px] truncate text-micro font-medium",            // Layers · Assets · Tokens · AI · Library
   railMarker: "q-rail-marker",                                            // style={{ "--y": `${centerY}px` }}; data-instant on first paint
   railBadge: "absolute right-[11px] top-[8px] size-[6px] rounded-full bg-[image:var(--ai-gradient)] shadow-[0_0_0_2px_var(--color-app)] q-breathe", // AI busy only
-  railPlace: "q-item q-press relative grid h-[32px] w-[40px] place-items-center rounded-md text-fg-subtle hover:bg-hover hover:text-fg-muted aria-[current=true]:bg-active aria-[current=true]:text-fg", // the organization's places above a board's panels
+  railPlace: "q-item q-press relative grid h-[32px] w-[40px] place-items-center rounded-md text-fg-subtle hover:bg-hover hover:text-fg-muted aria-[current=true]:bg-active aria-[current=true]:text-fg", // the project's places above a board's panels
   railDivider: "my-[4px] h-px w-[28px] shrink-0 bg-line-subtle",
 
   // ── Sidebar (pages outside the canvas; ⌘\ folds it to the rail) ─────

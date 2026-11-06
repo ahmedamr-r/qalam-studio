@@ -174,7 +174,7 @@ export function connectionsRoutes(): Hono {
     return c.json(await connectorsView());
   });
   r.post("/api/org/:org/connectors/:id/search", async (c) => {
-    if (!(await storeFor(c.req.param("org")))) return c.json({ error: "not_found", message: "No such organization." }, 404);
+    if (!(await storeFor(c.req.param("org")))) return c.json({ error: "not_found", message: "No such project." }, 404);
     const { query } = (await c.req.json().catch(() => ({}))) as { query?: unknown };
     if (typeof query !== "string" || !query.trim()) return c.json({ error: "bad_request", message: "Search for something." }, 400);
     try {
@@ -185,7 +185,7 @@ export function connectionsRoutes(): Hono {
   });
   // The chat box's picker: what was opened lately, a folder's items or a search, and the picked items' words (not taken in).
   // Under an organization, and on their own for the start page's box, where no project exists yet.
-  const noOrg = (c: Context) => c.json({ error: "not_found", message: "No such organization." }, 404);
+  const noOrg = (c: Context) => c.json({ error: "not_found", message: "No such project." }, 404);
   const browse = async (c: Context) => {
     const { query, folder, force } = (await c.req.json().catch(() => ({}))) as { query?: unknown; folder?: unknown; force?: unknown };
     const at = typeof query === "string" && query.trim() ? { query: query.trim().slice(0, 200) } : folder === null || typeof folder === "string" ? { folder: typeof folder === "string" ? folder.slice(0, 200) : null } : {};
@@ -219,7 +219,7 @@ export function connectionsRoutes(): Hono {
   r.post("/api/connectors/:id/items", (c) => read(c));
   r.post("/api/org/:org/connectors/:id/import", async (c) => {
     const store = await storeFor(c.req.param("org"));
-    if (!store) return c.json({ error: "not_found", message: "No such organization." }, 404);
+    if (!store) return c.json({ error: "not_found", message: "No such project." }, 404);
     const { hits } = (await c.req.json().catch(() => ({}))) as { hits?: unknown };
     const picked = pickedHits(hits);
     if (!picked.length) return c.json({ error: "bad_request", message: "Pick something to bring in." }, 400);
@@ -279,7 +279,7 @@ export function connectionsRoutes(): Hono {
   // Where the work linked to solutions stands (Linear, GitHub), kept per computer.
   r.post("/api/org/:org/work/status", async (c) => {
     const store = await storeFor(c.req.param("org"));
-    if (!store) return c.json({ error: "not_found", message: "No such organization." }, 404);
+    if (!store) return c.json({ error: "not_found", message: "No such project." }, 404);
     const { links, force } = (await c.req.json().catch(() => ({}))) as { links?: unknown; force?: unknown };
     const list = (Array.isArray(links) ? links : []).filter((l): l is OstWork => !!l && typeof l.connector === "string" && typeof l.ref === "string" && typeof l.url === "string").slice(0, 60);
     return c.json({ statuses: await workStatuses(store, list, { force: force === true }) });

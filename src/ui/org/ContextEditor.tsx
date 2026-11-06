@@ -125,7 +125,7 @@ function Editor({ target, onClose }: { target: Target; onClose: () => void }) {
 
   const remove = async () => {
     if (target.kind !== "product") return;
-    const ok = await confirmDialog({ title: `Delete “${target.product.name}”?`, body: "Its boards and sources stay, for the whole organization. Its description is deleted.", confirmLabel: "Delete product", danger: true });
+    const ok = await confirmDialog({ title: `Delete “${target.product.name}”?`, body: "Its boards and sources stay, for the whole project. Its description is deleted.", confirmLabel: "Delete product", danger: true });
     if (!ok) return;
     await removeProduct(target.product.id);
     onClose();
@@ -163,7 +163,7 @@ function Editor({ target, onClose }: { target: Target; onClose: () => void }) {
       <div ref={card} role="dialog" aria-modal="true" aria-label={title} data-state="open" onKeyDown={onKeyDown} className={clsx(r.modal, "fixed left-1/2 top-[8vh] z-[71] flex max-h-[84vh] w-[min(560px,calc(100vw-32px))] -translate-x-1/2 flex-col overflow-hidden outline-none")}>
         <div className="flex flex-col gap-[14px] overflow-y-auto px-[20px] pt-[18px] pb-[16px]">
           <h2 className="text-title font-semibold text-fg">{title}</h2>
-          <p className="text-body text-fg-muted">Qalam AI reads this with every board that's for {target.kind === "product" ? "this product" : "the whole organization"}. It's saved as Markdown in the organization's folder.</p>
+          <p className="text-body text-fg-muted">Qalam AI reads this with every board that's for {target.kind === "product" ? "this product" : "the whole project"}. It's saved as Markdown in the project's folder.</p>
           {target.kind === "product" &&
             field(
               "Name",

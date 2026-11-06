@@ -19,7 +19,7 @@ import { useDiscovery, type FoundQuote } from "./store";
 /** Find what backs it: what the organization has, picked in the right panel; else said beside the card. */
 export async function findBackingFor(card: string) {
   const quotes = await backingFor(card).catch(() => []);
-  if (!quotes.length) return say({ card, text: "Nothing in your organization backs it yet: add a file for it, or watch a tool for it." });
+  if (!quotes.length) return say({ card, text: "Nothing in your project backs it yet: add a file for it, or watch a tool for it." });
   useDiscovery.setState({ quotePick: { card, quotes } });
 }
 

@@ -104,7 +104,7 @@ function Page({ route, state, labReady, retry }: { route: Route; state: State; l
         <Splash />
       </div>
     );
-  if (state.kind === "error") return state.missingOrg ? <Missing title="Organization not found" body="It isn't on this computer: its folder moved, or it was made on another computer." /> : <CantReach message={state.message} onRetry={retry} />;
+  if (state.kind === "error") return state.missingOrg ? <Missing title="Project not found" body="It isn't on this computer: its folder moved, or it was made on another computer." /> : <CantReach message={state.message} onRetry={retry} />;
   if (state.kind === "missing" || route.kind === "missing") return <Missing title="Page not found" body="There's nothing at this address." />;
   if (route.kind === "org") return <HomeLoader product={route.product} />;
   if (route.kind === "seen") return <SeenLoader seenKey={route.key} add={!!route.add} />;

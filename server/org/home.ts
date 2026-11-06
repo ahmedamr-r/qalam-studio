@@ -78,7 +78,7 @@ function folderName(name: string): string {
     .replace(/^\.+/, "")
     .slice(0, 60)
     .trim();
-  return n || "Organization";
+  return n || "Project";
 }
 
 /** A new organization: a folder in ~/Qalam named after it (a team's, or one person's project). */
@@ -124,7 +124,7 @@ function refused(dir: string, home: string): string | null {
   const parts = dir.split(path.sep).filter(Boolean);
   if (parts.length < 2) return "Pick a folder inside your home or another drive, not the disk itself.";
   if (dir === homedir()) return "Pick a folder inside your home folder, not the home folder itself.";
-  if (dir === home) return `That's where Qalam keeps organizations; pick a folder inside it, or another one.`;
+  if (dir === home) return `That's where Qalam keeps projects; pick a folder inside it, or another one.`;
   if (/^\/(System|usr|bin|sbin|etc|Library|Applications|dev|cores)(\/|$)/.test(dir)) return "That's a system folder.";
   if (/^[a-z]:\\(Windows|Program Files|Program Files \(x86\)|ProgramData)(\\|$)/i.test(dir)) return "That's a system folder.";
   return null;

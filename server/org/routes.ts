@@ -108,7 +108,7 @@ export function orgRoutes(): Hono<Env> {
   });
   r.post("/api/orgs", async (c) => {
     const { name, shape } = (await c.req.json().catch(() => ({}))) as { name?: string; shape?: unknown };
-    if (!name?.trim()) return bad("Name the organization");
+    if (!name?.trim()) return bad("Name the project");
     return c.json(await createOrg(name, undefined, orgShape(shape) ?? undefined));
   });
   /** Open a folder as an organization: the one given, or one picked with the Mac's own picker. */
@@ -116,7 +116,7 @@ export function orgRoutes(): Hono<Env> {
   r.post("/api/orgs/open", async (c) => {
     let { path: dir } = (await c.req.json().catch(() => ({}))) as { path?: string };
     if (!dir) {
-      const picked = await chooseFolder("Choose a folder for the organization");
+      const picked = await chooseFolder("Choose a folder for the project");
       if (picked === "unsupported") return c.json({ error: "no_picker", message: "Type the folder's path instead." }, 400);
       if (!picked) return c.json({ cancelled: true });
       dir = picked;
@@ -129,7 +129,7 @@ export function orgRoutes(): Hono<Env> {
   });
   r.post("/api/orgs/last", async (c) => {
     const { id } = (await c.req.json().catch(() => ({}))) as { id?: string };
-    if (!id || !ID.test(id) || !(await listOrgs()).some((o) => o.id === id)) return bad("No such organization");
+    if (!id || !ID.test(id) || !(await listOrgs()).some((o) => o.id === id)) return bad("No such project");
     await rememberOrg(id);
     return c.json({ ok: true });
   });
@@ -137,7 +137,7 @@ export function orgRoutes(): Hono<Env> {
   r.use("/api/org/:org/*", async (c, next) => {
     const id = c.req.param("org");
     const store = ID.test(id) ? await storeFor(id) : null;
-    if (!store) return c.json({ error: "no_org", message: "That organization isn't here." }, 404);
+    if (!store) return c.json({ error: "no_org", message: "That project isn't here." }, 404);
     c.set("store", store);
     await next();
   });
@@ -150,8 +150,8 @@ export function orgRoutes(): Hono<Env> {
   /** Rename it, or say who it is: a company or team, or one person on their own. */
   r.patch("/api/org/:org/info", async (c) => {
     const { name, shape } = (await c.req.json().catch(() => ({}))) as { name?: string; shape?: unknown };
-    if (name === undefined && shape === undefined) return bad("Name the organization");
-    if (name !== undefined && !name.trim()) return bad("Name the organization");
+    if (name === undefined && shape === undefined) return bad("Name the project");
+    if (name !== undefined && !name.trim()) return bad("Name the project");
     if (shape !== undefined && !orgShape(shape)) return bad("A team or solo");
     if (name !== undefined) await c.get("store").rename(name);
     if (shape !== undefined) await c.get("store").setShape(orgShape(shape)!);
@@ -162,7 +162,7 @@ export function orgRoutes(): Hono<Env> {
   r.get("/api/org/:org/about", async (c) => c.json(await c.get("store").getAbout()));
   r.put("/api/org/:org/about", async (c) => {
     const a = (await c.req.json()) as ContextFields;
-    if (!isContext(a)) return bad("Not an organization's context");
+    if (!isContext(a)) return bad("Not a project's context");
     await c.get("store").putAbout(a, { tab: tabOf(c.req.raw.headers) });
     return c.json({ ok: true });
   });
@@ -1236,7 +1236,7 @@ export function orgRoutes(): Hono<Env> {
       const s = x as Record<string, unknown>;
       return typeof s?.ref === "string" && /^asset:[0-9a-f]{24}$/.test(s.ref) && typeof s.name === "string" ? [{ ref: s.ref, name: s.name.slice(0, 200), ...(typeof s.modified === "number" && Number.isFinite(s.modified) ? { modified: s.modified } : {}) }] : [];
     });
-    if (!shots.length) return bad("Add screenshots the organization keeps");
+    if (!shots.length) return bad("Add screenshots the project keeps");
     try {
       return c.json(await startReading(c.get("store"), c.req.param("key"), shots, { tab: tabOf(c.req.raw.headers) }));
     } catch (e) {
