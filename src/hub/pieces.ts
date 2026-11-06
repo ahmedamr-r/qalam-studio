@@ -3,6 +3,7 @@ import type { Doc } from "@/doc/schema";
 import type { ProductMap } from "@/code/map";
 import type { SeenMap } from "@/seen/types";
 import type { Market } from "@/market/types";
+import type { Terms } from "@/terms/types";
 import { dayOf, type Decision } from "@/decisions/model";
 import { metricText } from "@/discovery/dump";
 import { KIND_LABEL, stageLabel } from "@/discovery/kinds";
@@ -304,6 +305,25 @@ export function marketPieces(m: Market, orgName: string): Built {
     [m.struggles, `What customers of companies like ${orgName} struggle with`],
   ] as const)
     for (const l of list) pieces.push({ ref: marketRef(l.id), type: "context", sub: "domain", text: l.text, line: `${what}, ${whose(l.by, l.url)}`, title: orgName, product: null, at: l.at });
+  return { pieces, edges: [], entities: [] };
+}
+
+// ---------------------------------------------------------------------------
+// The project's words (hub/terms.md): each term a piece, so search and Ask find what a word means
+
+export const termRef = (id: string) => `hub:term:${id}`;
+
+export function termPieces(t: Terms, orgName: string): Built {
+  const pieces: HubPiece[] = t.terms.map((x) => ({
+    ref: termRef(x.id),
+    type: "context",
+    sub: "term",
+    text: `${x.term}: ${x.means}${x.avoid.length ? ` Avoid: ${x.avoid.join(", ")}.` : ""}`,
+    line: `One of ${orgName}'s own words, ${x.by === "you" ? "as the team says" : "from a conversation the team kept"}`,
+    title: x.term,
+    product: null,
+    at: x.at,
+  }));
   return { pieces, edges: [], entities: [] };
 }
 

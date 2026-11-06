@@ -3,6 +3,7 @@ import { companyCall, competitorsCall, domainCall } from "@/ai/market";
 import { findQuestionsCall } from "@/ai/find";
 import { statementCall } from "@/ai/statement";
 import { marketText } from "@/market/text";
+import { termsText } from "@/terms/text";
 import { sanitizeStatement, statementMaterial, type StatementWhat } from "@/space/statement";
 import type { PlanQuestion } from "@/ai/plan";
 import { findQuestionsMaterial, sanitizeFindQuestions, type FindWhat } from "@/space/find";
@@ -320,7 +321,8 @@ export async function suggestStatement(store: OrgStore, o: { what: StatementWhat
   const about = await store.getAbout();
   const market = await store.getMarket();
   const org = store.info.name;
-  const m = statementMaterial({ what: o.what, said: o.said, org, about: [about.context, about.audience].filter((x) => x.trim()).join(" "), market: marketText(market, { org, domain: false }), above: o.above });
+  const words = termsText(await store.getTerms(), { max: 600, near: o.said });
+  const m = statementMaterial({ what: o.what, said: o.said, org, about: [about.context, about.audience].filter((x) => x.trim()).join(" "), market: marketText(market, { org, domain: false }), above: o.above, words });
   const { data } = await deps.structured<unknown>(statementCall(m), signal);
   return sanitizeStatement(data, m);
 }

@@ -8,6 +8,7 @@ import { claimsMaterial, outsideTask, sanitizeClaims, type Benchmark, type Outsi
 import { goalById } from "@/goals/tree";
 import type { Goal } from "@/goals/types";
 import type { OstMetric } from "@/discovery/types";
+import { termsFold } from "@/terms/fold";
 import { readLinks, realDeps, type MarketDeps } from "./market";
 import type { OrgStore } from "./store";
 
@@ -89,7 +90,7 @@ export async function goalsForProblem(store: OrgStore, o: MovesAsked, emit: (lab
   const m = ideasMaterial({ org, about, market, problem: o.title, words: o.words, goals, notes: info?.notes ?? "", pages });
   const { data, model } = await deps.structured<unknown>(ideasCall(m), signal);
   const dropped: { why: string; item: unknown }[] = [];
-  const ideas: GoalIdea[] = sanitizeIdeas(data, m, { problem: o.title, words: o.words, goals, aims: market.aims, now: Date.now(), id: () => nanoid(8) }, (why, item) => dropped.push({ why, item }));
+  const ideas: GoalIdea[] = sanitizeIdeas(data, m, { problem: o.title, words: o.words, goals, aims: market.aims, now: Date.now(), id: () => nanoid(8), fold: termsFold(await store.getTerms()) }, (why, item) => dropped.push({ why, item }));
   await trace(store, "goal-ideas", { ...(model ? { model } : {}), problem: o.title, pages: [...m.pages.values()].map((p) => ({ ref: p.ref, url: p.url })), answer: data, kept: ideas.length, dropped });
   return { fits: [], ideas, looked: { ...(info ? {} : { noWeb: true as const }), ...(targets.length ? { goals: targets.length } : {}), pages: pages.map((p) => ({ title: p.title, url: p.url })) } };
 }

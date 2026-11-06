@@ -3,7 +3,9 @@ import type { SourceRecord } from "@/discovery/sources";
 import { fileMaterial, type FilingDeps, type FilingTotals } from "@/hub/filing";
 import { contextFor, useOrgContext } from "./context";
 import { orgContext } from "./pack";
+import { useTerms } from "./terms";
 import { topicsDb } from "./topics";
+import { termsFold } from "@/terms/fold";
 
 /** Filing into the topic pages from a window (src/hub/filing.ts): through the organization's API. */
 
@@ -13,6 +15,7 @@ const fromWindow = (): FilingDeps => ({
   ...useOrgContext.getState(),
   productLine: contextFor,
   listTopics: topicsDb.list,
+  fold: termsFold(useTerms.getState().terms),
   pack: orgContext,
   call: async (body, signal) => (await callAI<unknown>("/api/topics", body, undefined, signal)).data,
   file: topicsDb.file,

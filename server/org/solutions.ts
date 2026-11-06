@@ -6,6 +6,7 @@ import { structured } from "@/ai/server";
 import { isOstCard } from "@/doc/board";
 import { quotePiece } from "@/discovery/sources";
 import { sanitizeSolutions, solutionsMaterial, type Drafted, type SolutionsFile, type SolutionsInput } from "@/discovery/solutions";
+import { termsFold } from "@/terms/fold";
 import { foldBearings } from "@/goals/bearings";
 import { metricLine } from "@/goals/goals-md";
 import { goalById } from "@/goals/tree";
@@ -161,7 +162,7 @@ export async function draftSolutions(store: OrgStore, req: { topic?: string; car
   const { data, model } = await structured<unknown>(solutionsCall(m), opts.signal);
   const now = Date.now();
   const dropped: { why: string; item: unknown }[] = [];
-  const { drafts, note } = sanitizeSolutions(data, m, { now, id: () => nanoid(10) }, (why, item) => dropped.push({ why, item }));
+  const { drafts, note } = sanitizeSolutions(data, m, { now, id: () => nanoid(10), fold: termsFold(await store.getTerms()) }, (why, item) => dropped.push({ why, item }));
   // The call's trace: what it was sent (by id), what it answered, what code kept and left out, and why.
   await store
     .putTrace({ id: nanoid(10), projectId: "solutions", kind: "solutions", at: now, ...(model ? { model } : {}), topic: topic?.id ?? null, sent: { lines: [...m.lines.keys()].length, pieces: [...m.pieces].map(([ref, p]) => ({ ref, piece: p.ref })), goals: [...m.goals].map(([ref, g]) => ({ ref, goal: g.id })), ideas: [...m.ideas].map(([ref, i]) => ({ ref, piece: i.ref })) }, answer: data, kept: drafts.length, dropped } as { id: string; projectId: string })

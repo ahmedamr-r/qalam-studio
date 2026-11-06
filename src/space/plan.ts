@@ -272,7 +272,7 @@ export interface PlanDraft {
  * problem, a module only under a New product (one proposed here becomes one when something hangs
  * under it), and "needed" only on a module.
  */
-export function sanitizePlan(raw: unknown, m: PlanSent, o: { id: () => string }, dropped?: (why: string, item: unknown) => void): PlanDraft {
+export function sanitizePlan(raw: unknown, m: PlanSent, o: { id: () => string; fold?: (s: string) => string }, dropped?: (why: string, item: unknown) => void): PlanDraft {
   const drop = (why: string, x: unknown) => void dropped?.(why, x);
   const name = (ref: string) => m.cards.get(ref)?.title;
   // Some models put a whole line in quote marks: it's the line, not someone's words.
@@ -303,13 +303,13 @@ export function sanitizePlan(raw: unknown, m: PlanSent, o: { id: () => string },
       drop("its title says nothing once what wasn't sent is out", item);
       continue;
     }
-    const there = outline.find((c) => c.kind === kind && sameTopic(c.title, title));
+    const there = outline.find((c) => c.kind === kind && sameTopic(c.title, title, o.fold));
     if (there) {
       same.set(ref, there);
       drop("on the canvas already: what hangs under it hangs on the one there", item);
       continue;
     }
-    if (rows.some((r) => r.kind === kind && sameTopic(r.title, title))) {
+    if (rows.some((r) => r.kind === kind && sameTopic(r.title, title, o.fold))) {
       drop("proposed twice", item);
       continue;
     }

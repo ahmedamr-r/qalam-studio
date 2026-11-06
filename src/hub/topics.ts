@@ -84,8 +84,16 @@ export const sameWords = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/
 
 const wordSet = (s: string) => new Set(sameWords(s).split(" ").filter((w) => w.length > 2));
 
-/** Two titles that name the same topic: the same words, or nearly all of them. */
-export function sameTopic(a: string, b: string): boolean {
+/**
+ * Two titles that name the same topic: the same words, or nearly all of them. `fold` reads the
+ * project's avoided words as their terms first (termsFold, src/terms/fold.ts), so "Cart abandonment"
+ * and "Basket abandonment" are one problem where the project says basket.
+ */
+export function sameTopic(a: string, b: string, fold?: (s: string) => string): boolean {
+  if (fold) {
+    a = fold(a);
+    b = fold(b);
+  }
   if (sameWords(a) === sameWords(b)) return true;
   const x = wordSet(a);
   const y = wordSet(b);
@@ -373,7 +381,7 @@ const items = (raw: unknown, key: string): Record<string, unknown>[] => {
  * become that page; a new topic with no line kept isn't started. `products`: the material's, for
  * the pages it starts.
  */
-export function sanitizeFiling(raw: unknown, sent: FilingSent, o: { products?: string[]; /** A line left out because its quoted words or numbers aren't in what it cites. */ unbacked?: () => void } = {}): Filing {
+export function sanitizeFiling(raw: unknown, sent: FilingSent, o: { products?: string[]; /** A line left out because its quoted words or numbers aren't in what it cites. */ unbacked?: () => void; /** The project's avoided words read as their terms. */ fold?: (s: string) => string } = {}): Filing {
   const out = emptyFiling();
   /** Where each id the answer may name lands: a page ("<id>") or a page to start ("new:<key>"). */
   const target = new Map<string, string>();
@@ -391,7 +399,7 @@ export function sanitizeFiling(raw: unknown, sent: FilingSent, o: { products?: s
     const kind = n.kind === "segment" ? "segment" : n.kind === "need" ? "need" : null;
     const title = typeof n.title === "string" ? cleanLine(n.title).replace(/^[“"]|[”"]$/g, "").replace(/[.。]+$/, "") : "";
     if (!NEW_ID.test(id) || target.has(id) || !kind || title.length < 3 || title.length > TOPIC_LIMITS.title) continue;
-    const same = sentTitles.find((t) => sameTopic(t.title, title)) ?? [...starting.values()].map((s) => ({ cid: s.key, title: s.title })).find((t) => sameTopic(t.title, title));
+    const same = sentTitles.find((t) => sameTopic(t.title, title, o.fold)) ?? [...starting.values()].map((s) => ({ cid: s.key, title: s.title })).find((t) => sameTopic(t.title, title, o.fold));
     if (same) {
       target.set(id, target.get(same.cid)!);
       continue;

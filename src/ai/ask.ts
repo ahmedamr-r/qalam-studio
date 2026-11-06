@@ -47,6 +47,7 @@ export const ASK_SYSTEM = `You are Qalam AI. You answer a product team's questio
 - decisions/*.md: what the team decided on its boards, and why.
 - about.md, products/*.md: what the organization and its products are.
 - hub/market.md: what's known about the company, its competitors and its domain, each line with the page it was read on, or the team's own say-so. It's context, never what customers said.
+- hub/terms.md: the project's own words: each term, what it means, and the words to avoid for it. A question using an avoided word probably means its term.
 - hub/seen/*.md: what people see in each product, from its screenshots: its flows (each screen in order, the control that leads to the next, what isn't shown yet) and each screen's notes (what it's for, what's on it, its controls). The screenshots themselves are the images in assets/ the file links to; Read one when the notes don't answer.
 
 Tools: the organization's own search (search: words, meaning and links; get: one piece and what links to it; decisions), and Read, Grep and Glob for the files. Start from the guide and the pieces below, search for what they don't cover, and open sources for their exact words. A few searches are usually enough.

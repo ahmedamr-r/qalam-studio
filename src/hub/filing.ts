@@ -28,6 +28,8 @@ export interface FilingDeps {
   call: (body: TopicsRequest, signal?: AbortSignal) => Promise<unknown>;
   /** Write what code kept, and note the quotes as seen. */
   file: (filing: Filing, from: string, filed: Record<string, string[]>) => Promise<{ created: string[]; counts: Applied["counts"]; pages: { id: string; title: string; kind: TopicKind }[] }>;
+  /** The project's avoided words read as their terms (termsFold): a new page in other words for one there is goes into that one. */
+  fold?: (s: string) => string;
 }
 
 /** Material in one call. */
@@ -137,7 +139,7 @@ async function fileOne(deps: FilingDeps, items: Item[], product: string | null, 
     if (!pages.some((t) => t.kind === "product" && t.products.includes(p.id))) add({ id: null, kind: "product", title: p.name, products: [p.id], lines: [] }, 0);
   const segments = [...forProducts.flatMap((p) => p.segments.map((s) => ({ s, products: [p.id] }))), ...about.segments.map((s) => ({ s, products: [] as string[] }))];
   for (const { s, products: ps } of segments)
-    if (s.trim() && !pages.some((t) => t.kind === "segment" && sameTopic(t.title, s)) && !topics.some((t) => t.kind === "segment" && sameTopic(t.title, s))) add({ id: null, kind: "segment", title: s.trim(), products: ps, lines: [] }, 0);
+    if (s.trim() && !pages.some((t) => t.kind === "segment" && sameTopic(t.title, s, deps.fold)) && !topics.some((t) => t.kind === "segment" && sameTopic(t.title, s, deps.fold))) add({ id: null, kind: "segment", title: s.trim(), products: ps, lines: [] }, 0);
 
   // The material, under q ids; what the pages may change, in full.
   const material: TopicsRequest["material"] = items.map((it, i) => {
@@ -171,7 +173,7 @@ async function fileOne(deps: FilingDeps, items: Item[], product: string | null, 
 
   const body: TopicsRequest = { product: deps.productLine(product).slice(0, 2000), topics, pages: pagesIn, material, needs, ...(org ? { context: org.context } : {}) };
   const data = await deps.call(body, signal);
-  const filing = sanitizeFiling(data, sent, { products: product ? [product] : [], unbacked: () => void (totals.unbacked = (totals.unbacked ?? 0) + 1) });
+  const filing = sanitizeFiling(data, sent, { products: product ? [product] : [], unbacked: () => void (totals.unbacked = (totals.unbacked ?? 0) + 1), fold: deps.fold });
   const filed: Record<string, string[]> = {};
   for (const it of items) filed[it.s.id] = [...(filed[it.s.id] ?? []), it.q.id];
   const r = await deps.file(filing, materialName(items.map((it) => it.s.title)), filed);

@@ -1,4 +1,6 @@
 import { marketContext } from "@/market/text";
+import { termsText } from "@/terms/text";
+import { termsFold } from "@/terms/fold";
 import { basisCounts, basisOf, movedLines, reachesKnow, type Basis } from "@/discovery/basis";
 import { nanoid } from "nanoid";
 import { dumpReadCall, extractCall, synthesizeCall } from "@/ai/discovery";
@@ -98,6 +100,9 @@ export async function coreDeps(store: OrgStore): Promise<FilingDeps> {
   const about = await store.getAbout();
   const goals = await store.getGoals();
   const market = await store.getMarket();
+  const terms = await store.getTerms();
+  const words = termsText(terms, { max: 1000 });
+  const fold = termsFold(terms);
   const names = new Map(products.map((p) => [p.id, p.name]));
   const ix = indexOf(store);
   const pack = async (r: PackRequest): Promise<OrgContext | null> => {
@@ -111,9 +116,10 @@ export async function coreDeps(store: OrgStore): Promise<FilingDeps> {
     about,
     productLine: (id) => {
       const p = products.find((x) => x.id === id);
-      return [p ? contextText(p, `The product (${p.name}):`) : "", contextText(about, "The organization:"), goalsText(goals, { product: id ?? null, productName: (x) => names.get(x) }), marketContext(market, { org: store.info.name, told: contextText(about, "") })].filter(Boolean).join("\n\n");
+      return [p ? contextText(p, `The product (${p.name}):`) : "", contextText(about, "The organization:"), words, goalsText(goals, { product: id ?? null, productName: (x) => names.get(x) }), marketContext(market, { org: store.info.name, told: contextText(about, "") })].filter(Boolean).join("\n\n");
     },
     listTopics: () => store.listTopics(),
+    fold,
     pack,
     call: async (body) => (await structured<unknown>(topicsCall(body))).data,
     file: async (f, from, filed) => {
@@ -184,7 +190,7 @@ async function readIn(store: OrgStore, deps: FilingDeps, s: SourceRecord, o: Cap
       ...(goals.length ? { goals: goals.map((g, i) => ({ id: `g${i + 1}`, title: g.title.slice(0, 300), metric: g.metric!.name.slice(0, 200) })) } : {}),
     };
     const { data } = await structured<unknown>(extractCall(body));
-    const checked = sanitizeExtract(data, chunks, new Map([[cur.id, cur.quotes.map((q) => q.span)]]), Date.now(), goalIds, [...known, ...(cur.foundGoals ?? []).map((g) => g.title)]);
+    const checked = sanitizeExtract(data, chunks, new Map([[cur.id, cur.quotes.map((q) => q.span)]]), Date.now(), goalIds, [...known, ...(cur.foundGoals ?? []).map((g) => g.title)], termsFold(await store.getTerms()));
     if (checked.notFound) o.notFound?.(checked.notFound);
     const got = finishExtracted(checked, () => cur);
     cur = {

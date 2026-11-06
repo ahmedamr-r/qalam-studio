@@ -32,7 +32,7 @@ export interface KeptPoint {
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 
-export function sanitizeFoundGoals(raw: unknown, kept: ReadonlyMap<string, KeptPoint>, known: readonly string[], newId: () => string): FoundGoal[] {
+export function sanitizeFoundGoals(raw: unknown, kept: ReadonlyMap<string, KeptPoint>, known: readonly string[], newId: () => string, fold?: (s: string) => string): FoundGoal[] {
   const out: FoundGoal[] = [];
   for (const item of Array.isArray(raw) ? raw : []) {
     if (out.length >= FOUND_LIMITS.perSource) break;
@@ -42,7 +42,7 @@ export function sanitizeFoundGoals(raw: unknown, kept: ReadonlyMap<string, KeptP
     if (!points.some((p) => p.basis === "own" || p.basis === "measured")) continue;
     const said = points.map((p) => p.text).join("\n");
     const title = checkWords(typeof g.title === "string" ? g.title.replace(/\s+/g, " ").trim() : "", points, "", FOUND_LIMITS.title);
-    if (!title || [...known, ...out.map((x) => x.title)].some((t) => sameTopic(t, title))) continue;
+    if (!title || [...known, ...out.map((x) => x.title)].some((t) => sameTopic(t, title, fold))) continue;
     const metric = metricFrom(g.metric, said);
     out.push({ id: newId(), title, ...(metric?.name ? { metric } : {}), cites: [...new Set(points.map((p) => p.id))] });
   }

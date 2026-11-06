@@ -66,7 +66,7 @@ export interface Extracted {
  * The quotes and needs one extract call returned, kept only where code finds them. `taken` holds
  * the spans each source already has quotes at (an overlapping quote isn't kept twice).
  */
-export function sanitizeExtract(raw: unknown, chunks: CallChunk[], taken: Map<string, [number, number][]> = new Map(), now = Date.now(), goals: ReadonlyMap<string, string> = new Map(), known: readonly string[] = []): Extracted {
+export function sanitizeExtract(raw: unknown, chunks: CallChunk[], taken: Map<string, [number, number][]> = new Map(), now = Date.now(), goals: ReadonlyMap<string, string> = new Map(), known: readonly string[] = [], fold?: (s: string) => string): Extracted {
   const r = rec(raw);
   const byRef = new Map(chunks.map((c) => [c.ref, { c, find: quoteFinder(c.text) }]));
   const spans = new Map([...taken].map(([k, v]) => [k, [...v]]));
@@ -132,7 +132,7 @@ export function sanitizeExtract(raw: unknown, chunks: CallChunk[], taken: Map<st
     const q = out.quotes.find((x) => x.quote.id === at.id)?.quote;
     return q ? [[ref, { id: q.id, text: q.text, ...(q.basis ? { basis: q.basis } : {}) }] as const] : [];
   }));
-  for (const goal of sanitizeFoundGoals(r.goals, points, known, newId)) {
+  for (const goal of sanitizeFoundGoals(r.goals, points, known, newId, fold)) {
     const sourceId = out.quotes.find((x) => x.quote.id === goal.cites[0])?.sourceId;
     if (sourceId) out.foundGoals.push({ sourceId, goal });
   }

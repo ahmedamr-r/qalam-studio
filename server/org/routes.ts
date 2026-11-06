@@ -1,4 +1,6 @@
 import { MARKET_SECTIONS, type MarketEdit } from "@/market/edit";
+import { nanoid } from "nanoid";
+import { editTerms, termsEditOf } from "@/terms/edit";
 import { createReadStream } from "node:fs";
 import { readFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
@@ -1218,6 +1220,14 @@ export function orgRoutes(): Hono<Env> {
     if (!edit) return bad("Say which line, and its words");
     await editKnown(c.get("store"), edit, { tab: tabOf(c.req.raw.headers) });
     return c.json({ ok: true });
+  });
+  // The project's words (hub/terms.md): a term added, fixed or taken off.
+  r.get("/api/org/:org/terms", async (c) => c.json({ terms: await c.get("store").getTerms() }));
+  r.put("/api/org/:org/terms", async (c) => {
+    const edit = termsEditOf(await c.req.json().catch(() => null));
+    if (!edit) return bad("Say which word, and what it means");
+    const terms = await c.get("store").changeTerms((t) => editTerms(t, edit, { now: Date.now(), id: () => `t${nanoid(8)}` }), { tab: tabOf(c.req.raw.headers) });
+    return c.json({ terms });
   });
   r.post("/api/org/:org/statement", async (c) => {
     if (!aiConfigured()) return c.json({ statement: null });

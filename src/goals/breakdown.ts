@@ -122,7 +122,7 @@ const strs = (v: unknown): string[] => [...new Set((Array.isArray(v) ? v : []).f
  * resting on what it cites (its words and numbers in it or in the goals above), its number only
  * from their words. `dropped` hears each part left out and why.
  */
-export function sanitizeBreakdown(raw: unknown, m: BreakdownSent, o: { now: number; id: () => string }, dropped?: (why: string, item: unknown) => void): Pick<Breakdown, "parts" | "relation" | "none"> {
+export function sanitizeBreakdown(raw: unknown, m: BreakdownSent, o: { now: number; id: () => string; fold?: (s: string) => string }, dropped?: (why: string, item: unknown) => void): Pick<Breakdown, "parts" | "relation" | "none"> {
   const parts: BreakdownPart[] = [];
   const drop = (why: string, x: unknown) => void dropped?.(why, x);
   for (const x of Array.isArray(rec(raw).parts) ? (rec(raw).parts as unknown[]) : []) {
@@ -146,7 +146,7 @@ export function sanitizeBreakdown(raw: unknown, m: BreakdownSent, o: { now: numb
       drop("its words or numbers aren't in what it cites", x);
       continue;
     }
-    if (m.children.some((c) => sameTopic(c.title, title)) || parts.some((y) => sameTopic(y.title, title))) {
+    if (m.children.some((c) => sameTopic(c.title, title, o.fold)) || parts.some((y) => sameTopic(y.title, title, o.fold))) {
       drop("a goal under it already, or there twice", x);
       continue;
     }

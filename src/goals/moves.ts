@@ -107,7 +107,7 @@ export function ideasMaterial(o: { org: string; about: string; market: Market; p
 }
 
 /** What code keeps of the proposed goals: at most 3, none a goal they have, its numbers in what it was sent, what others report only where its page has it. */
-export function sanitizeIdeas(raw: unknown, m: PagesSent, o: { problem: string; words: readonly string[]; goals: readonly string[]; aims?: readonly MarketLine[]; now: number; id: () => string }, dropped?: (why: string, item: unknown) => void): GoalIdea[] {
+export function sanitizeIdeas(raw: unknown, m: PagesSent, o: { problem: string; words: readonly string[]; goals: readonly string[]; aims?: readonly MarketLine[]; now: number; id: () => string; fold?: (s: string) => string }, dropped?: (why: string, item: unknown) => void): GoalIdea[] {
   const out: GoalIdea[] = [];
   const hay = [o.problem, ...o.words, ...(o.aims ?? []).map((l) => l.text), ...[...m.pages.values()].map((p) => p.text)].join("\n");
   for (const x of list(rec(raw).goals)) {
@@ -122,7 +122,7 @@ export function sanitizeIdeas(raw: unknown, m: PagesSent, o: { problem: string; 
       dropped?.(!name ? "nothing to measure it by" : "a number in it that nothing it read has", x);
       continue;
     }
-    if ([...o.goals, ...out.map((i) => i.title)].some((t) => sameTopic(t, title))) {
+    if ([...o.goals, ...out.map((i) => i.title)].some((t) => sameTopic(t, title, o.fold))) {
       dropped?.("a goal they have, or there twice", x);
       continue;
     }

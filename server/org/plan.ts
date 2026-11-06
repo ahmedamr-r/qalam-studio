@@ -7,6 +7,7 @@ import { isEvidence, isOnline, sameTopic } from "@/hub/topics";
 import { pageLines, pagesBlock, type PagesSent } from "@/market/rivals";
 import type { MarketLine } from "@/market/types";
 import { answersOf, planMaterial, planNextMaterial, planTask, sanitizeNext, sanitizePlan, sanitizeRoute, type OutlineCard, type PlanDraft, type PlanLook, type PlanNext, type PlanPiece, type PlanRound } from "@/space/plan";
+import { termsFold } from "@/terms/fold";
 import { indexFor } from "../index/registry";
 import { companyContext } from "./company";
 import { readLinks, realDeps, type MarketDeps } from "./market";
@@ -124,7 +125,7 @@ export async function proposePlan(store: OrgStore, b: PlanBody, emit: (label: st
   emit("Qalam AI is working out what to propose");
   const { data, model } = await deps.structured<unknown>(planCall(m), signal);
   const dropped: { why: string; item: unknown }[] = [];
-  const draft = sanitizePlan(data, m, { id: () => nanoid(10) }, (why, item) => dropped.push({ why, item }));
+  const draft = sanitizePlan(data, m, { id: () => nanoid(10), fold: termsFold(await store.getTerms()) }, (why, item) => dropped.push({ why, item }));
   await store.putTrace({ id: nanoid(10), projectId: "plan", kind: "plan-place", at: Date.now(), ...(model ? { model } : {}), sent: { cards: m.cards.size, pieces: [...m.pieces].map(([ref, p]) => ({ ref, piece: p.ref })), answers: m.answers.size, read: m.read.size }, answer: data, kept: draft.cards.length, dropped } as { id: string; projectId: string }).catch(() => {});
   return draft;
 }

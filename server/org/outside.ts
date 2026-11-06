@@ -5,6 +5,7 @@ import { breakdownCall } from "@/ai/breakdown";
 import { claimsCall } from "@/ai/outside";
 import { research, structured } from "@/ai/server";
 import { breakdownMaterial, sanitizeBreakdown, type Breakdown } from "@/goals/breakdown";
+import { termsFold } from "@/terms/fold";
 import { claimsMaterial, outsideTask, sanitizeClaims, OUTSIDE_LIMITS, type OutsidePage } from "@/goals/outside";
 import { chainOf, goalById } from "@/goals/tree";
 import type { Goal, GoalLever } from "@/goals/types";
@@ -73,7 +74,7 @@ export async function breakDown(store: OrgStore, goalId: string, o: { levers: Go
   const { data, model } = await structured<unknown>(breakdownCall(m), signal);
   const now = Date.now();
   const dropped: { why: string; item: unknown }[] = [];
-  const r = sanitizeBreakdown(data, m, { now, id: () => nanoid(8) }, (why, item) => dropped.push({ why, item }));
+  const r = sanitizeBreakdown(data, m, { now, id: () => nanoid(8), fold: termsFold(await store.getTerms()) }, (why, item) => dropped.push({ why, item }));
   await store
     .putTrace({ id: nanoid(10), projectId: "goals", kind: "breakdown", at: now, ...(model ? { model } : {}), goal: goalId, pieces: [...m.pieces.keys()], benchmarks: [...m.benchmarks.keys()], answer: data, kept: r.parts.length, dropped } as { id: string; projectId: string })
     .catch(() => {});

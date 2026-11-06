@@ -5,6 +5,7 @@ import { problemsCall } from "@/ai/problems";
 import { structured } from "@/ai/server";
 import { foldBearings, problemsInScope } from "@/goals/bearings";
 import { problemsMaterial, sanitizeProblems, type DraftedProblems, type ProblemsDrafted, type ProblemsInput } from "@/goals/drafted";
+import { termsFold } from "@/terms/fold";
 import { metricLine } from "@/goals/goals-md";
 import { chainOf, goalById } from "@/goals/tree";
 import type { Goal } from "@/goals/types";
@@ -41,7 +42,9 @@ export async function draftProblems(store: OrgStore, goalId: string, req: { card
   const pack = await deps.pack({ query: [goal.title, goal.metric?.name, ...answers.map((a) => a.text)].filter(Boolean).join(" · ").slice(0, 2000), product: goal.product ?? undefined, budget: 1800, types: ["quote"] }).catch(() => null);
   for (const p of pack?.pieces ?? [])
     if (p.type === "quote" && !pieces.some((x) => x.ref === p.ref)) pieces.push({ ref: p.ref, text: p.text, label: p.title ?? "", source: p.source, evidence: isEvidence(p), basis: pieceBasis(p), ...(isOnline(p) ? { online: true } : {}) });
+  const fold = termsFold(await store.getTerms());
   const m = problemsMaterial({
+    fold,
     company: await companyContext(store),
     goal: { title: goal.title, metric: numberOf(goal) },
     above: chainOf(tree, goalId).slice(1).map((g) => ({ title: g.title, metric: numberOf(g) })),
@@ -54,7 +57,7 @@ export async function draftProblems(store: OrgStore, goalId: string, req: { card
   const { data, model } = await structured<unknown>(problemsCall(m), opts.signal);
   const now = Date.now();
   const dropped: { why: string; item: unknown }[] = [];
-  const { drafts, note } = sanitizeProblems(data, m, { now, id: () => nanoid(10) }, (why, item) => dropped.push({ why, item }));
+  const { drafts, note } = sanitizeProblems(data, m, { now, id: () => nanoid(10), fold }, (why, item) => dropped.push({ why, item }));
   // The call's trace: what it was sent (by id), what it answered, what code kept and left out, and why.
   await store
     .putTrace({ id: nanoid(10), projectId: "problems", kind: "draft-problems", at: now, ...(model ? { model } : {}), goal: goalId, sent: { pieces: [...m.pieces].map(([ref, p]) => ({ ref, piece: p.ref })), known: m.known.length }, answer: data, kept: drafts.length, dropped } as { id: string; projectId: string })

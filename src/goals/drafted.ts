@@ -34,6 +34,8 @@ export interface ProblemsInput {
   pieces: { ref: string; text: string; label: string; source: string | null; evidence: boolean; online?: boolean; basis?: Basis }[];
   /** What was read on the web while asking: others' words, never evidence. */
   read?: { text: string; url?: string; title?: string; quote?: string }[];
+  /** The project's avoided words read as their terms (termsFold), for telling what's there already. */
+  fold?: (s: string) => string;
 }
 
 type Piece = ProblemsInput["pieces"][number];
@@ -91,7 +93,7 @@ export function problemsMaterial(o: ProblemsInput): ProblemsSent {
   for (const g of o.above.slice(0, PROBLEM_LIMITS.above)) out.push(`It feeds: ${numbered(g)}`);
   const behind = o.behind.slice(0, PROBLEM_LIMITS.behind);
   if (behind.length) out.push("", "Problems behind it already (don't propose these again):", ...behind.map((t) => `- ${one(t)}`));
-  const pages = o.pages.filter((t) => !behind.some((b) => sameTopic(b, t))).slice(0, PROBLEM_LIMITS.pages);
+  const pages = o.pages.filter((t) => !behind.some((b) => sameTopic(b, t, o.fold))).slice(0, PROBLEM_LIMITS.pages);
   if (pages.length) out.push("", "Problem pages the organization has (Find its problems links these; don't propose them again):", ...pages.map((t) => `- ${one(t)}`));
   const pieces = new Map<string, Piece>();
   const order = [...o.pieces.filter((p) => p.evidence), ...o.pieces.filter((p) => !p.evidence && !p.online), ...o.pieces.filter((p) => !p.evidence && p.online)];
@@ -123,7 +125,7 @@ const strs = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is st
  * each saying where it came from when nothing that can reach "We know" backs it. `dropped` hears what
  * was left out and why (for the call's trace).
  */
-export function sanitizeProblems(raw: unknown, m: ProblemsSent, o: { now: number; id: () => string }, dropped?: (why: string, item: unknown) => void): { drafts: ProblemDraft[]; note: string } {
+export function sanitizeProblems(raw: unknown, m: ProblemsSent, o: { now: number; id: () => string; fold?: (s: string) => string }, dropped?: (why: string, item: unknown) => void): { drafts: ProblemDraft[]; note: string } {
   const drafts: ProblemDraft[] = [];
   const drop = (why: string, x: unknown) => void dropped?.(why, x);
   const said = (v: unknown, max: number) => holdWords(withoutIds(v, () => undefined, "qw"), m.hay, { max, shape: "prose" }).text;
@@ -143,7 +145,7 @@ export function sanitizeProblems(raw: unknown, m: ProblemsSent, o: { now: number
       drop("its title says nothing once what wasn't sent is out", x);
       continue;
     }
-    if (m.known.some((k) => sameTopic(k, title)) || drafts.some((d) => sameTopic(d.title, title))) {
+    if (m.known.some((k) => sameTopic(k, title, o.fold)) || drafts.some((d) => sameTopic(d.title, title, o.fold))) {
       drop("behind the goal or on a page already, or proposed twice", x);
       continue;
     }

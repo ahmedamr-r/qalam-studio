@@ -217,7 +217,7 @@ export function draftWords(hay: string, name: (ref: string) => string | undefine
  * in what was sent comes out of it; only a title left with nothing to say drops the draft. `dropped`
  * hears what was left out and why (for the call's trace).
  */
-export function sanitizeSolutions(raw: unknown, m: SolutionsSent, o: { now: number; id: () => string }, dropped?: (why: string, item: unknown) => void): { drafts: SolutionDraft[]; note: string } {
+export function sanitizeSolutions(raw: unknown, m: SolutionsSent, o: { now: number; id: () => string; fold?: (s: string) => string }, dropped?: (why: string, item: unknown) => void): { drafts: SolutionDraft[]; note: string } {
   const drafts: SolutionDraft[] = [];
   const drop = (why: string, x: unknown) => void dropped?.(why, x);
   // An id in what it wrote reads as what it stands for: a goal's title, a step's, whose words; lines and quotes go.
@@ -245,7 +245,7 @@ export function sanitizeSolutions(raw: unknown, m: SolutionsSent, o: { now: numb
     const refs = strs(s.cites);
     const lines = refs.filter((r) => m.lines.has(r));
     const own = refs.filter((r) => m.pieces.has(r));
-    if (m.cards.some((c) => sameTopic(c.title, title)) || drafts.some((d) => sameTopic(d.title, title))) {
+    if (m.cards.some((c) => sameTopic(c.title, title, o.fold)) || drafts.some((d) => sameTopic(d.title, title, o.fold))) {
       drop("on the board already, or proposed twice", x);
       continue;
     }

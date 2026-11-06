@@ -25,6 +25,8 @@ import { CHAT_KEY, chatOf, type CanvasChat } from "@/space/chat";
 import { marketFromMarkdown, marketToMarkdown } from "@/market/market-md";
 import type { Market } from "@/market/types";
 import type { MarketSession } from "@/market/session";
+import { termsFromMarkdown, termsToMarkdown } from "@/terms/terms-md";
+import type { Terms } from "@/terms/types";
 import type { ScanSession } from "@/scan/session";
 import type { FeedLog } from "@/feeds/feeds";
 import type { JobLog } from "@/goals/jobs";
@@ -92,6 +94,8 @@ export type OrgEvent = { tab?: string } & (
   | { kind: "map"; key: string; removed?: boolean }
   /** What's known about the company, its competitors and its domain changed (hub/market.md), or the first run's lookups moved on (`session`). */
   | { kind: "market"; session?: boolean }
+  /** The project's words changed (hub/terms.md). */
+  | { kind: "terms" }
   /** A scan of what people complain about moved on (chats/scan/session.json). */
   | { kind: "scan" }
   /** A card's brief was written or taken off (hub/briefs/). */
@@ -113,6 +117,8 @@ export type OrgEvent = { tab?: string } & (
 export const GOALS = "goals.md";
 /** What's known about the company, its competitors and its domain. */
 export const MARKET = "hub/market.md";
+/** The project's words: its terms, what each means, and the words to avoid. */
+export const TERMS = "hub/terms.md";
 /** How long taking a change to a goal back counts as undoing it (as on a board). */
 const GOAL_UNDO_WINDOW = 10 * 60_000;
 
@@ -1020,6 +1026,24 @@ export class OrgStore {
     return next;
   }
 
+  // The project's words (hub/terms.md): changes are edits, made under its lock on the file as it is
+  // now, so a person's edit in the file and one through the panel never lose each other.
+
+  async getTerms(): Promise<Terms> {
+    return termsFromMarkdown(await readFile(this.abs(TERMS), "utf8").catch(() => ""));
+  }
+
+  async changeTerms(fn: (t: Terms) => Terms, opts: { tab?: string } = {}): Promise<Terms> {
+    const file = this.abs(TERMS);
+    const next = await locked(file, async () => {
+      const t = fn(termsFromMarkdown(await readFile(file, "utf8").catch(() => "")));
+      await this.write(file, termsToMarkdown(t, { org: this.info.name }));
+      return t;
+    });
+    this.emit({ kind: "terms", tab: opts.tab });
+    return next;
+  }
+
   getMarketSession(): Promise<MarketSession | null> {
     return readJson<MarketSession>(this.abs("chats/market/session.json"));
   }
@@ -1829,6 +1853,8 @@ export class OrgStore {
       this.emit({ kind: "seen", key: path.basename(rel, ".md"), ...(bytes ? {} : { removed: true }) });
     } else if (rel === MARKET) {
       this.emit({ kind: "market" });
+    } else if (rel === TERMS) {
+      this.emit({ kind: "terms" });
     } else if (rel === "about.md") {
       this.emit({ kind: "about" });
     } else if (rel === GOALS) {

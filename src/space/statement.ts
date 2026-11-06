@@ -21,8 +21,8 @@ export interface StatementSent {
 
 const one = (s: string) => s.replace(/\s+/g, " ").trim();
 
-/** What the statement call reads: their words, what they want it to be, the card above it, and the company. */
-export function statementMaterial(o: { what: StatementWhat; said: string; org: string; about: string; market: string; above?: string | null }): StatementSent {
+/** What the statement call reads: their words, what they want it to be, the card above it, the company, and the project's own words (`words`), so a statement says basket where the team does. */
+export function statementMaterial(o: { what: StatementWhat; said: string; org: string; about: string; market: string; above?: string | null; words?: string }): StatementSent {
   const said = one(o.said).slice(0, 1200);
   const text = [
     `They want this on the canvas as ${o.what === "goal" ? "a goal: an outcome the team is trying to move" : "a problem: a need, a pain or a wish of the people the product is for"}.`,
@@ -31,9 +31,10 @@ export function statementMaterial(o: { what: StatementWhat; said: string; org: s
     `Their words: “${said}”`,
     "",
     `The company, “${o.org}”: ${one(o.about) || "(not described yet)"}`,
+    ...(o.words?.trim() ? ["", o.words.trim()] : []),
     ...(o.market.trim() ? ["", o.market.trim()] : []),
   ].join("\n");
-  return { text, said, names: [o.org, o.about, o.market, o.above ?? ""].join(" ") };
+  return { text, said, names: [o.org, o.about, o.market, o.above ?? "", o.words ?? ""].join(" ") };
 }
 
 /** Capitalized words after a sentence's first: names, which must be theirs or the company's known ones. */

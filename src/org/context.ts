@@ -6,6 +6,8 @@ import { contextText, emptyContext, type ContextFields, type Product } from "./c
 import { marketContext } from "@/market/text";
 import { orgFetch, orgJson } from "./client";
 import { useMarket } from "./market";
+import { useTerms } from "./terms";
+import { termsText } from "@/terms/text";
 
 /**
  * What the organization and its products are (about.md, products/*.md), loaded when a window
@@ -58,5 +60,5 @@ export function contextFor(productId: string | null | undefined, goals?: string[
   const aims = goalsText(goalsNow(), { product: productId ?? null, goals, productName: (id) => names.get(id) });
   const said = contextText(about, "The organization:");
   const market = useMarket.getState();
-  return [p ? contextText(p, `The product (${p.name}):`) : "", said, aims, market.org ? marketContext(market.market, { org: market.org, told: said }) : ""].filter(Boolean).join("\n\n");
+  return [p ? contextText(p, `The product (${p.name}):`) : "", said, termsText(useTerms.getState().terms, { max: 1000 }), aims, market.org ? marketContext(market.market, { org: market.org, told: said }) : ""].filter(Boolean).join("\n\n");
 }
