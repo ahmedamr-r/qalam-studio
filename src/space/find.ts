@@ -104,9 +104,10 @@ export function findQuestionsMaterial(o: { what: FindWhat; org: string; about: s
 }
 
 /**
- * What code keeps of the opening round: 2 or 3 questions, each choice drawn from what's known (it
- * shares two telling words with a fact or a domain line, or all of a short one's), with their own
- * words always open; a question left with fewer than two choices is asked open.
+ * What code keeps of the opening round: every question it can ask now (src/asking/: no limit), each
+ * choice drawn from what's known (it shares two telling words with a fact or a domain line, or all of
+ * a short one's), with their own words always open; a question left with fewer than two choices is
+ * asked open. The dump's rounds take it from there, as many as it needs.
  */
 export function sanitizeFindQuestions(raw: unknown, m: FindQuestionsSent): PlanQuestion[] {
   const r = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
@@ -114,10 +115,8 @@ export function sanitizeFindQuestions(raw: unknown, m: FindQuestionsSent): PlanQ
     const words = `${label} ${description}`;
     return m.known.some((k) => sharedWords(words, k) >= 2) || (label.split(/\s+/).length <= 2 && m.known.some((k) => sharedWords(label, k) >= 1));
   };
-  return sanitizeAsked(r.questions)
-    .map((q) => {
-      const options = q.options.filter((o) => drawn(o.label, o.description));
-      return options.length >= 2 ? { ...q, options, recommended: q.recommended.filter((v) => options.some((o) => o.value === v)), allowOther: true } : { ...q, multi: false, options: [], recommended: [], allowOther: false };
-    })
-    .slice(0, 3);
+  return sanitizeAsked(r.questions, { max: Infinity }).map((q) => {
+    const options = q.options.filter((o) => drawn(o.label, o.description));
+    return options.length >= 2 ? { ...q, options, recommended: q.recommended.filter((v) => options.some((o) => o.value === v)), allowOther: true } : { ...q, multi: false, options: [], recommended: [], allowOther: false };
+  });
 }

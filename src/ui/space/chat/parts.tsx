@@ -26,7 +26,9 @@ import { toQuestion } from "../../ai/plan";
 import { AnswersSummary, qr } from "../../ai/Questionnaire";
 import { QalamAIGlyph } from "../../brand/ai-glyph";
 import { SiteIcon, SiteStack } from "../../brand/SiteIcon";
-import { placeDump, readAnyway, retryDump, sessionOf, skipRest, useDump } from "../../discovery/dump";
+import { confirmDump, offDump, placeDump, readAnyway, retryDump, sessionOf, useDump } from "../../discovery/dump";
+import { fromBuckets } from "@/asking/engine";
+import type { AskingState } from "@/asking/types";
 import { ACCEPT } from "../../discovery/ingest";
 import { acceptAll, acceptProposals, discardAll, discardProposals, frameReview, startReview, useReview } from "../../discovery/review";
 import { openSource, sourceOf, useSources } from "../../discovery/sources";
@@ -337,18 +339,24 @@ function AnalysisPart({ data }: { data: PartData }) {
 function SkipPart({ data }: { data: PartData }) {
   const d = useDumpOf(data.turn);
   if (!d) return null;
+  // Stop asking is under the round; a file read for a card can still be left out from here.
+  if (!d.s.file) return null;
   return (
     <ReplyChips>
-      <button type="button" className={r.replyChip} onClick={() => void skipRest(d.source)}>
-        Skip, and place it now
+      <button type="button" className={r.replyChip} onClick={() => void leaveFile(String(data.turn))}>
+        Leave it out
       </button>
-      {d.s.file && (
-        <button type="button" className={r.replyChip} onClick={() => void leaveFile(String(data.turn))}>
-          Leave it out
-        </button>
-      )}
     </ReplyChips>
   );
+}
+
+/** What a brain dump's rounds settled, before it places: Place it on the canvas, or Something's off. */
+function DumpSettledPart({ data }: { data: PartData }) {
+  const d = useDumpOf(data.turn);
+  if (!d) return null;
+  const understood = d.s.understanding.split(/(?<=[.!?])\s+/).filter((x) => x.trim()).map((text) => ({ text }));
+  const state: AskingState = { ...fromBuckets(d.s.buckets), held: d.s.held ?? [], understood };
+  return <SettledCard state={state} go="Place it on the canvas" onGo={() => void confirmDump(d.source)} onOff={() => void offDump(d.source)} onTerm={() => {}} />;
 }
 
 function PlacePart({ data }: { data: PartData }) {
@@ -1826,6 +1834,7 @@ export const PARTS: Record<string, PartComponent> = {
   answered: AnsweredPart,
   analysis: AnalysisPart,
   skip: SkipPart,
+  dumpSettled: DumpSettledPart,
   place: PlacePart,
   retry: RetryPart,
   off: OffPart,

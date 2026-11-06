@@ -12,11 +12,13 @@ import { clearGhosts, useGhosts } from "@/doc/ghosts";
 import { AIError, type AIDelta } from "@/ai/client";
 import { parsePartial } from "@/ai/partial-json";
 import { SAMPLE_DUMP_FOLLOWUP_RAW, SAMPLE_DUMP_PLACE_RAW, SAMPLE_DUMP_READ_RAW, SAMPLE_DUMP_TEXT } from "@/ai/fixtures-discovery";
+import { takePicks } from "@/asking/engine";
+import { frontierOf } from "@/asking/sanitize";
+import type { AskQuestion } from "@/asking/types";
 import {
   DUMP_MAX_CHARS,
-  MAX_DUMP_ROUNDS,
-  MAX_LOOKS,
   applyDumpFollowup,
+  askedOf,
   briefFromDump,
   closeDumpRound,
   firstRound,
@@ -215,6 +217,7 @@ export async function startDump(text: string, opts: { sample?: boolean; id?: str
     dump: {
       v: 1,
       ...(within ? { within } : {}),
+      base: read.text.length,
       phase: "reading",
       understanding: "",
       challenges: [],
@@ -238,6 +241,12 @@ export async function startDump(text: string, opts: { sample?: boolean; id?: str
   return rec.id;
 }
 
+/** The first round as the interview asks it: what can be asked now, the rest held; nothing to ask, it's ready. */
+function firstFrontier(questions: AskQuestion[]): Pick<DumpSession, "phase" | "buckets" | "held"> {
+  const { ask, held } = frontierOf(questions);
+  return { phase: ask.length ? "asking" : "ready", buckets: firstRound(ask), held };
+}
+
 /** Have Qalam AI read a dump: what it took from it, its pieces, its pushback, the first round. */
 export async function readDump(sourceId: string) {
   const s = sourceOf(sourceId);
@@ -256,7 +265,8 @@ export async function readDump(sourceId: string) {
     await updateSource(sourceId, (x) => ({
       ...x,
       quotes: r.fragments,
-      dump: { ...x.dump!, phase: r.questions.length ? "asking" : "ready", failed: undefined, understanding: r.understanding, challenges: r.challenges, buckets: firstRound(r.questions), ...(model ? { model } : {}) },
+      // Every question it can ask now is the first round; one waiting on another of them is held for the next turn.
+      dump: { ...x.dump!, ...firstFrontier(r.questions), failed: undefined, understanding: r.understanding, challenges: r.challenges, ...(model ? { model } : {}) },
     }));
     turnDone(sourceId, { model, sample });
   } catch (e) {
@@ -310,24 +320,48 @@ export async function answerRound(sourceId: string, form: FlowState) {
   await readAnswers(sourceId);
 }
 
-/** The builder leaves the rest to Qalam AI: it places what it has. */
+/** "Stop asking": what's answered stands, and What we settled shows before it places. */
 export async function skipRest(sourceId: string, form?: FlowState) {
   clearTimeout(saving);
   await setSession(sourceId, (s) => closeDumpRound(s, form ?? s.buckets[s.buckets.length - 1]?.form ?? initialFlow([]), "skipped"));
   await keepRound(sourceId);
   fileAnswers(sourceId);
+}
+
+/** "Use Qalam AI's picks": what they haven't answered that has a recommendation takes it, kept as Qalam AI's pick, and the round goes. */
+export async function picksRound(sourceId: string, form: FlowState) {
+  const s = sessionOf(sourceOf(sourceId));
+  const round = s?.buckets.at(-1);
+  await answerRound(sourceId, round ? takePicks(round.questions, form) : form);
+}
+
+/** What we settled: they said go, and it places what it has. */
+export async function confirmDump(sourceId: string) {
+  await setSession(sourceId, (s) => ({ ...s, phase: "ready" }));
   await placeDump(sourceId);
+}
+
+/** "Something's off" about what was settled: a round of code's asks what, and Qalam AI reads it as it reads any answers. */
+export async function offDump(sourceId: string) {
+  await setSession(sourceId, (s) => ({ ...s, phase: "asking", skipped: undefined, buckets: [...s.buckets, ...firstRound([{ id: `off-${s.buckets.length + 1}`, title: "What's off?", why: "Say what's wrong or missing, and I'll ask about what that changes.", multi: false, options: [], recommended: [], allowOther: false }])] }));
 }
 
 /**
  * Whether Qalam AI may look on the web before its next round: only while finding a goal's problem,
- * where the web answers here, at most MAX_LOOKS times after the opening look, and not straight
- * after one.
+ * where the web answers here, and not straight after a look. As many looks as the conversation needs.
  */
-const mayLook = (s: DumpSession, justLooked: boolean) => !justLooked && !!s.aim?.goal && !s.looks?.some((l) => l.noWeb) && (s.looks ?? []).filter((l) => l.after >= 0).length < MAX_LOOKS;
+const mayLook = (s: DumpSession, justLooked: boolean) => !justLooked && !!s.aim?.goal && !s.looks?.some((l) => l.noWeb);
 
-/** Qalam AI reads the last round's answers: the next round, or ready (then it places); first a look on the web, when it asks for one. */
+/** A look running beside a round (each dump's): the next reading waits for it, nothing else does. */
+const looking = new Map<string, Promise<void>>();
+
+/**
+ * Qalam AI reads the last round's answers: the next round, or What we settled. A look on the web it
+ * asks for runs beside the round it asks with it, so the person answers while it looks; with nothing
+ * to ask until it has looked, it looks first and reads again.
+ */
 export async function readAnswers(sourceId: string, o: { looked?: boolean } = {}) {
+  await looking.get(sourceId)?.catch(() => {});
   const s = sourceOf(sourceId);
   const session = sessionOf(s);
   if (!s || !session) return;
@@ -336,20 +370,29 @@ export async function readAnswers(sourceId: string, o: { looked?: boolean } = {}
   const { pieces, fields } = readFields(s, cards);
   const rounds = roundAnswers(session).map((answers, i) => ({ answers: answers.map((a) => ({ question: a.question.slice(0, 200), answer: a.answer })), ...(session.buckets[i]?.analysis ? { analysis: session.buckets[i].analysis!.slice(0, 1500) } : {}) }));
   const look = mayLook(session, !!o.looked);
-  const body = { stage: "dump-followup", product: product(), dump: s.text, tree, ...aimOf(session, cards), ...fields, rounds, last: session.buckets.length >= MAX_DUMP_ROUNDS, ...(look ? { look } : {}) };
+  // The rounds go as rounds; the source's text without them, so they aren't read twice.
+  const body = { stage: "dump-followup", product: product(), dump: s.text.slice(0, session.base ?? s.text.length), tree, ...aimOf(session, cards), ...fields, rounds, ...(session.held?.length ? { held: session.held.map((q) => q.title.slice(0, 200)).slice(0, 20) } : {}), ...(look ? { look } : {}) };
   const recorded = () => sampleRaw(SAMPLE_DUMP_FOLLOWUP_RAW[Math.min(session.buckets.length, SAMPLE_DUMP_FOLLOWUP_RAW.length) - 1], cards);
   try {
     const { raw, sample, model } = await call(sourceId, o.looked ? "Qalam AI is reading what it found, with your answers" : "Qalam AI is reading your answers", body, recorded, 2500);
-    const f = sanitizeDumpFollowup(raw, pieces, cards);
-    // It wants to look something up first: what it took from the answers is kept, then it reads again with what the look found.
-    if (look && f.look && session.buckets.length < MAX_DUMP_ROUNDS) {
-      await setSession(sourceId, (d) => ({ ...applyDumpFollowup(d, { ...f, ready: true, questions: [] }), phase: "analyzing" }), (x) => withRoles(x.quotes, f.roles));
-      await lookOnWeb(sourceId, f.look);
-      return await readAnswers(sourceId, { looked: true });
+    const f = sanitizeDumpFollowup(raw, pieces, cards, askedOf(session));
+    if (look && f.look) {
+      // Nothing to ask until it has looked: it looks, then reads again with what the look found.
+      if (!f.questions.length) {
+        await setSession(sourceId, (d) => ({ ...applyDumpFollowup(d, { ...f, ready: true, questions: [] }), phase: "analyzing" }), (x) => withRoles(x.quotes, f.roles));
+        await lookOnWeb(sourceId, f.look);
+        return await readAnswers(sourceId, { looked: true });
+      }
+      // Questions it can ask now: the round shows while the look runs.
+      await setSession(sourceId, (d) => applyDumpFollowup(d, f), (x) => withRoles(x.quotes, f.roles));
+      const run = lookOnWeb(sourceId, f.look, { beside: true }).finally(() => looking.delete(sourceId));
+      looking.set(sourceId, run);
+      turnDone(sourceId, { model, sample });
+      return;
     }
     await setSession(sourceId, (d) => applyDumpFollowup(d, f), (x) => withRoles(x.quotes, f.roles));
     turnDone(sourceId, { model, sample });
-    // The builder just answered: once Qalam AI has what it needs, it goes on to place.
+    // Nothing was asked at all: it has what it needs, and places.
     if (sessionOf(sourceOf(sourceId))?.phase === "ready") await placeDump(sourceId);
   } catch (e) {
     await failed(sourceId, "analyzing", e);
@@ -361,30 +404,41 @@ export async function readAnswers(sourceId: string, o: { looked?: boolean } = {}
  * look up, with what they said in the round just answered. It goes on the session after that round
  * and onto the source's text. A look that fails is let go (Qalam AI asks without it); Stop stops.
  */
-async function lookOnWeb(sourceId: string, query: string) {
+async function lookOnWeb(sourceId: string, query: string, o: { beside?: boolean } = {}) {
   const session = sessionOf(sourceOf(sourceId));
   const goal = session?.aim?.goal;
   if (!session || !goal) return;
   const ctrl = new AbortController();
-  runs.get(sourceId)?.abort();
-  runs.set(sourceId, ctrl);
-  useDump.setState({ busy: { sourceId, label: `Qalam AI is looking on the web for “${query}”`, started: Date.now(), tokens: 0 } });
-  const said = (roundAnswers(session).at(-1) ?? []).filter((a) => a.answer && a.answer !== "No preference").map((a) => `${a.question} ${a.said ?? a.answer}`).join("\n");
+  // A look beside a round runs on its own (the round stays theirs to answer); Stop stops it too.
+  const map = o.beside ? besides : runs;
+  map.get(sourceId)?.abort();
+  map.set(sourceId, ctrl);
+  if (!o.beside) useDump.setState({ busy: { sourceId, label: `Qalam AI is looking on the web for “${query}”`, started: Date.now(), tokens: 0 } });
+  // What they said in the round it follows: the one just answered (a look beside the next round follows the one before it).
+  const followed = o.beside ? roundAnswers(session).at(-2) : roundAnswers(session).at(-1);
+  const said = (followed ?? []).filter((a) => a.answer && a.answer !== "No preference" && a.how !== "pick").map((a) => `${a.question} ${a.said ?? a.answer}`).join("\n");
   try {
     const r = await lookForGoal(goal.id, { query, said }, (label) => useDump.setState((u) => (u.busy?.sourceId === sourceId ? { busy: { ...u.busy, label } } : {})), ctrl.signal);
-    const after = session.buckets.length - 1;
+    const after = session.buckets.length - (o.beside ? 2 : 1);
     await updateSource(sourceId, (x) => {
       if (!x.dump) return x;
       const t = withLook(x.text, x.blocks ?? [], r.look);
       return { ...x, text: t.text, blocks: t.blocks, dump: { ...x.dump, looks: [...(x.dump.looks ?? []), { ...r.look, after }] } };
     });
   } catch (e) {
-    if ((e as Error).name === "AbortError" || ctrl.signal.aborted) throw e;
+    if ((e as Error).name === "AbortError" || ctrl.signal.aborted) {
+      // A look beside a round that's stopped is let go: the next reading goes on without it.
+      if (o.beside) return;
+      throw e;
+    }
   } finally {
-    if (runs.get(sourceId) === ctrl) runs.delete(sourceId);
-    useDump.setState((u) => (u.busy?.sourceId === sourceId ? { busy: null } : {}));
+    if (map.get(sourceId) === ctrl) map.delete(sourceId);
+    if (!o.beside) useDump.setState((u) => (u.busy?.sourceId === sourceId ? { busy: null } : {}));
   }
 }
+
+/** Looks running beside a round, by the dump's source. */
+const besides = new Map<string, AbortController>();
 
 // ---------------------------------------------------------------------------
 // Place (proposals on the board, to accept or discard)
@@ -408,14 +462,15 @@ export async function placeDump(sourceId: string) {
   const { pieces, fields } = readFields(s, cards);
   const answers = roundAnswers(session)
     .flat()
-    .map((a, i) => ({ ref: `a${i + 1}`, answerId: `dump:${sourceId}:${a.questionId}`, question: a.question, answer: a.answer, words: a.words, said: a.said ?? "" }));
+    .map((a, i) => ({ ref: `a${i + 1}`, answerId: `dump:${sourceId}:${a.questionId}`, question: a.question, answer: a.answer, words: a.words, said: a.said ?? "", pick: a.how === "pick" }));
   const ctx: PlaceContext = {
     cards,
     pieces,
     sourceId,
-    // A choice they picked is their answer, in those words (nothing's picked for them: `toQuestion`).
-    answers: answers.map(({ ref, answerId, words, said }) => ({ ref, answerId, words: words || said })),
-    said: [s.text, ...answers.map((a) => a.words)].join("\n"),
+    // A choice they picked is their answer, in those words; Qalam AI's pick they agreed to never is.
+    answers: answers.map(({ ref, answerId, words, said, pick }) => ({ ref, answerId, words: pick ? "" : words || said })),
+    // Numbers come from their own text and what they typed: never a pick, nor the rounds written after it.
+    said: [s.text.slice(0, session.base ?? s.text.length), ...answers.map((a) => a.words)].join("\n"),
     settled: new Set(session.dismissed ?? []),
     has: (cardId, span) => {
       const c = cardOf(studio().doc, cardId);
@@ -510,6 +565,7 @@ export async function placeDump(sourceId: string) {
 
 export function stopDump(sourceId: string) {
   runs.get(sourceId)?.abort();
+  besides.get(sourceId)?.abort();
 }
 
 /** A file read as not bearing on its card, read for it anyway: placed with what was found in it. */

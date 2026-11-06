@@ -5,7 +5,9 @@ import { isOstCard, treeRootOf } from "@/doc/board";
 import type { DumpCardInput } from "@/ai/discovery";
 import type { PlanQuestion } from "@/ai/plan";
 import { answerText, sanitizeAsked, toQuestion, type PlanBucket } from "@/ui/ai/plan";
-import { answerWords, initialFlow, resolvedAnswers, type FlowState } from "@/ui/ai/questionFlow";
+import { answerWords, initialFlow, resolvedAnswers, type AnswerHow, type FlowState } from "@/ui/ai/questionFlow";
+import { frontierOf, keepQuestions } from "@/asking/sanitize";
+import type { AskQuestion } from "@/asking/types";
 import { quoteFinder } from "./quotes";
 import type { QuoteKind, SourceQuote, TextBlock } from "./sources";
 import { allCards, childCards } from "./tree";
@@ -81,8 +83,13 @@ export interface DumpCounts {
 /** How a brain dump is going, kept on its source (it survives a reload). */
 export interface DumpSession {
   v: 1;
-  /** reading → asking ⇄ analyzing → ready → placing → review → placed. */
-  phase: "reading" | "asking" | "analyzing" | "ready" | "placing" | "review" | "placed" | "failed";
+  /**
+   * reading → asking ⇄ analyzing → settled (What we settled, once anything was asked) → ready → placing
+   * → review → placed. As many rounds as it needs (src/asking/): no limit.
+   */
+  phase: "reading" | "asking" | "analyzing" | "settled" | "ready" | "placing" | "review" | "placed" | "failed";
+  /** Questions the last turn asked that wait on another of the same turn: never shown as they were; the next turn asks again. */
+  held?: AskQuestion[];
   /** The step that failed: Try again runs it again with what's kept. */
   failed?: { at: "reading" | "analyzing" | "placing"; error: string };
   /** What Qalam AI took from it, revised after each round of answers. */
@@ -117,13 +124,12 @@ export interface DumpSession {
   within?: [number, number][];
   /** The file read as not bearing on its card: the kind of file that would help (in Qalam AI's words). */
   off?: { wanted: string };
+  /** Where its own text ends: each round answered is added after it, and the calls get the rounds as rounds. */
+  base?: number;
 }
 
 /** A look on the web in a dump's conversation, after the round it followed (-1: before any). */
 export type DumpLook = FocusLook & { after: number };
-
-/** Looks on the web a goal's conversation makes after its opening one, at most. */
-export const MAX_LOOKS = 2;
 
 /** A file read for a card: its title, the card's id, and whether its words were cut to fit. */
 export interface DumpFile {
@@ -134,8 +140,6 @@ export interface DumpFile {
 
 /** The most text one brain dump takes (longer: add the rest as a source). */
 export const DUMP_MAX_CHARS = 20_000;
-/** Rounds of questions at most. */
-export const MAX_DUMP_ROUNDS = 3;
 
 /**
  * Pasted text that reads as someone's thinking, not a stray word, a link or data: a few sentences
@@ -357,7 +361,8 @@ export function sanitizeRead(raw: unknown, text: string, cards: PlaceCard[], now
     understanding: clip(readable(r.understanding, names), READ_LIMITS.understanding),
     fragments,
     challenges: sanitizeChallenges(r.challenges, (ref) => kept.get(ref), cards, names),
-    questions: readableQuestions(sanitizeAsked(r.questions), names),
+    // The first round as the interview keeps it: every question it can ask now, what each waits on.
+    questions: keepQuestions(Array.isArray(r.questions) ? r.questions : [], { who: "builder", asked: [], lookups: [], readable: (q) => readableQuestions([q], names)[0] ?? q }).questions,
     refs: Object.fromEntries(kept),
     bears: r.bears !== false,
     wanted: clip(readable(r.wanted, names), READ_LIMITS.wanted),
@@ -376,16 +381,20 @@ export function fragmentRefs(quotes: SourceQuote[]): { ref: string; q: SourceQuo
 }
 
 /** What rounds of questions keep on a session: a board's brain dump, or an organization's setup (src/org/setup.ts). */
-export type Rounds = Pick<DumpSession, "understanding" | "challenges" | "buckets" | "skipped" | "failed"> & { phase: string };
+export type Rounds = Pick<DumpSession, "understanding" | "challenges" | "buckets" | "skipped" | "failed" | "held"> & { phase: string };
+
+/** Every question asked so far, and those held: never asked again. */
+export const askedOf = (s: Pick<Rounds, "buckets" | "held">): { id: string; title: string }[] => [...s.buckets.flatMap((b) => b.questions.map((q) => ({ id: q.id, title: q.title }))), ...(s.held ?? []).map((q) => ({ id: q.id, title: q.title }))];
 
 /**
- * The builder is done with the current round: answered it (Qalam AI reads the answers next) or
- * left the rest to Qalam AI (it places what it has).
+ * The builder is done with the current round: answered it (Qalam AI reads the answers next), or said
+ * to stop asking (What we settled, then it places what it has).
  */
 export function closeDumpRound<S extends Rounds>(s: S, form: FlowState, how: "analyzing" | "skipped"): S {
   const last = s.buckets.length - 1;
+  // A round they stopped half-way counts for what they answered of it.
   const buckets = s.buckets.map((b, i) => (i === last ? { ...b, form } : b));
-  return { ...s, buckets, failed: undefined, ...(how === "skipped" ? { phase: "ready", skipped: true } : { phase: "analyzing" }) } as S;
+  return { ...s, buckets, failed: undefined, ...(how === "skipped" ? { phase: "settled", skipped: true } : { phase: "analyzing" }) } as S;
 }
 
 export interface DumpFollowup {
@@ -400,8 +409,11 @@ export interface DumpFollowup {
   look: string;
 }
 
-/** What Qalam AI made of a round of answers, checked: roles and pushback only on pieces that were sent. */
-export function sanitizeDumpFollowup(raw: unknown, pieces: { ref: string; q: SourceQuote }[], cards: PlaceCard[]): DumpFollowup {
+/**
+ * What Qalam AI made of a round of answers, checked: roles and pushback only on pieces that were sent;
+ * questions as the interview keeps them (src/asking/): never one asked before, what each waits on.
+ */
+export function sanitizeDumpFollowup(raw: unknown, pieces: { ref: string; q: SourceQuote }[], cards: PlaceCard[], asked: readonly { id: string; title: string }[] = []): DumpFollowup {
   const r = rec(raw);
   const byRef = new Map(pieces.map((p) => [p.ref, p.q.id]));
   const roles = new Map<string, DumpRole>();
@@ -410,7 +422,7 @@ export function sanitizeDumpFollowup(raw: unknown, pieces: { ref: string; q: Sou
     if (quoteId && isRole(x.role)) roles.set(quoteId, x.role);
   }
   const names = namesOf(pieces.map((p): [string, string] => [p.ref, p.q.text]), cards);
-  const questions = readableQuestions(sanitizeAsked(r.questions), names);
+  const { questions } = keepQuestions(Array.isArray(r.questions) ? r.questions : [], { who: "builder", asked, lookups: [], readable: (q) => readableQuestions([q], names)[0] ?? q });
   return {
     analysis: clip(readable(r.analysis, names), 1200),
     understanding: clip(readable(r.understanding, names), READ_LIMITS.understanding),
@@ -423,9 +435,14 @@ export function sanitizeDumpFollowup(raw: unknown, pieces: { ref: string; q: Sou
   };
 }
 
-/** What a round of answers changed: its reading kept with it, the reading revised, and the next round or ready. */
+/**
+ * What a round of answers changed: its reading kept with it, the reading revised, and the next round,
+ * or What we settled. As many rounds as it needs: what it asks now is a round, a question waiting on
+ * another of the same turn is held for the next.
+ */
 export function applyDumpFollowup<S extends Rounds>(s: S, f: DumpFollowup): S {
-  const more = !f.ready && f.questions.length > 0 && s.buckets.length < MAX_DUMP_ROUNDS;
+  const { ask, held } = frontierOf(f.questions);
+  const more = ask.length > 0;
   const last = s.buckets.length - 1;
   const read = s.buckets.map((b, i) => (i === last ? { ...b, analysis: f.analysis || undefined } : b));
   return {
@@ -433,8 +450,10 @@ export function applyDumpFollowup<S extends Rounds>(s: S, f: DumpFollowup): S {
     understanding: f.understanding || s.understanding,
     challenges: f.challenges,
     failed: undefined,
-    phase: more ? "asking" : "ready",
-    buckets: more ? [...read, { questions: f.questions, form: initialFlow(f.questions.map(toQuestion)) }] : read,
+    held,
+    // Something was asked: what's settled shows before it places.
+    phase: more ? "asking" : read.length ? "settled" : "ready",
+    buckets: more ? [...read, { questions: ask, form: initialFlow(ask.map(toQuestion)) }] : read,
   } as S;
 }
 
@@ -453,6 +472,8 @@ export interface DumpAnswer {
   words: string;
   /** What they said, in their words or the choice they picked (for the source's text). */
   said?: string;
+  /** Their own answer, Qalam AI's pick they agreed to (never their words), or left. */
+  how?: AnswerHow;
 }
 
 /** Each round's answers (the round being asked included, once answered). */
@@ -468,7 +489,9 @@ export function roundAnswers(s: Pick<Rounds, "buckets">): DumpAnswer[][] {
       // words a card may rest on.
       const w = answerWords(q, answers[q.id]);
       const said = w.text.slice(0, 600);
-      return { questionId: q.id, question: q.title, answer: said ? answerText(q, answers[q.id]).slice(0, 600) : "", words: w.typed.slice(0, 600), said };
+      const answer = said ? answerText(q, answers[q.id]).slice(0, 600) : "";
+      // A pick is heard as Qalam AI's recommendation they agreed to: agreement, never their words.
+      return { questionId: q.id, question: q.title, answer: w.how === "pick" ? `(your recommendation, which they agreed to with one press: not their words) ${answer}` : answer, words: w.typed.slice(0, 600), said, how: w.how };
     });
   });
 }
@@ -479,7 +502,8 @@ export function roundAnswers(s: Pick<Rounds, "buckets">): DumpAnswer[][] {
  * added past what a dump takes. Its pieces stay where they were.
  */
 export function withRound(text: string, blocks: readonly TextBlock[], answers: readonly DumpAnswer[], round: number): { text: string; blocks: TextBlock[] } {
-  const said = answers.map((a) => ({ question: a.question, text: (a.said ?? a.answer).trim() })).filter((a) => a.text && a.text !== "No preference");
+  // Qalam AI's pick they agreed to is written as that, so the source never reads it as their words.
+  const said = answers.map((a) => ({ question: a.question, text: (a.said ?? a.answer).trim(), pick: a.how === "pick" })).filter((a) => a.text && a.text !== "No preference").map((a) => ({ ...a, text: a.pick ? `Qalam AI's pick, which they agreed to: ${a.text}` : a.text }));
   if (!said.length) return { text, blocks: [...blocks] };
   const head = `Qalam AI asked, and you answered (round ${round}):`;
   let out = `${text.trimEnd()}\n\n`;

@@ -7,7 +7,7 @@ import { sanitizeDraft } from "./sanitize";
 import {
   withLook,
   withRound,
-  MAX_DUMP_ROUNDS,
+  askedOf,
   applyDumpFollowup,
   briefFromDump,
   closeDumpRound,
@@ -227,19 +227,34 @@ describe("rounds of questions", () => {
     expect(s.challenges.map((c) => c.kind)).toEqual(["second-hand", "conflict"]);
     expect(withRoles(r.fragments, f1.roles).find((f) => f.text.startsWith("Customers need"))!.role).toBe("idea");
     s = applyDumpFollowup(closeDumpRound(s, answered(s), "analyzing"), sanitizeDumpFollowup(SAMPLE_DUMP_FOLLOWUP_RAW[1], pieces, cards));
-    expect(s.phase).toBe("ready");
+    // Something was asked: what's settled shows before it places.
+    expect(s.phase).toBe("settled");
     expect(s.buckets).toHaveLength(2);
   });
 
-  it("stops after the last round even when Qalam AI would ask more", () => {
+  it("asks as many rounds as it needs, never a question asked before, and shows what's settled when it's done", () => {
     const { r, cards } = read();
-    const more = sanitizeDumpFollowup(sampleRaw(SAMPLE_DUMP_FOLLOWUP_RAW[0], cards), fragmentRefs(r.fragments), cards);
+    const raw = sampleRaw(SAMPLE_DUMP_FOLLOWUP_RAW[0], cards);
+    const more = sanitizeDumpFollowup(raw, fragmentRefs(r.fragments), cards);
     let s = session(r);
     for (let i = 0; i < 5; i++) s = applyDumpFollowup(closeDumpRound(s, answered(s), "analyzing"), more);
-    expect(s.buckets).toHaveLength(MAX_DUMP_ROUNDS);
-    expect(s.phase).toBe("ready");
+    expect(s.buckets).toHaveLength(6);
+    expect(s.phase).toBe("asking");
+    // The same questions again are asked already: nothing new, so what's settled shows.
+    const again = sanitizeDumpFollowup(raw, fragmentRefs(r.fragments), cards, askedOf(s));
+    expect(again.questions).toEqual([]);
+    expect(applyDumpFollowup(closeDumpRound(s, answered(s), "analyzing"), again).phase).toBe("settled");
     // Questions with nothing to say they're needed mean ready too.
     expect(sanitizeDumpFollowup({ ready: false, questions: [] }, [], []).ready).toBe(true);
+  });
+
+  it("holds a question that waits on another of the same turn", () => {
+    const { r, cards } = read();
+    const q = (id: string, title: string, after: string[] = []) => ({ id, title, why: "", multi: false, options: [], recommended: [], allowOther: true, after });
+    const f = sanitizeDumpFollowup({ ready: false, questions: [q("who", "Who orders weekly?"), q("how", "How do weekly orderers pay?", ["who"])] }, fragmentRefs(r.fragments), cards);
+    const s = applyDumpFollowup(closeDumpRound(session(r), answered(session(r)), "analyzing"), f);
+    expect(s.buckets.at(-1)?.questions.map((x) => x.id)).toEqual(["who"]);
+    expect(s.held?.map((x) => x.id)).toEqual(["how"]);
   });
 
   it("takes as the builder's words only what they typed, and files the answers in the Library", () => {
@@ -259,7 +274,7 @@ describe("rounds of questions", () => {
     // Skipping half-way counts only what was answered.
     const whole = answered(session(r));
     const half = closeDumpRound(session(r), { ...whole, answers: { "tickets-source": whole.answers["tickets-source"] }, submitted: false }, "skipped");
-    expect(half.phase).toBe("ready");
+    expect(half.phase).toBe("settled");
     expect(roundAnswers(half)[0].map((a) => a.questionId)).toEqual(["tickets-source"]);
   });
 });

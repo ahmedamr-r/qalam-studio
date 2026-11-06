@@ -184,15 +184,15 @@ describe("brain dump requests", () => {
     expect(f.roles.items!.properties.fragmentId.enum).toEqual(["f1", "f2"]);
   });
 
-  it("accepts a brain dump up to its size, a board up to 400 cards, three rounds", () => {
+  it("accepts a brain dump up to its size, a board up to 400 cards, and as many rounds as it takes", () => {
     expect(DiscoveryBody.safeParse({ stage: "dump-read", ...base }).success).toBe(true);
     expect(DiscoveryBody.safeParse({ stage: "dump-read", ...base, tree: [] }).success).toBe(true);
     expect(DiscoveryBody.safeParse({ stage: "dump-read", ...base, dump: "   too short   " }).success).toBe(false);
     expect(DiscoveryBody.safeParse({ stage: "dump-read", ...base, dump: "a ".repeat(10_001) }).success).toBe(false);
     expect(DiscoveryBody.safeParse({ stage: "dump-read", ...base, tree: Array.from({ length: 401 }, (_, i) => card(`c${i}`, null, "outcome", "x")) }).success).toBe(false);
     const round = { answers: [{ question: "Which goal?", answer: "Reorders" }] };
-    expect(DiscoveryBody.safeParse({ stage: "dump-followup", ...base, ...read, rounds: [round], last: false }).success).toBe(true);
-    expect(DiscoveryBody.safeParse({ stage: "dump-followup", ...base, ...read, rounds: [round, round, round, round], last: true }).success).toBe(false);
+    expect(DiscoveryBody.safeParse({ stage: "dump-followup", ...base, ...read, rounds: [round] }).success).toBe(true);
+    expect(DiscoveryBody.safeParse({ stage: "dump-followup", ...base, ...read, rounds: Array.from({ length: 9 }, () => round) }).success).toBe(true);
   });
 
   it("gives the model the board with what each card says and rests on, then the dump as material", () => {
@@ -205,11 +205,14 @@ describe("brain dump requests", () => {
     const text = dumpReadContent({ stage: "dump-read", ...base });
     expect(text).toContain(`<brain_dump>\n${SAMPLE_DUMP_TEXT}\n</brain_dump>`);
     expect(dumpReadContent({ stage: "dump-read", ...base, tree: [] })).toContain("The board is empty.");
-    const follow = dumpFollowupContent({ stage: "dump-followup", ...base, ...read, rounds: [{ answers: [{ question: "Which goal?", answer: "" }] }], last: true });
+    const follow = dumpFollowupContent({ stage: "dump-followup", ...base, ...read, rounds: [{ answers: [{ question: "Which goal?", answer: "" }] }], held: ["How do weekly orderers pay?"] });
     expect(follow).toContain("- f2 · need: “Parents hate substitutions”");
     expect(follow).toContain("- conflict · f2 · c2: It conflicts.");
     expect(follow).toContain("(skipped)");
-    expect(follow).toContain("That was the last round");
+    // No last round: as many as it needs; a question still waiting is heard as such.
+    expect(follow).not.toMatch(/last round|at most \d/);
+    expect(follow).toContain("still waiting on something open");
+    expect(follow).toContain("- How do weekly orderers pay?");
     expect(dumpPlaceContent({ stage: "dump-place", ...base, ...read, answers: [{ id: "a1", question: "Which goal?", answer: "Reorders" }] })).toContain("- a1: Which goal?\n  Reorders");
   });
 
@@ -233,9 +236,10 @@ describe("brain dump requests", () => {
     expect(text).toContain("They asked you to help them find the problem to focus on to move c1 (outcome: More customers reorder every week)");
     expect(text).toContain("what you read on the web, each under a heading that says so");
     const round = { answers: [{ question: "Which goal?", answer: "Reorders" }] };
-    const looking = dumpFollowupContent({ stage: "dump-followup", ...base, ...read, aim, rounds: [round], last: false, look: true });
-    expect(looking).toContain("Before your next round, look on the web once when their answers name something others have faced");
-    expect(dumpFollowupContent({ stage: "dump-followup", ...base, ...read, aim, rounds: [round], last: true, look: true })).not.toContain("look on the web once");
+    const looking = dumpFollowupContent({ stage: "dump-followup", ...base, ...read, aim, rounds: [round], look: true });
+    expect(looking).toContain("Look on the web when their answers name something others have faced");
+    expect(looking).toContain("It runs while they answer what you ask now");
+    expect(dumpFollowupContent({ stage: "dump-followup", ...base, ...read, aim, rounds: [round] })).not.toContain("Look on the web when");
     const schema = dumpFollowupSchema(["c1"], ["f1"], true) as { required: string[] };
     expect(schema.required[0]).toBe("look");
     expect(openRequired(schema)).toEqual([]);

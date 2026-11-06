@@ -53,6 +53,80 @@ const BUILT = /\b(api|endpoint|database|table|column|schema|json|field|button|sc
 
 export const ASK_LIMITS = { query: 200, point: 200, points: 12, term: 60, means: 240, avoid: 6, why: 240, choice: 160 } as const;
 
+/**
+ * A turn's questions as code keeps them, for any flow that asks (the interview's own turns, a brain
+ * dump's follow-up): each as the questionnaire can ask it, never one asked before (by id or by its
+ * words), an id of its own, and what it waits on only where that's a question or a lookup there is,
+ * any loop of waiting broken. `readable`: a flow's own say over its words (a dump names its pieces).
+ */
+export function keepQuestions(
+  raw: readonly unknown[],
+  c: Pick<TurnCheck, "who" | "asked" | "lookups" | "tweak"> & { taken?: Set<string>; lookupIds?: ReadonlyMap<string, string>; readable?: (q: AskQuestion) => AskQuestion },
+  dropped?: (why: string, item: unknown) => void,
+): { questions: AskQuestion[]; questionIds: Map<string, string> } {
+  const drop = (why: string, item: unknown) => void dropped?.(why, item);
+  const taken = c.taken ?? new Set([...c.asked.map((a) => a.id), ...c.lookups.map((l) => l.id)]);
+  const questionIds = new Map<string, string>();
+  const questions: AskQuestion[] = [];
+  const asked = [...c.asked];
+  for (const item of raw) {
+    const x = rec(item);
+    const kept = (c.who === "designer" ? sanitizeQuestions([item], { max: 1 }) : sanitizeAsked([item], { max: 1 }))[0];
+    if (!kept) {
+      drop("not a question the questionnaire can ask", item);
+      continue;
+    }
+    const named = c.readable ? c.readable(kept) : kept;
+    const q: AskQuestion = { ...named, title: clean(named.title), why: clean(named.why), options: named.options.map((o) => ({ ...o, label: clean(o.label), description: clean(o.description) })) };
+    if (!q.title || q.options.some((o) => !o.label)) {
+      drop("its words were only ids", item);
+      continue;
+    }
+    if (asked.some((a) => (a.id === q.id ? sameTopic(a.title, q.title) || sameWords(a.title) === sameWords(q.title) : sameTopic(a.title, q.title)))) {
+      drop("asked already", item);
+      continue;
+    }
+    let id = q.id;
+    while (taken.has(id)) id = `${q.id}-${taken.size + 1}`;
+    taken.add(id);
+    questionIds.set(str(x.id, 40), id);
+    questionIds.set(q.id, id);
+    const tweaked = c.tweak ? c.tweak({ ...q, id }) : { ...q, id };
+    if (!tweaked) {
+      drop("this flow leaves it out", item);
+      continue;
+    }
+    questions.push({ ...tweaked, ...(ids(x.after).length ? { after: ids(x.after) } : {}) });
+    asked.push({ id, title: q.title });
+  }
+
+  // What each waits on: a question of this turn, one asked before, or a lookup; any loop broken.
+  const known = new Set([...c.asked.map((a) => a.id), ...c.lookups.map((l) => l.id)]);
+  for (const q of questions) {
+    const after = (q.after ?? []).map((a) => questionIds.get(a) ?? c.lookupIds?.get(a) ?? (known.has(a) ? a : "")).filter((a) => a && a !== q.id);
+    if (after.length) q.after = [...new Set(after)];
+    else delete q.after;
+  }
+  const byId = new Map(questions.map((q) => [q.id, q]));
+  const loops = (from: string, seen: Set<string>): boolean => (byId.get(from)?.after ?? []).some((a) => seen.has(a) || (byId.has(a) && loops(a, new Set([...seen, a]))));
+  for (const q of questions) {
+    if (!q.after || !loops(q.id, new Set([q.id]))) continue;
+    const left = q.after.filter((a) => !byId.has(a));
+    if (left.length) q.after = left;
+    else delete q.after;
+  }
+  return { questions, questionIds };
+}
+
+/** A turn's questions split as the engine asks them: now, or held until what they wait on (another question of the turn) settles. */
+export function frontierOf(questions: readonly AskQuestion[]): { ask: AskQuestion[]; held: AskQuestion[] } {
+  const here = new Set(questions.map((q) => q.id));
+  const waits = (q: AskQuestion) => (q.after ?? []).some((a) => here.has(a));
+  const ask = questions.filter((q) => !waits(q));
+  const held = questions.filter(waits);
+  return ask.length ? { ask, held } : { ask: [...held], held: [] };
+}
+
 export function sanitizeTurn(raw: unknown, c: TurnCheck, dropped?: (why: string, item: unknown) => void): AskTurn {
   const r = rec(raw);
   const drop = (why: string, item: unknown) => void dropped?.(why, item);
@@ -85,55 +159,8 @@ export function sanitizeTurn(raw: unknown, c: TurnCheck, dropped?: (why: string,
     lookups.push({ id, kind, query });
   }
 
-  // Questions: each checked as the questionnaire takes it, never one asked before.
-  const questionIds = new Map<string, string>();
-  const questions: AskQuestion[] = [];
-  const asked = [...c.asked];
-  for (const item of list(r.questions)) {
-    const x = rec(item);
-    const kept = (c.who === "designer" ? sanitizeQuestions([item], { max: 1 }) : sanitizeAsked([item], { max: 1 }))[0];
-    if (!kept) {
-      drop("not a question the questionnaire can ask", item);
-      continue;
-    }
-    const q: AskQuestion = { ...kept, title: clean(kept.title), why: clean(kept.why), options: kept.options.map((o) => ({ ...o, label: clean(o.label), description: clean(o.description) })) };
-    if (!q.title || q.options.some((o) => !o.label)) {
-      drop("its words were only ids", item);
-      continue;
-    }
-    if (asked.some((a) => a.id === q.id ? sameTopic(a.title, q.title) || sameWords(a.title) === sameWords(q.title) : sameTopic(a.title, q.title))) {
-      drop("asked already", item);
-      continue;
-    }
-    let id = q.id;
-    while (taken.has(id)) id = `${q.id}-${taken.size + 1}`;
-    taken.add(id);
-    questionIds.set(str(x.id, 40), id);
-    questionIds.set(q.id, id);
-    const tweaked = c.tweak ? c.tweak({ ...q, id }) : { ...q, id };
-    if (!tweaked) {
-      drop("this flow leaves it out", item);
-      continue;
-    }
-    questions.push({ ...tweaked, ...(ids(x.after).length ? { after: ids(x.after) } : {}) });
-    asked.push({ id, title: q.title });
-  }
-
-  // What each waits on: a question of this turn, one asked before, or a lookup; any loop broken.
+  const { questions, questionIds } = keepQuestions(list(r.questions), { ...c, taken, lookupIds }, dropped);
   const known = new Set([...c.asked.map((a) => a.id), ...c.lookups.map((l) => l.id)]);
-  for (const q of questions) {
-    const after = (q.after ?? []).map((a) => questionIds.get(a) ?? lookupIds.get(a) ?? (known.has(a) ? a : "")).filter((a) => a && a !== q.id);
-    if (after.length) q.after = [...new Set(after)];
-    else delete q.after;
-  }
-  const byId = new Map(questions.map((q) => [q.id, q]));
-  const loops = (from: string, seen: Set<string>): boolean => (byId.get(from)?.after ?? []).some((a) => seen.has(a) || (byId.has(a) && loops(a, new Set([...seen, a]))));
-  for (const q of questions) {
-    if (!q.after || !loops(q.id, new Set([q.id]))) continue;
-    const left = q.after.filter((a) => !byId.has(a));
-    if (left.length) q.after = left;
-    else delete q.after;
-  }
 
   // What it takes as settled: its own words, held to what it was sent.
   const hay = `${c.hay}\n${c.said}`;

@@ -30,7 +30,7 @@ export function lookCall(m: PagesSent) {
   return { kind: "market" as const, system: LOOK_SYSTEM, schema: lookSchema(m), effort: "low" as const, maxTokens: 4000, content: [{ type: "text" as const, text: m.text }] };
 }
 
-export const FOCUS_QUESTIONS_SYSTEM = `You ask a product team 2 or 3 short questions that help them find the problem to focus on to move one of their goals, before Qalam reads their answers, asks more where it needs to, and proposes the problems in their words. You know their company, what the web says usually gets in the way of goals like theirs, and what customers in their domain usually struggle with.
+export const FOCUS_QUESTIONS_SYSTEM = `You ask a product team every short question you can ask now that helps them find the problem to focus on (as many as matter, never padded) to move one of their goals, before Qalam reads their answers, asks more where it needs to, and proposes the problems in their words. You know their company, what the web says usually gets in the way of goals like theirs, and what customers in their domain usually struggle with.
 
 Ask about their own situation, from what's known:
 - whose behaviour has to change for the goal to move (choices from the material: the people it depends on);
@@ -40,7 +40,7 @@ Ask about their own situation, from what's known:
 Each question: under 70 characters, with 2–4 choices drawn from the material (as a team would say them), or none for a question they answer in their own words. Every choice leaves room for their own answer. Never ask what the material already says about them. Never invent facts, numbers or customers: a choice is something the material says happens to companies like theirs, not something it says about them.`;
 
 export function focusQuestionsSchema() {
-  return obj({ questions: { type: "array", items: questionItem("team", "which of these they see"), description: "2 or 3 questions, the one that decides the most first" } });
+  return obj({ questions: { type: "array", items: questionItem("team", "which of these they see"), description: "Every question you can ask now, the one that decides the most first" } });
 }
 
 export function focusQuestionsCall(m: FindQuestionsSent) {

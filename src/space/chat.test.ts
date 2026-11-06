@@ -82,7 +82,7 @@ describe("a brain dump in the canvas's chat", () => {
       threadOf(c, () => s)[1].parts.map((p) => (p.type === "data" ? p.name : "text"));
     expect(names(null)).toEqual(["dumping"]);
     expect(names(session({ phase: "reading", understanding: "" }))).toEqual(["dumping"]);
-    expect(names(session({}))).toEqual(["took", "text", "skip"]);
+    expect(names(session({}))).toEqual(["took", "text"]);
     expect(names(session({ phase: "placing" }))).toEqual(["took", "answered", "dumping"]);
     expect(names(session({ phase: "review" }))).toEqual(["took", "answered", "proposed"]);
     expect(names(session({ phase: "failed", failed: { at: "placing", error: "No engine" } }))).toEqual(["took", "answered", "text", "retry"]);
@@ -147,7 +147,7 @@ describe("a brain dump in the canvas's chat", () => {
     expect(names(c)).toEqual(["looked", "text", "cancel"]);
     c = withJob(c, "f", () => ({ kind: "dump", source: "s1", find: { what: "problem", said: [{ question: "Who?", answer: "PMs" }], goal } }));
     const two = session({ phase: "asking", buckets: [session({}).buckets[0], session({}).buckets[0]], looks: [{ ...look, after: -1 }, { ...look, query: "why PMs drop tools", after: 0 }] });
-    expect(names(c, two)).toEqual(["looked:0", "opening", "took", "answered", "looked:1", "text", "skip"]);
+    expect(names(c, two)).toEqual(["looked:0", "opening", "took", "answered", "looked:1", "text"]);
     // What it took from that round, read with the look, comes after the look.
     const read = { ...two, phase: "review" as const, buckets: two.buckets.map((b) => ({ ...b, analysis: "Cash at the door wins." })) };
     expect(names(c, read)).toEqual(["looked:0", "opening", "took", "answered", "looked:1", "analysis", "answered", "proposed"]);

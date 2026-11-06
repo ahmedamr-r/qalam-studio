@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { BUCKET_MAX, QA, questionItem } from "@/ai/plan";
-import { CHALLENGE_KINDS, DUMP_MAX_CHARS, DUMP_ROLES, MAX_DUMP_ROUNDS } from "@/discovery/dump";
+import { CHALLENGE_KINDS, DUMP_MAX_CHARS, DUMP_ROLES } from "@/discovery/dump";
+/** The old setup asked in at most three rounds; it only runs in pnpm eval:tiers now, as it was measured. */
+const MAX_DUMP_ROUNDS = 3;
 import { OUTLINE_LIMITS } from "@/goals/outline";
 import { SETUP_LIMITS } from "@/org/setup";
 import { ALL_POSITIONS, NAME_MAX, TITLE_MAX, personLine, type Position } from "@/org/you";

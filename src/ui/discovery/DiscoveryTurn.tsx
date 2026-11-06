@@ -25,6 +25,7 @@ const PHASE: Record<DumpSession["phase"], string> = {
   reading: "Qalam AI is reading it",
   asking: "Qalam AI has questions for you",
   analyzing: "Qalam AI is reading your answers",
+  settled: "What you settled waits for you to place it",
   ready: "Ready to place on the board",
   placing: "Qalam AI is placing it",
   review: "Its changes wait on the board for you",

@@ -1,9 +1,10 @@
 import { z } from "zod";
 import { BASES, BASIS_WHOSE } from "@/discovery/basis";
 import { QUOTE_KINDS } from "@/discovery/sources";
-import { CHALLENGE_HINT, CHALLENGE_KINDS, DUMP_MAX_CHARS, DUMP_ROLES, MAX_DUMP_ROUNDS, ROLE_HINT } from "@/discovery/dump";
+import { CHALLENGE_HINT, CHALLENGE_KINDS, DUMP_MAX_CHARS, DUMP_ROLES, ROLE_HINT } from "@/discovery/dump";
 import { FOLLOW_UPS } from "@/discovery/questions";
-import { BUCKET_MAX, QA, questionItem } from "@/ai/plan";
+import { QA, questionItem } from "@/ai/plan";
+import { askingRules } from "@/ai/asking";
 import { MAX_RELIED } from "@/ai/reliance";
 
 /**
@@ -82,13 +83,14 @@ export const DiscoveryBody = z
       stage: z.literal("dump-followup"),
       ...DumpBase,
       ...DumpRead,
-      rounds: z.array(z.object({ answers: z.array(QA).max(BUCKET_MAX), analysis: text(1500).optional() })).min(1).max(MAX_DUMP_ROUNDS),
-      /** The last round allowed: Qalam AI is ready after it. */
-      last: z.boolean(),
+      // As many rounds as it needs (src/asking/): the guard is on the request's size, not its count.
+      rounds: z.array(z.object({ answers: z.array(QA), analysis: text(1500).optional() })).min(1),
+      /** Questions it asked that wait on something still open: asked again when it settles. */
+      held: z.array(text(300)).optional(),
       /** It may ask for a look on the web before its next questions (finding a goal's problem). */
       look: z.boolean().optional(),
     }),
-    z.object({ stage: z.literal("dump-place"), ...DumpBase, ...DumpRead, answers: z.array(Answer.extend({ id: text(12) })).max(MAX_DUMP_ROUNDS * BUCKET_MAX), context: ContextIn }),
+    z.object({ stage: z.literal("dump-place"), ...DumpBase, ...DumpRead, answers: z.array(Answer.extend({ id: text(12) })), context: ContextIn }),
     z.object({
       stage: z.literal("card-questions"),
       product: text(2000),
@@ -468,8 +470,10 @@ The builder pasted a brain dump: their own thinking, as it came. It's material t
 
 Code checks you: it keeps a piece of the dump only where it finds the words, a number only where the builder wrote it, and a new card only where the builder's words back it. Never invent quotes, numbers, customers or research. Write briefly, in the dump's language.`;
 
-const DUMP_QUESTION_RULES = `Questions, in rounds:
-- You ask in rounds, at most ${MAX_DUMP_ROUNDS}. After each round the builder answers and you read the answers. Ask what decides where things go now: which goal leads when several pull different ways, which customers a need is about, whether a claim is first-hand, the need behind an idea written as a need, the number a goal is measured by and where it is today. A round is one question or several (at most ${BUCKET_MAX}), as many as matter now; never pad it.
+const DUMP_QUESTION_RULES = `${askingRules("builder")}
+
+For a brain dump:
+- Ask what decides where things go: which goal leads when several pull different ways, which customers a need is about, whether a claim is first-hand, the need behind an idea written as a need, the number a goal is measured by and where it is today.
 - Ask for context only the builder has: an open question (no options, answered in their own words) when they know something you can't guess, such as what customers actually said or where a number came from.
 - Never ask what the dump, the board or an earlier answer already settles. When everything has a clear place, ask nothing.
 - Each choice question has 2–4 options written for this product (never "Option A"), a one-line description each, and your recommendation. Allow a free-text answer where the options can't cover theirs.`;
@@ -544,7 +548,7 @@ Your task: read the builder's latest answers.
 1. Say what they settle, what each changes on the board, and what's still open. Where an answer overrides the dump or an earlier answer, the latest wins: say so.
 2. Revise what you take from the dump, and the roles of the pieces the answers change.
 3. Keep the pushback still open: drop what the answers settled, add what they raised.
-4. Ready, or the next round. Ready when another round would change nothing on the board, or the builder said it's your call. A question they skipped, or said they don't know, isn't a decision: assume no answer to it, keep it open, and don't ask it again the same way. Otherwise ask the next round, only where an answer opened something that changes the board. When the request says it was the last round, you're ready: ask nothing.
+4. Ready, or the next round. Ready when another round would change nothing on the board, or the builder said it's your call. A question they skipped, or said they don't know, isn't a decision: assume no answer to it, keep it open, and don't ask it again. Otherwise ask every question you can ask now, only where an answer opened something that changes the board; a question still waiting on another goes in with its after. There's no limit on rounds.
 
 ${DUMP_QUESTION_RULES}`;
 
@@ -560,7 +564,11 @@ Your task: place the brain dump on the board, as proposals the builder accepts o
 - Pushback still open and questions left unanswered become notes beside the card they're about.
 - Every new outcome, solution and test rests on the builder's words: pieces of the dump, or their answers quoted exactly. Nothing of your own: no ideas, numbers, quotes or customers they didn't give.`;
 
-const DUMP_QUESTION = questionItem("builder", "which customers a need applies to");
+/** A dump's question as the interview asks it (src/asking/): with the ids it waits on. */
+const DUMP_QUESTION = (() => {
+  const item = questionItem("builder", "which customers a need applies to") as { properties: Record<string, unknown>; required: string[] } & Record<string, unknown>;
+  return { ...item, properties: { ...item.properties, after: arr(str("A question's id"), "The ids of the questions of this turn whose answers it waits on. [] when it can be asked now") }, required: [...item.required, "after"] };
+})();
 
 const challengeItem = (fragment: Record<string, unknown>, cardIds: string[]) =>
   obj({
@@ -594,7 +602,7 @@ export function dumpReadSchema(cardIds: string[], file = false) {
       "Every piece that could land on the board, in the order written. Skip filler; pieces never overlap",
     ),
     challenges: arr(challengeItem(str("The id of the piece it's about (f…)"), cardIds), "Pushback, only where it changes what goes on the board. [] when nothing needs it"),
-    questions: arr(DUMP_QUESTION, `The first round: the questions whose answers decide the most now, at most ${BUCKET_MAX}. [] when the dump and the board settle where everything goes`),
+    questions: arr(DUMP_QUESTION, "Every question you can ask now, then those waiting on one of them (with their after). [] when the dump and the board settle where everything goes"),
   });
 }
 
@@ -602,13 +610,13 @@ export function dumpReadSchema(cardIds: string[], file = false) {
 export function dumpFollowupSchema(cardIds: string[], fragmentIds: string[], look = false) {
   const fragment = enm(ids(fragmentIds), "A piece's id");
   return obj({
-    ...(look ? { look: str("What to look up on the web before your next round, as a short search, when their answers name something others have faced or written about (then ask nothing this time). \"\" only when nothing is worth looking up") } : {}),
+    ...(look ? { look: str("What to look up on the web, as a short search, when their answers name something others have faced or written about. It runs while they answer what you ask now; ask nothing this time only when every question waits on it. \"\" only when nothing is worth looking up") } : {}),
     analysis: str("2–4 plain sentences to the builder: what their answers settle, what each changes on the board, what's still open. No praise"),
     understanding: str("What you take from the dump now, with the answers: 2–4 sentences"),
     roles: arr(obj({ fragmentId: fragment, role: enm(DUMP_ROLES, ROLE_HINT) }), "Pieces whose role the answers change. [] when none"),
     challenges: arr(challengeItem(fragment, cardIds), "The pushback still open after the answers: drop what they settled, add what they raised"),
     ready: { type: "boolean", description: "true only when another round would change nothing on the board, or the builder left it to you" },
-    questions: arr(DUMP_QUESTION, "The next round, only where an answer opened something that changes the board. [] when ready"),
+    questions: arr(DUMP_QUESTION, "Every question you can ask now, only where an answer opened something that changes the board, then those waiting on one of them. [] when ready"),
   });
 }
 
@@ -757,9 +765,10 @@ export function dumpFollowupContent(b: Extract<DiscoveryRequest, { stage: "dump-
       ...(r.analysis ? [`What you took from them: ${r.analysis}`] : []),
       "",
     ]),
-    b.last ? "That was the last round: read the answers, and you're ready." : "Read the latest answers.",
-    ...(b.look && !b.last
-      ? ["", "Before your next round, look on the web once when their answers name something others have faced or written about (a rival or an informal buyer, a habit, a barrier, a price, why people like theirs give up on something like it): what others report sharpens your next questions and which problem to focus on. Then say what to look up in `look`, as a short search a person would type, and ask nothing this time: you'll read what it found, then ask. Leave `look` empty only when their answers leave nothing worth looking up."]
+    ...(b.held?.length ? ["Asked before and still waiting on something open (ask again only if it still matters, and only once it can be answered):", ...b.held.map((q) => `- ${q}`), ""] : []),
+    "Read the latest answers.",
+    ...(b.look
+      ? ["", "Look on the web when their answers name something others have faced or written about (a rival or an informal buyer, a habit, a barrier, a price, why people like theirs give up on something like it): what others report sharpens your next questions and which problem to focus on. Say what to look up in `look`, as a short search a person would type. It runs while they answer what you ask now; ask nothing this time only when every question waits on what it finds. Leave `look` empty only when their answers leave nothing worth looking up."]
       : []),
   ].join("\n");
 }

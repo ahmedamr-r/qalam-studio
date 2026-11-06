@@ -59,7 +59,7 @@ export async function POST(req: Request) {
     case "card-questions":
       return streamStructured(cardQuestionsCall(b));
     case "dump-followup":
-      return streamStructured({ kind: "dump-followup", system: DUMP_FOLLOWUP_SYSTEM, schema: dumpFollowupSchema(b.tree.map((c) => c.id), b.fragments.map((f) => f.id), !!b.look && !b.last), effort: "medium", maxTokens: 8000, content: [{ type: "text", text: dumpFollowupContent(b) }] });
+      return streamStructured({ kind: "dump-followup", system: DUMP_FOLLOWUP_SYSTEM, schema: dumpFollowupSchema(b.tree.map((c) => c.id), b.fragments.map((f) => f.id), !!b.look), effort: "medium", maxTokens: 8000, content: [{ type: "text", text: dumpFollowupContent(b) }] });
     case "dump-place":
       return streamStructured({ kind: "dump-place", system: withKnowledge(DUMP_PLACE_SYSTEM, b.context, b.context?.quotes.length ? DUMP_PLACE_KNOWLEDGE : ""), schema: withPieceReliance(dumpPlaceSchema(placeIds(b)), b.context), effort: "high", maxTokens: 24000, deltas: true, content: [{ type: "text", text: dumpPlaceContent(b) }] });
     case "import": {

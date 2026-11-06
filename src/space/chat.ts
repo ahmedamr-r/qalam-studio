@@ -339,7 +339,9 @@ function dumpReply(t: ChatTurn, s: DumpSession | null): ChatPart[] {
   });
   switch (s.phase) {
     case "asking":
-      return [...out, text(last > 0 ? "A few more questions, then I'll place it." : "A few questions before I place it on the canvas: answer what you can."), part("skip", id)];
+      return [...out, text(last > 0 ? "More I can't tell from here: answer what you can, or take my picks." : "Some questions before I place it on the canvas: answer what you can, or take my picks."), ...(s.file ? [part("skip", id)] : [])];
+    case "settled":
+      return [...out, part("dumpSettled", id)];
     case "analyzing":
     case "placing":
       return [...out, part("dumping", id)];

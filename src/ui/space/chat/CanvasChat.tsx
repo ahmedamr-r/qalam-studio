@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import { PanelLeftClose, SquarePen, X } from "lucide-react";
-import { DUMP_MAX_CHARS, MAX_DUMP_ROUNDS } from "@/discovery/dump";
+import { DUMP_MAX_CHARS } from "@/discovery/dump";
 import { asking, running, threadOf, type DumpOf } from "@/space/chat";
 import type { ChatMode } from "@/space/route";
 import { useSpaceView } from "@/space/view";
@@ -13,7 +13,7 @@ import { Questionnaire } from "../../ai/Questionnaire";
 import { answerWords, initialFlow, type FlowState } from "../../ai/questionFlow";
 import type { FindWhat } from "@/space/find";
 import { r } from "../../recipes";
-import { answerRound, resumeDumps, saveRound, sessionOf, useDump } from "../../discovery/dump";
+import { answerRound, picksRound, resumeDumps, saveRound, sessionOf, skipRest, useDump } from "../../discovery/dump";
 import { useSources } from "../../discovery/sources";
 import { ChatComposer, ChatThread } from "../../chat/ChatThread";
 import { attachFiles, clearAttachments, docsCheck, readyDocs, useAttach } from "../../chat/attach";
@@ -316,18 +316,31 @@ function DumpRound({ source, dumpOf }: { source: string; dumpOf: DumpOf }) {
   const b = s?.buckets[i];
   const [form, setForm] = useState<FlowState | null>(b?.form ?? null);
   if (!b || !form) return null;
+  const recommends = b.questions.some((q) => q.recommended.length > 0 && q.options.length > 1);
   return (
-    <Questionnaire
-      title={i === 0 ? "Before Qalam AI places it" : `Round ${i + 1} of up to ${MAX_DUMP_ROUNDS}`}
-      questions={b.questions.map(toQuestion)}
-      state={form}
-      onChange={(f) => {
-        setForm(f);
-        saveRound(source, f);
-      }}
-      onSubmit={(f) => void answerRound(source, f)}
-      review={{ submitLabel: "Send answers" }}
-    />
+    <div className="flex flex-col gap-[4px]">
+      <Questionnaire
+        title={`Round ${i + 1}`}
+        questions={b.questions.map(toQuestion)}
+        state={form}
+        onChange={(f) => {
+          setForm(f);
+          saveRound(source, f);
+        }}
+        onSubmit={(f) => void answerRound(source, f)}
+        review={{ submitLabel: "Send answers" }}
+      />
+      <div className="flex flex-wrap items-center gap-[2px] px-[2px]">
+        {recommends && (
+          <button type="button" className={r.replyChip} title="Every question you haven't answered takes Qalam AI's recommendation, kept as its pick, never as your words" onClick={() => void picksRound(source, form)}>
+            Use Qalam AI&apos;s picks
+          </button>
+        )}
+        <button type="button" className={r.replyChip} onClick={() => void skipRest(source, form)}>
+          Stop asking
+        </button>
+      </div>
+    </div>
   );
 }
 
