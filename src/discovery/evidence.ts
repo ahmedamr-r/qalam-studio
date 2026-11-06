@@ -105,7 +105,7 @@ export function evidenceRows(card: Pick<OstCard, "evidence">): OstEvidence[] {
 }
 
 /** How a card with nothing behind it says where it came from. */
-export const CAME_WORDS: Record<Came, string> = { answers: "your answers", read: "read online", idea: "Qalam AI's idea" };
+export const CAME_WORDS: Record<Came, string> = { answers: "your answers", read: "read online", picks: "Qalam AI's picks", idea: "Qalam AI's idea" };
 
 /**
  * A card that nothing of its own backs yet (dashed on the board): an opportunity Qalam AI drafted, as

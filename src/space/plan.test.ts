@@ -6,7 +6,7 @@ import { helpedCards } from "@/discovery/helps";
 import type { OstCard } from "@/discovery/types";
 import { chatOf, threadOf, type ChatTurn } from "./chat";
 import type { SpaceThing } from "./compose";
-import { answersOf, leftOf, planMaterial, planNextMaterial, planOutline, planProposals, planRound, planTask, planLine, sanitizeNext, sanitizePlan, sanitizeRoute, type OutlineCard, type PlanLook, type PlanPiece, type PlanRound } from "./plan";
+import { answersOf, leftOf, planAnswers, planAskMaterial, planMaterial, planOutline, planProposals, planRound, planTask, planTweak, planLine, sanitizePlan, sanitizeRoute, type OutlineCard, type PlanAnswer, type PlanLook, type PlanPiece, type PlanRound } from "./plan";
 
 const outline: OutlineCard[] = [
   { id: "G", kind: "outcome", title: "5 of 10 owners pay for it", parent: null, metric: "Paid: target 5" },
@@ -17,7 +17,7 @@ const outline: OutlineCard[] = [
 const pieces: PlanPiece[] = [{ ref: "hub:quote:a", text: "All of our reviews have disappeared overnight", label: "Local Search Forum", source: "s1", evidence: false, online: true, card: "P2" }];
 const looks: PlanLook[] = [{ at: 1, query: "", after: -1, lines: [{ id: "f1", text: "Businesses text customers through Twilio", url: "https://x.example/a", title: "SMS guide", quote: "text customers through Twilio", by: "qalam", at: 1 } as PlanLook["lines"][number]], pages: [{ title: "SMS guide", url: "https://x.example/a" }] }];
 const rounds: PlanRound[] = [{ questions: [{ id: "who", title: "Who pays first?", why: "", multi: false, options: [], recommended: [], allowOther: true }, { id: "skip", title: "Anything else?", why: "", multi: false, options: [], recommended: [], allowOther: true }], answers: { who: "Salons with 2 to 10 locations", skip: "" } }];
-const sent = (over: Partial<Parameters<typeof planMaterial>[0]> = {}) => planMaterial({ org: "Reviewly", said: "What should I build? What modules?", outline, rounds, looks, pieces, ...over });
+const sent = (over: Partial<Parameters<typeof planMaterial>[0]> = {}) => planMaterial({ org: "Reviewly", said: "What should I build? What modules?", outline, answers: planAnswers(rounds), looks, pieces, ...over });
 let n = 0;
 const id = () => `id${++n}`;
 
@@ -44,10 +44,10 @@ describe("what a plan is told", () => {
     expect(planTask({ org: "Reviewly", about: "", said: "What should I build?", outline, query: "SMS cost for salons" })).toContain("Look up: SMS cost for salons.");
   });
 
-  it("tells the next step what's on the canvas and how many rounds are left", () => {
-    const text = planNextMaterial({ org: "Reviewly", said: "What should I build?", outline, rounds, looks });
-    expect(text).toContain("Rounds of questions so far: 1 of at most 3");
-    expect(text).toContain("Salons with 2 to 10 locations");
+  it("tells a turn of the interview what's on the canvas, with no count of rounds left", () => {
+    const text = planAskMaterial({ org: "Reviewly", said: "What should I build?", outline });
+    expect(text).toContain("- c3 · Problem · “Reviews disappear overnight” · only a page so far");
+    expect(text).not.toMatch(/at most/);
   });
 });
 
@@ -80,30 +80,31 @@ describe("how a question is taken", () => {
 });
 
 describe("what comes next", () => {
-  const question = { id: "q", title: "How do you reach them?", why: "", multi: false, options: [], recommended: [] };
-
-  it("takes questions while rounds are left, always open to their own words", () => {
-    const next = sanitizeNext({ action: "ask", questions: [question], look: "" }, { rounds: [], looks });
-    expect(next.action).toBe("ask");
-    if (next.action === "ask") expect(next.questions[0].allowOther).toBe(true);
-    expect(sanitizeNext({ action: "ask", questions: [question] }, { rounds: [rounds[0], rounds[0], rounds[0]], looks })).toEqual({ action: "ready" });
+  it("keeps every choice open to their own words, and has code's own questions for a first turn it can't take", () => {
+    expect(planTweak({ id: "q", title: "How do you reach them?", why: "", multi: false, options: [], recommended: [], allowOther: false }).allowOther).toBe(true);
+    expect(planRound().map((q) => q.id)).toEqual(["who", "exists", "reach"]);
   });
+});
 
-  it("asks code's own questions the first time when the answer says nothing useful, and goes on after", () => {
-    expect(sanitizeNext({ action: "ask", questions: [] }, { rounds: [], looks })).toEqual({ action: "ask", questions: planRound() });
-    expect(sanitizeNext({}, { rounds: [], looks })).toEqual({ action: "ask", questions: planRound() });
-    expect(sanitizeNext({ action: "ask", questions: [] }, { rounds, looks })).toEqual({ action: "ready" });
-    expect(sanitizeNext({ action: "ready" }, { rounds: [], looks })).toEqual({ action: "ready" });
-  });
+describe("Qalam AI's picks in a plan", () => {
+  const answers: PlanAnswer[] = [
+    { question: "Who pays first?", answer: "Salons with 2 to 10 locations", how: "own" },
+    { question: "Which channel first?", answer: "SMS", how: "pick" },
+    { question: "How many engineers?", answer: "", how: "left" },
+  ];
 
-  it("looks again only while looks are left, with web search here, and never twice running", () => {
-    const look = { action: "look", look: "SMS cost" };
-    expect(sanitizeNext(look, { rounds, looks })).toEqual({ action: "look", query: "SMS cost" });
-    const once: PlanLook = { ...looks[0], after: 0 };
-    expect(sanitizeNext(look, { rounds, looks: [...looks, once] }).action).not.toBe("look");
-    const twice: PlanLook[] = [{ ...once, after: 0 }, { ...once, after: 1 }];
-    expect(sanitizeNext(look, { rounds: [rounds[0], rounds[0], rounds[0]], looks: twice }).action).toBe("ready");
-    expect(sanitizeNext(look, { rounds, looks: [{ ...looks[0], lines: [], noWeb: true }] }).action).not.toBe("look");
+  it("lists them apart from their answers, never in what words may be quoted from, and marks a card resting only on them", () => {
+    const m = sent({ answers });
+    expect([...m.answers.values()].map((a) => a.question)).toEqual(["Who pays first?"]);
+    expect([...(m.picks?.entries() ?? [])]).toEqual([["p1", { question: "Which channel first?", answer: "SMS" }]]);
+    expect(m.text).toContain("- p1 · Which channel first? · SMS");
+    expect(m.text).toContain("- How many engineers?");
+    expect(m.hay).not.toContain("Which channel first?");
+    // (A title of its own: "Text after a visit" is on the canvas already.)
+    const { cards } = keep([card({ ref: "n1", kind: "solution", under: "c2", title: "Weekly email to salon owners", type: "message", cites: ["p1"] })], {}, m);
+    expect(cards[0].came).toBe("picks");
+    const theirs = keep([card({ ref: "n1", kind: "solution", under: "c2", title: "Weekly email to salon owners", type: "message", cites: ["p1", "a1"] })], {}, m);
+    expect(theirs.cards[0].came).toBe("answers");
   });
 });
 
@@ -292,10 +293,8 @@ describe("what they left unanswered", () => {
 
   it("is heard as not known, and never as an answer", () => {
     expect(leftOf(left)).toEqual(["How many engineers?"]);
-    const next = planNextMaterial({ org: "Basket", said: "What now?", outline: [], rounds: left, looks: [] });
-    expect(next).toContain("left unanswered");
-    expect(next).toContain("- How many engineers?");
-    const m = planMaterial({ org: "Basket", said: "What now?", outline: [], rounds: left, looks: [], pieces: [] });
+    const m = planMaterial({ org: "Basket", said: "What now?", outline: [], answers: planAnswers(left), looks: [], pieces: [] });
+    expect(m.text).toContain("left unanswered");
     expect(m.text).toContain("- How many engineers?");
     expect(m.hay).not.toContain("How many engineers?");
     expect([...m.answers.values()].map((a) => a.question)).toEqual(["Who pays first?"]);

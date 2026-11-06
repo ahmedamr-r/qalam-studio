@@ -1,14 +1,19 @@
 import { nanoid } from "nanoid";
-import { planCall, planLookCall, planNextCall, routeCall } from "@/ai/canvas-plan";
+import { askTurnCall } from "@/ai/asking";
+import { planCall, planLookCall, routeCall } from "@/ai/canvas-plan";
+import { sanitizeTurn } from "@/asking/sanitize";
+import type { AskTurn } from "@/asking/types";
+import { AskingIn, askingBlock, checkOf, type AskingInT } from "@/asking/wire";
 import { pieceBasis } from "@/discovery/basis";
 import { sanitizeLook, type FocusLook } from "@/goals/focus";
 import type { OutsidePage } from "@/goals/outside";
 import { isEvidence, isOnline, sameTopic } from "@/hub/topics";
 import { pageLines, pagesBlock, type PagesSent } from "@/market/rivals";
 import type { MarketLine } from "@/market/types";
-import { answersOf, planMaterial, planNextMaterial, planTask, sanitizeNext, sanitizePlan, sanitizeRoute, type OutlineCard, type PlanDraft, type PlanLook, type PlanNext, type PlanPiece, type PlanRound } from "@/space/plan";
+import { planAnswers, planAskMaterial, planMaterial, planRound, planTask, planTweak, sanitizePlan, sanitizeRoute, type OutlineCard, type PlanAnswer, type PlanDraft, type PlanLook, type PlanPiece, type PlanRound } from "@/space/plan";
 import { termsFold } from "@/terms/fold";
 import { indexFor } from "../index/registry";
+import { labOn } from "../lab";
 import { companyContext } from "./company";
 import { readLinks, realDeps, type MarketDeps } from "./market";
 import type { OrgStore } from "./store";
@@ -16,15 +21,24 @@ import type { OrgStore } from "./store";
 /**
  * Working something out as a plan, in the core (src/space/plan.ts). The window keeps the conversation
  * on its chat turn and sends it with each call, so nothing here is kept but the calls' traces: a look on
- * the web, what comes next, and what to propose, the words behind the problems found here.
+ * the web, each turn of the interview (src/asking/), and what to propose, the words behind the problems
+ * found here.
  */
 
 export interface PlanBody {
   said: string;
   outline: OutlineCard[];
+  /** A plan's rounds from before the interview: answers kept as words. */
   rounds: PlanRound[];
   looks: PlanLook[];
+  /** The interview so far (src/asking/wire.ts). */
+  asking?: AskingInT;
+  /** Pieces a lookup in their project found (hub:quote:…): what a card may rest on beside the problems' words. */
+  found?: string[];
 }
+
+/** What proposing reads as answers: the interview's, else a plan's rounds from before. */
+const answersFor = (b: PlanBody): PlanAnswer[] => (b.asking ? b.asking.rounds.flatMap((r) => r.asked.map((a) => ({ question: a.title, answer: a.answer, how: a.how }))) : planAnswers(b.rounds));
 
 const one = (s: string) => s.replace(/\s+/g, " ").trim();
 const aboutLine = async (store: OrgStore) => {
@@ -48,7 +62,8 @@ export async function routeQuestion(said: string, signal: AbortSignal, deps: Pic
 export async function lookForPlan(store: OrgStore, b: PlanBody & { query?: string }, emit: (label: string) => void, signal: AbortSignal, deps: MarketDeps = realDeps): Promise<FocusLook> {
   const query = one(b.query ?? "");
   emit(query ? `Looking on the web for “${query}”` : "Looking on the web for what people do about this");
-  const task = planTask({ org: store.info.name, about: await aboutLine(store), said: b.said, query, answers: answersOf(b.rounds), outline: b.outline });
+  const own = answersFor(b).filter((a) => a.how === "own" && a.answer.trim());
+  const task = planTask({ org: store.info.name, about: await aboutLine(store), said: b.said, query, answers: own.map(({ question, answer }) => ({ question, answer })), outline: b.outline });
   const info = await deps.research({ purpose: "plan", task, connectors: ["web"] }, emit, signal);
   let lines: MarketLine[] = [];
   let pages: OutsidePage[] = [];
@@ -76,30 +91,52 @@ export async function lookForPlan(store: OrgStore, b: PlanBody & { query?: strin
 }
 
 /** What comes next: a round of questions, a look, or ready to propose. A call that fails asks code's own questions, or goes on. */
-export async function planNext(store: OrgStore, b: PlanBody, emit: (label: string) => void, signal: AbortSignal, deps: Pick<MarketDeps, "structured"> = realDeps): Promise<PlanNext> {
+/** The plan's lookups: their project's own material, and the web. */
+const PLAN_KINDS = ["project", "web"] as const;
+
+/**
+ * One turn of the interview (src/asking/): what's still open, every question it can ask now, what it
+ * waits on, and what to look up rather than ask. No limit on rounds: the window's engine keeps the
+ * frontier and the end. A first turn that fails asks code's own questions; a later one fails for Try again.
+ */
+export async function planNext(store: OrgStore, b: PlanBody, emit: (label: string) => void, signal: AbortSignal, deps: Pick<MarketDeps, "structured"> = realDeps): Promise<AskTurn> {
   emit("Working out what to ask");
-  const text = planNextMaterial({ org: store.info.name, about: await aboutLine(store), said: b.said, outline: b.outline, rounds: b.rounds, looks: b.looks, company: await companyContext(store) });
-  const { data, model } = await deps.structured<unknown>(planNextCall(text), signal).then(
-    (r) => r,
-    (e: unknown) => {
-      if (signal.aborted) throw e;
-      return { data: { action: "ask" }, model: undefined, failed: true };
-    },
-  );
-  const next = sanitizeNext(data, b);
-  await store.putTrace({ id: nanoid(10), projectId: "plan", kind: "plan-next", at: Date.now(), ...(model ? { model } : {}), rounds: b.rounds.length, looks: b.looks.length, answer: data, kept: next.action === "ask" ? { ask: next.questions.map((q) => q.title) } : next } as { id: string; projectId: string }).catch(() => {});
-  return next;
+  const a: AskingInT = b.asking ?? { rounds: [], lookups: [], held: [], understood: [], proposed: [], said: b.said };
+  const base = planAskMaterial({ org: store.info.name, about: await aboutLine(store), said: b.said, outline: b.outline, company: await companyContext(store, { near: b.said }) });
+  const material = [base, askingBlock(a)].join("\n\n");
+  const lab = await labOn();
+  const decisions = lab === true || lab.includes("decisions");
+  const call = askTurnCall({ flow: "plan", who: "team", material, kinds: PLAN_KINDS, terms: true, choices: decisions });
+  let answer: { data: unknown; model?: string };
+  try {
+    answer = await deps.structured<unknown>(call, signal);
+  } catch (e) {
+    if (signal.aborted || a.rounds.length) throw e;
+    // A first turn that can't be taken: code's own questions, so they're still asked.
+    return { questions: planRound().map((q) => ({ ...planTweak(q), by: "code" as const })), lookups: [], done: false, understood: [], terms: [], choices: [] };
+  }
+  const dropped: { why: string; item: unknown }[] = [];
+  const turn = sanitizeTurn(answer.data, checkOf(a, { who: "team", hay: material.replace(/(^|\s)[a-z]\d+(?:-\d+)? ·/gm, "$1"), terms: await store.getTerms(), kinds: PLAN_KINDS, decisions, tweak: planTweak }), (why, item) => dropped.push({ why, item }));
+  await store
+    .putTrace({ id: nanoid(10), projectId: "plan", kind: "ask-turn", flow: "plan", at: Date.now(), ...(answer.model ? { model: answer.model } : {}), rounds: a.rounds.length, answer: answer.data, kept: { questions: turn.questions.map((q) => ({ id: q.id, title: q.title, after: q.after })), lookups: turn.lookups, done: turn.done, terms: turn.terms.map((t) => t.term), choices: turn.choices.length }, dropped } as { id: string; projectId: string })
+    .catch(() => {});
+  return turn;
 }
 
-/** The words behind the problems on the canvas: each problem's page, by the card's words where it has no page of its own. */
-async function piecesFor(store: OrgStore, outline: readonly OutlineCard[]): Promise<PlanPiece[]> {
+/** The words behind the problems on the canvas: each problem's page, by the card's words where it has no page of its own; and what a lookup found in their project (`found`), behind no card yet. */
+async function piecesFor(store: OrgStore, outline: readonly OutlineCard[], found: readonly string[] = []): Promise<PlanPiece[]> {
   const problems = outline.filter((c) => c.kind === "opportunity");
-  if (!problems.length) return [];
+  if (!problems.length && !found.length) return [];
   const pages = (await store.listTopics()).filter((t) => t.kind === "need");
   const out: PlanPiece[] = [];
   try {
     const ix = indexFor(store);
     await ix.settled();
+    for (const [ref, row] of ix.piecesByRef([...found].slice(0, 12))) {
+      if (row.type !== "quote" && row.type !== "evidence") continue;
+      const s = row.source ? await store.getSource(row.source) : null;
+      out.push({ ref, text: row.text, label: s?.title ?? row.title ?? "", source: row.source, evidence: isEvidence(row), basis: pieceBasis(row), ...(isOnline(row) ? { online: true } : {}), card: "" });
+    }
     for (const c of problems) {
       const page = c.topic ? await store.getTopic(c.topic) : pages.find((t) => sameTopic(t.title, c.title));
       const full = page && "lines" in page ? page : null;
@@ -120,8 +157,8 @@ async function piecesFor(store: OrgStore, outline: readonly OutlineCard[]): Prom
 /** One call proposing cards for the canvas; code keeps what it can show honestly. */
 export async function proposePlan(store: OrgStore, b: PlanBody, emit: (label: string) => void, signal: AbortSignal, deps: Pick<MarketDeps, "structured"> = realDeps): Promise<PlanDraft> {
   emit("Reading what's behind your problems");
-  const pieces = await piecesFor(store, b.outline);
-  const m = planMaterial({ org: store.info.name, about: await aboutLine(store), said: b.said, outline: b.outline, rounds: b.rounds, looks: b.looks, pieces, company: await companyContext(store) });
+  const pieces = await piecesFor(store, b.outline, b.found);
+  const m = planMaterial({ org: store.info.name, about: await aboutLine(store), said: b.said, outline: b.outline, answers: answersFor(b), looks: b.looks, pieces, company: await companyContext(store, { near: b.said }) });
   emit("Qalam AI is working out what to propose");
   const { data, model } = await deps.structured<unknown>(planCall(m), signal);
   const dropped: { why: string; item: unknown }[] = [];
@@ -147,7 +184,11 @@ export function planBodyOf(raw: unknown): PlanBody | null {
     return [{ id, kind, title: clip(c.title, 400), parent: clip(c.parent, 200) || null, ...(clip(c.topic, 80) ? { topic: clip(c.topic, 80) } : {}), ...(c.faint === true ? { faint: true } : {}), ...(typeof c.type === "string" ? { type: c.type as OutlineCard["type"] } : {}), ...(clip(c.metric, 200) ? { metric: clip(c.metric, 200) } : {}) }];
   });
   // The conversation is the window's own, kept on its chat turn; a look's lines were checked as they were read.
-  const rounds = list(b.rounds).slice(0, 8) as PlanRound[];
-  const looks = list(b.looks).slice(0, 8) as PlanLook[];
-  return { said, outline, rounds, looks };
+  // However many rounds it has: the one guard is the interview's size (src/asking/wire.ts).
+  const rounds = list(b.rounds) as PlanRound[];
+  const looks = list(b.looks).slice(-40) as PlanLook[];
+  const asking = b.asking === undefined ? undefined : AskingIn.safeParse(b.asking);
+  if (asking && !asking.success) return null;
+  const found = list(b.found).filter((x): x is string => typeof x === "string" && x.startsWith("hub:")).slice(0, 40);
+  return { said, outline, rounds, looks, ...(asking?.success ? { asking: asking.data } : {}), ...(found.length ? { found } : {}) };
 }

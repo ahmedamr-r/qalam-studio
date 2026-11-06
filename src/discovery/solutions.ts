@@ -313,9 +313,14 @@ export function sanitizeSolutions(raw: unknown, m: SolutionsSent, o: { now: numb
  * backs it; else their own words, what was read online, or Qalam AI's idea. People online's words
  * are what others said, so they read as online; a person's own idea is theirs.
  */
-export function cameFrom(cited: readonly { evidence: boolean; online?: boolean; basis?: Basis }[], read: boolean, theirs = false): { came?: Came } {
+/**
+ * Where a card nothing backs came from: their own words win, then Qalam AI's recommendations they
+ * agreed to with one press (`picks`: agreement, never their words), then what was read, else its idea.
+ */
+export function cameFrom(cited: readonly { evidence: boolean; online?: boolean; basis?: Basis }[], read: boolean, theirs = false, picks = false): { came?: Came } {
   if (cited.some((p) => p.evidence)) return {};
   if (theirs || cited.some((p) => !p.online && (p.basis ?? "own") === "own")) return { came: "answers" };
+  if (picks) return { came: "picks" };
   return { came: read || cited.length ? "read" : "idea" };
 }
 

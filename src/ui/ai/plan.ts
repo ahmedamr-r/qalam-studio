@@ -194,7 +194,7 @@ export function toQuestion(q: PlanQuestion): Question {
   const tool = withTool(q.tool);
   const base = { id: q.id, title: q.title, why: q.why || undefined, source: "ai" as const, optional: true };
   if (!q.options.length) return { ...base, kind: "text", placeholder: "Answer in your own words, or skip", maxLength: q.tool ? 1200 : 600, ...tool };
-  if (q.multi) return { ...base, kind: "multi", groups: [{ id: "picks", label: "Pick any", options: q.options, ...(open ? { custom: { placeholder: "Add your own" } } : {}) }], ...tool };
+  if (q.multi) return { ...base, kind: "multi", groups: [{ id: "picks", label: "Pick any", options: q.options, ...(open ? { custom: { placeholder: "Add your own" } } : {}) }], ...(q.recommended.length ? { suggested: [...q.recommended] } : {}), ...tool };
   return {
     ...base,
     kind: "single",

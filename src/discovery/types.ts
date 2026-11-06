@@ -150,7 +150,8 @@ export interface OstHelp {
  * their answers, what was read online, or Qalam AI's own idea. Evidence is better when there is some,
  * but it isn't asked for: a card with none says so instead (./evidence.ts).
  */
-export type Came = "answers" | "read" | "idea";
+/** Where a card nothing backs came from: their answers, what was read online, Qalam AI's recommendations they agreed to with one press (`picks`), or Qalam AI's idea. */
+export type Came = "answers" | "read" | "picks" | "idea";
 
 export interface OstCard {
   v: 1;

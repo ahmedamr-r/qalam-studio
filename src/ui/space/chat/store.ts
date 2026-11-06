@@ -2,6 +2,13 @@ import { nanoid } from "nanoid";
 import { startReview, useReview } from "../../discovery/review";
 import { planAhead, planLook, planPropose, planRoute, type PlanAsk } from "@/org/plan";
 import { planOutline, planProposals } from "@/space/plan";
+import { decideTerm, emptyAsking, foundOf, fromPlanRounds, loaded, startLookup } from "@/asking/engine";
+import type { AskingState } from "@/asking/types";
+import { askingIn } from "@/asking/wire";
+import { hostOf } from "@/ai/research-shared";
+import { editTerm, useTerms } from "@/org/terms";
+import type { FlowState } from "../../ai/questionFlow";
+import { answer, askMeInstead, confirm, goOn, keepRound, lookItUp, off, picks, projectLookup, stopAsking, stopLookup, stopLookups, type AskingHost, type Paused } from "../../asking/run";
 import { create } from "zustand";
 import { aiStatus } from "@/ai/client";
 import { studio } from "@/doc/store";
@@ -689,20 +696,50 @@ const canvasPlan = (id: string) => {
 };
 const setCanvasPlan = (id: string, fn: (j: PlanJob) => PlanJob) => change((c) => withJob(c, id, (j) => (j.kind === "plan" ? fn(j) : j)));
 
-/** What each call is told: what they asked, the canvas as it is now, and the conversation so far. */
+/** What each call is told: what they asked, the canvas as it is now, and the conversation so far (the interview's, src/asking/). */
 const planAsk = (id: string): PlanAsk | null => {
   const t = turnOf(id);
   const j = canvasPlan(id);
-  return t && j ? { said: t.said, outline: planOutline(studio().doc, useSpaceView.getState().things), rounds: j.rounds, looks: j.looks } : null;
+  if (!t || !j) return null;
+  const asking = j.asking ? askingIn(j.asking, { said: t.said, terms: useTerms.getState().terms }) : undefined;
+  const found = j.asking ? foundOf(j.asking).flatMap((l) => (l.piece ? [l.piece] : [])) : [];
+  return { said: t.said, outline: planOutline(studio().doc, useSpaceView.getState().things), rounds: j.rounds, looks: j.looks, ...(asking ? { asking } : {}), ...(found.length ? { found } : {}) };
 };
 
-/** Run one stretch of the conversation: until it asks, or has proposed. Stopped, it says so; any other failure offers to try again. */
-async function runCanvasPlan(id: string, stretch: (signal: AbortSignal) => Promise<void>) {
+/**
+ * Plan mode on the interview (src/asking/): its state on the turn, each turn through the core, its
+ * lookups in their project and on the web (each look also kept with the plan's looks, so the thread
+ * shows it where it came), and the proposal at the end.
+ */
+export const planHost = (id: string): AskingHost => ({
+  key: id,
+  // A plan from before the interview goes on as one: its rounds and looks become its state.
+  get: () => {
+    const j = canvasPlan(id);
+    return j ? planAsking(j) : null;
+  },
+  set: (fn) => setCanvasPlan(id, (j) => ({ ...j, asking: fn(planAsking(j)) })),
+  turn: (_s, signal) => planAhead(planAsk(id)!, step(id), signal),
+  lookup: async (l, signal) => {
+    if (l.kind === "project") return projectLookup(l);
+    const look = await planLook({ ...planAsk(id)!, ...(l.query ? { query: l.query } : {}) }, undefined, signal);
+    setCanvasPlan(id, (j) => ({ ...j, looks: [...j.looks, { ...look, after: (j.asking?.rounds.length ?? 0) - 1 }] }));
+    return { look, lines: look.lines.map((x, i) => ({ ref: `${l.id}-${i + 1}`, text: x.text, from: x.url ? hostOf(x.url) : "a page", whose: "a page online", ...(x.url ? { url: x.url } : {}), ...(x.quote ? { quote: x.quote } : {}) })) };
+  },
+  generate: (_s, signal) => proposeNow(id, signal),
+  status: (s) => setCanvasPlan(id, (j) => (j.step === "proposing" ? j : { ...j, step: s })),
+});
+
+/** Run one stretch of the conversation: until it asks, shows what's settled, or has proposed. Stopped, it says so; any other failure offers to try again. */
+async function runCanvasPlan(id: string, stretch: (signal: AbortSignal) => Promise<Paused | void>) {
   const ctrl = begin(id);
   try {
-    await stretch(ctrl.signal);
+    const why = await stretch(ctrl.signal);
+    if (why === "ask" || why === "offer") setCanvasPlan(id, (j) => ({ ...j, step: "asking" }));
+    else if (why === "settled") setCanvasPlan(id, (j) => ({ ...j, step: "settled" }));
   } catch (e) {
     const stopped = (e as Error).name === "AbortError" || ctrl.signal.aborted;
+    if (stopped) stopLookups(id);
     setCanvasPlan(id, (j) => ({ ...j, step: "failed", error: stopped ? "You stopped it." : message(e) }));
   } finally {
     end(id);
@@ -725,38 +762,14 @@ async function readQuestion(said: string) {
   else void ask(said, id);
 }
 
-/** Taken as a plan: a look around first, then what comes next. */
+/**
+ * Taken as a plan: a look around on the web starts at once and runs while Qalam AI's first turn asks
+ * what it can without it; only the turn after waits for the look.
+ */
 function workOut(at: string | null, said: string) {
-  const id = jobAt(at, said, { kind: "plan", step: "looking", rounds: [], looks: [] });
-  void runCanvasPlan(id, async (signal) => {
-    await lookOnce(id, undefined, signal);
-    await ahead(id, signal);
-  });
-}
-
-/** One look, after the round they just answered. A look that fails is let go: the plan goes on with what it has. */
-async function lookOnce(id: string, query: string | undefined, signal: AbortSignal) {
-  const b = planAsk(id);
-  if (!b) return;
-  setCanvasPlan(id, (j) => ({ ...j, step: "looking" }));
-  const look = await planLook({ ...b, ...(query ? { query } : {}) }, step(id), signal).catch((e: unknown) => {
-    if (signal.aborted) throw e;
-    return null;
-  });
-  if (look) setCanvasPlan(id, (j) => ({ ...j, looks: [...j.looks, { ...look, after: j.rounds.length - 1 }] }));
-}
-
-/** What comes next: a round in the box, another look, or the proposal. */
-async function ahead(id: string, signal: AbortSignal) {
-  for (;;) {
-    const b = planAsk(id);
-    if (!b) return;
-    setCanvasPlan(id, (j) => ({ ...j, step: "thinking" }));
-    const next = await planAhead(b, step(id), signal);
-    if (next.action === "ask") return setCanvasPlan(id, (j) => ({ ...j, step: "asking", rounds: [...j.rounds, { questions: next.questions }] }));
-    if (next.action === "ready") return proposeNow(id, signal);
-    await lookOnce(id, next.query, signal);
-  }
+  const asking = startLookup(emptyAsking(), { id: "l0", kind: "web", query: "", waits: 1 }, Date.now());
+  const id = jobAt(at, said, { kind: "plan", step: "thinking", rounds: [], looks: [], asking });
+  void runCanvasPlan(id, (signal) => goOn(planHost(id), signal));
 }
 
 /** The proposal: cards on the canvas for review. A problem only a page so far brings its page's words along. */
@@ -780,29 +793,51 @@ async function proposeNow(id: string, signal: AbortSignal) {
   startReview({ kind: "plan", turn: id }, proposals);
 }
 
-export const canvasPlanQuestionsOf = (id: string) => canvasPlan(id)?.rounds.at(-1)?.questions ?? [];
+/** The plan's interview: kept on the turn, or made from a plan's rounds from before. */
+const planAsking = (j: PlanJob): AskingState => j.asking ?? fromPlanRounds(j.rounds, j.looks);
+
+/** A round's answers kept as they're given, so a reload finds them. */
+export const keepPlanRound = (id: string, form: FlowState) => keepRound(planHost(id), form);
 
 /** A round answered: on to what comes next. */
-export function answerCanvasPlan(id: string, answers: Readonly<Record<string, string>>) {
-  setCanvasPlan(id, (j) => ({ ...j, step: "thinking", rounds: j.rounds.map((r, i) => (i === j.rounds.length - 1 ? { ...r, answers: { ...answers } } : r)) }));
-  void runCanvasPlan(id, (signal) => ahead(id, signal));
+export const answerCanvasPlan = (id: string, form: FlowState) => void runCanvasPlan(id, (signal) => answer(planHost(id), form, signal));
+
+/** "Use Qalam AI's picks" for what they haven't answered. */
+export const picksCanvasPlan = (id: string, form: FlowState) => void runCanvasPlan(id, (signal) => picks(planHost(id), form, signal));
+
+/** "Stop asking": what's answered stands; What we settled shows. */
+export const stopAskingPlan = (id: string, form: FlowState | null) => void runCanvasPlan(id, (signal) => stopAsking(planHost(id), form, signal));
+
+/** They saw what was settled: propose. */
+export const confirmCanvasPlan = (id: string) => void runCanvasPlan(id, (signal) => confirm(planHost(id), signal));
+
+/** "Something's off": a round asks what. */
+export function offCanvasPlan(id: string) {
+  off(planHost(id));
+  setCanvasPlan(id, (j) => ({ ...j, step: "asking" }));
 }
 
-/** No more questions: it proposes with what it has. */
-export function skipCanvasPlan(id: string) {
-  setCanvasPlan(id, (j) => ({ ...j, step: "proposing", skipped: true, rounds: j.rounds.filter((r) => r.answers) }));
-  void runCanvasPlan(id, (signal) => proposeNow(id, signal));
+/** The lookup put to them: yes, or ask me instead. */
+export const lookItUpPlan = (id: string) => void runCanvasPlan(id, (signal) => lookItUp(planHost(id), signal));
+export const askMeInsteadPlan = (id: string) => void runCanvasPlan(id, (signal) => askMeInstead(planHost(id), signal));
+
+/** A lookup they don't want to wait for: what waited on it is asked again without it. */
+export const stopPlanLookup = (id: string, lookup: string) => stopLookup(id, lookup);
+
+/** A term the conversation settled: added to the project's words, or left out. */
+export async function decidePlanTerm(id: string, term: string, keep: boolean) {
+  const t = canvasPlan(id)?.asking?.terms.find((x) => x.id === term);
+  if (!t) return;
+  planHost(id).set((s) => decideTerm(s, term, keep));
+  if (keep && !(await editTerm({ op: "add", term: t.term, means: t.means, avoid: t.avoid, by: "qalam" }))) planHost(id).set((s) => ({ ...s, terms: s.terms.map((x) => (x.id === term ? { ...x, state: undefined } : x)) }));
 }
 
 /** Tried again from where it stopped: what it has read and been told stands. */
 export function retryCanvasPlan(id: string) {
   const j = canvasPlan(id);
   if (!j) return;
-  setCanvasPlan(id, (x) => ({ ...x, step: "thinking", error: undefined, rounds: x.rounds.filter((r) => r.answers) }));
-  void runCanvasPlan(id, async (signal) => {
-    if (!j.looks.length) await lookOnce(id, undefined, signal);
-    await ahead(id, signal);
-  });
+  setCanvasPlan(id, (x) => ({ ...x, step: "thinking", error: undefined, asking: loaded(planAsking(x)) }));
+  void runCanvasPlan(id, (signal) => goOn(planHost(id), signal));
 }
 
 /** Its proposals brought back to the canvas (a reload, or another review that was in the way). */
@@ -1387,6 +1422,7 @@ export async function ask(question: string, at: string | null = null): Promise<v
 export function stopTurn(id: string) {
   ctrls.get(id)?.abort();
   const j = turnOf(id)?.job;
+  if (j?.kind === "plan") stopLookups(id);
   if (j?.kind === "dump" && useDump.getState().busy?.sourceId === j.source) stopDump(j.source);
   if (j?.kind === "scan" && (!j.session || j.session.state === "reading")) void stopScan().catch(() => {});
 }

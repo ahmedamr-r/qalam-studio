@@ -38,7 +38,8 @@ import { useWords } from "../../frame/store";
 import { show } from "../links";
 import { FoundGoalRow } from "../../chat/FoundGoalRow";
 import { moreLine } from "@/onboarding/start";
-import { answerWhose, goalForTopProblem, anotherFile, briefAgain, briefStart, changeDocBasis, chooseDraft, decideDocGoal, dropTurn, leaveFile, leaveFit, lookPastFits, openProblems, pickAudience, placeFirstBuild, placeStatement, planAgain, planFirst, planOf, planStart, retake, retryGoalFor, scanAgain, scanHere, scanInNewProject, scanIsMine, scanOtherWay, setPlanGoal, settleNumber, steerOff, stopTurn, takeAsBasis, takeFit, takeGoalNumber, takeIdea, turnOf, useCanvasChat, retryCanvasPlan, runAs, showCanvasPlan, skipCanvasPlan } from "./store";
+import { answerWhose, goalForTopProblem, anotherFile, briefAgain, briefStart, changeDocBasis, chooseDraft, decideDocGoal, dropTurn, leaveFile, leaveFit, lookPastFits, openProblems, pickAudience, placeFirstBuild, placeStatement, planAgain, planFirst, planOf, planStart, retake, retryGoalFor, scanAgain, scanHere, scanInNewProject, scanIsMine, scanOtherWay, setPlanGoal, settleNumber, steerOff, stopTurn, takeAsBasis, takeFit, takeGoalNumber, takeIdea, turnOf, useCanvasChat, retryCanvasPlan, runAs, showCanvasPlan, stopAskingPlan, confirmCanvasPlan, offCanvasPlan, decidePlanTerm } from "./store";
+import { AnsweredRound, FoundInProject, SettledCard } from "../../asking/AskRound";
 import { titleFrom } from "@/space/route";
 import { otherReading, projectName } from "@/scan/input";
 import { firstGoal, GOAL_ACTIONS, riskiest, type GoalAction, type ScanAudience } from "@/scan/plan";
@@ -569,15 +570,42 @@ function PlanAnsweredPart({ data }: { data: PartData }) {
   );
 }
 
-/** No more questions: propose with what it has. */
+/** A plan from before the interview: no more questions, what's settled shows. */
 function PlanSkipPart({ data }: { data: PartData }) {
   return (
     <ReplyChips>
-      <button type="button" className={r.replyChip} onClick={() => skipCanvasPlan(String(data.turn))}>
-        Skip, and propose it now
+      <button type="button" className={r.replyChip} onClick={() => stopAskingPlan(String(data.turn), null)}>
+        Stop asking
       </button>
     </ReplyChips>
   );
+}
+
+/** The plan's interview, from its turn (src/asking/). */
+const usePlanAsking = (turn: unknown) =>
+  useCanvasChat((s) => {
+    const j = s.chat.turns.find((t) => t.id === turn)?.job;
+    return j?.kind === "plan" ? (j.asking ?? null) : null;
+  });
+
+/** A round of the interview answered, folded: Qalam AI's picks marked as its own. */
+function AskAnsweredPart({ data }: { data: PartData }) {
+  const state = usePlanAsking(data.turn);
+  return state && state.rounds[Number(data.round)] ? <AnsweredRound state={state} index={Number(data.round)} /> : null;
+}
+
+/** What lookups in their project found. */
+function AskFoundPart({ data }: { data: PartData }) {
+  const state = usePlanAsking(data.turn);
+  return state ? <FoundInProject state={state} /> : null;
+}
+
+/** What we settled, before it proposes: Propose, or Something's off. */
+function AskSettledPart({ data }: { data: PartData }) {
+  const id = String(data.turn);
+  const state = usePlanAsking(id);
+  if (!state) return null;
+  return <SettledCard state={state} go="Propose" onGo={() => confirmCanvasPlan(id)} onOff={() => offCanvasPlan(id)} onTerm={(t, keep) => void decidePlanTerm(id, t, keep)} />;
 }
 
 /** What a plan proposes: in a line, where to start, what it doubts, and what to do with it. Open on the canvas, or there to bring back. */
@@ -1771,6 +1799,9 @@ export const PARTS: Record<string, PartComponent> = {
   planLook: LookedPart,
   planAnswered: PlanAnsweredPart,
   planSkip: PlanSkipPart,
+  askAnswered: AskAnsweredPart,
+  askFound: AskFoundPart,
+  askSettled: AskSettledPart,
   planProposed: PlanProposedPart,
   planPlaced: PlanPlacedPart,
   planRetry: PlanRetryPart,

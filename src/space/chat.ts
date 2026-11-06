@@ -17,6 +17,8 @@ import type { Drafted, SolutionDraft } from "@/discovery/solutions";
 import type { Proposal } from "@/discovery/proposals";
 import type { PlanLook, PlanRound } from "./plan";
 import type { ChatMode } from "./route";
+import type { AskingState } from "@/asking/types";
+import { awaitsConfirm, currentRound, loaded } from "@/asking/engine";
 
 /*
  * Qalam AI's chat on the left of a space's canvas (src/ui/space/chat/), as it's kept: one file per
@@ -105,15 +107,18 @@ export interface WhoseJob {
 }
 
 /**
- * Something worked out as a plan (src/space/plan.ts): `looking` on the web, `thinking` what to do
- * next, `asking` a round in the box, `proposing`, then `review` while its proposals are on the
- * canvas and `placed` once they're settled. The conversation is kept here and sent with each call.
+ * Something worked out as a plan (src/space/plan.ts): `thinking` what's still open, `looking` while a
+ * turn waits on a lookup, `asking` a round in the box, `settled` showing what was settled before it
+ * proposes, `proposing`, then `review` while its proposals are on the canvas and `placed` once they're
+ * settled. The conversation is the interview's (`asking`, src/asking/), kept here and sent with each
+ * call; `rounds` are a plan's from before it, and `looks` every web look, for the thread.
  */
 export interface PlanJob {
   kind: "plan";
-  step: "looking" | "thinking" | "asking" | "proposing" | "review" | "placed" | "failed";
+  step: "looking" | "thinking" | "asking" | "settled" | "proposing" | "review" | "placed" | "failed";
   rounds: PlanRound[];
   looks: PlanLook[];
+  asking?: AskingState;
   proposals?: Proposal[];
   /** The cards it proposed: what's on the canvas of them once it's settled is what was taken. */
   cards?: string[];
@@ -255,7 +260,9 @@ function stopped(j: ChatJob): ChatJob {
   // What was being worked out when the page went stops there: they can ask again.
   if (j.kind === "scan" && j.plan && (j.plan.step === "questioning" || j.plan.step === "reading" || j.plan.step === "picking")) return { ...j, plan: { ...j.plan, step: "failed", error: "It stopped when the page closed." } };
   if (j.kind === "goalfor" && j.step === "looking") return { ...j, step: "failed", error: "It stopped when the page closed." };
-  if (j.kind === "plan" && (j.step === "looking" || j.step === "thinking" || j.step === "proposing")) return { ...j, step: "failed", error: "It stopped when the page closed." };
+  if (j.kind === "plan" && (j.step === "looking" || j.step === "thinking" || j.step === "proposing")) return { ...j, ...(j.asking ? { asking: loaded(j.asking) } : {}), step: "failed", error: "It stopped when the page closed." };
+  // Lookups running when the page closed: nothing runs them now.
+  if (j.kind === "plan" && j.asking) return { ...j, asking: loaded(j.asking) };
   // A number still being worked out when the page went: theirs to type.
   if (j.kind === "goalfor" && j.step === "suggesting") return { ...j, step: "suggested", suggestion: null };
   return j;
@@ -357,22 +364,32 @@ const WHOSE_SAID: Record<NonNullable<WhoseJob["answer"]>, (name?: string) => str
   solo: () => "Just you, then.",
 };
 
-/** A plan in the thread: each look and round as it came, then where it stands. */
+/**
+ * A plan in the thread: each round answered and each look as it came, what was found in their project,
+ * What we settled before it proposes, then where it stands. A plan from before the interview reads as it did.
+ */
 function planReply(t: ChatTurn, j: PlanJob): ChatPart[] {
   const id = { turn: t.id };
+  const s = j.asking;
   const looks = (after: number) => j.looks.flatMap((l, i) => (l.after === after ? [part("planLook", { turn: t.id, look: i })] : []));
-  const out: ChatPart[] = [text("I'll work this out as a plan: a look around, what I can't tell from here, then cards on the canvas for you to accept."), part("justAnswer", id), ...looks(-1)];
-  j.rounds.forEach((_r, i) => {
-    if (j.step === "asking" && i === j.rounds.length - 1) return;
-    out.push(part("planAnswered", { turn: t.id, round: i }), ...looks(i));
+  const out: ChatPart[] = [text(s ? "I'll work this out with you: what I can find myself, what only you can tell me, then cards on the canvas for you to accept." : "I'll work this out as a plan: a look around, what I can't tell from here, then cards on the canvas for you to accept."), part("justAnswer", id), ...looks(-1)];
+  const rounds = s ? s.rounds : j.rounds;
+  const open = s ? !!currentRound(s) : j.step === "asking";
+  rounds.forEach((_r, i) => {
+    if (open && i === rounds.length - 1) return;
+    out.push(part(s ? "askAnswered" : "planAnswered", { turn: t.id, round: i }), ...looks(i));
   });
+  if (s?.lookups.some((l) => l.kind === "project" && l.state === "done" && l.lines?.length)) out.push(part("askFound", id));
   switch (j.step) {
     case "looking":
     case "thinking":
     case "proposing":
       return [...out, part("working", id)];
     case "asking":
-      return [...out, text(j.rounds.length > 1 ? "A few more, then I'll propose it." : "A few questions first: answer what you can."), part("planSkip", id)];
+      if (!s) return [...out, text(j.rounds.length > 1 ? "A few more, then I'll propose it." : "A few questions first: answer what you can."), part("planSkip", id)];
+      return [...out, text(s.offer ? "I'd look this up next, before asking you more. Should I?" : s.rounds.length > 1 ? "More I can't tell from here: answer what you can, or take my picks." : "Some questions first: answer what you can, or take my picks.")];
+    case "settled":
+      return s && awaitsConfirm(s) ? [...out, part("askSettled", id)] : [...out, part("working", id)];
     case "review":
       return [...out, part("planProposed", id)];
     case "placed":

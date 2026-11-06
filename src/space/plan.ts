@@ -11,7 +11,7 @@ import { SOLUTION_TYPES, type AssumptionCategory, type Came, type OstAssumption,
 import type { FocusLook } from "@/goals/focus";
 import { withoutIds } from "@/goals/said";
 import { holdWords, sameTopic, valuesIn } from "@/hub/topics";
-import { sanitizeAsked } from "@/ui/ai/plan";
+import type { AskQuestion } from "@/asking/types";
 import type { SpaceThing } from "./compose";
 
 /*
@@ -25,7 +25,7 @@ import type { SpaceThing } from "./compose";
  * links, never deletes or rewords: nothing lands until it's accepted.
  */
 
-export const PLAN_LIMITS = { rounds: 3, looks: 2, query: 200, said: 4000, outline: 80, words: 40, pieces: 30, goals: 3, problems: 6, solutionsPer: 3, modules: 8, cards: 24, assumptions: 3, title: 100, description: 420, why: 240, how: 120, assumption: 240, what: 120, testHow: 360, pass: 240, doubt: 240, metric: 80 } as const;
+export const PLAN_LIMITS = { query: 200, said: 4000, outline: 80, words: 40, pieces: 30, goals: 3, problems: 6, solutionsPer: 3, modules: 8, cards: 24, assumptions: 3, title: 100, description: 420, why: 240, how: 120, assumption: 240, what: 120, testHow: 360, pass: 240, doubt: 240, metric: 80 } as const;
 
 /** A card on the canvas as a plan is told about it. `topic`: a problem's page; `faint`: only a page so far. */
 export interface OutlineCard {
@@ -84,18 +84,11 @@ export function leftOf(rounds: readonly PlanRound[]): string[] {
   return rounds.flatMap((r) => (r.answers ? r.questions.filter((q) => !(r.answers?.[q.id] ?? "").trim()).map((q) => one(q.title)) : []));
 }
 
-const leftLines = (rounds: readonly PlanRound[]) => {
-  const left = leftOf(rounds);
-  return left.length ? ["", "Asked and left unanswered, so you don't know these. Don't assume an answer:", ...left.map((q) => `- ${q}`)] : [];
-};
-
 const canvasLines = (outline: readonly OutlineCard[], ref: (id: string) => string | undefined) =>
   outline.map((c) => {
     const parent = c.parent ? ref(c.parent) : null;
     return `- ${ref(c.id)} · ${KIND_WORD[c.kind]} · “${one(c.title)}”${c.metric ? ` · ${one(c.metric)}` : ""}${c.type ? ` · ${c.type}` : ""}${parent ? ` · under ${parent}` : ""}${c.faint ? " · only a page so far" : ""}`;
   });
-
-const lookLines = (looks: readonly PlanLook[]) => looks.flatMap((l) => l.lines.map((x) => `- ${one(x.text)}${x.url ? ` (${hostOf(x.url)})` : ""}`));
 
 /** What the research step is asked: what people do about this, whichever way, or (`query`) what their answers called for. */
 export function planTask(o: { org: string; about: string; said: string; query?: string; answers?: readonly { question: string; answer: string }[]; outline: readonly OutlineCard[] }): string {
@@ -110,11 +103,12 @@ export function planTask(o: { org: string; about: string; said: string; query?: 
   ].join("\n");
 }
 
-/** What deciding the next step reads: what they asked, the canvas, what was read and what they've said so far. */
-export function planNextMaterial(o: { org: string; about?: string; said: string; outline: readonly OutlineCard[]; rounds: readonly PlanRound[]; looks: readonly PlanLook[]; company?: string }): string {
+/**
+ * What a turn of the interview reads about the plan (beside the conversation, src/asking/wire.ts): what
+ * they asked, the company and the canvas. The asking is the engine's: no limit on rounds or looks.
+ */
+export function planAskMaterial(o: { org: string; about?: string; said: string; outline: readonly OutlineCard[]; company?: string }): string {
   const ids = new Map(o.outline.map((c, i) => [c.id, `c${i + 1}`]));
-  const answers = answersOf(o.rounds);
-  const lines = lookLines(o.looks);
   return [
     `What they asked: “${one(o.said)}”`,
     "",
@@ -123,46 +117,20 @@ export function planNextMaterial(o: { org: string; about?: string; said: string;
     "",
     "What's on their canvas:",
     ...(o.outline.length ? canvasLines(o.outline, (id) => ids.get(id)) : ["(nothing yet)"]),
-    "",
-    "What was read on the web (others' words):",
-    ...(lines.length ? lines : ["(nothing)"]),
-    "",
-    answers.length ? "What they've told you:" : "They haven't told you anything yet.",
-    ...answers.map((a) => `- ${a.question} ${a.answer}`),
-    ...leftLines(o.rounds),
-    "",
-    `Rounds of questions so far: ${o.rounds.length} of at most ${PLAN_LIMITS.rounds}. Looks at the web after the first: ${o.looks.filter((l) => l.after >= 0).length} of at most ${PLAN_LIMITS.looks}.`,
   ].join("\n");
 }
 
 /** How a question is taken, as code keeps a small call's answer: a plan only when it says so. */
 export const sanitizeRoute = (raw: unknown): "ask" | "plan" => (rec(raw).route === "plan" ? "plan" : "ask");
 
-export type PlanNext = { action: "ask"; questions: PlanQuestion[] } | { action: "look"; query: string } | { action: "ready" };
-
-/** Code's own questions: what most changes what's worth proposing. Each is open, and can be skipped. */
+/** Code's own questions: what most changes what's worth proposing. Each is open, and can be skipped. Asked when Qalam AI's first turn can't be. */
 export function planRound(): PlanQuestion[] {
   const open = (id: string, title: string, why: string): PlanQuestion => ({ id, title, why, multi: false, options: [], recommended: [], allowOther: false });
   return [open("who", "Who would use it or pay for it first?", "Everything proposed is for them."), open("exists", "What exists already, and what can you build or run yourself?", "A message or a service may do before any software."), open("reach", "How do you reach those people today?", "So what's proposed can actually reach them.")];
 }
 
-/**
- * What code keeps of the next step: a look only while looks are left, never twice running; questions
- * only while rounds are left, their choices always open to their own words. With nothing to go by on
- * a first round, code's own questions are asked; else it's ready.
- */
-export function sanitizeNext(raw: unknown, o: { rounds: readonly PlanRound[]; looks: readonly PlanLook[] }): PlanNext {
-  const r = rec(raw);
-  const looked = o.looks.filter((l) => l.after >= 0);
-  const justLooked = o.looks.at(-1)?.after === o.rounds.length - 1 && o.rounds.length > 0;
-  const noWeb = o.looks.some((l) => l.noWeb);
-  const query = one(word(r.look)).slice(0, PLAN_LIMITS.query);
-  if (r.action === "look" && query && !noWeb && !justLooked && looked.length < PLAN_LIMITS.looks) return { action: "look", query };
-  if (o.rounds.length >= PLAN_LIMITS.rounds) return { action: "ready" };
-  const questions = sanitizeAsked(r.questions).slice(0, 3).map((q) => ({ ...q, allowOther: true }));
-  if (r.action === "ask" && questions.length) return { action: "ask", questions };
-  return !o.rounds.length && r.action !== "ready" ? { action: "ask", questions: planRound() } : { action: "ready" };
-}
+/** Plan mode's say over a question: every choice stays open to their own words. */
+export const planTweak = (q: AskQuestion): AskQuestion => ({ ...q, allowOther: true });
 
 // ---------------------------------------------------------------------------
 // Proposing
@@ -187,20 +155,35 @@ export interface PlanSent {
   cards: Map<string, OutlineCard>;
   pieces: Map<string, PlanPiece>;
   answers: Map<string, { question: string; answer: string }>;
+  /** Qalam AI's recommendations they agreed to with one press (p…): agreement, never their words. */
+  picks?: Map<string, { question: string; answer: string }>;
   read: Map<string, { text: string; url?: string; title?: string; quote?: string }>;
 }
 
+/** An answer as proposing reads it: their own, Qalam AI's pick they agreed to, or left. */
+export interface PlanAnswer {
+  question: string;
+  answer: string;
+  how: "own" | "pick" | "left";
+}
+
+/** A plan's rounds from before, as answers. */
+export const planAnswers = (rounds: readonly PlanRound[]): PlanAnswer[] => [...answersOf(rounds).map((a) => ({ ...a, how: "own" as const })), ...leftOf(rounds).map((q) => ({ question: q, answer: "", how: "left" as const }))];
+
 /** What proposing reads: what they asked and answered, the canvas, the words behind its problems, and what was read on the web. Each has its id. */
-export function planMaterial(o: { org: string; about?: string; said: string; outline: readonly OutlineCard[]; rounds: readonly PlanRound[]; looks: readonly PlanLook[]; pieces: readonly PlanPiece[]; company?: string }): PlanSent {
+export function planMaterial(o: { org: string; about?: string; said: string; outline: readonly OutlineCard[]; answers: readonly PlanAnswer[]; looks: readonly PlanLook[]; pieces: readonly PlanPiece[]; company?: string }): PlanSent {
   const cards = new Map<string, OutlineCard>();
   const ids = new Map<string, string>();
   o.outline.slice(0, PLAN_LIMITS.outline).forEach((c, i) => {
     cards.set(`c${i + 1}`, c);
     ids.set(c.id, `c${i + 1}`);
   });
-  const answers = new Map(answersOf(o.rounds).map((a, i) => [`a${i + 1}`, a]));
+  const answers = new Map(o.answers.filter((a) => a.how === "own" && a.answer.trim()).map((a, i) => [`a${i + 1}`, { question: one(a.question), answer: a.answer }]));
+  const picks = new Map(o.answers.filter((a) => a.how === "pick" && a.answer.trim()).map((a, i) => [`p${i + 1}`, { question: one(a.question), answer: a.answer }]));
+  const leftOver = o.answers.filter((a) => a.how === "left").map((a) => one(a.question));
   const pieces = new Map<string, PlanPiece>();
-  const ordered = [...o.pieces.filter((p) => p.evidence), ...o.pieces.filter((p) => !p.evidence)].filter((p) => ids.has(p.card)).slice(0, PLAN_LIMITS.pieces);
+  // Words found on their words (a lookup in their project) are behind no card on the canvas yet.
+  const ordered = [...o.pieces.filter((p) => p.evidence), ...o.pieces.filter((p) => !p.evidence)].filter((p) => !p.card || ids.has(p.card)).slice(0, PLAN_LIMITS.pieces);
   ordered.forEach((p, i) => pieces.set(`q${i + 1}`, p));
   const read = new Map(o.looks.flatMap((l) => l.lines).map((l, i) => [`w${i + 1}`, { text: l.text, ...(l.url ? { url: l.url } : {}), ...(l.title ? { title: l.title } : {}), ...(l.quote ? { quote: l.quote } : {}) }]));
   const body = [
@@ -209,21 +192,23 @@ export function planMaterial(o: { org: string; about?: string; said: string; out
     `The company or project: “${o.org}”${o.about?.trim() ? `. ${one(o.about)}` : ""}`,
     "",
     "What they told you (id · question · their answer):",
-    ...(answers.size ? [...answers].map(([id, a]) => `- ${id} · ${a.question} · “${one(a.answer)}”`) : ["(nothing: they skipped the questions)"]),
+    ...(answers.size ? [...answers].map(([id, a]) => `- ${id} · ${a.question} · “${one(a.answer)}”`) : ["(nothing in their own words)"]),
+    ...(picks.size ? ["", "Your recommendations they agreed to with one press (id · question · the pick). Agreement, not their words: never quote them as theirs:", ...[...picks].map(([id, a]) => `- ${id} · ${a.question} · ${one(a.answer)}`)] : []),
     "",
     "The canvas now (id · what · words · where):",
     ...(cards.size ? canvasLines([...cards.values()], (id) => ids.get(id)) : ["(nothing yet)"]),
     "",
-    "The words behind the problems (id · whose · where · words · the problem):",
-    ...(pieces.size ? [...pieces].map(([id, p]) => `- ${id} · ${whose(p)} · ${one(p.label)} · “${one(p.text)}” · ${ids.get(p.card)}`) : ["(no words yet)"]),
+    "The words behind the problems, and found on their words (id · whose · where · words · the problem):",
+    ...(pieces.size ? [...pieces].map(([id, p]) => `- ${id} · ${whose(p)} · ${one(p.label)} · “${one(p.text)}” · ${p.card ? ids.get(p.card) : "found in their project"}`) : ["(no words yet)"]),
     "",
     "What was read on the web (id · the line · the page). Others' words, never evidence about these customers:",
     ...(read.size ? [...read].map(([id, l]) => `- ${id} · ${one(l.text)}${l.quote ? ` “${one(l.quote)}”` : ""}${l.url ? ` · ${hostOf(l.url)}` : ""}`) : ["(nothing)"]),
   ].join("\n");
-  const left = leftLines(o.rounds).join("\n");
-  const text = [body, left.trim(), o.company?.trim()].filter(Boolean).join("\n\n");
-  // What words and numbers may come from: the material without its ids.
-  return { text, hay: body.replace(/(^|\s)[acqw]\d+ ·/gm, "$1"), cards, pieces, answers, read };
+  const left = leftOver.length ? ["Asked and left unanswered, so you don't know these. Don't assume an answer:", ...leftOver.map((q) => `- ${q}`)].join("\n") : "";
+  const text = [body, left, o.company?.trim()].filter(Boolean).join("\n\n");
+  // What words and numbers may come from: the material without its ids, and without the picks (agreement, not their words).
+  const hay = body.replace(/\nYour recommendations they agreed to[^\n]*\n(?:- p\d+ ·[^\n]*\n?)*/u, "\n").replace(/(^|\s)[acqw]\d+ ·/gm, "$1");
+  return { text, hay, cards, pieces, answers, picks, read };
 }
 
 /** A card a plan proposes, as code kept it. */
@@ -391,6 +376,8 @@ export function sanitizePlan(raw: unknown, m: PlanSent, o: { id: () => string; f
     const answers = refs.flatMap((c) => m.answers.get(c) ?? []);
     const read = refs.flatMap((c) => m.read.get(c) ?? []);
     const own = answers.map(() => ({ evidence: false, basis: "own" as Basis }));
+    // Qalam AI's picks they agreed to: never their words, so a card resting only on them is Assumed.
+    const picked = refs.some((c) => m.picks?.has(c));
     const module = r.kind === "solution" && !!u && (("ref" in u && rowOf.get(u.ref)?.kind === "solution") || ("card" in u && outline.find((c) => c.id === u.card)?.kind === "solution"));
     const needed = module && r.x.needed === "yes";
     const type = typeOf.get(r.ref);
@@ -425,7 +412,7 @@ export function sanitizePlan(raw: unknown, m: PlanSent, o: { id: () => string; f
       ...(how ? { how } : {}),
       ...(needed ? { needed: true as const } : {}),
       // A part the product needs claims nothing, so there's nothing to say about where it came from.
-      ...(needed ? {} : cameFrom([...pieces, ...own], read.length > 0)),
+      ...(needed ? {} : cameFrom([...pieces, ...own], read.length > 0, false, picked)),
       ...(metricName ? { metric: { name: metricName, target: word(metric.target) && Number.isFinite(target) && numbers.has(target) ? target : null } } : {}),
       quotes: [...new Set(pieces.map((p) => p.ref))],
       answers,

@@ -342,7 +342,7 @@ function WorkSection({ id, card }: { id: string; card: OstCard }) {
   );
 }
 
-const CAME_HINT: Record<NonNullable<OstCard["came"]>, string> = { answers: "from your answers", read: "from what it read online", idea: "as its own idea" };
+const CAME_HINT: Record<NonNullable<OstCard["came"]>, string> = { answers: "from your answers", read: "from what it read online", picks: "from its own recommendations, which you agreed to", idea: "as its own idea" };
 
 const NOT_SET = "none";
 const SOLUTION_TYPE_OPTIONS = [{ value: NOT_SET, label: "Not set" }, ...SOLUTION_TYPES.map((t) => ({ value: t, label: SOLUTION_TYPE_LABEL[t] }))] as { value: SolutionType | typeof NOT_SET; label: string }[];

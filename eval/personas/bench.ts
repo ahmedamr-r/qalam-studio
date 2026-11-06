@@ -1,4 +1,7 @@
 import type { PlanQuestion } from "@/ai/plan";
+import { applyTurn, currentRound, emptyAsking, lookupLanded, markRead, nextAfter, startLookup } from "@/asking/engine";
+import type { AskingState, Lookup } from "@/asking/types";
+import { askingIn } from "@/asking/wire";
 import { research, structured } from "@/ai/server";
 import { briefRound, type BriefAsked, type BriefShape } from "@/discovery/brief";
 import { needLine } from "@/hub/needs";
@@ -40,7 +43,12 @@ export interface PlanRun {
   firstRoundOnly?: boolean;
   /** What was sent at each step, for the two-way check with the real app. */
   bodies: { path: string; body: unknown }[];
+  /** How the interview ended: as the app's engine says, or the bench's own guard (the app has none). */
+  ended?: "done" | "nothing-new" | "stopped" | "guard";
 }
+
+/** The bench's own stop for the plan's interview, which has no limit on rounds in the app: a run past it is reported as `guard`. */
+export const BENCH_TURNS = 15;
 
 export interface ScanRun {
   path: "scan";
@@ -81,33 +89,55 @@ export async function planFlow(store: OrgStore, p: Persona, player: Player, t: T
   const say = emit(t);
   const bodies: { path: string; body: unknown }[] = [];
   const sent = (at: string, extra: object = {}) => void bodies.push({ path: at, body: JSON.parse(JSON.stringify({ ...body, ...extra })) });
-  const look = async (query?: string) => {
-    sent("plan/look", query ? { query } : {});
-    const l = await lookForPlan(store, { ...body, ...(query ? { query } : {}) }, say, signal, deps).catch((e: unknown) => {
+  // The interview as the app's engine runs it (src/asking/): the opening look and every lookup a turn asks
+  // for run here before the next turn (the app runs them while the person answers); no project search here.
+  let s: AskingState = startLookup(emptyAsking(), { id: "l0", kind: "web", query: "", waits: 1 }, Date.now());
+  const withAsking = (): PlanBody => ({ ...body, asking: askingIn(s, { said }) });
+  const run = async (l: Lookup) => {
+    if (l.kind !== "web") return void (s = lookupLanded(s, l.id, { lines: [] }));
+    sent("plan/look", l.query ? { query: l.query } : {});
+    const look = await lookForPlan(store, { ...withAsking(), ...(l.query ? { query: l.query } : {}) }, say, signal, deps).catch((e: unknown) => {
       if (signal.aborted) throw e;
       return null;
     });
-    if (l) body.looks.push({ ...l, after: body.rounds.length - 1 });
+    if (look) body.looks.push({ ...look, after: s.rounds.length - 1 });
+    s = lookupLanded(s, l.id, look ? { look, lines: look.lines.map((x, i) => ({ ref: `${l.id}-${i + 1}`, text: x.text, from: x.url ?? "a page", whose: "a page online" })) } : { error: "It failed" });
   };
-  await look();
-  for (;;) {
-    sent("plan/next");
-    const next = await planNext(store, body, say, signal, deps);
-    if (next.action === "ask") {
-      questions.push(next.questions);
-      if (o.firstRoundOnly) return { path: "plan", said, route, body, questions, draft: null, brief: null, firstRoundOnly: true, bodies };
-      const answers = await player.fill(next.questions, { flow: "plan", round: body.rounds.length }, signal);
-      body.rounds.push({ questions: next.questions, answers });
+  let ended: PlanRun["ended"];
+  let made = 0;
+  for (let turns = 0; ; ) {
+    for (const l of s.lookups.filter((x) => x.state === "running")) await run(l);
+    const next = nextAfter(s);
+    if (next === "end") {
+      ended = s.end?.by;
+      break;
+    }
+    if (next === "offer" && s.offer) {
+      s = startLookup(s, { id: s.offer.id, kind: "web", query: s.offer.query, waits: s.turns }, Date.now());
       continue;
     }
-    if (next.action === "ready") break;
-    await look(next.query);
+    if (next === "ask") {
+      const r = currentRound(s)!;
+      questions.push(r.questions);
+      if (o.firstRoundOnly) return { path: "plan", said, route, body: withAsking(), questions, draft: null, brief: null, firstRoundOnly: true, bodies };
+      const answers = await player.fill(r.questions, { flow: "plan", round: s.rounds.length - 1 }, signal);
+      s = { ...s, rounds: s.rounds.map((x, i) => (i === s.rounds.length - 1 ? { ...x, said: answers, form: { ...x.form, submitted: true } } : x)) };
+      continue;
+    }
+    if (next === "wait") continue;
+    if (turns++ >= BENCH_TURNS) {
+      ended = "guard";
+      break;
+    }
+    sent("plan/next", { asking: askingIn(s, { said }) });
+    s = markRead(s);
+    s = applyTurn(s, await planNext(store, withAsking(), say, signal, deps), { now: Date.now(), id: (p) => `${p}${++made}` });
   }
-  if (o.firstRoundOnly) return { path: "plan", said, route, body, questions, draft: null, brief: null, firstRoundOnly: true, bodies };
+  if (o.firstRoundOnly) return { path: "plan", said, route, body: withAsking(), questions, draft: null, brief: null, firstRoundOnly: true, bodies, ended };
   sent("plan/propose");
-  const draft = await proposePlan(store, body, say, signal, deps);
+  const draft = await proposePlan(store, withAsking(), say, signal, deps);
   const brief = await briefForDraft(store, draft, player, deps, signal, (req) => void bodies.push({ path: "briefs", body: req }));
-  return { path: "plan", said, route, body, questions, draft, brief, bodies };
+  return { path: "plan", said, route, body: withAsking(), questions, draft, brief, bodies, ended };
 }
 
 /** What's on the canvas for a plan to read: the problem pages, drawn faint, as a canvas with nothing else composes them. */

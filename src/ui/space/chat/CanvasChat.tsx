@@ -24,7 +24,8 @@ import type { Space } from "../../frame/spaces";
 import { ASK_EVENT, takeAskNext } from "../../org/ask-next";
 import { PARTS } from "./parts";
 import { clearMode, composeIn, useCompose } from "./compose";
-import { answerBrief, answerCanvasPlan, answerFind, answerNumber, answerPlan, answerSteer, ask, briefQuestionsOf, canvasPlanQuestionsOf, clearChat, findQuestionsOf, findWith, leaveSteer, numberQuestions, openChat, planQuestionsOf, resumePlans, send, steerQuestionsOf, stopTurn, turnOf, useCanvasChat } from "./store";
+import { answerBrief, answerCanvasPlan, answerFind, answerNumber, answerPlan, answerSteer, ask, askMeInsteadPlan, briefQuestionsOf, clearChat, findQuestionsOf, findWith, keepPlanRound, leaveSteer, lookItUpPlan, numberQuestions, openChat, picksCanvasPlan, planQuestionsOf, resumePlans, send, steerQuestionsOf, stopAskingPlan, stopPlanLookup, stopTurn, turnOf, useCanvasChat } from "./store";
+import { AskRound } from "../../asking/AskRound";
 
 /*
  * Qalam AI's chat on the left of a space's canvas, as Figma keeps its panel there: one box for
@@ -279,12 +280,25 @@ function PlanRound({ turn }: { turn: string }) {
   return <Questionnaire title="Before I work out what comes first" questions={questions} state={form} onChange={setForm} onSubmit={(f) => void answerPlan(turn, Object.fromEntries(questions.map((q) => [q.id, answerOf(f, q)])))} review={{ submitLabel: "Send answers" }} />;
 }
 
-/** What a plan can't tell from what it has; every one can be skipped, and Skip in the thread leaves them all. */
+/** What a plan can't tell from what it has (src/asking/): every question it can ask now, Qalam AI's picks in one press, and Stop asking. */
 function CanvasPlanRound({ turn }: { turn: string }) {
-  const questions = useMemo(() => canvasPlanQuestionsOf(turn).map(toQuestion), [turn]);
-  const [form, setForm] = useState<FlowState>(() => initialFlow(questions));
-  const answerOf = (f: FlowState, q: (typeof questions)[number]) => answerWords(q, f.answers[q.id]).text;
-  return <Questionnaire title="Before I propose it" questions={questions} state={form} onChange={setForm} onSubmit={(f) => answerCanvasPlan(turn, Object.fromEntries(questions.map((q) => [q.id, answerOf(f, q)])))} review={{ submitLabel: "Send answers" }} />;
+  const state = useCanvasChat((s) => {
+    const j = s.chat.turns.find((t) => t.id === turn)?.job;
+    return j?.kind === "plan" ? (j.asking ?? null) : null;
+  });
+  if (!state) return null;
+  return (
+    <AskRound
+      state={state}
+      onKeep={(f) => keepPlanRound(turn, f)}
+      onSend={(f) => answerCanvasPlan(turn, f)}
+      onPicks={(f) => picksCanvasPlan(turn, f)}
+      onStop={(f) => stopAskingPlan(turn, f)}
+      onStopLookup={(id) => stopPlanLookup(turn, id)}
+      onLookItUp={() => lookItUpPlan(turn)}
+      onAskMe={() => askMeInsteadPlan(turn)}
+    />
+  );
 }
 
 /** A goal's number, asked once a problem's goal is picked: what's left out is suggested. */

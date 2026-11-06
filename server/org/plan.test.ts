@@ -68,19 +68,32 @@ describe("a look on the web for a plan", () => {
   });
 });
 
-describe("what comes next in a plan", () => {
-  it("asks code's own questions when the call fails, or goes on once it has asked", async () => {
+describe("a turn of the plan's interview", () => {
+  const q = (id: string, title: string, after: string[] = []) => ({ id, title, why: "", multi: false, options: [], recommended: [], allowOther: false, from: "none", look_for: "", after });
+  const asked = (rounds: { id: string; title: string; answer: string; how: "own" | "pick" | "left" }[][]) => ({ rounds: rounds.map((asked) => ({ asked })), lookups: [], held: [], understood: [], proposed: [], said: "What should I build?" });
+
+  it("asks code's own questions when a first turn fails, and fails a later one for Try again", async () => {
     const failing = { structured: vi.fn(async () => { throw new Error("No engine"); }) };
     const first = await planNext(store, body(), () => {}, signal(), failing as never);
-    expect(first.action).toBe("ask");
-    const rounds: PlanRound[] = [{ questions: [{ id: "q", title: "Who?", why: "", multi: false, options: [], recommended: [], allowOther: true }], answers: { q: "Salons" } }];
-    expect((await planNext(store, body({ rounds }), () => {}, signal(), failing as never)).action).toBe("ready");
+    expect(first.questions.map((x) => x.id)).toEqual(["who", "exists", "reach"]);
+    expect(first.questions.every((x) => x.by === "code" && x.allowOther)).toBe(true);
+    await expect(planNext(store, { ...body(), asking: asked([[{ id: "who", title: "Who pays first?", answer: "Salons", how: "own" }]]) }, () => {}, signal(), failing as never)).rejects.toThrow("No engine");
   });
 
-  it("with no web here, never asks to look again", async () => {
-    const looks: PlanLook[] = [{ at: 1, query: "", lines: [], pages: [], noWeb: true, after: -1 }];
-    const next = await planNext(store, body({ looks, rounds: [{ questions: [], answers: {} }] }), () => {}, signal(), deps({ action: "look", look: "SMS cost" }).d);
-    expect(next.action).not.toBe("look");
+  it("keeps every question it can ask now, what one waits on, and its lookups; never a question asked before; and keeps a trace", async () => {
+    const answer = { questions: [q("q1", "Who pays first?"), q("q2", "Which channel reaches them?"), q("q3", "What does an SMS cost you?", ["l1"]), q("q4", "How soon do you need it?"), q("q5", "Who is it for?")], lookups: [{ id: "l1", kind: "web", query: "SMS cost for salons" }], done: false, understood: [{ text: "They want something salons pay for", from: ["said"] }], terms: [], choices: [] };
+    const turn = await planNext(store, { ...body(), asking: asked([[{ id: "who", title: "Who pays first?", answer: "Salons", how: "own" }]]) }, () => {}, signal(), deps(answer).d);
+    expect(turn.questions.map((x) => x.title)).toEqual(["Which channel reaches them?", "What does an SMS cost you?", "How soon do you need it?", "Who is it for?"]);
+    expect(turn.questions.find((x) => x.title === "What does an SMS cost you?")?.after).toEqual(["l1"]);
+    expect(turn.lookups).toEqual([{ id: "l1", kind: "web", query: "SMS cost for salons" }]);
+    expect(turn.questions.every((x) => x.allowOther)).toBe(true);
+    expect(await readdir(path.join(dir, "chats/plan/traces"))).toHaveLength(1);
+  });
+
+  it("has no limit on rounds: a ninth round's questions are kept like the first's", async () => {
+    const many = Array.from({ length: 8 }, (_, i) => [{ id: `r${i}`, title: `Question number ${i + 1} about salons`, answer: "Yes", how: "own" as const }]);
+    const turn = await planNext(store, { ...body(), asking: asked(many) }, () => {}, signal(), deps({ questions: [q("n", "How many salons have you spoken to?")], lookups: [], done: false, understood: [], terms: [], choices: [] }).d);
+    expect(turn.questions.map((x) => x.title)).toEqual(["How many salons have you spoken to?"]);
   });
 });
 

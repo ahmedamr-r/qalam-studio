@@ -164,12 +164,13 @@ export class Tab {
     // Only the server's routes: a module's own address (/src/scan/…) must load as it is.
     const api = (r: string) => (r.startsWith("/api/") ? r : `/api/*${r}`);
     await this.send("Fetch.enable", { patterns: Object.keys(routes).map((r) => ({ urlPattern: `*${api(r)}*`, requestStage: "Request" })) });
-    this.onPaused = (d) => {
+    // A route may answer later (a promise): a slow lookup, while the round shows.
+    this.onPaused = async (d) => {
       const url: string = d.params.request.url;
       const route = url.includes("/api/") ? Object.keys(routes).find((r) => url.includes(r)) : undefined;
       const body = d.params.request.postData ? JSON.parse(d.params.request.postData) : null;
       if (route) this.stubbed.push({ path: route, body });
-      const data = route ? routes[route](body) : null;
+      const data = route ? await routes[route](body) : null;
       // Only a plan's steps stream; the rest answer in plain JSON.
       const plain = !route?.startsWith("/plan/");
       const text = plain ? JSON.stringify(data) : `${JSON.stringify({ type: "result", data })}\n`;

@@ -308,13 +308,13 @@ function MultiStep({ q, a, onAnswer }: { q: MultiQuestion; a: Answer; onAnswer: 
   return (
     <div className="flex flex-col gap-[6px]">
       {q.groups.map((g, i) => (
-        <GroupBox key={g.id} g={g} a={m} first={i === 0} onAnswer={onAnswer} />
+        <GroupBox key={g.id} g={g} a={m} first={i === 0} suggested={q.suggested} onAnswer={onAnswer} />
       ))}
     </div>
   );
 }
 
-function GroupBox({ g, a, first, onAnswer }: { g: MultiGroup; a: { kind: "multi"; values: string[]; custom: string[] }; first: boolean; onAnswer: (a: Answer) => void }) {
+function GroupBox({ g, a, first, suggested, onAnswer }: { g: MultiGroup; a: { kind: "multi"; values: string[]; custom: string[] }; first: boolean; suggested?: readonly string[]; onAnswer: (a: Answer) => void }) {
   const foldable = g.options.length > FOLD_AT;
   const [open, setOpen] = useState(!foldable || first);
   const [draft, setDraft] = useState("");
@@ -371,6 +371,11 @@ function GroupBox({ g, a, first, onAnswer }: { g: MultiGroup; a: { kind: "multi"
                         {o.label}
                       </span>
                       {o.badge && <span className="shrink-0 text-micro text-fg-subtle tnum">{o.badge}</span>}
+                      {suggested?.includes(o.value) && g.options.length > 1 && (
+                        <span className="inline-flex shrink-0 items-center gap-[3px] text-micro text-fg-muted" title="Qalam AI's recommendation">
+                          <QalamAIGlyph size={12} /> Recommended
+                        </span>
+                      )}
                     </span>
                   }
                 />

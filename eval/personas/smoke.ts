@@ -24,6 +24,11 @@ const questions = [
   { id: "reach", title: "How can you reach a customer?", why: "", multi: true, options: [{ value: "p", label: "Push", description: "" }, { value: "e", label: "Email", description: "" }], recommended: ["p"], allowOther: true },
   { id: "tried", title: "What have you tried?", why: "", multi: false, options: [], recommended: [], allowOther: true },
 ];
+const pickQuestion = { id: "pick", title: "Which customers first", why: "", multi: false, options: [{ value: "n", label: "New customers", description: "" }, { value: "r", label: "Regulars", description: "" }], recommended: ["r"], allowOther: true };
+/** A turn of the interview as the core answers it. */
+const turnOf = (qs: unknown[]) => ({ questions: qs, lookups: [], done: false, understood: [], terms: [], choices: [] });
+const done = { questions: [], lookups: [], done: true, understood: [{ text: "They want something that makes money" }], terms: [], choices: [] };
+let mode: "first" | "many" = "first";
 
 async function main() {
   const base = path.resolve(".qalam-dev/stress");
@@ -48,8 +53,14 @@ async function main() {
       "/scan": (b: { target?: unknown } | null) => ({ session: b?.target ? (reading = sessionOf(b.target)) : reading }),
       "/api/engine/test": () => ({ ok: true, word: "Ready", ms: 1, at: Date.now() }),
       "/plan/route": () => ({ route: "plan" }),
-      "/plan/look": () => ({ at: Date.now(), query: "", lines: [], pages: [] }),
-      "/plan/next": () => (asks++ === 0 ? { action: "ask", questions } : { action: "ready" }),
+      // The opening look answers late: the first round shows while it runs.
+      "/plan/look": () => new Promise((resolve) => setTimeout(() => resolve({ at: Date.now(), query: "", lines: [], pages: [] }), 2500)),
+      // A turn of the interview, as the core keeps it: one round, then (for `many`) a round each of four, then done.
+      "/plan/next": () => {
+        const n = asks++;
+        if (mode === "many") return n < 4 ? turnOf([{ ...pickQuestion, id: `pick${n}`, title: `${pickQuestion.title} (${n + 1})` }]) : done;
+        return n === 0 ? turnOf(questions) : done;
+      },
       "/plan/propose": () => ({ cards: [], start: null, doubt: "", quotes: {} }),
     });
 
@@ -68,6 +79,8 @@ async function main() {
     // The questions: nothing picked, what's recommended marked and not chosen.
     let s = await tab.see();
     check(s.step?.title === questions[0].title, "It asks in the box", s.step?.title);
+    const looking = await tab.js<boolean>(`[...document.querySelectorAll('*')].some((el) => el.children.length === 0 && /Looking on the web/.test(el.textContent || ''))`);
+    check(looking, "The first round shows while the web look still runs");
     check(!s.step?.radios.some((r) => r.on), "Nothing is picked for them", s.step?.radios);
     check(s.step?.radios.find((r) => r.rec)?.label === "Sometimes", "Qalam AI's recommendation is marked, and only that one", s.step?.radios.filter((r) => r.rec).map((r) => r.label));
     await tab.shot(path.join(out, "1-question.png"));
@@ -86,10 +99,33 @@ async function main() {
     check(!!s.step?.review, "It reaches the review", s.step?.label);
     await tab.shot(path.join(out, "2-review.png"));
     await tab.inCard("Send answers");
+    // Nothing more to ask: What we settled, then Propose.
+    let settled = false;
+    for (let i = 0; i < 60 && !(settled = await tab.click("Propose")); i++) await sleep(250);
+    check(settled, "What we settled shows before anything is proposed, with Propose");
     for (let i = 0; i < 40 && !tab.stubbed.some((x) => x.path === "/plan/propose"); i++) await sleep(250);
-    const propose = tab.stubbed.find((x) => x.path === "/plan/propose")?.body as { rounds?: { answers?: Record<string, string> }[] } | undefined;
-    const answers = propose?.rounds?.[0]?.answers ?? null;
-    check(!!answers && Object.values(answers).every((a) => a === ""), "What they left goes as nothing, never as what they said", answers);
+    type Sent = { asking?: { rounds: { asked: { answer: string; how: string }[] }[] } };
+    const propose = tab.stubbed.find((x) => x.path === "/plan/propose")?.body as Sent | undefined;
+    const answers = propose?.asking?.rounds[0]?.asked ?? null;
+    check(!!answers && answers.length === 3 && answers.every((a) => a.answer === "" && a.how === "left"), "What they left goes as nothing, never as what they said", answers);
+
+    // No limit on rounds, and Qalam AI's picks: four rounds, each taken in one press, kept as its picks.
+    tab.stubbed.length = 0;
+    asks = 0;
+    mode = "many";
+    await tab.chat("What should we build next for our regulars?");
+    let rounds = 0;
+    for (let i = 0; i < 120 && rounds < 4; i++) {
+      if (await tab.click("Use Qalam AI's picks")) rounds++;
+      else await sleep(250);
+    }
+    check(rounds === 4, "A fourth round is asked, as many as it needs", rounds);
+    let proposed = false;
+    for (let i = 0; i < 60 && !(proposed = await tab.click("Propose")); i++) await sleep(250);
+    for (let i = 0; i < 40 && !tab.stubbed.some((x) => x.path === "/plan/propose"); i++) await sleep(250);
+    const picked = ((tab.stubbed.find((x) => x.path === "/plan/propose")?.body as Sent | undefined)?.asking?.rounds ?? []).flatMap((r) => r.asked);
+    check(proposed && picked.length === 4 && picked.every((a) => a.how === "pick" && a.answer === "Regulars"), "Qalam AI's picks fill only what it recommends, and go as its picks, never as their words", picked);
+    mode = "first";
 
     // The first run's hand-off: their words reach the chat's plan route on the canvas.
     tab.stubbed.length = 0;

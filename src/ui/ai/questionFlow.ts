@@ -54,9 +54,11 @@ export interface MultiGroup {
   custom?: { placeholder: string };
 }
 
-export interface MultiQuestion extends QBase {
+export interface MultiQuestion extends Omit<QBase, "suggested"> {
   kind: "multi";
   groups: MultiGroup[];
+  /** The options Qalam AI would pick, marked and not picked. */
+  suggested?: string[];
   /** Fewest picks overall (custom names included). */
   min?: number;
   default?: { values: string[]; custom?: string[] };
