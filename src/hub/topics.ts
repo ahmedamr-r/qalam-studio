@@ -126,13 +126,22 @@ export const isOnline = (p: { type: string; sub?: string | null }): boolean => p
 
 const IDS = /\s*\[(?:[a-z]{1,2}\d{1,4})(?:\s*,\s*[a-z]{0,2}\d{1,4})*\]/gi;
 
+/** Arabic-Indic and Persian digits as Latin ones: a number is the same number in either. */
+export const latinDigits = (s: string) => s.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x660)).replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x6f0));
+
+/**
+ * A number in a text, with its unit. Digits run on from a letter aren't one (B2B, Q4, H1, an id's q5),
+ * except straight after a currency's three capitals (AED200); digits followed by letters are (9am, 2M).
+ */
+const NUMBER = /(?:(?<![\p{L}\p{N}])|(?<=(?<![\p{L}\p{N}])\p{Lu}{3}))(\d+(?:[.,]\d+)*)(?:\s*(k|K|m|M|bn|BN|Bn|%)(?!\p{L}))?/gu;
+
 /**
  * The numbers in a text, as written and with their unit applied ("2M" is 2 and 2,000,000), digits
  * against letters too ("9am", "10pm"): a line's numbers must be among what it cites.
  */
 export function valuesIn(text: string): number[] {
   const out: number[] = [];
-  for (const m of text.matchAll(/(\d+(?:[.,]\d+)*)(?:\s*(k|m|bn|%)(?![a-z]))?/gi)) {
+  for (const m of latinDigits(text).matchAll(NUMBER)) {
     // "1,200" is a thousands separator; "1,5" (one decimal place) reads as a decimal comma.
     const value = /^\d{1,3}(,\d{3})+(\.\d+)?$/.test(m[1]) ? Number(m[1].replace(/,/g, "")) : Number(m[1].replace(",", "."));
     if (!Number.isFinite(value)) continue;
@@ -171,8 +180,132 @@ export function checkWords(raw: unknown, cited: Pick<Citable, "text">[], also = 
     if (words && !finders.some((f) => f(words, Math.min(8, words.length)))) return null;
   }
   const known = new Set(hay.flatMap(valuesIn));
-  for (const m of text.replace(QUOTED, " ").matchAll(/(\d+(?:[.,]\d+)*)(?:\s*(k|m|bn|%)(?![a-z]))?/gi)) if (!valuesIn(m[0]).some((v) => known.has(v))) return null;
+  for (const m of latinDigits(text.replace(QUOTED, " ")).matchAll(NUMBER)) if (!valuesIn(m[0]).some((v) => known.has(v))) return null;
   return text;
+}
+
+/** What's left of a line, and what came out of it (for the call's trace). */
+export interface Held {
+  text: string;
+  cut: string[];
+}
+
+/**
+ * The words a number is cut with from a title: what leads it and means nothing without it ("Cut churn
+ * by 30%"), its currency and unit, and what makes one phrase of it: "5 of 10", "24/7", "a 2-week trial".
+ */
+const NUMBER_PHRASE = new RegExp(
+  "(?:(?<![\\p{L}\\p{N}])(?:[Bb]y|[Tt]o|[Uu]p to|[Aa]t least|[Aa]t most|[Oo]ver|[Uu]nder|[Aa]round|[Aa]bout|[Nn]early|[Aa]lmost|[Mm]ore than|[Ll]ess than|[Ff]ewer than|[Ww]ithin)\\s+)?" +
+    "(?<![\\p{L}\\p{N}])(?:[$€£¥]|\\p{Lu}{3}\\s?)?\\d+(?:[.,]\\d+)*(?:\\s*(?:k|K|m|M|bn|BN|Bn|%)(?!\\p{L}))?" +
+    "(?:\\s*(?:of|out of|in|/)\\s*\\d+(?:[.,]\\d+)*%?)?(?:-\\p{L}+)?",
+  "gu",
+);
+const MONEY_TAIL = /^\s*(?:a|per|\/)\s*(?:day|week|month|year|user|seat|person)\b/u;
+/** A word left hanging at either end once something's out of a title. */
+const HANGING = /^(?:and|or|with|of|for|to|by|at|in|on|from)\s+|\s+(?:and|or|with|of|for|to|by|at|in|on|from|a|an|the)$/iu;
+
+function tidied(s: string): string {
+  let t = s
+    .replace(/\(\s*\)/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/\s+([,.;:!?؟،])/g, "$1")
+    .replace(/^[\s,;:–—-]+|[\s,;:–—-]+$/g, "")
+    .trim();
+  for (let was = ""; was !== t; ) {
+    was = t;
+    t = t.replace(HANGING, "").replace(/[\s,;:–—-]+$/g, "");
+  }
+  return t;
+}
+
+/**
+ * The words a generated line keeps once what isn't there is out: where checkWords says yes or no,
+ * this keeps the rest. Evidence is optional, but a quote or a number on a card must be on its page:
+ * `known` is what they may come from. In prose (`shape: "prose"`) a sentence with a quote that isn't
+ * found or a number that isn't there goes, and what's left is as many whole sentences as fit. In a
+ * title the quoted words or the number's phrase are cut and the rest tidied; with under 3 words left
+ * nothing's kept, since what's left no longer says anything. A number inside a found quote is the
+ * quote's. Words in ‘…’ are wording it proposes, never someone's, so they aren't looked for.
+ */
+export function holdWords(raw: unknown, known: string | readonly string[], o: { max: number; shape: "title" | "prose" }): Held {
+  if (typeof raw !== "string") return { text: "", cut: [] };
+  const text = cleanLine(raw);
+  const hay = (typeof known === "string" ? [known] : [...known]).filter(Boolean);
+  const finders = hay.map((t) => quoteFinder(t));
+  const numbers = new Set(hay.flatMap(valuesIn));
+  const found = (words: string) => finders.some((f) => f(words, Math.min(8, words.length)));
+  const has = (written: string) => [...latinDigits(written).matchAll(NUMBER)].every((m) => valuesIn(m[0]).some((v) => numbers.has(v)));
+  const cut: string[] = [];
+  return o.shape === "prose" ? heldProse(text, found, has, cut, o.max) : heldTitle(text, found, has, cut, o.max);
+}
+
+function sentencesOf(text: string): string[] {
+  const out: string[] = [];
+  let open = "";
+  for (const part of text.split(/(?<=[.!?؟]["”’)]?)\s+(?=\S)/u)) {
+    open = open ? `${open} ${part}` : part;
+    // A sentence ending inside a quote isn't the end of one.
+    if ((open.match(/“/g) ?? []).length !== (open.match(/”/g) ?? []).length || (open.match(/"/g) ?? []).length % 2) continue;
+    out.push(open);
+    open = "";
+  }
+  if (open) out.push(open);
+  return out;
+}
+
+function heldProse(text: string, found: (w: string) => boolean, has: (n: string) => boolean, cut: string[], max: number): Held {
+  const kept: string[] = [];
+  for (const s of sentencesOf(text)) {
+    const quotes = [...s.matchAll(QUOTED)].map((m) => m[1].trim()).filter(Boolean);
+    const balanced = (s.match(/“/g) ?? []).length === (s.match(/”/g) ?? []).length && (s.match(/"/g) ?? []).length % 2 === 0;
+    const own = [...latinDigits(s.replace(QUOTED, " ")).matchAll(NUMBER)].map((m) => m[0]);
+    if (balanced && quotes.every(found) && own.every(has)) kept.push(s);
+    else cut.push(s);
+  }
+  // As many whole sentences as fit: one cut off reads as a mistake.
+  let out = "";
+  for (const s of kept) {
+    const next = out ? `${out} ${s}` : s;
+    if (next.length > max) {
+      cut.push(s);
+      continue;
+    }
+    out = next;
+  }
+  return { text: out, cut };
+}
+
+function heldTitle(text: string, found: (w: string) => boolean, has: (n: string) => boolean, cut: string[], max: number): Held {
+  // Quoted words nobody said go, marks and all; a mark left open goes too.
+  let t = text.replace(QUOTED, (all, words: string) => {
+    if (!words.trim() || found(words.trim())) return all;
+    cut.push(all);
+    return " ";
+  });
+  const quoted = [...t.matchAll(QUOTED)].map((m) => m[0]);
+  // Held apart while the numbers are read, as one character each: a number in a found quote is the quote's.
+  const mask = (s: string) => quoted.reduce((acc, q, i) => acc.replace(q, String.fromCharCode(0xe000 + i)), s);
+  const unmask = (s: string) => s.replace(/[\ue000-\uf8ff]/g, (c) => quoted[c.charCodeAt(0) - 0xe000]);
+  t = mask(t).replace(/["“”]/g, "");
+  // A number's phrase, its lead and its unit with it, unless the source has every number in it.
+  const parts: string[] = [];
+  let at = 0;
+  for (const m of latinDigits(t).matchAll(NUMBER_PHRASE)) {
+    const i = m.index ?? 0;
+    if (has(m[0])) continue;
+    const rest = t.slice(i + m[0].length);
+    const tail = /[$€£¥]|\p{Lu}{3}/u.test(m[0]) ? (MONEY_TAIL.exec(rest)?.[0] ?? "") : "";
+    parts.push(t.slice(at, i));
+    cut.push(m[0] + tail);
+    at = i + m[0].length + tail.length;
+  }
+  parts.push(t.slice(at));
+  let out = unmask(tidied(parts.join(" ")));
+  if (cut.length && out.split(/\s+/).filter(Boolean).length < 3) return { text: "", cut };
+  if (out.length > max) out = unmask(tidied(mask(out.slice(0, max).replace(/\s+\S*$/, ""))));
+  if (out.length < 3) return { text: "", cut };
+  // It starts as it started: a cut at the start shouldn't leave it in lower case.
+  return { text: /^[\p{Lu}\p{N}$€£¥]/u.test(text) ? out.replace(/^\p{Ll}/u, (c) => c.toUpperCase()) : out, cut };
 }
 
 /** The names a line's pieces show as, each once. */

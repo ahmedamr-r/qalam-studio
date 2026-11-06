@@ -39,7 +39,7 @@ export function problemProposals(cardId: string, p: Pick<DraftedProblems, "draft
       kind: "card" as const,
       cardId: newId(),
       parentId: cardId,
-      card: newCard("opportunity", { title: d.title, ...(d.description ? { description: d.description } : {}), createdBy: "ai" }),
+      card: newCard("opportunity", { title: d.title, ...(d.description ? { description: d.description } : {}), createdBy: "ai", ...(d.came ? { came: d.came } : {}) }),
       backing: { quotes: d.cites.flatMap((ref) => (p.quotes[ref] ? [p.quotes[ref]] : [])), words: [] },
       why: d.why || d.description,
     }));
@@ -127,7 +127,7 @@ export const draftProblemsFor = (card: string, goal: string, said: DraftWords = 
         return c?.kind === "opportunity" ? [c.title] : [];
       });
       const r = await draftProblems(goal, { cards, ...said }, (label) => relabel(ctrl, label), ctrl.signal);
-      if (!r.drafts.length) return { card, text: r.note || "Qalam AI found no problem it could stand behind." };
+      if (!r.drafts.length) return { card, text: r.note || "Qalam AI has no new problem to propose." };
       if (!(await reviewProblems(card, goal, { drafts: r.drafts, quotes: r.quotes, decided: {} }))) return { card, text: `${plural(r.drafts.length, "problem")} drafted for it: review them once the review that's open is done.` };
       if (r.note) feedback(r.note, { id: "discovery.goal" });
       return null;

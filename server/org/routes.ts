@@ -49,6 +49,7 @@ import { addFeed, changeFeed, checkFeed, feedsView, refreshFeed } from "./feeds"
 import { feedTarget, type FeedTarget } from "@/feeds/feeds";
 import { breakDown, decidePart, lookOutside } from "./outside";
 import { lookForGoal } from "./focus";
+import { lookForPlan, planBodyOf, planNext, proposePlan, routeQuestion } from "./plan";
 import { goalsForProblem, suggestGoalNumber } from "./moves";
 import type { Benchmark } from "@/goals/outside";
 import { decideProblem, draftProblems } from "./problems";
@@ -389,6 +390,24 @@ export function orgRoutes(): Hono<Env> {
       return failure(e);
     }
   });
+  // Working something out as a plan (server/org/plan.ts): a look on the web, what comes next, and what to propose. The chat keeps the conversation.
+  for (const [path, run] of [
+    ["look", (store: OrgStore, b: NonNullable<ReturnType<typeof planBodyOf>>, query: string | undefined, emit: (label: string) => void, signal: AbortSignal) => lookForPlan(store, { ...b, ...(query ? { query } : {}) }, emit, signal)],
+    ["next", (store: OrgStore, b: NonNullable<ReturnType<typeof planBodyOf>>, _q: string | undefined, emit: (label: string) => void, signal: AbortSignal) => planNext(store, b, emit, signal)],
+    ["propose", (store: OrgStore, b: NonNullable<ReturnType<typeof planBodyOf>>, _q: string | undefined, emit: (label: string) => void, signal: AbortSignal) => proposePlan(store, b, emit, signal)],
+    ["route", (_store: OrgStore, b: NonNullable<ReturnType<typeof planBodyOf>>, _q: string | undefined, _emit: (label: string) => void, signal: AbortSignal) => routeQuestion(b.said, signal)],
+  ] as const)
+    r.post(`/api/org/:org/plan/${path}`, async (c) => {
+      if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't work this out." }, 503);
+      if (rateLimited(c.req.raw)) return c.json({ error: "rate_limited", message: "Too many requests, try again in a few minutes." }, 429);
+      const raw = (await c.req.json().catch(() => ({}))) as { query?: unknown };
+      const b = planBodyOf(raw);
+      if (!b) return c.json({ error: "bad_request", message: "Nothing to work out" }, 400);
+      const query = typeof raw.query === "string" ? raw.query.slice(0, 400) : undefined;
+      const store = c.get("store");
+      return streamed(c.req.raw.signal, (emit, signal) => run(store, b, query, emit, signal));
+    });
+
   // Finding the problem to focus on for a goal (server/org/focus.ts): a look on the web, and with `open`, the first questions to ask.
   r.post("/api/org/:org/goals/:id/focus", async (c) => {
     if (!aiConfigured()) return c.json({ error: "not_configured", message: "Qalam AI isn't set up here, so it can't look this up." }, 503);
@@ -1491,10 +1510,15 @@ const clipped = (v: unknown, max: number) => (typeof v === "string" ? v.replace(
  * The person's words a draft may rest on, by id (the core reads them itself, so nothing the window
  * sends can pass as something someone said): their answers' source, and quotes found on their words.
  */
-function wordsShape(b: { answers?: unknown; found?: unknown } | null): { answers?: string; found?: string[] } {
+function wordsShape(b: { answers?: unknown; found?: unknown; looks?: unknown } | null): { answers?: string; found?: string[]; looks?: { text: string; url?: string; title?: string; quote?: string }[] } {
   const answers = typeof b?.answers === "string" && ID.test(b.answers) ? b.answers : undefined;
   const found = (Array.isArray(b?.found) ? b.found : []).filter((r): r is string => typeof r === "string" && /^hub:quote:[A-Za-z0-9_-]{1,64}$/.test(r)).slice(0, 20);
-  return { ...(answers ? { answers } : {}), ...(found.length ? { found } : {}) };
+  const looks = (Array.isArray(b?.looks) ? b.looks : []).slice(0, 8).flatMap((x: { text?: unknown; url?: unknown; title?: unknown; quote?: unknown }) => {
+    const text = clipped(x?.text, 400);
+    const url = clipped(x?.url, 400);
+    return text ? [{ text, ...(/^https?:\/\//i.test(url) ? { url } : {}), ...(clipped(x.title, 200) ? { title: clipped(x.title, 200) } : {}), ...(clipped(x.quote, 400) ? { quote: clipped(x.quote, 400) } : {}) }] : [];
+  });
+  return { ...(answers ? { answers } : {}), ...(found.length ? { found } : {}), ...(looks.length ? { looks } : {}) };
 }
 
 /**
@@ -1530,9 +1554,9 @@ function solutionsCardShape(x: unknown): SolutionsCard | null {
   const c = x as { title?: unknown; evidence?: unknown; children?: unknown } | null;
   const title = clipped(c?.title, 200);
   if (!c || !title) return null;
-  const evidence = (Array.isArray(c.evidence) ? c.evidence : []).slice(0, 30).flatMap((e: { text?: unknown; piece?: unknown; sourceId?: unknown; sourceTitle?: unknown; kind?: unknown; online?: unknown }) => {
+  const evidence = (Array.isArray(c.evidence) ? c.evidence : []).slice(0, 30).flatMap((e: { text?: unknown; piece?: unknown; sourceId?: unknown; sourceTitle?: unknown; kind?: unknown; online?: unknown; basis?: unknown }) => {
     const text = clipped(e?.text, 1200);
-    return text ? [{ text, kind: clipped(e.kind, 20) || "note", ...(clipped(e.piece, 120) ? { piece: clipped(e.piece, 120) } : {}), ...(clipped(e.sourceId, 64) ? { sourceId: clipped(e.sourceId, 64) } : {}), ...(clipped(e.sourceTitle, 200) ? { sourceTitle: clipped(e.sourceTitle, 200) } : {}), ...(e.online === true ? { online: true } : {}) }] : [];
+    return text ? [{ text, kind: clipped(e.kind, 20) || "note", ...(clipped(e.piece, 120) ? { piece: clipped(e.piece, 120) } : {}), ...(clipped(e.sourceId, 64) ? { sourceId: clipped(e.sourceId, 64) } : {}), ...(clipped(e.sourceTitle, 200) ? { sourceTitle: clipped(e.sourceTitle, 200) } : {}), ...(isBasis(e.basis) ? { basis: e.basis } : {}), ...(e.online === true ? { online: true } : {}) }] : [];
   });
   const children = (Array.isArray(c.children) ? c.children : []).slice(0, 30).flatMap((k: { title?: unknown; kind?: unknown }) => (clipped(k?.title, 200) && (k.kind === "solution" || k.kind === "test") ? [{ title: clipped(k.title, 200), kind: k.kind as "solution" | "test" }] : []));
   return { title, evidence, children };

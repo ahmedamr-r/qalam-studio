@@ -1,7 +1,7 @@
 import { briefCall } from "@/ai/scan";
 import { structured } from "@/ai/server";
 import { basisOf } from "@/discovery/basis";
-import { briefMarkdown, briefMaterial, sanitizeBrief, type BriefAsked, type BriefData, type BriefKind, type BriefMeta, type BriefQuote } from "@/discovery/brief";
+import { briefMarkdown, briefMaterial, sanitizeBrief, type BriefAsked, type BriefData, type BriefKind, type BriefMeta, type BriefQuote, type BriefShape } from "@/discovery/brief";
 import { quotePiece, type SourceRecord } from "@/discovery/sources";
 import type { ScanKnown } from "@/scan/session";
 import { nanoid } from "nanoid";
@@ -10,8 +10,8 @@ import type { OrgStore } from "./store";
 /**
  * A brief for a card on the canvas (src/discovery/brief.ts), in the core. The window sends the card and
  * what's around it, as Draft its tests does; the words go in from what's kept here, a quote only as
- * its source has it. One call for the features, skipped with no words to rest them on, and a call
- * that fails leaves a brief without them: what's known and decided still stands.
+ * its source has it. One call for the features, each saying when nothing backs it, and a call that
+ * fails leaves a brief without them: what's known and decided still stands.
  */
 
 export interface BriefCardWords {
@@ -35,6 +35,10 @@ export interface BriefRequest {
   /** Solutions beside it, to say what waits. */
   others: string[];
   asked: BriefAsked;
+  /** What's written: a brief to build (none), a plan for a message, or steps to run. */
+  shape?: BriefShape;
+  /** A New product's modules. */
+  modules?: { title: string; how?: string; needed?: boolean }[];
 }
 
 export interface BriefDeps {
@@ -104,21 +108,20 @@ export async function writeCardBrief(store: OrgStore, req: BriefRequest, signal?
   const build: BriefData["build"] = chosen ? { title: chosen.title, description: chosen.description, ...(chosen.assumptions[0] ? { wrong: chosen.assumptions[0] } : {}), test: chosen.tests[0] ?? null } : undefined;
   const goal = kind === "outcome" ? { title: req.card.title, ...(req.goal?.metric ? { metric: req.goal.metric } : {}) } : req.goal ? { title: req.goal.title, ...(req.goal.metric ? { metric: req.goal.metric } : {}) } : undefined;
 
-  const m = briefMaterial({ about: `What this is a brief for: ${req.card.title}`, ...(goal ? { goal: goal.title } : {}), asked: req.asked, problems, words, ...(chosen ? { build: { title: chosen.title, description: chosen.description, assumptions: chosen.assumptions, test: chosen.tests[0] ?? null } } : {}), options, published: published.map((p) => p.text) });
+  const moduleLines = (req.modules ?? []).map((x) => `${x.title}${x.how ? `: ${x.how}` : ""}${x.needed ? " (needed to run it)" : ""}`);
+  const m = briefMaterial({ ...(moduleLines.length ? { modules: moduleLines } : {}), about: `What this is a brief for: ${req.card.title}`, ...(goal ? { goal: goal.title } : {}), asked: req.asked, problems, words, ...(chosen ? { build: { title: chosen.title, description: chosen.description, assumptions: chosen.assumptions, test: chosen.tests[0] ?? null } } : {}), options, published: published.map((p) => p.text) });
   let features: BriefData["features"] = [];
-  if (words.length) {
-    try {
-      const dropped: { why: string; item: unknown }[] = [];
-      const { data, model } = await deps.structured<unknown>(briefCall(m.text), signal);
-      features = sanitizeBrief(data, m, (why, item) => dropped.push({ why, item }));
-      await store.putTrace({ id: nanoid(10), projectId: "scan", kind: "scan-brief", at: Date.now(), ...(model ? { model } : {}), answer: data, kept: features.length, dropped } as { id: string; projectId: string }).catch(() => {});
-    } catch (e) {
-      if (signal?.aborted) throw e;
-    }
+  try {
+    const dropped: { why: string; item: unknown }[] = [];
+    const { data, model } = await deps.structured<unknown>(briefCall(m.text, req.shape ?? "build"), signal);
+    features = sanitizeBrief(data, m, (why, item) => dropped.push({ why, item }));
+    await store.putTrace({ id: nanoid(10), projectId: "scan", kind: "scan-brief", at: Date.now(), ...(model ? { model } : {}), answer: data, kept: features.length, dropped } as { id: string; projectId: string }).catch(() => {});
+  } catch (e) {
+    if (signal?.aborted) throw e;
   }
   const at = Date.now();
-  const body = briefMarkdown({ at, title: req.card.title, ...(goal ? { goal } : {}), problems, quotes: words, ...(build ? { build } : {}), options, later: kind === "solution" ? req.others.map((title) => ({ title, why: "" })) : [], features, asked: req.asked, known: [...(await knownOthers(store)), ...published] });
-  return store.putBrief({ card: req.card.id, kind, title: req.card.title, at, features: features.length }, body, opts);
+  const body = briefMarkdown({ ...(req.shape ? { shape: req.shape } : {}), ...(req.modules?.length ? { modules: req.modules } : {}), at, title: req.card.title, ...(goal ? { goal } : {}), problems, quotes: words, ...(build ? { build } : {}), options, later: kind === "solution" ? req.others.map((title) => ({ title, why: "" })) : [], features, asked: req.asked, known: [...(await knownOthers(store)), ...published] });
+  return store.putBrief({ card: req.card.id, kind, title: req.card.title, at, features: features.length, ...(req.shape && req.shape !== "build" ? { shape: req.shape } : {}) }, body, opts);
 }
 
 const clipped = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
@@ -153,5 +156,7 @@ export function briefRequestOf(raw: unknown): BriefRequest | null {
     under: list(r.under).map(cardWords).filter((u) => u.title).slice(0, 12),
     others: list(r.others).map((x) => clipped(x, 300)).filter(Boolean).slice(0, 6),
     asked: { ...(clipped(a.platform, 200) ? { platform: clipped(a.platform, 200) } : {}), ...(clipped(a.exists, 400) ? { exists: clipped(a.exists, 400) } : {}), ...(clipped(a.needs, 60) ? { needs: clipped(a.needs, 60) } : {}) },
+    ...(r.shape === "message" || r.shape === "steps" ? { shape: r.shape } : {}),
+    ...(Array.isArray(r.modules) ? { modules: list(r.modules).slice(0, 12).flatMap((x) => (clipped(rec(x).title, 300) ? [{ title: clipped(rec(x).title, 300), ...(clipped(rec(x).how, 300) ? { how: clipped(rec(x).how, 300) } : {}), ...(rec(x).needed === true ? { needed: true } : {}) }] : [])) } : {}),
   };
 }

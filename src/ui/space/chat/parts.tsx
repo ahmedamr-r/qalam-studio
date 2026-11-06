@@ -10,6 +10,8 @@ import { CHALLENGE_LABEL, type DumpSession } from "@/discovery/dump";
 import { KIND_LABEL } from "@/discovery/kinds";
 import type { Proposal } from "@/discovery/proposals";
 import type { AskAnswer, AskClaim, AskUnknown } from "@/hub/ask";
+import type { BriefShape } from "@/discovery/brief";
+import { answersOf, planLine } from "@/space/plan";
 import { DUMP_WORDS, wordsIn, type ChatMode } from "@/space/route";
 import { claimStrip } from "@/hub/ask";
 import type { TopicInfo } from "@/hub/topics";
@@ -36,7 +38,7 @@ import { useWords } from "../../frame/store";
 import { show } from "../links";
 import { FoundGoalRow } from "../../chat/FoundGoalRow";
 import { moreLine } from "@/onboarding/start";
-import { answerWhose, goalForTopProblem, anotherFile, briefAgain, briefStart, changeDocBasis, chooseDraft, decideDocGoal, dropTurn, leaveFile, leaveFit, lookPastFits, openProblems, pickAudience, placeFirstBuild, placeStatement, planAgain, planFirst, planOf, planStart, retake, retryGoalFor, scanAgain, scanHere, scanInNewProject, scanIsMine, scanOtherWay, setPlanGoal, settleNumber, steerOff, stopTurn, takeAsBasis, takeFit, takeGoalNumber, takeIdea, turnOf, useCanvasChat } from "./store";
+import { answerWhose, goalForTopProblem, anotherFile, briefAgain, briefStart, changeDocBasis, chooseDraft, decideDocGoal, dropTurn, leaveFile, leaveFit, lookPastFits, openProblems, pickAudience, placeFirstBuild, placeStatement, planAgain, planFirst, planOf, planStart, retake, retryGoalFor, scanAgain, scanHere, scanInNewProject, scanIsMine, scanOtherWay, setPlanGoal, settleNumber, steerOff, stopTurn, takeAsBasis, takeFit, takeGoalNumber, takeIdea, turnOf, useCanvasChat, retryCanvasPlan, runAs, showCanvasPlan, skipCanvasPlan } from "./store";
 import { titleFrom } from "@/space/route";
 import { otherReading, projectName } from "@/scan/input";
 import { firstGoal, GOAL_ACTIONS, riskiest, type GoalAction, type ScanAudience } from "@/scan/plan";
@@ -544,6 +546,116 @@ function OpeningPart({ data }: { data: PartData }) {
   );
 }
 
+/** A round of a plan's questions, answered, folded. */
+function PlanAnsweredPart({ data }: { data: PartData }) {
+  const t = useTurn(data.turn);
+  const round = t?.job.kind === "plan" ? t.job.rounds[Number(data.round)] : undefined;
+  const said = round ? answersOf([round]) : [];
+  if (!said.length) return null;
+  return (
+    <details className="q-fold group/answers rounded-lg px-[10px] text-caption shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
+      <summary className="flex h-[30px] cursor-pointer list-none items-center gap-[6px] font-medium text-fg-muted hover:text-fg [&::-webkit-details-marker]:hidden">Your answers</summary>
+      <dl className="flex flex-col gap-[8px] pb-[10px]">
+        {said.map((s, i) => (
+          <div key={i} className="flex flex-col gap-[2px]">
+            <dt className="text-fg-subtle">{s.question}</dt>
+            <dd className="text-fg" dir="auto">
+              {s.answer}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </details>
+  );
+}
+
+/** No more questions: propose with what it has. */
+function PlanSkipPart({ data }: { data: PartData }) {
+  return (
+    <ReplyChips>
+      <button type="button" className={r.replyChip} onClick={() => skipCanvasPlan(String(data.turn))}>
+        Skip, and propose it now
+      </button>
+    </ReplyChips>
+  );
+}
+
+/** What a plan proposes: in a line, where to start, what it doubts, and what to do with it. Open on the canvas, or there to bring back. */
+function PlanProposedPart({ data }: { data: PartData }) {
+  const id = String(data.turn);
+  const t = useTurn(id);
+  const mine = useReview((v) => (v.origin?.kind === "plan" && v.origin.turn === id ? v.proposals : null));
+  const other = useReview((v) => v.proposals.length > 0);
+  if (t?.job.kind !== "plan") return null;
+  const list = mine ?? t.job.proposals ?? [];
+  return (
+    <div className="flex flex-col items-start gap-[8px]">
+      <p className="text-body leading-[20px] text-fg">
+        I propose {planLine(list) || "nothing new"}. {mine ? "They're drawn on the canvas where they'd go; nothing is there until you accept it." : "They're waiting."}
+      </p>
+      {t.job.start && <p className="text-body leading-[20px] text-fg">Start with “{t.job.start}”: it's the strongest signal so far.</p>}
+      {t.job.doubt && (
+        <p className="text-caption leading-[18px] text-fg-muted" dir="auto">
+          {t.job.doubt}
+        </p>
+      )}
+      {mine ? (
+        <ReplyChips>
+          <button type="button" className={r.replyChipPrimary} onClick={acceptAll}>
+            Accept all
+          </button>
+          <button type="button" className={r.replyChip} onClick={() => frameReview()}>
+            Show them
+          </button>
+          <button type="button" className={r.replyChip} onClick={discardAll}>
+            Discard all
+          </button>
+        </ReplyChips>
+      ) : (
+        <ReplyChips>
+          <button type="button" className={r.replyChip} disabled={other} title={other ? "Another review is open on the canvas: settle it first." : undefined} onClick={() => showCanvasPlan(id)}>
+            Show them on the canvas
+          </button>
+        </ReplyChips>
+      )}
+    </div>
+  );
+}
+
+/** What came of a plan: what's on the canvas of what it proposed. */
+function PlanPlacedPart({ data }: { data: PartData }) {
+  const t = useTurn(data.turn);
+  const doc = useStudio((st) => st.doc);
+  if (t?.job.kind !== "plan") return null;
+  const taken = (t.job.cards ?? []).filter((c) => doc.nodes[c]).length;
+  if (!t.job.cards?.length) return <p className="text-body leading-[20px] text-fg">{t.job.doubt ? `${t.job.doubt} ` : ""}I have nothing new to propose for the canvas.</p>;
+  return <p className="text-body leading-[20px] text-fg">{taken ? `On the canvas: ${taken} ${taken === 1 ? "card" : "cards"} from the plan.` : "None of what it proposed is on the canvas."}</p>;
+}
+
+function PlanRetryPart({ data }: { data: PartData }) {
+  return (
+    <ReplyChips>
+      <button type="button" className={r.replyChipPrimary} onClick={() => retryCanvasPlan(String(data.turn))}>
+        Try again
+      </button>
+    </ReplyChips>
+  );
+}
+
+/** A plan taken back to a plain answer from what's known. */
+function JustAnswerPart({ data }: { data: PartData }) {
+  const t = useTurn(data.turn);
+  const moved = t?.job.kind === "plan" && (t.job.step === "review" || t.job.step === "placed");
+  if (!t || moved) return null;
+  return (
+    <ReplyChips>
+      <button type="button" className={r.replyChip} onClick={() => retake(t.id, "ask")}>
+        Just answer instead
+      </button>
+    </ReplyChips>
+  );
+}
+
 /**
  * What Qalam AI read on the web while finding a goal's problem: what it looked up, and each line
  * the pages bear out, with where (others' words, never what a card rests on). The opening look is
@@ -553,10 +665,10 @@ function OpeningPart({ data }: { data: PartData }) {
 function LookedPart({ data }: { data: PartData }) {
   const t = useTurn(data.turn);
   const d = useDumpOf(data.turn);
-  const look = t?.job.kind === "find" ? t.job.look : data.look !== undefined ? d?.s.looks?.[Number(data.look)] : undefined;
+  const look = t?.job.kind === "find" ? t.job.look : t?.job.kind === "plan" ? t.job.looks[Number(data.look)] : data.look !== undefined ? d?.s.looks?.[Number(data.look)] : undefined;
   if (!look) return null;
   if (look.noWeb) return <p className="text-body leading-[20px] text-fg">I can&apos;t look on the web here, so I&apos;ll go by what you tell me.</p>;
-  const what = look.query ? `Looked up “${look.query}”` : "Looked on the web for what gets in the way of goals like this";
+  const what = look.query ? `Looked up “${look.query}”` : t?.job.kind === "plan" ? "Looked on the web for what people do about this" : "Looked on the web for what gets in the way of goals like this";
   if (!look.lines.length) return <p className="text-body leading-[20px] text-fg">{what}, but nothing on the pages I read held up.</p>;
   const urls = look.lines.flatMap((l) => (l.url ? [l.url] : []));
   const n = look.lines.length;
@@ -660,6 +772,9 @@ function ChoosePart({ data }: { data: PartData }) {
       <button type="button" className={r.replyChip} onClick={() => retake(t.id, "ask")}>
         Ask about it
       </button>
+      <button type="button" className={r.replyChip} onClick={() => retake(t.id, "plan")}>
+        Work it out as a plan
+      </button>
       <button type="button" className={r.replyChip} onClick={() => retake(t.id, "scan")}>
         Look into it
       </button>
@@ -753,12 +868,22 @@ function StatementPart({ data }: { data: PartData }) {
 /** Taken one way, it could have been another: a short message's other ways, in a line. */
 function SwitchPart({ data }: { data: PartData }) {
   const t = useTurn(data.turn);
-  if (!t || wordsIn(t.said) >= DUMP_WORDS) return null;
+  if (!t) return null;
+  const plan = (
+    <ReplyChips>
+      <button type="button" className={r.replyChip} onClick={() => void runAs(null, t.said, "plan")}>
+        <QalamAIGlyph size={12} /> Plan from this
+      </button>
+    </ReplyChips>
+  );
+  if (wordsIn(t.said) >= DUMP_WORDS) return plan;
   const other: [ChatMode, string][] = [
     ["problem", "Add it as a problem"],
     ["goal", "Add it as a goal"],
   ];
   return (
+    <>
+    {plan}
     <p className="flex flex-wrap items-center gap-x-[6px] text-caption text-fg-subtle">
       Not a question?
       {other.map(([m, label], i) => (
@@ -770,6 +895,7 @@ function SwitchPart({ data }: { data: PartData }) {
         </span>
       ))}
     </p>
+    </>
   );
 }
 
@@ -1515,13 +1641,16 @@ function PickedStep({ id, plan }: { id: string; plan: ScanPlan }) {
 }
 
 /** A brief: what it lacks, being written, then a tile on the canvas to open or copy. */
-function BriefStep({ id, brief }: { id: string; brief: BriefState }) {
+const BRIEF_WORD: Record<BriefShape, string> = { build: "brief", message: "message plan", steps: "list of steps" };
+
+function BriefStep({ id, brief, shape = "build" }: { id: string; brief: BriefState; shape?: BriefShape }) {
+  const word = BRIEF_WORD[shape];
   const [copied, setCopied] = useState(false);
   const started = useCanvasChat((s) => s.live[id]?.started);
   // Not known yet is not gone.
   const kept = useBriefs((s) => !s.loaded || s.list.some((b) => b.id === brief.id));
-  if (brief.step === "asking") return <p className="text-body text-fg">A few things for the brief. Skip any you can't answer.</p>;
-  if (brief.step === "writing") return <Progress label="Writing the brief" started={started ?? Date.now()} tokens={0} note="This takes under a minute." />;
+  if (brief.step === "asking") return <p className="text-body text-fg">A few things for the {word}. Skip any you can't answer.</p>;
+  if (brief.step === "writing") return <Progress label={`Writing the ${word}`} started={started ?? Date.now()} tokens={0} note="This takes under a minute." />;
   if (brief.step === "failed")
     return (
       <div className="flex flex-col gap-[6px]">
@@ -1536,7 +1665,7 @@ function BriefStep({ id, brief }: { id: string; brief: BriefState }) {
   if (!kept)
     return (
       <div className="flex flex-col gap-[6px]">
-        <p className="text-body text-fg-muted">This brief has been taken off the canvas.</p>
+        <p className="text-body text-fg-muted">This {word} has been taken off the canvas.</p>
         <ReplyChips>
           <button type="button" className={r.replyChip} onClick={() => briefAgain(id)}>
             Write it again
@@ -1554,14 +1683,14 @@ function BriefStep({ id, brief }: { id: string; brief: BriefState }) {
       });
   return (
     <div className="flex flex-col gap-[6px]">
-      <p className="text-body text-fg">The brief is on the canvas, under its card. Click it there to read it.</p>
+      <p className="text-body text-fg">The {word} is on the canvas, under its card. Click it there to read it.</p>
       {brief.id && (
         <ReplyChips>
           <button type="button" className={r.replyChipPrimary} onClick={() => openBrief(brief.id!)}>
             Open it
           </button>
           <button type="button" className={r.replyChip} onClick={copy}>
-            {copied ? "Copied" : "Copy for your coding agent"}
+            {copied ? "Copied" : shape === "build" ? "Copy for your coding agent" : "Copy it"}
           </button>
         </ReplyChips>
       )}
@@ -1571,7 +1700,7 @@ function BriefStep({ id, brief }: { id: string; brief: BriefState }) {
 
 function BriefPart({ data }: { data: PartData }) {
   const t = useTurn(data.turn);
-  return t?.job.kind === "brief" ? <BriefStep id={t.id} brief={t.job.brief} /> : null;
+  return t?.job.kind === "brief" ? <BriefStep id={t.id} brief={t.job.brief} shape={t.job.shape} /> : null;
 }
 
 /** From a scan's problems to what to build first, the step it's on and what's settled. */
@@ -1639,6 +1768,13 @@ function NoEnginePart({ data }: { data: PartData }) {
 export const PARTS: Record<string, PartComponent> = {
   noEngine: NoEnginePart,
   brief: BriefPart,
+  planLook: LookedPart,
+  planAnswered: PlanAnsweredPart,
+  planSkip: PlanSkipPart,
+  planProposed: PlanProposedPart,
+  planPlaced: PlanPlacedPart,
+  planRetry: PlanRetryPart,
+  justAnswer: JustAnswerPart,
   scanning: ScanningPart,
   scanned: ScannedPart,
   scanAgain: ScanAgainPart,

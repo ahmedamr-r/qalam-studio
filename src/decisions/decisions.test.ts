@@ -129,6 +129,13 @@ describe("decisions from a change to a board", () => {
   });
 });
 
+describe("what a solution is", () => {
+  it("records no decision for its type, how it's done, where to start or what's needed", () => {
+    const next = edit((d) => void Object.assign(ost(d, "s1"), { solutionType: "message", how: "SMS", start: true, needed: true }));
+    expect(decisionsFromDiff(board(), next, ctx())).toEqual([]);
+  });
+});
+
 describe("the decision log's Markdown", () => {
   const d: Decision = {
     id: "d1",

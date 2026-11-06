@@ -82,6 +82,15 @@ export async function runStep(card: string, step: NextStep, f: CardFacts, o: { l
     case "write-brief":
       void import("../space/chat/store").then((m) => m.briefFor(card));
       return;
+    case "word-message":
+      void import("../space/chat/store").then((m) => m.briefFor(card, "message"));
+      return;
+    case "run-steps":
+      void import("../space/chat/store").then((m) => m.briefFor(card, "steps"));
+      return;
+    case "plan-modules":
+      void import("../space/chat/store").then((m) => m.modulesFor(card));
+      return;
     case "open-brief":
       if (f.brief) openBrief(f.brief);
       return;

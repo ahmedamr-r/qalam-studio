@@ -1,25 +1,27 @@
 import { BASIS_WHOSE, type Basis } from "./basis";
 import { wordsHold, withoutIds } from "@/goals/said";
-import { checkWords, cleanLine, sameTopic, sameWords, SECTION_HEADING, type TopicSection } from "@/hub/topics";
+import { checkWords, cleanLine, holdWords, sameTopic, sameWords, SECTION_HEADING, type TopicSection } from "@/hub/topics";
 import { quoteFinder } from "./quotes";
 import { ASSUMPTION_CATEGORIES } from "./kinds";
+import { SOLUTION_TYPES, type SolutionType } from "./types";
 import { withCompany } from "@/market/text";
 import { newCard } from "./ops";
 import type { Backing, QuoteRef } from "./proposals";
-import type { AssumptionCategory, OstAssumption, OstCard, OstEvidence } from "./types";
+import type { AssumptionCategory, Came, OstAssumption, OstCard, OstEvidence } from "./types";
 
 /*
  * Drafting solutions for a problem (pure): Qalam AI reads the problem's page (its lines and the
  * words they rest on), the goals it bears on, what others report for them, what the product does
  * today, what's already on the board under it and the person's own ideas, and proposes a few ways
  * to solve it. Each comes with what has to be true for it to work (its riskiest assumptions) and
- * one test of the riskiest. Code keeps a draft only when it rests on the problem's own lines or
- * words, its quoted words and numbers are in what was sent, it isn't on the board already, and one
- * built on the person's idea is in their words. A test's pass line is never kept as fact: its
- * numbers are Qalam AI's suggestion, and only the person sets the bar.
+ * one test of the riskiest. Evidence is better when there is some, but a draft doesn't need it: one
+ * that rests on nothing the problem says stays, and its card says where it came from (`came`). Code
+ * takes out any quote or number that isn't in what was sent, leaves out what's on the board already,
+ * and keeps one built on the person's idea only in their words. A test's pass line is never kept as
+ * fact: its numbers are Qalam AI's suggestion, and only the person sets the bar.
  */
 
-export const SOLUTION_LIMITS = { solutions: 4, enough: 2, assumptions: 4, lines: 16, pieces: 20, goals: 4, claims: 6, steps: 8, cards: 12, ideas: 8, title: 90, description: 420, assumption: 240, what: 160, how: 360, pass: 240, note: 480 } as const;
+export const SOLUTION_LIMITS = { solutions: 4, enough: 2, assumptions: 4, lines: 16, pieces: 20, goals: 4, claims: 6, steps: 8, cards: 12, ideas: 8, title: 90, means: 120, description: 420, assumption: 240, what: 160, how: 360, pass: 240, note: 480 } as const;
 
 export interface SolutionsInput {
   problem: { title: string; topic: string | null };
@@ -84,6 +86,11 @@ export interface SolutionDraft {
   cites: { lines: string[]; pieces: string[]; goals: string[]; claims: string[]; steps: string[] };
   /** The person's own idea it builds on (in their words). */
   idea: { ref: string; text: string; source: string | null } | null;
+  /** Where it came from, when nothing that can reach "We know" backs it. */
+  came?: Came;
+  /** What it is, and how it's done in words (none in drafts from before). */
+  type?: SolutionType;
+  how?: string;
   assumptions: DraftAssumption[];
   test: DraftTest | null;
   at: number;
@@ -205,35 +212,39 @@ export function draftWords(hay: string, name: (ref: string) => string | undefine
 }
 
 /**
- * What code keeps of the answer: at most so many drafts it can stand behind, none on the board
- * already, each with its assumptions and a test of one of them. `dropped` hears what was left out
- * and why (for the call's trace).
+ * What code keeps of the answer: at most so many drafts, none on the board already, each saying
+ * where it came from when it rests on nothing that can reach "We know". A quote or number that isn't
+ * in what was sent comes out of it; only a title left with nothing to say drops the draft. `dropped`
+ * hears what was left out and why (for the call's trace).
  */
 export function sanitizeSolutions(raw: unknown, m: SolutionsSent, o: { now: number; id: () => string }, dropped?: (why: string, item: unknown) => void): { drafts: SolutionDraft[]; note: string } {
   const drafts: SolutionDraft[] = [];
   const drop = (why: string, x: unknown) => void dropped?.(why, x);
   // An id in what it wrote reads as what it stands for: a goal's title, a step's, whose words; lines and quotes go.
   const name = (ref: string) => m.goals.get(ref)?.title ?? m.steps.get(ref)?.title ?? m.claims.get(ref)?.who;
-  const words = draftWords(m.hay, name, "lqgcmi");
+  const planWords = draftWords(m.hay, name, "lqgcmi");
+  const held = (v: unknown, max: number, shape: "title" | "prose", x: unknown) => {
+    const h = holdWords(withoutIds(v, name, "lqgcmi"), m.hay, { max, shape });
+    if (h.cut.length) drop(`words or numbers that aren't in what was sent came out: ${h.cut.join(" | ")}`, x);
+    return h.text;
+  };
   for (const x of Array.isArray(rec(raw).solutions) ? (rec(raw).solutions as unknown[]) : []) {
     if (drafts.length >= SOLUTION_LIMITS.solutions) {
       drop("over the limit", x);
       continue;
     }
     const s = rec(x);
-    const title = words(s.title, SOLUTION_LIMITS.title);
-    const description = words(s.description, SOLUTION_LIMITS.description);
-    if (!title || !description) {
-      drop("its words or numbers aren't in what was sent", x);
+    const title = held(s.title, SOLUTION_LIMITS.title, "title", x);
+    if (!title) {
+      drop("its title says nothing once what wasn't sent is out", x);
       continue;
     }
+    const description = held(s.description, SOLUTION_LIMITS.description, "prose", x);
+    const type = SOLUTION_TYPES.find((t) => t === s.type);
+    const means = held(s.how, SOLUTION_LIMITS.means, "prose", x);
     const refs = strs(s.cites);
     const lines = refs.filter((r) => m.lines.has(r));
     const own = refs.filter((r) => m.pieces.has(r));
-    if (!lines.length && !own.length) {
-      drop("it rests on nothing the problem says", x);
-      continue;
-    }
     if (m.cards.some((c) => sameTopic(c.title, title)) || drafts.some((d) => sameTopic(d.title, title))) {
       drop("on the board already, or proposed twice", x);
       continue;
@@ -249,31 +260,28 @@ export function sanitizeSolutions(raw: unknown, m: SolutionsSent, o: { now: numb
     (Array.isArray(s.assumptions) ? s.assumptions.map(rec) : []).forEach((a, i) => {
       if (assumptions.length >= SOLUTION_LIMITS.assumptions) return;
       const category = ASSUMPTION_CATEGORIES.find((c) => c === a.category);
-      const text = words(a.text, SOLUTION_LIMITS.assumption);
+      const text = held(a.text, SOLUTION_LIMITS.assumption, "prose", x);
       if (!category || !text || assumptions.some((y) => sameWords(y.text) === sameWords(text))) return;
       const importance = a.importance === "1" ? 1 : a.importance === "2" ? 2 : 3;
       const id = o.id();
       kept.set(i + 1, id);
       assumptions.push({ id, category, text, importance });
     });
-    if (!assumptions.length) {
-      drop("no assumption it can stand behind", x);
-      continue;
-    }
 
     const t = rec(s.test);
-    const what = words(t.what, SOLUTION_LIMITS.what, true);
-    const how = words(t.how, SOLUTION_LIMITS.how, true);
-    const pass = words(t.pass, SOLUTION_LIMITS.pass, true);
-    // The one it names, if kept; else the riskiest.
+    const what = planWords(t.what, SOLUTION_LIMITS.what, true);
+    const how = planWords(t.how, SOLUTION_LIMITS.how, true);
+    const pass = planWords(t.pass, SOLUTION_LIMITS.pass, true);
+    // The one it names, if kept; else the riskiest. A test needs an assumption to test.
     const riskiest = [...assumptions].sort((a, b) => b.importance - a.importance)[0];
     const named = kept.get(Number(typeof t.assumption === "string" ? t.assumption : NaN));
-    const test: DraftTest | null = what && how ? { assumption: named ?? riskiest.id, what, how, suggested: pass } : null;
+    const test: DraftTest | null = what && how && riskiest ? { assumption: named ?? riskiest.id, what, how, suggested: pass } : null;
     if (!test) drop("its test's words or numbers aren't in what was sent: kept without one", x);
 
     // The words it rests on: those it cites, then those behind the lines it answers.
-    const sentRefs = new Set([...m.pieces.values()].map((p) => p.ref));
-    const pieces = [...new Set([...own.map((r) => m.pieces.get(r)!.ref), ...lines.flatMap((r) => m.lines.get(r)!.cites.filter((c) => sentRefs.has(c)))])];
+    const sent = new Map([...m.pieces.values()].map((p) => [p.ref, p]));
+    const pieces = [...new Set([...own.map((r) => m.pieces.get(r)!.ref), ...lines.flatMap((r) => m.lines.get(r)!.cites.filter((c) => sent.has(c)))])];
+    const claims = refs.filter((r) => m.claims.has(r)).map((r) => m.claims.get(r)!.id);
     drafts.push({
       id: o.id(),
       title,
@@ -282,19 +290,33 @@ export function sanitizeSolutions(raw: unknown, m: SolutionsSent, o: { now: numb
         lines: lines.map((r) => m.lines.get(r)!.id),
         pieces,
         goals: refs.filter((r) => m.goals.has(r)).map((r) => m.goals.get(r)!.id),
-        claims: refs.filter((r) => m.claims.has(r)).map((r) => m.claims.get(r)!.id),
+        claims,
         steps: refs.filter((r) => m.steps.has(r)).map((r) => m.steps.get(r)!.ref),
       },
       idea,
+      ...cameFrom(pieces.flatMap((r) => sent.get(r) ?? []), claims.length > 0, !!idea),
+      ...(type ? { type } : {}),
+      ...(means ? { how: means } : {}),
       assumptions,
       test,
       at: o.now,
     });
   }
   const said = withoutIds(rec(raw).note, name, "lqgcmi");
-  const note = (said && checkWords(said, [], m.hay, SOLUTION_LIMITS.note) ? cleanLine(said) : "").trim();
-  const short = drafts.length < SOLUTION_LIMITS.enough ? (drafts.length ? "Qalam AI found only one way it could stand behind." : "Qalam AI found no way it could stand behind.") : "";
+  const note = holdWords(said, m.hay, { max: SOLUTION_LIMITS.note, shape: "prose" }).text;
+  const short = drafts.length ? (drafts.length < SOLUTION_LIMITS.enough ? "Qalam AI has only one way to propose." : "") : "Qalam AI has no new way to propose.";
   return { drafts, note: [note, short].filter(Boolean).join(" ") };
+}
+
+/**
+ * Where a draft came from, by what it cites: nothing to say when something that can reach "We know"
+ * backs it; else their own words, what was read online, or Qalam AI's idea. People online's words
+ * are what others said, so they read as online; a person's own idea is theirs.
+ */
+export function cameFrom(cited: readonly { evidence: boolean; online?: boolean; basis?: Basis }[], read: boolean, theirs = false): { came?: Came } {
+  if (cited.some((p) => p.evidence)) return {};
+  if (theirs || cited.some((p) => !p.online && (p.basis ?? "own") === "own")) return { came: "answers" };
+  return { came: read || cited.length ? "read" : "idea" };
 }
 
 // ---------------------------------------------------------------------------
@@ -320,7 +342,7 @@ export function draftBacking(d: SolutionDraft, quoteOf: (pieceRef: string) => Qu
 export function draftCards(d: SolutionDraft): { solution: OstCard; test: OstCard | null } {
   const assumptions: OstAssumption[] = d.assumptions.map((a) => ({ id: a.id, category: a.category, text: a.text, importance: a.importance, addedBy: "ai" }));
   // Their idea is theirs: the card says who drafted it.
-  const solution = newCard("solution", { title: d.title, description: d.description, createdBy: d.idea ? "user" : "ai", assumptions });
+  const solution = newCard("solution", { title: d.title, description: d.description, createdBy: d.idea ? "user" : "ai", ...(d.came ? { came: d.came } : {}), ...(d.type ? { solutionType: d.type } : {}), ...(d.how ? { how: d.how } : {}), assumptions });
   const test = d.test ? newCard("test", { title: d.test.what, createdBy: "ai", test: { assumptionIds: [d.test.assumption], method: d.test.how, ...(d.test.suggested ? { suggested: { criterion: d.test.suggested } } : {}) } }) : null;
   return { solution, test };
 }

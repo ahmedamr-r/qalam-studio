@@ -3,6 +3,7 @@ import { measureText } from "@/doc/measure";
 import { CARD_WIDTH, stageLabel } from "./kinds";
 import { CARD_LOOK, FOOTER, STATE, TAG } from "./look";
 import { evidenceLabel, isAIIdea, isAssumed } from "./evidence";
+import { SOLUTION_TYPE_LABEL } from "./kinds";
 import type { OstCard } from "./types";
 
 /*
@@ -92,12 +93,21 @@ export interface Chip {
 /** The footer's last item: where the card stands. */
 export const stageItem = (card: OstCard): Chip => ({ text: stageLabel(card.kind, card.stage), tone: "neutral", glyph: "stage" });
 
+/** How it's done, as much as a card's chip holds: whole words; the panel has the rest. */
+const shortHow = (how: string) => {
+  const t = how.replace(/\s+/g, " ").trim();
+  return t.length <= 30 ? t : `${t.slice(0, 30).replace(/\s+\S*$/, "")}…`;
+};
+
 /** Chips along the card's foot: what the card rests on, its assumptions, what's been designed. */
 export function footerChips(card: OstCard): Chip[] {
   const out: Chip[] = [];
+  if (card.start) out.push({ text: "Start here", tone: "ai", glyph: "ai" });
+  if (card.kind === "solution" && card.solutionType) out.push({ text: SOLUTION_TYPE_LABEL[card.solutionType], tone: "neutral" });
   const ev = evidenceLabel(card);
   if (ev) {
-    if (isAssumed(card)) out.push({ text: ev, tone: "warning", glyph: "assumed" });
+    if (card.needed && ev === "Needed to run it") out.push({ text: ev, tone: "subtle" });
+    else if (isAssumed(card)) out.push({ text: ev, tone: "warning", glyph: "assumed" });
     else if (isAIIdea(card)) out.push({ text: ev, tone: "ai", glyph: "ai" });
     else if (card.evidence.length) out.push({ text: ev, tone: "neutral", glyph: "quote" });
     else out.push({ text: ev, tone: "subtle" });
@@ -107,6 +117,7 @@ export function footerChips(card: OstCard): Chip[] {
     if (a) out.push({ text: `${a} ${a === 1 ? "assumption" : "assumptions"}`, tone: "neutral" });
     const d = card.designs?.length ?? 0;
     if (d) out.push({ text: `${d} ${d === 1 ? "design" : "designs"}`, tone: "neutral" });
+    if (card.how) out.push({ text: `How: ${shortHow(card.how)}`, tone: "subtle" });
   }
   if (card.kind === "test" && card.test?.criterion) out.push({ text: "Has a pass mark", tone: "neutral" });
   return out;

@@ -12,6 +12,8 @@ import { quotePiece } from "@/discovery/sources";
 import type { GoalLever } from "@/goals/types";
 import { contextFor } from "@/org/context";
 import { lookOnline } from "@/org/online";
+import { planLook } from "@/org/plan";
+import type { DraftWords } from "@/org/solutions";
 import { lab } from "@/lab";
 import { boardOfCard, productOfCard, useSpaceView } from "@/space/view";
 import type { PlanBucket } from "@/ui/ai/plan";
@@ -46,6 +48,8 @@ export interface Ask {
   customers: number;
   /** People online, looked up on their words. */
   online: { running: boolean; quotes: string[]; note?: string } | null;
+  /** The web, looked at on their words: others' words, for the draft to draw on. */
+  web?: { running: boolean; lines: NonNullable<DraftWords["looks"]> };
   role: DumpRole | null;
   /** Break it down's levers, picked before the questions. */
   levers: GoalLever[];
@@ -57,6 +61,7 @@ const patch = (p: Partial<Ask>) => useAsk.setState((s) => (s.ask ? { ask: { ...s
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const STEP: Record<AskFor, StepId> = { "draft-solutions": "draft-solutions", "break-down": "break-down", "draft-problems": "draft-problems" };
 let looking: AbortController | null = null;
+let webLook: AbortController | null = null;
 
 /** The answers kept for a card and not drafted with yet. */
 export const keptAnswers = (card: string) => useSources.getState().list.find((s) => s.answers?.card === card && !s.answers.done);
@@ -102,6 +107,8 @@ export async function skipQuestions() {
 export function cancelAsk() {
   looking?.abort();
   looking = null;
+  webLook?.abort();
+  webLook = null;
   useAsk.setState({ ask: null });
 }
 
@@ -151,6 +158,8 @@ async function readAndAsk() {
     patch({ found: found.map((q) => quotePiece(q.quoteId)).slice(0, 20), customers });
     // Little from customers on a problem: what people say online, while the questions are asked (hidden in v0.1, src/lab.ts).
     if (card.kind === "opportunity" && customers < 2 && lab("online")) lookFor(a.card, said);
+    // Little from customers: what the web says about it, while the questions are asked. A draft doesn't need evidence, and this narrows it.
+    if (customers < 2 && a.step !== "break-down") lookOnWeb(a.card, a.step, said);
     relabel(ctrl, "Qalam AI is reading what you said");
     const body = {
       stage: "card-questions" as const,
@@ -192,8 +201,9 @@ function lookFor(card: string, said: string) {
     if (looking !== ctrl) return;
     looking = null;
     patch({ online });
-    // The questions are answered and waiting on it: the draft runs now.
-    if (useAsk.getState().ask?.phase === "waiting") void runDraft();
+    // The questions are answered and waiting on it: the draft runs now, unless the web is still being read.
+    const now = useAsk.getState().ask;
+    if (now?.phase === "waiting" && !now.web?.running) void runDraft();
   };
   void lookOnline({ title: c.title, words: said, product: productOfCard(card), place: { board: boardOfCard(card), card } }, undefined, ctrl.signal)
     .then(async (r) => {
@@ -204,18 +214,40 @@ function lookFor(card: string, said: string) {
     .catch((e) => done({ running: false, quotes: [], ...(stopped(e) ? {} : { note: "Couldn't look online" }) }));
 }
 
-/** The questions are done: the draft runs, or waits for the look online. */
+/** The web, on their words, in the background. A look that fails is let go: the draft goes on with what it has. */
+function lookOnWeb(card: string, step: AskFor, said: string) {
+  webLook?.abort();
+  const ctrl = (webLook = new AbortController());
+  const c = cardOf(studio().doc, card);
+  if (!c) return;
+  patch({ web: { running: true, lines: [] } });
+  const done = (lines: NonNullable<DraftWords["looks"]>) => {
+    if (webLook !== ctrl) return;
+    webLook = null;
+    patch({ web: { running: false, lines } });
+    const now = useAsk.getState().ask;
+    if (now?.phase === "waiting" && !now.online?.running) void runDraft();
+  };
+  const what = step === "draft-problems" ? "What usually keeps people from reaching this goal" : "Ways to solve this problem";
+  void planLook({ said: `${what}: ${c.title}.${said ? ` They say: ${said}` : ""}`, outline: [], rounds: [], looks: [] }, undefined, ctrl.signal)
+    .then((l) => done(l.lines.map((x) => ({ text: x.text, ...(x.url ? { url: x.url } : {}), ...(x.title ? { title: x.title } : {}), ...(x.quote ? { quote: x.quote } : {}) }))))
+    .catch(() => done([]));
+}
+
+/** The questions are done: the draft runs, or waits for the looks online. */
 async function finish() {
   const a = useAsk.getState().ask;
   if (!a) return;
-  if (a.online?.running) return patch({ phase: "waiting" });
+  if (a.online?.running || a.web?.running) return patch({ phase: "waiting" });
   await runDraft();
 }
 
-/** Draft now, without waiting for what people say online. */
+/** Draft now, without waiting for what's being read online. */
 export function draftNow() {
   looking?.abort();
   looking = null;
+  webLook?.abort();
+  webLook = null;
   void runDraft();
 }
 
@@ -227,7 +259,7 @@ async function runDraft() {
   // The card rests on their answers (a goal with no board yet is linked through the source instead).
   const s = source ? sourceOf(source) : undefined;
   if (s && !useSpaceView.getState().virtual.has(a.card)) attachQuoteRefs(a.card, s.quotes.map((q) => ({ sourceId: s.id, quoteId: q.id })), { quiet: true });
-  const said = { ...(source ? { answers: source } : {}), found: [...a.found, ...(a.online?.quotes ?? [])].slice(0, 20) };
+  const said = { ...(source ? { answers: source } : {}), found: [...a.found, ...(a.online?.quotes ?? [])].slice(0, 20), ...(a.web?.lines.length ? { looks: a.web.lines } : {}) };
   const t = useSpaceView.getState().things.get(a.card);
   if (a.step === "draft-solutions") await draftSolutionsFor(a.card, said);
   else if (a.step === "break-down" && t?.type === "goal") await breakDownFor(a.card, t.goal, a.levers, said);

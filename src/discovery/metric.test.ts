@@ -23,7 +23,11 @@ describe("where an outcome's number goes", () => {
   it("runs from its start, else where it stands, to its target", () => {
     expect(metricRange(m(18, 15, 10, "decrease"))).toEqual({ from: 18, to: 10 });
     expect(metricRange(m(null, 71, 85))).toEqual({ from: 71, to: 85 });
-    expect(metricRange(m(null, null, 85))).toBeNull();
+  });
+
+  it("keeps a target whose start isn't known yet, and is nothing without a target", () => {
+    expect(metricRange(m(null, null, 85))).toEqual({ from: null, to: 85 });
     expect(metricRange(m(18, null, null))).toBeNull();
+    expect(metricRange(undefined)).toBeNull();
   });
 });

@@ -1,4 +1,4 @@
-import type { AssumptionCategory, OstCard, OstKind, OstStage } from "./types";
+import type { AssumptionCategory, OstCard, OstKind, OstStage, SolutionType } from "./types";
 
 /** The rules of the tree: what each kind of card is, holds and goes through. Pure data. */
 
@@ -13,6 +13,15 @@ export const KIND_LABEL: Record<OstKind, string> = { outcome: "Goal", opportunit
 
 /** An outcome under another outcome, as the board names it. */
 export const SUB_OUTCOME_LABEL = "Sub-goal";
+
+/** A solution under a New product, as the board names it. */
+export const MODULE_LABEL = "Module";
+
+/** How people see each type of solution. */
+export const SOLUTION_TYPE_LABEL: Record<SolutionType, string> = { change: "Change to the product", feature: "New feature", product: "New product", message: "Message or campaign", service: "Service or by hand" };
+
+/** What each type means, as Qalam AI is told. */
+export const SOLUTION_TYPE_HINT = "change: a change to what the product does today · feature: a new feature in a product · product: a new product of its own, made of modules · message: a message or campaign reaching people outside the product (SMS, push, email, social media) · service: a service, or something the team does by hand";
 
 /** How a kind is named in prose ("Add a problem"). */
 export const KIND_NOUN: Record<OstKind, string> = { outcome: "a goal", opportunity: "a problem", solution: "a solution", test: "a test" };
@@ -30,6 +39,12 @@ export const CHILD_KINDS: Record<OstKind, readonly OstKind[]> = {
 };
 
 export const canHold = (parent: OstKind, child: OstKind) => CHILD_KINDS[parent].includes(child);
+
+/**
+ * What this card can hold: what its kind holds, and a New product holds solutions too, its modules.
+ * Kept apart from `canHold`, which reads only the kind, so a brain dump or a placement never makes a module.
+ */
+export const holdsCard = (parent: Pick<OstCard, "kind" | "solutionType">, child: OstKind) => canHold(parent.kind, child) || (parent.kind === "solution" && parent.solutionType === "product" && child === "solution");
 
 export const STAGES: Record<OstKind, readonly { value: OstStage; label: string }[]> = {
   outcome: [
@@ -75,7 +90,8 @@ export const CARD_WIDTH: Record<OstKind, number> = { outcome: 320, opportunity: 
  */
 export function defaultChildKind(parent: OstCard, childKinds: readonly OstKind[]): OstKind | null {
   if (parent.kind === "outcome") return childKinds.length && childKinds.every((k) => k === "outcome") ? "outcome" : "opportunity";
-  if (parent.kind === "solution") return "test";
+  // A New product gets modules until it has a test of its own.
+  if (parent.kind === "solution") return parent.solutionType === "product" && !childKinds.includes("test") ? "solution" : "test";
   if (parent.kind === "test") return null;
   if (childKinds.length) return childKinds.every((k) => k === "solution") ? "solution" : "opportunity";
   return parent.stage === "target" ? "solution" : "opportunity";

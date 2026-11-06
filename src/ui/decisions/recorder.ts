@@ -218,6 +218,8 @@ export function proposalLine(p: Proposal, doc: Doc): string {
       return "A note beside the tree";
     case "goal":
       return `Add “${p.card.title}” under ${t(p.parentId)}`;
+    case "helps":
+      return `${cardOf(doc, p.cardId) ? t(p.cardId) : "A solution"} also helps “${p.to.title}”`;
   }
 }
 

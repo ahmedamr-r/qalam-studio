@@ -3,12 +3,13 @@ import { emptyDoc, type Doc } from "@/doc/schema";
 import { isOstCard, rootBounds, treeBounds, treeRootOf, visibleCards } from "@/doc/board";
 import { type Pt, boundsOf, isDescendant, worldBounds, worldCorners } from "@/doc/geometry";
 import { reparentIn } from "@/doc/ops";
-import { canHold } from "./kinds";
-import { addCardIn, deleteKeepIn, makeCardNode, moveCardsIn, setTargetIn, updateCardIn } from "./ops";
+import { holdsCard } from "./kinds";
+import { addCardIn, deleteKeepIn, makeCardNode, moveCardsIn, setStartIn, setTargetIn, updateCardIn } from "./ops";
 import { layoutDocTrees, TREE_GAP } from "./pass";
+import { withHelp } from "./helps";
 import { fromSource, hasQuote, quotable } from "./sources";
 import { makeSticky } from "./sticky";
-import type { OstAssumption, OstCard, OstEvidence, OstMetric, StickyColor } from "./types";
+import type { OstAssumption, OstCard, OstEvidence, OstHelpTarget, OstMetric, StickyColor } from "./types";
 import type { BreakdownPart } from "@/goals/breakdown";
 
 /*
@@ -40,7 +41,7 @@ export type Proposal = {
   why: string;
 } & (
   | { kind: "attach" | "against"; quote: QuoteRef }
-  | { kind: "card"; card: OstCard; /** null: a tree of its own, at `at`. */ parentId: string | null; backing: Backing; at?: Pt }
+  | { kind: "card"; card: OstCard; /** null: a tree of its own, at `at`. */ parentId: string | null; backing: Backing; at?: Pt; /** A problem's faint card this one takes the place of (a page becoming a card). */ replaces?: string }
   | { kind: "assumption"; assumptions: OstAssumption[] }
   | { kind: "metric"; metric: Partial<OstMetric> }
   | { kind: "edit"; /** Its title when proposed (a renamed card makes the proposal stale). */ from: string; title?: string; description?: string }
@@ -52,6 +53,8 @@ export type Proposal = {
    * document; accepting it puts it in goals.md, and the canvas draws it from there.
    */
   | { kind: "goal"; /** The goal's card on the canvas. */ parentId: string; goal: string; part: BreakdownPart; card: OstCard }
+  /** A solution (`cardId`, maybe new) helps another problem too: a dashed wire once accepted (./helps.ts). */
+  | { kind: "helps"; to: OstHelpTarget }
 );
 
 /** A quote as evidence (null when its source or the quote is gone). */
@@ -93,6 +96,8 @@ export function proposalKey(p: Proposal, all: Proposal[] = []): string {
       return `note:${key(p.text)}`;
     case "goal":
       return `goal:${p.goal}:${p.part.id}`;
+    case "helps":
+      return `helps:${parentKey(p.cardId)}:${key(p.to.title)}`;
   }
 }
 
@@ -101,6 +106,7 @@ export function dependsOn(p: Proposal, all: Proposal[]): Proposal[] {
   const pending = (id: string | null) => (id ? all.filter((x) => x.kind === "card" && x.cardId === id) : []);
   if (p.kind === "card" || p.kind === "move") return pending(p.parentId);
   if (p.kind === "note") return pending(p.anchorId);
+  if (p.kind === "helps") return [...pending(p.cardId), ...pending(p.to.card ?? null)];
   return [];
 }
 
@@ -138,6 +144,8 @@ export function underCard(doc: Doc, card: string, list: Proposal[]): Proposal[] 
         return false;
       case "goal":
         return p.parentId === card;
+      case "helps":
+        return added.has(p.cardId) || mine(p.cardId);
       default:
         return mine(p.cardId);
     }
@@ -168,11 +176,12 @@ export function touchedRoots(doc: Doc, p: Proposal, all: Proposal[]): string[] {
     return pending.parentId ? rootOf(pending.parentId) : pending.cardId;
   };
   const ids =
-    p.kind === "card" ? [p.parentId ? rootOf(p.parentId) : p.cardId]
+    p.kind === "card" ? [p.parentId ? rootOf(p.parentId) : p.cardId, p.replaces && doc.nodes[p.replaces] ? treeRootOf(doc, p.replaces) : null]
     : p.kind === "goal" ? [rootOf(p.parentId)]
     : p.kind === "move" ? [rootOf(p.cardId), p.parentId ? rootOf(p.parentId) : p.cardId]
     : p.kind === "merge" ? [rootOf(p.cardId), rootOf(p.dropId)]
     : p.kind === "note" ? [p.cardId]
+    : p.kind === "helps" ? [rootOf(p.cardId), rootOf(p.to.card ?? null)]
     : [rootOf(p.cardId)];
   return [...new Set(ids.filter((x): x is string => !!x))];
 }
@@ -203,13 +212,22 @@ export function applyProposal(d: Doc, p: Proposal, evidence: EvidenceOf, o: { pr
     case "card": {
       const parent = p.parentId ? card(p.parentId) : null;
       // A tree of its own starts with a goal, or a problem on its own (the space's canvas draws it on no goal yet).
-      if (d.nodes[p.cardId] || (p.parentId ? !parent || !canHold(parent.kind, p.card.kind) : p.card.kind !== "outcome" && p.card.kind !== "opportunity")) return false;
+      if (d.nodes[p.cardId] || (p.parentId ? !parent || !holdsCard(parent, p.card.kind) : p.card.kind !== "outcome" && p.card.kind !== "opportunity")) return false;
       const ev = resolve(p.backing, evidence);
       // Words it was to rest on are gone (their source was removed); only a need may rest on nothing (Assumed),
-      // and a solution or test under a card, which rests on the card above it.
+      // a solution or test under a card, which rests on the card above it, and a card that says where it came from.
       const under = !!p.parentId && (p.card.kind === "solution" || p.card.kind === "test");
-      if (!ev.length && !under && (p.backing.quotes.length + p.backing.words.length > 0 || p.card.kind !== "opportunity")) return false;
+      if (!ev.length && !under && !p.card.came && (p.backing.quotes.length + p.backing.words.length > 0 || p.card.kind !== "opportunity")) return false;
+      if (p.replaces && d.nodes[p.replaces]) {
+        const was = d.nodes[p.replaces].parentId;
+        const siblings = was ? d.nodes[was].children : d.roots;
+        const at = siblings.indexOf(p.replaces);
+        if (at >= 0) siblings.splice(at, 1);
+        delete d.nodes[p.replaces];
+      }
       addCardIn(d, { ...makeCardNode({ ...p.card, evidence: ev.map((e) => ({ ...e })) }, p.at), id: p.cardId }, p.parentId);
+      // One card to start with on a canvas.
+      if (p.card.start) setStartIn(d, p.cardId, true);
       return true;
     }
     case "assumption": {
@@ -272,6 +290,14 @@ export function applyProposal(d: Doc, p: Proposal, evidence: EvidenceOf, o: { pr
     case "goal": {
       if (!o.preview || d.nodes[p.cardId] || card(p.parentId)?.kind !== "outcome") return false;
       addCardIn(d, { ...makeCardNode({ ...p.card }), id: p.cardId }, p.parentId);
+      return true;
+    }
+    case "helps": {
+      const c = card(p.cardId);
+      if (c?.kind !== "solution") return false;
+      const list = withHelp(c, p.to, "ai", Date.now());
+      if (!list) return false;
+      c.helps = list;
       return true;
     }
     case "note": {

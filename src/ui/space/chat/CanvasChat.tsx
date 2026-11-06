@@ -24,7 +24,7 @@ import type { Space } from "../../frame/spaces";
 import { ASK_EVENT, takeAskNext } from "../../org/ask-next";
 import { PARTS } from "./parts";
 import { clearMode, composeIn, useCompose } from "./compose";
-import { answerBrief, answerFind, answerNumber, answerPlan, answerSteer, ask, briefQuestionsOf, clearChat, findQuestionsOf, findWith, leaveSteer, numberQuestions, openChat, planQuestionsOf, send, steerQuestionsOf, stopTurn, turnOf, useCanvasChat } from "./store";
+import { answerBrief, answerCanvasPlan, answerFind, answerNumber, answerPlan, answerSteer, ask, briefQuestionsOf, canvasPlanQuestionsOf, clearChat, findQuestionsOf, findWith, leaveSteer, numberQuestions, openChat, planQuestionsOf, resumePlans, send, steerQuestionsOf, stopTurn, turnOf, useCanvasChat } from "./store";
 
 /*
  * Qalam AI's chat on the left of a space's canvas, as Figma keeps its panel there: one box for
@@ -37,7 +37,7 @@ import { answerBrief, answerFind, answerNumber, answerPlan, answerSteer, ask, br
 export const CHAT_W = 420;
 
 /** What the box is for when a button set it (src/space/route.ts's modes), in a word on the box. */
-const MODE_LABEL: Record<ChatMode, string> = { ask: "A question", dump: "Brain dump", take: "To take in", goal: "A goal", problem: "A problem", scan: "An idea or a product" };
+const MODE_LABEL: Record<ChatMode, string> = { ask: "A question", dump: "Brain dump", take: "To take in", goal: "A goal", problem: "A problem", scan: "An idea or a product", plan: "A plan" };
 
 export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
   useEffect(() => void openChat(space), [space]);
@@ -68,6 +68,7 @@ export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
     if (!loaded || !active || !sourcesLoaded || resumed.current === key) return;
     resumed.current = key;
     void resumeDumps();
+    resumePlans();
   }, [loaded, active, sourcesLoaded, space]);
 
   // A question asked from ⌘K (on this page or another) lands here and is asked.
@@ -136,6 +137,8 @@ export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
             waiting && (!busy || steering) ? (
               "steer" in waiting ? (
                 <SteerRound key={waiting.turn.id} turn={waiting.turn.id} />
+              ) : "planning" in waiting ? (
+                <CanvasPlanRound key={`${waiting.turn.id}:${waiting.turn.job.kind === "plan" ? waiting.turn.job.rounds.length : 0}`} turn={waiting.turn.id} />
               ) : "brief" in waiting ? (
                 <BriefRound key={waiting.turn.id} turn={waiting.turn.id} />
               ) : "number" in waiting ? (
@@ -165,6 +168,11 @@ export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
                         Help me find {w === "goal" ? "a goal" : "a problem"}
                       </MenuItem>
                     ))}
+                  {!busy && (
+                    <MenuItem icon={<QalamAIGlyph size={14} />} onSelect={() => composeIn({ mode: "plan" })}>
+                      Work something out as a plan
+                    </MenuItem>
+                  )}
                 </SourceMenu>
               }
               attached={<AttachmentChips kinds />}
@@ -273,7 +281,9 @@ function BriefRound({ turn }: { turn: string }) {
     const said = summarize(q, a);
     return said === "Skipped" || said === "—" || said === "None" ? "" : said;
   };
-  return <Questionnaire title="For the brief" questions={questions} state={form} onChange={setForm} onSubmit={(f) => void answerBrief(turn, Object.fromEntries(questions.map((q) => [q.id, answerOf(f, q)])))} />;
+  const job = turnOf(turn)?.job;
+  const shape = job?.kind === "brief" ? job.shape : undefined;
+  return <Questionnaire title={shape === "message" ? "For the message plan" : shape === "steps" ? "For the steps" : "For the brief"} questions={questions} state={form} onChange={setForm} onSubmit={(f) => void answerBrief(turn, Object.fromEntries(questions.map((q) => [q.id, answerOf(f, q)])))} />;
 }
 
 /** The questions before working out who it's for and what comes first; every one can be skipped. */
@@ -287,6 +297,19 @@ function PlanRound({ turn }: { turn: string }) {
     return said === "Skipped" || said === "—" || said === "None" ? "" : said;
   };
   return <Questionnaire title="Before I work out what comes first" questions={questions} state={form} onChange={setForm} onSubmit={(f) => void answerPlan(turn, Object.fromEntries(questions.map((q) => [q.id, answerOf(f, q)])))} review={{ submitLabel: "Send answers" }} />;
+}
+
+/** What a plan can't tell from what it has; every one can be skipped, and Skip in the thread leaves them all. */
+function CanvasPlanRound({ turn }: { turn: string }) {
+  const questions = useMemo(() => canvasPlanQuestionsOf(turn).map(toQuestion), [turn]);
+  const [form, setForm] = useState<FlowState>(() => initialFlow(questions));
+  const answerOf = (f: FlowState, q: (typeof questions)[number]) => {
+    const a = f.answers[q.id];
+    if (!a) return "";
+    const said = summarize(q, a);
+    return said === "Skipped" || said === "—" || said === "None" ? "" : said;
+  };
+  return <Questionnaire title="Before I propose it" questions={questions} state={form} onChange={setForm} onSubmit={(f) => answerCanvasPlan(turn, Object.fromEntries(questions.map((q) => [q.id, answerOf(f, q)])))} review={{ submitLabel: "Send answers" }} />;
 }
 
 /** A goal's number, asked once a problem's goal is picked: what's left out is suggested. */

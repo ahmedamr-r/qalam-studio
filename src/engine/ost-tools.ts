@@ -39,7 +39,9 @@ function noticedCards(list: Notice[]): ReadonlySet<string> {
 }
 import type { PointerInfo } from "./vector-tools";
 import { cardWork, type WorkStatus } from "@/connectors/work";
+import { helpEdges } from "@/discovery/helps";
 import { laneOf, litBy, NO_LANE, type Lane, type LaneFeed, type LaneItem } from "@/discovery/lane";
+import { cardForPage } from "@/space/pages";
 import { useGoals } from "@/goals/client";
 import { useFeeds, wireFeed, wiredCards } from "@/ui/discovery/feeds";
 import { useBriefs } from "@/ui/discovery/briefs";
@@ -50,7 +52,7 @@ import type { LaneRender } from "./lane-painter";
 import { openSource } from "@/ui/discovery/sources";
 
 /** The board's sources lane, its feeds among them (kept while the document, its sources and feeds are the same; none with the view option off). */
-let laneMemo: { doc: Doc; list: SourceRecord[]; visiting: SourceRecord[]; feeds: unknown; news: unknown; goals: unknown; groups: unknown; briefs: unknown; slots: unknown; lane: Lane } | null = null;
+let laneMemo: { doc: Doc; list: SourceRecord[]; visiting: SourceRecord[]; feeds: unknown; news: unknown; goals: unknown; groups: unknown; briefs: unknown; slots: unknown; things: unknown; lane: Lane } | null = null;
 export function boardLane(): Lane {
   const s = studio();
   if (!s.view.sources) return NO_LANE;
@@ -65,7 +67,7 @@ export function boardLane(): Lane {
   const groups = space.active ? (preview?.groups ?? space.groups) : undefined;
   const slots = preview?.slots ?? space.slots;
   const briefs = useBriefs.getState().list;
-  if (laneMemo?.doc === doc && laneMemo.list === list && laneMemo.visiting === visiting && laneMemo.feeds === feeds && laneMemo.news === news && laneMemo.goals === goals && laneMemo.groups === groups && laneMemo.briefs === briefs && laneMemo.slots === slots) return laneMemo.lane;
+  if (laneMemo?.doc === doc && laneMemo.list === list && laneMemo.visiting === visiting && laneMemo.feeds === feeds && laneMemo.news === news && laneMemo.goals === goals && laneMemo.groups === groups && laneMemo.briefs === briefs && laneMemo.slots === slots && laneMemo.things === space.things) return laneMemo.lane;
   const laneFeeds: LaneFeed[] = board
     ? feeds.map((f) => {
         const n = news[f.id];
@@ -81,10 +83,13 @@ export function boardLane(): Lane {
   const laneBriefs = space.active
     ? briefs.flatMap((b) => {
         const at = slots.get(`brief:${b.card}`);
-        return at ? [{ id: b.id, card: b.card, title: b.title, line: b.features ? `Brief · ${b.features} ${b.features === 1 ? "feature" : "features"}` : "Brief", x: at.x, y: at.y }] : [];
+        return at ? [{ id: b.id, card: b.card, title: b.title, line: b.shape === "message" ? (b.features ? `Message plan · ${b.features} ${b.features === 1 ? "message" : "messages"}` : "Message plan") : b.shape === "steps" ? (b.features ? `${b.features} ${b.features === 1 ? "step" : "steps"} to run` : "Steps to run") : b.features ? `Brief · ${b.features} ${b.features === 1 ? "feature" : "features"}` : "Brief", x: at.x, y: at.y }] : [];
       })
     : [];
-  laneMemo = { doc, list, visiting, feeds, news, goals, groups, briefs, slots, lane: laneOf(doc, [...list, ...visiting], placed, laneFeeds, laneBriefs) };
+  const lane = laneOf(doc, [...list, ...visiting], placed, laneFeeds, laneBriefs);
+  // What a solution also helps: faint wires up to those problems, wherever on the canvas they are.
+  const helps = helpEdges(doc, (topic) => cardForPage({ page: topic }, space.things));
+  laneMemo = { doc, list, visiting, feeds, news, goals, groups, briefs, slots, things: space.things, lane: helps.length ? { ...lane, edges: [...lane.edges, ...helps] } : lane };
   return laneMemo.lane;
 }
 
@@ -451,7 +456,7 @@ export function createOstTools(): CanvasDelegate {
       const ui = discovery();
       const lane = boardLane();
       return {
-        lane: lane.items.length ? { ...laneRender(lane, cord?.item.key ?? hoverLane ?? ui.reading), cord: cord ? { from: sourceTile(cord.item).port, to: cord.to, ok: cord.ok } : null } : null,
+        lane: lane.items.length || lane.edges.length ? { ...laneRender(lane, cord?.item.key ?? hoverLane ?? ui.reading), cord: cord ? { from: sourceTile(cord.item).port, to: cord.to, ok: cord.ok } : null } : null,
         editingId: ui.editing?.id ?? null,
         drag: drag?.active ? { ids: drag.ids, dx: drag.dx, dy: drag.dy } : null,
         // A card being dragged, a cord being drawn, else a quote dragged in from the Sources tab.

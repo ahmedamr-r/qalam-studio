@@ -25,7 +25,7 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /** A card's evidence as a draft is sent it: what speaks against it left out, people online marked. */
 export const sentEvidence = (list: OstEvidence[]) =>
-  list.filter((e) => e.stance !== "against").map((e) => ({ text: e.text, kind: e.kind, ...(e.piece ? { piece: e.piece } : {}), ...(e.sourceId ? { sourceId: e.sourceId } : {}), ...(e.sourceTitle ? { sourceTitle: e.sourceTitle } : {}), ...(e.online ? { online: true } : {}) }));
+  list.filter((e) => e.stance !== "against").map((e) => ({ text: e.text, kind: e.kind, ...(e.piece ? { piece: e.piece } : {}), ...(e.sourceId ? { sourceId: e.sourceId } : {}), ...(e.sourceTitle ? { sourceTitle: e.sourceTitle } : {}), ...(e.basis ? { basis: e.basis } : {}), ...(e.online ? { online: true } : {}) }));
 
 /** The problem's page, by its card's words (a page's card is named after it). */
 async function pageOf(title: string): Promise<string | null> {
@@ -73,7 +73,7 @@ export async function draftSolutionsFor(cardId: string, said: DraftWords = {}): 
     });
     const d = await draftSolutions({ topic, card: { title: card.title, evidence: sentEvidence(card.evidence), children }, ...said }, (label) => relabel(ctrl, label), ctrl.signal);
     const opened = await review(d.drafts, d.quotes, d.topic, cardId);
-    if (opened === 0) return void feedback(d.note || "Qalam AI found no way it could stand behind.", { id: "discovery.solutions" });
+    if (opened === 0) return void feedback(d.note || "Qalam AI has no new way to propose.", { id: "discovery.solutions" });
     if (opened && d.note) feedback(d.note, { id: "discovery.solutions" });
   } catch (e) {
     if (stopped(e)) feedback("Stopped: no solutions drafted", { id: "discovery.solutions" });

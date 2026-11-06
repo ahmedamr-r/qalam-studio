@@ -290,7 +290,7 @@ export class Renderer {
     const lane = !input.exporting ? input.ost?.lane : null;
     if (lane) {
       this.lanes.begin(this.theme.dark, false);
-      this.lanes.drawWires(canvas, doc, lane, input.camera.zoom);
+      this.lanes.drawWires(canvas, doc, lane, input.camera.zoom, input.hoverId);
     }
     // A Discovery tree's root box isn't what it covers: cull by its cards (rootBounds).
     for (const id of doc.roots) {

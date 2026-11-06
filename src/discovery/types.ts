@@ -22,6 +22,14 @@ export type SolutionStage = "idea" | "testing" | "building" | "shipped" | "dropp
 export type TestStage = "planned" | "running" | "passed" | "failed" | "inconclusive";
 export type OstStage = OutcomeStage | OpportunityStage | SolutionStage | TestStage;
 
+/**
+ * What a solution is: a change to what's there, a new feature, a new product (which holds modules:
+ * solutions under it), a message or campaign (SMS, push, email, social media), or a service or
+ * something done by hand. A card from before has none.
+ */
+export const SOLUTION_TYPES = ["change", "feature", "product", "message", "service"] as const;
+export type SolutionType = (typeof SOLUTION_TYPES)[number];
+
 export type AssumptionCategory = "desirability" | "viability" | "feasibility" | "usability" | "ethical";
 
 /**
@@ -33,9 +41,10 @@ export interface OstEvidence {
   /**
    * answer: the builder's own words answering Qalam AI (the interview, or its questions about a
    * brain dump) · note: written by hand · quote: from a source (documents, pages) · dump: the
-   * builder's own words in a brain dump (theirs, not their customers').
+   * builder's own words in a brain dump (theirs, not their customers') · read: a line read on the web
+   * while working something out, with the page it's on: never a source, never evidence.
    */
-  kind: "answer" | "note" | "quote" | "dump";
+  kind: "answer" | "note" | "quote" | "dump" | "read";
   /** The words themselves: what the source says, never the model's rewording of it. */
   text: string;
   /** The question the words answer (an interview's, or `dump:<sourceId>:<question>` for a brain dump's). */
@@ -65,6 +74,8 @@ export interface OstEvidence {
   online?: boolean;
   /** A brain dump's piece that's a file they added for a card (its next steps' "Add a file for it"). */
   file?: true;
+  /** A line read on the web (`kind: "read"`): the page it's on. */
+  url?: string;
   addedBy: "user" | "ai";
   at: number;
 }
@@ -118,6 +129,29 @@ export interface OstTest {
   result?: string;
 }
 
+/** A problem a solution helps, by its card, or its page when it's only a page on the canvas, and its name (./helps.ts). */
+export interface OstHelpTarget {
+  card?: string;
+  topic?: string;
+  title: string;
+}
+
+/** A problem a solution helps besides the one it hangs under: drawn as a faint dashed wire. */
+export interface OstHelp {
+  to: OstHelpTarget;
+  by: "user" | "ai";
+  /** A person took it off: it's remembered, so Qalam AI doesn't propose it again. */
+  off?: true;
+  at: number;
+}
+
+/**
+ * Where a card with nothing to show for it came from, as code worked it out from what it cites:
+ * their answers, what was read online, or Qalam AI's own idea. Evidence is better when there is some,
+ * but it isn't asked for: a card with none says so instead (./evidence.ts).
+ */
+export type Came = "answers" | "read" | "idea";
+
 export interface OstCard {
   v: 1;
   kind: OstKind;
@@ -130,7 +164,19 @@ export interface OstCard {
   stageAt?: number;
   /** Drafted by Qalam AI (an opportunity with no evidence then shows as Assumed) or written by hand. */
   createdBy: "user" | "ai";
+  /** Proposed with nothing that can reach "We know" behind it: it shows as Assumed until something does. */
+  came?: Came;
   evidence: OstEvidence[];
+  /** Solutions: what it is. */
+  solutionType?: SolutionType;
+  /** Solutions: how it's done, in words, naming the tools it would use ("SMS, through a tool like Twilio"). */
+  how?: string;
+  /** A module nobody asked for that the product can't run without (login, billing). */
+  needed?: true;
+  /** Where to start: the strongest signal so far, never "the best". One on a canvas. */
+  start?: true;
+  /** Solutions: the problems it helps besides the one above it. */
+  helps?: OstHelp[];
   /** Solutions: what has to be true for it to work. */
   assumptions?: OstAssumption[];
   /** Solutions: Screens projects it was sent to with Design this. */

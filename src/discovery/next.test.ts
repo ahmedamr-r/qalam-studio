@@ -122,25 +122,47 @@ describe("a card's next steps in v0.1 (src/lab.ts)", () => {
   it("offer only the loop: drafting solutions, what backs a card, its page, a goal's problems and the one to focus on, a file", () => {
     setLab([]);
     const can = { search: true, material: true, tools: ["Intercom"] };
-    // Nothing behind a problem: what the organization has first, then drafting at once; no tool, no questions.
+    // Nothing behind a problem: what the organization has first, then a draft that asks first, since none of it needs evidence; no tool.
     const thin = others(facts(can));
     expect(thin.map((s) => s.id)).toEqual(["find-backing", "draft-solutions", "add-file"]);
-    expect(thin[1]).toMatchObject({ hint: "Ways to solve it, each with a test" });
-    expect(thin[1].asks).toBeUndefined();
+    expect(thin[1]).toMatchObject({ hint: "Asks a few questions first", asks: true });
     expect(ids(facts({ tools: [], asking: true, evidence: { ...none, quotes: 2, sources: 1 }, page: { topic: "late-orders", strength: "thin", quotes: 2, sources: 1 } }))).toEqual(["draft-solutions", "add-file", "page"]);
     expect(ids(facts({ ...can, kind: "solution" }))).toEqual(["find-backing"]);
     expect(ids(facts({ ...can, kind: "outcome", pages: 5, goal: goal({ pending: 2, drafted: 1, job: "Ask five families" }) }))).toEqual(["focus", "find-problems", "add-file"]);
     expect(ids(facts({ kind: "outcome", goal: goal() }))).toEqual(["focus", "add-file"]);
   });
 
-  it("bring a feature's steps back once it's on, and ask first only with the questions on", () => {
+  it("bring a feature's steps back once it's on, and Break it down asks first only with the questions on", () => {
     setLab(["tests", "goals"]);
     expect(ids(facts({ kind: "solution" }))).toEqual(["draft-tests"]);
     const steps = others(facts({ kind: "outcome", pages: 5, goal: goal() }));
     expect(steps.map((s) => s.id)).toEqual(["focus", "find-problems", "draft-problems", "break-down", "others", "add-file"]);
-    expect(steps.some((s) => s.asks)).toBe(false);
+    expect(steps.filter((s) => s.asks).map((s) => s.id)).toEqual(["draft-problems"]);
     setLab(["questions"]);
     expect(others(facts())[0]).toMatchObject({ id: "draft-solutions", asks: true });
+  });
+});
+
+describe("what a solution offers next, by what it is", () => {
+  const solution = (o: Partial<CardFacts> = {}) => nextSteps(facts({ kind: "solution", ...o }));
+
+  it("offers wording for a message, steps for something done by hand, and a brief for what's built", () => {
+    expect(solution({ solutionType: "message" })[0]).toMatchObject({ id: "word-message", label: "Word the message", ai: true });
+    expect(solution({ solutionType: "service" })[0]).toMatchObject({ id: "run-steps", label: "Steps to run this week", ai: true });
+    for (const t of ["change", "feature"] as const) expect(solution({ solutionType: t }).map((s) => s.id)).toContain("write-brief");
+    expect(solution().map((s) => s.id)).toContain("write-brief");
+    expect(solution({ solutionType: "message" }).map((s) => s.id)).not.toContain("write-brief");
+  });
+
+  it("opens what's written, in its own words", () => {
+    expect(solution({ solutionType: "message", brief: "b1" })[0]).toMatchObject({ id: "open-brief", label: "Its message plan" });
+    expect(solution({ solutionType: "service", brief: "b1" })[0]).toMatchObject({ id: "open-brief", label: "Its steps" });
+    expect(solution({ brief: "b1" }).map((s) => s.label)).toContain("Its brief");
+  });
+
+  it("works out a New product's modules until it has some, and a brief either way", () => {
+    expect(solution({ solutionType: "product" }).map((s) => s.id)).toEqual(expect.arrayContaining(["plan-modules", "write-brief"]));
+    expect(solution({ solutionType: "product", under: { solutions: 2, tests: 0 } }).map((s) => s.id)).not.toContain("plan-modules");
   });
 });
 

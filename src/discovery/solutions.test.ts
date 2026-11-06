@@ -84,15 +84,28 @@ describe("what code keeps of the drafts", () => {
     expect(cards.test?.test?.criterion).toBeUndefined();
   });
 
-  it("drops a draft resting on nothing the problem says, or on ids it wasn't sent", () => {
-    const { drafts, dropped } = keep(answer([draft({ cites: ["g1", "m1"] }), draft({ cites: ["l9", "q7"] })]));
-    expect(drafts).toEqual([]);
-    expect(dropped).toEqual(["it rests on nothing the problem says", "it rests on nothing the problem says"]);
+  it("keeps a draft resting on nothing the problem says, and says where it came from", () => {
+    const { drafts } = keep(answer([draft({ cites: ["g1", "m1"] }), draft({ title: "A shared family plan", cites: ["l9", "q7"] })]));
+    expect(drafts.map((d) => d.title)).toEqual(["Start the week from last week's order", "A shared family plan"]);
+    // An id it wasn't sent is no citation.
+    expect(drafts[1].cites).toEqual({ lines: [], pieces: [], goals: [], claims: [], steps: [] });
+    expect(drafts.map((d) => d.came)).toEqual(["idea", "idea"]);
+    expect(draftCards(drafts[0]).solution.came).toBe("idea");
   });
 
-  it("drops words and numbers that aren't in what was sent", () => {
-    const { drafts } = keep(answer([draft({ description: "Parents say “I hate cooking” so prefill it." }), draft({ title: "Save 45 minutes a week" })]));
-    expect(drafts).toEqual([]);
+  it("says nothing of where it came from when customers' words back it, and says so when only others' or their own do", () => {
+    expect(keep(answer([draft()])).drafts[0].came).toBeUndefined();
+    const i = input({ pieces: [{ ref: "hub:quote:o", text: "the app forgets my list", label: "Reddit", source: "s9", evidence: false, online: true }, { ref: "hub:quote:t", text: "we think they want it", label: "Their answers", source: "a", evidence: false }], claims: [{ id: "C1", who: "Acme", what: "Reorders", quote: "reorders rose" }] });
+    expect(keep(answer([draft({ cites: ["q1"] })]), i).drafts[0].came).toBe("read");
+    expect(keep(answer([draft({ cites: ["q2"] })]), i).drafts[0].came).toBe("answers");
+    expect(keep(answer([draft({ cites: ["c1"] })]), i).drafts[0].came).toBe("read");
+    expect(keep(answer([draft({ cites: [] })]), i).drafts[0].came).toBe("idea");
+  });
+
+  it("takes out words and numbers that aren't in what was sent, and the card stays", () => {
+    const { drafts } = keep(answer([draft({ description: "Parents say “I hate cooking” so prefill it. It saves the Sunday hour." }), draft({ title: "Save 45 minutes a week" })]));
+    expect(drafts.map((d) => d.title)).toEqual(["Start the week from last week's order", "Save minutes a week"]);
+    expect(drafts[0].description).toBe("It saves the Sunday hour.");
   });
 
   it("drops what's on the board already, and a second draft of the same thing", () => {
@@ -113,7 +126,10 @@ describe("what code keeps of the drafts", () => {
     const d = keep(answer([draft({ assumptions: [{ category: "magic", text: "It just works", importance: "3" }, { category: "viability", text: "It pays for itself", importance: "2" }], test: { ...draft().test, assumption: "1" } })])).drafts[0];
     expect(d.assumptions.map((a) => a.text)).toEqual(["It pays for itself"]);
     expect(d.test?.assumption).toBe(d.assumptions[0].id);
-    expect(keep(answer([draft({ assumptions: [] })])).drafts).toEqual([]);
+    // A draft with no assumption stays, and a test needs one to test.
+    const bare = keep(answer([draft({ assumptions: [] })])).drafts[0];
+    expect(bare.assumptions).toEqual([]);
+    expect(bare.test).toBeNull();
   });
 
   it("reads quoted wording nobody said in a test as wording it proposes, never as someone's words", () => {
@@ -127,8 +143,9 @@ describe("what code keeps of the drafts", () => {
     expect(draftCards(d).test).toBeNull();
   });
 
-  it("drops a solution whose own words put quotes in someone's mouth", () => {
+  it("takes quotes out of someone's mouth, and a title with nothing left says nothing", () => {
     expect(keep(answer([draft({ title: "A “Plan it for me” button" })])).drafts).toEqual([]);
+    expect(keep(answer([draft({ title: "A one-tap “Plan it for me” button for parents" })])).drafts.map((d) => d.title)).toEqual(["A one-tap button for parents"]);
     expect(keep(answer([draft({ title: "A ‘Plan it for me’ button" })])).drafts.map((d) => d.title)).toEqual(["A ‘Plan it for me’ button"]);
   });
 
@@ -139,12 +156,21 @@ describe("what code keeps of the drafts", () => {
 
   it("never counts an id's digits as a number someone said", () => {
     // q1, q2, l1, l2 were sent; 2 parents in 1 week weren't.
-    expect(keep(answer([draft({ description: "Prefill it: 2 parents said so in 1 week." })])).drafts).toEqual([]);
+    expect(keep(answer([draft({ description: "Prefill it: 2 parents said so in 1 week." })])).drafts[0].description).toBe("");
   });
 
-  it("says so when fewer than two drafts hold, and never adds one of its own", () => {
-    expect(keep(answer([draft()])).note).toBe("Each saves the Sunday hour. Qalam AI found only one way it could stand behind.");
-    expect(keep(answer([], "")).note).toBe("Qalam AI found no way it could stand behind.");
+  it("says so when fewer than two drafts come back, and never adds one of its own", () => {
+    expect(keep(answer([draft()])).note).toBe("Each saves the Sunday hour. Qalam AI has only one way to propose.");
+    expect(keep(answer([], "")).note).toBe("Qalam AI has no new way to propose.");
+  });
+
+  it("says what a solution is and how it's done, and a type it doesn't know is no type", () => {
+    const d = keep(answer([draft({ type: "message", how: "SMS, through a tool like Twilio" })])).drafts[0];
+    expect([d.type, d.how]).toEqual(["message", "SMS, through a tool like Twilio"]);
+    expect(draftCards(d).solution).toMatchObject({ solutionType: "message", how: "SMS, through a tool like Twilio" });
+    const bare = keep(answer([draft({ type: "magic", how: "" })])).drafts[0];
+    expect([bare.type, bare.how]).toEqual([undefined, undefined]);
+    expect(draftCards(bare).solution.solutionType).toBeUndefined();
   });
 
   it("takes ids out of what it wrote", () => {

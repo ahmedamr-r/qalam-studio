@@ -99,6 +99,7 @@ export function useCardFacts(id: string | null): CardFacts | null {
     const goal = thing?.type === "goal" && inputs ? goalById(inputs.tree, thing.goal) : undefined;
     return {
       kind: card.kind,
+      ...(card.solutionType ? { solutionType: card.solutionType } : {}),
       ...(brief ? { brief } : {}),
       evidence: evidenceSummary(card),
       page: need ? { topic: need.topic, strength: strengthOf(need), quotes: need.quotes, sources: need.sources, mix: need.mix } : null,

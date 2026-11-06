@@ -86,7 +86,7 @@ export default function ReviewLayer({ vp }: { vp: { w: number; h: number } }) {
     }
   }
   const file = origin?.kind === "dump" ? sourceOf(origin.sourceId)?.dump?.file : undefined;
-  const from = file ? `“${file.title}”` : origin?.kind === "dump" ? "your brain dump" : origin?.kind === "placed" ? "what was added to the project" : origin?.kind === "solutions" ? "drafted solutions" : origin?.kind === "tests" ? "drafted tests" : origin?.kind === "problems" ? "drafted problems" : "your sources";
+  const from = file ? `“${file.title}”` : origin?.kind === "dump" ? "your brain dump" : origin?.kind === "placed" ? "what was added to the project" : origin?.kind === "plan" ? "the plan" : origin?.kind === "solutions" ? "drafted solutions" : origin?.kind === "tests" ? "drafted tests" : origin?.kind === "problems" ? "drafted problems" : "your sources";
   // Goals proposed under a goal: whether, with the goals under it already, they make its number (code's arithmetic).
   const parts = origin?.kind === "breakdown" ? partsCheck(origin.goal, origin.relation, proposals) : null;
   const said = origin?.kind === "breakdown" ? `${plural(proposals.length, "goal")} proposed under it` : origin?.kind === "problems" ? `${plural(proposals.length, "problem")} drafted for it` : `${plural(proposals.length, "change")} from ${from}`;
@@ -175,6 +175,8 @@ function label(p: Proposal, all: Proposal[]): string {
       return p.color === "pink" ? "Pushback" : "Open question";
     case "goal":
       return `New sub-goal · ${LEVER_LABEL[p.part.lever]}`;
+    case "helps":
+      return "Also helps";
   }
 }
 
@@ -279,6 +281,12 @@ function Detail({ p }: { p: Proposal }) {
           ))}
           {!p.part.cites.length && <span className="text-micro text-fg-subtle">Rests on the goals above it; nothing in your material yet.</span>}
         </div>
+      );
+    case "helps":
+      return (
+        <span className="text-caption text-fg-muted" dir="auto">
+          Also helps “{p.to.title}”.
+        </span>
       );
   }
 }

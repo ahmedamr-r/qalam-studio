@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import clsx from "clsx";
-import { ASSUMPTION_LABEL } from "@/discovery/kinds";
+import { CAME_WORDS } from "@/discovery/evidence";
+import { ASSUMPTION_LABEL, SOLUTION_TYPE_LABEL } from "@/discovery/kinds";
 import type { SolutionDraft } from "@/discovery/solutions";
 import { feedback } from "@/commands/feedback";
 import { onOrgChange } from "@/org/live";
@@ -37,7 +38,7 @@ export function Drafts({ topic, board }: { topic: string; board: { board: string
       const d = await draftSolutions({ topic }, setWorking);
       setPicked(null);
       setView(await solutionsOf(topic));
-      if (!d.drafts.length) feedback(d.note || "Qalam AI found no way it could stand behind.", { id: "topic.solutions" });
+      if (!d.drafts.length) feedback(d.note || "Qalam AI has no new way to propose.", { id: "topic.solutions" });
     } catch (e) {
       feedback(`Qalam AI couldn't draft solutions: ${message(e)}`, { kind: "error", id: "topic.solutions" });
     } finally {
@@ -86,18 +87,21 @@ export function Drafts({ topic, board }: { topic: string; board: { board: string
                     label={<span className="text-body font-medium text-fg">{d.title}</span>}
                   />
                 </span>
-                <span className="shrink-0 text-micro text-fg-subtle">{d.idea ? "Your idea" : `${plural(d.cites.pieces.length, "quote")} behind it`}</span>
+                <span className="shrink-0 text-micro text-fg-subtle">{d.idea ? "Your idea" : d.came ? `Assumed · ${CAME_WORDS[d.came]}` : `${plural(d.cites.pieces.length, "quote")} behind it`}</span>
               </div>
-              <p className="text-body text-fg-muted">{d.description}</p>
-              <div className="flex flex-col gap-[4px]">
-                <span className="text-micro text-fg-subtle">Must be true</span>
-                {d.assumptions.map((a) => (
-                  <span key={a.id} className="flex items-start gap-[8px] text-caption">
-                    <span className="w-[84px] shrink-0 text-fg-subtle">{ASSUMPTION_LABEL[a.category]}</span>
-                    <span className={clsx("min-w-0 flex-1", d.test?.assumption === a.id ? "text-fg" : "text-fg-muted")}>{a.text}</span>
-                  </span>
-                ))}
-              </div>
+              {(d.type || d.how) && <p className="text-caption text-fg-subtle">{[d.type ? SOLUTION_TYPE_LABEL[d.type] : "", d.how ?? ""].filter(Boolean).join(" · ")}</p>}
+              {d.description && <p className="text-body text-fg-muted">{d.description}</p>}
+              {d.assumptions.length > 0 && (
+                <div className="flex flex-col gap-[4px]">
+                  <span className="text-micro text-fg-subtle">Must be true</span>
+                  {d.assumptions.map((a) => (
+                    <span key={a.id} className="flex items-start gap-[8px] text-caption">
+                      <span className="w-[84px] shrink-0 text-fg-subtle">{ASSUMPTION_LABEL[a.category]}</span>
+                      <span className={clsx("min-w-0 flex-1", d.test?.assumption === a.id ? "text-fg" : "text-fg-muted")}>{a.text}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
               {d.test && (
                 <div className="flex flex-col gap-[2px] rounded-md bg-app px-[10px] py-[8px] text-caption">
                   <span className="text-micro text-fg-subtle">First test</span>
