@@ -134,6 +134,9 @@ async function call(sourceId: string, label: string, body: unknown, recorded: ()
   const turn = session?.turn;
   if (turn) patchTurn(turn.chatId, turn.turnId, { status: "running", started: Date.now(), tokens: 0, error: undefined, activity: label });
   try {
+    // A body still to be put together (what's already known, looked up first) is, under the same Stop: it shows as working from the start.
+    if (typeof body === "function") body = await (body as () => Promise<unknown>)();
+    if (ctrl.signal.aborted) throw new DOMException("Stopped", "AbortError");
     return await runDump(body, session?.sample ? recorded() : null, {
       sample: session?.sample,
       signal: ctrl.signal,
@@ -147,10 +150,16 @@ async function call(sourceId: string, label: string, body: unknown, recorded: ()
   }
 }
 
+const INTERRUPTED = "Interrupted: the page was closed or reloaded.";
+
+/** The page is going (a reload, another address): a call it cuts off was interrupted, not broken. */
+let leaving = false;
+if (typeof window !== "undefined") for (const ev of ["beforeunload", "pagehide"]) window.addEventListener(ev, () => (leaving = true));
+
 /** A call that didn't finish: the session says where, so Try again runs that step again. */
 async function failed(sourceId: string, at: "reading" | "analyzing" | "placing", e: unknown) {
   const stopped = (e as Error).name === "AbortError";
-  const error = stopped ? "Stopped." : message(e);
+  const error = stopped ? "Stopped." : leaving ? INTERRUPTED : message(e);
   await setSession(sourceId, (s) => ({ ...s, phase: "failed", failed: { at, error } }));
   const turn = sessionOf(sourceOf(sourceId))?.turn;
   if (turn) patchTurn(turn.chatId, turn.turnId, stopped ? { status: "stopped", activity: undefined } : { status: "error", error, activity: undefined });
@@ -252,14 +261,24 @@ function firstFrontier(questions: AskQuestion[]): Pick<DumpSession, "phase" | "b
   return { phase: ask.length ? "asking" : "ready", buckets: firstRound(ask), held };
 }
 
+/** What Qalam AI took from an opening answered only with "I don't know": nothing of theirs, said plainly. */
+export const NOTHING_OF_THEIRS = "You don't know these yet, so nothing you said is behind what goes on the canvas: each card says it's assumed until something backs it.";
+
 /** Have Qalam AI read a dump: what it took from it, its pieces, its pushback, the first round. */
 export async function readDump(sourceId: string) {
   const s = sourceOf(sourceId);
   if (!s?.dump) return;
   await setSession(sourceId, (d) => ({ ...d, phase: "reading", failed: undefined }));
+  // An opening answered only with "I don't know" (src/space/find.ts): there's nothing of theirs to read
+  // a piece from, nor to ask about. It's placed as they asked, each card resting on nothing (keepBare):
+  // assumed, the web's words only ever others'. A don't-know never becomes a quote.
+  if (s.dump.aim && s.dump.within && !s.dump.within.length) {
+    await updateSource(sourceId, (x) => ({ ...x, quotes: [], dump: { ...x.dump!, phase: "ready", failed: undefined, understanding: NOTHING_OF_THEIRS, challenges: [], buckets: [] } }));
+    return turnDone(sourceId);
+  }
   const { tree, cards } = board();
   try {
-    const { raw, sample, model } = await call(sourceId, reading(s.dump), { stage: "dump-read", product: product(), dump: s.text, tree, ...aimOf(s.dump, cards), ...(await knownFor(sourceId)) }, () => sampleRaw(SAMPLE_DUMP_READ_RAW, cards), 3500);
+    const { raw, sample, model } = await call(sourceId, reading(s.dump), async () => ({ stage: "dump-read", product: product(), dump: s.text, tree, ...aimOf(s.dump!, cards), ...(await knownFor(sourceId)) }), () => sampleRaw(SAMPLE_DUMP_READ_RAW, cards), 3500);
     const read = sanitizeRead(raw, s.text, cards, Date.now(), s.dump.within, !!s.dump.file, openingOf(s.dump.aim));
     // Under each question, what was said before to one like it (src/memory/known.ts).
     const r = { ...read, questions: await withKnownAnswers(dumpMemory(sourceId), read.questions) };
@@ -268,7 +287,8 @@ export async function readDump(sourceId: string) {
       await updateSource(sourceId, (x) => ({ ...x, quotes: r.fragments, dump: { ...x.dump!, phase: "ready", failed: undefined, understanding: r.understanding, challenges: [], buckets: [], off: { wanted: r.wanted }, ...(model ? { model } : {}) } }));
       return turnDone(sourceId, { model, sample });
     }
-    if (!r.fragments.length) throw new AIError("parse", "Qalam AI found nothing in it to place on the canvas. Try again, or write a little more.");
+    // A dump asked for a goal or problems still places them with nothing behind them (keepBare); any other has nothing to place.
+    if (!r.fragments.length && !s.dump.aim) throw new AIError("parse", "Qalam AI found nothing in it to place on the canvas. Try again, or write a little more.");
     await updateSource(sourceId, (x) => ({
       ...x,
       quotes: r.fragments,
@@ -419,7 +439,8 @@ export async function readAnswers(sourceId: string, o: { looked?: boolean } = {}
   const rounds = roundAnswers(session).map((answers, i) => ({ answers: answers.map((a) => ({ question: a.question.slice(0, 200), answer: a.answer })), ...(session.buckets[i]?.analysis ? { analysis: session.buckets[i].analysis!.slice(0, 1500) } : {}) }));
   const look = mayLook(session, !!o.looked);
   // The rounds go as rounds; the source's text without them, so they aren't read twice.
-  const body = { stage: "dump-followup", product: product(), dump: s.text.slice(0, session.base ?? s.text.length), tree, ...aimOf(session, cards), ...(await knownFor(sourceId)), ...fields, rounds, ...(session.held?.length ? { held: session.held.map((q) => q.title.slice(0, 200)).slice(0, 20) } : {}), ...(look ? { look } : {}) };
+  // What's already known is looked up inside the call, so it shows as working from the start.
+  const body = async () => ({ stage: "dump-followup", product: product(), dump: s.text.slice(0, session.base ?? s.text.length), tree, ...aimOf(session, cards), ...(await knownFor(sourceId)), ...fields, rounds, ...(session.held?.length ? { held: session.held.map((q) => q.title.slice(0, 200)).slice(0, 20) } : {}), ...(look ? { look } : {}) });
   const recorded = () => sampleRaw(SAMPLE_DUMP_FOLLOWUP_RAW[Math.min(session.buckets.length, SAMPLE_DUMP_FOLLOWUP_RAW.length) - 1], cards);
   try {
     const { raw, sample, model } = await call(sourceId, o.looked ? "Qalam AI is reading what it found, with your answers" : "Qalam AI is reading your answers", body, recorded, 2500);
@@ -662,7 +683,7 @@ export async function resumeDumps() {
   const list = useSources.getState().list.filter((s) => s.kind === "dump" && s.dump);
   for (const s of list) {
     const p = s.dump!.phase;
-    if ((p === "reading" || p === "analyzing" || p === "placing") && !runs.has(s.id)) await setSession(s.id, (d) => ({ ...d, phase: "failed", failed: { at: p, error: "Interrupted: the page was closed or reloaded." } }));
+    if ((p === "reading" || p === "analyzing" || p === "placing") && !runs.has(s.id)) await setSession(s.id, (d) => ({ ...d, phase: "failed", failed: { at: p, error: INTERRUPTED } }));
   }
   // Proposals that were waiting on the board come back (what no longer fits drops out).
   const reviewed = [...list].reverse().find((s) => s.dump!.phase === "review" && s.dump!.proposals?.length);

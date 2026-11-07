@@ -78,6 +78,11 @@ async function main() {
         return n === 0 ? turnOf(questions) : done;
       },
       "/plan/propose": () => ({ cards: [], start: null, doubt: "", quotes: {} }),
+      // A brain dump's calls (src/ui/discovery/dump.ts): placing gives one problem with nothing behind it; nothing else is asked of it here.
+      "/api/discovery": (b: { stage?: string }) =>
+        b?.stage === "dump-place"
+          ? { summary: "One problem to look into.", cards: [{ id: "n1", kind: "opportunity", parentCard: null, parentNew: null, title: "Parents can't tell which groceries will arrive on time", description: "", fragmentIds: [], answers: [], metric: null, assumptions: [], test: null }], evidence: [], assumptions: [], metrics: [], edits: [], moves: [], merges: [], notes: [] }
+          : { understanding: "", fragments: [], challenges: [], questions: [] },
     });
 
     // Someone with no idea, from the empty canvas's box: asked to read, it works it out with them.
@@ -258,7 +263,32 @@ async function main() {
     let openingKnew = false;
     for (let i = 0; i < 60 && !(openingKnew = await tab.js<boolean>(`document.body.innerText.includes("What you told me before, so I'm not asking again") && document.body.innerText.includes('Groceries for new parents')`)); i++) await sleep(250);
     const openingStep = (await tab.see()).step;
+    if (!openingKnew) {
+      await tab.shot(path.join(out, "find-goal.png"));
+      console.log(`      chat: ${(await tab.js<string>(`(document.querySelector('[data-chat-thread]') ?? document.body).innerText.slice(-600)`)).replace(/\s+/g, " ")}`);
+    }
     check(seeded && openingKnew && openingStep?.title === "What is the team trying to change in the next few months?" && /of 3/.test(openingStep.label), "Help me find one doesn't ask again what they answered lately, says so, and asks the rest", { seeded, openingKnew, step: openingStep?.title, label: openingStep?.label });
+
+    // An opening they don't know any of: no words of theirs to read, so it isn't read, and it's placed as assumed instead of ending on nothing.
+    tab.stubbed.length = 0;
+    await tab.canvas("?find=problem");
+    for (let i = 0; i < 60 && !(await tab.see()).step?.title; i++) await sleep(250);
+    let unknowns = 0;
+    for (let i = 0; i < 40 && !(await tab.see()).step?.review; i++) {
+      if (await tab.inCard("I don't know")) unknowns++;
+      await sleep(400);
+    }
+    await tab.inCard("Send answers");
+    let placedBare = false;
+    for (let i = 0; i < 60 && !(placedBare = await tab.js<boolean>(`[...document.querySelectorAll('button')].some((b) => /Accept all/.test(b.innerText))`)); i++) await sleep(250);
+    const dumpCalls = tab.stubbed.filter((x) => x.path === "/api/discovery").map((x) => x.body as { stage?: string; fragments?: unknown[]; understanding?: string });
+    const place = dumpCalls.find((b) => b.stage === "dump-place");
+    const nothingShown = await tab.js<boolean>(`document.body.innerText.includes('found nothing in it to place')`);
+    check(
+      unknowns >= 3 && placedBare && !nothingShown && !dumpCalls.some((b) => b.stage === "dump-read") && !!place && place.fragments?.length === 0 && /You don't know these yet/.test(place.understanding ?? ""),
+      "An opening answered only with I don't know isn't read for quotes: it's placed as assumed, and never ends on nothing",
+      { unknowns, placedBare, nothingShown, stages: dumpCalls.map((b) => b.stage), fragments: place?.fragments?.length },
+    );
 
     // The first run's hand-off: their words reach the chat's plan route on the canvas.
     tab.stubbed.length = 0;

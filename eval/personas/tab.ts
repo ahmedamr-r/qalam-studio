@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { createWriteStream, mkdtempSync, rmSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -117,6 +117,14 @@ export class Tab {
 
   async start() {
     this.server = spawn("npx", ["vite", "--port", String(this.port), "--strictPort"], { cwd: this.cwd, env: { ...process.env, QALAM_HOME: this.home, QALAM_NO_MODELS: process.env.QALAM_NO_MODELS ?? "1", RATE_LIMIT_PER_10_MIN: "1000" }, stdio: ["ignore", "pipe", "pipe"], detached: true });
+    // What the app's server says, beside the run's home, each line with its time: a crash or a warning shows there.
+    const log = createWriteStream(path.join(path.dirname(this.home), "server.log"), { flags: "a" });
+    const stamp = (from: string) => (d: Buffer) => {
+      for (const line of String(d).split("\n")) if (line.trim()) log.write(`${new Date().toISOString().slice(11, 23)} ${from} ${line}\n`);
+    };
+    this.server.stdout?.on("data", stamp("out"));
+    this.server.stderr?.on("data", stamp("err"));
+    this.server.on("exit", (code, signal) => log.write(`${new Date().toISOString().slice(11, 23)} the server exited (code ${code}, signal ${signal})\n`));
     this.base = `http://${this.p.id}.localhost:${this.port}`;
     for (let i = 0; i < 120; i++) {
       await sleep(500);
@@ -204,8 +212,8 @@ export class Tab {
       const body = d.params.request.postData ? JSON.parse(d.params.request.postData) : null;
       if (route) this.stubbed.push({ path: route, body });
       const data = route ? await routes[route](body) : null;
-      // Only a plan's steps stream; the rest answer in plain JSON.
-      const plain = !route?.startsWith("/plan/");
+      // A plan's steps and the discovery calls stream; the rest answer in plain JSON.
+      const plain = !route?.startsWith("/plan/") && route !== "/api/discovery";
       const text = plain ? JSON.stringify(data) : `${JSON.stringify({ type: "result", data })}\n`;
       void this.send("Fetch.fulfillRequest", { requestId: d.params.requestId, responseCode: 200, responseHeaders: [{ name: "content-type", value: plain ? "application/json" : "application/x-ndjson" }], body: Buffer.from(text).toString("base64") });
     };
@@ -302,6 +310,14 @@ export class Tab {
     await this.send("Input.insertText", { text });
     await sleep(200);
     await this.press("Enter");
+    // It went when the box emptied; else Send is pressed, and a message that still won't go is said.
+    const left = `[...document.querySelectorAll('textarea')].filter((x) => x.getBoundingClientRect().width > 0)[0]?.value.trim() === ${JSON.stringify(text.trim())}`;
+    await sleep(600);
+    if (await this.js<boolean>(left)) {
+      await this.js<boolean>(`(() => { const b = [...document.querySelectorAll('button[aria-label="Send"]')].find((x) => !x.disabled && x.getBoundingClientRect().width > 0); b?.click(); return !!b; })()`);
+      await sleep(600);
+      if (await this.js<boolean>(left)) this.say(`(the message stayed in the box: ${text.slice(0, 60)})`);
+    }
     this.say(`said: ${text}`);
   }
 
@@ -632,12 +648,26 @@ export async function tabDocs(tab: Tab, p: Persona, fixtures: string, out: strin
   await tab.canvas();
   await tab.attach((p.docs ?? []).map((d) => path.join(fixtures, d)));
   await tab.chat(p.opener);
-  // Taken in: wait till the problem pages it filed are there.
+  // Taken in: wait till the problem pages it filed are there and nothing is still being read or placed,
+  // twice running, since a step can start a moment after the last one ends. Leaving earlier cuts off what's
+  // in flight: the next step loads the page again.
+  const midway = (list: { dump?: { phase?: string } }[] | null) => (list ?? []).some((x) => ["reading", "analyzing", "placing"].includes(x.dump?.phase ?? ""));
   const began = Date.now();
+  let calm = 0;
   for (;;) {
     const needs = await tab.api<{ needs: unknown[] }>("/needs");
+    const sources = await tab.api<{ dump?: { phase?: string } }[]>("/sources");
     const s = await tab.see();
-    if ((needs?.needs.length && !s.busy) || Date.now() - began > 8 * 60_000) break;
+    // A brain dump of what they sent asks first: they answer it, as anyone would before going on.
+    if (s.step && !s.busy) {
+      const done = await tab.until(["Accept all", "Discard all"], "docs");
+      if (done !== "Accept all") break;
+      await tab.click(done);
+      calm = 0;
+      continue;
+    }
+    calm = needs?.needs.length && !s.busy && !midway(sources) ? calm + 1 : 0;
+    if (calm >= 2 || Date.now() - began > 8 * 60_000) break;
     await sleep(3000);
   }
   await sleep(3000);
