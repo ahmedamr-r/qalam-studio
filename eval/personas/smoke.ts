@@ -174,6 +174,17 @@ async function main() {
       await tab.inCard((await tab.see()).step?.next ?? "Next");
     });
     check(pressed.length === 1 && pressed[0].how === "unknown" && typedUnknown.length === 1 && typedUnknown[0].how === "unknown", "\"I don't know\", pressed or typed, goes as that, never as their words", { pressed, typed: typedUnknown });
+
+    // What was asked is remembered as it's answered: the picks and their words for the team, what they didn't know on this computer.
+    type Remembered = { entries: { id: string; q: string; a: string; how: string; shared: boolean }[] };
+    let mem: Remembered | null = null;
+    for (let i = 0; i < 20 && !(mem = await tab.api<Remembered>("/memory"))?.entries.some((e) => e.how === "unknown"); i++) await sleep(250);
+    const kinds = new Set((mem?.entries ?? []).map((e) => `${e.how}:${e.shared}`));
+    check(kinds.has("pick:true") && kinds.has("own:true") && kinds.has("unknown:false"), "What was asked is remembered as it's answered: picks and their words for the team, what they didn't know on this computer", [...kinds]);
+    const one = mem?.entries.find((e) => e.how === "own");
+    if (one) await tab.js<boolean>(`fetch('/api/org/${tab.org}/memory/${one.id}', { method: 'DELETE' }).then((r) => r.ok)`);
+    const after = await tab.api<Remembered>("/memory");
+    check(!!one && !!after && !after.entries.some((e) => e.id === one.id), "Forget takes a line off what Qalam AI remembers", one?.q);
     mode = "first";
 
     // The first run's hand-off: their words reach the chat's plan route on the canvas.

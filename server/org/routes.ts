@@ -62,6 +62,7 @@ import { aboutTopic, lookOnline } from "./posts";
 import { namesSomething, readFirstAnswer, scanNow, startScan, steerQuestions, steerScan, stopScan } from "./scan";
 import { steerRound } from "@/scan/steer";
 import { askBrief, briefRequestOf, writeCardBrief } from "./briefs";
+import { forgetAsked, listMemory, RememberBody, rememberRound } from "./memory";
 import { AskingIn } from "@/asking/wire";
 import { askedOf } from "@/discovery/brief";
 import { askScanPlan, firstBuild, keepAnswers, keepAudience, planAudiences, scanShare, writeBrief } from "./scan-plan";
@@ -1249,6 +1250,14 @@ export function orgRoutes(): Hono<Env> {
     await editKnown(c.get("store"), edit, { tab: tabOf(c.req.raw.headers) });
     return c.json({ ok: true });
   });
+  // Qalam AI's memory of what it asked (src/memory/): a round's answers remembered, what's remembered, a line forgotten.
+  r.get("/api/org/:org/memory", async (c) => c.json(await listMemory(c.get("store"))));
+  r.post("/api/org/:org/memory/asked", async (c) => {
+    const b = RememberBody.safeParse(await c.req.json().catch(() => null));
+    if (!b.success) return bad("Send the conversation and its answers");
+    return c.json({ kept: await rememberRound(c.get("store"), b.data, { tab: tabOf(c.req.raw.headers) }) });
+  });
+  r.delete("/api/org/:org/memory/:id", async (c) => c.json({ ok: await forgetAsked(c.get("store"), c.req.param("id"), { tab: tabOf(c.req.raw.headers) }) }));
   // The project's words (hub/terms.md): a term added, fixed or taken off.
   r.get("/api/org/:org/terms", async (c) => c.json({ terms: await c.get("store").getTerms() }));
   r.put("/api/org/:org/terms", async (c) => {

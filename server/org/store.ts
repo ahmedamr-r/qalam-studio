@@ -96,6 +96,8 @@ export type OrgEvent = { tab?: string } & (
   | { kind: "market"; session?: boolean }
   /** The project's words changed (hub/terms.md). */
   | { kind: "terms" }
+  /** What Qalam AI asked and how it was answered changed (hub/asked.jsonl, .qalam/local/asked.jsonl). */
+  | { kind: "asked" }
   /** A scan of what people complain about moved on (chats/scan/session.json). */
   | { kind: "scan" }
   /** A card's brief was written or taken off (hub/briefs/). */
@@ -856,6 +858,22 @@ export class OrgStore {
     if (!entries.length) return;
     await this.appendLog("hub/jobs.jsonl", entries);
     this.emit({ kind: "job", tab: opts.tab });
+  }
+
+  // What Qalam AI asked and how it was answered (src/memory/): their own answers and the picks they
+  // agreed to in hub/asked.jsonl, for the whole team; what they didn't know or left in
+  // .qalam/local/asked.jsonl, this computer's own. A line per answer, never rewritten; foldAsked reads them.
+
+  async listAsked(): Promise<unknown[]> {
+    const [shared, local] = await Promise.all([this.readLog<unknown>("hub/asked.jsonl"), this.readLog<unknown>(".qalam/local/asked.jsonl")]);
+    return [...shared, ...local];
+  }
+
+  async addAsked(lines: { shared: unknown[]; local: unknown[] }, opts: { tab?: string } = {}): Promise<void> {
+    if (!lines.shared.length && !lines.local.length) return;
+    if (lines.shared.length) await this.appendLog("hub/asked.jsonl", lines.shared);
+    if (lines.local.length) await this.appendLog(".qalam/local/asked.jsonl", lines.local);
+    this.emit({ kind: "asked", tab: opts.tab });
   }
 
   // Feeds (hub/feeds.jsonl): a connector's saved search wired to goals and cards, then a line per
@@ -1843,6 +1861,8 @@ export class OrgStore {
       this.emit({ kind: "feed" });
     } else if (rel === "hub/steps.jsonl") {
       this.emit({ kind: "step" });
+    } else if (rel === "hub/asked.jsonl") {
+      this.emit({ kind: "asked" });
     } else if (parts[0] === "hub" && parts[1] === "goals" && parts.length === 3 && rel.endsWith(".json")) {
       this.emit({ kind: "goalwork", goal: path.basename(rel, ".json") });
     } else if (parts[0] === "hub" && parts[1] === "solutions" && parts.length === 3 && rel.endsWith(".json")) {

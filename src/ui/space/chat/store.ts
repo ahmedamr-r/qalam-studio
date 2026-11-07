@@ -55,6 +55,8 @@ import { goalsForProblem, lookForGoal, suggestGoalNumber } from "@/org/goal-work
 import { knowsMarket } from "@/market/types";
 import { loadMarket, useMarket } from "@/org/market";
 import { useSpaceView } from "@/space/view";
+import { rememberRound } from "@/org/memory";
+import { saysDontKnow } from "@/asking/dontknow";
 import { onOrgChange } from "@/org/live";
 import { needsDb } from "@/org/needs";
 import { otherReading, requestOf, scanInput } from "@/scan/input";
@@ -502,6 +504,7 @@ const scanAsking = (id: string): AskingState | null => {
 /** The interview's host before what to build first: its turns read what the scan read, its lookups, and who the quotes show at the end. */
 export const scanPlanHost = (id: string): AskingHost => ({
   key: id,
+  memory: () => ({ flow: "scan", key: id, about: { product: useSpaceView.getState().space ?? null } }),
   get: () => scanAsking(id),
   set: (fn) => {
     const s = scanAsking(id);
@@ -649,6 +652,11 @@ const askedFrom = (s: AskingState): BriefAsked => askedFromAnswers(answersOf(s))
 /** The interview's host for a brief: its turns through the core, which read what it would be written from; its lookups; the writing at the end. */
 export const briefHost = (id: string): AskingHost => ({
   key: id,
+  memory: () => {
+    const card = briefCard(id);
+    const board = card ? boardOfCard(card) : null;
+    return { flow: "brief", key: id, about: { product: card ? productOfCard(card) : (useSpaceView.getState().space ?? null), ...(card ? { card } : {}), ...(board ? { board } : {}) } };
+  },
   get: () => briefAsking(id),
   set: (fn) => {
     const b = briefNow(id);
@@ -878,6 +886,7 @@ const planAsk = (id: string): PlanAsk | null => {
  */
 export const planHost = (id: string): AskingHost => ({
   key: id,
+  memory: () => ({ flow: "plan", key: id, about: { product: useSpaceView.getState().space ?? null } }),
   // A plan from before the interview goes on as one: its rounds and looks become its state.
   get: () => {
     const j = canvasPlan(id);
@@ -1055,6 +1064,12 @@ async function keepDraftAnswers(id: string, done = false): Promise<string | null
 /** The interview's host for a card's draft: its turn through the core, its lookups in their project and on the web, the card's own draft at the end. */
 export const draftHost = (id: string): AskingHost => ({
   key: id,
+  memory: () => {
+    const j = draftJob(id);
+    if (!j) return null;
+    const board = boardOfCard(j.card);
+    return { flow: "card", key: id, about: { product: productOfCard(j.card), card: j.card, ...(board ? { board } : {}) } };
+  },
   get: () => draftJob(id)?.asking ?? null,
   set: (fn) => setDraftJob(id, (j) => ({ ...j, asking: fn(j.asking) })),
   turn: async (s, signal) => {
@@ -1376,6 +1391,17 @@ export async function answerFind(id: string, answers: Readonly<Record<string, st
   if (t?.job.kind !== "find") return;
   const what = t.job.what;
   const questions = findQuestionsOf(t.job);
+  // The opening questions remembered as they're answered (src/memory/), whatever comes of them.
+  const opened = t.job.goal;
+  void rememberRound({
+    flow: opened ? "focus" : "find",
+    key: id,
+    about: { product: useSpaceView.getState().space ?? null, ...(opened ? { goal: opened.id, card: opened.card } : {}) },
+    answers: questions.map((q) => {
+      const a = (answers[q.id] ?? "").trim();
+      return { qid: q.id, q: q.title, a, how: !a ? ("left" as const) : saysDontKnow(a) ? ("unknown" as const) : ("own" as const) };
+    }),
+  });
   const { text: words, asked, said } = findText(questions, answers);
   if (words.length < FIND_MIN) return change((c) => withJob(c, id, (j) => (j.kind === "find" ? { ...j, error: "Say a little more in your answers, so there's something to go on." } : j)));
   const source = newId();

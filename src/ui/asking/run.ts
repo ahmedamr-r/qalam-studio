@@ -1,6 +1,8 @@
-import { applyTurn, askInstead, awaitsConfirm, closeRound, confirmed, currentRound, endNow, forDraft, lookupLanded, markRead, nextAfter, offPoint, saveRound, startLookup, takePicks, waitedOn } from "@/asking/engine";
+import { answersOf, applyTurn, askInstead, awaitsConfirm, closeRound, confirmed, currentRound, endNow, forDraft, lookupLanded, markRead, nextAfter, offPoint, saveRound, startLookup, takePicks, waitedOn } from "@/asking/engine";
 import type { AskTurn, AskingState, FoundLine, Lookup } from "@/asking/types";
 import type { FocusLook } from "@/goals/focus";
+import type { AskedAbout, AskedFlow, RoundAnswer } from "@/memory/types";
+import { rememberRound } from "@/org/memory";
 import { orgContext } from "@/org/pack";
 import type { FlowState } from "@/ui/ai/questionFlow";
 
@@ -24,6 +26,35 @@ export interface AskingHost {
   generate(s: AskingState, signal: AbortSignal): Promise<void>;
   /** What it's doing now, for the thread. */
   status?(s: "thinking" | "looking"): void;
+  /** Where the project's memory keeps this conversation's answers (src/memory/): which flow, its key, and what it's about. None: not remembered. */
+  memory?(): { flow: AskedFlow; key: string; about: AskedAbout } | null;
+}
+
+const posting = new Set<string>();
+
+/**
+ * The rounds closed since the last time, remembered in the project's memory: every question and how it
+ * was answered (their words, Qalam AI's pick, they don't know, or left). A round that didn't reach the
+ * core goes with the next, so nothing waits on it and nothing is lost.
+ */
+export async function remember(h: AskingHost): Promise<void> {
+  const m = h.memory?.();
+  const s = h.get();
+  if (!m || !s || posting.has(h.key)) return;
+  const from = s.memo ?? 0;
+  let upto = from;
+  while (upto < s.rounds.length && (s.rounds[upto].form.submitted || !!s.end)) upto++;
+  if (upto === from) return;
+  const answers: RoundAnswer[] = s.rounds.slice(from, upto).flatMap((r) => {
+    const code = new Set(r.questions.filter((q) => q.by === "code").map((q) => q.id));
+    return answersOf({ rounds: [r] }).map((a) => ({ qid: a.id, q: a.question, a: a.text, how: a.how, ...(code.has(a.id) ? { code: true as const } : {}) }));
+  });
+  posting.add(h.key);
+  try {
+    if (await rememberRound({ ...m, answers })) h.set((x) => ({ ...x, memo: Math.max(x.memo ?? 0, upto) }));
+  } finally {
+    posting.delete(h.key);
+  }
 }
 
 /** Why the conversation paused: a round or a lookup put to them, What we settled, or it generated. */
@@ -77,6 +108,7 @@ export function generateNow(h: AskingHost) {
 
 /** On from wherever it is: turns and lookups until a round shows, a lookup is put to them, What we settled waits, or it has generated. */
 export async function goOn(h: AskingHost, signal: AbortSignal): Promise<Paused> {
+  void remember(h);
   for (;;) {
     startLookups(h);
     const s = h.get();
@@ -113,6 +145,7 @@ export const keepRound = (h: AskingHost, form: FlowState) => h.set((s) => saveRo
 /** A round sent: on to what comes next. */
 export function answer(h: AskingHost, form: FlowState, signal: AbortSignal): Promise<Paused> {
   h.set((s) => closeRound(s, form));
+  // goOn remembers the round as it starts.
   return goOn(h, signal);
 }
 

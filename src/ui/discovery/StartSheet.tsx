@@ -9,7 +9,8 @@ import type { AskingState } from "@/asking/types";
 import { SAMPLE_ANSWERS } from "@/ai/fixtures-discovery";
 import { updateProject, useProject } from "@/projects/session";
 import type { DiscoveryState } from "@/discovery/types";
-import { initialFlow, type FlowState } from "../ai/questionFlow";
+import { answerWords, initialFlow, type FlowState } from "../ai/questionFlow";
+import { rememberRound } from "@/org/memory";
 import { Questionnaire } from "../ai/Questionnaire";
 import { ErrorNote, Progress } from "../ai/common";
 import { Button, Field, IconBtn, Spinner } from "../controls";
@@ -207,6 +208,12 @@ function ImportStep() {
 // ---------------------------------------------------------------------------
 // The interview
 
+/** Where the project's memory keeps a board interview's answers: the board's own conversation. */
+function memoryOf(): { flow: "interview"; key: string; about: { product: string | null; board: string } } | null {
+  const p = useProject.getState().project;
+  return p ? { flow: "interview", key: p.id, about: { product: p.product ?? null, board: p.id } } : null;
+}
+
 const saveTimer: { t?: ReturnType<typeof setTimeout> } = {};
 /** The interview as it stands, saved on the project (debounced: typing is many changes). */
 function saveInterview(patch: Partial<NonNullable<DiscoveryState["interview"]>>, now = false) {
@@ -240,6 +247,7 @@ function Interview({ followups }: { followups: boolean }) {
 
   const host = (core: InterviewAnswer[]): AskingHost => ({
     key: "board-interview",
+    memory: () => memoryOf(),
     get: () => live.current,
     set: (fn) => {
       const next = fn(live.current ?? emptyAsking());
@@ -272,6 +280,9 @@ function Interview({ followups }: { followups: boolean }) {
   const onCore = (done: FlowState) => {
     setFlow(done);
     saveInterview({ flow: done }, true);
+    // Code's own questions, remembered with the rest of the interview.
+    const m = memoryOf();
+    if (m) void rememberRound({ ...m, answers: CORE_QUESTIONS.map((q) => ({ q, w: answerWords(q, done.answers[q.id]) })).map(({ q, w }) => ({ qid: `core-${q.id}`, q: q.title, a: w.text, how: w.how, code: true as const })) });
     const fresh = emptyAsking();
     live.current = fresh;
     setAsking(fresh);

@@ -43,7 +43,9 @@ import { cardOf } from "@/discovery/ops";
 import { KIND_LABEL } from "@/discovery/kinds";
 import { arrangeNew, underCard, type Proposal } from "@/discovery/proposals";
 import { partialPlace, sanitizePlace, type PlaceContext } from "@/discovery/place";
-import { initialFlow, type FlowState } from "../ai/questionFlow";
+import { answerWords, initialFlow, resolvedAnswers, type FlowState } from "../ai/questionFlow";
+import { toQuestion } from "../ai/plan";
+import { rememberRound } from "@/org/memory";
 import { openTurn, patchTurn } from "../ai/chats";
 import { appendThought, endAgent, narrate, startAgent, updateAgent } from "../ai/agents";
 import { canvasProduct } from "@/space/view";
@@ -313,10 +315,36 @@ async function keepRound(sourceId: string) {
   });
 }
 
+/**
+ * The round just closed, in the project's memory (src/memory/): every question and how it was answered,
+ * a round they stopped half-way for what they answered of it. Help me find one's and the focus's rounds
+ * are theirs; any other dump's are the dump's.
+ */
+function rememberDumpRound(sourceId: string) {
+  const s = sourceOf(sourceId);
+  const session = sessionOf(s);
+  const b = session?.buckets.at(-1);
+  if (!s || !session || !b) return;
+  const qs = b.questions.map(toQuestion);
+  const asked = b.form.submitted ? qs : qs.filter((q) => b.form.answers[q.id]);
+  const answers = resolvedAnswers(qs, b.form.answers);
+  const goal = session.aim?.goal;
+  void rememberRound({
+    flow: session.aim ? (goal ? "focus" : "find") : "dump",
+    key: sourceId,
+    about: { product: s.product ?? null, source: sourceId, ...(goal ? { goal: goal.id, card: goal.card } : {}) },
+    answers: asked.map((q) => {
+      const w = answerWords(q, answers[q.id]);
+      return { qid: q.id, q: q.title, a: w.text, how: w.how };
+    }),
+  });
+}
+
 /** The builder answered the round: Qalam AI reads the answers. */
 export async function answerRound(sourceId: string, form: FlowState) {
   clearTimeout(saving);
   await setSession(sourceId, (s) => closeDumpRound(s, form, "analyzing"));
+  rememberDumpRound(sourceId);
   await keepRound(sourceId);
   fileAnswers(sourceId);
   await readAnswers(sourceId);
@@ -326,6 +354,7 @@ export async function answerRound(sourceId: string, form: FlowState) {
 export async function skipRest(sourceId: string, form?: FlowState) {
   clearTimeout(saving);
   await setSession(sourceId, (s) => closeDumpRound(s, form ?? s.buckets[s.buckets.length - 1]?.form ?? initialFlow([]), "skipped"));
+  rememberDumpRound(sourceId);
   await keepRound(sourceId);
   fileAnswers(sourceId);
 }

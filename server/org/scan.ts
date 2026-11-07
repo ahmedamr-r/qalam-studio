@@ -15,6 +15,9 @@ import { captureTogether, type TakenTogether } from "../capture";
 import { readLinks, realDeps, type MarketDeps } from "./market";
 import { readAppReviews, readJson, readPosts, type ReadReviews } from "./pages";
 import type { OrgStore } from "./store";
+import { rememberRound } from "./memory";
+import { saysDontKnow } from "@/asking/dontknow";
+import { questionKey } from "@/memory/fold";
 
 /**
  * What's known about an idea or a product, in the core: what people complain about (apps' reviews and
@@ -69,6 +72,9 @@ export async function steerScan(store: OrgStore, raw: unknown, opts: { tab?: str
   const more = steerOf(raw);
   const now = await store.getScanSession();
   if (!now || now.state !== "reading" || (!more.said.length && !more.off.length)) return now;
+  // What they told it while it read, in the project's memory (src/memory/), so no later question asks it again.
+  if (more.said.length)
+    await rememberRound(store, { flow: "steer", key: `scan-${now.at}`, about: { product: null }, answers: more.said.map((x) => ({ qid: questionKey(x.question), q: x.question, a: x.answer, how: saysDontKnow(x.answer) ? ("unknown" as const) : ("own" as const) })) }, opts).catch(() => {});
   return store.changeScanSession((s) => {
     const cur = s ?? now;
     return cur.at === now.at && cur.state === "reading" ? { ...cur, steer: withSteer(cur.steer, more) } : cur;

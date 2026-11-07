@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { atomicWrite, locked, readJson, stableStringify } from "./org/fsx";
 import { localDir } from "./paths";
@@ -22,6 +23,8 @@ export interface Settings {
   welcomedAt?: number;
   /** Who's on this computer, as they gave it in the first run (their position is per organization, in its `.qalam/local`). */
   you?: { name: string };
+  /** This computer's person as the project's memory names who answered (hub/asked.jsonl, src/memory/): made once, never shown. */
+  youId?: string;
   /** Talking instead of typing: the engine they chose, their own dictation app, or none (unset: Apple's engine where the Mac has it, src/voice/model.ts). */
   voice?: { use: VoiceChoice };
   /** How each connector is reached: through Claude Code's server of that name, a token in the Keychain, Qalam's own sign-in to the service's MCP server at `url`, or Qalam's own Google sign-in to Drive's API (tokens in the Keychain). */
@@ -44,4 +47,17 @@ export function writeSettings(patch: Partial<Settings>): Promise<Settings> {
     await atomicWrite(file(), stableStringify(next));
     return next;
   });
+}
+
+/** Who answers on this computer, as the project's memory names them: a stable id, made once, and their name where they gave one. */
+export async function whoAmI(): Promise<{ id: string; name?: string }> {
+  const s = await locked(file(), async () => {
+    const now = await readSettings();
+    if (now.youId) return now;
+    const next: Settings = { ...now, youId: `u${randomUUID().replace(/-/g, "").slice(0, 12)}` };
+    await atomicWrite(file(), stableStringify(next));
+    return next;
+  });
+  const name = s.you?.name?.trim();
+  return { id: s.youId!, ...(name ? { name } : {}) };
 }

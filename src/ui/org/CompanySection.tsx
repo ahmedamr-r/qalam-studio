@@ -9,6 +9,7 @@ import { useCurrentOrg, useWords } from "../frame/store";
 import { r } from "../recipes";
 import { DomainReading, hostOf, LookForRivals, LookUpCompany } from "./CompanyLookUp";
 import { WordsGroup } from "./WordsGroup";
+import { MemoryGroup } from "./MemoryGroup";
 
 /*
  * What's known about the company on its canvas: the facts and competitors kept, read here on asking
@@ -194,6 +195,8 @@ export function CompanySection({ close }: { close?: ReactNode }) {
       </Group>
 
       <WordsGroup />
+
+      <MemoryGroup />
 
       {(domain || knowsMarket(market)) && (
         <>

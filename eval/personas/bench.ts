@@ -22,6 +22,10 @@ import { lookForPlan, planNext, proposePlan, routeQuestion, type PlanBody } from
 import { askScanPlan, firstBuild, keepAnswers, keepAudience, planAudiences, writeBrief } from "../../server/org/scan-plan";
 import { scanToEnd, steerQuestions, type ScanDeps } from "../../server/org/scan";
 import type { OrgStore } from "../../server/org/store";
+import { rememberRound } from "../../server/org/memory";
+import { questionKey } from "@/memory/fold";
+import type { AskedAbout, AskedFlow } from "@/memory/types";
+import { saysDontKnow } from "@/asking/dontknow";
 import type { Player } from "./player";
 import { tapped, type Tap } from "./tap";
 import type { Persona } from "./types";
@@ -114,6 +118,14 @@ async function answerRound(player: Player, r: AskRound, at: { flow: string; roun
   return { ...form, submitted: true };
 }
 
+/** The round just closed, in the project's memory, as the window remembers it (src/ui/asking/run.ts). */
+async function rememberIn(store: OrgStore, flow: AskedFlow, key: string, about: AskedAbout, s: AskingState) {
+  const r = s.rounds.at(-1);
+  if (!r) return;
+  const answers = answersOf({ rounds: [r] }).map((a) => ({ qid: a.id, q: a.question, a: a.text, how: a.how }));
+  await rememberRound(store, { flow, key, about, answers }).catch(() => {});
+}
+
 /** A round answered: the last one, sent with what the box left. */
 const withForm = (s: AskingState, form: FlowState): AskingState => ({ ...s, rounds: s.rounds.map((x, i) => (i === s.rounds.length - 1 ? { ...x, form } : x)) });
 
@@ -162,6 +174,7 @@ async function briefInterview(store: OrgStore, req: Omit<BriefRequest, "asked">,
       const r = currentRound(s)!;
       questions.push(r.questions);
       s = withForm(s, await answerRound(player, r, { flow: "brief", round: s.rounds.length - 1 }, signal));
+      await rememberIn(store, "brief", `brief-${req.card.id}`, { product: null, card: req.card.id }, s);
       continue;
     }
     if (next === "wait") continue;
@@ -234,6 +247,7 @@ export async function planFlow(store: OrgStore, p: Persona, player: Player, t: T
       questions.push(r.questions);
       if (o.firstRoundOnly) return { path: "plan", said, route, body: withAsking(), questions, draft: null, brief: null, firstRoundOnly: true, bodies };
       s = withForm(s, await answerRound(player, r, { flow: "plan", round: s.rounds.length - 1 }, signal));
+      await rememberIn(store, "plan", "plan", { product: null }, s);
       continue;
     }
     if (next === "wait") continue;
@@ -325,6 +339,8 @@ export async function scanFlow(store: OrgStore, p: Persona, player: Player, t: T
   const steer = await steerQuestions({ target }, signal, tapped({ research, read: readPage, structured }, t));
   if (o.firstRoundOnly) return { ...base, startAsked: [], session: null, questions: [steer], firstRoundOnly: true };
   const allTold = steerAnswers(steer, await player.fill(steer, { flow: "steer", round: 0 }, signal));
+  // What they told it while it read, remembered as the core remembers it (server/org/scan.ts, steerScan).
+  await rememberRound(store, { flow: "steer", key: "steer", about: { product: null }, answers: allTold.map((x) => ({ qid: questionKey(x.question), q: x.question, a: x.answer, how: saysDontKnow(x.answer) ? ("unknown" as const) : ("own" as const) })) }).catch(() => {});
   const deps = scanDeps(t);
   const session = await scanToEnd(store, { target, country: "us", told: allTold }, deps, signal);
   const sources = session.read.flatMap((r) => (r.sourceId ? [r.sourceId] : []));
@@ -351,6 +367,7 @@ export async function scanFlow(store: OrgStore, p: Persona, player: Player, t: T
       const r = currentRound(s)!;
       out.questions.push(r.questions);
       s = withForm(s, await answerRound(player, r, { flow: "scan-plan", round: s.rounds.length - 1 }, signal));
+      await rememberIn(store, "scan", "scan-plan", { product: null }, s);
       continue;
     }
     if (next === "wait") continue;

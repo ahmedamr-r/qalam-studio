@@ -115,6 +115,8 @@ export interface AskingState {
   askFirst?: true;
   /** They saw what was settled and said go. */
   confirmed?: number;
+  /** How many rounds are in the project's memory already (src/memory/): the next ones are written as they close. */
+  memo?: number;
 }
 
 /** One turn of Qalam AI's, as code kept it. */
