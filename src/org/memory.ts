@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { KnownAnswer } from "@/memory/known";
 import type { AskedAbout, AskedFlow, RoundAnswer } from "@/memory/types";
 import { orgJson } from "./client";
 import { onOrgChange } from "./live";
@@ -64,6 +65,17 @@ export async function recallKnown(o: { flow: AskedFlow; key: string; about: Aske
     return r.block ? r : null;
   } catch {
     return null;
+  }
+}
+
+/** Questions with what was said before to each (src/memory/known.ts); as they were when the core can't say. */
+export async function withKnownAnswers<Q extends { id: string; title: string }>(m: { flow: AskedFlow; key: string; about: AskedAbout } | null | undefined, questions: Q[]): Promise<(Q & { known?: KnownAnswer[] })[]> {
+  if (!m || !questions.length) return questions;
+  try {
+    const r = await orgJson<{ known: Record<string, KnownAnswer[]> }>("/memory/known", { method: "POST", json: { ...m, questions: questions.map((q) => ({ id: q.id, title: q.title.slice(0, 400) })) } });
+    return questions.map((q) => (r.known[q.id]?.length ? { ...q, known: r.known[q.id] } : q));
+  } catch {
+    return questions;
   }
 }
 

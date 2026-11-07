@@ -38,6 +38,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "eval:retrieval": "tsx eval/retrieval/run.ts",
+    "eval:memory": "tsx eval/memory/run.ts",
     "eval:tiers": "tsx eval/tiers/run.ts",
     "eval:loop": "tsx eval/loop/run.ts",
     "eval:personas": "tsx eval/personas/run.ts"

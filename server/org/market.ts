@@ -19,7 +19,7 @@ import type { Competitor, MarketLine } from "@/market/types";
 import { nanoid } from "nanoid";
 import { readPage } from "./pages";
 import type { OrgStore } from "./store";
-import { recall } from "./memory";
+import { recall, withKnown } from "./memory";
 
 /**
  * The first run's lookups, in the core: what the web says about the company (then, in turn, its
@@ -314,7 +314,7 @@ export async function findQuestions(store: OrgStore, what: FindWhat, signal?: Ab
   const { data, model } = await deps.structured<unknown>(findQuestionsCall(m), signal);
   const questions = sanitizeFindQuestions(data, m);
   await store.putTrace({ id: nanoid(10), projectId: "market", kind: "find-questions", at: Date.now(), ...(model ? { model } : {}), what, answer: data, kept: questions.map((q) => q.title) } as { id: string; projectId: string }).catch(() => {});
-  return questions;
+  return withKnown(store, questions, { flow: "find", key: "", about: { product: null }, words: what });
 }
 
 // ---------------------------------------------------------------------------

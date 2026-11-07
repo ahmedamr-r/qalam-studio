@@ -2,7 +2,7 @@ import { answersOf, applyTurn, askInstead, awaitsConfirm, closeRound, confirmed,
 import type { AskTurn, AskingState, FoundLine, Lookup } from "@/asking/types";
 import type { FocusLook } from "@/goals/focus";
 import type { AskedAbout, AskedFlow, RoundAnswer } from "@/memory/types";
-import { rememberRound } from "@/org/memory";
+import { rememberRound, withKnownAnswers } from "@/org/memory";
 import { orgContext } from "@/org/pack";
 import type { FlowState } from "@/ui/ai/questionFlow";
 
@@ -31,6 +31,20 @@ export interface AskingHost {
 }
 
 const posting = new Set<string>();
+
+/**
+ * Code's own round (a seed, Something's off), checked once against the project's memory: what was said
+ * before to each question shows under it. Qalam AI's turns come with theirs from the core.
+ */
+async function knownForRound(h: AskingHost): Promise<void> {
+  const m = h.memory?.();
+  const s = h.get();
+  const at = s ? s.rounds.length - 1 : -1;
+  const r = s?.rounds[at];
+  if (!m || !s || !r || r.known || r.form.submitted || !r.questions.every((q) => q.by === "code")) return;
+  const questions = await withKnownAnswers(m, r.questions);
+  h.set((x) => ({ ...x, rounds: x.rounds.map((y, i) => (i === at ? { ...y, questions: y.questions.map((q) => questions.find((k) => k.id === q.id) ?? q), known: true as const } : y)) }));
+}
 
 /**
  * The rounds closed since the last time, remembered in the project's memory: every question and how it
@@ -114,6 +128,7 @@ export async function goOn(h: AskingHost, signal: AbortSignal): Promise<Paused> 
     const s = h.get();
     if (!s) return "generated";
     const next = nextAfter(s);
+    if (next === "ask") await knownForRound(h);
     if (next === "ask" || next === "offer") return next;
     if (next === "end") {
       if (awaitsConfirm(s)) return "settled";

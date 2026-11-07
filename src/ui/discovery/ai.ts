@@ -4,7 +4,7 @@ import { sanitizeTurn } from "@/asking/sanitize";
 import type { AskTurn, AskingState } from "@/asking/types";
 import { askingIn } from "@/asking/wire";
 import type { AskedAbout, AskedFlow } from "@/memory/types";
-import { recallKnown } from "@/org/memory";
+import { recallKnown, withKnownAnswers } from "@/org/memory";
 import { SAMPLE_DRAFT_RAW } from "@/ai/fixtures-discovery";
 import type { InterviewAnswer } from "@/discovery/interview";
 import { replayStream } from "../ai/replay";
@@ -37,7 +37,9 @@ export async function runInterviewTurn(answers: InterviewAnswer[], s: AskingStat
   const known = opts.memory ? await recallKnown({ ...opts.memory, words: answers.map((a) => `${a.question} ${a.answer}`).join("\n"), broad: true }) : null;
   const b = { stage: "interview-turn" as const, answers, asking: askingIn(s, { said: "", ...(opts.memory ? { memory: opts.memory } : {}) }), ...(known ? { known } : {}) };
   const { data } = await callAI<unknown>(PATH, b, opts.onProgress, opts.signal);
-  return sanitizeTurn(data, interviewTurnCall(b).check, () => {});
+  const turn = sanitizeTurn(data, interviewTurnCall(b).check, () => {});
+  // Under each question, what was said before to one like it (src/memory/known.ts).
+  return { ...turn, questions: await withKnownAnswers(opts.memory, turn.questions) };
 }
 
 /** The draft as the model wrote it (sanitized by the caller); `onDelta` sees it being written. `context`: what the organization already knows. */

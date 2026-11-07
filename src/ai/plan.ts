@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TOOL_FIELDS, type ToolAsk } from "@/connectors/suggest";
+import type { KnownAnswer } from "@/memory/known";
 import { CATALOG } from "@/design-system/components";
 import { PLATFORM_GUIDE, PLATFORM_IDS, type Platform } from "@/design-system/platform";
 import { MAX_SCREENS } from "./screen-count";
@@ -24,6 +25,8 @@ export interface PlanQuestion {
   allowOther: boolean;
   /** A tool that could answer it better than memory. */
   tool?: ToolAsk;
+  /** What was said before to a question like it (src/memory/known.ts): shown under it, with Use it. */
+  known?: KnownAnswer[];
 }
 
 export interface PlanGap {

@@ -7,7 +7,7 @@ import type { MarketLine } from "@/market/types";
 import { sanitizeFindQuestions } from "@/space/find";
 import { readLinks, realDeps, type MarketDeps } from "./market";
 import { NotFoundError, type OrgStore } from "./store";
-import { recall } from "./memory";
+import { recall, withKnown } from "./memory";
 
 /**
  * Finding the problem to focus on for a goal, in the core (src/goals/focus.ts): a look on the web
@@ -75,5 +75,5 @@ export async function lookForGoal(store: OrgStore, goalId: string, o: { query?: 
       return [];
     },
   );
-  return { look, questions };
+  return { look, questions: await withKnown(store, questions, { flow: "focus", key: "", about: { product: goal.product ?? null, goal: goalId }, words: goal.title }) };
 }

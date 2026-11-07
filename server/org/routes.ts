@@ -62,7 +62,7 @@ import { aboutTopic, lookOnline } from "./posts";
 import { namesSomething, readFirstAnswer, scanNow, startScan, steerQuestions, steerScan, stopScan } from "./scan";
 import { steerRound } from "@/scan/steer";
 import { askBrief, briefRequestOf, writeCardBrief } from "./briefs";
-import { forgetAsked, listMemory, RecallBody, recallFor, RememberBody, rememberRound } from "./memory";
+import { forgetAsked, KnownBody, listMemory, RecallBody, recallFor, RememberBody, rememberRound, subjectOf, withKnown } from "./memory";
 import { AskingIn } from "@/asking/wire";
 import { askedOf } from "@/discovery/brief";
 import { askScanPlan, firstBuild, keepAnswers, keepAudience, planAudiences, scanShare, writeBrief } from "./scan-plan";
@@ -1258,6 +1258,14 @@ export function orgRoutes(): Hono<Env> {
     return c.json({ kept: await rememberRound(c.get("store"), b.data, { tab: tabOf(c.req.raw.headers) }) });
   });
   r.delete("/api/org/:org/memory/:id", async (c) => c.json({ ok: await forgetAsked(c.get("store"), c.req.param("id"), { tab: tabOf(c.req.raw.headers) }) }));
+  // What was said before to questions the window asks itself (a brief's own first questions, a dump's rounds).
+  r.post("/api/org/:org/memory/known", async (c) => {
+    const b = KnownBody.safeParse(await c.req.json().catch(() => null));
+    if (!b.success) return bad("Say which conversation, and its questions");
+    const subject = subjectOf({ memory: { flow: b.data.flow, key: b.data.key, about: b.data.about } }, { flow: b.data.flow, words: "" });
+    const questions = await withKnown(c.get("store"), b.data.questions, subject);
+    return c.json({ known: Object.fromEntries(questions.flatMap((q) => (q.known ? [[q.id, q.known]] : []))) });
+  });
   // What's already known, for a turn the window checks itself (the board interview, a brain dump's rounds).
   r.post("/api/org/:org/memory/recall", async (c) => {
     const b = RecallBody.safeParse(await c.req.json().catch(() => null));

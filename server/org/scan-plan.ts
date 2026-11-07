@@ -20,7 +20,7 @@ import { nanoid } from "nanoid";
 import { draftSolutions } from "./solutions";
 import { needsNow } from "./needs";
 import type { OrgStore } from "./store";
-import { recallFor } from "./memory";
+import { recallFor, subjectOf, withKnown } from "./memory";
 
 /**
  * From a scan's problems to what to build first (src/scan/plan.ts), in the core: its questions, the
@@ -96,7 +96,7 @@ export async function askScanPlan(store: OrgStore, o: { target: ScanTarget; sour
       return kept ? { ...kept, id: q.id, ...(q.after?.length ? { after: q.after } : {}) } : { ...q, options: [], recommended: [], allowOther: false };
     });
     await store.putTrace({ id: nanoid(10), projectId: "asking", kind: "ask-turn", flow: "scan", at: Date.now(), ...(model ? { model } : {}), rounds: o.asking.rounds.length, recalled: { items: known.items, chars: known.block.length }, answer: data, kept: { questions: questions.map((q) => q.title), lookups: turn.lookups, done: turn.done }, dropped } as { id: string; projectId: string }).catch(() => {});
-    return { ...turn, questions };
+    return { ...turn, questions: await withKnown(store, questions, subjectOf(o.asking, { flow: "scan", words: about })) };
   } catch (e) {
     if (signal?.aborted || !first) throw e;
     return { questions: notAsked(scanRound(), told).map((q) => ({ ...q, by: "code" as const })), lookups: [], done: false, understood: [], terms: [], choices: [] };

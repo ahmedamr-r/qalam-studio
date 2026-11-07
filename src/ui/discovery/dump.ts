@@ -45,7 +45,8 @@ import { arrangeNew, underCard, type Proposal } from "@/discovery/proposals";
 import { partialPlace, sanitizePlace, type PlaceContext } from "@/discovery/place";
 import { answerWords, initialFlow, resolvedAnswers, type FlowState } from "../ai/questionFlow";
 import { toQuestion } from "../ai/plan";
-import { recallKnown, rememberRound } from "@/org/memory";
+import { recallKnown, rememberRound, withKnownAnswers } from "@/org/memory";
+import type { AskedAbout } from "@/memory/types";
 import { openTurn, patchTurn } from "../ai/chats";
 import { appendThought, endAgent, narrate, startAgent, updateAgent } from "../ai/agents";
 import { canvasProduct } from "@/space/view";
@@ -259,7 +260,9 @@ export async function readDump(sourceId: string) {
   const { tree, cards } = board();
   try {
     const { raw, sample, model } = await call(sourceId, reading(s.dump), { stage: "dump-read", product: product(), dump: s.text, tree, ...aimOf(s.dump, cards), ...(await knownFor(sourceId)) }, () => sampleRaw(SAMPLE_DUMP_READ_RAW, cards), 3500);
-    const r = sanitizeRead(raw, s.text, cards, Date.now(), s.dump.within, !!s.dump.file, openingOf(s.dump.aim));
+    const read = sanitizeRead(raw, s.text, cards, Date.now(), s.dump.within, !!s.dump.file, openingOf(s.dump.aim));
+    // Under each question, what was said before to one like it (src/memory/known.ts).
+    const r = { ...read, questions: await withKnownAnswers(dumpMemory(sourceId), read.questions) };
     // The wrong file: what it is, and the kind that would help (they add another, or have it read anyway).
     if (s.dump.file && (!r.bears || !r.fragments.length)) {
       await updateSource(sourceId, (x) => ({ ...x, quotes: r.fragments, dump: { ...x.dump!, phase: "ready", failed: undefined, understanding: r.understanding, challenges: [], buckets: [], off: { wanted: r.wanted }, ...(model ? { model } : {}) } }));
@@ -315,20 +318,21 @@ async function keepRound(sourceId: string) {
   });
 }
 
+/** Where the project's memory keeps a dump's conversation: Help me find one's and the focus's are theirs, any other dump's the dump's. */
+function dumpMemory(sourceId: string): { flow: "dump" | "find" | "focus"; key: string; about: AskedAbout } | null {
+  const s = sourceOf(sourceId);
+  const session = sessionOf(s);
+  if (!s || !session) return null;
+  const goal = session.aim?.goal;
+  return { flow: session.aim ? (goal ? "focus" : "find") : "dump", key: sourceId, about: { product: s.product ?? null, source: sourceId, ...(goal ? { goal: goal.id, card: goal.card } : {}) } };
+}
+
 /** What's already known for a dump's reading and rounds (src/memory/), what the dump holds itself left out; nothing when the core can't say. */
 async function knownFor(sourceId: string): Promise<{ known?: string }> {
   const s = sourceOf(sourceId);
-  const session = sessionOf(s);
-  if (!s || !session) return {};
-  const goal = session.aim?.goal;
-  const r = await recallKnown({
-    flow: session.aim ? (goal ? "focus" : "find") : "dump",
-    key: sourceId,
-    about: { product: s.product ?? null, source: sourceId, ...(goal ? { goal: goal.id, card: goal.card } : {}) },
-    words: s.text.slice(0, 2000),
-    broad: !!session.aim,
-    sent: s.text.slice(0, 20_000),
-  });
+  const m = dumpMemory(sourceId);
+  if (!s || !m) return {};
+  const r = await recallKnown({ ...m, words: s.text.slice(0, 2000), broad: m.flow !== "dump", sent: s.text.slice(0, 20_000) });
   return r ? { known: r.block } : {};
 }
 
@@ -338,18 +342,14 @@ async function knownFor(sourceId: string): Promise<{ known?: string }> {
  * are theirs; any other dump's are the dump's.
  */
 function rememberDumpRound(sourceId: string) {
-  const s = sourceOf(sourceId);
-  const session = sessionOf(s);
-  const b = session?.buckets.at(-1);
-  if (!s || !session || !b) return;
+  const b = sessionOf(sourceOf(sourceId))?.buckets.at(-1);
+  const m = dumpMemory(sourceId);
+  if (!b || !m) return;
   const qs = b.questions.map(toQuestion);
   const asked = b.form.submitted ? qs : qs.filter((q) => b.form.answers[q.id]);
   const answers = resolvedAnswers(qs, b.form.answers);
-  const goal = session.aim?.goal;
   void rememberRound({
-    flow: session.aim ? (goal ? "focus" : "find") : "dump",
-    key: sourceId,
-    about: { product: s.product ?? null, source: sourceId, ...(goal ? { goal: goal.id, card: goal.card } : {}) },
+    ...m,
     answers: asked.map((q) => {
       const w = answerWords(q, answers[q.id]);
       return { qid: q.id, q: q.title, a: w.text, how: w.how };
@@ -423,7 +423,8 @@ export async function readAnswers(sourceId: string, o: { looked?: boolean } = {}
   const recorded = () => sampleRaw(SAMPLE_DUMP_FOLLOWUP_RAW[Math.min(session.buckets.length, SAMPLE_DUMP_FOLLOWUP_RAW.length) - 1], cards);
   try {
     const { raw, sample, model } = await call(sourceId, o.looked ? "Qalam AI is reading what it found, with your answers" : "Qalam AI is reading your answers", body, recorded, 2500);
-    const f = sanitizeDumpFollowup(raw, pieces, cards, askedOf(session), heldOf(session));
+    const followed = sanitizeDumpFollowup(raw, pieces, cards, askedOf(session), heldOf(session));
+    const f = { ...followed, questions: await withKnownAnswers(dumpMemory(sourceId), followed.questions) };
     if (look && f.look) {
       // Nothing to ask until it has looked: it looks, then reads again with what the look found.
       if (!f.questions.length) {

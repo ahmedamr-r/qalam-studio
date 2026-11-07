@@ -7,6 +7,7 @@ import { r } from "../recipes";
 import { Button, Checkbox, Kbd } from "../controls";
 import { Dictated } from "../voice/MicButton";
 import { ToolSuggestion } from "./ToolSuggestion";
+import { KnownStrip } from "./KnownStrip";
 import {
   CUSTOM_MAX,
   OTHER,
@@ -15,6 +16,7 @@ import {
   answerOf,
   currentOf,
   fillAnswer,
+  knownAnswer,
   optionAt,
   position,
   reduceFlow,
@@ -200,6 +202,16 @@ export function Questionnaire({ questions, state, onChange, onSubmit, review, ti
                 />
               </Dictated>
             )}
+            {q.known?.length ? (
+              <KnownStrip
+                known={q.known}
+                use={(k) => {
+                  const a = knownAnswer(q, k);
+                  return a ? () => answer(a) : null;
+                }}
+                {...(q.dontKnow ? { onDontKnow: () => dispatch({ type: "unknown" }) } : {})}
+              />
+            ) : null}
             {q.tool && <ToolSuggestion ask={q.tool} question={q.title} onFill={(line) => answer(fillAnswer(q, answerOf(q, state.answers), line))} />}
           </>
         )}

@@ -8,6 +8,7 @@
 
 import { saysDontKnow } from "@/asking/dontknow";
 import type { ToolAsk } from "@/connectors/suggest";
+import type { KnownAnswer } from "@/memory/known";
 
 export interface QOption {
   value: string;
@@ -36,6 +37,8 @@ interface QBase {
   dependsOn?: string[];
   /** A tool that could answer it better than memory: the card offers to connect it and fetch from it. */
   tool?: ToolAsk;
+  /** What was said before to a question like it (src/memory/known.ts): shown under it, with Use it. */
+  known?: KnownAnswer[];
 }
 
 export interface SingleQuestion extends QBase {
@@ -363,6 +366,33 @@ export function fillAnswer(q: Question, a: Answer, line: string): Answer {
   if (q.kind === "single") return { kind: "single", value: OTHER, other: add(a.kind === "single" && a.value === OTHER ? a.other : "", 1200) };
   const multi: Multi = a.kind === "multi" ? a : { kind: "multi", values: [], custom: [] };
   return { ...multi, custom: [...multi.custom, line.slice(0, 1200)] };
+}
+
+/**
+ * What was said before, used for this question (src/memory/known.ts): the choice it names where there is
+ * one, else the words, where the question takes words. None: it can't be this question's answer (a pick
+ * its options don't hold, words a choice-only question can't take, a don't-know).
+ */
+export function knownAnswer(q: Question, k: { text: string; how: AnswerHow }): Answer | null {
+  const text = k.text.trim();
+  if (!text || k.how === "unknown" || k.how === "left") return null;
+  // Qalam AI's pick stays its pick: only where this question's own options hold it, never as words.
+  const pick = k.how === "pick";
+  if (q.kind === "single") {
+    const o = q.options.find((x) => x.label === text);
+    if (o) return { kind: "single", value: o.value, ...(pick ? { pick: true as const } : {}) };
+    return pick || !q.other ? null : { kind: "single", value: OTHER, other: text.slice(0, 1200) };
+  }
+  if (q.kind === "multi") {
+    const said = text.split(/;\s*/).filter(Boolean);
+    const options = q.groups.flatMap((g) => g.options);
+    const values = options.filter((o) => said.includes(o.label)).map((o) => o.value);
+    const custom = said.filter((l) => !options.some((o) => o.label === l)).map((l) => l.slice(0, 1200));
+    if (pick) return values.length && !custom.length ? { kind: "multi", values, custom: [], pick: true } : null;
+    if (custom.length && !q.groups.some((g) => g.custom)) return null;
+    return { kind: "multi", values, custom };
+  }
+  return pick ? null : { kind: "text", text: text.slice(0, q.maxLength ?? 1200) };
 }
 
 export function removeCustom(a: Multi, name: string): Multi {

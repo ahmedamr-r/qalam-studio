@@ -15,7 +15,7 @@ import { termsFold } from "@/terms/fold";
 import { indexFor } from "../index/registry";
 import { labOn } from "../lab";
 import { companyContext } from "./company";
-import { recallFor } from "./memory";
+import { recallFor, subjectOf, withKnown } from "./memory";
 import { readLinks, realDeps, type MarketDeps } from "./market";
 import type { OrgStore } from "./store";
 
@@ -123,7 +123,8 @@ export async function planNext(store: OrgStore, b: PlanBody, emit: (label: strin
   await store
     .putTrace({ id: nanoid(10), projectId: "plan", kind: "ask-turn", flow: "plan", at: Date.now(), ...(answer.model ? { model: answer.model } : {}), rounds: a.rounds.length, recalled: { items: known.items, chars: known.block.length }, answer: answer.data, kept: { questions: turn.questions.map((q) => ({ id: q.id, title: q.title, after: q.after })), lookups: turn.lookups, done: turn.done, terms: turn.terms.map((t) => t.term), choices: turn.choices.length }, dropped } as { id: string; projectId: string })
     .catch(() => {});
-  return turn;
+  // Under each question, what was said before to one like it (src/memory/known.ts).
+  return { ...turn, questions: await withKnown(store, turn.questions, subjectOf(a, { flow: "plan", words: b.said })) };
 }
 
 /** The words behind the problems on the canvas: each problem's page, by the card's words where it has no page of its own; and what a lookup found in their project (`found`), behind no card yet. */

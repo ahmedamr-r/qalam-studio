@@ -1,0 +1,764 @@
+[
+ {
+  "person": "a1",
+  "a": "Which parents most often don't reorder within 60 days?",
+  "b": "How exactly is \"60-day reorder rate\" defined? Is it the % of new customers who place a second order within 60 days of their first, or something else, like % of ",
+  "label": "related"
+ },
+ {
+  "person": "a1",
+  "a": "What's the 60-day reorder rate for paid-social first orders?",
+  "b": "Do paid-social first orders come with an offer?",
+  "label": "related"
+ },
+ {
+  "person": "a1",
+  "a": "What's the 60-day reorder rate for paid-social first orders?",
+  "b": "How exactly is \"60-day reorder rate\" defined? Is it the % of new customers who place a second order within 60 days of their first, or something else, like % of ",
+  "label": "related"
+ },
+ {
+  "person": "a1",
+  "a": "Which parents should the problem be about for now?",
+  "b": "How should parents report a problem?",
+  "label": "different"
+ },
+ {
+  "person": "a2",
+  "a": "How long does a first-time parent take from basket to order today?",
+  "b": "How long do first-time parents take from basket to order now?",
+  "label": "same"
+ },
+ {
+  "person": "b1",
+  "a": "What share of accounts use the payments add-on?",
+  "b": "What share of agencies have the payments add-on turned on?",
+  "label": "same"
+ },
+ {
+  "person": "b1",
+  "a": "What does the 9% of ARR stand for?",
+  "b": "What does the 9% of ARR measure?",
+  "label": "same"
+ },
+ {
+  "person": "b1",
+  "a": "What could the team build or run first?",
+  "b": "Where will it run first?",
+  "label": "different"
+ },
+ {
+  "person": "a1",
+  "a": "Which parents most often don't reorder within 60 days?",
+  "b": "How exactly is \"60-day reorder rate\" defined? Is it the share of *first-time* customers who place a second order within 60 days of their first, or the share of ",
+  "label": "related"
+ },
+ {
+  "person": "b2",
+  "a": "What's your monthly logo churn among paying teams?",
+  "b": "How many paying teams do you have today?",
+  "label": "related"
+ },
+ {
+  "person": "b2",
+  "a": "How many paying teams do you have today?",
+  "b": "What new-paying-teams-per-month figure would count as a win?",
+  "label": "related"
+ },
+ {
+  "person": "b2",
+  "a": "How many paying teams do you have today?",
+  "b": "Roughly how many paying teams do you have, and what's the average revenue per team per month?",
+  "label": "same"
+ },
+ {
+  "person": "c1",
+  "a": "Where could you reach people today?",
+  "b": "Do you have an audience or a way to reach people? That could be social media followers, a newsletter, an active spot in a forum, Discord, Slack or subreddit, or",
+  "label": "same"
+ },
+ {
+  "person": "c1",
+  "a": "Have you tried any side projects for money before?",
+  "b": "Have you tried making money from this before, such as freelancing, a side project or selling a template? If so, what happened?",
+  "label": "same"
+ },
+ {
+  "person": "a3",
+  "a": "How many support tickets do you get a month now?",
+  "b": "Roughly how many tickets do you get a month, how many support agents handle them, and do you know your fully loaded cost per ticket (or the support team's total",
+  "label": "same"
+ },
+ {
+  "person": "a4",
+  "a": "وش أكثر أسباب فشل التسليم عندكم حالياً؟",
+  "b": "هل يسجّل السائق أو الناقل سبب الفشل؟ إذا يسجّله، وش أكثر ثلاثة أسباب ونسبة كل واحد؟ (مثلًا المستلم ما رد، العنوان غلط، المكان مقفل، رفض الاستلام، ما عنده فلوس ا",
+  "label": "same"
+ },
+ {
+  "person": "c3",
+  "a": "Where will it run first?",
+  "b": "Is the first version the hand-run Telegram bot or a web app?",
+  "label": "related"
+ },
+ {
+  "person": "a1",
+  "a": "Which parents most often don't reorder within 60 days?",
+  "b": "Where do lapsed parents mostly go instead?",
+  "label": "different"
+ },
+ {
+  "person": "a1",
+  "a": "Which parents most often don't reorder within 60 days?",
+  "b": "What credit does a parent get for a flagged item?",
+  "label": "different"
+ },
+ {
+  "person": "a1",
+  "a": "Where do lapsed parents mostly go instead?",
+  "b": "What do parents complain about most?",
+  "label": "different"
+ },
+ {
+  "person": "a1",
+  "a": "Where do lapsed parents mostly go instead?",
+  "b": "Do first-order parents opt in to texts at checkout?",
+  "label": "different"
+ },
+ {
+  "person": "a1",
+  "a": "What do parents complain about most?",
+  "b": "Do first-order parents opt in to texts at checkout?",
+  "label": "different"
+ },
+ {
+  "person": "a1",
+  "a": "What have you already tried to bring parents back?",
+  "b": "What already exists in the product for repeat shopping: saved lists, \"reorder last basket\", recurring scheduled deliveries, a subscription or membership, remind",
+  "label": "related"
+ },
+ {
+  "person": "a1",
+  "a": "Where does 'under-5s from paid social' come from?",
+  "b": "Do paid-social first orders come with an offer?",
+  "label": "different"
+ },
+ {
+  "person": "a1",
+  "a": "What's the 60-day reorder rate for paid-social first orders?",
+  "b": "What do you know about why people don't come back? Think exit surveys, support tickets, app reviews, refund rates. And how often do orders have missing items, b",
+  "label": "different"
+ },
+ {
+  "person": "a1",
+  "a": "Do paid-social first orders come with an offer?",
+  "b": "Do you have the drop-off broken down by step? For example, first→second order vs. second→third, and whether people who order 3+ times stick around. Do you know ",
+  "label": "different"
+ },
+ {
+  "person": "a1",
+  "a": "What can you check about first orders that went wrong?",
+  "b": "Do first-order parents opt in to texts at checkout?",
+  "label": "different"
+ },
+ {
+  "person": "a1",
+  "a": "Which channel first?",
+  "b": "How exactly is \"60-day reorder rate\" defined? Is it the % of new customers who place a second order within 60 days of their first, or something else, like % of ",
+  "label": "different"
+ },
+ {
+  "person": "a1",
+  "a": "How should parents report a problem?",
+  "b": "Do first-order parents opt in to texts at checkout?",
+  "label": "different"
+ },
+ {
+  "person": "a1",
+  "a": "How exactly is \"60-day reorder rate\" defined? Is it the % of new customers who place a second order within 60 days of their first, or something else, like % of ",
+  "b": "Do you have the drop-off broken down by step? For example, first→second order vs. second→third, and whether people who order 3+ times stick around. Do you know ",
+  "label": "different"
+ },
+ {
+  "person": "a1",
+  "a": "Do you have the drop-off broken down by step? For example, first→second order vs. second→third, and whether people who order 3+ times stick around. Do you know ",
+  "b": "What do you know about why people don't come back? Think exit surveys, support tickets, app reviews, refund rates. And how often do orders have missing items, b",
+  "label": "different"
+ },
+ {
+  "person": "a2",
+  "a": "What should the checkout work change?",
+  "b": "What should the first version of the payment step offer?",
+  "label": "related"
+ },
+ {
+  "person": "a2",
+  "a": "Where do first-time parents drop off in checkout?",
+  "b": "Does the first version need accounts or payments?",
+  "label": "different"
+ },
+ {
+  "person": "a2",
+  "a": "What share of first-order card payments fail?",
+  "b": "Does the first version need accounts or payments?",
+  "label": "different"
+ },
+ {
+  "person": "a2",
+  "a": "How long does a first-time parent take from basket to order today?",
+  "b": "What should the first version of the payment step offer?",
+  "label": "different"
+ },
+ {
+  "person": "a2",
+  "a": "Where will it run first?",
+  "b": "What should the first version of the payment step offer?",
+  "label": "different"
+ },
+ {
+  "person": "b1",
+  "a": "What does the product do, and who is it for?",
+  "b": "When agencies don't use your payments, how do their clients pay them? Mostly bank transfer outside the product, a competitor (Stripe invoicing, QuickBooks, Bill",
+  "label": "different"
+ },
+ {
+  "person": "b1",
+  "a": "Is there a number you'd watch to know it's working? Where is it now?",
+  "b": "What has leadership asked payments to deliver? More revenue, more customers turning it on, better retention, something else? Is there a number or deadline attac",
+  "label": "related"
+ },
+ {
+  "person": "b1",
+  "a": "Is net revenue retention a goal your team actually owns?",
+  "b": "What has leadership asked payments to deliver? More revenue, more customers turning it on, better retention, something else? Is there a number or deadline attac",
+  "label": "related"
+ },
+ {
+  "person": "b1",
+  "a": "What share of accounts use the payments add-on?",
+  "b": "What holds agencies back from turning on payments?",
+  "label": "related"
+ },
+ {
+  "person": "b1",
+  "a": "What share of accounts use the payments add-on?",
+  "b": "How is payments built? Which processor (Stripe Connect, Adyen, GoCardless…), which countries, and which payment methods can an agency's client use (card, ACH/ba",
+  "label": "different"
+ },
+ {
+  "person": "b1",
+  "a": "Where does that number stand today?",
+  "b": "What do you know today about these numbers: how many paying customers you have, what share have payments turned on, what share of invoice value is actually paid",
+  "label": "related"
+ },
+ {
+  "person": "b1",
+  "a": "Where does most lost or gained revenue come from today?",
+  "b": "What has leadership asked payments to deliver? More revenue, more customers turning it on, better retention, something else? Is there a number or deadline attac",
+  "label": "different"
+ },
+ {
+  "person": "b1",
+  "a": "What holds agencies back from turning on payments?",
+  "b": "Is there a record of why agencies cancel?",
+  "label": "different"
+ },
+ {
+  "person": "b1",
+  "a": "What holds agencies back from turning on payments?",
+  "b": "How is payments built? Which processor (Stripe Connect, Adyen, GoCardless…), which countries, and which payment methods can an agency's client use (card, ACH/ba",
+  "label": "different"
+ },
+ {
+  "person": "b1",
+  "a": "What reasons do leaving agencies give?",
+  "b": "When agencies don't use your payments, how do their clients pay them? Mostly bank transfer outside the product, a competitor (Stripe invoicing, QuickBooks, Bill",
+  "label": "different"
+ },
+ {
+  "person": "b1",
+  "a": "What share of agencies have the payments add-on turned on?",
+  "b": "Can you see payment timing data for invoices in Ferrowise?",
+  "label": "different"
+ },
+ {
+  "person": "b1",
+  "a": "What share of agencies have the payments add-on turned on?",
+  "b": "How many engineers and designers work on payments, and is there a roadmap or a commitment you've inherited?",
+  "label": "different"
+ },
+ {
+  "person": "b1",
+  "a": "Can you see payment timing data for invoices in Ferrowise?",
+  "b": "What has leadership asked payments to deliver? More revenue, more customers turning it on, better retention, something else? Is there a number or deadline attac",
+  "label": "different"
+ },
+ {
+  "person": "b1",
+  "a": "What could the team build or run first?",
+  "b": "Does the first version need accounts or payments?",
+  "label": "different"
+ },
+ {
+  "person": "b1",
+  "a": "Does the first version need accounts or payments?",
+  "b": "How is payments built? Which processor (Stripe Connect, Adyen, GoCardless…), which countries, and which payment methods can an agency's client use (card, ACH/ba",
+  "label": "different"
+ },
+ {
+  "person": "b1",
+  "a": "What has leadership asked payments to deliver? More revenue, more customers turning it on, better retention, something else? Is there a number or deadline attac",
+  "b": "How is payments built? Which processor (Stripe Connect, Adyen, GoCardless…), which countries, and which payment methods can an agency's client use (card, ACH/ba",
+  "label": "different"
+ },
+ {
+  "person": "b1",
+  "a": "What do you know today about these numbers: how many paying customers you have, what share have payments turned on, what share of invoice value is actually paid",
+  "b": "What raw evidence can you get at: support tickets, churn or cancellation reasons, sales-call notes, onboarding drop-off data, or customers you could phone this ",
+  "label": "different"
+ },
+ {
+  "person": "a1",
+  "a": "Which parents most often don't reorder within 60 days?",
+  "b": "What have lapsed parents told you about why they stopped?",
+  "label": "different"
+ },
+ {
+  "person": "a1",
+  "a": "How many first orders have a damaged item or arrive late?",
+  "b": "Which Q3 do you mean? Q3 2026 ended in September, so I'm assuming July–September 2027. Is that right, and roughly how many new customers place a first order eac",
+  "label": "different"
+ },
+ {
+  "person": "a1",
+  "a": "How exactly is \"60-day reorder rate\" defined? Is it the share of *first-time* customers who place a second order within 60 days of their first, or the share of ",
+  "b": "Which Q3 do you mean? Q3 2026 ended in September, so I'm assuming July–September 2027. Is that right, and roughly how many new customers place a first order eac",
+  "label": "different"
+ },
+ {
+  "person": "a1",
+  "a": "Which Q3 do you mean? Q3 2026 ended in September, so I'm assuming July–September 2027. Is that right, and roughly how many new customers place a first order eac",
+  "b": "How are first orders acquired and priced? Is there a first-order discount or free delivery that disappears on order 2? What are your delivery fee, minimum baske",
+  "label": "different"
+ },
+ {
+  "person": "a1",
+  "a": "What do you know about *why* they don't come back? For example: exit or NPS survey answers, support tickets, app reviews, cancellation reasons. In particular, d",
+  "b": "Is the 40% target itself fixed, or is the real goal something underneath it (revenue, payback on acquisition spend, investor metrics)? Could you, for example, h",
+  "label": "different"
+ },
+ {
+  "person": "b2",
+  "a": "What share of new signups reach their first real use?",
+  "b": "Of the people who sign up, what share become paying customers, and roughly how many signups do you get a month?",
+  "label": "related"
+ },
+ {
+  "person": "b2",
+  "a": "What's your monthly logo churn among paying teams?",
+  "b": "What counts as a team being activated today?",
+  "label": "different"
+ },
+ {
+  "person": "b2",
+  "a": "What's your monthly logo churn among paying teams?",
+  "b": "Roughly how many paying teams do you have, and what's the average revenue per team per month?",
+  "label": "related"
+ },
+ {
+  "person": "b2",
+  "a": "How do teams pay you today?",
+  "b": "Which action counts as the 'core action' when picking teams?",
+  "label": "different"
+ },
+ {
+  "person": "b2",
+  "a": "How many paying teams do you have today?",
+  "b": "When do churning teams usually leave?",
+  "label": "different"
+ },
+ {
+  "person": "b2",
+  "a": "Where do most new signups stall before activating?",
+  "b": "What new-paying-teams-per-month figure would count as a win?",
+  "label": "different"
+ },
+ {
+  "person": "b2",
+  "a": "When do churning teams usually leave?",
+  "b": "Which action counts as the 'core action' when picking teams?",
+  "label": "different"
+ },
+ {
+  "person": "b2",
+  "a": "What new-paying-teams-per-month figure would count as a win?",
+  "b": "What counts as a team being activated today?",
+  "label": "different"
+ },
+ {
+  "person": "b2",
+  "a": "What new-paying-teams-per-month figure would count as a win?",
+  "b": "What's your monthly churn, by customers and by revenue if you have both? And when do most cancellations happen: in the first 1–3 months, or after a year or more",
+  "label": "different"
+ },
+ {
+  "person": "b2",
+  "a": "What counts as a team being activated today?",
+  "b": "What's your business model: free trial, freemium or paid-only? And how do you price: per seat, flat per team, or tiered?",
+  "label": "different"
+ },
+ {
+  "person": "b2",
+  "a": "Who will send the emails and take the calls?",
+  "b": "Offer anything in return for the 15-minute call?",
+  "label": "different"
+ },
+ {
+  "person": "b2",
+  "a": "How should support pick 'never got going' teams from the list?",
+  "b": "Roughly how many paying teams do you have, and what's the average revenue per team per month?",
+  "label": "different"
+ },
+ {
+  "person": "b2",
+  "a": "Of the people who sign up, what share become paying customers, and roughly how many signups do you get a month?",
+  "b": "Do you know your net revenue retention, or roughly how much revenue existing customers add each month through seats or upgrades compared with what you lose to c",
+  "label": "different"
+ },
+ {
+  "person": "b2",
+  "a": "Do you know your net revenue retention, or roughly how much revenue existing customers add each month through seats or upgrades compared with what you lose to c",
+  "b": "What do churned customers say when they leave: cancellation reasons, exit surveys, support tickets? Paste a few verbatim if you can.",
+  "label": "different"
+ },
+ {
+  "person": "c1",
+  "a": "Which kind of money-maker appeals most?",
+  "b": "Have you tried making money from this before, such as freelancing, a side project or selling a template? If so, what happened?",
+  "label": "different"
+ },
+ {
+  "person": "c1",
+  "a": "Have you tried any side projects for money before?",
+  "b": "Do you need the money to start coming in soon (in weeks), or can you put 6–12 months in before it earns anything?",
+  "label": "different"
+ },
+ {
+  "person": "c1",
+  "a": "What kind of content would you keep making every week?",
+  "b": "Have you tried making money from this before, such as freelancing, a side project or selling a template? If so, what happened?",
+  "label": "different"
+ },
+ {
+  "person": "c1",
+  "a": "Can you name 5 former colleagues who talk to carriers or dispatchers?",
+  "b": "Where are the dispatchers and fleet owners you know: Egypt, the Gulf, the US/Europe, or a mix? Roughly how many could you message today and expect a reply? 5, 2",
+  "label": "related"
+ },
+ {
+  "person": "c1",
+  "a": "How much money, and by when? For example, $500/month in 3 months, or replacing your salary in 2 years. Is this side income or a way out of your job?",
+  "b": "Your old company sold dispatch software. Who were its customers (big shippers or small fleets), and roughly what did they pay per month?",
+  "label": "different"
+ },
+ {
+  "person": "c1",
+  "a": "Which industries, jobs or communities do you know from the inside? Think of your day job, past jobs, hobbies, family businesses, or groups where people already ",
+  "b": "Day to day, what do your contacts actually complain about? For example: drivers not answering on WhatsApp, chasing proof of delivery, working out driver pay, in",
+  "label": "different"
+ },
+ {
+  "person": "c1",
+  "a": "Have you tried making money from this before, such as freelancing, a side project or selling a template? If so, what happened?",
+  "b": "Do you still work at the logistics company? If so, does your contract have a non-compete or a clause saying side projects belong to them, especially anything di",
+  "label": "different"
+ },
+ {
+  "person": "c1",
+  "a": "Where are the dispatchers and fleet owners you know: Egypt, the Gulf, the US/Europe, or a mix? Roughly how many could you message today and expect a reply? 5, 2",
+  "b": "Your old company sold dispatch software. Who were its customers (big shippers or small fleets), and roughly what did they pay per month?",
+  "label": "different"
+ },
+ {
+  "person": "c1",
+  "a": "Do you still work at the logistics company? If so, does your contract have a non-compete or a clause saying side projects belong to them, especially anything di",
+  "b": "Would you take paid custom work from these contacts, such as building one fleet owner the specific tool they need for a fee? Or does it have to be a product you",
+  "label": "different"
+ },
+ {
+  "person": "a3",
+  "a": "What support tool do you run tickets through today?",
+  "b": "What share of resolvable tickets means go ahead and write articles?",
+  "label": "different"
+ },
+ {
+  "person": "a3",
+  "a": "What support tool do you run tickets through today?",
+  "b": "Who sends more tickets, business owners or bookkeepers? Do bookkeepers managing many clients count as one customer or many?",
+  "label": "different"
+ },
+ {
+  "person": "a3",
+  "a": "How many support tickets do you get a month now?",
+  "b": "Why does your VP want tickets down 30%? Is it to cut support cost or headcount, to handle growth without hiring, to fix slow response times, or because a board ",
+  "label": "different"
+ },
+ {
+  "person": "a3",
+  "a": "Is there a help center or written docs the bot could answer from?",
+  "b": "How many tickets need someone to look inside the customer's own account (their transactions, bank connection, invoices), and how many could a good help article ",
+  "label": "different"
+ },
+ {
+  "person": "a3",
+  "a": "Where do tickets come in today?",
+  "b": "Are tickets tagged by reason? If so, what are the top 5–10 reasons and their share of volume (for example bank feed problems, reconciliation, login or password,",
+  "label": "different"
+ },
+ {
+  "person": "a3",
+  "a": "What share of resolvable tickets means go ahead and write articles?",
+  "b": "How should this week's steps handle the 40% tax-bug tickets?",
+  "label": "different"
+ },
+ {
+  "person": "a3",
+  "a": "What share of resolvable tickets means go ahead and write articles?",
+  "b": "Do you track CSAT or link support contacts to churn or upgrades? If tickets drop because people give up, would anyone notice?",
+  "label": "different"
+ },
+ {
+  "person": "a3",
+  "a": "How should this week's steps handle the 40% tax-bug tickets?",
+  "b": "Do you track CSAT or link support contacts to churn or upgrades? If tickets drop because people give up, would anyone notice?",
+  "label": "different"
+ },
+ {
+  "person": "a3",
+  "a": "Roughly how many tickets do you get a month, how many support agents handle them, and do you know your fully loaded cost per ticket (or the support team's total",
+  "b": "Are tickets tagged by reason? If so, what are the top 5–10 reasons and their share of volume (for example bank feed problems, reconciliation, login or password,",
+  "label": "different"
+ },
+ {
+  "person": "a3",
+  "a": "Are tickets tagged by reason? If so, what are the top 5–10 reasons and their share of volume (for example bank feed problems, reconciliation, login or password,",
+  "b": "Do you track CSAT or link support contacts to churn or upgrades? If tickets drop because people give up, would anyone notice?",
+  "label": "different"
+ },
+ {
+  "person": "a4",
+  "a": "وش أكثر أسباب فشل التسليم عندكم حالياً؟",
+  "b": "كيف تحسبون \"محاولة التسليم الفاشلة\" بالضبط؟ هل الـ18% هي نسبة المحاولات الفاشلة من كل المحاولات، ولا نسبة الشحنات اللي فشلت أول محاولة لها؟ وهل تحسبون فيها الشح",
+  "label": "different"
+ },
+ {
+  "person": "a4",
+  "a": "وش تقدرون تغيّرون بأنفسكم؟",
+  "b": "وش اللي تقدرون تتحكمون فيه فعليًا؟ هل تملكون تطبيق السائق وتواصل المستلم (رسائل SMS أو واتساب أو تتبّع)، ولا هذا كله عند الناقلين وأنتم بس توزعون الطلبات عليهم؟",
+  "label": "same"
+ },
+ {
+  "person": "a4",
+  "a": "كم نسبة الفشل بسبب غياب المستلم مقابل العنوان؟",
+  "b": "وش اللي تقدرون تتحكمون فيه فعليًا؟ هل تملكون تطبيق السائق وتواصل المستلم (رسائل SMS أو واتساب أو تتبّع)، ولا هذا كله عند الناقلين وأنتم بس توزعون الطلبات عليهم؟",
+  "label": "different"
+ },
+ {
+  "person": "a4",
+  "a": "مين يتواصل مع المستلم قبل التسليم حالياً؟",
+  "b": "هل يسجّل السائق أو الناقل سبب الفشل؟ إذا يسجّله، وش أكثر ثلاثة أسباب ونسبة كل واحد؟ (مثلًا المستلم ما رد، العنوان غلط، المكان مقفل، رفض الاستلام، ما عنده فلوس ا",
+  "label": "different"
+ },
+ {
+  "person": "a4",
+  "a": "وش نوع الشحنات اللي تمر على المنصة غالبًا؟ (أ) طرود لعملاء أفراد، يعني الشركة تبيع أونلاين وأنتم توصلون للبيوت، ولا (ب) بضائع بين الشركات، طبالي أو شاحنات لمستو",
+  "b": "وش اللي تقدرون تتحكمون فيه فعليًا؟ هل تملكون تطبيق السائق وتواصل المستلم (رسائل SMS أو واتساب أو تتبّع)، ولا هذا كله عند الناقلين وأنتم بس توزعون الطلبات عليهم؟",
+  "label": "different"
+ },
+ {
+  "person": "a4",
+  "a": "هل يسجّل السائق أو الناقل سبب الفشل؟ إذا يسجّله، وش أكثر ثلاثة أسباب ونسبة كل واحد؟ (مثلًا المستلم ما رد، العنوان غلط، المكان مقفل، رفض الاستلام، ما عنده فلوس ا",
+  "b": "كم نسبة الشحنات اللي فيها دفع عند الاستلام؟ وكم نسبة الشحنات اللي فيها العنوان الوطني (الرمز المختصر) صحيح من وقت إنشاء الطلب؟",
+  "label": "different"
+ },
+ {
+  "person": "a4",
+  "a": "كم نسبة الشحنات اللي فيها دفع عند الاستلام؟ وكم نسبة الشحنات اللي فيها العنوان الوطني (الرمز المختصر) صحيح من وقت إنشاء الطلب؟",
+  "b": "ليش 10% بالذات؟ وش اللي يضغط عليكم: تكلفة إعادة المحاولة (ومين يدفعها: أنتم، الناقل، ولا الشركة الشاحنة)، ولا شركات تشتكي أو تترككم، ولا شرط في عقد مع عميل كبير",
+  "label": "different"
+ },
+ {
+  "person": "b3",
+  "a": "What should fixing the first problem move most?",
+  "b": "Where will it run first?",
+  "label": "different"
+ },
+ {
+  "person": "b3",
+  "a": "How much can you put into the first fix, and how soon?",
+  "b": "Where will it run first?",
+  "label": "different"
+ },
+ {
+  "person": "b3",
+  "a": "Does the first version need accounts or payments?",
+  "b": "The two SSO quotes: which accounts are they from, roughly how much do those accounts pay per year, and when do they renew? Have any deals been lost, or renewals",
+  "label": "different"
+ },
+ {
+  "person": "b3",
+  "a": "Who are the people quoted? For each name (especially the 8 mobile ones), are they HR admins (your buyers) or employees using the app, and are they on a paid pla",
+  "b": "What's the main business goal right now: keeping paying customers, upgrading free accounts to paid, winning bigger companies (closer to 500 people), or somethin",
+  "label": "different"
+ },
+ {
+  "person": "b3",
+  "a": "Exports: has anyone reproduced the \"drops rows without saying so\" bug? Roughly how many paying accounts export to CSV for payroll every month? Your logs might s",
+  "b": "How were these calls collected? Roughly how many calls in total, who ran them (sales, support, research), and over what period?",
+  "label": "different"
+ },
+ {
+  "person": "b4",
+  "a": "How much ARR hits a failed card renewal each month?",
+  "b": "Where do you pull the last 3 months of renewals from?",
+  "label": "different"
+ },
+ {
+  "person": "b4",
+  "a": "What share of failed renewals do you recover today?",
+  "b": "What share of monthly renewals actually fail: 6%, 9%, or other?",
+  "label": "different"
+ },
+ {
+  "person": "b4",
+  "a": "What does leadership need back?",
+  "b": "What does \"fixing\" mean to leadership? Is there a specific proposal, like building our own payment recovery, buying a tool, or getting the team to chase custome",
+  "label": "related"
+ },
+ {
+  "person": "b4",
+  "a": "Are customers billed mostly monthly or annually?",
+  "b": "Do customers pay any way other than by card, like bank transfer, direct debit or paying an invoice? Do you know whose cards fail? For example, a founder's perso",
+  "label": "different"
+ },
+ {
+  "person": "b4",
+  "a": "What share of monthly renewals actually fail: 6%, 9%, or other?",
+  "b": "Do customers pay any way other than by card, like bank transfer, direct debit or paying an invoice? Do you know whose cards fail? For example, a founder's perso",
+  "label": "different"
+ },
+ {
+  "person": "b4",
+  "a": "What's your current ARR, and roughly how is it split between monthly and annual plans? What's the average price per account?",
+  "b": "When an account lapses for non-payment, what happens next? Does it go read-only or get deleted? Do you know how many of those customers come back and pay within",
+  "label": "different"
+ },
+ {
+  "person": "c2",
+  "a": "You want to build something that helps freelancers get paid for their work, like invoicing clients and chasing late payments. Right?",
+  "b": "Do you ask clients for money upfront today?",
+  "label": "different"
+ },
+ {
+  "person": "c2",
+  "a": "You want to build something that helps freelancers get paid for their work, like invoicing clients and chasing late payments. Right?",
+  "b": "Which freelancers do you mean? Where are they based, where are their clients based, and what work do they do (developers, designers, writers, translators, and s",
+  "label": "different"
+ },
+ {
+  "person": "c2",
+  "a": "Anything you've seen yourself that I should look for?",
+  "b": "Should the tool touch the payment itself?",
+  "label": "different"
+ },
+ {
+  "person": "c2",
+  "a": "Do you ask clients for money upfront today?",
+  "b": "Have you or people you know hit this problem yourselves? If so, what happened, roughly how much money or time did it cost, and what did you use or try?",
+  "label": "different"
+ },
+ {
+  "person": "c2",
+  "a": "Does the first version need accounts or payments?",
+  "b": "Is anything already decided or off-limits? For example, it must be an app, it must be in a certain country, or you can't handle money or get a payments licence.",
+  "label": "different"
+ },
+ {
+  "person": "c2",
+  "a": "What counts as a freelancer 'signing up'?",
+  "b": "Which freelancers do you mean? Where are they based, where are their clients based, and what work do they do (developers, designers, writers, translators, and s",
+  "label": "different"
+ },
+ {
+  "person": "c2",
+  "a": "Have you or people you know hit this problem yourselves? If so, what happened, roughly how much money or time did it cost, and what did you use or try?",
+  "b": "Is anything already decided or off-limits? For example, it must be an app, it must be in a certain country, or you can't handle money or get a payments licence.",
+  "label": "different"
+ },
+ {
+  "person": "c3",
+  "a": "You want to build an AI app that turns voice notes into Notion pages, priced at $20 a month, and you're quitting your job to build it. Right?",
+  "b": "Can you build it yourself (mobile app, backend, Notion API), or would you have to pay someone?",
+  "label": "different"
+ },
+ {
+  "person": "c3",
+  "a": "Anything you've seen yourself that I should look for?",
+  "b": "What does success look like to you in 12 months: replacing your salary, a side income, raising money, or something else? Roughly what monthly amount would make ",
+  "label": "different"
+ },
+ {
+  "person": "c3",
+  "a": "What could you put in people's hands within 2 weeks?",
+  "b": "How many founders could you get trying it within two weeks?",
+  "label": "related"
+ },
+ {
+  "person": "c3",
+  "a": "How many founders could you get trying it within two weeks?",
+  "b": "How many months could you live on savings with no income? Is there anyone else relying on that money?",
+  "label": "different"
+ },
+ {
+  "person": "c3",
+  "a": "Does the first version need accounts or payments?",
+  "b": "Who is the first week's test for: founders or meeting recorders?",
+  "label": "different"
+ },
+ {
+  "person": "c3",
+  "a": "Is the first version the hand-run Telegram bot or a web app?",
+  "b": "How long a recording must the first version handle?",
+  "label": "different"
+ },
+ {
+  "person": "c3",
+  "a": "What do you have so far: a prototype, a waitlist, people using it, anyone who has paid or promised to pay? Give real numbers, even if it's zero.",
+  "b": "Can you build it yourself (mobile app, backend, Notion API), or would you have to pay someone?",
+  "label": "different"
+ },
+ {
+  "person": "c4",
+  "a": "You want a simple tool that fixes broken night-shift handoffs between nurses, and you can build it without coding. Right?",
+  "b": "Can a free tool hold patient names or bed details on your unit?",
+  "label": "different"
+ },
+ {
+  "person": "c4",
+  "a": "You want a simple tool that fixes broken night-shift handoffs between nurses, and you can build it without coding. Right?",
+  "b": "What exactly goes wrong? Tell me about one or two recent handoffs that went badly: what was missed or went wrong, and what happened because of it (a late med, a",
+  "label": "different"
+ },
+ {
+  "person": "c4",
+  "a": "Anything you've seen yourself that I should look for?",
+  "b": "What part of handoff should help charge nurses first?",
+  "label": "different"
+ },
+ {
+  "person": "c4",
+  "a": "What has your unit already tried for handoffs?",
+  "b": "Which of these does your hospital already let staff use?",
+  "label": "related"
+ }
+]

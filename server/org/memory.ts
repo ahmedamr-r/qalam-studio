@@ -1,6 +1,8 @@
 import { z } from "zod";
 import type { AskingInT } from "@/asking/wire";
 import { foldAsked, linesFor } from "@/memory/fold";
+import { knownFor, type KnownAnswer } from "@/memory/known";
+import { termsFold } from "@/terms/fold";
 import { pickAnswers, recallBlock, type RecallDecision, type Recalled, type RecallLine, type RecallSubject } from "@/memory/recall";
 import { ASKED_FLOWS, sharedHow, type AskedAbout, type AskedFlow, type AskedHow, type AskedForget, type Who } from "@/memory/types";
 import { indexFor } from "../index/registry";
@@ -27,6 +29,9 @@ export const RememberBody = z.object({
     .max(80),
 });
 export type RememberBodyT = z.infer<typeof RememberBody>;
+
+/** Questions the window asks itself, to find what was said before to each: which conversation, what it's about, the questions. */
+export const KnownBody = RememberBody.pick({ flow: true, key: true, about: true }).extend({ questions: z.array(z.object({ id: z.string().min(1).max(80), title: z.string().max(400) })).max(40) });
 
 /** A recall asked for by the window, for a turn it checks itself: which conversation, what it's about, and its words. */
 export const RecallBody = RememberBody.pick({ flow: true, key: true, about: true }).extend({ words: z.string().max(4000), broad: z.boolean().optional(), sent: z.string().max(20_000).optional() });
@@ -113,10 +118,27 @@ const NOTHING: Recalled = { block: "", hay: "", ids: [], items: [] };
  * new. Any trouble recalls nothing, and the turn goes on as before.
  */
 export async function recallFor(store: OrgStore, a: Pick<AskingInT, "memory">, o: { flow: AskedFlow; words: string; broad?: boolean; sent?: string; about?: AskedAbout }): Promise<Recalled> {
+  return recall(store, subjectOf(a, o), { ...(o.broad ? { broad: true } : {}), ...(o.sent ? { sent: o.sent } : {}) }).catch(() => NOTHING);
+}
+
+/** What a turn is about, from what the window sent about its conversation; a conversation the memory doesn't know is new. */
+export function subjectOf(a: Pick<AskingInT, "memory">, o: { flow: AskedFlow; words: string; about?: AskedAbout }): RecallSubject {
   const m = a.memory;
   const about = (m ? Object.fromEntries(Object.entries(m.about).filter(([, v]) => v !== undefined)) : (o.about ?? { product: null })) as AskedAbout;
-  const subject: RecallSubject = { flow: m?.flow ?? o.flow, key: m?.key ?? "", about, words: o.words };
-  return recall(store, subject, { ...(o.broad ? { broad: true } : {}), ...(o.sent ? { sent: o.sent } : {}) }).catch(() => NOTHING);
+  return { flow: m?.flow ?? o.flow, key: m?.key ?? "", about, words: o.words };
+}
+
+/** Each question with what was said before to one like it, in the subject's scope (src/memory/known.ts); as they were on any trouble. */
+export async function withKnown<Q extends { id: string; title: string }>(store: OrgStore, questions: Q[], s: RecallSubject, o: { who?: Who } = {}): Promise<(Q & { known?: KnownAnswer[] })[]> {
+  if (!questions.length) return questions;
+  try {
+    const me = o.who ?? (await whoAmI());
+    const { entries } = foldAsked(await store.listAsked());
+    const known = knownFor(questions, entries, s, { me: me.id, solo: store.info.shape === "solo", fold: termsFold(await store.getTerms()) });
+    return questions.map((q) => (known.get(q.id) ? { ...q, known: known.get(q.id) } : q));
+  } catch {
+    return questions;
+  }
 }
 
 /** A remembered answer as people read it: whose (theirs, or a teammate's by name where they gave one), where and when, and whether the team sees it. */

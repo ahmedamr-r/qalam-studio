@@ -171,10 +171,19 @@ export class Tab {
     await this.send("Emulation.setDeviceMetricsOverride", { width: 1600, height: 1000, deviceScaleFactor: 1, mobile: false });
   }
 
-  private send(method: string, params: Record<string, unknown> = {}): Promise<any> {
+  /** One call to the browser. A reply that never comes (it happens, rarely) gives nothing after a while, so a walk or a paid run can't hang on it. */
+  private send(method: string, params: Record<string, unknown> = {}, ms = 60_000): Promise<any> {
     return new Promise((r) => {
       const id = ++this.n;
-      this.wait.set(id, (d) => r(d.result));
+      const timer = setTimeout(() => {
+        if (!this.wait.delete(id)) return;
+        console.log(`    (the browser didn't answer ${method} in ${ms / 1000}s)`);
+        r(undefined);
+      }, ms);
+      this.wait.set(id, (d) => {
+        clearTimeout(timer);
+        r(d.result);
+      });
       this.ws!.send(JSON.stringify({ id, method, params }));
     });
   }
@@ -460,8 +469,8 @@ export class Tab {
   }
 
   async shot(file: string) {
-    const r = await this.send("Page.captureScreenshot", { format: "png" });
-    await writeFile(file, Buffer.from(r.data, "base64"));
+    const r = await this.send("Page.captureScreenshot", { format: "png" }, 20_000);
+    if (r?.data) await writeFile(file, Buffer.from(r.data, "base64"));
   }
 
   async stop() {

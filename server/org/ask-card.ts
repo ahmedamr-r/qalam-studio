@@ -8,7 +8,7 @@ import { AskingIn, askingBlock, checkOf } from "@/asking/wire";
 import { DUMP_ROLES, type DumpRole } from "@/discovery/dump";
 import { labOn } from "../lab";
 import { companyContext } from "./company";
-import { recallFor } from "./memory";
+import { recallFor, subjectOf, withKnown } from "./memory";
 import type { OrgStore } from "./store";
 
 /*
@@ -72,5 +72,5 @@ export async function askCard(store: OrgStore, b: AskCardBodyT, emit: (label: st
   await store
     .putTrace({ id: nanoid(10), projectId: "asking", kind: "ask-turn", flow: "card", step: b.step, at: Date.now(), ...(model ? { model } : {}), rounds: b.asking.rounds.length, recalled: { items: known.items, chars: known.block.length }, answer: data, kept: { questions: turn.questions.map((q) => ({ id: q.id, title: q.title, after: q.after })), lookups: turn.lookups, done: turn.done, terms: turn.terms.map((t) => t.term) }, dropped } as { id: string; projectId: string })
     .catch(() => {});
-  return { ...turn, role };
+  return { ...turn, questions: await withKnown(store, turn.questions, subjectOf(b.asking, { flow: "card", words: b.card.title })), role };
 }

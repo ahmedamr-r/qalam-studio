@@ -193,7 +193,8 @@ export function toQuestion(q: PlanQuestion): Question {
   const open = q.allowOther || !!q.tool;
   const tool = withTool(q.tool);
   // About their own work, "I don't know" is an answer of its own: never a quote, never asked again.
-  const base = { id: q.id, title: q.title, why: q.why || undefined, source: "ai" as const, optional: true, dontKnow: true };
+  // What they said before to one like it shows under it (src/memory/known.ts).
+  const base = { id: q.id, title: q.title, why: q.why || undefined, source: "ai" as const, optional: true, dontKnow: true, ...(q.known?.length ? { known: q.known } : {}) };
   if (!q.options.length) return { ...base, kind: "text", placeholder: "Answer in your own words, or skip", maxLength: q.tool ? 1200 : 600, ...tool };
   if (q.multi) return { ...base, kind: "multi", groups: [{ id: "picks", label: "Pick any", options: q.options, ...(open ? { custom: { placeholder: "Add your own" } } : {}) }], ...(q.recommended.length ? { suggested: [...q.recommended] } : {}), ...tool };
   return {

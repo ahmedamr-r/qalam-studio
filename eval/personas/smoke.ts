@@ -28,8 +28,14 @@ const pickQuestion = { id: "pick", title: "Which customers first", why: "", mult
 /** A turn of the interview as the core answers it. */
 const turnOf = (qs: unknown[]) => ({ questions: qs, lookups: [], done: false, understood: [], terms: [], choices: [] });
 const done = { questions: [], lookups: [], done: true, understood: [{ text: "They want something that makes money" }], terms: [], choices: [] };
-let mode: "first" | "many" | "typed" = "first";
+let mode: "first" | "many" | "typed" | "known" = "first";
 const typedQuestion = { id: "typed", title: "What have you tried so far?", why: "", multi: false, options: [], recommended: [], allowOther: true };
+const DAY = 86_400_000;
+/** Questions as the core sends them when one like each was answered before (src/memory/known.ts): their own words, and a teammate's pick. */
+const knownQuestions = [
+  { id: "nrr", title: "What is net revenue retention today?", why: "", multi: false, options: [], recommended: [], allowOther: true, known: [{ id: "m-own", text: "About 104%", how: "own", mine: true, at: Date.now() - DAY, flow: "find", match: "exact" }] },
+  { ...pickQuestion, id: "first", known: [{ id: "m-pick", text: "Regulars", how: "pick", mine: false, name: "Omar", at: Date.now() - 2 * DAY, flow: "focus", match: "near" }] },
+];
 
 async function main() {
   const base = path.resolve(".qalam-dev/stress");
@@ -61,6 +67,7 @@ async function main() {
         const n = asks++;
         if (mode === "many") return n < 4 ? turnOf([{ ...pickQuestion, id: `pick${n}`, title: `${pickQuestion.title} (${n + 1})` }]) : done;
         if (mode === "typed") return n === 0 ? turnOf([typedQuestion]) : done;
+        if (mode === "known") return n === 0 ? turnOf(knownQuestions) : done;
         return n === 0 ? turnOf(questions) : done;
       },
       "/plan/propose": () => ({ cards: [], start: null, doubt: "", quotes: {} }),
@@ -185,6 +192,35 @@ async function main() {
     if (one) await tab.js<boolean>(`fetch('/api/org/${tab.org}/memory/${one.id}', { method: 'DELETE' }).then((r) => r.ok)`);
     const after = await tab.api<Remembered>("/memory");
     check(!!one && !!after && !after.entries.some((e) => e.id === one.id), "Forget takes a line off what Qalam AI remembers", one?.q);
+
+    // What was said before shows under a question like it, with Use it: their words go as theirs, a teammate's pick as Qalam AI's pick.
+    tab.stubbed.length = 0;
+    asks = 0;
+    mode = "known";
+    await tab.chat("What should we do about retention?");
+    for (let i = 0; i < 60 && !(await tab.see()).step?.text; i++) await sleep(250);
+    const shows = async (words: string) => tab.js<boolean>(`document.body.innerText.includes('Said before') && document.body.innerText.includes(${JSON.stringify(words)})`);
+    const ownShown = await shows("You said “About 104%”");
+    const usedOwn = await tab.inCard("Use it");
+    await sleep(150);
+    await tab.inCard((await tab.see()).step?.next ?? "Next");
+    for (let i = 0; i < 20 && !(await tab.see()).step?.radios.length; i++) await sleep(250);
+    const pickShown = await shows("Omar took Qalam AI's pick “Regulars”");
+    const usedPick = await tab.inCard("Use it");
+    await sleep(150);
+    for (let i = 0; i < 20 && !(await tab.see()).step?.review; i++) {
+      await tab.inCard((await tab.see()).step?.next ?? "Next");
+      await sleep(250);
+    }
+    await tab.inCard("Send answers");
+    for (let i = 0; i < 60 && !(await tab.click("Propose")); i++) await sleep(250);
+    for (let i = 0; i < 40 && !tab.stubbed.some((x) => x.path === "/plan/propose"); i++) await sleep(250);
+    const used = ((tab.stubbed.find((x) => x.path === "/plan/propose")?.body as Sent | undefined)?.asking?.rounds ?? []).flatMap((r) => r.asked);
+    check(
+      ownShown && pickShown && usedOwn && usedPick && used.length === 2 && used[0].answer === "About 104%" && used[0].how === "own" && used[1].answer === "Regulars" && used[1].how === "pick",
+      "What was said before shows under the question, and Use it answers with it: their words as theirs, a pick as Qalam AI's pick",
+      { ownShown, pickShown, used },
+    );
     mode = "first";
 
     // The first run's hand-off: their words reach the chat's plan route on the canvas.

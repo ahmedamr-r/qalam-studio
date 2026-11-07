@@ -11,7 +11,7 @@ import { quotePiece, type SourceRecord } from "@/discovery/sources";
 import type { ScanKnown } from "@/scan/session";
 import { nanoid } from "nanoid";
 import type { OrgStore } from "./store";
-import { recallFor } from "./memory";
+import { recallFor, subjectOf, withKnown } from "./memory";
 
 /**
  * A brief for a card on the canvas (src/discovery/brief.ts), in the core. The window sends the card and
@@ -97,7 +97,7 @@ export async function askBrief(store: OrgStore, req: BriefRequest, asking: Askin
   const dropped: { why: string; item: unknown }[] = [];
   const turn = sanitizeTurn(data, checkOf(asking, { who: "builder", hay: `${m.hay}\n${material.replace(/^(\s*- )[\w-]+ ·/gm, "$1")}`, terms: await store.getTerms(), kinds: KINDS, decisions, memory: known.ids }), (why, item) => dropped.push({ why, item }));
   await store.putTrace({ id: nanoid(10), projectId: "asking", kind: "ask-turn", flow: "brief", at: Date.now(), ...(model ? { model } : {}), rounds: asking.rounds.length, recalled: { items: known.items, chars: known.block.length }, answer: data, kept: { questions: turn.questions.map((q) => ({ id: q.id, title: q.title, after: q.after })), lookups: turn.lookups, done: turn.done }, dropped } as { id: string; projectId: string }).catch(() => {});
-  return turn;
+  return { ...turn, questions: await withKnown(store, turn.questions, subjectOf(asking, { flow: "brief", words: req.card.title })) };
 }
 
 const KINDS = ["project", "web"] as const;
