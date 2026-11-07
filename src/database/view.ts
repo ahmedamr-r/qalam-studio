@@ -1,3 +1,4 @@
+import type { Drafts } from "./draft";
 import { tablesThatMatter, tableKeyOf, type Layout } from "./layout";
 import type { DatabaseKind, DatabaseLocal, MetricState, Reading } from "./local";
 import { queryHash } from "./metrics-md";
@@ -58,3 +59,23 @@ export function layoutSummary(l: Layout): LayoutSummary {
   const cols = l.tables.flatMap((t) => t.columns);
   return { at: l.at, tables: l.tables.length, sent: sent.map(tableKeyOf), personal: cols.filter((c) => c.personal).length, sampled: cols.filter((c) => c.values?.length).length, hidden: l.tables.filter((t) => t.hidden).map(tableKeyOf) };
 }
+
+/** What the window sees of a project's database on this computer. */
+export interface DatabaseView {
+  connection: ConnectionView | null;
+  layout: LayoutSummary | null;
+  /** Drafts waiting on this computer, what Qalam AI couldn't tell, and what code left out. */
+  drafts: Drafts | null;
+  metrics: MetricView[];
+}
+
+/** A kept number checked beside a fresh sample: the hash of the query that ran, which approving names. */
+export interface Checked {
+  q: string;
+  sample?: { value: number | null; at: number };
+  reads: string[];
+  flags: string[];
+  error?: string;
+}
+
+export type ReadResult = { value: number | null; at: number } | { error: string; state?: string };

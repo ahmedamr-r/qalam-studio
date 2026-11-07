@@ -23,7 +23,7 @@ export const TOOL_FIELDS = {
   from: {
     type: "string",
     enum: ["none", "numbers", "docs"],
-    description: "Where a better answer than their memory lives, if anywhere: \"numbers\" when the answer is a figure a product analytics tool tracks (a rate, a count, a funnel), \"docs\" when it's likely written down in their docs or notes (a strategy, a research summary, a spec). \"none\" for what only they can say: an opinion, a choice, a preference",
+    description: "Where a better answer than their memory lives, if anywhere: \"numbers\" when the answer is a figure their tools track (a rate, a count or a funnel in product analytics; revenue, orders, refunds or margin in their own database), \"docs\" when it's likely written down in their docs or notes (a strategy, a research summary, a spec). \"none\" for what only they can say: an opinion, a choice, a preference",
   },
   look_for: { type: "string", description: "With \"numbers\" or \"docs\": 2 to 5 words to search that tool for. Otherwise empty" },
 } as const;

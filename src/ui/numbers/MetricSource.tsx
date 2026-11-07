@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import clsx from "clsx";
-import { ChartLine, ExternalLink, X } from "lucide-react";
+import { ChartLine, Database as DatabaseIcon, ExternalLink, X } from "lucide-react";
 import { countsEvents } from "@/connectors/analytics";
 import type { InsightNumbers } from "@/connectors/numbers";
 import type { Hit } from "@/connectors/recipes";
-import { sourceLine, sourceOf } from "@/connectors/source";
+import { DATABASE, sourceLine, sourceOf } from "@/connectors/source";
+import { lab } from "@/lab";
+import { databaseDb } from "@/org/database";
 import { toolConnected } from "@/connectors/suggest";
 import type { OstMetric } from "@/discovery/types";
 import { numbersDb } from "@/org/connectors";
@@ -14,6 +16,7 @@ import { Button, IconBtn } from "../controls";
 import { r } from "../recipes";
 import { ago } from "../time";
 import { EventPicker } from "./EventPicker";
+import { DatabasePick, useDatabaseNumbers } from "./DatabasePick";
 
 const ICON = { size: 12, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 
@@ -23,8 +26,12 @@ const ICON = { size: 12, absoluteStrokeWidth: true, strokeWidth: 1.25 } as const
  * each read takes about a minute (it starts its servers first). `query` and `open` start it searching
  * for that chart at once (a job that reads the number).
  */
-export function MetricSource({ m, onChange, onLeave, query: first = "", open = false }: { m: OstMetric; onChange: (next: OstMetric) => void; onLeave?: (e: MouseEvent<HTMLAnchorElement>) => void; query?: string; open?: boolean }) {
+export function MetricSource({ m, onChange, onLeave, query: first = "", open = false, tool, goal }: { m: OstMetric; onChange: (next: OstMetric) => void; onLeave?: (e: MouseEvent<HTMLAnchorElement>) => void; query?: string; open?: boolean; tool?: string; goal?: string }) {
   const { view } = useConnectorView();
+  // The team's own numbers in its database, behind the database switch.
+  const dbNumbers = useDatabaseNumbers(lab("database"));
+  const withDb = dbNumbers.length > 0;
+  const [fromDb, setFromDb] = useState(open && tool === DATABASE);
   const tools = (view?.connectors ?? []).filter((c) => c.numbers && toolConnected(c));
   const [picked, setPicked] = useState<string | null>(null);
   const kept = m.source ? sourceOf(m.source) : null;
@@ -60,7 +67,7 @@ export function MetricSource({ m, onChange, onLeave, query: first = "", open = f
   // Once, when it opens on a job's query (a ref, as development runs effects twice).
   const started = useRef(false);
   useEffect(() => {
-    if (open && first.trim() && !started.current) {
+    if (open && first.trim() && !started.current && tool !== DATABASE) {
       started.current = true;
       void find(first);
     }
@@ -80,7 +87,28 @@ export function MetricSource({ m, onChange, onLeave, query: first = "", open = f
       setSeries({ hit: { ...hit, title: r.name ?? hit.title }, read: r });
       setStep("series");
     });
+  /** Read again from the database: the number's fixed query, fresh. */
+  const readDb = (id: string, name: string) =>
+    run("Reading it from your database…", async () => {
+      const got = (await databaseDb.read([id], true))[id];
+      if (!got || "error" in got) throw new Error(got?.error ?? "It didn't read.");
+      onChange({ ...m, current: got.value, source: { connector: DATABASE, ref: id, label: name }, readAt: got.at });
+    });
   const src = m.source;
+  if (fromDb)
+    return (
+      <div className="flex flex-col gap-[6px] pt-[4px]">
+        <DatabasePick
+          words={`${m.name} ${first}`}
+          goal={goal}
+          onCancel={() => setFromDb(false)}
+          onPick={(x, value, at) => {
+            onChange({ ...m, current: value, source: { connector: DATABASE, ref: x.metric.id, label: x.metric.name }, readAt: at });
+            setFromDb(false);
+          }}
+        />
+      </div>
+    );
   return (
     <div className="flex flex-col gap-[6px] pt-[4px]">
       {src && kept && step === "idle" ? (
@@ -100,14 +128,25 @@ export function MetricSource({ m, onChange, onLeave, query: first = "", open = f
               Read again
             </Button>
           )}
+          {kept.kind === "database" && lab("database") && (
+            <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => void readDb(src.ref, src.label ?? src.ref)}>
+              Read again
+            </Button>
+          )}
           <IconBtn size="sm" label={`Stop reading it from ${kept.from}`} onClick={() => onChange({ ...m, source: undefined, readAt: undefined })}>
             <X {...ICON} />
           </IconBtn>
         </div>
       ) : step === "idle" ? (
-        tools.length ? (
-          <span className="flex flex-wrap gap-[6px]">
-            {tools.map((c) => (
+        <span className="flex flex-wrap gap-[6px]">
+          {withDb && (
+            <Button size="sm" variant="secondary" onClick={() => setFromDb(true)}>
+              <DatabaseIcon {...ICON} />
+              Read it from your database…
+            </Button>
+          )}
+          {tools.length ? (
+            tools.map((c) => (
               <Button
                 key={c.id}
                 size="sm"
@@ -123,14 +162,14 @@ export function MetricSource({ m, onChange, onLeave, query: first = "", open = f
                 <ChartLine {...ICON} />
                 Read it from {c.label}…
               </Button>
-            ))}
-          </span>
-        ) : (
-          <a href={placeHref("connections")} onClick={onLeave} className={clsx(r.buttonSm, r.buttonSecondary, "self-start")}>
-            <ChartLine {...ICON} />
-            Read it from your analytics…
-          </a>
-        )
+            ))
+          ) : withDb ? null : (
+            <a href={placeHref("connections")} onClick={onLeave} className={clsx(r.buttonSm, r.buttonSecondary, "self-start")}>
+              <ChartLine {...ICON} />
+              Read it from your analytics…
+            </a>
+          )}
+        </span>
       ) : null}
       {step === "pick" && events && (
         <div className="flex flex-col gap-[4px]">

@@ -10,6 +10,8 @@ import { ConnectorLogo } from "../brand/ConnectorLogo";
 import { Browse, useConnectorView } from "../chat/SourcePicker";
 import { ConnectActions, type View } from "../connections/Connectors";
 import { EventPicker } from "../numbers/EventPicker";
+import { lab } from "@/lab";
+import { DatabaseFound } from "./DatabaseFound";
 import { Button, IconBtn, Spinner } from "../controls";
 import { r } from "../recipes";
 import { StatusDot } from "../viz";
@@ -32,22 +34,27 @@ export function ToolSuggestion({ ask, question, onFill }: { ask: ToolAsk; questi
   useEffect(() => void connectorsDb.list().then(setView, () => {}), []);
   const tools = view ? toolsForAsk(ask, view.connectors) : [];
   const open = tools.find((c) => c.id === openId) ?? null;
-  if (!tools.length) return null;
+  // The team's own numbers in its database, behind the database switch.
+  const withDb = ask.kind === "numbers" && lab("database");
+  if (!tools.length) return withDb ? <DatabaseFound question={question} lookFor={ask.lookFor} onFill={onFill} framed /> : null;
   const alone = tools.filter(searchedAlone);
   return (
     // Its own keys: Enter on a button here isn't the card's Next, and 1–9 aren't its options.
     <div className="flex flex-col gap-[6px] border-t border-line-subtle pt-[10px]" onKeyDown={(e) => e.stopPropagation()}>
+      {withDb && <DatabaseFound question={question} lookFor={ask.lookFor} onFill={onFill} />}
       {alone.length > 0 && <Found tools={alone} ask={ask} question={question} onFill={onFill} />}
-      <div role="group" aria-label={ask.kind === "numbers" ? "Get it from your analytics" : "Get it from your docs"} className="flex flex-wrap items-center gap-[6px]">
-        <span className="text-micro text-fg-subtle">{ask.kind === "numbers" ? "Your analytics may have this" : "Your docs may have this"}</span>
-        {tools.map((c) => (
-          <button key={c.id} type="button" aria-expanded={openId === c.id} onClick={() => setOpenId(openId === c.id ? null : c.id)} className={r.composerPill}>
-            <ConnectorLogo id={c.id} size={16} decorative />
-            {c.label}
-            {toolConnected(c) && <StatusDot tone="ok" />}
-          </button>
-        ))}
-      </div>
+      {tools.length > 0 && (
+        <div role="group" aria-label={ask.kind === "numbers" ? "Get it from your analytics" : "Get it from your docs"} className="flex flex-wrap items-center gap-[6px]">
+          <span className="text-micro text-fg-subtle">{ask.kind === "numbers" ? "Your analytics may have this" : "Your docs may have this"}</span>
+          {tools.map((c) => (
+            <button key={c.id} type="button" aria-expanded={openId === c.id} onClick={() => setOpenId(openId === c.id ? null : c.id)} className={r.composerPill}>
+              <ConnectorLogo id={c.id} size={16} decorative />
+              {c.label}
+              {toolConnected(c) && <StatusDot tone="ok" />}
+            </button>
+          ))}
+        </div>
+      )}
       {open && (
         <div className="flex flex-col gap-[6px] border-t border-line-subtle pt-[6px]">
           <div className="flex items-center gap-[6px]">

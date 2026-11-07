@@ -5,6 +5,7 @@ import { EngineCard } from "./EngineCard";
 import { ThisMac } from "./ThisMac";
 import { Connectors } from "./Connectors";
 import { ProductCode } from "./ProductCode";
+import { DatabaseCard } from "./Database";
 import { lab } from "@/lab";
 import { VoiceCard } from "./VoiceCard";
 
@@ -25,6 +26,12 @@ export default function ConnectionsPage() {
           <h2 className="text-micro font-medium text-fg-subtle">Connectors</h2>
           <Connectors />
         </div>
+        {lab("database") && (
+          <div className="flex flex-col gap-[8px]">
+            <h2 className="text-micro font-medium text-fg-subtle">Database</h2>
+            <DatabaseCard />
+          </div>
+        )}
         {lab("code") && (
           <div className="flex flex-col gap-[8px]">
             <h2 className="text-micro font-medium text-fg-subtle">Product code</h2>

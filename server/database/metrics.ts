@@ -5,7 +5,7 @@ import type { Reading } from "@/database/local";
 import { freshMetricId, queryHash } from "@/database/metrics-md";
 import { guardSql } from "@/database/sql";
 import { METRIC_UNITS, nameKey, type Metric, type MetricUnit } from "@/database/types";
-import { metricState } from "@/database/view";
+import { metricState, type Checked, type ReadResult } from "@/database/view";
 import type { OrgStore } from "../org/store";
 import { withDatabase, type Opener } from "./connect";
 import { checkOnDatabase } from "./draft";
@@ -95,15 +95,6 @@ async function approve(store: OrgStore, m: Metric, reading: Reading, now: number
   await store.changeDatabaseLocal((d) => (d ? { ...d, approved: { ...d.approved, [m.id]: { q: queryHash(m), where: d.where, at: now } }, readings: { ...d.readings, [m.id]: reading } } : d), { tab });
 }
 
-export interface Checked {
-  /** The hash of the query that was run: approving names it, so a query changed since isn't approved unseen. */
-  q: string;
-  sample?: { value: number | null; at: number };
-  reads: string[];
-  flags: string[];
-  error?: string;
-}
-
 /** Check a kept number on this computer beside a fresh sample, before it may read here. */
 export async function checkMetric(store: OrgStore, id: string, o: { open?: Opener; signal?: AbortSignal } = {}): Promise<Checked> {
   const m = (await store.getMetrics()).metrics.find((x) => x.id === id);
@@ -124,8 +115,6 @@ export async function approveMetric(store: OrgStore, id: string, q: string, read
   if (!store.databaseLocal) throw new DatabaseError("Connect your database in Connections first.", "unconnected");
   await approve(store, m, reading ?? { value: null, at: o.now ?? Date.now() }, o.now ?? Date.now(), o.tab);
 }
-
-export type ReadResult = { value: number | null; at: number } | { error: string; state?: string };
 
 /** Read numbers that are approved here, by their fixed queries, in one session. */
 export async function readMetrics(store: OrgStore, ids: readonly string[], o: { fresh?: boolean; open?: Opener; now?: number; signal?: AbortSignal; tab?: string } = {}): Promise<Record<string, ReadResult>> {

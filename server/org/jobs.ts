@@ -1,3 +1,6 @@
+import { DATABASE } from "@/connectors/source";
+import { metricViews } from "@/database/view";
+import { labOn } from "../lab";
 import { nanoid } from "nanoid";
 import { jobsCall } from "@/ai/jobs";
 import { structured } from "@/ai/server";
@@ -34,12 +37,18 @@ const WHAT: Record<string, string> = {
   posthog: "reads a number from a saved insight",
 };
 
-/** The tools a job may use: those that bring material in, and those that read numbers; whether each is connected here. */
-export async function jobTools(): Promise<JobTool[]> {
+/** The tools a job may use: those that bring material in, and those that read numbers; whether each is connected here. With the database switch, the team's own numbers in its database too. */
+export async function jobTools(store?: OrgStore): Promise<JobTool[]> {
   const { connectors } = await connectorsView();
-  return connectors.flatMap((c): JobTool[] =>
+  const tools = connectors.flatMap((c): JobTool[] =>
     c.imports || c.numbers ? [{ id: c.id, label: c.label, kind: c.imports ? "search" : "numbers", what: WHAT[c.id] ?? (c.imports ? "searches what the team keeps there" : "reads numbers"), connected: c.tone === "ok" }] : [],
   );
+  const lab = store ? await labOn() : [];
+  if (!store || !(lab === true || lab.includes("database"))) return tools;
+  const metrics = metricViews((await store.getMetrics()).metrics, store.databaseLocal);
+  if (!metrics.length) return tools;
+  const names = metrics.slice(0, 12).map((m) => m.metric.name).join("; ");
+  return [...tools, { id: DATABASE, label: "Your database", kind: "numbers", what: `reads one of the team's own numbers from its database: ${names}`, connected: metrics.some((m) => m.state === "ready") }];
 }
 
 /** Names that say a role, not who someone is. */
@@ -75,7 +84,7 @@ export async function planJobs(store: OrgStore, goalId: string, emit?: (label: s
   const segments = k.topics.filter((t) => t.kind === "segment").sort((a, b) => Number(near.has(b.id)) - Number(near.has(a.id)) || b.updatedAt - a.updatedAt);
   const products = await store.listProducts();
   emit?.("Looking at the tools connected here");
-  const m = jobMaterial({ tree, goal, gaps, problems, topics, tools: await jobTools(), segments, people: await peopleIn(store), planned, productName: (id) => products.find((p) => p.id === id)?.name });
+  const m = jobMaterial({ tree, goal, gaps, problems, topics, tools: await jobTools(store), segments, people: await peopleIn(store), planned, productName: (id) => products.find((p) => p.id === id)?.name });
   emit?.(gaps.length ? `Qalam AI is planning how to find out ${gaps.length === 1 ? "what isn't known" : `${gaps.length} things not known`} yet` : "Qalam AI is planning what would make the problems surer");
   const { data, model } = await structured<unknown>(jobsCall(m));
   const now = Date.now();

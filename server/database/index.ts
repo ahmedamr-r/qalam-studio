@@ -1,6 +1,5 @@
-import type { Drafts } from "@/database/draft";
 import type { Layout } from "@/database/layout";
-import { connectionView, layoutSummary, metricViews, type ConnectionView, type LayoutSummary, type MetricView } from "@/database/view";
+import { connectionView, layoutSummary, metricViews, type DatabaseView, type LayoutSummary } from "@/database/view";
 import type { OrgStore } from "../org/store";
 import { withDatabase, type Opener } from "./connect";
 import { getDrafts, getLayout, putLayout } from "./files";
@@ -12,13 +11,7 @@ import { readPostgresLayout } from "./layout";
  * connect.ts; reading its layout, drafting and checking the numbers, and reading them, sit beside it.
  */
 
-export interface DatabaseView {
-  connection: ConnectionView | null;
-  layout: LayoutSummary | null;
-  /** Drafts waiting on this computer, what Qalam AI couldn't tell, and what code left out. */
-  drafts: Drafts | null;
-  metrics: MetricView[];
-}
+export type { DatabaseView } from "@/database/view";
 
 export async function databaseView(store: OrgStore): Promise<DatabaseView> {
   const local = store.databaseLocal;

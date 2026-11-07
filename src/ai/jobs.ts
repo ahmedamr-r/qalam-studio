@@ -22,7 +22,7 @@ You get the goal under the goals it feeds (with their numbers), what isn't known
 
 Plan at most 6 jobs, the most useful first, at most one per gap. Each job is one of:
 - search: search one tool that brings material in for words that would show whether, how often and for whom a problem comes up. The query is 1 to 6 words, as a person would type them into that tool.
-- numbers: read a number from a saved insight in PostHog: where the goal's number stands, or a step where people drop off. The query is the insight's likely name.
+- numbers: read a number: where the goal's number stands, or a step where people drop off. From a saved insight in an analytics tool (the query is the insight's likely name), or, where the tools list the team's own numbers in its database, one of those (the query is that number's name, as listed).
 - talk: 2 to 5 open questions to ask, about what people did rather than what they would do, and who to ask: segments and people from the lists, by their ids, or "team".
 - read-code: one question about what the product does today that its code would answer (the steps of a flow, the events it sends).
 - posts: look online for public posts and reviews where people describe one problem in their own words, for a problem only the team raises so far. Its gap must be about that problem.
@@ -41,8 +41,8 @@ export function jobsSchema(m: Pick<JobSent, "gaps" | "tools" | "segments" | "peo
         gap: enm([...m.gaps.keys(), "none"], "The gap it closes (x…), or none"),
         title: str("A short instruction, at most 12 words"),
         why: str("One sentence: what the team would learn and how it bears on the goal"),
-        connector: enm([...m.tools.keys(), "none"], "search: a tool that brings material in · numbers: posthog · none otherwise"),
-        query: str("search: 1 to 6 words to search for · numbers: the insight's likely name · \"\" otherwise"),
+        connector: enm([...m.tools.keys(), "none"], "search: a tool that brings material in · numbers: an analytics tool, or database · none otherwise"),
+        query: str("search: 1 to 6 words to search for · numbers: the insight's likely name, or the database number's name · \"\" otherwise"),
         questions: arr(str("One open question"), "talk: 2 to 5 questions · read-code: one · [] otherwise"),
         who: arr(obj({ ref: enm([...m.segments.keys(), ...m.people.keys(), "team"], "A segment (s…), a person (p…), or team"), why: str("Why them, in one short sentence") }), "talk: who to ask, at most 4 · [] otherwise"),
       }),
