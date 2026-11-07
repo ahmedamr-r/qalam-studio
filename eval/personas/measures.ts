@@ -24,6 +24,10 @@ export function questioning(p: Persona, player: Player) {
     wordsTyped: player.typed(),
     enters: l.filter((x) => x.how === "enter").length,
     skips: l.filter((x) => x.how === "skip").length,
+    /** Questions they left that "Use Qalam AI's picks" filled. */
+    picks: l.filter((x) => x.how === "pick").length,
+    /** Asked by the brief's own interview, after the proposal. */
+    briefAsked: l.filter((x) => x.flow === "brief").length,
     dontKnows: l.filter((x) => x.how === "dont-know").length,
     /** A don't-know the question really was about something they said they don't know. */
     unknownsAsked: [...new Set(l.flatMap((x) => x.unknowns))],
@@ -32,18 +36,29 @@ export function questioning(p: Persona, player: Player) {
   };
 }
 
-/** Enter on what was preselected, later cited as what they said. */
+/**
+ * What they never said, turning up as what they said: Enter on something preselected, or Qalam AI's pick
+ * they pressed for, cited on a card as their answer, kept as a source of their words, or in the brief on a
+ * line that doesn't say it's Qalam AI's pick.
+ */
 export function contamination(player: Player, run: PlanRun | ScanRun | null) {
-  const passive = player.ledger.filter((x) => x.how === "enter" && x.answer);
+  const passive = player.ledger.filter((x) => (x.how === "enter" || x.how === "pick") && x.answer.trim());
+  const picks = passive.filter((x) => x.how === "pick").length;
+  // Words they did give, which a pick's label may happen to match.
+  const own = new Set(player.ledger.filter((x) => x.how === "fact" || x.how === "dont-know").map((x) => x.answer.trim()));
+  const notTheirs = (answer: string) => !own.has(answer.trim()) && passive.some((x) => x.answer.trim() === answer.trim());
+  // In the brief, a pick of a few words written on a line of its own without saying whose it is.
+  const briefLines = (md: string | undefined) =>
+    (md ?? "").split("\n").filter((line) => !/Qalam AI's pick/.test(line) && passive.some((x) => x.how === "pick" && x.answer.split(/\s+/).length >= 3 && line.includes(x.answer.trim())));
   if (run?.path === "plan") {
-    const cited = (run.draft?.cards ?? []).flatMap((c) => c.answers.filter((a) => passive.some((x) => x.answer === a.answer)).map((a) => ({ card: c.title, answer: a.answer })));
-    return { passive: passive.length, cited };
+    const cited = (run.draft?.cards ?? []).flatMap((c) => c.answers.filter((a) => notTheirs(a.answer)).map((a) => ({ card: c.title, answer: a.answer })));
+    return { passive: passive.length, picks, cited, onPicksAlone: (run.draft?.cards ?? []).filter((c) => c.came === "picks").map((c) => c.title), briefLines: briefLines(run.brief?.markdown) };
   }
   if (run?.path === "scan") {
-    // Everything they answered is kept as a source of their own words, Enter or not.
-    return { passive: passive.length, cited: passive.map((x) => ({ card: "(their answers, kept as a source)", answer: x.answer })) };
+    const cited = (run.kept ?? []).filter((x) => notTheirs(x.answer)).map((x) => ({ card: "(their answers, kept as a source)", answer: x.answer }));
+    return { passive: passive.length, picks, cited, briefLines: briefLines(run.brief?.markdown) };
   }
-  return { passive: passive.length, cited: [] };
+  return { passive: passive.length, picks, cited: [] };
 }
 
 export const trapHits = (p: Persona, text: string) => p.traps.map((t) => ({ id: t.id, hit: t.caught.test(text) }));
@@ -74,7 +89,7 @@ export function costs(t: Tap) {
   return { qalam: arm("qalam"), player: arm("player"), measure: arm("measure") };
 }
 
-export const baselineCosts = (b: BaselineRun) => ({ tokens: b.tokens.input + b.tokens.output + b.tokens.cacheRead + b.tokens.cacheWrite, fresh: b.tokens.input + b.tokens.output + b.tokens.cacheWrite, cost: +b.cost.toFixed(3), searches: b.tools.filter((x) => x.name === "WebSearch").length, fetches: b.tools.filter((x) => x.name === "WebFetch").length, seconds: Math.round(b.ms / 1000), ended: b.ended });
+export const baselineCosts = (b: BaselineRun) => ({ tokens: b.tokens.input + b.tokens.output + b.tokens.cacheRead + b.tokens.cacheWrite, fresh: b.tokens.input + b.tokens.output + b.tokens.cacheWrite, cost: +b.cost.toFixed(3), searches: b.tools.filter((x) => x.name === "WebSearch").length, fetches: b.tools.filter((x) => x.name === "WebFetch").length, seconds: Math.round(b.ms / 1000), ended: b.ended, rounds: b.questions.length, ...(b.hitCap ? { hitCap: true } : {}) });
 
 type Structured = <T>(call: any, signal?: AbortSignal) => Promise<{ data: T }>;
 

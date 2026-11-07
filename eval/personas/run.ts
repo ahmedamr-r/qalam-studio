@@ -34,7 +34,8 @@ import type { Persona } from "./types";
  *   pnpm eval:personas --stage check --yes --only a1  the in-process road held to the real app's
  *
  * --flip <fact> re-proposes with one answer turned around. --plan-too also runs a scan persona through
- * the chat's plan route. --models keeps search by meaning on (the control).
+ * the chat's plan route. --models keeps search by meaning on (the control). The plain agent asks for as
+ * long as it needs, as Qalam does; --baseline-rounds 3 holds it to the rounds it was frozen with.
  */
 
 const ROOT = path.resolve("eval/personas");
@@ -92,6 +93,8 @@ interface Options {
   rep: number;
   /** A first-run person, by the chat's plan route alone. */
   planOnly: boolean;
+  /** Hold the plain agent to this many rounds of 3 questions, as it was frozen; none: as long as it needs. */
+  baselineRounds?: number;
 }
 
 /** One side, on the road a person takes. A path the window drives goes by its plan route here; those run whole in the real app. */
@@ -125,6 +128,9 @@ async function oneSide(p: Persona, out: string, route: "plan" | "scan", o: Optio
     voided: t.failed.length ? `A call failed and fell back: ${t.failed.map((f) => f.kind).join(", ")}` : null,
     route: run.path === "plan" ? { ...run.route, ...(route === "scan" ? { firstRunSentToChat: true } : {}) } : { job: "first run" },
     costs: costs(t),
+    /** How the interview ended, then the brief's. */
+    ended: run.ended ?? null,
+    briefEnded: run.briefAsk?.ended ?? null,
     questioning: questioning(p, player),
     contamination: contamination(player, run),
     searching: searching(t, run),
@@ -189,7 +195,7 @@ async function baselineSide(p: Persona, out: string, o: Options, ctrl: AbortCont
     await writeFile(path.join(folder, "problems.md"), seeded);
     files = ["problems.md"];
   }
-  const go = (who: typeof player) => runBaseline(p, who, { budgetUsd: budget, signal: ctrl.signal, firstRoundOnly: o.firstRoundOnly, ...(folder ? { folder } : {}), ...(files?.length ? { files } : {}), ...(process.env.CLAUDE_CLI_PATH ? { bin: process.env.CLAUDE_CLI_PATH } : {}) });
+  const go = (who: typeof player) => runBaseline(p, who, { budgetUsd: budget, signal: ctrl.signal, firstRoundOnly: o.firstRoundOnly, ...(o.baselineRounds ? { rounds: o.baselineRounds } : {}), ...(folder ? { folder } : {}), ...(files?.length ? { files } : {}), ...(process.env.CLAUDE_CLI_PATH ? { bin: process.env.CLAUDE_CLI_PATH } : {}) });
   let run: BaselineRun = await go(player);
   // A dropped connection says nothing about the agent: once more, from the start.
   if (run.ended === "error" && /ECONNRESET|Connection dropped|overloaded|socket/i.test(`${run.error} ${JSON.stringify(run.turns.at(-1))}`)) {
@@ -420,7 +426,7 @@ async function stage1(ids: Set<string> | null, root: string) {
 }
 
 async function main() {
-  const { values } = parseArgs({ options: { yes: { type: "boolean" }, stage: { type: "string" }, only: { type: "string" }, flip: { type: "string" }, "plan-too": { type: "boolean" }, "no-baseline": { type: "boolean" }, models: { type: "boolean" }, budget: { type: "string" }, out: { type: "string" }, rep: { type: "string" }, "plan-only": { type: "boolean" } } });
+  const { values } = parseArgs({ options: { yes: { type: "boolean" }, stage: { type: "string" }, only: { type: "string" }, flip: { type: "string" }, "plan-too": { type: "boolean" }, "no-baseline": { type: "boolean" }, models: { type: "boolean" }, budget: { type: "string" }, out: { type: "string" }, rep: { type: "string" }, "plan-only": { type: "boolean" }, "baseline-rounds": { type: "string" } } });
   loadEnvFiles(process.cwd());
   if (!values.stage) return printPlan();
   if (values.stage === "0") return stage0();
@@ -448,7 +454,7 @@ async function main() {
       break;
     }
     console.log(`\n${p.id}: ${p.title}`);
-    const sides = await runPersona(p, root, { firstRoundOnly, ...(values.flip ? { flip: values.flip } : {}), planToo: !!values["plan-too"], noBaseline: !!values["no-baseline"], ...(values.budget ? { budget: Number(values.budget) } : {}), rep: Number(values.rep ?? 0), planOnly: !!values["plan-only"] }, ctrl).catch((e: unknown) => {
+    const sides = await runPersona(p, root, { firstRoundOnly, ...(values.flip ? { flip: values.flip } : {}), planToo: !!values["plan-too"], noBaseline: !!values["no-baseline"], ...(values.budget ? { budget: Number(values.budget) } : {}), rep: Number(values.rep ?? 0), planOnly: !!values["plan-only"], ...(values["baseline-rounds"] ? { baselineRounds: Number(values["baseline-rounds"]) } : {}) }, ctrl).catch((e: unknown) => {
       console.log(`  failed: ${e instanceof Error ? e.stack : String(e)}`);
       return null;
     });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { askedOf, briefFile, briefFromFile, briefMarkdown, briefMaterial, briefRound, sanitizeBrief, type BriefData } from "./brief";
+import { askedFromAnswers, askedOf, briefFile, briefFromFile, briefMarkdown, briefMaterial, briefRound, sanitizeBrief, type BriefData } from "./brief";
 
 const words = [
   { text: "She paid the deposit, then ghosted me for 3 months.", source: "DV Info Net", url: "https://dvinfo.example/t/1" },
@@ -171,6 +171,20 @@ describe("what was asked before a brief is written", () => {
     expect(askedOf({ platform: "  A web app ", needs: "", more: [{ question: "Who first?", answer: "Night nurses" }, { question: "Empty?", answer: "  " }, "nope"], other: 1 })).toEqual({ platform: "A web app", more: [{ question: "Who first?", answer: "Night nurses" }] });
     expect(askedOf(null)).toEqual({});
     expect(askedOf({ more: Array.from({ length: 30 }, (_, i) => ({ question: `Q${i}?`, answer: "A" })) }).more).toHaveLength(20);
+  });
+
+  it("keeps what the interview settled: code's own answers as before, the rest as said, Qalam AI's picks marked, nothing left", () => {
+    const a = (id: string, question: string, text: string, how: "own" | "pick" | "left") => ({ id, round: 0, question, text, typed: how === "own" ? text : "", how });
+    expect(
+      askedFromAnswers([
+        a("platform", "Where does it run?", "A web app", "own"),
+        a("exists", "What exists already?", "", "left"),
+        a("q1", "Who first?", "Night nurses", "own"),
+        a("q2", "Paid or free?", "Free to start", "pick"),
+        a("q3", "Which country?", "", "left"),
+      ]),
+    ).toEqual({ platform: "A web app", more: [{ question: "Who first?", answer: "Night nurses" }, { question: "Paid or free?", answer: "Qalam AI's pick, which they agreed to: Free to start" }] });
+    expect(askedFromAnswers([a("needs", "Accounts or payments?", "Payments", "pick")])).toEqual({ needs: "Payments" });
   });
 
   it("puts what else they said in what the features are worked out from, as their words", () => {

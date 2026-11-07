@@ -18,8 +18,8 @@ export interface Answered {
   facts: string[];
   /** Things they don't know that this question asked for. */
   unknowns: string[];
-  /** enter: took what was preselected, unread. skip: left it empty. */
-  how: "enter" | "skip" | "fact" | "dont-know";
+  /** enter: took what was preselected, unread. skip: left it empty. pick: left it, then pressed "Use Qalam AI's picks", which filled it with Qalam AI's recommendation, never their words. */
+  how: "enter" | "skip" | "fact" | "dont-know" | "pick";
   answer: string;
   /** They chose it: false for Enter on what was preselected. */
   active: boolean;
@@ -35,6 +35,10 @@ export interface Player {
   fill(questions: PlanQuestion[], at: { flow: string; round: number }, signal?: AbortSignal): Promise<Record<string, string>>;
   /** Plain words, for a side that asks in prose: no options, so no Enter to press. */
   answer(question: string, at: { flow: string; round: number }, signal?: AbortSignal): Promise<string>;
+  /** Whether they press "Use Qalam AI's picks" on this round for what they left: a passive person might. Its own coin, so Enter and skip fall as before. */
+  pressesPicks(at: { flow: string; round: number }): boolean;
+  /** A question they left that the press filled: Qalam AI's pick, recorded as such. */
+  tookPick(question: string, at: { flow: string; round: number }, answer: string): void;
   ledger: Answered[];
   released: Set<string>;
   /** Words they had to type. */
@@ -98,6 +102,7 @@ export const preselected = (_q: PlanQuestion): string => "";
 
 export function makePlayer(p: Persona, deps: PlayerDeps, o: { rep?: number; flip?: { fact: string; to: string } } = {}): Player {
   const flip = coin(`${p.id}:${o.rep ?? 0}`);
+  const pickFlip = coin(`${p.id}:${o.rep ?? 0}:picks`);
   const facts = p.facts.map((f) => (o.flip?.fact === f.id ? { ...f, value: o.flip.to } : f));
   const ledger: Answered[] = [];
   const released = new Set<string>();
@@ -156,6 +161,14 @@ export function makePlayer(p: Persona, deps: PlayerDeps, o: { rep?: number; flip
     ledger,
     released,
     typed: () => ledger.filter((l) => l.active && l.how !== "enter").reduce((n, l) => n + l.answer.split(/\s+/).filter(Boolean).length, 0),
+    pressesPicks(at) {
+      const left = ledger.some((l) => l.flow === at.flow && l.round === at.round && (l.how === "enter" || l.how === "skip"));
+      return left && pickFlip() < p.behavior.enterRate;
+    },
+    tookPick(question, at, answer) {
+      const l = ledger.find((x) => x.flow === at.flow && x.round === at.round && x.question === question && (x.how === "enter" || x.how === "skip"));
+      if (l) Object.assign(l, { how: "pick", answer, active: false });
+    },
     async fill(questions, at, signal) {
       const out: Record<string, string> = {};
       for (const q of questions) {

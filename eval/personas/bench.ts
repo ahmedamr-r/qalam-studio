@@ -1,9 +1,11 @@
 import type { PlanQuestion } from "@/ai/plan";
-import { answersOf, applyTurn, askInstead, currentRound, emptyAsking, lookupLanded, markRead, nextAfter, startLookup } from "@/asking/engine";
-import type { AskingState, Lookup } from "@/asking/types";
+import { answersOf, applyTurn, askInstead, currentRound, emptyAsking, lookupLanded, markRead, nextAfter, startLookup, takePicks } from "@/asking/engine";
+import type { AskAnswer, AskingState, AskQuestion, AskRound, Lookup } from "@/asking/types";
 import { askingIn } from "@/asking/wire";
 import { research, structured } from "@/ai/server";
-import { briefRound, type BriefAsked, type BriefShape } from "@/discovery/brief";
+import { askedFromAnswers, briefRound, type BriefAsked, type BriefShape } from "@/discovery/brief";
+import { toQuestion } from "@/ui/ai/plan";
+import { answerWords, OTHER, type Answer, type FlowState } from "@/ui/ai/questionFlow";
 import { needLine } from "@/hub/needs";
 import { startPlan } from "@/onboarding/start";
 import { firstGoal, SUGGESTED_GOAL } from "@/scan/plan";
@@ -12,7 +14,7 @@ import { steerAnswers } from "@/scan/steer";
 import { type OutlineCard, type PlanCard, type PlanDraft } from "@/space/plan";
 import { routeOf } from "@/space/route";
 import { captureTogether } from "../../server/capture";
-import { writeCardBrief, type BriefCardWords, type BriefRequest } from "../../server/org/briefs";
+import { askBrief, writeCardBrief, type BriefCardWords, type BriefRequest } from "../../server/org/briefs";
 import { realDeps, type MarketDeps } from "../../server/org/market";
 import { readAppReviews, readJson, readPage, readPosts } from "../../server/org/pages";
 import { needsNow } from "../../server/org/needs";
@@ -44,7 +46,18 @@ export interface PlanRun {
   /** What was sent at each step, for the two-way check with the real app. */
   bodies: { path: string; body: unknown }[];
   /** How the interview ended: as the app's engine says, or the bench's own guard (the app has none). */
-  ended?: "done" | "nothing-new" | "stopped" | "guard";
+  ended?: Ended;
+  /** The brief's own interview, before it was written. */
+  briefAsk?: BriefInterview;
+}
+
+type Ended = "done" | "nothing-new" | "stopped" | "guard";
+
+/** A brief's interview as it went: each round's questions, how it ended, and every answer as calls read it. */
+export interface BriefInterview {
+  questions: PlanQuestion[][];
+  ended?: Ended;
+  answers: AskAnswer[];
 }
 
 /** The bench's own stop for the plan's interview, which has no limit on rounds in the app: a run past it is reported as `guard`. */
@@ -64,6 +77,106 @@ export interface ScanRun {
   build: { problem: string; drafts: { id: string; title: string; description: string; type?: string; assumptions: string[]; test: string | null }[]; pick: { draft: string; why: string } | null; note: string } | null;
   brief: { id: string; markdown: string } | null;
   firstRoundOnly?: boolean;
+  /** How the interview before what to build first ended. */
+  ended?: Ended;
+  /** What was kept as a source of their own words. */
+  kept?: { question: string; answer: string }[];
+  briefAsk?: BriefInterview;
+}
+
+/** A person's words for a question, as the box takes them: a choice by its label, anything else as words of their own. */
+function formAnswer(raw: AskQuestion, text: string): Answer {
+  const q = toQuestion(raw);
+  if (q.kind === "text") return { kind: "text", text };
+  if (q.kind === "single") {
+    const o = q.options.find((x) => x.label === text);
+    return o ? { kind: "single", value: o.value } : { kind: "single", value: OTHER, other: text };
+  }
+  const o = q.groups.flatMap((g) => g.options).find((x) => x.label === text);
+  return o ? { kind: "multi", values: [o.value], custom: [] } : { kind: "multi", values: [], custom: [text] };
+}
+
+/**
+ * A round as the box leaves it: their words for what they answered; then, where they press "Use Qalam AI's
+ * picks", Qalam AI's recommendation for each question they left that has one (src/asking/engine.ts,
+ * `takePicks`), recorded as its pick. Then it's sent.
+ */
+async function answerRound(player: Player, r: AskRound, at: { flow: string; round: number }, signal: AbortSignal): Promise<FlowState> {
+  const said = await player.fill(r.questions, at, signal);
+  const answers = { ...r.form.answers };
+  for (const q of r.questions) if (said[q.id]?.trim()) answers[q.id] = formAnswer(q, said[q.id]);
+  let form: FlowState = { ...r.form, answers };
+  if (player.pressesPicks(at)) {
+    const picked = takePicks(r.questions, form);
+    for (const q of r.questions) if (picked.answers[q.id] !== form.answers[q.id]) player.tookPick(q.title, at, answerWords(toQuestion(q), picked.answers[q.id]).text);
+    form = picked;
+  }
+  return { ...form, submitted: true };
+}
+
+/** A round answered: the last one, sent with what the box left. */
+const withForm = (s: AskingState, form: FlowState): AskingState => ({ ...s, rounds: s.rounds.map((x, i) => (i === s.rounds.length - 1 ? { ...x, form } : x)) });
+
+const hostOf = (url: string) => {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "a page";
+  }
+};
+
+/**
+ * A brief's interview, as the app runs it before writing (`briefHost` in src/ui/space/chat/store.ts):
+ * code's own questions first, then Qalam AI's turns on what it would be written from, under the bench's
+ * guard. A web lookup runs before the next turn (the app runs it while they answer), and they say Look it
+ * up when one is put to them; a project lookup lands empty, as the plan's do here.
+ */
+async function briefInterview(store: OrgStore, req: Omit<BriefRequest, "asked">, player: Player, deps: MarketDeps, t: Tap, signal: AbortSignal, sent?: (at: string, body: unknown) => void): Promise<BriefInterview & { asked: BriefAsked }> {
+  const say = emit(t);
+  const questions: PlanQuestion[][] = [];
+  let s: AskingState = emptyAsking(briefRound(req.shape ?? "build"));
+  let made = 0;
+  let ended: Ended | undefined;
+  for (let turns = 0; ; ) {
+    for (const l of s.lookups.filter((x) => x.state === "running")) {
+      if (l.kind !== "web") {
+        s = lookupLanded(s, l.id, { lines: [] });
+        continue;
+      }
+      const look = await lookForPlan(store, { said: `What's needed to build or run: ${req.card.title}`.slice(0, 4000), outline: [], rounds: [], looks: [], ...(l.query ? { query: l.query } : {}) }, say, signal, deps).catch((e: unknown) => {
+        if (signal.aborted) throw e;
+        return null;
+      });
+      s = lookupLanded(s, l.id, look ? { look, lines: look.lines.map((x, i) => ({ ref: `${l.id}-${i + 1}`, text: x.text, from: x.url ? hostOf(x.url) : "a page", whose: "a page online", ...(x.url ? { url: x.url } : {}), ...(x.quote ? { quote: x.quote } : {}) })) } : { error: "It failed" });
+    }
+    const next = nextAfter(s);
+    if (next === "end") {
+      ended = s.end?.by;
+      break;
+    }
+    if (next === "offer" && s.offer) {
+      s = startLookup(s, { id: s.offer.id, kind: "web", query: s.offer.query, waits: s.turns }, Date.now());
+      continue;
+    }
+    if (next === "ask") {
+      const r = currentRound(s)!;
+      questions.push(r.questions);
+      s = withForm(s, await answerRound(player, r, { flow: "brief", round: s.rounds.length - 1 }, signal));
+      continue;
+    }
+    if (next === "wait") continue;
+    if (turns++ >= BENCH_TURNS) {
+      ended = "guard";
+      break;
+    }
+    s = markRead(s);
+    const asking = askingIn(s, { said: "" });
+    const body = { ...req, asked: askedFromAnswers(answersOf(s)) };
+    sent?.("briefs/ask", { ...body, asking });
+    s = applyTurn(s, await askBrief(store, body, asking, say, signal, { structured: deps.structured }), { now: Date.now(), id: (p) => `${p}${++made}` });
+  }
+  const answers = answersOf(s);
+  return { questions, ...(ended ? { ended } : {}), answers, asked: askedFromAnswers(answers) };
 }
 
 const emit = (t: Tap) => (label: string) => void t.steps.push(label);
@@ -120,8 +233,7 @@ export async function planFlow(store: OrgStore, p: Persona, player: Player, t: T
       const r = currentRound(s)!;
       questions.push(r.questions);
       if (o.firstRoundOnly) return { path: "plan", said, route, body: withAsking(), questions, draft: null, brief: null, firstRoundOnly: true, bodies };
-      const answers = await player.fill(r.questions, { flow: "plan", round: s.rounds.length - 1 }, signal);
-      s = { ...s, rounds: s.rounds.map((x, i) => (i === s.rounds.length - 1 ? { ...x, said: answers, form: { ...x.form, submitted: true } } : x)) };
+      s = withForm(s, await answerRound(player, r, { flow: "plan", round: s.rounds.length - 1 }, signal));
       continue;
     }
     if (next === "wait") continue;
@@ -136,8 +248,8 @@ export async function planFlow(store: OrgStore, p: Persona, player: Player, t: T
   if (o.firstRoundOnly) return { path: "plan", said, route, body: withAsking(), questions, draft: null, brief: null, firstRoundOnly: true, bodies, ended };
   sent("plan/propose");
   const draft = await proposePlan(store, withAsking(), say, signal, deps);
-  const brief = await briefForDraft(store, draft, player, deps, signal, (req) => void bodies.push({ path: "briefs", body: req }));
-  return { path: "plan", said, route, body: withAsking(), questions, draft, brief, bodies, ended };
+  const made2 = await briefForDraft(store, draft, player, deps, t, signal, (at, body) => void bodies.push({ path: at, body }));
+  return { path: "plan", said, route, body: withAsking(), questions, draft, brief: made2?.brief ?? null, ...(made2 ? { briefAsk: made2.asked } : {}), bodies, ended };
 }
 
 /** What's on the canvas for a plan to read: the problem pages, drawn faint, as a canvas with nothing else composes them. */
@@ -159,31 +271,30 @@ const wordsOf = (c: PlanCard): BriefCardWords => ({
 });
 
 /** A brief for the card to start with, as a person asks for one after accepting the proposal. */
-async function briefForDraft(store: OrgStore, d: PlanDraft, player: Player, deps: MarketDeps, signal: AbortSignal, sent: (req: BriefRequest) => void) {
+async function briefForDraft(store: OrgStore, d: PlanDraft, player: Player, deps: MarketDeps, t: Tap, signal: AbortSignal, sent: (at: string, body: unknown) => void) {
   const start = d.cards.find((c) => c.ref === d.start) ?? d.cards.find((c) => c.kind === "solution");
   if (!start) return null;
   const shape = shapeOf(start);
-  const answers = await player.fill(briefRound(shape), { flow: "brief", round: 0 }, signal);
-  const asked: BriefAsked = { ...(answers.platform ? { platform: answers.platform } : {}), ...(answers.exists ? { exists: answers.exists } : {}), ...(answers.needs ? { needs: answers.needs } : {}) };
   const refOf = (c: PlanCard) => (c.under && "ref" in c.under ? c.under.ref : null);
   const above = (c: PlanCard) => d.cards.find((x) => x.ref === refOf(c)) ?? null;
   const chain: PlanCard[] = [];
   for (let at = above(start); at; at = above(at)) chain.push(at);
   const problem = chain.find((c) => c.kind === "opportunity") ?? null;
   const goal = chain.find((c) => c.kind === "outcome") ?? null;
-  const req: BriefRequest = {
+  const base: Omit<BriefRequest, "asked"> = {
     card: { ...wordsOf(start), id: start.ref, kind: start.kind === "outcome" ? "outcome" : start.kind === "opportunity" ? "opportunity" : "solution" },
     goal: goal ? { title: goal.title, metric: goal.metric ? [goal.metric.name, goal.metric.target != null ? `target ${goal.metric.target}` : ""].filter(Boolean).join(", ") : null } : null,
     problem: problem ? wordsOf(problem) : null,
     under: [],
     others: d.cards.filter((c) => c.kind === "solution" && c.ref !== start.ref && refOf(c) === refOf(start)).map((c) => c.title),
-    asked,
     ...(shape !== "build" ? { shape } : {}),
   };
-  sent(req);
+  const { asked: said, ...asked } = await briefInterview(store, base, player, deps, t, signal, sent);
+  const req: BriefRequest = { ...base, asked: said };
+  sent("briefs", req);
   const meta = await writeCardBrief(store, req, signal, { structured: deps.structured });
   const markdown = await store.getBrief(meta.id).then((x) => x?.body ?? "").catch(() => "");
-  return { id: meta.id, markdown, shape, card: start.title };
+  return { brief: { id: meta.id, markdown, shape, card: start.title }, asked };
 }
 
 function scanDeps(t: Tap): ScanDeps {
@@ -225,10 +336,13 @@ export async function scanFlow(store: OrgStore, p: Persona, player: Player, t: T
   // The interview before what to build first, as the app runs it (src/asking/), under the bench's own guard; lookups land empty here.
   let s: AskingState = emptyAsking();
   let made = 0;
-  for (let turns = 0; turns < BENCH_TURNS; ) {
+  for (let turns = 0; ; ) {
     for (const l of s.lookups.filter((x) => x.state === "running")) s = lookupLanded(s, l.id, { lines: [] });
     const next = nextAfter(s);
-    if (next === "end") break;
+    if (next === "end") {
+      out.ended = s.end?.by;
+      break;
+    }
     if (next === "offer") {
       s = askInstead(s);
       continue;
@@ -236,16 +350,19 @@ export async function scanFlow(store: OrgStore, p: Persona, player: Player, t: T
     if (next === "ask") {
       const r = currentRound(s)!;
       out.questions.push(r.questions);
-      const answers = await player.fill(r.questions, { flow: "scan-plan", round: s.rounds.length - 1 }, signal);
-      s = { ...s, rounds: s.rounds.map((x, i) => (i === s.rounds.length - 1 ? { ...x, said: answers, form: { ...x.form, submitted: true } } : x)) };
+      s = withForm(s, await answerRound(player, r, { flow: "scan-plan", round: s.rounds.length - 1 }, signal));
       continue;
     }
     if (next === "wait") continue;
-    turns++;
+    if (turns++ >= BENCH_TURNS) {
+      out.ended = "guard";
+      break;
+    }
     s = markRead(s);
     s = applyTurn(s, await askScanPlan(store, { ...plan, asking: askingIn(s, { said: "" }) }, () => {}, signal), { now: Date.now(), id: (p) => `${p}${++made}` });
   }
   const said2 = [...allTold, ...answersOf(s).filter((a) => a.how === "own" && a.text).map((a) => ({ question: a.question, answer: a.text }))];
+  out.kept = said2;
   const words = said2.map((x) => `${x.question} ${x.answer}`).join("\n");
   const answersSource = said2.length ? await keepAnswers(store, said2, `Your answers: ${said.slice(0, 60)}`).catch(() => null) : null;
   const audiences = await planAudiences(store, { ...plan, answers: words }, signal);
@@ -268,7 +385,23 @@ export async function scanFlow(store: OrgStore, p: Persona, player: Player, t: T
   };
   const chosen = build.drafts.find((d) => d.id === build.pick?.draft) ?? build.drafts[0];
   if (!chosen) return out;
-  const bAnswers = await player.fill(briefRound("build"), { flow: "brief", round: 0 }, signal);
+  // The brief's interview, on the pick as it lands on the canvas: under its problem's page and the first goal.
+  const none = { description: "", assumptions: [], tests: [], evidence: [] };
+  const { asked: bAsked, ...bAsk } = await briefInterview(
+    store,
+    {
+      card: { id: "bench-card", kind: "solution", title: chosen.title, description: chosen.description, assumptions: chosen.assumptions.map((x) => x.text), tests: chosen.test ? [{ what: chosen.test.what, how: chosen.test.how, suggested: chosen.test.suggested ?? null }] : [], evidence: [], topic: build.topic },
+      goal: { title: goal.title, metric: goal.metric },
+      problem: { ...none, title: build.problem, topic: build.topic },
+      under: [],
+      others: build.drafts.filter((d) => d.id !== chosen.id).map((d) => d.title),
+    },
+    player,
+    tapped(realDeps, t),
+    t,
+    signal,
+  );
+  out.briefAsk = bAsk;
   const meta = await writeBrief(store, {
     ...plan,
     card: "bench-card",
@@ -280,7 +413,7 @@ export async function scanFlow(store: OrgStore, p: Persona, player: Player, t: T
     answers: words,
     why: build.pick?.draft === chosen.id ? build.pick.why : "",
     later: build.drafts.filter((d) => d.id !== chosen.id).map((d) => ({ draft: d.id, why: build.pick?.later.find((l) => l.draft === d.id)?.why ?? "" })),
-    asked: { ...(bAnswers.platform ? { platform: bAnswers.platform } : {}), ...(bAnswers.exists ? { exists: bAnswers.exists } : {}), ...(bAnswers.needs ? { needs: bAnswers.needs } : {}) },
+    asked: bAsked,
     known: session.known ?? [],
   }, signal);
   if (meta) out.brief = { id: meta.id, markdown: await store.getBrief(meta.id).then((x) => x?.body ?? "").catch(() => "") };

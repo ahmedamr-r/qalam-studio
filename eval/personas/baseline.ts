@@ -3,14 +3,17 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
+import { BENCH_TURNS } from "./bench";
 import type { Player } from "./player";
-import { baselineOpener, BASELINE_SYSTEM } from "./prompts";
+import { baselineOpener, baselineSystem } from "./prompts";
 import type { Persona } from "./types";
 
 /**
  * The plain agent: Claude Code on the same model as the side it's compared with, with web and file
  * tools, in one conversation that holds its context between turns. The same player answers it, in
- * prose, up to the same three rounds, and a budget in dollars holds it to what the other side spent.
+ * prose. It asks for as long as it needs, as Qalam does, under the bench's same guard on turns; `rounds`
+ * holds it to the 3 rounds of 3 questions it was frozen with. A budget in dollars holds it to what the
+ * other side spent.
  */
 
 export interface BaselineRun {
@@ -24,26 +27,28 @@ export interface BaselineRun {
   tools: { name: string; input: string }[];
   ended: "final" | "budget" | "rounds" | "error";
   error?: string;
+  /** It wanted to ask more past its rounds, or past the bench's guard, and was told to answer. */
+  hitCap?: true;
 }
 
-const MAX_ROUNDS = 3;
-
-/** The numbered questions in an agent's turn, when that's what the turn is. */
-export function questionsIn(text: string): string[] | null {
+/** The numbered questions in an agent's turn, when that's what the turn is: at most `max` of them, as it was frozen with 3. */
+export function questionsIn(text: string, max = Infinity): string[] | null {
   const at = text.lastIndexOf("QUESTIONS:");
   if (at < 0) return null;
   const qs = text.slice(at + "QUESTIONS:".length).split("\n").flatMap((l) => {
     const m = /^\s*\d+[.)]\s*(.+)$/.exec(l);
     return m ? [m[1].trim()] : [];
   });
-  return qs.length ? qs.slice(0, 3) : null;
+  return qs.length ? qs.slice(0, max) : null;
 }
 
-export async function runBaseline(p: Persona, player: Player, o: { budgetUsd: number; model?: string; effort?: string; folder?: string; files?: string[]; firstRoundOnly?: boolean; signal: AbortSignal; bin?: string }): Promise<BaselineRun & { firstRoundOnly?: boolean }> {
+export async function runBaseline(p: Persona, player: Player, o: { budgetUsd: number; model?: string; effort?: string; folder?: string; files?: string[]; firstRoundOnly?: boolean; signal: AbortSignal; bin?: string; rounds?: number }): Promise<BaselineRun & { firstRoundOnly?: boolean }> {
   const began = Date.now();
   const work = await mkdtemp(path.join(tmpdir(), "qalam-baseline-"));
   const sys = path.join(work, "system.txt");
-  await writeFile(sys, BASELINE_SYSTEM);
+  await writeFile(sys, baselineSystem(o.rounds));
+  const most = o.rounds ?? BENCH_TURNS;
+  const perRound = o.rounds ? 3 : Infinity;
   const model = o.model ?? "claude-opus-5-5";
   const tools = ["WebSearch", "WebFetch", ...(o.folder ? ["Read", "Grep", "Glob"] : [])];
   const args = [
@@ -110,12 +115,12 @@ export async function runBaseline(p: Persona, player: Player, o: { budgetUsd: nu
       }
       const text = String(ev.result ?? "");
       run.turns.push({ role: "agent", text });
-      const asked = questionsIn(text);
+      const asked = questionsIn(text, perRound);
       if (asked && o.firstRoundOnly) {
         run.questions.push(asked);
         return finish("rounds");
       }
-      if (asked && rounds < MAX_ROUNDS) {
+      if (asked && rounds < most) {
         rounds++;
         run.questions.push(asked);
         working = true;
@@ -128,9 +133,10 @@ export async function runBaseline(p: Persona, player: Player, o: { budgetUsd: nu
         return;
       }
       if (asked) {
-        // It wanted more after the last round: it answers with what it has, as the other side's cap makes it.
+        // It wanted more after the last round (or the bench's guard): it answers with what it has.
         working = false;
         rounds++;
+        run.hitCap = true;
         say("That's all the questions I've got time for. Give me your final answer now, with what you have.");
         return;
       }

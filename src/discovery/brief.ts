@@ -1,4 +1,5 @@
 import type { PlanQuestion } from "@/ai/plan";
+import type { AskAnswer } from "@/asking/types";
 import { withoutIds } from "@/goals/said";
 import { holdWords } from "@/hub/topics";
 import { midSentence } from "@/scan/plan";
@@ -47,7 +48,7 @@ export interface BriefAsked {
   platform?: string;
   exists?: string;
   needs?: string;
-  /** What else the interview asked before writing, and their own answers (src/asking/): never Qalam AI's picks. */
+  /** What else the interview asked before writing (src/asking/), and the answers: their own words, and Qalam AI's picks they agreed to, marked as such. */
   more?: { question: string; answer: string }[];
 }
 
@@ -63,6 +64,17 @@ export function askedOf(raw: unknown): BriefAsked {
     return question && answer ? [{ question, answer }] : [];
   });
   return { ...(clip(a.platform, 200) ? { platform: clip(a.platform, 200) } : {}), ...(clip(a.exists, 400) ? { exists: clip(a.exists, 400) } : {}), ...(clip(a.needs, 60) ? { needs: clip(a.needs, 60) } : {}), ...(more.length ? { more } : {}) };
+}
+
+/** Code's own questions (`briefRound`), whose answers the brief keeps as it always has. */
+const CODE_ASKED = new Set(["platform", "exists", "needs"]);
+
+/** What a brief's interview settled, as the brief keeps it: code's own questions' answers, then what else was settled, their words, and Qalam AI's picks they agreed to marked as such. */
+export function askedFromAnswers(answers: readonly AskAnswer[]): BriefAsked {
+  const of = (id: string) => answers.find((a) => a.id === id && a.how !== "left")?.text;
+  const more = answers.filter((a) => a.how !== "left" && a.text && !CODE_ASKED.has(a.id)).map((a) => ({ question: a.question, answer: a.how === "pick" ? `Qalam AI's pick, which they agreed to: ${a.text}` : a.text }));
+  const [platform, exists, needs] = [of("platform"), of("exists"), of("needs")];
+  return { ...(platform ? { platform } : {}), ...(exists ? { exists } : {}), ...(needs ? { needs } : {}), ...(more.length ? { more } : {}) };
 }
 
 /** An answer the interview got, as a line: the question, then their words. */

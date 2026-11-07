@@ -60,7 +60,7 @@ import { needsDb } from "@/org/needs";
 import { otherReading, requestOf, scanInput } from "@/scan/input";
 import type { ScanTarget } from "@/scan/session";
 import { steerAnswers, steerRound, type ScanSaid } from "@/scan/steer";
-import { briefRound, type BriefAsked, type BriefShape } from "@/discovery/brief";
+import { askedFromAnswers, briefRound, type BriefAsked, type BriefShape } from "@/discovery/brief";
 import { askBriefTurn, writeCardBrief } from "@/org/briefs";
 import { briefRequest } from "../../discovery/brief-request";
 import { loadBriefs } from "../../discovery/briefs";
@@ -643,15 +643,8 @@ const briefCard = (id: string): string | null => {
   return j?.kind === "brief" ? j.card : j?.kind === "scan" ? (j.plan?.card ?? null) : null;
 };
 
-/** Code's own questions' answers, as the brief has always kept them; what else was settled: their words, and Qalam AI's picks they agreed to, marked as such. */
-const CODE_ASKED = new Set(["platform", "exists", "needs"]);
-function askedFrom(s: AskingState): BriefAsked {
-  const answers = answersOf(s);
-  const of = (id: string) => answers.find((a) => a.id === id && a.how !== "left")?.text;
-  const more = answers.filter((a) => a.how !== "left" && a.text && !CODE_ASKED.has(a.id)).map((a) => ({ question: a.question, answer: a.how === "pick" ? `Qalam AI's pick, which they agreed to: ${a.text}` : a.text }));
-  const [platform, exists, needs] = [of("platform"), of("exists"), of("needs")];
-  return { ...(platform ? { platform } : {}), ...(exists ? { exists } : {}), ...(needs ? { needs } : {}), ...(more.length ? { more } : {}) };
-}
+/** What the brief's interview settled, as the brief keeps it (`askedFromAnswers`). */
+const askedFrom = (s: AskingState): BriefAsked => askedFromAnswers(answersOf(s));
 
 /** The interview's host for a brief: its turns through the core, which read what it would be written from; its lookups; the writing at the end. */
 export const briefHost = (id: string): AskingHost => ({
