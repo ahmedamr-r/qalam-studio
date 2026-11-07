@@ -2,7 +2,7 @@ import { callAI } from "@/ai/client";
 import type { AskTurn } from "@/asking/types";
 import type { AskingInT } from "@/asking/wire";
 import type { FocusLook } from "@/goals/focus";
-import type { OutlineCard, PlanDraft, PlanLook, PlanRound } from "@/space/plan";
+import type { OutlineCard, PlanDraft, PlanKept, PlanLook, PlanRound } from "@/space/plan";
 import { orgPath } from "./client";
 
 /* Working something out as a plan, from the window (server/org/plan.ts): the chat keeps the conversation and sends it with each call. */
@@ -17,6 +17,8 @@ export interface PlanAsk {
   asking?: AskingInT;
   /** Pieces a lookup in their project found: what a card may rest on. */
   found?: string[];
+  /** What their own evidence said against what was proposed before, which they kept: proposing again goes by it. */
+  kept?: PlanKept[];
 }
 
 async function run<T>(path: string, body: unknown, onActivity?: (label: string) => void, signal?: AbortSignal): Promise<T> {

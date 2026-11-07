@@ -16,7 +16,7 @@ const against: Evidence = { kind: "against", whose: "against, on a problem page"
 
 function material(items: CheckItem[] = [P, applePay, errors]) {
   const req: CheckRequest = { origin: "plan:t1", asked: "I think the checkout itself is the problem. What should we do?", product: null, outline: [goalCard, slotPage], items };
-  const { findings, evidence } = findChallenges({ req, funnels: funnelsIn(GROCERY_FUNNEL, "a2-funnel", "src1"), pages: [{ topic: "slot", title: slotPage.title, sources: 3, quotes: 6, known: [known] }], goals: new Map(), decided: [], evidence: [against] });
+  const { findings, evidence } = findChallenges({ req, funnels: funnelsIn(GROCERY_FUNNEL, "a2-funnel", "src1"), pages: [{ topic: "slot", title: slotPage.title, sources: 3, quotes: 6, known: [known], for: [] }], goals: new Map(), decided: [], evidence: [against] });
   return challengeMaterial({ req, evidence, findings });
 }
 

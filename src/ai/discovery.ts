@@ -97,7 +97,15 @@ export const DiscoveryBody = z
       /** It may ask for a look on the web before its next questions (finding a goal's problem). */
       look: z.boolean().optional(),
     }),
-    z.object({ stage: z.literal("dump-place"), ...DumpBase, ...DumpRead, answers: z.array(Answer.extend({ id: text(12) })), context: ContextIn }),
+    z.object({
+      stage: z.literal("dump-place"),
+      ...DumpBase,
+      ...DumpRead,
+      answers: z.array(Answer.extend({ id: text(12) })),
+      context: ContextIn,
+      /** What their own evidence said against what was placed before, which they kept (src/challenge/): placing again goes by it. */
+      kept: z.array(z.object({ line: text(600), from: z.array(text(400)).max(4) })).max(8).optional(),
+    }),
   ])
   .superRefine((b, ctx) => {
     if (b.stage === "extract" && b.chunks.reduce((n, c) => n + c.text.length, 0) > EXTRACT_MAX_CHARS) ctx.addIssue({ code: "custom", message: "Too much material for one call", path: ["chunks"] });
@@ -730,6 +738,13 @@ export function dumpPlaceContent(b: Extract<DiscoveryRequest, { stage: "dump-pla
     b.answers.length ? "The builder's answers to your questions (id: question, then their answer):" : "The builder answered no questions.",
     ...b.answers.map((a) => `- ${a.id}: ${a.question}\n  ${a.answer.trim() || "(skipped)"}`),
     ...knowledgeBlock(b.context),
+    ...(b.kept?.length
+      ? [
+          "",
+          "What their own evidence says against what you placed before, which they kept, so it holds (the challenge · the words it rests on). Place with it: don't place again what it shows won't do what it's for unless you say why it still might, and where it shows something else matters more, place for that:",
+          ...b.kept.map((k) => `- ${k.line}${k.from.length ? ` · ${k.from.map((f) => `“${f}”`).join("; ")}` : ""}`),
+        ]
+      : []),
     "",
     b.aim
       ? b.aim.find === "goal"

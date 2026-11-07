@@ -70,6 +70,12 @@ export interface Persona {
   /** What the documents they bring answer and they don't know offhand (a2's funnel): asked anyway, it's asking what their own material says. */
   documented?: Unknown[];
   traps: Trap[];
+  /**
+   * What their own evidence should break before they see it (src/challenge/): a challenge on a proposal
+   * whose title is `on`, whose line names `names`, resting on a measured point from `cites`; and, once
+   * proposed again by it, a solution about `names`.
+   */
+  challenge?: { on: RegExp; names: RegExp; cites: RegExp };
   behavior: Behavior;
   /** One answer turned around, to see whether the proposal follows it. */
   flips: { fact: string; to: string }[];

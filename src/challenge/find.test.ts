@@ -12,13 +12,15 @@ const applePay: CheckItem = { id: "sol:a", kind: "solution", title: "Apple Pay a
 const errors: CheckItem = { id: "sol:b", kind: "solution", title: "Better error messages on card failures", parent: "plan:p" };
 
 const known: Evidence = { kind: "known", whose: "a problem page", from: "I can't get a delivery slot when I need one", text: "44 percent of users leave the funnel at picking a delivery slot, its largest loss.", for: [], topic: "slot", line: "l1", cites: ["hub:quote:q-slot"] };
-const slot: PageBacking = { topic: "slot", title: "I can't get a delivery slot when I need one", sources: 3, quotes: 6, known: [known] };
+const slot: PageBacking = { topic: "slot", title: "I can't get a delivery slot when I need one", sources: 3, quotes: 6, known: [known], for: [] };
+// The page the payment problem's own words found: it's that problem's, never the one it's compared with.
+const checkout: PageBacking = { topic: "checkout", title: "I can't get through checkout on my first order", sources: 5, quotes: 9, known: [{ ...known, from: "I can't get through checkout on my first order", topic: "checkout", line: "c1" }], for: ["plan:p", "sol:a", "sol:b"] };
 
 function input(items: CheckItem[], o: Partial<FindInput> = {}): FindInput {
   const req: CheckRequest = { origin: "plan:t1", asked: "What problems should we go after?", product: null, outline: [goalCard, slotPage], items };
   const [funnel] = funnelsIn(GROCERY_FUNNEL, "a2-funnel", "src1");
   funnel.steps[1] = { ...funnel.steps[1], quote: { sourceId: "src1", quoteId: "q-slot" } } as typeof funnel.steps[number];
-  return { req, funnels: [funnel], pages: [slot], goals: new Map([["goal1", { title: goalCard.title, unit: "%", current: null, target: null, direction: "increase" }]]), decided: [], evidence: [], ...o };
+  return { req, funnels: [funnel], pages: [checkout, slot], goals: new Map([["goal1", { title: goalCard.title, unit: "%", current: null, target: null, direction: "increase" }]]), decided: [], evidence: [], ...o };
 }
 
 describe("code's findings on a2's plan", () => {
@@ -34,8 +36,17 @@ describe("code's findings on a2's plan", () => {
     expect(step.rests.map((i) => evidence[i].text)).toEqual([expect.stringContaining("Picked a delivery slot"), expect.stringContaining("Payment page reached")]);
     expect(evidence[step.rests[0]]).toMatchObject({ kind: "measured", sourceId: "src1", quoteId: "q-slot", piece: "hub:quote:q-slot" });
     expect(backing.on).toEqual(["plan:p", "sol:a", "sol:b"]);
-    expect(backing.line).toBe("Nothing customers said or that was measured backs “Paying for my first order feels clunky” yet, while “I can't get a delivery slot when I need one” has 3 sources behind it and nothing proposed for it.");
+    expect(backing.line).toBe("Nothing customers said or that was measured backs “Paying for my first order feels clunky” yet, while “I can't get a delivery slot when I need one” has 3 sources behind it and no solution proposed for it.");
     expect(evidence[backing.rests[0]]).toMatchObject({ kind: "known", topic: "slot", line: "l1", for: ["plan:p", "sol:a", "sol:b"] });
+  });
+
+  it("counts a problem proposed about a page, with a solution under it, as something proposed for that page", () => {
+    const slotProblem: CheckItem = { id: "plan:s", kind: "opportunity", title: "I can't get a delivery slot that works for my family", parent: "g" };
+    const evenings: CheckItem = { id: "sol:e", kind: "solution", title: "Evening delivery windows", parent: "plan:s" };
+    const pages = [checkout, { ...slot, for: ["plan:s", "sol:e"] }];
+    expect(findChallenges(input([P, applePay, slotProblem, evenings], { pages })).findings.find((f) => f.kind === "backing")).toBeUndefined();
+    // With no solution under it, it's still the better backed problem with none.
+    expect(findChallenges(input([P, applePay, slotProblem], { pages: [checkout, { ...slot, for: ["plan:s"] }] })).findings.find((f) => f.kind === "backing")?.line).toContain("no solution proposed for it");
   });
 
   it("leaves a proposal that works on the slot too alone, and with one there, nothing is missing", () => {

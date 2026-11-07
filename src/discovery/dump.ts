@@ -13,6 +13,7 @@ import type { QuoteKind, SourceQuote, TextBlock } from "./sources";
 import { allCards, childCards } from "./tree";
 import type { OstKind, OstMetric } from "./types";
 import type { Proposal } from "./proposals";
+import type { KeptChallenge } from "@/challenge/types";
 import { lookHead, lookLines, type FocusLook } from "@/goals/focus";
 
 /*
@@ -106,6 +107,8 @@ export interface DumpSession {
   proposals?: Proposal[];
   /** proposalKey()s the builder discarded: never proposed again. */
   dismissed?: string[];
+  /** What their own evidence said against what was placed before, which they kept: placing again goes by it (src/challenge/). */
+  kept?: KeptChallenge[];
   placed?: { at: number; counts: DumpCounts };
   turn?: { chatId: string; turnId: string };
   sample?: boolean;

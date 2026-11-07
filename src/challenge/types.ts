@@ -141,10 +141,20 @@ export interface ChallengeRun {
   at: number;
   /** The proposals it read (their ids), so a review opened again knows the run is its own. */
   items: string[];
+  /** Their titles, by id: what a challenge is on, read back without the review. */
+  titles?: Record<string, string>;
   challenges: Challenge[];
   /** Why no call was made, or it failed: code's findings stand alone. */
   note?: string;
   model?: string;
+}
+
+/** A challenge a person kept, as proposals made again go by it: its line (their words when they changed it), and the words it rests on. */
+export interface KeptChallenge {
+  line: string;
+  from: string[];
+  /** The pieces those words are (hub:quote:…): what a card proposed again may rest on. */
+  pieces: string[];
 }
 
 /** A line of hub/challenges.jsonl: a challenge the person dropped, or brought back, for the team. */

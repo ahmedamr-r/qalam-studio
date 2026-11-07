@@ -141,7 +141,7 @@ export async function gatherEvidence(store: OrgStore, req: CheckRequest): Promis
     if (ids.size) evidence.push(...know, ...against);
   }
   const { needs } = await needsNow(store).catch(() => ({ needs: [] as Awaited<ReturnType<typeof needsNow>>["needs"] }));
-  const pages: PageBacking[] = needs.filter((n) => play.has(n.topic)).map((n) => ({ topic: n.topic, title: n.title, sources: n.sources, quotes: n.quotes, known: known.get(n.topic) ?? [] }));
+  const pages: PageBacking[] = needs.filter((n) => play.has(n.topic)).map((n) => ({ topic: n.topic, title: n.title, sources: n.sources, quotes: n.quotes, known: known.get(n.topic) ?? [], for: [...(play.get(n.topic) ?? [])] }));
 
   // What was dropped, or left out when it was proposed.
   const decided: DecidedCard[] = [];
@@ -230,7 +230,7 @@ export async function challengeProposals(store: OrgStore, req: CheckRequest, emi
       .putTrace({ id: nanoid(10), projectId: "challenge", kind: "challenge", at: now(), ...(model ? { model } : {}), origin: req.origin, sent: { items: m.items.size, evidence: [...m.evidence].map(([ref, e]) => ({ ref, kind: e.kind, from: e.from, ...(e.piece ? { piece: e.piece } : {}) })), findings: [...m.findings].map(([ref, f]) => ({ ref, kind: f.kind, on: f.on })) }, answer, kept: challenges.map((c) => ({ kind: c.kind, by: c.by, on: c.on, line: c.line })), dropped: left } as { id: string; projectId: string })
       .catch(() => {});
   }
-  const run: ChallengeRun = { id: nanoid(10), origin: req.origin, at: now(), items: req.items.map((k) => k.id), challenges, ...(note ? { note } : {}), ...(model ? { model } : {}) };
+  const run: ChallengeRun = { id: nanoid(10), origin: req.origin, at: now(), items: req.items.map((k) => k.id), titles: Object.fromEntries(req.items.map((k) => [k.id, k.title])), challenges, ...(note ? { note } : {}), ...(model ? { model } : {}) };
   await store.putChallengeRun(run).catch(() => {});
   return run;
 }

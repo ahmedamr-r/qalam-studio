@@ -1,5 +1,6 @@
 import { nanoid } from "nanoid";
-import { startReview, useReview } from "../../discovery/review";
+import { checkFirst, setAside, startReview, useReview } from "../../discovery/review";
+import { keptChallenges, useChallenges } from "../../discovery/challenges";
 import { planAhead, planLook, planPropose, planRoute, type PlanAsk } from "@/org/plan";
 import { planOutline, planProposals } from "@/space/plan";
 import { answersOf, currentRound, decideChoice, decideTerm, emptyAsking, foundOf, fromBuckets, fromPlanRounds, loaded, looksOf, startLookup, theirWords } from "@/asking/engine";
@@ -40,7 +41,7 @@ import { askOrganization } from "@/org/ask";
 import { captureIngested, decideFoundGoal, setSourceBasis } from "@/org/capture";
 import { currentOrg, orgFetch, orgJson } from "@/org/client";
 import type { Ingested } from "@/discovery/ingest/core";
-import { chatKey, chatOf, emptyChat, withJob, withTurn, type CanvasChat, type ChatDoc, type ChatJob, type ChatTurn, type FiledPage, type FocusGoal, type GoalForJob, type GoalForOn, type BriefState, type ScanJob, type ScanPlan, type TakenDoc, type WhoseJob, type PlanJob, type DraftJob } from "@/space/chat";
+import { chatKey, chatOf, emptyChat, withJob, withTurn, type CanvasChat, type ChatDoc, type ChatJob, type ChatTurn, type FiledPage, type FocusGoal, type GoalForJob, type GoalForOn, type BriefState, type ScanJob, type ScanPlan, type TakenDoc, type WhoseJob, type PlanJob, type DraftJob, type KeptChallenge } from "@/space/chat";
 import type { StartHandoff } from "@/onboarding/handoff";
 
 /** A doc taken in: read already, or a picture kept in the project to read now. */
@@ -874,8 +875,10 @@ const planAsk = (id: string): PlanAsk | null => {
   const j = canvasPlan(id);
   if (!t || !j) return null;
   const asking = j.asking ? askingIn(j.asking, { said: t.said, terms: useTerms.getState().terms, memory: planHost(id).memory?.() }) : undefined;
-  const found = j.asking ? foundOf(j.asking).flatMap((l) => (l.piece ? [l.piece] : [])) : [];
-  return { said: t.said, outline: planOutline(studio().doc, useSpaceView.getState().things), rounds: j.rounds, looks: j.looks, ...(asking ? { asking } : {}), ...(found.length ? { found } : {}) };
+  // What a lookup found, and the words the challenges they kept rest on: what a card may rest on.
+  const found = [...new Set([...(j.asking ? foundOf(j.asking).flatMap((l) => (l.piece ? [l.piece] : [])) : []), ...(j.kept ?? []).flatMap((k) => k.pieces)])];
+  const kept = (j.kept ?? []).map(({ line, from }) => ({ line, from }));
+  return { said: t.said, outline: planOutline(studio().doc, useSpaceView.getState().things), rounds: j.rounds, looks: j.looks, ...(asking ? { asking } : {}), ...(found.length ? { found } : {}), ...(kept.length ? { kept } : {}) };
 };
 
 /**
@@ -969,6 +972,8 @@ async function proposeNow(id: string, signal: AbortSignal) {
   const startCard = d.start ? d.cards.find((c) => c.ref === d.start)?.title : undefined;
   const done: Partial<PlanJob> = { ...(d.doubt ? { doubt: d.doubt } : {}), ...(startCard ? { start: startCard } : {}), proposals, cards: proposals.flatMap((p) => (p.kind === "card" ? [p.cardId] : [])) };
   if (!proposals.length) return setCanvasPlan(id, (j) => ({ ...j, ...done, step: "placed" }));
+  // Before they see them: what their own evidence says against the proposals (src/challenge/).
+  await checkFirst({ kind: "plan", turn: id }, proposals, { asked: turnOf(id)?.said ?? "", onLabel: step(id), signal });
   setCanvasPlan(id, (j) => ({ ...j, ...done, step: "review" }));
   startReview({ kind: "plan", turn: id }, proposals);
 }
@@ -990,6 +995,20 @@ export const stopAskingPlan = (id: string, form: FlowState | null) => void runCa
 
 /** They saw what was settled: propose. */
 export const confirmCanvasPlan = (id: string) => void runCanvasPlan(id, (signal) => confirm(planHost(id), signal));
+
+/**
+ * Propose again with the challenges they kept (src/challenge/): what's under review is set aside, not
+ * discarded, and the plan proposes again by what their evidence says; the new proposals are checked too.
+ */
+export function reproposeCanvasPlan(id: string) {
+  const { key, run } = useChallenges.getState();
+  const kept = key === `plan:${id}` ? keptChallenges(run) : [];
+  if (!kept.length) return;
+  if (useReview.getState().origin?.kind === "plan") setAside();
+  const list: KeptChallenge[] = kept.map((c) => ({ line: c.words ?? c.line, from: c.cites.map((x) => x.text).slice(0, 4), pieces: c.cites.flatMap((x) => (x.piece ? [x.piece] : [])) }));
+  setCanvasPlan(id, (j) => ({ ...j, kept: list, proposals: [], step: "proposing" }));
+  void runCanvasPlan(id, (signal) => proposeNow(id, signal));
+}
 
 /** "Something's off": a round asks what. */
 export function offCanvasPlan(id: string) {

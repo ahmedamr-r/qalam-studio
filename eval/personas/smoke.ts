@@ -28,7 +28,31 @@ const pickQuestion = { id: "pick", title: "Which customers first", why: "", mult
 /** A turn of the interview as the core answers it. */
 const turnOf = (qs: unknown[]) => ({ questions: qs, lookups: [], done: false, understood: [], terms: [], choices: [] });
 const done = { questions: [], lookups: [], done: true, understood: [{ text: "They want something that makes money" }], terms: [], choices: [] };
-let mode: "first" | "many" | "typed" | "known" | "gated" = "first";
+let mode: "first" | "many" | "typed" | "known" | "gated" | "challenge" = "first";
+/** a2's plan: the PM's payment ideas, as plan mode proposes them. */
+const paymentPlan = {
+  cards: [
+    { ref: "n1", kind: "opportunity", under: null, title: "Paying for my first order feels clunky", description: "", why: "They said checkout is clunky.", quotes: [], answers: [], read: [], helps: [], assumptions: [] },
+    { ref: "n2", kind: "solution", under: { ref: "n1" }, title: "Apple Pay and Google Pay", description: "Pay with one tap.", why: "", type: "feature", quotes: [], answers: [], read: [], helps: [], assumptions: [] },
+    { ref: "n3", kind: "solution", under: { ref: "n1" }, title: "Better error messages on card failures", description: "Say what went wrong.", why: "", type: "feature", quotes: [], answers: [], read: [], helps: [], assumptions: [] },
+  ],
+  start: "n2",
+  doubt: "",
+  quotes: {},
+};
+/** What a check of proposals answers (src/challenge/): a2's funnel against the step they work on, and nothing on the biggest drop. */
+const slotRow = { kind: "measured", whose: "measured", from: "a2-funnel", text: "step: Picked a delivery slot · users_entering: 10000 · users_leaving: 4400 · percent_lost: 44", sourceId: "funnel", quoteId: "q2", piece: "hub:quote:q2" };
+let checks = 0;
+const checked = (origin: string, items: { id: string; kind: string }[]) => ({
+  id: `run${++checks}`,
+  origin,
+  at: Date.now(),
+  items: items.map((i) => i.id),
+  challenges: [
+    { id: "c-step", key: `funnel-step:${checks}`, kind: "funnel-step", on: items.filter((i) => i.kind !== "outcome").slice(0, 2).map((i) => i.id), line: "In “a2-funnel”, 4,400 of 10,000 leave at Picked a delivery slot, against 454 at Payment page reached, the step these work on.", settle: "Filter the export to first orders.", cites: [slotRow], by: "code" },
+    { id: "c-gap", key: `funnel-gap:${checks}`, kind: "funnel-gap", on: [], line: "Nothing proposed works on Picked a delivery slot, where 4,400 of 10,000 leave in “a2-funnel”.", settle: "", cites: [slotRow], by: "code" },
+  ],
+});
 const typedQuestion = { id: "typed", title: "What have you tried so far?", why: "", multi: false, options: [], recommended: [], allowOther: true };
 const DAY = 86_400_000;
 /** Questions as the core sends them when one like each was answered before (src/memory/known.ts): their own words from weeks ago, and a teammate's pick. */
@@ -75,9 +99,12 @@ async function main() {
         if (mode === "known") return n === 0 ? turnOf(knownQuestions) : done;
         // Once: the core drops a question asked before (the memory round's too), so a later turn never brings them again.
         if (mode === "gated") return n === 0 ? { ...turnOf(gatedQuestions), done: true } : done;
+        if (mode === "challenge") return done;
         return n === 0 ? turnOf(questions) : done;
       },
-      "/plan/propose": () => ({ cards: [], start: null, doubt: "", quotes: {} }),
+      "/plan/propose": () => (mode === "challenge" ? paymentPlan : { cards: [], start: null, doubt: "", quotes: {} }),
+      // A check of what's proposed, keeping, changing or dropping a challenge, carrying the kept ones onto cards: one route, told apart by what's sent.
+      "/challenge": (b: { origin?: string; items?: { id: string; kind: string }[]; cards?: unknown } | null) => (b?.items ? checked(b.origin ?? "", b.items) : b && "cards" in b ? { carried: 1 } : { run: null }),
       // A brain dump's calls (src/ui/discovery/dump.ts): placing gives one problem with nothing behind it; nothing else is asked of it here.
       "/api/discovery": (b: { stage?: string }) =>
         b?.stage === "dump-place"
@@ -253,7 +280,10 @@ async function main() {
       "What they answered lately isn't asked again: What we settled says what it knew, the plan hears it as given (a pick still a pick), and it isn't remembered anew",
       { nrrBefore, nrrAfter, knewShown, askedNone, gatedRounds },
     );
-    mode = "first";
+
+    // What's proposed is checked against the project's own evidence before it's shown (src/challenge/): what it says leads the review, each challenge kept, changed or dropped, and Propose again goes by what was kept.
+    type CheckSent = { origin: string; asked: string; items?: { id: string; kind: string; title: string; parent: string | null }[]; id?: string; state?: string | null; words?: string; cards?: { item: string; card: string }[] };
+    const challenged = () => tab.stubbed.filter((x) => x.path === "/challenge").map((x) => x.body as CheckSent | null);
 
     // Help me find one: code's own question they answered yesterday comes back from the project's memory, and only the rest is asked.
     const seeded = await tab.js<boolean>(
@@ -289,6 +319,65 @@ async function main() {
       "An opening answered only with I don't know isn't read for quotes: it's placed as assumed, and never ends on nothing",
       { unknowns, placedBare, nothingShown, stages: dumpCalls.map((b) => b.stage), fragments: place?.fragments?.length },
     );
+
+    // a2's road: what a brain dump places is checked too, and placed again by what was kept.
+    const dumpChecked = challenged().find((b) => b?.items && b.origin.startsWith("dump:"));
+    for (let i = 0; i < 40 && !(await tab.js<boolean>(`document.body.innerText.includes('What your own evidence says')`)); i++) await sleep(250);
+    await tab.inChallenges("Keep");
+    await sleep(300);
+    tab.stubbed.length = 0;
+    const replaced = await tab.click("Propose again with what you kept");
+    const placeAgain = () => tab.stubbed.find((x) => x.path === "/api/discovery" && (x.body as { stage?: string } | null)?.stage === "dump-place")?.body as { kept?: { line: string; from: string[] }[] } | undefined;
+    for (let i = 0; i < 40 && !placeAgain(); i++) await sleep(250);
+    check(!!dumpChecked && replaced && placeAgain()?.kept?.length === 1 && placeAgain()!.kept![0].from[0] === slotRow.text, "What a brain dump places is checked too, and placed again by what was kept", { origin: dumpChecked?.origin, kept: placeAgain()?.kept });
+    for (let i = 0; i < 40 && !(await tab.click("Discard all")); i++) await sleep(250);
+    await sleep(500);
+
+    tab.stubbed.length = 0;
+    asks = 0;
+    mode = "challenge";
+    const asked = "What should we do about first-time checkout?";
+    await tab.chat(asked);
+    for (let i = 0; i < 60 && !(await tab.click("Propose")); i++) await sleep(250);
+    let led = false;
+    for (let i = 0; i < 60 && !(led = await tab.js<boolean>(`document.body.innerText.includes('What your own evidence says') && document.body.innerText.includes('Picked a delivery slot')`)); i++) await sleep(250);
+    const sentForCheck = challenged().find((b) => b?.items);
+    const problemItem = sentForCheck?.items?.find((i) => i.kind === "opportunity");
+    const pillCount = await tab.js<boolean>(`[...document.querySelectorAll('button')].some((b) => /^2 challenges$/.test(b.innerText.trim()))`);
+    const leads = await tab.js<boolean>(`[...document.querySelectorAll('[data-challenges]')].some((el) => { for (let n = el.nextElementSibling; n; n = n.nextElementSibling) if (/Accept all/.test(n.textContent || '')) return true; return false; })`);
+    check(
+      led && pillCount && leads && sentForCheck?.asked === asked && sentForCheck.origin.startsWith("plan:") && !!problemItem && (sentForCheck.items ?? []).filter((i) => i.kind === "solution").every((i) => i.parent === problemItem.id),
+      "What's proposed is checked against the project's evidence before it's shown: what it says leads the review, in the chat and on the canvas, each solution under the problem proposed with it",
+      { led, pillCount, leads, sent: sentForCheck },
+    );
+    await tab.shot(path.join(out, "5-challenged.png"));
+    await tab.inChallenges("Keep");
+    await sleep(300);
+    await tab.inChallenges("Drop");
+    await sleep(300);
+    const decisions = challenged().filter((b) => b && b.state !== undefined).map((b) => [b!.id, b!.state]);
+    const keptShown = await tab.js<boolean>(`document.body.innerText.includes('Kept: it goes onto the cards you accept')`);
+    const droppedShown = await tab.js<boolean>(`document.body.innerText.includes('One you dropped')`);
+    check(JSON.stringify(decisions) === JSON.stringify([["c-step", "kept"], ["c-gap", "dropped"]]) && keptShown && droppedShown, "Keep and Drop go as decided, and the list says what's kept and what was dropped", { decisions, keptShown, droppedShown });
+    tab.stubbed.length = 0;
+    const again = await tab.click("Propose again with what you kept");
+    for (let i = 0; i < 40 && !tab.stubbed.some((x) => x.path === "/plan/propose"); i++) await sleep(250);
+    const reproposed = tab.stubbed.find((x) => x.path === "/plan/propose")?.body as { kept?: { line: string; from: string[] }[]; found?: string[] } | undefined;
+    for (let i = 0; i < 40 && !challenged().some((b) => b?.items); i++) await sleep(250);
+    check(
+      again && reproposed?.kept?.length === 1 && /Picked a delivery slot/.test(reproposed.kept[0].line) && reproposed.kept[0].from[0] === slotRow.text && !!reproposed.found?.includes("hub:quote:q2") && challenged().some((b) => b?.items),
+      "Propose again goes by what was kept: its line and the words it rests on, which a card may rest on, and the new proposals are checked too",
+      { again, kept: reproposed?.kept, found: reproposed?.found },
+    );
+    for (let i = 0; i < 40 && !(await tab.js<boolean>(`document.body.innerText.includes('What your own evidence says')`)); i++) await sleep(250);
+    await tab.inChallenges("Keep");
+    await sleep(300);
+    tab.stubbed.length = 0;
+    await tab.click("Accept all");
+    for (let i = 0; i < 40 && !challenged().some((b) => b && "cards" in b); i++) await sleep(250);
+    const carried = challenged().find((b) => b && "cards" in b);
+    check((carried?.cards?.length ?? 0) === 2, "What they kept goes onto the cards they accept", carried);
+    mode = "first";
 
     // The first run's hand-off: their words reach the chat's plan route on the canvas.
     tab.stubbed.length = 0;

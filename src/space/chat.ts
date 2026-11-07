@@ -18,6 +18,7 @@ import type { Proposal } from "@/discovery/proposals";
 import type { PlanLook, PlanRound } from "./plan";
 import type { ChatMode } from "./route";
 import type { AskingState } from "@/asking/types";
+import type { KeptChallenge } from "@/challenge/types";
 import { awaitsConfirm, currentRound, forDraft, loaded } from "@/asking/engine";
 
 /*
@@ -131,8 +132,12 @@ export interface PlanJob {
   start?: string;
   /** Skipped the questions: it goes by what it has. */
   skipped?: true;
+  /** What their own evidence said against what it proposed before, which they kept: it proposed again by it (src/challenge/). */
+  kept?: KeptChallenge[];
   error?: string;
 }
+
+export type { KeptChallenge };
 
 /**
  * Questions before a card's draft (src/asking/, server/org/ask-card.ts): the interview in the chat,
@@ -435,7 +440,7 @@ function draftReply(t: ChatTurn, j: DraftJob): ChatPart[] {
     case "settled":
       return awaitsConfirm(s) ? [...out, part("draftSettled", id)] : [...out, part("working", id)];
     case "done":
-      return [...out, text(j.none ? "Nothing new came of the draft this time." : "Drafted: what I proposed went on the canvas, to accept or discard.")];
+      return [...out, text(j.none ? "Nothing new came of the draft this time." : "Drafted: what I proposed went on the canvas, to accept or discard."), ...(j.none ? [] : [part("draftChecked", id)])];
     case "failed":
       return [...out, text(`I couldn't finish: ${j.error ?? "something went wrong"}`), part("draftRetry", id)];
   }

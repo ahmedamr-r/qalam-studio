@@ -170,8 +170,19 @@ export interface PlanAnswer {
 /** A plan's rounds from before, as answers. */
 export const planAnswers = (rounds: readonly PlanRound[]): PlanAnswer[] => [...answersOf(rounds).map((a) => ({ ...a, how: "own" as const })), ...leftOf(rounds).map((q) => ({ question: q, answer: "", how: "left" as const }))];
 
-/** What proposing reads: what they asked and answered, the canvas, the words behind its problems, and what was read on the web. Each has its id. */
-export function planMaterial(o: { org: string; about?: string; said: string; outline: readonly OutlineCard[]; answers: readonly PlanAnswer[]; looks: readonly PlanLook[]; pieces: readonly PlanPiece[]; company?: string }): PlanSent {
+/** A challenge they kept on what was proposed before (src/challenge/): its line, and the words it rests on. */
+export interface PlanKept {
+  line: string;
+  from: string[];
+}
+
+/**
+ * What proposing reads: what they asked and answered, the canvas, the words behind its problems, what
+ * was read on the web, and what their own evidence said against what it proposed before, which they
+ * kept. Each has its id but the last, which is context: its words and numbers may be used, its pieces
+ * are among the words behind the problems.
+ */
+export function planMaterial(o: { org: string; about?: string; said: string; outline: readonly OutlineCard[]; answers: readonly PlanAnswer[]; looks: readonly PlanLook[]; pieces: readonly PlanPiece[]; company?: string; kept?: readonly PlanKept[] }): PlanSent {
   const cards = new Map<string, OutlineCard>();
   const ids = new Map<string, string>();
   o.outline.slice(0, PLAN_LIMITS.outline).forEach((c, i) => {
@@ -204,6 +215,13 @@ export function planMaterial(o: { org: string; about?: string; said: string; out
     "",
     "What was read on the web (id · the line · the page). Others' words, never evidence about these customers:",
     ...(read.size ? [...read].map(([id, l]) => `- ${id} · ${one(l.text)}${l.quote ? ` “${one(l.quote)}”` : ""}${l.url ? ` · ${hostOf(l.url)}` : ""}`) : ["(nothing)"]),
+    ...(o.kept?.length
+      ? [
+          "",
+          "What their own evidence says against what you proposed before, which they kept, so it holds (the challenge · the words it rests on). Propose with it: don't propose again what it shows won't do what it's for unless you say why it still might, and where it shows something else matters more, propose for that:",
+          ...o.kept.slice(0, 8).map((k) => `- ${one(k.line)}${k.from.length ? ` · ${k.from.slice(0, 4).map((f) => `“${one(f)}”`).join("; ")}` : ""}`),
+        ]
+      : []),
   ].join("\n");
   const left = leftOver.length ? ["Asked and left unanswered, so you don't know these. Don't assume an answer:", ...leftOver.map((q) => `- ${q}`)].join("\n") : "";
   const unknown = notKnown.length ? ["They said they don't know these. Don't assume an answer; where it matters, say how they could find out:", ...notKnown.map((q) => `- ${q}`)].join("\n") : "";

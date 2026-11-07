@@ -9,7 +9,7 @@ import type { GoalLever } from "@/goals/types";
 import { breakDown, draftProblems, findProblems, goalWork, lookOutside } from "@/org/goal-work";
 import type { DraftWords } from "@/org/solutions";
 import { begin, end, relabel, stopped, type Done } from "./busy";
-import { reviewWaits, startReview, type ReviewOrigin } from "./review";
+import { checkThenReview, reviewWaits, startReview, type ReviewOrigin } from "./review";
 import { visitSources } from "./sources";
 import { useDiscovery } from "./store";
 
@@ -45,20 +45,25 @@ export function problemProposals(cardId: string, p: Pick<DraftedProblems, "draft
     }));
 }
 
+type Check = { asked: string; onLabel: (label: string) => void; signal: AbortSignal };
+
 /** The breakdown's proposals under review, as ghosts under the goal's card, in view: false when there's nothing to show or another review is open. */
-const reviewParts = (cardId: string, goal: string, b: Breakdown) => reviewUnder(cardId, { kind: "breakdown", goal, relation: b.relation }, partProposals(cardId, goal, b));
+const reviewParts = (cardId: string, goal: string, b: Breakdown, check?: Check) => reviewUnder(cardId, { kind: "breakdown", goal, relation: b.relation }, partProposals(cardId, goal, b), check);
 
 /** Drafted problems under review, their words' sources shown here until accepted. */
-async function reviewProblems(cardId: string, goal: string, p: Pick<DraftedProblems, "drafts" | "quotes" | "decided">): Promise<boolean> {
+async function reviewProblems(cardId: string, goal: string, p: Pick<DraftedProblems, "drafts" | "quotes" | "decided">, check?: Check): Promise<boolean> {
   await visitSources([...new Set(Object.values(p.quotes).map((q) => q.sourceId))]);
-  return reviewUnder(cardId, { kind: "problems", goal }, problemProposals(cardId, p));
+  return reviewUnder(cardId, { kind: "problems", goal }, problemProposals(cardId, p), check);
 }
 
-/** Proposals under a goal's card under review, in view: false when there's nothing to show or another review is open. */
-function reviewUnder(cardId: string, origin: ReviewOrigin, proposals: Proposal[]): boolean {
+/** Proposals under a goal's card under review, in view, fresh ones checked against the project's evidence first: false when there's nothing to show or another review is open. */
+async function reviewUnder(cardId: string, origin: ReviewOrigin, proposals: Proposal[], check?: Check): Promise<boolean> {
+  if (!proposals.length) return false;
   // The goal's card framed with what's drawn under it.
-  return !!proposals.length && startReview(origin, proposals, [cardId]);
+  return check ? checkThenReview(origin, proposals, { ...check, also: [cardId] }) : startReview(origin, proposals, [cardId]);
 }
+
+const titleOf = (card: string) => cardOf(studio().doc, card)?.title ?? "";
 
 /** Run a goal's step as one thing Qalam AI does for its card, saying how it went. */
 async function step(card: string, id: "find-problems" | "break-down" | "draft-problems" | "others", label: string, run: (ctrl: AbortController) => Promise<Done | null>, failed: string) {
@@ -100,7 +105,7 @@ export const breakDownFor = (card: string, goal: string, levers: GoalLever[], sa
     async (ctrl) => {
       const r = await breakDown(goal, { levers, ...said }, (label) => relabel(ctrl, label), ctrl.signal);
       if (!r.parts) return { card, text: r.none || "Qalam AI found nothing it could stand behind to propose." };
-      return reviewParts(card, goal, r.breakdown) ? null : { card, text: `${plural(r.parts, "goal")} proposed under it: review them once the review that's open is done.` };
+      return (await reviewParts(card, goal, r.breakdown, { asked: `Break down “${titleOf(card)}”`, onLabel: (label) => relabel(ctrl, label), signal: ctrl.signal })) ? null : { card, text: `${plural(r.parts, "goal")} proposed under it: review them once the review that's open is done.` };
     },
     "Qalam AI couldn't break it down",
   );
@@ -110,7 +115,7 @@ export async function reviewPartsFor(card: string, goal: string) {
   const waits = reviewWaits();
   if (waits) return void feedback(waits, { id: "discovery.goal" });
   const b = (await goalWork(goal).catch(() => null))?.breakdown;
-  if (!b || !reviewParts(card, goal, b)) feedback("Nothing proposed under it waits now", { id: "discovery.goal" });
+  if (!b || !(await reviewParts(card, goal, b))) feedback("Nothing proposed under it waits now", { id: "discovery.goal" });
 }
 
 /** Draft its problems: the customer problems behind it Qalam AI proposes (with the person's words, when they were asked), reviewed as problems under its card. */
@@ -128,7 +133,7 @@ export const draftProblemsFor = (card: string, goal: string, said: DraftWords = 
       });
       const r = await draftProblems(goal, { cards, ...said }, (label) => relabel(ctrl, label), ctrl.signal);
       if (!r.drafts.length) return { card, text: r.note || "Qalam AI has no new problem to propose." };
-      if (!(await reviewProblems(card, goal, { drafts: r.drafts, quotes: r.quotes, decided: {} }))) return { card, text: `${plural(r.drafts.length, "problem")} drafted for it: review them once the review that's open is done.` };
+      if (!(await reviewProblems(card, goal, { drafts: r.drafts, quotes: r.quotes, decided: {} }, { asked: `Draft the problems behind “${titleOf(card)}”`, onLabel: (label) => relabel(ctrl, label), signal: ctrl.signal }))) return { card, text: `${plural(r.drafts.length, "problem")} drafted for it: review them once the review that's open is done.` };
       if (r.note) feedback(r.note, { id: "discovery.goal" });
       return null;
     },

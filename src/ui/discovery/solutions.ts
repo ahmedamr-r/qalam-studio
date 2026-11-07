@@ -11,7 +11,7 @@ import { draftSolutions, solutionsOf, type DraftWords } from "@/org/solutions";
 import { topicsDb } from "@/org/topics";
 import { begin, end, relabel, stopped } from "./busy";
 import { glideToLayer, onCanvasReady } from "./canvas";
-import { reviewWaits, startReview } from "./review";
+import { checkThenReview, reviewWaits, startReview } from "./review";
 import { visitSources } from "./sources";
 
 /*
@@ -45,13 +45,18 @@ export function draftProposals(drafts: SolutionDraft[], quotes: Drafted["quotes"
   return out;
 }
 
-/** The drafts under review: how many proposals opened (0: none to show), false when another review is waiting (it said why). */
-async function review(drafts: SolutionDraft[], quotes: Drafted["quotes"], topic: string | null, problemId: string): Promise<number | false> {
+/**
+ * The drafts under review: how many proposals opened (0: none to show), false when another review is
+ * waiting (it said why). Fresh drafts are checked against the project's evidence first (`check`).
+ */
+async function review(drafts: SolutionDraft[], quotes: Drafted["quotes"], topic: string | null, problemId: string, check?: { asked: string; onLabel: (label: string) => void; signal: AbortSignal }): Promise<number | false> {
   // The words they rest on are in the organization's sources: shown here until accepted.
   await visitSources(Object.values(quotes).map((q) => q.sourceId));
   const proposals = draftProposals(drafts, quotes, problemId);
   if (!proposals.length) return 0;
-  return startReview({ kind: "solutions", topic }, proposals) && proposals.length;
+  const origin = { kind: "solutions" as const, topic };
+  const opened = check ? await checkThenReview(origin, proposals, check) : startReview(origin, proposals);
+  return opened && proposals.length;
 }
 
 /** Qalam AI drafts solutions for a problem's card (with the person's words, when they were asked); they come back as proposals under it. */
@@ -72,7 +77,7 @@ export async function draftSolutionsFor(cardId: string, said: DraftWords = {}): 
       return c && (c.kind === "solution" || c.kind === "test") ? [{ title: c.title, kind: c.kind }] : [];
     });
     const d = await draftSolutions({ topic, card: { title: card.title, evidence: sentEvidence(card.evidence), children }, ...said }, (label) => relabel(ctrl, label), ctrl.signal);
-    const opened = await review(d.drafts, d.quotes, d.topic, cardId);
+    const opened = await review(d.drafts, d.quotes, d.topic, cardId, { asked: `Draft solutions for “${card.title}”`, onLabel: (label) => relabel(ctrl, label), signal: ctrl.signal });
     if (opened === 0) return void feedback(d.note || "Qalam AI has no new way to propose.", { id: "discovery.solutions" });
     if (opened && d.note) feedback(d.note, { id: "discovery.solutions" });
   } catch (e) {

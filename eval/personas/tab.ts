@@ -94,7 +94,7 @@ export class Tab {
 
   constructor(private p: Persona, private player: Player, private home: string, private port: number, private cwd: string) {}
 
-  private say(line: string) {
+  say(line: string) {
     this.log.push(line);
     console.log(`    ${line.slice(0, 150)}`);
   }
@@ -212,8 +212,8 @@ export class Tab {
       const body = d.params.request.postData ? JSON.parse(d.params.request.postData) : null;
       if (route) this.stubbed.push({ path: route, body });
       const data = route ? await routes[route](body) : null;
-      // A plan's steps and the discovery calls stream; the rest answer in plain JSON.
-      const plain = !route?.startsWith("/plan/") && route !== "/api/discovery";
+      // A plan's steps, the discovery calls and a check of proposals stream; the rest answer in plain JSON.
+      const plain = !route?.startsWith("/plan/") && route !== "/api/discovery" && route !== "/challenge";
       const text = plain ? JSON.stringify(data) : `${JSON.stringify({ type: "result", data })}\n`;
       void this.send("Fetch.fulfillRequest", { requestId: d.params.requestId, responseCode: 200, responseHeaders: [{ name: "content-type", value: plain ? "application/json" : "application/x-ndjson" }], body: Buffer.from(text).toString("base64") });
     };
@@ -298,10 +298,20 @@ export class Tab {
     })()`);
   }
 
-  /** Types into the chat's box and sends. */
+  /** Presses a button in what their evidence says (src/challenge/) by exactly what it says: "Keep" there is never "Keep this decision" elsewhere. */
+  inChallenges(label: string): Promise<boolean> {
+    return this.js<boolean>(`(() => { const b = [...document.querySelectorAll('[data-challenges] button')].find((x) => x.innerText.trim() === ${JSON.stringify(label)} && x.getBoundingClientRect().width > 0 && !x.disabled); b?.click(); return !!b; })()`);
+  }
+
+  /**
+   * Types into the chat's box and sends: the composer's own (a form's), never a question card's box,
+   * which takes the composer's place while a round is open (a2's plan question went into a brain dump's
+   * open question that way, so plan mode never ran). Only with no composer at all, the first box there is.
+   */
   async chat(text: string) {
+    const box = `([...document.querySelectorAll('form textarea')].filter((x) => x.getBoundingClientRect().width > 0)[0] ?? [...document.querySelectorAll('textarea')].filter((x) => x.getBoundingClientRect().width > 0)[0])`;
     const ok = await this.js<boolean>(`(() => {
-      const t = [...document.querySelectorAll('textarea')].filter((x) => x.getBoundingClientRect().width > 0)[0];
+      const t = ${box};
       if (!t) return false;
       t.focus();
       return true;
@@ -311,7 +321,7 @@ export class Tab {
     await sleep(200);
     await this.press("Enter");
     // It went when the box emptied; else Send is pressed, and a message that still won't go is said.
-    const left = `[...document.querySelectorAll('textarea')].filter((x) => x.getBoundingClientRect().width > 0)[0]?.value.trim() === ${JSON.stringify(text.trim())}`;
+    const left = `${box}?.value.trim() === ${JSON.stringify(text.trim())}`;
     await sleep(600);
     if (await this.js<boolean>(left)) {
       await this.js<boolean>(`(() => { const b = [...document.querySelectorAll('button[aria-label="Send"]')].find((x) => !x.disabled && x.getBoundingClientRect().width > 0); b?.click(); return !!b; })()`);
@@ -562,15 +572,56 @@ async function finish(tab: Tab, out: string): Promise<TabResult> {
   return { cards, thread, brief, deadEnds: tab.deadEnds, forced: tab.forced, errors: tab.errors, bodies: tab.bodies, log: tab.log };
 }
 
+const EVIDENCE_SAYS = `document.body.innerText.includes('What your own evidence says')`;
+
+/**
+ * What their own evidence says against what's under review (src/challenge/): it's their own data, so they
+ * keep every challenge and have it proposed again by them, once; what comes back is kept as well, so it
+ * goes onto the cards they accept.
+ */
+export async function settleChallenges(tab: Tab, flow: string) {
+  if (!(await tab.js<boolean>(EVIDENCE_SAYS))) return;
+  const keepAll = async () => {
+    let n = 0;
+    while (n < 12 && (await tab.inChallenges("Keep"))) {
+      n++;
+      await sleep(300);
+    }
+    return n;
+  };
+  tab.say(`What your evidence says → kept ${await keepAll()}`);
+  if (!(await tab.click("Propose again with what you kept"))) return;
+  tab.say("→ Propose again with what you kept");
+  await sleep(2000);
+  await tab.until(["Accept all"], flow);
+  if (await tab.js<boolean>(EVIDENCE_SAYS)) tab.say(`What your evidence says, again → kept ${await keepAll()}`);
+}
+
+/** What was still open when they go on to ask (a brain dump's round, its review): finished first, as anyone would. */
+async function finishOpen(tab: Tab, flow: string) {
+  for (let i = 0; i < 3; i++) {
+    const s = await tab.see();
+    if (!s.step && !s.buttons.includes("Accept all")) return;
+    const done = s.step ? await tab.until(["Accept all", "Discard all"], flow) : "Accept all";
+    if (done !== "Accept all") return;
+    await settleChallenges(tab, flow);
+    if (!(await tab.click("Accept all"))) return;
+    tab.say(`${flow}: what was open → Accept all`);
+    await sleep(4000);
+  }
+}
+
 /** The chat's plan route, as a person reaches it by asking. Accepts what it proposes and briefs where it says to start. */
 export async function tabPlan(tab: Tab, said: string, out: string): Promise<TabResult> {
   await tab.canvas();
+  await finishOpen(tab, "docs");
   await tab.chat(said);
   const hit = await tab.until(["Accept all", "Work it out as a plan"], "plan");
   if (hit === "Work it out as a plan") {
     await tab.click(hit);
     await tab.until(["Accept all"], "plan");
   }
+  await settleChallenges(tab, "plan");
   if (await tab.click("Accept all")) await sleep(4000);
   const cards = await tab.cards();
   const sol = cards.find((c) => c.kind === "solution");
@@ -605,7 +656,10 @@ async function afterGoal(tab: Tab, out: string): Promise<TabResult> {
     if (focus) {
       await tab.click(focus);
       const done = await tab.until(["Accept all", "Discard all"], "focus");
-      if (done) await tab.click("Accept all");
+      if (done) {
+        await settleChallenges(tab, "focus");
+        await tab.click("Accept all");
+      }
       await sleep(5000);
     }
   }
@@ -616,7 +670,10 @@ async function afterGoal(tab: Tab, out: string): Promise<TabResult> {
     if (draft) {
       await tab.click(draft);
       const done = await tab.until(["Accept all"], "draft");
-      if (done) await tab.click("Accept all");
+      if (done) {
+        await settleChallenges(tab, "draft");
+        await tab.click("Accept all");
+      }
       await sleep(5000);
     }
   }
@@ -638,7 +695,10 @@ export async function tabFind(tab: Tab, out: string): Promise<TabResult> {
   const open = await tab.until(["Help me find a goal", "Help me find one"], "find");
   if (open) await tab.click(open);
   const done = await tab.until(["Accept all", "Accept"], "find");
-  if (done) await tab.click(done);
+  if (done) {
+    await settleChallenges(tab, "find");
+    await tab.click(done);
+  }
   await sleep(4000);
   return afterGoal(tab, out);
 }
@@ -662,6 +722,7 @@ export async function tabDocs(tab: Tab, p: Persona, fixtures: string, out: strin
     if (s.step && !s.busy) {
       const done = await tab.until(["Accept all", "Discard all"], "docs");
       if (done !== "Accept all") break;
+      await settleChallenges(tab, "docs");
       await tab.click(done);
       calm = 0;
       continue;

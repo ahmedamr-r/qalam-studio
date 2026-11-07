@@ -10,7 +10,7 @@ import type { OutsidePage } from "@/goals/outside";
 import { isEvidence, isOnline, sameTopic } from "@/hub/topics";
 import { pageLines, pagesBlock, type PagesSent } from "@/market/rivals";
 import type { MarketLine } from "@/market/types";
-import { planAnswers, planAskMaterial, planMaterial, planRound, planTask, planTweak, sanitizePlan, sanitizeRoute, type OutlineCard, type PlanAnswer, type PlanDraft, type PlanLook, type PlanPiece, type PlanRound } from "@/space/plan";
+import { planAnswers, planAskMaterial, planMaterial, planRound, planTask, planTweak, sanitizePlan, sanitizeRoute, type OutlineCard, type PlanAnswer, type PlanDraft, type PlanKept, type PlanLook, type PlanPiece, type PlanRound } from "@/space/plan";
 import { termsFold } from "@/terms/fold";
 import { indexFor } from "../index/registry";
 import { labOn } from "../lab";
@@ -36,6 +36,8 @@ export interface PlanBody {
   asking?: AskingInT;
   /** Pieces a lookup in their project found (hub:quote:…): what a card may rest on beside the problems' words. */
   found?: string[];
+  /** What their own evidence said against what was proposed before, which they kept (src/challenge/): proposing again goes by it. */
+  kept?: PlanKept[];
 }
 
 /** What proposing reads as answers: the interview's, else a plan's rounds from before. */
@@ -162,7 +164,7 @@ async function piecesFor(store: OrgStore, outline: readonly OutlineCard[], found
 export async function proposePlan(store: OrgStore, b: PlanBody, emit: (label: string) => void, signal: AbortSignal, deps: Pick<MarketDeps, "structured"> = realDeps): Promise<PlanDraft> {
   emit("Reading what's behind your problems");
   const pieces = await piecesFor(store, b.outline, b.found);
-  const m = planMaterial({ org: store.info.name, about: await aboutLine(store), said: b.said, outline: b.outline, answers: answersFor(b), looks: b.looks, pieces, company: await companyContext(store, { near: b.said }) });
+  const m = planMaterial({ org: store.info.name, about: await aboutLine(store), said: b.said, outline: b.outline, answers: answersFor(b), looks: b.looks, pieces, company: await companyContext(store, { near: b.said }), ...(b.kept?.length ? { kept: b.kept } : {}) });
   emit("Qalam AI is working out what to propose");
   const { data, model } = await deps.structured<unknown>(planCall(m), signal);
   const dropped: { why: string; item: unknown }[] = [];
@@ -194,5 +196,10 @@ export function planBodyOf(raw: unknown): PlanBody | null {
   const asking = b.asking === undefined ? undefined : AskingIn.safeParse(b.asking);
   if (asking && !asking.success) return null;
   const found = list(b.found).filter((x): x is string => typeof x === "string" && x.startsWith("hub:")).slice(0, 40);
-  return { said, outline, rounds, looks, ...(asking?.success ? { asking: asking.data } : {}), ...(found.length ? { found } : {}) };
+  const kept = list(b.kept).slice(0, 8).flatMap((x): PlanKept[] => {
+    const k = rec(x);
+    const line = clip(k.line, 600).trim();
+    return line ? [{ line, from: list(k.from).slice(0, 4).map((f) => clip(f, 400)).filter(Boolean) }] : [];
+  });
+  return { said, outline, rounds, looks, ...(asking?.success ? { asking: asking.data } : {}), ...(found.length ? { found } : {}), ...(kept.length ? { kept } : {}) };
 }

@@ -26,12 +26,13 @@ import { toQuestion } from "../../ai/plan";
 import { AnswersSummary, qr } from "../../ai/Questionnaire";
 import { QalamAIGlyph } from "../../brand/ai-glyph";
 import { SiteIcon, SiteStack } from "../../brand/SiteIcon";
-import { confirmDump, offDump, placeDump, readAnyway, retryDump, sessionOf, useDump } from "../../discovery/dump";
+import { confirmDump, offDump, placeDump, readAnyway, replaceDump, retryDump, sessionOf, useDump } from "../../discovery/dump";
 import { fromBuckets } from "@/asking/engine";
 import { lab } from "@/lab";
 import type { AskingState } from "@/asking/types";
 import { ACCEPT } from "../../discovery/ingest";
-import { acceptAll, acceptProposals, discardAll, discardProposals, frameReview, startReview, useReview } from "../../discovery/review";
+import { acceptAll, acceptProposals, discardAll, discardProposals, frameReview, startReview, useReview, useReviewCheck } from "../../discovery/review";
+import { ChallengeList } from "../../discovery/ChallengeList";
 import { openSource, sourceOf, useSources } from "../../discovery/sources";
 import { Button, Spinner, Tag, Tip } from "../../controls";
 import { Dots, StatusDot } from "../../viz";
@@ -41,7 +42,7 @@ import { useWords } from "../../frame/store";
 import { show } from "../links";
 import { FoundGoalRow } from "../../chat/FoundGoalRow";
 import { moreLine } from "@/onboarding/start";
-import { answerWhose, goalForTopProblem, anotherFile, briefAgain, briefStart, changeDocBasis, chooseDraft, decideDocGoal, dropTurn, leaveFile, leaveFit, lookPastFits, openProblems, pickAudience, placeFirstBuild, placeStatement, planAgain, planFirst, planOf, planStart, retake, retryGoalFor, scanAgain, scanHere, scanInNewProject, scanIsMine, scanOtherWay, setPlanGoal, settleNumber, steerOff, stopTurn, takeAsBasis, takeFit, takeGoalNumber, takeIdea, turnOf, useCanvasChat, retryCanvasPlan, runAs, showCanvasPlan, stopAskingPlan, confirmCanvasPlan, offCanvasPlan, decidePlanTerm, confirmDraft, decideDraftTerm, draftGo, draftNow, offDraft, retryDraft, confirmBrief, offBrief, decideBriefTerm, confirmScan, offScan, decideScanTerm, decidePlanChoice, decideDraftChoice, decideBriefChoice, decideScanChoice } from "./store";
+import { answerWhose, goalForTopProblem, anotherFile, briefAgain, briefStart, changeDocBasis, chooseDraft, decideDocGoal, dropTurn, leaveFile, leaveFit, lookPastFits, openProblems, pickAudience, placeFirstBuild, placeStatement, planAgain, planFirst, planOf, planStart, retake, retryGoalFor, scanAgain, scanHere, scanInNewProject, scanIsMine, scanOtherWay, setPlanGoal, settleNumber, steerOff, stopTurn, takeAsBasis, takeFit, takeGoalNumber, takeIdea, turnOf, useCanvasChat, retryCanvasPlan, runAs, showCanvasPlan, stopAskingPlan, confirmCanvasPlan, offCanvasPlan, reproposeCanvasPlan, decidePlanTerm, confirmDraft, decideDraftTerm, draftGo, draftNow, offDraft, retryDraft, confirmBrief, offBrief, decideBriefTerm, confirmScan, offScan, decideScanTerm, decidePlanChoice, decideDraftChoice, decideBriefChoice, decideScanChoice } from "./store";
 import { AnsweredRound, FoundInProject, SettledCard } from "../../asking/AskRound";
 import { titleFrom } from "@/space/route";
 import { otherReading, projectName } from "@/scan/input";
@@ -481,12 +482,14 @@ function ProposedPart({ data }: { data: PartData }) {
   if (!d) return null;
   const list = mine ?? d.s.proposals ?? [];
   if (!list.length) return <p className="text-body text-fg-muted">Nothing it proposes is left to settle.</p>;
+  const again = { label: "Propose again with what you kept", go: () => void replaceDump(d.source) };
   if (d.s.aim && mine)
     return (
       <div className="flex flex-col items-start gap-[8px]">
         <p className="text-body leading-[20px] text-fg">
           From what you said, {list.length === 1 ? `here's ${d.s.aim.find === "goal" ? "a goal" : "a problem"}` : `here are ${list.length} ${d.s.aim.find === "goal" ? "goals" : "problems"}`}. Each is drawn on the canvas where it would go.
         </p>
+        <Checked again={again} />
         <FoundList list={list} />
       </div>
     );
@@ -495,6 +498,8 @@ function ProposedPart({ data }: { data: PartData }) {
       <p className="text-body leading-[20px] text-fg">
         {d.s.file ? `From “${d.s.file.title}”, under “${cardName(d.s.file.card)}”: ` : ""}I propose {proposedLine(list)}. {mine ? "They're drawn on the canvas where they'd go; nothing is kept until you accept it." : "They wait to be reviewed on the canvas."}
       </p>
+      {mine && d.s.kept?.length ? <KeptLine kept={d.s.kept} /> : null}
+      {mine && <Checked again={again} />}
       {mine ? (
         <ReplyChips>
           <button type="button" className={r.replyChipPrimary} onClick={acceptAll}>
@@ -647,6 +652,29 @@ function AskSettledPart({ data }: { data: PartData }) {
   return <SettledCard state={state} go="Propose" onGo={() => confirmCanvasPlan(id)} onOff={() => offCanvasPlan(id)} onTerm={(t, keep) => void decidePlanTerm(id, t, keep)} {...(lab("decisions") ? { onChoice: (c: string, keep: boolean) => decidePlanChoice(id, c, keep) } : {})} />;
 }
 
+/** What their own evidence says against what's under review, beside the proposals (src/challenge/); `again` proposes again with what they kept. */
+function Checked({ again }: { again?: { label: string; go: () => void } }) {
+  const run = useReviewCheck();
+  return run ? <ChallengeList run={run} {...(again ? { again } : {})} /> : null;
+}
+
+/** Proposed again: by which of what their evidence said, which they kept. */
+function KeptLine({ kept }: { kept: readonly { line: string }[] }) {
+  return (
+    <p className="text-caption leading-[18px] text-fg-muted" dir="auto">
+      Proposed again with what you kept from your evidence: {kept.map((k) => k.line).join(" · ")}
+    </p>
+  );
+}
+
+/** A card's draft under review: what their evidence says against it, beside it. */
+function DraftCheckedPart({ data }: { data: PartData }) {
+  const t = useTurn(data.turn);
+  const card = t?.job.kind === "draft" ? t.job.card : null;
+  const under = useReview((v) => !!card && v.proposals.some((p) => (p.kind === "card" || p.kind === "goal") && p.parentId === card));
+  return under ? <Checked /> : null;
+}
+
 /** What a plan proposes: in a line, where to start, what it doubts, and what to do with it. Open on the canvas, or there to bring back. */
 function PlanProposedPart({ data }: { data: PartData }) {
   const id = String(data.turn);
@@ -666,6 +694,8 @@ function PlanProposedPart({ data }: { data: PartData }) {
           {t.job.doubt}
         </p>
       )}
+      {mine && t.job.kept?.length ? <KeptLine kept={t.job.kept} /> : null}
+      {mine && <Checked again={{ label: "Propose again with what you kept", go: () => reproposeCanvasPlan(id) }} />}
       {mine ? (
         <ReplyChips>
           <button type="button" className={r.replyChipPrimary} onClick={acceptAll}>
@@ -1888,6 +1918,7 @@ export const PARTS: Record<string, PartComponent> = {
   draftSettled: DraftSettledPart,
   draftRetry: DraftRetryPart,
   draftNow: DraftNowPart,
+  draftChecked: DraftCheckedPart,
   planProposed: PlanProposedPart,
   planPlaced: PlanPlacedPart,
   planRetry: PlanRetryPart,

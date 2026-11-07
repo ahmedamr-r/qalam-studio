@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import clsx from "clsx";
-import { ArrowRight, Check, ChevronDown, ExternalLink, Quote, X } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, ExternalLink, Quote, Scale, X } from "lucide-react";
 import { studio, useStudio } from "@/doc/store";
 import { goalsNow } from "@/goals/client";
 import { metricLine } from "@/goals/goals-md";
@@ -16,7 +16,9 @@ import type { Proposal } from "@/discovery/proposals";
 import { Button, IconBtn, Spinner } from "../controls";
 import { QalamAIGlyph } from "../brand/ai-glyph";
 import { toScreenBox } from "../ai/anchor";
-import { REVIEW_TURN, acceptAll, acceptProposals, discardAll, discardProposals, evidenceOf, useReview } from "./review";
+import { REVIEW_TURN, acceptAll, acceptProposals, discardAll, discardProposals, evidenceOf, useReview, useReviewCheck } from "./review";
+import { shownChallenges, useChallenges } from "./challenges";
+import { ChallengeList, challengesOn } from "./ChallengeList";
 import { stopSources } from "./import";
 import { sourceOf, useSources } from "./sources";
 import { stopDump, useDump } from "./dump";
@@ -98,6 +100,7 @@ export default function ReviewLayer({ vp }: { vp: { w: number; h: number } }) {
           {said}
           {parts && <span className={clsx(parts.now?.holds === false || parts.target?.reaches === false ? "text-warning" : "text-fg-muted")}> · {partsWord(parts)}</span>}
         </span>
+        <ChallengeChip />
         <Button size="sm" onClick={acceptAll}>
           Accept all
         </Button>
@@ -105,10 +108,37 @@ export default function ReviewLayer({ vp }: { vp: { w: number; h: number } }) {
           Discard all
         </Button>
       </Pill>
+      <ChallengePanel />
       {bars.map((b) => (
         <ProposalBar key={b.id} box={b.box} list={b.list} />
       ))}
     </>
+  );
+}
+
+/** In the pill: how many challenges the project's evidence raises against what's proposed; it opens or folds the list. */
+function ChallengeChip() {
+  const run = useReviewCheck();
+  const open = useChallenges((s) => s.open);
+  const n = shownChallenges(run).length;
+  if (!n) return null;
+  return (
+    <button type="button" aria-expanded={open} className="q-item inline-flex h-[24px] items-center gap-[4px] rounded-md px-[6px] text-caption font-medium text-warning hover:bg-active" title={open ? "Fold what your evidence says" : "What your evidence says against these"} onClick={() => useChallenges.setState({ open: !open })}>
+      <Scale {...SMALL} />
+      {plural(n, "challenge")}
+    </button>
+  );
+}
+
+/** Under the pill: the challenges, with Keep · Change · Drop, while it's open. */
+function ChallengePanel() {
+  const run = useReviewCheck();
+  const open = useChallenges((s) => s.open);
+  if (!run || !open || !shownChallenges(run).length) return null;
+  return (
+    <div className="pointer-events-auto absolute top-[96px] left-1/2 flex max-h-[min(60vh,560px)] w-[min(440px,calc(100%-24px))] -translate-x-1/2 flex-col overflow-y-auto rounded-xl q-glass bg-elevated shadow-popover q-fade" onPointerDown={(e) => e.stopPropagation()}>
+      <ChallengeList run={run} className="bg-transparent shadow-none" />
+    </div>
   );
 }
 
@@ -299,11 +329,19 @@ function ProposalBar({ box, list }: { box: { x: number; y: number; w: number; h:
   const roomy = w >= 200;
   const ids = list.map((p) => p.id);
   const text = summary(list, all);
+  // What their own evidence says against it.
+  const raised = challengesOn(useReviewCheck(), ids);
   return (
     <div className={clsx("pointer-events-auto absolute flex flex-col gap-[4px] q-fade", open && "z-10")} style={{ left: box.x + box.w / 2 - w / 2, top: box.y + box.h + 4, width: w, minWidth: open ? 260 : undefined }} onPointerDown={(e) => e.stopPropagation()}>
       <div role="group" aria-label="Qalam AI's proposal" className="flex h-[26px] items-center rounded-lg bg-elevated p-[1px] pl-[8px] shadow-popover">
         <button type="button" aria-expanded={open} title={open ? "Hide the details" : `${text}: show the details`} className="q-item flex h-[24px] min-w-0 flex-1 items-center gap-[6px] rounded-md pr-[4px] text-left text-caption font-medium text-fg" onClick={() => setOpen(!open)}>
           <QalamAIGlyph size={12} />
+          {raised.length > 0 && (
+            <span className="inline-flex shrink-0 items-center gap-[2px] text-warning" title={`${plural(raised.length, "challenge")} from your evidence`}>
+              <Scale {...SMALL} />
+              {raised.length}
+            </span>
+          )}
           <span className="min-w-0 truncate">{text}</span>
           {roomy && <ChevronDown size={12} absoluteStrokeWidth strokeWidth={1.25} className={clsx("q-chevron shrink-0 text-fg-subtle", open && "rotate-180")} />}
         </button>
@@ -316,6 +354,12 @@ function ProposalBar({ box, list }: { box: { x: number; y: number; w: number; h:
       </div>
       {open && (
         <div className="flex max-h-[300px] flex-col gap-[8px] overflow-y-auto rounded-lg bg-elevated p-[8px] shadow-popover">
+          {raised.map((c) => (
+            <p key={c.id} className="flex gap-[6px] text-caption leading-[18px] text-fg" dir="auto">
+              <Scale {...SMALL} className="mt-[3px] shrink-0 text-warning" />
+              <span>{c.words ?? c.line}</span>
+            </p>
+          ))}
           {list.map((p) => (
             <figure key={p.id} className="flex flex-col gap-[4px]">
               {list.length > 1 && <span className="text-micro font-medium text-fg-subtle">{label(p, all)}</span>}

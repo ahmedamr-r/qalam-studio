@@ -11,13 +11,14 @@ import type { CheckCard, CheckItem, CheckRequest, Evidence, Finding } from "./ty
  * is the evidence's own or code's arithmetic.
  */
 
-/** A problem page in play, as rankNeeds counts what reaches "We know" behind it, with its top known lines. */
+/** A problem page in play, as rankNeeds counts what reaches "We know" behind it, with its top known lines, and the proposals found to be about it. */
 export interface PageBacking {
   topic: string;
   title: string;
   sources: number;
   quotes: number;
   known: Evidence[];
+  for: string[];
 }
 
 /** A goal's number (goals.md). */
@@ -155,19 +156,20 @@ export function findChallenges(input: FindInput): { findings: Finding[]; evidenc
     if (k.kind === "solution" && p?.kind === "opportunity" && p.assumed) problems.set(p.id, p);
   }
   for (const [pid, P] of problems) {
+    // A solution for a page: under its card, or under a problem proposed about it.
     const proposedUnder = (q: PageBacking) => {
-      const cards = [...nodes.values()].filter((x) => x.kind === "opportunity" && (x.topic === q.topic || sameTopic(x.title, q.title)));
+      const cards = [...nodes.values()].filter((x) => x.kind === "opportunity" && (x.topic === q.topic || sameTopic(x.title, q.title) || q.for.includes(x.id)));
       return cards.some((c) => [...nodes.values()].some((x) => x.kind === "solution" && x.parent === c.id));
     };
-    const Q = [...input.pages]
-      .filter((q) => q.sources >= 2 && q.topic !== P.topic && !sameTopic(q.title, P.title) && !proposedUnder(q))
-      .sort((a, b) => b.sources - a.sources || b.quotes - a.quotes)[0];
-    if (!Q) continue;
     const on = [...(P.item ? [pid] : []), ...items.filter((k) => k.kind === "solution" && k.parent === pid).map((k) => k.id)];
-    if (!on.length) continue;
+    // Never the problem's own page, the one its words found.
+    const Q = [...input.pages]
+      .filter((q) => q.sources >= 2 && q.topic !== P.topic && !sameTopic(q.title, P.title) && !on.some((id) => q.for.includes(id)) && !proposedUnder(q))
+      .sort((a, b) => b.sources - a.sources || b.quotes - a.quotes)[0];
+    if (!Q || !on.length) continue;
     const rests = Q.known.slice(0, 2).map((e) => add({ ...e, for: on }));
     if (!rests.length) continue;
-    findings.push({ kind: "backing", on, rests, line: `Nothing customers said or that was measured backs “${P.title}” yet, while “${Q.title}” has ${Q.sources} sources behind it and nothing proposed for it.`, facts: [String(Q.sources)], weight: 80 + Q.sources });
+    findings.push({ kind: "backing", on, rests, line: `Nothing customers said or that was measured backs “${P.title}” yet, while “${Q.title}” has ${Q.sources} sources behind it and no solution proposed for it.`, facts: [String(Q.sources)], weight: 80 + Q.sources });
   }
 
   // ---- Decided before: a card with the same words dropped, or a proposal like it left out.

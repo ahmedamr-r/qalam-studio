@@ -26,6 +26,9 @@ import { rememberRound } from "../../server/org/memory";
 import { questionKey } from "@/memory/fold";
 import type { AskedAbout, AskedFlow } from "@/memory/types";
 import { saysDontKnow } from "@/asking/dontknow";
+import type { CheckItem, CheckRequest } from "@/challenge/types";
+import { challengeProposals } from "../../server/org/challenge";
+import type { CheckedRun } from "./measures";
 import type { Player } from "./player";
 import { tapped, type Tap } from "./tap";
 import type { Persona } from "./types";
@@ -53,6 +56,9 @@ export interface PlanRun {
   ended?: Ended;
   /** The brief's own interview, before it was written. */
   briefAsk?: BriefInterview;
+  /** The checks of what was proposed (src/challenge/), and what was proposed before it was proposed again by them. */
+  checks?: CheckedRun[];
+  before?: PlanDraft;
 }
 
 type Ended = "done" | "nothing-new" | "stopped" | "guard";
@@ -262,9 +268,49 @@ export async function planFlow(store: OrgStore, p: Persona, player: Player, t: T
   }
   if (o.firstRoundOnly) return { path: "plan", said, route, body: withAsking(), questions, draft: null, brief: null, firstRoundOnly: true, bodies, ended };
   sent("plan/propose");
-  const draft = await proposePlan(store, withAsking(), say, signal, deps);
+  const first = await proposePlan(store, withAsking(), say, signal, deps);
+  // Checked before the review opens (src/challenge/), as the window does: the person keeps what their own
+  // evidence says, and it's proposed again by that, once, as the real-app driver does.
+  const checks: CheckedRun[] = [];
+  const check = async (d: PlanDraft, origin: string) => {
+    const items = itemsOfDraft(d);
+    if (!items.length) return null;
+    const req: CheckRequest = { origin, asked: said, product: null, outline: body.outline.map((c) => ({ id: c.id, kind: c.kind, title: c.title, parent: c.parent, ...(c.topic ? { topic: c.topic } : {}) })), items };
+    bodies.push({ path: "challenge", body: req });
+    const run = await challengeProposals(store, req, say, signal, deps);
+    checks.push({ ...run, titles: Object.fromEntries(items.map((i) => [i.id, i.title])) });
+    return run;
+  };
+  let draft = first;
+  const checked = await check(first, "plan:bench");
+  if (checked?.challenges.length) {
+    const kept = checked.challenges.map((c) => ({ line: c.line, from: c.cites.map((x) => x.text).slice(0, 4) }));
+    const found = [...new Set(checked.challenges.flatMap((c) => c.cites.flatMap((x) => (x.piece ? [x.piece] : []))))];
+    sent("plan/propose", { kept, found });
+    draft = await proposePlan(store, { ...withAsking(), kept, ...(found.length ? { found } : {}) }, say, signal, deps);
+    await check(draft, "plan:bench-again");
+  }
   const made2 = await briefForDraft(store, draft, player, deps, t, signal, (at, body) => void bodies.push({ path: at, body }));
-  return { path: "plan", said, route, body: withAsking(), questions, draft, brief: made2?.brief ?? null, ...(made2 ? { briefAsk: made2.asked } : {}), bodies, ended };
+  return { path: "plan", said, route, body: withAsking(), questions, draft, ...(draft !== first ? { before: first } : {}), checks, brief: made2?.brief ?? null, ...(made2 ? { briefAsk: made2.asked } : {}), bodies, ended };
+}
+
+/** A plan's cards as the window sends them to be checked: by their proposals' ids, each under a card on the canvas or another card of the draft. */
+export function itemsOfDraft(d: PlanDraft): CheckItem[] {
+  const idOf = (c: PlanCard) => `${c.kind === "solution" ? "sol" : "plan"}:${c.ref}`;
+  const byRef = new Map(d.cards.map((c) => [c.ref, c]));
+  return d.cards.map((c) => {
+    const under = c.under ? ("ref" in c.under ? byRef.get(c.under.ref) : null) : null;
+    return {
+      id: idOf(c),
+      kind: c.kind,
+      title: c.title,
+      ...(c.description ? { description: c.description } : {}),
+      ...(c.how ? { how: c.how } : {}),
+      ...(c.assumptions.length ? { assumptions: c.assumptions.map((a) => a.text) } : {}),
+      parent: under ? idOf(under) : c.under && "card" in c.under ? c.under.card : null,
+      ...(c.kind !== "outcome" && c.came ? { assumed: true as const } : {}),
+    };
+  });
 }
 
 /** What's on the canvas for a plan to read: the problem pages, drawn faint, as a canvas with nothing else composes them. */

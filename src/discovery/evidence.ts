@@ -23,6 +23,9 @@ const ownBacking = (card: Pick<OstCard, "evidence">): OstEvidence[] => backing(c
 /** What in that can reach "We know": what's said, measured or studied. */
 const knownBacking = (card: Pick<OstCard, "evidence">): OstEvidence[] => ownBacking(card).filter((e) => reachesKnow(evidenceBasis(e)));
 
+/** Whether anything customers said, or that was measured or studied, backs a card (a challenge's "nothing measured or said backs it"). */
+export const knownBacked = (card: Pick<OstCard, "evidence">) => knownBacking(card).length > 0;
+
 /** How many pieces read elsewhere (someone else's report, not people online) back a card. */
 export const readCount = (card: Pick<OstCard, "evidence">) => backing(card).filter((e) => !e.online && evidenceBasis(e) === "read").length;
 

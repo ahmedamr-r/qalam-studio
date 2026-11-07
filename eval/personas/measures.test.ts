@@ -1,6 +1,27 @@
 import { describe, expect, it } from "vitest";
-import { reasks } from "./measures";
+import { challenging, reasks, type CheckedRun } from "./measures";
 import type { Answered } from "./player";
+
+describe("what the check before a review found", () => {
+  const a2 = { challenge: { on: /pay|card|checkout|wallet/i, names: /slot/i, cites: /funnel/i } };
+  const slot = { kind: "measured" as const, whose: "measured", from: "a2-funnel", text: "step: Picked a delivery slot · users_leaving: 4400" };
+  const run = (on: string[], line: string, cites = [slot]): CheckedRun => ({ id: "r", origin: "dump:s", at: 1, items: ["sol:a", "sol:b"], titles: { "sol:a": "Apple Pay and Google Pay", "sol:b": "Evening slots" }, challenges: [{ id: "c", key: "k", kind: "funnel-step", on, line, settle: "", cites, by: "code" }] });
+
+  it("catches a2 when a payment proposal is challenged with the slot step, on the funnel's measured point", () => {
+    const line = "In “a2-funnel”, 4,400 of 10,000 leave at Picked a delivery slot, against 454 at Payment page reached, the step this works on.";
+    expect(challenging(a2, [run(["sol:a"], line)], []).caught).toBe(true);
+    // Said about another proposal, or resting on what isn't the funnel: not caught.
+    expect(challenging(a2, [run(["sol:b"], line)], []).caught).toBe(false);
+    expect(challenging(a2, [run(["sol:a"], line, [{ ...slot, kind: "known" as never, from: "A page" }])], []).caught).toBe(false);
+    expect(challenging({}, [run(["sol:a"], line)], []).caught).toBeNull();
+  });
+
+  it("says whether what was proposed in the end works on what the evidence shows", () => {
+    const final = [{ id: "p", kind: "opportunity", title: "I can't get a delivery slot", parent: null }, { id: "s", kind: "solution", title: "Evening windows", parent: "p" }];
+    expect(challenging(a2, [], final).changed).toBe(true);
+    expect(challenging(a2, [], [{ id: "s", kind: "solution", title: "Apple Pay", parent: null }]).changed).toBe(false);
+  });
+});
 
 const line = (flow: string, question: string, x: Partial<Answered> = {}): Answered => ({ flow, round: 0, question, options: [], facts: [], unknowns: [], how: "fact", answer: "", active: true, ...x });
 

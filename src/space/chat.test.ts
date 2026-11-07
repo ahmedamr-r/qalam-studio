@@ -298,7 +298,8 @@ describe("the questions before a card's draft, in the chat", () => {
     expect(asking(withTurn(emptyChat(), draft()), () => null)).toMatchObject({ drafting: true });
     const ended = { ...emptyAsking([openQuestion("opportunity")]), end: { by: "done" as const, at: 2 } };
     expect(names(draft({ phase: "settled", asking: ended })).at(-1)).toBe("draftSettled");
-    expect(names(draft({ phase: "done", asking: ended })).at(-1)).toBe("Drafted: what I proposed went on the canvas, to accept or discard.");
+    // Then what their own evidence says against what it drafted, while it's under review (src/challenge/).
+    expect(names(draft({ phase: "done", asking: ended })).slice(-2)).toEqual(["Drafted: what I proposed went on the canvas, to accept or discard.", "draftChecked"]);
     expect(names(draft({ phase: "done", asking: ended, none: true })).at(-1)).toBe("Nothing new came of the draft this time.");
     expect(names(draft({ phase: "failed", error: "No engine" })).slice(-2)).toEqual(["I couldn't finish: No engine", "draftRetry"]);
   });

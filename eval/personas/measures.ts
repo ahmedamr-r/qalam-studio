@@ -1,3 +1,4 @@
+import type { ChallengeRun } from "@/challenge/types";
 import { findQuote } from "@/discovery/quotes";
 import type { BaselineRun } from "./baseline";
 import type { PlanRun, ScanRun } from "./bench";
@@ -93,6 +94,26 @@ export function contamination(player: Player, run: PlanRun | ScanRun | null) {
 }
 
 export const trapHits = (p: Persona, text: string) => p.traps.map((t) => ({ id: t.id, hit: t.caught.test(text) }));
+
+/** A check of proposals as the bench reads it back (src/challenge/), each proposal it read by its title. */
+export type CheckedRun = ChallengeRun;
+
+/**
+ * What the check before a review found (src/challenge/): how many checks and challenges, of which kinds,
+ * how many in code's own words; and where their own evidence should break a proposal (`challenge`),
+ * whether it did (`caught`: a challenge on such a proposal naming what the evidence shows, resting on its
+ * measured point) and whether a solution proposed in the end works on that instead (`changed`).
+ */
+export function challenging(p: Pick<Persona, "challenge">, runs: readonly CheckedRun[], final: readonly { id?: string; kind: string; title: string; description?: string; parent?: string | null }[]) {
+  const all = runs.flatMap((r) => r.challenges.map((c) => ({ ...c, titles: c.on.map((id) => r.titles?.[id] ?? "") })));
+  const want = p.challenge;
+  const kinds: Record<string, number> = {};
+  for (const c of all) kinds[c.kind] = (kinds[c.kind] ?? 0) + 1;
+  const titleOf = new Map(final.flatMap((c) => (c.id ? [[c.id, c.title] as const] : [])));
+  const caught = want ? all.some((c) => want.names.test(c.line) && c.titles.some((t) => want.on.test(t)) && c.cites.some((x) => x.kind === "measured" && want.cites.test(x.from))) : null;
+  const changed = want ? final.some((c) => c.kind === "solution" && (want.names.test(`${c.title} ${c.description ?? ""}`) || want.names.test(titleOf.get(c.parent ?? "") ?? ""))) : null;
+  return { checks: runs.length, raised: all.length, kinds, inCodeWords: all.filter((c) => c.by === "code").length, caught, changed, lines: all.slice(0, 8).map((c) => c.line) };
+}
 
 export function searching(t: Tap, run: PlanRun | ScanRun | null) {
   const hosts = hostsOf(t);

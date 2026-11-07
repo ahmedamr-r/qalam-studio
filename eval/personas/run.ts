@@ -12,7 +12,7 @@ import { OrgStore } from "../../server/org/store";
 import { runBaseline, type BaselineRun } from "./baseline";
 import { planFlow, scanFlow, type PlanRun, type ScanRun } from "./bench";
 import { lint, paperWalk } from "./lint";
-import { baselineCosts, blindEngineer, contamination, costs, prdFields, questioning, reasks, searching, trapHits } from "./measures";
+import { baselineCosts, blindEngineer, challenging, contamination, costs, prdFields, questioning, reasks, searching, trapHits, type CheckedRun } from "./measures";
 import { PERSONAS, personaById } from "./personas";
 import { makePlayer } from "./player";
 import { neutral, renderBaseline, renderPlan, renderScan, renderTab } from "./render";
@@ -137,6 +137,8 @@ async function oneSide(p: Persona, out: string, route: "plan" | "scan", o: Optio
     contamination: contamination(player, run),
     searching: searching(t, run),
     traps: text ? trapHits(p, text) : [],
+    // What their own evidence said against what was proposed, before they saw it (src/challenge/).
+    challenges: run.path === "plan" ? challenging(p, run.checks ?? [], (run.draft?.cards ?? []).map((c) => ({ id: c.ref, kind: c.kind, title: c.title, description: c.description, parent: c.under && "ref" in c.under ? c.under.ref : null }))) : null,
     prd,
     engineer,
   };
@@ -152,6 +154,14 @@ async function homeUsage(home: string) {
   const text = (await Promise.all(files.map((f) => readFile(path.join(dir, f), "utf8").catch(() => "")))).join("\n");
   const lines = text.split("\n").filter(Boolean).map((l) => JSON.parse(l) as { input: number; output: number; cacheRead: number; cacheWrite: number; cost: number | null });
   return { calls: lines.length, tokens: lines.reduce((n, e) => n + e.input + e.output + e.cacheRead + e.cacheWrite, 0), fresh: lines.reduce((n, e) => n + e.input + e.output + e.cacheWrite, 0), cost: +lines.reduce((n, e) => n + (e.cost ?? 0), 0).toFixed(3) };
+}
+
+/** The checks of what was proposed that the app kept (chats/challenges/), oldest first. */
+async function homeChecks(org: string): Promise<CheckedRun[]> {
+  const dir = path.join(org, "chats", "challenges");
+  const files = await readdir(dir).catch(() => [] as string[]);
+  const runs = await Promise.all(files.filter((f) => f.endsWith(".json")).map((f) => readFile(path.join(dir, f), "utf8").then((x) => JSON.parse(x) as CheckedRun, () => null)));
+  return runs.filter((r): r is CheckedRun => !!r).sort((a, b) => a.at - b.at);
 }
 
 let nextPort = 3190 + Math.floor(Math.random() * 40);
@@ -177,7 +187,8 @@ async function tabSide(p: Persona, out: string, o: Options) {
   const prd = await prdFields(text, measure).catch((e: unknown) => ({ error: String(e) }));
   const engineer = await blindEngineer(text, measure).catch((e: unknown) => ({ error: String(e) }));
   const usage = await homeUsage(home);
-  const summary = { side: `qalam-${p.path}`, seconds: Math.round((Date.now() - began) / 1000), usage, playerTokens: costs(t).player, deadEnds: result.deadEnds, forced: result.forced, windowErrors: result.errors.slice(0, 8), questioning: questioning(p, player), reasks: reasks(p, player), contamination: contamination(player, null), traps: trapHits(p, text), prd, engineer };
+  const checks = await homeChecks(path.join(home, p.org.name));
+  const summary = { side: `qalam-${p.path}`, seconds: Math.round((Date.now() - began) / 1000), usage, playerTokens: costs(t).player, deadEnds: result.deadEnds, forced: result.forced, windowErrors: result.errors.slice(0, 8), questioning: questioning(p, player), reasks: reasks(p, player), contamination: contamination(player, null), traps: trapHits(p, text), challenges: challenging(p, checks, result.cards), prd, engineer };
   await writeFile(path.join(out, "qalam-tab.json"), JSON.stringify({ summary, result, ledger: player.ledger }, null, 2));
   await writeFile(path.join(out, "qalam-tab.md"), text);
   return summary;

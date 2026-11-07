@@ -54,7 +54,12 @@ import { toggleChat } from "../frame/store";
 import { composeIn } from "../space/chat/compose";
 import { offline, runDump } from "./ai";
 import { placeFor, placeSample, routeTurns, treeFor } from "./draft";
-import { REVIEW_TURN, evidenceOf, ghostsFor, startReview, useReview } from "./review";
+import { REVIEW_TURN, checkFirst, evidenceOf, ghostsFor, setAside, startReview, useReview } from "./review";
+import { keptChallenges, useChallenges } from "./challenges";
+import type { KeptChallenge } from "@/challenge/types";
+
+/** What a brain dump says while its proposals are checked against the project's evidence. */
+const CHECKING = "Checking them against your evidence";
 import { ingestPaste } from "./ingest";
 import { addSourceRecord, sourceOf, updateSource, useSources } from "./sources";
 import { fileAfterReading } from "../topics/filing";
@@ -539,8 +544,8 @@ export async function placeDump(sourceId: string) {
     sourceId,
     // A choice they picked is their answer, in those words; Qalam AI's pick they agreed to never is.
     answers: answers.map(({ ref, answerId, words, said, pick }) => ({ ref, answerId, words: pick ? "" : words || said })),
-    // Numbers come from their own text and what they typed: never a pick, nor the rounds written after it.
-    said: [s.text.slice(0, session.base ?? s.text.length), ...answers.map((a) => a.words)].join("\n"),
+    // Numbers come from their own text and what they typed: never a pick, nor the rounds written after it; and from the evidence the challenges they kept rest on.
+    said: [s.text.slice(0, session.base ?? s.text.length), ...answers.map((a) => a.words), ...(session.kept ?? []).flatMap((k) => [k.line, ...k.from])].join("\n"),
     settled: new Set(session.dismissed ?? []),
     has: (cardId, span) => {
       const c = cardOf(studio().doc, cardId);
@@ -551,14 +556,16 @@ export async function placeDump(sourceId: string) {
     keepBare: !!session.aim,
   };
   // What the organization knows about what the dump says, beyond the board's cards and the dump itself.
-  const org = session.sample ? null : await orgContext({ query: s.text.slice(0, 4000), product: packProduct(), budget: PLACE_BUDGET, exclude: [...boardCardRefs(studio().doc), ...s.quotes.map((q) => quotePiece(q.id))] });
+  const kept = (session.kept ?? []).map(({ line, from }) => ({ line, from }));
+  // What the challenges they kept rest on is looked for too, so a card placed again can rest on it.
+  const org = session.sample ? null : await orgContext({ query: [s.text.slice(0, 4000), ...kept.flatMap((k) => [k.line, ...k.from])].join("\n").slice(0, 6000), product: packProduct(), budget: PLACE_BUDGET, exclude: [...boardCardRefs(studio().doc), ...s.quotes.map((q) => quotePiece(q.id))] });
   const hub = await hubQuotes(org);
   ctx.hub = new Map([...hub].map(([k, h]) => [k, { quote: h.quote, span: h.span }]));
   ctx.hasQuote = (cardId, q, span) => {
     const c = cardOf(studio().doc, cardId);
     return !!c && hasQuote(c, q.sourceId, span, quotePiece(q.quoteId));
   };
-  const body = { stage: "dump-place", product: product(), dump: s.text, tree, ...aimOf(session, cards), ...fields, answers: answers.map(({ ref, question, answer }) => ({ id: ref, question: question.slice(0, 400), answer })), ...(org ? { context: org.context } : {}) };
+  const body = { stage: "dump-place", product: product(), dump: s.text, tree, ...aimOf(session, cards), ...fields, answers: answers.map(({ ref, question, answer }) => ({ id: ref, question: question.slice(0, 400), answer })), ...(org ? { context: org.context } : {}), ...(kept.length ? { kept } : {}) };
   const origin = placeFor(studio().doc, null);
   const ids = new Map<string, string>();
   const turn = session.turn ?? { chatId: "", turnId: `dump:${sourceId}` };
@@ -597,11 +604,26 @@ export async function placeDump(sourceId: string) {
     buffer += d.text;
     timer ??= setTimeout(show, 150);
   };
-  const review = async (list: Proposal[]) => {
+  const review = async (list: Proposal[], check = true) => {
     if (!list.length) {
       // The chat says so: nothing to change on the canvas.
       await setSession(sourceId, (d) => ({ ...d, phase: "placed", placed: { at: Date.now(), counts: d.placed?.counts ?? { added: 0, attached: 0, edited: 0, notes: 0 } } }));
       return;
+    }
+    // Before they see them: what their own evidence says against what's proposed (src/challenge/), under the same Stop.
+    if (check) {
+      const ctrl = new AbortController();
+      runs.set(sourceId, ctrl);
+      useDump.setState({ busy: { sourceId, label: CHECKING, started: Date.now(), tokens: 0 } });
+      if (session.turn) patchTurn(session.turn.chatId, session.turn.turnId, { status: "running", activity: CHECKING });
+      try {
+        await checkFirst({ kind: "dump", sourceId }, list, { asked: s.title, signal: ctrl.signal });
+      } catch {
+        // Stopped: the review opens as it was.
+      } finally {
+        if (runs.get(sourceId) === ctrl) runs.delete(sourceId);
+        useDump.setState((u) => (u.busy?.sourceId === sourceId ? { busy: null } : {}));
+      }
     }
     if (!startReview({ kind: "dump", sourceId }, list)) return void (await setSession(sourceId, (d) => ({ ...d, phase: "ready" })));
   };
@@ -619,9 +641,9 @@ export async function placeDump(sourceId: string) {
     clearTimeout(timer);
     clearGhosts(preview);
     const kept = (e as Error).name === "AbortError" ? proposalsNow(parsePartial(buffer), true) : [];
-    // Stopped: what was complete waits for review.
+    // Stopped: what was complete waits for review, as it is.
     if (kept.length) {
-      await review(kept);
+      await review(kept, false);
       const t = session.turn;
       if (t) patchTurn(t.chatId, t.turnId, { status: "stopped", activity: undefined });
     } else await failed(sourceId, "placing", e);
@@ -631,6 +653,20 @@ export async function placeDump(sourceId: string) {
 }
 
 // ---------------------------------------------------------------------------
+/**
+ * Place it again with the challenges they kept (src/challenge/): what's under review is set aside, not
+ * discarded, and it's placed again by what their evidence says; the new proposals are checked too.
+ */
+export async function replaceDump(sourceId: string) {
+  const { key, run } = useChallenges.getState();
+  const kept = key === `dump:${sourceId}` ? keptChallenges(run) : [];
+  if (!kept.length) return;
+  if (useReview.getState().origin?.kind === "dump") setAside();
+  const list: KeptChallenge[] = kept.map((c) => ({ line: c.words ?? c.line, from: c.cites.map((x) => x.text).slice(0, 4), pieces: c.cites.flatMap((x) => (x.piece ? [x.piece] : [])) }));
+  await setSession(sourceId, (d) => ({ ...d, kept: list, proposals: [] }));
+  await placeDump(sourceId);
+}
+
 // Stop, Try again, a reload
 
 export function stopDump(sourceId: string) {

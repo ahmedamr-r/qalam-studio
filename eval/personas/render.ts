@@ -39,6 +39,13 @@ export function renderPlan(r: PlanRun): string {
   const start = d.cards.find((c) => c.ref === d.start);
   out.push("", "# Start here", "", start ? `**${start.title}**` : "(nothing picked)");
   out.push("", "# What I'm unsure of", "", d.doubt || "(nothing said)");
+  // What their own evidence said against what was proposed (src/challenge/), before they saw it.
+  const raised = (r.checks ?? []).flatMap((c) => c.challenges);
+  if (raised.length) {
+    out.push("", "# What your own evidence says", "");
+    for (const c of raised) out.push(`- ${c.line}${c.settle ? ` To settle it: ${c.settle}` : ""}`);
+    if (r.before) out.push("", `Proposed again by it. Before: ${r.before.cards.map((c) => c.title).join(" · ")}`);
+  }
   out.push("", "# What was looked up", "");
   for (const l of r.body.looks) {
     out.push(`Looked up: ${l.query || "what people do about this"}${l.noWeb ? " (no web here)" : ""}`);

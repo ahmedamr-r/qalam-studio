@@ -28,6 +28,7 @@ import { childrenOf } from "@/goals/tree";
 import { sameTopic } from "@/hub/topics";
 import { useSpaceView } from "@/space/view";
 import { adoptSources, sourceOf, updateSource, useSources } from "./sources";
+import { carryKept, checkFor, checkKey, keptAgainst, loadCheck, useChallenges } from "./challenges";
 
 /*
  * Qalam AI's proposals for the board, under review: the board as it would be is drawn over the
@@ -289,8 +290,49 @@ export function startReview(origin: ReviewOrigin, proposals: Proposal[], also: r
   show();
   void keep(origin);
   if (fresh) frameReview(also);
+  // Opened again (a reload, Review them): the check kept with it shows beside it.
+  const key = checkKey(origin, proposals);
+  if (key) void loadCheck(key, proposals);
   return true;
 }
+
+/** What a review is for, in a line, when the flow didn't say: what the check reads as what they asked. */
+function askedOf(origin: ReviewOrigin, proposals: readonly Proposal[]): string {
+  const first = proposals.find((p): p is Extract<Proposal, { kind: "card" | "goal" }> => p.kind === "card" || p.kind === "goal");
+  const under = first?.parentId ? (cardOf(studio().doc, first.parentId)?.title ?? "") : "";
+  if (origin.kind === "dump") return sourceOf(origin.sourceId)?.title ?? "A brain dump";
+  if (origin.kind === "solutions") return `Draft solutions for “${under}”`;
+  if (origin.kind === "problems") return `Draft the problems behind “${under}”`;
+  if (origin.kind === "breakdown") return `Break down “${under}”`;
+  return "";
+}
+
+/**
+ * A round of proposals checked against the project's own evidence (src/challenge/), then its review
+ * opened: the person sees what their evidence says against the proposals beside them. A check that
+ * fails, or finds nothing to check against, opens the review as it was.
+ */
+export async function checkThenReview(origin: ReviewOrigin, proposals: Proposal[], o: { asked?: string; also?: readonly string[]; onLabel?: (label: string) => void; signal?: AbortSignal } = {}): Promise<boolean> {
+  await checkFirst(origin, proposals, o);
+  return startReview(origin, proposals, o.also);
+}
+
+/** The check alone, for a flow that has a step to take between it and opening the review. */
+export async function checkFirst(origin: ReviewOrigin, proposals: Proposal[], o: { asked?: string; onLabel?: (label: string) => void; signal?: AbortSignal } = {}): Promise<void> {
+  const key = checkKey(origin, proposals);
+  const cur = useReview.getState();
+  // Another review waits: this one won't open, so it isn't checked.
+  const waits = cur.proposals.length > 0 && JSON.stringify(cur.origin) !== JSON.stringify(origin);
+  if (key && !waits && proposals.length) await checkFor(key, o.asked || askedOf(origin, proposals), proposals, evidenceOf, o.onLabel, o.signal);
+}
+
+/** The check that's showing, when it's this review's. */
+export const useReviewCheck = () => {
+  const origin = useReview((s) => s.origin);
+  const proposals = useReview((s) => s.proposals);
+  const key = origin ? checkKey(origin, proposals) : null;
+  return useChallenges((s) => (key && s.key === key ? s.run : null));
+};
 
 /** The proposals on one card of the ghost (its id: a card they change or add, a note they add). */
 export const proposalsOn = (proposals: Proposal[], nodeId: string) => proposals.filter((p) => p.cardId === nodeId);
@@ -353,7 +395,9 @@ export function acceptProposals(ids: string[]) {
   const n = { added: 0, attached: 0, against: 0, edited: 0, notes: 0 };
   const plural = (k: number, one: string, many: string) => (k ? `${k} ${k === 1 ? one : many}` : "");
   const summary = () => [plural(n.added, "card added", "cards added"), plural(n.attached, "quote attached", "quotes attached"), n.against && `${n.against} against noted`, plural(n.edited, "change made", "changes made"), plural(n.notes, "note added", "notes added")].filter(Boolean);
-  const list = all.filter((p) => chosen.has(p.id));
+  const taken = all.filter((p) => chosen.has(p.id));
+  // A challenge they kept goes along: the words it rests on, as what speaks against the card.
+  const list = [...taken, ...keptAgainst(taken)];
   // Accepting is a decision: what it changed is recorded as Qalam AI's, with its reasons.
   recordAccepted(list, fromOf(origin, list), () => {
     studio().mutate((d) => {
@@ -374,6 +418,8 @@ export function acceptProposals(ids: string[]) {
   void adoptSources(list.flatMap((p) => (p.kind === "attach" || p.kind === "against" ? [p.quote.sourceId] : p.kind === "card" ? p.backing.quotes.map((q) => q.sourceId) : [])));
   void keep(origin, { added: n.added, attached: n.attached + n.against, edited: n.edited, notes: n.notes });
   decided(origin, list, "accepted");
+  // And its line stays on the card as a notice until it's dismissed.
+  carryKept(taken);
   const said = summary();
   if (said.length) feedback(said.join(" · "), { kind: "success", id: "discovery.review" });
 }
@@ -403,6 +449,12 @@ export function discardProposals(ids: string[]) {
   const keys = gone.filter((p) => p.kind !== "attach" && p.kind !== "against").map((p) => proposalKey(p, all));
   if (origin?.kind === "dump" && keys.length) void updateSource(origin.sourceId, (s) => (s.dump ? { ...s, dump: { ...s.dump, dismissed: [...new Set([...(s.dump.dismissed ?? []), ...keys])] } } : s)).then(() => keep(origin));
   else void keep(origin);
+}
+
+/** What's under review set aside without deciding it, for proposals made again in its place: nothing is recorded or remembered as discarded. */
+export function setAside() {
+  useReview.setState({ proposals: [] });
+  show();
 }
 
 export const acceptAll = () => acceptProposals(useReview.getState().proposals.map((p) => p.id));
