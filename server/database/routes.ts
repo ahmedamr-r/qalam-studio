@@ -5,7 +5,7 @@ import { METRIC_UNITS, type MetricUnit } from "@/database/types";
 import { NoSecretStore } from "../secrets";
 import type { OrgStore } from "../org/store";
 import { connectDatabase, forgetDatabase } from "./connect";
-import { databaseView } from "./index";
+import { databaseView, readLayout } from "./index";
 import { DatabaseError } from "./runner";
 
 /*
@@ -23,6 +23,33 @@ const bad = (message: string) => Response.json({ error: "bad_request", message }
 export function databaseFailure(e: unknown): Response {
   if (e instanceof DatabaseError || e instanceof MetricsEditError || e instanceof NoSecretStore) return Response.json({ error: "database", message: e.message, ...(e instanceof DatabaseError && e.code ? { code: e.code } : {}) }, { status: 400 });
   return Response.json({ error: "failed", message: e instanceof Error ? e.message : String(e) }, { status: 500 });
+}
+
+/** A long piece of work as NDJSON: what it's doing as it goes ("activity"), then its result, or why it failed (as the window's callAI reads it). */
+export function streamed(request: AbortSignal, run: (emit: (label: string) => void, signal: AbortSignal) => Promise<unknown>): Response {
+  const enc = new TextEncoder();
+  const stop = new AbortController();
+  request.addEventListener("abort", () => stop.abort());
+  let open = true;
+  const body = new ReadableStream<Uint8Array>({
+    async start(ctrl) {
+      const send = (o: unknown) => {
+        if (open) ctrl.enqueue(enc.encode(`${JSON.stringify(o)}\n`));
+      };
+      try {
+        send({ type: "result", data: await run((label) => send({ type: "activity", label }), stop.signal) });
+      } catch (e) {
+        if (!stop.signal.aborted) send({ type: "error", error: e instanceof DatabaseError ? "database" : "failed", message: e instanceof Error ? e.message : String(e) });
+      }
+      if (open) ctrl.close();
+      open = false;
+    },
+    cancel() {
+      open = false;
+      stop.abort();
+    },
+  });
+  return new Response(body, { headers: { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store" } });
 }
 
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : undefined);
@@ -56,6 +83,8 @@ export function databaseRoutes(r: Hono<Env>) {
     await forgetDatabase(store(c), { tab: tabOf(c.req.raw.headers) });
     return c.json(await databaseView(store(c)));
   });
+  // How it's laid out, read again with no tokens.
+  r.post("/api/org/:org/database/layout", (c) => streamed(c.req.raw.signal, async (emit, signal) => ({ layout: await readLayout(store(c), { emit, signal }), view: await databaseView(store(c)) })));
   // The team's numbers (hub/metrics.md): a person's fix, or one taken off.
   r.get("/api/org/:org/metrics", async (c) => c.json({ metrics: await store(c).getMetrics() }));
   r.put("/api/org/:org/metrics", async (c) => {

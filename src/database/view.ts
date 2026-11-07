@@ -1,3 +1,4 @@
+import { tablesThatMatter, tableKeyOf, type Layout } from "./layout";
 import type { DatabaseKind, DatabaseLocal, MetricState, Reading } from "./local";
 import { queryHash } from "./metrics-md";
 import type { Dialect } from "./sql";
@@ -39,4 +40,21 @@ export function connectionView(local: DatabaseLocal | null): ConnectionView | nu
   if (!local) return null;
   const { approved: _a, readings: _r, ...shown } = local;
   return shown;
+}
+
+/** What was read of the layout, as the window shows it: how much, the tables that matter, and what was kept back. */
+export interface LayoutSummary {
+  at: number;
+  tables: number;
+  /** The tables Qalam AI reads in full, best first. */
+  sent: string[];
+  personal: number;
+  sampled: number;
+  hidden: string[];
+}
+
+export function layoutSummary(l: Layout): LayoutSummary {
+  const { sent } = tablesThatMatter(l);
+  const cols = l.tables.flatMap((t) => t.columns);
+  return { at: l.at, tables: l.tables.length, sent: sent.map(tableKeyOf), personal: cols.filter((c) => c.personal).length, sampled: cols.filter((c) => c.values?.length).length, hidden: l.tables.filter((t) => t.hidden).map(tableKeyOf) };
 }
