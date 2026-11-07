@@ -115,7 +115,14 @@ export function streamViaCli(opts: CallOpts, model: string): Response {
           return;
         }
         if (ev.type === "system" && ev.subtype === "init") modelName = ev.model ?? modelName;
-        else if (ev.type === "stream_event" && ev.event?.type === "content_block_start") {
+        else if (ev.type === "user") {
+          // What the schema check said about an answer that didn't fit: the model writes it again, so say why.
+          for (const b of ev.message?.content ?? []) {
+            if (b?.type !== "tool_result" || !b.is_error) continue;
+            const said = typeof b.content === "string" ? b.content : Array.isArray(b.content) ? b.content.map((x: { text?: string }) => x?.text ?? "").join(" ") : "";
+            console.warn(`[qalam] ${opts.kind ?? "a call"}'s answer didn't fit its schema: ${said.replace(/\s+/g, " ").slice(0, 500)}`);
+          }
+        } else if (ev.type === "stream_event" && ev.event?.type === "content_block_start") {
           // Each StructuredOutput call writes the answer from the start (the CLI retries on schema errors).
           if (ev.event.content_block?.type === "tool_use") {
             if (++answers > 1) console.warn(`[qalam] the model is writing its answer again (attempt ${answers}): the last one failed the schema check${opts.kind ? ` (${opts.kind})` : ""}`);
