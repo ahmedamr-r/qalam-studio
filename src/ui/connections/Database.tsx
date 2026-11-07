@@ -30,6 +30,12 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const MEMORY = { flow: "metrics" as const, key: "database", about: { product: null } };
 
+/** Sign out of Supabase on this computer: Supabase is asked to drop the tokens, then the Keychain forgets them. */
+const signOutOfSupabase = async () => {
+  await connectorsDb.forget("supabase");
+  await loadDatabase();
+};
+
 function useRun() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -103,6 +109,7 @@ function SupabaseForm() {
       await loadDatabase();
     });
   const list = () => run("Asking Supabase for your projects", async () => setProjects(await databaseDb.supabaseProjects()));
+  const signOut = () => run("Signing out of Supabase", () => signOutOfSupabase().then(() => setProjects(null)));
   useEffect(() => {
     if (signedIn && !projects) void list();
   }, [signedIn]);
@@ -116,7 +123,7 @@ function SupabaseForm() {
   return (
     <div className="flex flex-col gap-[8px]">
       <p className="text-caption text-fg-muted">
-        Supabase's sign-in covers your Supabase account. Qalam keeps it in this computer's Keychain, and sends only read-only queries, to the one project you pick, where they run as Supabase's read-only role and count every row.
+        Supabase's sign-in reaches the organization you pick on its page, with read-only scopes. Qalam keeps it in this computer's Keychain and sends only read-only queries, to the one project you pick, where they run as Supabase's read-only role and count every row.
       </p>
       {!signedIn ? (
         <Button size="sm" className="self-start" disabled={!!busy} onClick={() => void signIn()}>
@@ -133,6 +140,9 @@ function SupabaseForm() {
             </button>
           ))}
           {projects && !projects.length && <p className="text-caption text-fg-muted">Your Supabase sign-in reaches no project.</p>}
+          <button type="button" disabled={!!busy} onClick={() => void signOut()} className={clsx(r.buttonSm, r.buttonGhost, "self-start")}>
+            Sign out of Supabase
+          </button>
         </div>
       )}
       {page && (
@@ -234,6 +244,11 @@ function Connected() {
         <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => void run("Disconnecting", () => databaseDb.forget().then(() => {}))}>
           Disconnect
         </Button>
+        {c.kind === "supabase" && (
+          <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => void run("Signing out of Supabase", () => databaseDb.forget().then(signOutOfSupabase))}>
+            Sign out of Supabase
+          </Button>
+        )}
       </div>
       {c.canWrite && <p className="text-caption text-warning">{c.user} can change the database{c.writes?.length ? ` (${c.writes.join(", ")})` : ""}. You let it in anyway: every query still runs read-only.</p>}
       {!!c.hidden?.length && <p className="text-caption text-fg-muted">Row-level security hides rows of {c.hidden.join(", ")} from {c.user}, so numbers there can't be read. Give the user BYPASSRLS to count every row.</p>}
