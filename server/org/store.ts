@@ -26,6 +26,8 @@ import { marketFromMarkdown, marketToMarkdown } from "@/market/market-md";
 import type { Market } from "@/market/types";
 import type { MarketSession } from "@/market/session";
 import { termsFromMarkdown, termsToMarkdown } from "@/terms/terms-md";
+import { metricsFromMarkdown, metricsToMarkdown } from "@/database/metrics-md";
+import type { Metrics } from "@/database/types";
 import type { Terms } from "@/terms/types";
 import type { ScanSession } from "@/scan/session";
 import type { FeedLog } from "@/feeds/feeds";
@@ -96,6 +98,8 @@ export type OrgEvent = { tab?: string } & (
   | { kind: "market"; session?: boolean }
   /** The project's words changed (hub/terms.md). */
   | { kind: "terms" }
+  /** The team's numbers from its database changed (hub/metrics.md), or this computer's connection to it (`local`). */
+  | { kind: "metrics"; local?: boolean }
   /** What Qalam AI asked and how it was answered changed (hub/asked.jsonl, .qalam/local/asked.jsonl). */
   | { kind: "asked" }
   /** A scan of what people complain about moved on (chats/scan/session.json). */
@@ -121,6 +125,8 @@ export const GOALS = "goals.md";
 export const MARKET = "hub/market.md";
 /** The project's words: its terms, what each means, and the words to avoid. */
 export const TERMS = "hub/terms.md";
+/** The team's numbers from its own database: each in plain words, with the exact query that reads it. */
+export const METRICS = "hub/metrics.md";
 /** How long taking a change to a goal back counts as undoing it (as on a board). */
 const GOAL_UNDO_WINDOW = 10 * 60_000;
 
@@ -1062,6 +1068,24 @@ export class OrgStore {
     return next;
   }
 
+  // The team's numbers (hub/metrics.md): definitions only, never data. Changes are edits, made under
+  // its lock on the file as it is now, so a hand edit and one through the window never lose each other.
+
+  async getMetrics(): Promise<Metrics> {
+    return metricsFromMarkdown(await readFile(this.abs(METRICS), "utf8").catch(() => ""));
+  }
+
+  async changeMetrics(fn: (t: Metrics) => Metrics, opts: { tab?: string } = {}): Promise<Metrics> {
+    const file = this.abs(METRICS);
+    const next = await locked(file, async () => {
+      const t = fn(metricsFromMarkdown(await readFile(file, "utf8").catch(() => "")));
+      await this.write(file, metricsToMarkdown(t, { org: this.info.name }));
+      return t;
+    });
+    this.emit({ kind: "metrics", tab: opts.tab });
+    return next;
+  }
+
   getMarketSession(): Promise<MarketSession | null> {
     return readJson<MarketSession>(this.abs("chats/market/session.json"));
   }
@@ -1875,6 +1899,8 @@ export class OrgStore {
       this.emit({ kind: "market" });
     } else if (rel === TERMS) {
       this.emit({ kind: "terms" });
+    } else if (rel === METRICS) {
+      this.emit({ kind: "metrics" });
     } else if (rel === "about.md") {
       this.emit({ kind: "about" });
     } else if (rel === GOALS) {
