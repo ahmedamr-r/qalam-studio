@@ -63,6 +63,7 @@ import { namesSomething, readFirstAnswer, scanNow, startScan, steerQuestions, st
 import { steerRound } from "@/scan/steer";
 import { askBrief, briefRequestOf, writeCardBrief } from "./briefs";
 import { forgetAsked, KnownBody, listMemory, RecallBody, recallFor, RememberBody, rememberRound, subjectOf, withKnown } from "./memory";
+import { databaseRoutes } from "../database/routes";
 import { AskingIn } from "@/asking/wire";
 import { askedOf } from "@/discovery/brief";
 import { askScanPlan, firstBuild, keepAnswers, keepAudience, planAudiences, scanShare, writeBrief } from "./scan-plan";
@@ -323,6 +324,8 @@ export function orgRoutes(): Hono<Env> {
     const url = b.url;
     return streamed(c.req.raw.signal, (emit, signal) => pictureFromFigma(store, step, url, emit, signal, { tab: tabOf(c.req.raw.headers) }));
   });
+  // The team's database, read-only (server/database): its connection on this computer, and the team's numbers.
+  databaseRoutes(r);
   // The product's code, read-only (server/code): the repositories this computer reads, and what each product does today.
   const KEY = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,139}$/;
   r.get("/api/org/:org/code", async (c) => c.json(await codeView(c.get("store"))));

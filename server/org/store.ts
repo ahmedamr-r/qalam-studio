@@ -28,6 +28,7 @@ import type { MarketSession } from "@/market/session";
 import { termsFromMarkdown, termsToMarkdown } from "@/terms/terms-md";
 import { metricsFromMarkdown, metricsToMarkdown } from "@/database/metrics-md";
 import type { Metrics } from "@/database/types";
+import type { DatabaseLocal } from "@/database/local";
 import type { Terms } from "@/terms/types";
 import type { ScanSession } from "@/scan/session";
 import type { FeedLog } from "@/feeds/feeds";
@@ -191,6 +192,8 @@ interface LocalState {
   firstRun?: number;
   /** The repositories and folders this computer reads for the products. */
   code?: CodeRepo[];
+  /** The database this computer reads for the team's numbers (its connection string is in the Keychain). */
+  database?: DatabaseLocal;
 }
 
 /** A line of hub/notices.jsonl: a notice dismissed or brought back, a review's finding, a review ran. */
@@ -1141,6 +1144,30 @@ export class OrgStore {
   async setCodeRepos(list: CodeRepo[]): Promise<void> {
     this.local.code = list;
     await locked(this.abs(".qalam/local/state.json"), () => atomicWrite(this.abs(".qalam/local/state.json"), stableStringify(this.local)));
+  }
+
+  /** The database this computer reads for the team's numbers, if any. */
+  get databaseLocal(): DatabaseLocal | null {
+    return this.local.database ?? null;
+  }
+
+  /** Change it under the local state's lock; null forgets it. Announced, so every window on this computer follows. */
+  async changeDatabaseLocal(fn: (d: DatabaseLocal | null) => DatabaseLocal | null, opts: { tab?: string } = {}): Promise<DatabaseLocal | null> {
+    const file = this.abs(".qalam/local/state.json");
+    const next = await locked(file, async () => {
+      const d = fn(this.local.database ?? null);
+      if (d) this.local.database = d;
+      else delete this.local.database;
+      await atomicWrite(file, stableStringify(this.local));
+      return d;
+    });
+    this.emit({ kind: "metrics", local: true, tab: opts.tab });
+    return next;
+  }
+
+  /** Where this computer keeps what it read of its database's layout, and the drafts waiting on it (out of Git). */
+  databaseFile(name: "layout" | "drafts"): string {
+    return this.abs(`.qalam/database/${name}.json`);
   }
 
   /** Where this computer keeps its copy of a repository's code (never shared: .qalam is out of Git). */

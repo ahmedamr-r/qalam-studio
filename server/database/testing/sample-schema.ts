@@ -1,0 +1,34 @@
+/** The sample database's tables, rows and roles (sample-db.mts). */
+export const SAMPLE_SCHEMA = `
+CREATE TYPE order_status AS ENUM ('pending', 'paid', 'refunded', 'cancelled');
+CREATE TABLE customers (id bigint PRIMARY KEY, email text NOT NULL, full_name text, phone text, city text, plan text NOT NULL, created_at timestamptz NOT NULL);
+CREATE TABLE orders (id bigint PRIMARY KEY, customer_id bigint NOT NULL REFERENCES customers(id), status order_status NOT NULL, total_cents integer NOT NULL, currency text NOT NULL, channel text NOT NULL, created_at timestamptz NOT NULL, deleted_at timestamptz);
+COMMENT ON TABLE orders IS 'One row per customer order';
+COMMENT ON COLUMN orders.total_cents IS 'What the customer paid, in cents';
+CREATE TABLE refunds (id bigint PRIMARY KEY, order_id bigint NOT NULL REFERENCES orders(id), amount_cents integer NOT NULL, reason text NOT NULL, created_at timestamptz NOT NULL);
+CREATE TABLE deliveries (id bigint PRIMARY KEY, order_id bigint NOT NULL REFERENCES orders(id), fee_cents integer NOT NULL, courier_cost_cents integer, delivered_at timestamptz);
+CREATE TABLE schema_migrations (version text PRIMARY KEY);
+CREATE TABLE sessions (id text PRIMARY KEY, customer_id bigint, token text);
+CREATE TABLE notes (id int PRIMARY KEY, body text);
+ALTER TABLE notes ENABLE ROW LEVEL SECURITY;
+CREATE SEQUENCE order_ids;
+INSERT INTO customers SELECT g, 'c' || g || '@example.com', 'Customer ' || g, '+2010' || lpad(g::text, 8, '0'), CASE WHEN g % 2 = 0 THEN 'Cairo' ELSE 'Giza' END, CASE WHEN g % 3 = 0 THEN 'plus' ELSE 'free' END, now() - (g || ' days')::interval FROM generate_series(1, 40) g;
+INSERT INTO orders SELECT g, 1 + (g % 40), (CASE WHEN g % 10 = 0 THEN 'refunded' WHEN g % 7 = 0 THEN 'cancelled' WHEN g % 13 = 0 THEN 'pending' ELSE 'paid' END)::order_status, 1000 + (g * 37) % 9000, 'EGP', CASE WHEN g % 3 = 0 THEN 'web' ELSE 'app' END, now() - ((g % 60) || ' days')::interval, CASE WHEN g % 50 = 0 THEN now() ELSE NULL END FROM generate_series(1, 300) g;
+INSERT INTO refunds SELECT g, g * 10, 500 + g, CASE WHEN g % 2 = 0 THEN 'late' ELSE 'damaged' END, now() - ((g % 30) || ' days')::interval FROM generate_series(1, 30) g;
+INSERT INTO deliveries SELECT g, g, 1500, 1100 + (g % 5) * 100, now() - ((g % 60) || ' days')::interval FROM generate_series(1, 300) g;
+INSERT INTO schema_migrations VALUES ('20260101'), ('20260201');
+INSERT INTO notes VALUES (1, 'a'), (2, 'b');
+ANALYZE;
+CREATE ROLE reader LOGIN;
+GRANT USAGE ON SCHEMA public TO reader;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO reader;
+CREATE ROLE writer LOGIN;
+GRANT USAGE ON SCHEMA public TO writer;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO writer;
+GRANT INSERT ON orders TO writer;
+CREATE ROLE editors;
+GRANT UPDATE ON refunds TO editors;
+CREATE ROLE member LOGIN IN ROLE editors;
+GRANT USAGE ON SCHEMA public TO member;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO member;
+`;
