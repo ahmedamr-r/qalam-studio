@@ -37,6 +37,37 @@ export function questioning(p: Persona, player: Player) {
 }
 
 /**
+ * What was asked again, from the ledger's own ids, so wording can't hide it: a question that drew only
+ * facts they'd already given (in the same flow, or an earlier one: Help me find one, then the focus), a
+ * declared unknown asked again, a question about what their own documents answer (`documented`), and
+ * the longest run of questions they couldn't answer. The bench's person says don't-know whenever no fact
+ * fits, so the run counts both kinds.
+ */
+export function reasks(p: Pick<Persona, "documented">, player: Pick<Player, "ledger">) {
+  const documented = new Set((p.documented ?? []).map((d) => d.id));
+  const firstIn = new Map<string, string>();
+  const unknownSeen = new Set<string>();
+  const out = { sameFlow: 0, crossFlow: 0, unknownAgain: 0, askedDocumented: 0, longestDontKnow: 0, examples: [] as { question: string; flow: string; first: string }[] };
+  let run = 0;
+  for (const x of player.ledger) {
+    if (x.facts.length && x.facts.every((f) => firstIn.has(f))) {
+      const first = firstIn.get(x.facts[0])!;
+      if (first === x.flow) out.sameFlow++;
+      else out.crossFlow++;
+      if (out.examples.length < 8) out.examples.push({ question: x.question, flow: x.flow, first });
+    }
+    for (const f of x.facts) if (!firstIn.has(f)) firstIn.set(f, x.flow);
+    const declared = x.unknowns.filter((u) => !documented.has(u));
+    if (declared.some((u) => unknownSeen.has(u))) out.unknownAgain++;
+    for (const u of declared) unknownSeen.add(u);
+    if (x.unknowns.some((u) => documented.has(u))) out.askedDocumented++;
+    run = x.how === "dont-know" ? run + 1 : 0;
+    out.longestDontKnow = Math.max(out.longestDontKnow, run);
+  }
+  return out;
+}
+
+/**
  * What they never said, turning up as what they said: Enter on something preselected, or Qalam AI's pick
  * they pressed for, cited on a card as their answer, kept as a source of their words, or in the brief on a
  * line that doesn't say it's Qalam AI's pick.

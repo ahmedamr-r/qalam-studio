@@ -16,8 +16,10 @@ import type { AskQuestion, AskTurn, AskWho, Lookup, LookupKind, SettledPoint } f
 
 export interface TurnCheck {
   who: AskWho;
-  /** Every question asked or held so far: never asked again. */
+  /** Every question asked so far: never asked again. */
   asked: readonly { id: string; title: string }[];
+  /** Questions held last turn until what they wait on settles: asked again then, under their own id, never dropped as asked already. */
+  held?: readonly { id: string; title: string }[];
   /** Lookups so far: never the same twice. */
   lookups: readonly Pick<Lookup, "id" | "kind" | "query">[];
   /** Their own words: what they asked and what they typed, never a pick. A term must be one of them. */
@@ -61,7 +63,7 @@ export const ASK_LIMITS = { query: 200, point: 200, points: 12, term: 60, means:
  */
 export function keepQuestions(
   raw: readonly unknown[],
-  c: Pick<TurnCheck, "who" | "asked" | "lookups" | "tweak"> & { taken?: Set<string>; lookupIds?: ReadonlyMap<string, string>; readable?: (q: AskQuestion) => AskQuestion },
+  c: Pick<TurnCheck, "who" | "asked" | "held" | "lookups" | "tweak"> & { taken?: Set<string>; lookupIds?: ReadonlyMap<string, string>; readable?: (q: AskQuestion) => AskQuestion },
   dropped?: (why: string, item: unknown) => void,
 ): { questions: AskQuestion[]; questionIds: Map<string, string> } {
   const drop = (why: string, item: unknown) => void dropped?.(why, item);
@@ -69,6 +71,8 @@ export function keepQuestions(
   const questionIds = new Map<string, string>();
   const questions: AskQuestion[] = [];
   const asked = [...c.asked];
+  // Held last turn: asked again now that it can be, keeping its id; each one once.
+  const held = [...(c.held ?? [])];
   for (const item of raw) {
     const x = rec(item);
     const kept = (c.who === "designer" ? sanitizeQuestions([item], { max: 1 }) : sanitizeAsked([item], { max: 1 }))[0];
@@ -86,8 +90,10 @@ export function keepQuestions(
       drop("asked already", item);
       continue;
     }
-    let id = q.id;
-    while (taken.has(id)) id = `${q.id}-${taken.size + 1}`;
+    const again = held.findIndex((h) => h.id === q.id || sameTopic(h.title, q.title));
+    let id = again >= 0 ? held[again].id : q.id;
+    if (again >= 0) held.splice(again, 1);
+    else while (taken.has(id)) id = `${q.id}-${taken.size + 1}`;
     taken.add(id);
     questionIds.set(str(x.id, 40), id);
     questionIds.set(q.id, id);

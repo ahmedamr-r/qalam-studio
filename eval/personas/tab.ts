@@ -116,7 +116,7 @@ export class Tab {
   }
 
   async start() {
-    this.server = spawn("npx", ["vite", "--port", String(this.port), "--strictPort"], { cwd: this.cwd, env: { ...process.env, QALAM_HOME: this.home, QALAM_NO_MODELS: "1", RATE_LIMIT_PER_10_MIN: "1000" }, stdio: ["ignore", "pipe", "pipe"], detached: true });
+    this.server = spawn("npx", ["vite", "--port", String(this.port), "--strictPort"], { cwd: this.cwd, env: { ...process.env, QALAM_HOME: this.home, QALAM_NO_MODELS: process.env.QALAM_NO_MODELS ?? "1", RATE_LIMIT_PER_10_MIN: "1000" }, stdio: ["ignore", "pipe", "pipe"], detached: true });
     this.base = `http://${this.p.id}.localhost:${this.port}`;
     for (let i = 0; i < 120; i++) {
       await sleep(500);

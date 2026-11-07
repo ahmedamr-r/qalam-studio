@@ -99,10 +99,12 @@ export function askingBlock(a: AskingInT): string {
 }
 
 /** What code checks a turn against, from what the route was sent. */
-export function checkOf(a: AskingInT, o: Omit<TurnCheck, "asked" | "lookups" | "said" | "proposed"> & { hay: string }): TurnCheck {
+export function checkOf(a: AskingInT, o: Omit<TurnCheck, "asked" | "held" | "lookups" | "said" | "proposed"> & { hay: string }): TurnCheck {
   return {
     ...o,
-    asked: [...a.rounds.flatMap((r) => r.asked.map((x) => ({ id: x.id, title: x.title }))), ...a.held.map((q) => ({ id: q.id, title: q.title }))],
+    asked: a.rounds.flatMap((r) => r.asked.map((x) => ({ id: x.id, title: x.title }))),
+    // Held, it's asked again once what it waits on settles, as the turn is told: never dropped as asked already.
+    held: a.held.map((q) => ({ id: q.id, title: q.title })),
     lookups: a.lookups.map((l) => ({ id: l.id, kind: l.kind, query: l.query })),
     said: a.said,
     proposed: a.proposed,

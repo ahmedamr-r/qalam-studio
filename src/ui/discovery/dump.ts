@@ -19,6 +19,8 @@ import {
   DUMP_MAX_CHARS,
   applyDumpFollowup,
   askedOf,
+  heldOf,
+  openingOf,
   briefFromDump,
   closeDumpRound,
   firstRound,
@@ -255,7 +257,7 @@ export async function readDump(sourceId: string) {
   const { tree, cards } = board();
   try {
     const { raw, sample, model } = await call(sourceId, reading(s.dump), { stage: "dump-read", product: product(), dump: s.text, tree, ...aimOf(s.dump, cards) }, () => sampleRaw(SAMPLE_DUMP_READ_RAW, cards), 3500);
-    const r = sanitizeRead(raw, s.text, cards, Date.now(), s.dump.within, !!s.dump.file);
+    const r = sanitizeRead(raw, s.text, cards, Date.now(), s.dump.within, !!s.dump.file, openingOf(s.dump.aim));
     // The wrong file: what it is, and the kind that would help (they add another, or have it read anyway).
     if (s.dump.file && (!r.bears || !r.fragments.length)) {
       await updateSource(sourceId, (x) => ({ ...x, quotes: r.fragments, dump: { ...x.dump!, phase: "ready", failed: undefined, understanding: r.understanding, challenges: [], buckets: [], off: { wanted: r.wanted }, ...(model ? { model } : {}) } }));
@@ -375,7 +377,7 @@ export async function readAnswers(sourceId: string, o: { looked?: boolean } = {}
   const recorded = () => sampleRaw(SAMPLE_DUMP_FOLLOWUP_RAW[Math.min(session.buckets.length, SAMPLE_DUMP_FOLLOWUP_RAW.length) - 1], cards);
   try {
     const { raw, sample, model } = await call(sourceId, o.looked ? "Qalam AI is reading what it found, with your answers" : "Qalam AI is reading your answers", body, recorded, 2500);
-    const f = sanitizeDumpFollowup(raw, pieces, cards, askedOf(session));
+    const f = sanitizeDumpFollowup(raw, pieces, cards, askedOf(session), heldOf(session));
     if (look && f.look) {
       // Nothing to ask until it has looked: it looks, then reads again with what the look found.
       if (!f.questions.length) {

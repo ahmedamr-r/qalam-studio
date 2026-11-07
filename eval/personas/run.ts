@@ -12,7 +12,7 @@ import { OrgStore } from "../../server/org/store";
 import { runBaseline, type BaselineRun } from "./baseline";
 import { planFlow, scanFlow, type PlanRun, type ScanRun } from "./bench";
 import { lint, paperWalk } from "./lint";
-import { baselineCosts, blindEngineer, contamination, costs, prdFields, questioning, searching, trapHits } from "./measures";
+import { baselineCosts, blindEngineer, contamination, costs, prdFields, questioning, reasks, searching, trapHits } from "./measures";
 import { PERSONAS, personaById } from "./personas";
 import { makePlayer } from "./player";
 import { neutral, renderBaseline, renderPlan, renderScan, renderTab } from "./render";
@@ -32,6 +32,7 @@ import type { Persona } from "./types";
  *   pnpm eval:personas --stage 2 --yes        the first round of questions, both sides
  *   pnpm eval:personas --stage 3 --yes --only b2,c1   whole runs, both sides
  *   pnpm eval:personas --stage check --yes --only a1  the in-process road held to the real app's
+ *   pnpm eval:personas --stage measure --from <run>   the re-ask measures on saved runs: no model calls
  *
  * --flip <fact> re-proposes with one answer turned around. --plan-too also runs a scan persona through
  * the chat's plan route. --models keeps search by meaning on (the control). The plain agent asks for as
@@ -132,6 +133,7 @@ async function oneSide(p: Persona, out: string, route: "plan" | "scan", o: Optio
     ended: run.ended ?? null,
     briefEnded: run.briefAsk?.ended ?? null,
     questioning: questioning(p, player),
+    reasks: reasks(p, player),
     contamination: contamination(player, run),
     searching: searching(t, run),
     traps: text ? trapHits(p, text) : [],
@@ -175,7 +177,7 @@ async function tabSide(p: Persona, out: string, o: Options) {
   const prd = await prdFields(text, measure).catch((e: unknown) => ({ error: String(e) }));
   const engineer = await blindEngineer(text, measure).catch((e: unknown) => ({ error: String(e) }));
   const usage = await homeUsage(home);
-  const summary = { side: `qalam-${p.path}`, seconds: Math.round((Date.now() - began) / 1000), usage, playerTokens: costs(t).player, deadEnds: result.deadEnds, forced: result.forced, windowErrors: result.errors.slice(0, 8), questioning: questioning(p, player), contamination: contamination(player, null), traps: trapHits(p, text), prd, engineer };
+  const summary = { side: `qalam-${p.path}`, seconds: Math.round((Date.now() - began) / 1000), usage, playerTokens: costs(t).player, deadEnds: result.deadEnds, forced: result.forced, windowErrors: result.errors.slice(0, 8), questioning: questioning(p, player), reasks: reasks(p, player), contamination: contamination(player, null), traps: trapHits(p, text), prd, engineer };
   await writeFile(path.join(out, "qalam-tab.json"), JSON.stringify({ summary, result, ledger: player.ledger }, null, 2));
   await writeFile(path.join(out, "qalam-tab.md"), text);
   return summary;
@@ -208,7 +210,7 @@ async function baselineSide(p: Persona, out: string, o: Options, ctrl: AbortCont
   const measure = measureDeps(t);
   const prd = o.firstRoundOnly ? null : await prdFields(text, measure, ctrl.signal).catch((e: unknown) => ({ error: String(e) }));
   const engineer = o.firstRoundOnly ? null : await blindEngineer(text, measure, ctrl.signal).catch((e: unknown) => ({ error: String(e) }));
-  const summary = { side: "baseline", ...baselineCosts(run), error: run.error ?? null, playerTokens: costs(t).player, questioning: questioning(p, player), traps: text ? trapHits(p, text) : [], prd, engineer };
+  const summary = { side: "baseline", ...baselineCosts(run), error: run.error ?? null, playerTokens: costs(t).player, questioning: questioning(p, player), reasks: reasks(p, player), traps: text ? trapHits(p, text) : [], prd, engineer };
   await writeFile(path.join(out, "baseline.json"), JSON.stringify({ summary, run, ledger: player.ledger }, null, 2));
   if (text) await writeFile(path.join(out, "baseline.md"), text);
   return summary;
@@ -425,11 +427,34 @@ async function stage1(ids: Set<string> | null, root: string) {
   console.log(`\n${total - wrong} of ${total} as expected · ${t.usage.reduce((n, u) => n + u.input + u.output + u.cacheRead + u.cacheWrite, 0)} tokens · $${t.usage.reduce((n, u) => n + (u.cost ?? 0), 0).toFixed(3)} · ${root}`);
 }
 
+/**
+ * The re-ask measures worked out again on runs saved before (no model calls): each person's sides, from
+ * the ledger kept with each. Runs from before `documented` don't count questions about documents.
+ */
+async function remeasure(dirs: string[]) {
+  for (const dir of dirs) {
+    console.log(`\n${dir}`);
+    const people = (await readdir(dir).catch(() => [] as string[])).filter((d) => /^[abc]\d/.test(d)).sort();
+    for (const d of people) {
+      const p = personaById(d.slice(0, 2));
+      if (!p) continue;
+      for (const f of (await readdir(path.join(dir, d)).catch(() => [] as string[])).filter((x) => /^(qalam-[\w-]+|baseline)\.json$/.test(x))) {
+        const saved = JSON.parse(await readFile(path.join(dir, d, f), "utf8")) as { ledger?: Parameters<typeof reasks>[1]["ledger"] };
+        if (!saved.ledger) continue;
+        const r = reasks(p, { ledger: saved.ledger });
+        console.log(`  ${d.padEnd(8)} ${f.replace(".json", "").padEnd(12)} again in its flow ${r.sameFlow} · from an earlier flow ${r.crossFlow} · unknown asked again ${r.unknownAgain} · about their documents ${r.askedDocumented} · longest don't-know run ${r.longestDontKnow}`);
+        for (const e of r.examples.filter((x) => x.flow !== x.first)) console.log(`      ${e.flow} (first in ${e.first}): ${e.question.slice(0, 110)}`);
+      }
+    }
+  }
+}
+
 async function main() {
-  const { values } = parseArgs({ options: { yes: { type: "boolean" }, stage: { type: "string" }, only: { type: "string" }, flip: { type: "string" }, "plan-too": { type: "boolean" }, "no-baseline": { type: "boolean" }, models: { type: "boolean" }, budget: { type: "string" }, out: { type: "string" }, rep: { type: "string" }, "plan-only": { type: "boolean" }, "baseline-rounds": { type: "string" } } });
+  const { values } = parseArgs({ options: { yes: { type: "boolean" }, stage: { type: "string" }, only: { type: "string" }, flip: { type: "string" }, "plan-too": { type: "boolean" }, "no-baseline": { type: "boolean" }, models: { type: "boolean" }, budget: { type: "string" }, out: { type: "string" }, rep: { type: "string" }, "plan-only": { type: "boolean" }, "baseline-rounds": { type: "string" }, from: { type: "string", multiple: true } } });
   loadEnvFiles(process.cwd());
   if (!values.stage) return printPlan();
   if (values.stage === "0") return stage0();
+  if (values.stage === "measure") return remeasure((values.from ?? []).map((d) => path.resolve(d)));
   if (!values.yes) return printPlan();
   setEngineState({ kind: "cli", bin: process.env.CLAUDE_CLI_PATH || findClaude() || "claude" });
   const ids = values.only ? new Set(values.only.split(",").map((s) => s.trim())) : null;
@@ -466,7 +491,9 @@ async function main() {
 
 // A scratch home: never ~/Qalam.
 process.env.QALAM_HOME ??= path.resolve(".qalam-dev/stress/home");
+// Search by meaning is off unless asked for; empty, it's on here and in the real app's server (tab.ts passes it on).
 if (!process.argv.includes("--models")) process.env.QALAM_NO_MODELS ??= "1";
+else process.env.QALAM_NO_MODELS = "";
 
 main().then(
   () => process.exit(0),

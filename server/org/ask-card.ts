@@ -30,8 +30,12 @@ const KIND_WORDS: Record<AskCardBodyT["card"]["kind"], string> = { outcome: "a g
 const ROLES = [...DUMP_ROLES, "none"] as const;
 const KINDS = ["project", "web"] as const;
 
-/** What a turn reads about the card: the card, what's above it, the company, and what was found on their words (q…). */
-export function cardMaterial(company: string, b: Omit<AskCardBodyT, "asking">): string {
+/**
+ * What a turn reads about the card: the card, what's above it, the company, and what was found on their
+ * words (q…). "Found nothing" only when a search of the project ran: before one has, it says so, so the
+ * turn can ask for one rather than take an empty search as an answer.
+ */
+export function cardMaterial(company: string, b: Omit<AskCardBodyT, "asking"> & { searched?: boolean }): string {
   return [
     `The card (${KIND_WORDS[b.card.kind]}): “${b.card.title}”`,
     b.card.description.trim() ? `What it says: ${b.card.description.trim()}` : "",
@@ -39,7 +43,7 @@ export function cardMaterial(company: string, b: Omit<AskCardBodyT, "asking">): 
     `What comes next: ${STEP_WORDS[b.step]}`,
     ...(company.trim() ? ["", company.trim()] : []),
     "",
-    b.found.length ? "What the organization's search found on their words (id · whose · source · words):" : "The organization's search found nothing on their words yet.",
+    b.found.length ? "What the organization's search found on their words (id · whose · source · words):" : b.searched ? "The organization's search found nothing on their words." : "Their project hasn't been searched in this conversation yet.",
     ...b.found.map((q) => `- ${q.id} · ${q.whose} · ${q.source} · “${q.text}”`),
   ]
     .filter((l, i, a) => l !== "" || a[i - 1] !== "")
@@ -49,7 +53,8 @@ export function cardMaterial(company: string, b: Omit<AskCardBodyT, "asking">): 
 /** One turn of the card's interview; any trouble fails it for Try again. */
 export async function askCard(store: OrgStore, b: AskCardBodyT, emit: (label: string) => void, signal: AbortSignal, deps: { structured: typeof structured } = { structured }): Promise<AskTurn & { role: DumpRole | null }> {
   emit("Working out what to ask");
-  const base = cardMaterial(await companyContext(store, { near: b.card.title }), b);
+  const searched = b.asking.lookups.some((l) => l.kind === "project" && l.state === "done");
+  const base = cardMaterial(await companyContext(store, { near: b.card.title }), { ...b, searched });
   const material = [base, askingBlock(b.asking)].join("\n\n");
   const lab = await labOn();
   const decisions = lab === true || lab.includes("decisions");

@@ -4,7 +4,7 @@ import { editTerms } from "@/terms/edit";
 import { emptyTerms } from "@/terms/types";
 import { emptyAsking, applyTurn } from "./engine";
 import { sanitizeTurn, type TurnCheck } from "./sanitize";
-import { askingBlock, askingIn } from "./wire";
+import { askingBlock, askingIn, checkOf } from "./wire";
 
 const q = (id: string, title: string, x: Record<string, unknown> = {}) => ({ id, title, why: "", multi: false, options: [], recommended: [], allowOther: false, from: "none", look_for: "", after: [], ...x });
 const terms = editTerms(emptyTerms(), { op: "add", term: "Basket", means: "The order before checkout", avoid: ["cart"] }, { now: 1, id: () => "t1" });
@@ -18,6 +18,21 @@ describe("a turn as code keeps it", () => {
     expect(t.questions).toHaveLength(10);
     expect(t.questions.some((x) => x.title === "Who pays first?")).toBe(false);
     expect(t.questions.find((x) => x.title === "Where do riders wait?")?.id).not.toBe("who");
+  });
+
+  it("asks a held question again under its own id, reworded or not, and still drops a real repeat", () => {
+    const held = [{ id: "slot", title: "Which delivery slot do they pick most?" }];
+    const t = sanitizeTurn({ questions: [q("q9", "Which delivery slot do they pick most?"), q("x", "Who pays first?")] }, check({ held }));
+    expect(t.questions.map((x) => [x.id, x.title])).toEqual([["slot", "Which delivery slot do they pick most?"]]);
+    // Reworded under its id, it's still the held question, asked once.
+    const again = sanitizeTurn({ questions: [q("slot", "What slot do most of them pick?"), q("q2", "What slot do most of them pick?")] }, check({ held }));
+    expect(again.questions.map((x) => x.id)).toEqual(["slot"]);
+    // Through the wire: what's held reaches the check as held, not as asked.
+    const s = applyTurn(emptyAsking(), { questions: [{ ...q("a", "How many riders?"), options: [], recommended: [] }, { ...q("b", "Which city first?"), options: [], recommended: [], after: ["a"] }], lookups: [], done: false, understood: [], terms: [], choices: [] } as never, { now: 1, id: (p) => p });
+    expect(s.held.map((h) => h.id)).toEqual(["b"]);
+    const c = checkOf(askingIn(s, { said: "" }), { who: "team", hay: "", kinds: [] });
+    expect(c.held?.map((h) => h.id)).toEqual(["b"]);
+    expect(c.asked.some((a) => a.id === "b")).toBe(false);
   });
 
   it("keeps what a question waits on only where it's a question or a lookup, and breaks a loop", () => {

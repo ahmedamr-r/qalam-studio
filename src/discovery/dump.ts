@@ -330,7 +330,7 @@ function sanitizeChallenges(raw: unknown, pieceOf: (ref: string) => string | und
 }
 
 /** What Qalam AI read in a brain dump, kept only where it holds: each piece found in the builder's words. */
-export function sanitizeRead(raw: unknown, text: string, cards: PlaceCard[], now = Date.now(), within?: readonly [number, number][], file = false): DumpRead {
+export function sanitizeRead(raw: unknown, text: string, cards: PlaceCard[], now = Date.now(), within?: readonly [number, number][], file = false, asked: readonly { id: string; title: string }[] = []): DumpRead {
   const r = rec(raw);
   const find = quoteFinder(text);
   const kept = new Map<string, string>();
@@ -362,7 +362,8 @@ export function sanitizeRead(raw: unknown, text: string, cards: PlaceCard[], now
     fragments,
     challenges: sanitizeChallenges(r.challenges, (ref) => kept.get(ref), cards, names),
     // The first round as the interview keeps it: every question it can ask now, what each waits on.
-    questions: keepQuestions(Array.isArray(r.questions) ? r.questions : [], { who: "builder", asked: [], lookups: [], readable: (q) => readableQuestions([q], names)[0] ?? q }).questions,
+    // What was asked before the reading (the opening questions) is never asked again.
+    questions: keepQuestions(Array.isArray(r.questions) ? r.questions : [], { who: "builder", asked, lookups: [], readable: (q) => readableQuestions([q], names)[0] ?? q }).questions,
     refs: Object.fromEntries(kept),
     bears: r.bears !== false,
     wanted: clip(readable(r.wanted, names), READ_LIMITS.wanted),
@@ -383,8 +384,14 @@ export function fragmentRefs(quotes: SourceQuote[]): { ref: string; q: SourceQuo
 /** What rounds of questions keep on a session: a board's brain dump, or an organization's setup (src/org/setup.ts). */
 export type Rounds = Pick<DumpSession, "understanding" | "challenges" | "buckets" | "skipped" | "failed" | "held"> & { phase: string };
 
-/** Every question asked so far, and those held: never asked again. */
-export const askedOf = (s: Pick<Rounds, "buckets" | "held">): { id: string; title: string }[] => [...s.buckets.flatMap((b) => b.questions.map((q) => ({ id: q.id, title: q.title }))), ...(s.held ?? []).map((q) => ({ id: q.id, title: q.title }))];
+/** The questions asked before the reading (Help me find one, Find the problem to focus on): never asked again, as `open-<i>`. */
+export const openingOf = (aim: DumpSession["aim"] | undefined): { id: string; title: string }[] => (aim?.asked ?? []).map((title, i) => ({ id: `open-${i + 1}`, title }));
+
+/** Every question asked so far, the opening questions too: never asked again. */
+export const askedOf = (s: Pick<Rounds, "buckets"> & { aim?: DumpSession["aim"] }): { id: string; title: string }[] => [...openingOf(s.aim), ...s.buckets.flatMap((b) => b.questions.map((q) => ({ id: q.id, title: q.title })))];
+
+/** Questions held last round until what they wait on settles: asked again then, under their own id. */
+export const heldOf = (s: Pick<Rounds, "held">): { id: string; title: string }[] => (s.held ?? []).map((q) => ({ id: q.id, title: q.title }));
 
 /**
  * The builder is done with the current round: answered it (Qalam AI reads the answers next), or said
@@ -413,7 +420,7 @@ export interface DumpFollowup {
  * What Qalam AI made of a round of answers, checked: roles and pushback only on pieces that were sent;
  * questions as the interview keeps them (src/asking/): never one asked before, what each waits on.
  */
-export function sanitizeDumpFollowup(raw: unknown, pieces: { ref: string; q: SourceQuote }[], cards: PlaceCard[], asked: readonly { id: string; title: string }[] = []): DumpFollowup {
+export function sanitizeDumpFollowup(raw: unknown, pieces: { ref: string; q: SourceQuote }[], cards: PlaceCard[], asked: readonly { id: string; title: string }[] = [], held: readonly { id: string; title: string }[] = []): DumpFollowup {
   const r = rec(raw);
   const byRef = new Map(pieces.map((p) => [p.ref, p.q.id]));
   const roles = new Map<string, DumpRole>();
@@ -422,7 +429,7 @@ export function sanitizeDumpFollowup(raw: unknown, pieces: { ref: string; q: Sou
     if (quoteId && isRole(x.role)) roles.set(quoteId, x.role);
   }
   const names = namesOf(pieces.map((p): [string, string] => [p.ref, p.q.text]), cards);
-  const { questions } = keepQuestions(Array.isArray(r.questions) ? r.questions : [], { who: "builder", asked, lookups: [], readable: (q) => readableQuestions([q], names)[0] ?? q });
+  const { questions } = keepQuestions(Array.isArray(r.questions) ? r.questions : [], { who: "builder", asked, held, lookups: [], readable: (q) => readableQuestions([q], names)[0] ?? q });
   return {
     analysis: clip(readable(r.analysis, names), 1200),
     understanding: clip(readable(r.understanding, names), READ_LIMITS.understanding),

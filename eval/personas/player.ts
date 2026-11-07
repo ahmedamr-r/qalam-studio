@@ -109,9 +109,11 @@ export function makePlayer(p: Persona, deps: PlayerDeps, o: { rep?: number; flip
   let corrected = false;
 
   const toldOf = async (question: string, options: string[], signal?: AbortSignal) => {
-    const { data } = await deps.structured<{ ids?: unknown }>(matchCall(question, options, facts, p.unknowns), signal);
+    // What their documents answer, they don't know offhand: asked, it's recorded like any unknown (measures.ts counts it apart).
+    const unknowns = [...p.unknowns, ...(p.documented ?? [])];
+    const { data } = await deps.structured<{ ids?: unknown }>(matchCall(question, options, facts, unknowns), signal);
     const ids = (Array.isArray(data.ids) ? data.ids : []).filter((x): x is string => typeof x === "string").slice(0, 4);
-    return { asked: facts.filter((f) => ids.includes(f.id)), unknown: p.unknowns.filter((u) => ids.includes(u.id)) };
+    return { asked: facts.filter((f) => ids.includes(f.id)), unknown: unknowns.filter((u) => ids.includes(u.id)) };
   };
 
   // Words they haven't been given can't get out: a number the voice made up gives way to the fact itself.

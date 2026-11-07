@@ -8,6 +8,8 @@ import {
   withLook,
   withRound,
   askedOf,
+  heldOf,
+  openingOf,
   applyDumpFollowup,
   briefFromDump,
   closeDumpRound,
@@ -255,6 +257,23 @@ describe("rounds of questions", () => {
     const s = applyDumpFollowup(closeDumpRound(session(r), answered(session(r)), "analyzing"), f);
     expect(s.buckets.at(-1)?.questions.map((x) => x.id)).toEqual(["who"]);
     expect(s.held?.map((x) => x.id)).toEqual(["how"]);
+    // Once "who" is answered, the held one is asked again under its own id: it isn't dropped as asked already.
+    const next = sanitizeDumpFollowup({ ready: false, questions: [q("q7", "How do weekly orderers pay?"), q("q8", "Who orders weekly?")] }, fragmentRefs(r.fragments), cards, askedOf(s), heldOf(s));
+    expect(next.questions.map((x) => x.id)).toEqual(["how"]);
+  });
+
+  it("never asks again what was asked before the reading (Help me find one, the focus)", () => {
+    const { r, cards } = read();
+    const q = (id: string, title: string) => ({ id, title, why: "", multi: false, options: [], recommended: [], allowOther: true, after: [] });
+    const aim = { find: "goal" as const, asked: ["What is net revenue retention today?", "Who is it for?"] };
+    expect(openingOf(aim)).toEqual([
+      { id: "open-1", title: "What is net revenue retention today?" },
+      { id: "open-2", title: "Who is it for?" },
+    ]);
+    const first = sanitizeRead({ fragments: [], questions: [q("a", "What is net revenue retention today?"), q("b", "Which plan do they use?")] }, "Net revenue retention is our aim.", cards, 1, undefined, false, openingOf(aim));
+    expect(first.questions.map((x) => x.title)).toEqual(["Which plan do they use?"]);
+    const later = sanitizeDumpFollowup({ ready: false, questions: [q("c", "Who is it for?"), q("d", "When do they renew?")] }, fragmentRefs(r.fragments), cards, askedOf({ ...session(r), aim }));
+    expect(later.questions.map((x) => x.title)).toEqual(["When do they renew?"]);
   });
 
   it("takes as the builder's words only what they typed, and files the answers in the Library", () => {
