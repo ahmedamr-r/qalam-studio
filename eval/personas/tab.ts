@@ -26,7 +26,14 @@ interface Seen {
   buttons: string[];
   busy: boolean;
   alert: string;
+  /** What we settled is showing: its verb (Propose, Place it on the canvas, Draft them…), the button before "Something's off". */
+  settle: string | null;
+  /** A lookup put to them after two turns of only looking: Look it up, or Ask me instead. */
+  offer: boolean;
 }
+
+/** The last What we settled card showing, if any. */
+const SETTLED_CARD = `[...document.querySelectorAll('.q-sheet')].filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && /What we settled/.test(el.innerText); }).at(-1)`;
 
 const SEE = `(() => {
   const vis = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden'; };
@@ -45,7 +52,12 @@ const SEE = `(() => {
     step = { label: live.textContent, title, review, radios: radios.filter((r) => r.label !== 'Something else…'), checks, text: !!card.querySelector('textarea'), other: radios.some((r) => r.label === 'Something else…'), skip: own.includes('Skip'), next: own.at(-1) ?? 'Next' };
   }
   const alert = [...document.querySelectorAll('[role="alert"]')].filter(vis).map((a) => a.innerText.trim()).join(' | ');
-  return JSON.stringify({ step, buttons, busy: buttons.some((b) => b === 'Stop' || b.startsWith('Stop ')) || !!document.querySelector('[aria-busy="true"]'), alert });
+  const settled = ${SETTLED_CARD};
+  const own = settled ? [...settled.querySelectorAll('button')].filter((b) => vis(b) && !b.disabled).map((b) => b.innerText.trim()) : [];
+  const at = own.indexOf("Something's off");
+  const settle = at > 0 ? own[at - 1] : null;
+  const offer = buttons.includes('Look it up') && buttons.includes('Ask me instead');
+  return JSON.stringify({ step, buttons, busy: buttons.some((b) => b === 'Stop' || b.startsWith('Stop ')) || !!document.querySelector('[aria-busy="true"]'), alert, settle, offer });
 })()`;
 
 export class Tab {
@@ -218,6 +230,19 @@ export class Tab {
     })()`);
   }
 
+  /** Presses What we settled's verb, inside its own card: the same words elsewhere (a card's next steps) mustn't answer for it. */
+  async goOnSettled(): Promise<boolean> {
+    return this.js<boolean>(`(() => {
+      const card = ${SETTLED_CARD};
+      if (!card) return false;
+      const all = [...card.querySelectorAll('button')].filter((b) => !b.disabled);
+      const at = all.findIndex((b) => b.innerText.trim() === "Something's off");
+      if (at < 1) return false;
+      all[at - 1].click();
+      return true;
+    })()`);
+  }
+
   /** Types where the caret is. */
   type = (text: string) => this.send("Input.insertText", { text });
 
@@ -337,10 +362,28 @@ export class Tab {
     let round = 0;
     let last = "";
     let refused = 0;
+    let settledAt = 0;
     while (Date.now() - began < LIMIT_MS) {
       const s = await this.see();
       const hit = labels.find((l) => s.buttons.some((b) => b === l || b.startsWith(l)));
       if (hit) return hit;
+      // What we settled: they read it and go on, as someone with nothing to correct does. Once, while it's on its way.
+      if (s.settle && Date.now() - settledAt > 20_000) {
+        settledAt = Date.now();
+        this.say(`What we settled → ${s.settle}`);
+        await this.goOnSettled();
+        await sleep(1500);
+        quiet = Date.now();
+        continue;
+      }
+      // A lookup put to them: they say look it up, as the bench's in-process person does.
+      if (s.offer) {
+        this.say("A lookup put to them → Look it up");
+        await this.click("Look it up");
+        await sleep(1500);
+        quiet = Date.now();
+        continue;
+      }
       const id = s.step ? `${s.step.label}|${s.step.title}|${s.step.review}` : "";
       if (s.step && id !== last) {
         last = id;

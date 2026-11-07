@@ -100,6 +100,12 @@ async function main() {
     await tab.shot(path.join(out, "2-review.png"));
     await tab.inCard("Send answers");
     // Nothing more to ask: What we settled, then Propose.
+    let seen = await tab.see();
+    for (let i = 0; i < 60 && !seen.settle; i++) {
+      await sleep(250);
+      seen = await tab.see();
+    }
+    check(seen.settle === "Propose", "The bench's driver reads What we settled and its verb, so a whole run goes on past it", seen.settle);
     let settled = false;
     for (let i = 0; i < 60 && !(settled = await tab.click("Propose")); i++) await sleep(250);
     check(settled, "What we settled shows before anything is proposed, with Propose");
