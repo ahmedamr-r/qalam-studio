@@ -25,7 +25,7 @@ import { funnelDrops } from "@/goals/math";
  * of what it's about and how strong it is: dismissed, it stays dismissed until it grows.
  */
 
-export type NoticeKind = "disputed" | "pattern" | "same-need" | "revisit" | "stale-test" | "untested" | "metric" | "orphan" | "review" | "placed" | "work-drift" | "drop";
+export type NoticeKind = "disputed" | "pattern" | "same-need" | "revisit" | "stale-test" | "untested" | "metric" | "orphan" | "review" | "placed" | "work-drift" | "drop" | "challenge";
 
 export interface Notice {
   /** Stable: the same finding keeps its key, so a dismissed one never comes back. */
@@ -65,6 +65,7 @@ export const NOTICE_LABEL: Record<NoticeKind, string> = {
   placed: "To review",
   "work-drift": "Work",
   drop: "Funnel",
+  challenge: "Your evidence",
 };
 
 /** How long before a running test, or an outcome's number, needs a look. */

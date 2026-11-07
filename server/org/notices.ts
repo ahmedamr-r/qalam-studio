@@ -72,7 +72,10 @@ export async function noticesNow(store: OrgStore, now = Date.now()): Promise<Not
   const input: CheckInput = { now, boards, decisions: store.listDecisions(), topics: k.topics, indexed: k.indexed, shows: k.shows, pieces: k.pieces, linked: new Set(relations.map((r) => pairKey(r.a, r.b))), placed, work: await workCache(store), goals, funnels, stepPins };
   const state = await store.noticeState();
   const { links } = foldBearings(await store.listBearingLog());
-  const all = [...runChecks(input), ...state.found].map((n) => withGoals(n, boards, goals, links));
+  // A challenge kept on a card accepted on the space's canvas: its board is the one the canvas saved it on, once it has.
+  const boardOf = (card: string) => boards.find((b) => !!(b.doc?.nodes as Record<string, unknown> | undefined)?.[card])?.id;
+  const challenged = state.challenged.map((n) => (n.board || !n.card ? n : { ...n, ...(boardOf(n.card) ? { board: boardOf(n.card) } : {}) }));
+  const all = [...runChecks(input), ...state.found, ...challenged].map((n) => withGoals(n, boards, goals, links));
   return {
     notices: all.filter((n) => !state.dismissed.has(n.key)).sort((a, b) => b.at - a.at),
     lastVisit: store.lastVisit,

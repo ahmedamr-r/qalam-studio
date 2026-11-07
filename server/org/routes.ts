@@ -53,6 +53,7 @@ import { feedTarget, type FeedTarget } from "@/feeds/feeds";
 import { breakDown, decidePart, lookOutside } from "./outside";
 import { lookForGoal } from "./focus";
 import { lookForPlan, planBodyOf, planNext, proposePlan, routeQuestion } from "./plan";
+import { CarryBody, carryChallenges, CheckBody, challengeProposals, DecideBody, decideChallenge } from "./challenge";
 import { goalsForProblem, suggestGoalNumber } from "./moves";
 import type { Benchmark } from "@/goals/outside";
 import { decideProblem, draftProblems } from "./problems";
@@ -419,6 +420,43 @@ export function orgRoutes(): Hono<Env> {
       const store = c.get("store");
       return streamed(c.req.raw.signal, (emit, signal) => run(store, b, query, emit, signal));
     });
+
+  // Challenging a round of proposals with the project's own evidence before the review opens (server/org/challenge.ts).
+  r.post("/api/org/:org/challenge", async (c) => {
+    if (rateLimited(c.req.raw)) return c.json({ error: "rate_limited", message: "Too many requests, try again in a few minutes." }, 429);
+    const b = CheckBody.safeParse(await c.req.json().catch(() => null));
+    if (!b.success) return c.json({ error: "bad_request", message: "Send the proposals to check" }, 400);
+    const store = c.get("store");
+    return streamed(c.req.raw.signal, (emit, signal) => challengeProposals(store, b.data, emit, signal));
+  });
+  r.get("/api/org/:org/challenge", async (c) => {
+    const origin = c.req.query("origin") ?? "";
+    if (!origin || origin.length > 200) return bad("Say which review");
+    try {
+      return c.json({ run: await c.get("store").getChallengeRun(origin) });
+    } catch (e) {
+      return failure(e);
+    }
+  });
+  r.put("/api/org/:org/challenge", async (c) => {
+    const b = DecideBody.safeParse(await c.req.json().catch(() => null));
+    if (!b.success) return bad("Keep it, change it or drop it");
+    try {
+      const run = await decideChallenge(c.get("store"), b.data);
+      return run ? c.json({ run }) : c.json({ error: "not_found", message: "No such check" }, 404);
+    } catch (e) {
+      return failure(e);
+    }
+  });
+  r.post("/api/org/:org/challenge/carry", async (c) => {
+    const b = CarryBody.safeParse(await c.req.json().catch(() => null));
+    if (!b.success) return bad("Say which cards");
+    try {
+      return c.json({ carried: await carryChallenges(c.get("store"), b.data, { tab: tabOf(c.req.raw.headers) }) });
+    } catch (e) {
+      return failure(e);
+    }
+  });
 
   // A turn of the interview before a card's draft (server/org/ask-card.ts): the chat keeps the conversation.
   r.post("/api/org/:org/ask/card", async (c) => {

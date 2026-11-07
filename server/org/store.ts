@@ -16,6 +16,7 @@ import type { NewGoal } from "@/goals/shape";
 import { addGoal, goalById, ordered, patchGoal as patchInTree, removeGoal as removeFromTree, setNorth as setNorthIn, underOf } from "@/goals/tree";
 import { emptyGoals, type Goal, type GoalPatch, type GoalsAt, type GoalTree } from "@/goals/types";
 import type { BearingLog } from "@/goals/bearings";
+import type { ChallengeLog, ChallengeRun } from "@/challenge/types";
 import type { StepPinLog } from "@/code/steps";
 import type { GoalWork } from "@/goals/breakdown";
 import { mapFromMarkdown, mapToMarkdown, type CodeRepo, type ProductMap } from "@/code/map";
@@ -187,11 +188,13 @@ interface LocalState {
   code?: CodeRepo[];
 }
 
-/** A line of hub/notices.jsonl: a notice dismissed or brought back, a review's finding, a review ran. */
+/** A line of hub/notices.jsonl: a notice dismissed or brought back, a review's finding, a review ran, a challenge kept on a card. */
 interface NoticeLogEntry {
   dismiss?: string;
   restore?: string;
   found?: Notice;
+  /** A challenge the person kept, on the card they accepted: it stands until dismissed. */
+  challenge?: Notice;
   /** The review a finding came from; `reviewed`: that review ran (its id). */
   review?: string;
   reviewed?: string | boolean;
@@ -1554,14 +1557,16 @@ export class OrgStore {
     });
   }
 
-  /** What was dismissed (by key, when), what Qalam AI's latest review found, and when it ran. */
-  async noticeState(): Promise<{ dismissed: Map<string, number>; found: Notice[]; reviewedAt: number | null }> {
+  /** What was dismissed (by key, when), what Qalam AI's latest review found, when it ran, and the challenges kept on cards. */
+  async noticeState(): Promise<{ dismissed: Map<string, number>; found: Notice[]; reviewedAt: number | null; challenged: Notice[] }> {
     const dismissed = new Map<string, number>();
     const byReview = new Map<string, Map<string, Notice>>();
+    const challenged = new Map<string, Notice>();
     let latest: { id: string; at: number } | null = null;
     for (const e of await this.readLog<NoticeLogEntry>("hub/notices.jsonl")) {
       if (typeof e.dismiss === "string") dismissed.set(e.dismiss, e.at ?? 0);
       else if (typeof e.restore === "string") dismissed.delete(e.restore);
+      else if (e.challenge && typeof e.challenge.key === "string") challenged.set(e.challenge.key, e.challenge);
       else if (e.found && typeof e.found.key === "string") {
         const r = typeof e.review === "string" ? e.review : "";
         byReview.set(r, (byReview.get(r) ?? new Map()).set(e.found.key, e.found));
@@ -1569,7 +1574,59 @@ export class OrgStore {
     }
     // A review's findings stand until the next review replaces them.
     const found = latest ? (byReview.get(latest.id) ?? new Map<string, Notice>()) : new Map<string, Notice>();
-    return { dismissed, found: [...found.values()], reviewedAt: latest?.at ?? null };
+    return { dismissed, found: [...found.values()], reviewedAt: latest?.at ?? null, challenged: [...challenged.values()] };
+  }
+
+  /** Challenges the person kept, each on the card it was carried onto (src/challenge/): they stand until dismissed. */
+  async addChallenged(list: Notice[], opts: { tab?: string } = {}): Promise<void> {
+    await this.appendLog("hub/notices.jsonl", list.map((n) => ({ challenge: n, at: n.at })));
+    this.emit({ kind: "notice", tab: opts.tab });
+  }
+
+  // -------------------------------------------------------------------------
+  // Challenges (server/org/challenge.ts): each check of a round of proposals, kept with its review on
+  // this computer (chats/challenges/, out of Git), and what the team dropped (hub/challenges.jsonl, a
+  // line per change, so two people's merge in Git).
+
+  private challengeFile(origin: string) {
+    const key = origin.replace(/[^A-Za-z0-9_-]+/g, "_").slice(0, 120);
+    if (!key.replace(/_/g, "")) throw new NotFoundError("No such review");
+    return this.abs(`chats/challenges/${key}.json`);
+  }
+
+  getChallengeRun(origin: string): Promise<ChallengeRun | null> {
+    return readJson<ChallengeRun>(this.challengeFile(origin));
+  }
+
+  async putChallengeRun(run: ChallengeRun): Promise<void> {
+    const file = this.challengeFile(run.origin);
+    await locked(file, () => atomicWrite(file, stableStringify(run)));
+  }
+
+  /** Change a run under its lock (null: there's none). */
+  async changeChallengeRun(origin: string, fn: (r: ChallengeRun) => ChallengeRun): Promise<ChallengeRun | null> {
+    const file = this.challengeFile(origin);
+    return locked(file, async () => {
+      const had = await readJson<ChallengeRun>(file);
+      if (!had) return null;
+      const next = fn(had);
+      await atomicWrite(file, stableStringify(next));
+      return next;
+    });
+  }
+
+  /** The challenges the team dropped, by key: one brought back is out. */
+  async droppedChallenges(): Promise<Set<string>> {
+    const out = new Set<string>();
+    for (const e of await this.readLog<ChallengeLog>("hub/challenges.jsonl")) {
+      if ("drop" in e && typeof e.drop === "string") out.add(e.drop);
+      else if ("restore" in e && typeof e.restore === "string") out.delete(e.restore);
+    }
+    return out;
+  }
+
+  async logChallenge(line: ChallengeLog): Promise<void> {
+    await this.appendLog("hub/challenges.jsonl", [line]);
   }
 
   /** Dismiss a notice (it doesn't come back), or bring it back. */
