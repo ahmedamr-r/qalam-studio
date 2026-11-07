@@ -121,6 +121,9 @@ function stem(w: string): string {
   return w;
 }
 
+/** Any words as a step's are read: the little ones and the screen's and the tap's out, stemmed, each once. */
+export const termsOf = (s: string): string[] => [...new Set(wordsOf(s).map(stem))];
+
 /** A step's own words, stemmed: its title's, its screen file's name's, its events'. */
 export function stepTerms(s: Pick<MapStep, "title" | "file" | "events">): string[] {
   const file = s.file.split("/").pop()!.replace(/\.[^.]+$/, "");

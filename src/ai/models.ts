@@ -60,6 +60,8 @@ export const TIER_OF = {
   // One turn of the interview any generation starts with (src/asking/): what's still open, asked in rounds.
   "ask-turn": "decide",
   "plan-place": "decide",
+  // Trying to break what was proposed with the project's own evidence, before the person sees it (src/challenge/).
+  challenge: "decide",
   // Fetching: the tool-runner makes the calls code planned.
   connector: "fetch",
   numbers: "fetch",
