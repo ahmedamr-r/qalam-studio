@@ -18,11 +18,10 @@ const LINE = "q-item flex w-full flex-col items-start gap-[2px] rounded-md px-[6
 
 export function DatabaseFound({ question, lookFor, onFill, framed = false }: { question: string; lookFor?: string; onFill: (line: string) => void; framed?: boolean }) {
   const metrics = useDatabaseNumbers(true);
-  const near = nearestMetrics(
-    metrics.filter((m) => m.state === "ready"),
-    `${question} ${lookFor ?? ""}`,
-    { min: 1 },
-  ).slice(0, 3);
+  const ready = metrics.filter((m) => m.state === "ready");
+  // The numbers sharing its words; a question that names none ("a number you'd watch?") gets the first few.
+  const matched = nearestMetrics(ready, `${question} ${lookFor ?? ""}`, { min: 1 });
+  const near = (matched.length ? matched : ready).slice(0, 3);
   const ids = near.map((m) => m.metric.id).join(",");
   const [read, setRead] = useState<Record<string, ReadResult>>({});
   const [used, setUsed] = useState<ReadonlySet<string>>(new Set());
@@ -46,7 +45,7 @@ export function DatabaseFound({ question, lookFor, onFill, framed = false }: { q
     // Framed when it's all there is under the question: the rule above it, as the tools' row has.
     <div role="group" aria-label="Numbers from your database" className={clsx("flex flex-col gap-[2px]", framed && "border-t border-line-subtle pt-[10px]")} onKeyDown={framed ? (e) => e.stopPropagation() : undefined}>
       <span className="flex items-center gap-[6px] px-[6px] text-micro text-fg-subtle">
-        <DatabaseIcon {...ICON} /> From your database: pick what answers it
+        <DatabaseIcon {...ICON} /> {matched.length ? "From your database: pick what answers it" : "Your team's numbers, from your database"}
       </span>
       {found.map(({ m, value }) => (
         <button
