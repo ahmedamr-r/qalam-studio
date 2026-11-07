@@ -15,7 +15,7 @@ import { jobsDb } from "@/org/jobs";
 import { placeHref, topicHref } from "@/projects/model";
 import { QalamAIGlyph } from "../brand";
 import { Button, Checkbox, Tip } from "../controls";
-import { connectorDef } from "@/connectors/catalog";
+import { sourceOf } from "@/connectors/source";
 import { MetricSource } from "../numbers/MetricSource";
 import { AddToOrg } from "../org/AddToOrg";
 import { r } from "../recipes";
@@ -291,7 +291,7 @@ function NumbersRun({ job, goal, onDone }: { job: Job; goal: Goal; onDone: (outc
     const first = m.baseline === null && m.current === null;
     const metric: OstMetric = { ...next, name: next.name || next.source.label || "", ...(first ? { baseline: next.current } : {}) };
     void changeGoal(goal.id, { metric }).then(
-      () => onDone(`Read ${next.current} from ${connectorDef(next.source?.connector ?? "")?.label ?? "your analytics"}${next.source?.label ? ` · ${next.source.label}` : ""}${first ? ", where it starts" : ""}`),
+      () => onDone(`Read ${next.current} from ${next.source ? sourceOf(next.source).from : "your analytics"}${next.source?.label ? ` · ${next.source.label}` : ""}${first ? ", where it starts" : ""}`),
       (e) => feedback(`Couldn't save the number: ${message(e)}`, { kind: "error", id: "goal.metric" }),
     );
   };

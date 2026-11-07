@@ -4,6 +4,7 @@ import { ChartLine, ExternalLink, X } from "lucide-react";
 import { countsEvents } from "@/connectors/analytics";
 import type { InsightNumbers } from "@/connectors/numbers";
 import type { Hit } from "@/connectors/recipes";
+import { sourceLine, sourceOf } from "@/connectors/source";
 import { toolConnected } from "@/connectors/suggest";
 import type { OstMetric } from "@/discovery/types";
 import { numbersDb } from "@/org/connectors";
@@ -26,7 +27,8 @@ export function MetricSource({ m, onChange, onLeave, query: first = "", open = f
   const { view } = useConnectorView();
   const tools = (view?.connectors ?? []).filter((c) => c.numbers && toolConnected(c));
   const [picked, setPicked] = useState<string | null>(null);
-  const toolId = picked ?? m.source?.connector ?? tools[0]?.id ?? "posthog";
+  const kept = m.source ? sourceOf(m.source) : null;
+  const toolId = picked ?? (kept?.kind === "analytics" ? m.source!.connector : undefined) ?? tools[0]?.id ?? "posthog";
   const label = view?.connectors.find((c) => c.id === toolId)?.label ?? toolId;
   const [step, setStep] = useState<"idle" | "pick" | "series">(open ? "pick" : "idle");
   const [query, setQuery] = useState(first);
@@ -81,23 +83,24 @@ export function MetricSource({ m, onChange, onLeave, query: first = "", open = f
   const src = m.source;
   return (
     <div className="flex flex-col gap-[6px] pt-[4px]">
-      {src && step === "idle" ? (
+      {src && kept && step === "idle" ? (
         <div className="flex items-center gap-[6px] text-caption text-fg-muted">
           <ChartLine {...ICON} />
           <span className="min-w-0 flex-1 truncate">
-            {label} · {src.label ?? src.ref}
-            {src.series && src.series !== src.label ? ` · ${src.series}` : ""}
+            {sourceLine(src)}
             {m.readAt ? ` · read ${ago(m.readAt)}` : ""}
           </span>
           {src.url && (
-            <a href={src.url} target="_blank" rel="noreferrer" aria-label={`Open it in ${label}`} className={r.iconButtonSm}>
+            <a href={src.url} target="_blank" rel="noreferrer" aria-label={`Open it in ${kept.from}`} className={r.iconButtonSm}>
               <ExternalLink {...ICON} />
             </a>
           )}
-          <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => void read({ id: src.ref, title: src.label ?? src.ref, url: src.url }, src.series)}>
-            Read again
-          </Button>
-          <IconBtn size="sm" label={`Stop reading it from ${label}`} onClick={() => onChange({ ...m, source: undefined, readAt: undefined })}>
+          {kept.kind === "analytics" && (
+            <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => void read({ id: src.ref, title: src.label ?? src.ref, url: src.url }, src.series)}>
+              Read again
+            </Button>
+          )}
+          <IconBtn size="sm" label={`Stop reading it from ${kept.from}`} onClick={() => onChange({ ...m, source: undefined, readAt: undefined })}>
             <X {...ICON} />
           </IconBtn>
         </div>

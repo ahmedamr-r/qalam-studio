@@ -33,6 +33,8 @@ export const LAB_FEATURES = [
   "tests",
   /** Quick capture from the menu bar (⌃⌥Space). */
   "capture",
+  /** The team's database, read-only: business numbers for goals and questions (Connections' Database, hub/metrics.md). */
+  "database",
 ] as const;
 
 export type LabFeature = (typeof LAB_FEATURES)[number];
