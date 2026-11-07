@@ -60,6 +60,8 @@ export const TIER_OF = {
   // One turn of the interview any generation starts with (src/asking/): what's still open, asked in rounds.
   "ask-turn": "decide",
   "plan-place": "decide",
+  // The business numbers a team's database could give, each with its query, from its layout (src/ai/metrics.ts).
+  metrics: "decide",
   // Fetching: the tool-runner makes the calls code planned.
   connector: "fetch",
   numbers: "fetch",

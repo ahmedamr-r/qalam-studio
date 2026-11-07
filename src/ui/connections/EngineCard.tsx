@@ -45,6 +45,7 @@ const JOB: Record<CallKind | "other", string> = {
   "chat-route": "Reading what a question asks for",
   "ask-turn": "Asking before it proposes",
   "plan-place": "Proposing a plan for the canvas",
+  metrics: "Drafting the numbers in your database",
   reader: "Reading code",
   research: "Looking things up",
   "pdf-pictures": "Reading pictures in PDFs",

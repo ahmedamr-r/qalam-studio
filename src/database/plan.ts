@@ -22,7 +22,12 @@ const unquote = (s: string) => (s.startsWith('"') ? s.slice(1, -1).replace(/""/g
 const EXPR_KEYS = ["Output", "Filter", "Index Cond", "Recheck Cond", "Join Filter", "Hash Cond", "Merge Cond", "Sort Key", "Group Key", "Presorted Key", "One-Time Filter", "Cache Key", "Run Condition"];
 const REF = /((?:"(?:[^"]|"")+"|[A-Za-z_][\w$]*))\.((?:"(?:[^"]|"")+"|[A-Za-z_][\w$]*))/g;
 
-/** Postgres's EXPLAIN (FORMAT JSON, VERBOSE): its relations by alias, then every alias.column in its expressions. */
+/**
+ * Postgres's EXPLAIN (FORMAT JSON, VERBOSE): its relations by alias, then every alias.column in its
+ * expressions. A scan's own output can be every column of its table (a physical target list), so
+ * it's left out; with one table in the plan, Postgres doesn't qualify names, and each bare name is
+ * that table's (the caller keeps only real columns).
+ */
 export function postgresPlan(json: unknown): PlanRead {
   const top = rec(Array.isArray(json) ? json[0] : json);
   const root = rec(top.Plan);
@@ -36,6 +41,7 @@ export function postgresPlan(json: unknown): PlanRead {
       aliases.set(rel, aliases.get(rel) ?? table);
     }
     for (const k of EXPR_KEYS) {
+      if (rel && k === "Output") continue;
       const v = n[k];
       if (typeof v === "string") exprs.push(v);
       else if (Array.isArray(v)) exprs.push(...v.filter((x): x is string => typeof x === "string"));
@@ -44,12 +50,16 @@ export function postgresPlan(json: unknown): PlanRead {
   };
   walk(root);
   const columns = new Set<string>();
-  for (const e of exprs)
+  const tables = [...new Set(aliases.values())];
+  for (const e of exprs) {
     for (const m of e.matchAll(REF)) {
       const table = aliases.get(unquote(m[1]));
       if (table) columns.add(`${table}.${unquote(m[2])}`);
     }
-  return { tables: [...new Set(aliases.values())], columns: [...columns], cost: typeof root["Total Cost"] === "number" ? root["Total Cost"] : 0 };
+    if (tables.length === 1)
+      for (const m of e.replace(/'(?:[^']|'')*'/g, "''").matchAll(/(?<![\w$."])("(?:[^"]|"")+"|[A-Za-z_][\w$]*)(?![\w$."(])/g)) columns.add(`${tables[0]}.${unquote(m[1])}`);
+  }
+  return { tables, columns: [...columns], cost: typeof root["Total Cost"] === "number" ? root["Total Cost"] : 0 };
 }
 
 /** MySQL's EXPLAIN FORMAT=JSON: each table's name and used_columns, wherever it sits in the query blocks. */

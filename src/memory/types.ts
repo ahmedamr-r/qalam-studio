@@ -15,9 +15,9 @@ export interface Who {
 export type AskedHow = "own" | "pick" | "unknown" | "left";
 
 /** Which part of Qalam asked. */
-export type AskedFlow = "plan" | "card" | "brief" | "scan" | "steer" | "interview" | "dump" | "find" | "focus";
+export type AskedFlow = "plan" | "card" | "brief" | "scan" | "steer" | "interview" | "dump" | "find" | "focus" | "metrics";
 
-export const ASKED_FLOWS: readonly AskedFlow[] = ["plan", "card", "brief", "scan", "steer", "interview", "dump", "find", "focus"];
+export const ASKED_FLOWS: readonly AskedFlow[] = ["plan", "card", "brief", "scan", "steer", "interview", "dump", "find", "focus", "metrics"];
 
 /** Where it was asked, as people read it. */
 export const FLOW_WORDS: Record<AskedFlow, string> = {
@@ -30,6 +30,7 @@ export const FLOW_WORDS: Record<AskedFlow, string> = {
   dump: "A brain dump",
   find: "Help me find one",
   focus: "Finding the problem to focus on",
+  metrics: "Reading the numbers in your database",
 };
 
 /** What it was about: the canvas's product (null: the whole project), and the card, goal, problem page or source where there's one. */
