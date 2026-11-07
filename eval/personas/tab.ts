@@ -32,6 +32,18 @@ interface Seen {
   offer: boolean;
 }
 
+/** The question's own card: what's typed goes in its boxes, never in another panel's (a card's Notes or Evidence). */
+const QUESTION_CARD = `(() => { const live = [...document.querySelectorAll('span[aria-live="polite"]')].find((s) => /Step \\d+ of \\d+|Review/.test(s.textContent)); return live && live.closest('.q-rise'); })()`;
+
+/** Focuses a box inside the question's card: true when there was one. */
+const focusInCard = (selector: string) => `(() => {
+  const card = ${QUESTION_CARD};
+  const box = card && [...card.querySelectorAll(${JSON.stringify(selector)})].filter((x) => x.getBoundingClientRect().width > 0).at(-1);
+  if (!box) return false;
+  box.focus();
+  return document.activeElement === box;
+})()`;
+
 /** The last What we settled card showing, if any. */
 const SETTLED_CARD = `[...document.querySelectorAll('.q-sheet')].filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && /What we settled/.test(el.innerText); }).at(-1)`;
 
@@ -230,6 +242,13 @@ export class Tab {
     })()`);
   }
 
+  /** Types into a box of the question's own card (`selector`): false, and nothing typed, when it has none. */
+  async typeInCard(selector: string, text: string): Promise<boolean> {
+    if (!(await this.js<boolean>(focusInCard(selector)))) return false;
+    await this.send("Input.insertText", { text });
+    return true;
+  }
+
   /** Presses What we settled's verb, inside its own card: the same words elsewhere (a card's next steps) mustn't answer for it. */
   async goOnSettled(): Promise<boolean> {
     return this.js<boolean>(`(() => {
@@ -316,8 +335,7 @@ export class Tab {
       if (s.other) {
         await this.inCard("Something else…");
         await sleep(250);
-        await this.js(`document.querySelector('input[aria-label="Your answer"]')?.focus()`);
-        await this.send("Input.insertText", { text: got });
+        if (!(await this.typeInCard('input[aria-label="Your answer"]', got))) this.say(`  (no box in the card to type "${got}" into)`);
         await sleep(150);
         await this.inCard(s.next);
         return;
@@ -331,9 +349,8 @@ export class Tab {
       for (const c of s.checks) if (c.on !== hits.includes(c)) await this.inCard(c.label);
       if (!hits.length && got) {
         // Their own words, where the card takes them.
-        const typed = await this.js<boolean>(`(() => { const i = document.querySelector('input[placeholder="Add your own"]'); if (!i) return false; i.focus(); return true; })()`);
+        const typed = await this.typeInCard('input[placeholder="Add your own"]', got);
         if (typed) {
-          await this.send("Input.insertText", { text: got });
           await sleep(100);
           await this.press("Enter");
         }
@@ -343,8 +360,7 @@ export class Tab {
       return;
     }
     if (s.text) {
-      await this.js(`[...document.querySelectorAll('textarea')].filter((x) => x.getBoundingClientRect().width > 0).at(-1)?.focus()`);
-      await this.send("Input.insertText", { text: got });
+      if (!(await this.typeInCard("textarea", got))) this.say(`  (no box in the card to type "${got}" into)`);
       await sleep(150);
       await this.inCard(s.next);
       return;
@@ -411,7 +427,8 @@ export class Tab {
         this.deadEnds.push({ at: flow, seen: `The card won't go on: ${s.alert} (${s.step.title})` });
         return null;
       }
-      if (s.busy || s.step) quiet = Date.now();
+      // A question that stays as it was with nothing working (a review it won't send on) is a dead end too.
+      if (s.busy) quiet = Date.now();
       if (Date.now() - quiet > DEAD_MS) {
         const seen = `No question, no sign of work, none of [${labels.join(", ")}]. Showing: ${s.buttons.slice(0, 18).join(" | ")}${s.alert ? ` · ${s.alert}` : ""}`;
         this.deadEnds.push({ at: flow, seen });

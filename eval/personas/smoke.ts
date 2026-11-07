@@ -28,7 +28,8 @@ const pickQuestion = { id: "pick", title: "Which customers first", why: "", mult
 /** A turn of the interview as the core answers it. */
 const turnOf = (qs: unknown[]) => ({ questions: qs, lookups: [], done: false, understood: [], terms: [], choices: [] });
 const done = { questions: [], lookups: [], done: true, understood: [{ text: "They want something that makes money" }], terms: [], choices: [] };
-let mode: "first" | "many" = "first";
+let mode: "first" | "many" | "typed" = "first";
+const typedQuestion = { id: "typed", title: "What have you tried so far?", why: "", multi: false, options: [], recommended: [], allowOther: true };
 
 async function main() {
   const base = path.resolve(".qalam-dev/stress");
@@ -59,6 +60,7 @@ async function main() {
       "/plan/next": () => {
         const n = asks++;
         if (mode === "many") return n < 4 ? turnOf([{ ...pickQuestion, id: `pick${n}`, title: `${pickQuestion.title} (${n + 1})` }]) : done;
+        if (mode === "typed") return n === 0 ? turnOf([typedQuestion]) : done;
         return n === 0 ? turnOf(questions) : done;
       },
       "/plan/propose": () => ({ cards: [], start: null, doubt: "", quotes: {} }),
@@ -131,6 +133,25 @@ async function main() {
     for (let i = 0; i < 40 && !tab.stubbed.some((x) => x.path === "/plan/propose"); i++) await sleep(250);
     const picked = ((tab.stubbed.find((x) => x.path === "/plan/propose")?.body as Sent | undefined)?.asking?.rounds ?? []).flatMap((r) => r.asked);
     check(proposed && picked.length === 4 && picked.every((a) => a.how === "pick" && a.answer === "Regulars"), "Qalam AI's picks fill only what it recommends, and go as its picks, never as their words", picked);
+
+    // What the bench's driver types goes in the question's own box, with another box on the page (as a card's Notes or Evidence would be).
+    tab.stubbed.length = 0;
+    asks = 0;
+    mode = "typed";
+    await tab.chat("What should we do about first orders?");
+    for (let i = 0; i < 60 && !(await tab.see()).step?.text; i++) await sleep(250);
+    await tab.js(`(() => { const t = document.createElement('textarea'); t.id = 'decoy'; t.style.cssText = 'position:fixed;right:8px;bottom:8px;width:80px;height:40px'; document.body.appendChild(t); return true; })()`);
+    const typedIn = await tab.typeInCard("textarea", "We tried a reorder button in March");
+    await sleep(150);
+    await tab.inCard((await tab.see()).step?.next ?? "Next");
+    for (let i = 0; i < 20 && !(await tab.see()).step?.review; i++) await sleep(250);
+    await tab.inCard("Send answers");
+    let typedProposed = false;
+    for (let i = 0; i < 60 && !(typedProposed = await tab.click("Propose")); i++) await sleep(250);
+    for (let i = 0; i < 40 && !tab.stubbed.some((x) => x.path === "/plan/propose"); i++) await sleep(250);
+    const typed = ((tab.stubbed.find((x) => x.path === "/plan/propose")?.body as Sent | undefined)?.asking?.rounds ?? []).flatMap((r) => r.asked);
+    const decoy = await tab.js<string>(`(() => { const t = document.getElementById('decoy'); const v = t?.value ?? ''; t?.remove(); return v; })()`);
+    check(typedIn && typedProposed && typed.length === 1 && typed[0].answer === "We tried a reorder button in March" && typed[0].how === "own" && decoy === "", "What the bench's driver types goes in the question's own box, as their words, not another box on the page", { typed, decoy });
     mode = "first";
 
     // The first run's hand-off: their words reach the chat's plan route on the canvas.

@@ -118,7 +118,7 @@ export function streamViaCli(opts: CallOpts, model: string): Response {
         else if (ev.type === "stream_event" && ev.event?.type === "content_block_start") {
           // Each StructuredOutput call writes the answer from the start (the CLI retries on schema errors).
           if (ev.event.content_block?.type === "tool_use") {
-            if (++answers > 1) console.warn(`[qalam] the model is writing its answer again (attempt ${answers}): the last one failed the schema check`);
+            if (++answers > 1) console.warn(`[qalam] the model is writing its answer again (attempt ${answers}): the last one failed the schema check${opts.kind ? ` (${opts.kind})` : ""}`);
             deltas?.reset();
           }
         } else if (ev.type === "stream_event" && ev.event?.type === "content_block_delta") {
