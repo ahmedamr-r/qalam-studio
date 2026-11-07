@@ -60,6 +60,8 @@ export async function remember(h: AskingHost): Promise<void> {
   while (upto < s.rounds.length && (s.rounds[upto].form.submitted || !!s.end)) upto++;
   if (upto === from) return;
   const answers: RoundAnswer[] = s.rounds.slice(from, upto).flatMap((r) => {
+    // What they said before isn't said again: remembered anew, an old answer would look fresh.
+    if (r.from === "memory") return [];
     const code = new Set(r.questions.filter((q) => q.by === "code").map((q) => q.id));
     return answersOf({ rounds: [r] }).map((a) => ({ qid: a.id, q: a.question, a: a.text, how: a.how, ...(code.has(a.id) ? { code: true as const } : {}) }));
   });

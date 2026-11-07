@@ -2,7 +2,7 @@ import type { PlanQuestion } from "@/ai/plan";
 import { hostOf } from "@/ai/research-shared";
 import { checkedLine, companyLines, pageLines, pagesBlock, type PagesSent } from "@/market/rivals";
 import type { Market, MarketLine } from "@/market/types";
-import type { FindQuestionsSent, TextPart } from "@/space/find";
+import { answeredPairs, type FindQuestionsSent, type OpeningAnswers, type TextPart } from "@/space/find";
 import { metricLine } from "./goals-md";
 import type { OutsidePage } from "./outside";
 import type { Goal } from "./types";
@@ -144,10 +144,11 @@ export const lookLines = (look: Pick<FocusLook, "lines">) => look.lines.map((l) 
  * web before asking, then each question and their answer (skipped ones left out). Only the answers
  * are theirs (`theirs`); the headings and questions are the text's shape.
  */
-export function focusTranscript(questions: readonly PlanQuestion[], answers: Readonly<Record<string, string>>, o: { goal: string; org?: string; look?: FocusLook | null }): { text: string; parts: TextPart[] } {
+export function focusTranscript(questions: readonly PlanQuestion[], answers: OpeningAnswers, o: { goal: string; org?: string; look?: FocusLook | null }): { text: string; parts: TextPart[] } {
   const head = `Finding the problem to focus on for “${one(o.goal)}”${o.org ? ` at ${one(o.org)}` : ""}: Qalam AI asked, and you answered.`;
-  const pairs = questions.map((q) => ({ q: one(q.title), a: (answers[q.id] ?? "").trim() })).filter((p) => p.a);
+  // Only their own words are theirs: Qalam AI's pick and a don't-know are written as what they are.
+  const pairs = answeredPairs(questions, answers);
   const web = o.look?.lines.length ? { head: lookHead(o.look), lines: lookLines(o.look) } : null;
-  const parts: TextPart[] = [{ words: head, theirs: false }, ...(web ? [{ words: web.head, theirs: false }] : []), ...pairs.flatMap((p) => [{ words: p.q, theirs: false }, { words: p.a, theirs: true }])];
-  return { text: [head, ...(web ? [[web.head, ...web.lines].join("\n")] : []), ...pairs.map((p) => `${p.q}\n${p.a}`)].join("\n\n"), parts };
+  const parts: TextPart[] = [{ words: head, theirs: false }, ...(web ? [{ words: web.head, theirs: false }] : []), ...pairs.flatMap((p) => [{ words: p.q, theirs: false }, p.a])];
+  return { text: [head, ...(web ? [[web.head, ...web.lines].join("\n")] : []), ...pairs.map((p) => `${p.q}\n${p.a.words}`)].join("\n\n"), parts };
 }

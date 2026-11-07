@@ -47,7 +47,7 @@ import type { StartHandoff } from "@/onboarding/handoff";
 type TakeDoc = Attachment & ({ ingested: Ingested; asset?: undefined } | { asset: { hash: string; type: string }; ingested?: undefined });
 import { cardForPage, pageOf } from "@/space/pages";
 import { DUMP_WORDS, routeOf, titleFrom, wordsIn, type ChatMode } from "@/space/route";
-import { FIND_MIN, findRound, findText, findTranscript, type FindWhat } from "@/space/find";
+import { FIND_MIN, findRound, findText, findTranscript, openingAnswer, type FindWhat, type OpeningAnswers } from "@/space/find";
 import type { PlanQuestion } from "@/ai/plan";
 import { focusRound, focusTranscript } from "@/goals/focus";
 import { nowFrom, numberRound, targetFrom } from "@/goals/moves";
@@ -55,8 +55,7 @@ import { goalsForProblem, lookForGoal, suggestGoalNumber } from "@/org/goal-work
 import { knowsMarket } from "@/market/types";
 import { loadMarket, useMarket } from "@/org/market";
 import { useSpaceView } from "@/space/view";
-import { rememberRound } from "@/org/memory";
-import { saysDontKnow } from "@/asking/dontknow";
+import { rememberRound, withKnownAnswers } from "@/org/memory";
 import { onOrgChange } from "@/org/live";
 import { needsDb } from "@/org/needs";
 import { otherReading, requestOf, scanInput } from "@/scan/input";
@@ -1329,13 +1328,22 @@ export async function findWith(what: FindWhat, space: string | null): Promise<vo
   // With the company and its domain known, Qalam AI asks from them; else code's own questions.
   const known = knowsMarket(useMarket.getState().market);
   const id = addTurn(FIND_SAID[what], { kind: "find", what, ...(known ? { loading: true as const } : {}) });
-  if (known) void askFrom(id, what);
+  void (known ? askFrom(id, what) : codeOpening(id));
 }
 
 /** Qalam AI's opening questions, from what's known (code's own stand in when it has none). */
 async function askFrom(id: string, what: FindWhat) {
   const questions = await orgJson<{ questions: PlanQuestion[] }>("/find/questions", { method: "POST", json: { what } }).then((r) => r.questions, () => []);
-  change((c) => withJob(c, id, (j) => (j.kind === "find" ? { kind: "find", what: j.what, ...(questions.length ? { questions } : {}) } : j)));
+  if (!questions.length) return codeOpening(id);
+  change((c) => withJob(c, id, (j) => (j.kind === "find" ? { kind: "find", what: j.what, questions } : j)));
+}
+
+/** Code's own opening questions, each with what was said before to one like it (src/memory/known.ts). */
+async function codeOpening(id: string) {
+  const j = turnOf(id)?.job;
+  if (j?.kind !== "find") return;
+  const questions = await withKnownAnswers(openingMemory(id, j.goal), j.goal ? focusRound() : findRound(j.what));
+  change((c) => withJob(c, id, (x) => (x.kind === "find" ? { kind: "find", what: x.what, ...(x.goal ? { goal: x.goal } : {}), ...(x.look ? { look: x.look } : {}), ...(x.error ? { error: x.error } : {}), questions } : x)));
 }
 
 /** The opening questions a find turn asks: Qalam AI's from the domain (and, for a goal, what the web says gets in its way), else code's. */
@@ -1376,30 +1384,39 @@ async function openFocus(id: string, g: FocusGoal) {
   try {
     const r = await lookForGoal(g.id, { open: true }, step(id), ctrl.signal);
     change((c) => withJob(c, id, (j) => (j.kind === "find" ? { kind: "find", what: j.what, goal: j.goal, look: r.look, ...(r.questions.length ? { questions: r.questions } : {}) } : j)));
+    if (!r.questions.length) await codeOpening(id);
   } catch (e) {
     // Stopped, or it failed: code's own questions, and it says why (a turn let go is gone already).
     const stopped = (e as Error).name === "AbortError" || ctrl.signal.aborted;
     change((c) => withJob(c, id, (j) => (j.kind === "find" ? { kind: "find", what: j.what, goal: j.goal, error: stopped ? "You stopped the look, so I'll go by what you tell me." : `I couldn't look it up (${message(e)}), so I'll go by what you tell me.` } : j)));
+    await codeOpening(id);
   } finally {
     end(id);
   }
 }
 
-/** The opening round answered: their answers read as a brain dump that's asked for a goal or a problem. */
-export async function answerFind(id: string, answers: Readonly<Record<string, string>>) {
+/** Where the project's memory keeps an opening's answers (src/memory/): the find or focus conversation, by its turn. */
+function openingMemory(id: string, goal?: FocusGoal | null) {
+  return { flow: goal ? ("focus" as const) : ("find" as const), key: id, about: { product: useSpaceView.getState().space ?? null, ...(goal ? { goal: goal.id, card: goal.card } : {}) } };
+}
+
+/**
+ * The opening round answered: their answers read as a brain dump that's asked for a goal or a problem.
+ * Each answer as it was given (their words, Qalam AI's pick, a don't-know); one with `before` they gave
+ * in another conversation, not asked now.
+ */
+export async function answerFind(id: string, answers: OpeningAnswers) {
   const t = turnOf(id);
   if (t?.job.kind !== "find") return;
   const what = t.job.what;
   const questions = findQuestionsOf(t.job);
-  // The opening questions remembered as they're answered (src/memory/), whatever comes of them.
+  // The opening questions remembered as they're answered (src/memory/), whatever comes of them; what they said before isn't said again.
   const opened = t.job.goal;
   void rememberRound({
-    flow: opened ? "focus" : "find",
-    key: id,
-    about: { product: useSpaceView.getState().space ?? null, ...(opened ? { goal: opened.id, card: opened.card } : {}) },
-    answers: questions.map((q) => {
-      const a = (answers[q.id] ?? "").trim();
-      return { qid: q.id, q: q.title, a, how: !a ? ("left" as const) : saysDontKnow(a) ? ("unknown" as const) : ("own" as const) };
+    ...openingMemory(id, opened),
+    answers: questions.flatMap((q) => {
+      const a = openingAnswer(answers[q.id]);
+      return a.before ? [] : [{ qid: q.id, q: q.title, a: a.text, how: a.how }];
     }),
   });
   const { text: words, asked, said } = findText(questions, answers);

@@ -79,7 +79,7 @@ export type ChatJob =
    * `file`: a file added for a card, read against it, `left` once they left it out; `asOwn`: a doc
    * that read as their own thinking when taken in, `cut` when only its start fits).
    */
-  | { kind: "dump"; source: string; error?: string; asOwn?: { title: string; cut?: true }; find?: { what: FindWhat; said: { question: string; answer: string }[]; goal?: FocusGoal }; file?: { card: string; title: string; left?: true } }
+  | { kind: "dump"; source: string; error?: string; asOwn?: { title: string; cut?: true }; find?: { what: FindWhat; said: { question: string; answer: string; before?: string }[]; goal?: FocusGoal }; file?: { card: string; title: string; left?: true } }
   /**
    * "Help me find one": the opening questions, being answered (the box asks them). `goal`: the
    * problem to focus on for a goal on the canvas, its opening questions asked once Qalam AI has

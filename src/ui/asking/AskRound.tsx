@@ -3,6 +3,7 @@ import clsx from "clsx";
 import { Search, X } from "lucide-react";
 import { answersOf, currentRound, settledOf } from "@/asking/engine";
 import type { AskRound as Round, AskingState, Lookup } from "@/asking/types";
+import { knownLine, whereSaid } from "@/memory/known";
 import { QalamAIGlyph } from "../brand/ai-glyph";
 import { IconBtn, Spinner } from "../controls";
 import { r } from "../recipes";
@@ -125,11 +126,20 @@ const HOW_NOTE = { pick: "Qalam AI's pick, which you agreed to", left: "Left", u
 
 /** A round answered, folded in the thread: each answer, Qalam AI's picks marked as its own. */
 export function AnsweredRound({ state, index }: { state: AskingState; index: number }) {
-  const said = answersOf({ rounds: [state.rounds[index]] });
+  const round = state.rounds[index];
+  const said = answersOf({ rounds: [round] });
   if (!said.length || said.every((a) => a.how === "left")) return null;
+  // Not asked: what they said before, each with where and when (src/memory/gate.ts).
+  const before = round.from === "memory";
+  const where = (id: string) => {
+    const k = round.questions.find((q) => q.id === id)?.known?.[0];
+    return k ? knownLine(k).where : null;
+  };
   return (
     <details className="q-fold group/answers rounded-lg px-[10px] text-caption shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
-      <summary className="flex h-[30px] cursor-pointer list-none items-center gap-[6px] font-medium text-fg-muted hover:text-fg [&::-webkit-details-marker]:hidden">Your answers · round {index + 1}</summary>
+      <summary className="flex h-[30px] cursor-pointer list-none items-center gap-[6px] font-medium text-fg-muted hover:text-fg [&::-webkit-details-marker]:hidden">
+        {before ? "What you said before, not asked again" : `Your answers · round ${index + 1}`}
+      </summary>
       <dl className="flex flex-col gap-[8px] pb-[10px]">
         {said.map((a, i) => (
           <div key={i} className="flex flex-col gap-[2px]">
@@ -138,6 +148,7 @@ export function AnsweredRound({ state, index }: { state: AskingState; index: num
               {a.how === "left" ? HOW_NOTE.left : a.how === "unknown" && !a.text ? HOW_NOTE.unknown : a.text}
               {a.how === "pick" && <span className="ml-[6px] text-micro text-fg-muted">· {HOW_NOTE.pick}</span>}
               {a.how === "unknown" && a.text && <span className="ml-[6px] text-micro text-fg-muted">· {HOW_NOTE.unknown}</span>}
+              {before && where(a.id) && <span className="ml-[6px] text-micro text-fg-muted">· {where(a.id)}</span>}
             </dd>
           </div>
         ))}
@@ -201,6 +212,21 @@ export function SettledCard({ state, go, onGo, onOff, onTerm, onChoice }: Settle
         </ul>
       ) : (
         <p className="text-body text-fg-muted">Nothing more than what you asked: I&apos;ll go by that.</p>
+      )}
+      {s.knew.length > 0 && (
+        <div className="flex flex-col gap-[4px]">
+          <p className="text-caption font-medium text-fg-muted">What I already knew</p>
+          <ul className="flex flex-col gap-[4px] text-caption leading-[18px] text-fg">
+            {s.knew.map((a) => (
+              <li key={a.id} dir="auto">
+                <span className="text-fg-subtle">{a.question}</span> {a.how === "unknown" ? HOW_NOTE.unknown : a.text}
+                {a.how === "pick" && <span className="text-fg-muted"> · {HOW_NOTE.pick}</span>}
+                <span className="text-fg-subtle"> · {whereSaid(a.flow, a.at)}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-caption text-fg-muted">You told me these before, so I didn&apos;t ask again. If one has changed, say so with Something&apos;s off.</p>
+        </div>
       )}
       {s.picks.length > 0 && (
         <p className="text-caption text-fg-muted" dir="auto">

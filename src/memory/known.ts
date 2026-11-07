@@ -59,11 +59,16 @@ export function knownFor(questions: readonly { id: string; title: string }[], en
   return out;
 }
 
+/** Where and when something was said: the flow, then how long ago. */
+export function whereSaid(flow: AskedFlow, at: number, now = Date.now()): string {
+  const days = Math.floor((now - at) / 86_400_000);
+  const when = days <= 0 ? "today" : days === 1 ? "yesterday" : `${days} days ago`;
+  return `${FLOW_WORDS[flow]}, ${when}`;
+}
+
 /** A known answer in words, for the strip under a question. */
 export function knownLine(k: KnownAnswer, now = Date.now()): { who: string; said: string; where: string } {
   const who = k.mine ? "You" : (k.name ?? "A teammate");
-  const days = Math.floor((now - k.at) / 86_400_000);
-  const when = days <= 0 ? "today" : days === 1 ? "yesterday" : `${days} days ago`;
   const said = k.how === "unknown" ? `didn't know${k.text ? ` (“${k.text}”)` : ""}` : k.how === "pick" ? `took Qalam AI's pick “${k.text}”` : `said “${k.text}”`;
-  return { who, said, where: `${FLOW_WORDS[k.flow]}, ${when}` };
+  return { who, said, where: whereSaid(k.flow, k.at, now) };
 }

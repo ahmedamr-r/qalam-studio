@@ -121,7 +121,8 @@ async function answerRound(player: Player, r: AskRound, at: { flow: string; roun
 /** The round just closed, in the project's memory, as the window remembers it (src/ui/asking/run.ts). */
 async function rememberIn(store: OrgStore, flow: AskedFlow, key: string, about: AskedAbout, s: AskingState) {
   const r = s.rounds.at(-1);
-  if (!r) return;
+  // What they said before isn't said again (src/memory/gate.ts).
+  if (!r || r.from === "memory") return;
   const answers = answersOf({ rounds: [r] }).map((a) => ({ qid: a.id, q: a.question, a: a.text, how: a.how }));
   await rememberRound(store, { flow, key, about, answers }).catch(() => {});
 }

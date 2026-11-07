@@ -548,6 +548,7 @@ function OpeningPart({ data }: { data: PartData }) {
             <dt className="text-fg-subtle">{s.question}</dt>
             <dd className="text-fg" dir="auto">
               {s.answer}
+              {s.before && <span className="ml-[6px] text-micro text-fg-muted">· you said it before, {s.before}</span>}
             </dd>
           </div>
         ))}

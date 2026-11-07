@@ -24,7 +24,8 @@ const Line = z.object({ ref: z.string().max(40), text: z.string().max(800), from
 
 export const AskingIn = z
   .object({
-    rounds: z.array(z.object({ by: z.literal("code").optional(), asked: z.array(Answer) })),
+    /** `by`: code's own questions, or what they said before in another conversation, not asked now. */
+    rounds: z.array(z.object({ by: z.enum(["code", "memory"]).optional(), asked: z.array(Answer) })),
     lookups: z.array(z.object({ id: z.string().max(40), kind: z.enum(["project", "web"]), query: z.string().max(400), state: z.enum(["running", "done", "failed", "stopped"]), lines: z.array(Line) })),
     held: z.array(z.object({ id: z.string().max(80), title: z.string().max(400), after: z.array(z.string().max(80)) })),
     understood: z.array(z.string().max(400)),
@@ -51,7 +52,7 @@ export function askingIn(s: AskingState, o: { said: string; terms?: Terms; memor
   const answers = answersOf(s);
   const last = s.rounds.length - 2;
   const rounds = s.rounds.map((r, i) => ({
-    ...(r.questions.every((q) => q.by === "code") ? { by: "code" as const } : {}),
+    ...(r.from === "memory" ? { by: "memory" as const } : r.questions.every((q) => q.by === "code") ? { by: "code" as const } : {}),
     asked: answers
       .filter((a) => a.round === i)
       .map((a) => ({ id: a.id, title: clip(one(a.question), 300), answer: clip(one(a.text), i >= last ? 1500 : 200), how: a.how })),
@@ -108,7 +109,7 @@ export function askingBlock(a: AskingInT): string {
   const out: string[] = [];
   if (a.rounds.length) {
     out.push("Asked so far, round by round (id · question → their answer):");
-    a.rounds.forEach((r, i) => out.push(`Round ${i + 1}${r.by ? " (code's own questions)" : ""}:`, ...(r.asked.length ? r.asked.map(answerLine) : ["- (nothing answered)"])));
+    a.rounds.forEach((r, i) => out.push(`Round ${i + 1}${r.by === "memory" ? " (what they said before, in another conversation: not asked now)" : r.by ? " (code's own questions)" : ""}:`, ...(r.asked.length ? r.asked.map(answerLine) : ["- (nothing answered)"])));
   } else out.push("Nothing asked yet.");
   if (a.lookups.length) {
     out.push("", "Looked up (id · where · what · what it found; found lines by their own ids):");

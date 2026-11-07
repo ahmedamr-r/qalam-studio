@@ -1,7 +1,11 @@
 import type { PlanQuestion } from "@/ai/plan";
+import { saysDontKnow } from "@/asking/dontknow";
+import type { AnswerHow } from "@/asking/types";
 import type { ToolAsk } from "@/connectors/suggest";
 import { sharedWords } from "@/discovery/near";
 import type { Market } from "@/market/types";
+import { gateOf } from "@/memory/gate";
+import { whereSaid } from "@/memory/known";
 import { sanitizeAsked } from "@/ui/ai/plan";
 
 /*
@@ -31,29 +35,85 @@ export function findRound(what: FindWhat): PlanQuestion[] {
       ];
 }
 
+/**
+ * An answer to an opening question: their words, Qalam AI's pick they agreed to, or that they don't
+ * know. `before`: where and when they said it in another conversation, so it wasn't asked now.
+ */
+export interface OpeningAnswer {
+  text: string;
+  how: AnswerHow;
+  before?: string;
+}
+export type OpeningAnswers = Readonly<Record<string, string | OpeningAnswer | undefined>>;
+
+/** An answer as given. Words alone are theirs, unless they say they don't know. */
+export function openingAnswer(a: string | OpeningAnswer | undefined): OpeningAnswer {
+  if (typeof a !== "string") return a ?? { text: "", how: "left" };
+  const t = a.trim();
+  return { text: t, how: !t ? "left" : saysDontKnow(t) ? "unknown" : "own" };
+}
+
+/**
+ * An answer as a transcript writes it. Only their own words are theirs, what pieces may come from;
+ * Qalam AI's pick and a don't-know are written as what they are, never as words of theirs.
+ */
+export function answerPart(a: OpeningAnswer): TextPart | null {
+  const t = a.text.trim();
+  if (a.how === "left" || (!t && a.how !== "unknown")) return null;
+  if (a.how === "pick") return { words: `Qalam AI's pick, which you agreed to: ${t}`, theirs: false, plain: true };
+  if (a.how === "unknown") return { words: t || "You don't know yet.", theirs: false, plain: true };
+  return { words: t, theirs: true };
+}
+
+/**
+ * The opening questions they answered lately in another conversation (src/memory/gate.ts), answered
+ * with what they said, as it was given: not asked again.
+ */
+export function knewAnswers(questions: readonly PlanQuestion[], now: number): Record<string, OpeningAnswer> {
+  const out: Record<string, OpeningAnswer> = {};
+  for (const q of questions) {
+    const k = gateOf(q, now);
+    if (k) out[q.id] = { text: k.text, how: k.how, before: whereSaid(k.flow, k.at, now) };
+  }
+  return out;
+}
+
 /** Their answers as the dump's text (a paragraph apiece, skipped ones left out), and the questions beside it. */
-export function findText(questions: readonly PlanQuestion[], answers: Readonly<Record<string, string>>): { text: string; asked: string[]; said: { question: string; answer: string }[] } {
-  const said = questions.map((q) => ({ question: q.title, answer: (answers[q.id] ?? "").trim() }));
+export function findText(questions: readonly PlanQuestion[], answers: OpeningAnswers): { text: string; asked: string[]; said: { question: string; answer: string; before?: string }[] } {
+  const said = questions.map((q) => {
+    const a = openingAnswer(answers[q.id]);
+    return { question: q.title, answer: answerPart(a)?.words ?? "", ...(a.before ? { before: a.before } : {}) };
+  });
   return { text: said.map((s) => s.answer).filter(Boolean).join("\n\n"), asked: said.map((s) => s.question), said: said.filter((s) => s.answer) };
+}
+
+/** Each question asked with its answer, as a transcript writes them (left ones left out). */
+export function answeredPairs(questions: readonly PlanQuestion[], answers: OpeningAnswers): { q: string; a: TextPart }[] {
+  const one = (s: string) => s.replace(/\s+/g, " ").trim();
+  return questions.flatMap((q) => {
+    const a = answerPart(openingAnswer(answers[q.id]));
+    return a ? [{ q: one(q.title), a }] : [];
+  });
 }
 
 /**
  * Their answers as a source that reads on its own: what they asked for, then each question asked
- * and their answer (skipped ones left out). Only the answers are theirs (`theirs`), so the dump's
+ * and their answer (skipped ones left out). Only their own words are theirs (`theirs`), so the dump's
  * pieces come from those alone; the headings are the text's shape (`heads`).
  */
-export function findTranscript(questions: readonly PlanQuestion[], answers: Readonly<Record<string, string>>, o: { what: FindWhat; org?: string }): { text: string; parts: TextPart[] } {
+export function findTranscript(questions: readonly PlanQuestion[], answers: OpeningAnswers, o: { what: FindWhat; org?: string }): { text: string; parts: TextPart[] } {
   const one = (s: string) => s.replace(/\s+/g, " ").trim();
   const head = `Finding ${o.what === "goal" ? "a goal" : "a problem"}${o.org ? ` for ${one(o.org)}` : ""}: Qalam AI asked, and you answered.`;
-  const pairs = questions.map((q) => ({ q: one(q.title), a: (answers[q.id] ?? "").trim() })).filter((p) => p.a);
-  const parts: TextPart[] = [{ words: head, theirs: false }, ...pairs.flatMap((p) => [{ words: p.q, theirs: false }, { words: p.a, theirs: true }])];
-  return { text: [head, ...pairs.map((p) => `${p.q}\n${p.a}`)].join("\n\n"), parts };
+  const pairs = answeredPairs(questions, answers);
+  const parts: TextPart[] = [{ words: head, theirs: false }, ...pairs.flatMap((p) => [{ words: p.q, theirs: false }, p.a])];
+  return { text: [head, ...pairs.map((p) => `${p.q}\n${p.a.words}`)].join("\n\n"), parts };
 }
 
-/** A part of a text, in order: their words, or Qalam AI's (a heading, a question). */
+/** A part of a text, in order: their words, or Qalam AI's (a heading, a question). `plain`: neither (Qalam AI's pick, a don't-know). */
 export interface TextPart {
   words: string;
   theirs: boolean;
+  plain?: true;
 }
 
 /** Where each part is in `text`, found in order (one it doesn't have is left out): their parts, and the rest as headings. */
@@ -64,7 +124,7 @@ export function partSpans(text: string, parts: readonly TextPart[]): { theirs: [
     const words = p.words.replace(/\s+/g, " ").trim();
     const at = words ? text.indexOf(words, from) : -1;
     if (at < 0) continue;
-    (p.theirs ? out.theirs : out.heads).push([at, at + words.length]);
+    if (!p.plain) (p.theirs ? out.theirs : out.heads).push([at, at + words.length]);
     from = at + words.length;
   }
   return out;

@@ -401,6 +401,14 @@ export class Tab {
         quiet = Date.now();
         continue;
       }
+      // An opening whose every question they answered lately (src/memory/gate.ts): what they said still holds, so they go on.
+      if (!s.step && s.buttons.includes("Go on with these")) {
+        this.say("Answered before → Go on with these");
+        await this.click("Go on with these");
+        await sleep(1500);
+        quiet = Date.now();
+        continue;
+      }
       // A lookup put to them: they say look it up, as the bench's in-process person does.
       if (s.offer) {
         this.say("A lookup put to them → Look it up");

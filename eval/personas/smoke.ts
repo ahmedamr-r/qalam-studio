@@ -28,13 +28,18 @@ const pickQuestion = { id: "pick", title: "Which customers first", why: "", mult
 /** A turn of the interview as the core answers it. */
 const turnOf = (qs: unknown[]) => ({ questions: qs, lookups: [], done: false, understood: [], terms: [], choices: [] });
 const done = { questions: [], lookups: [], done: true, understood: [{ text: "They want something that makes money" }], terms: [], choices: [] };
-let mode: "first" | "many" | "typed" | "known" = "first";
+let mode: "first" | "many" | "typed" | "known" | "gated" = "first";
 const typedQuestion = { id: "typed", title: "What have you tried so far?", why: "", multi: false, options: [], recommended: [], allowOther: true };
 const DAY = 86_400_000;
-/** Questions as the core sends them when one like each was answered before (src/memory/known.ts): their own words, and a teammate's pick. */
+/** Questions as the core sends them when one like each was answered before (src/memory/known.ts): their own words from weeks ago, and a teammate's pick. */
 const knownQuestions = [
-  { id: "nrr", title: "What is net revenue retention today?", why: "", multi: false, options: [], recommended: [], allowOther: true, known: [{ id: "m-own", text: "About 104%", how: "own", mine: true, at: Date.now() - DAY, flow: "find", match: "exact" }] },
+  { id: "nrr", title: "What is net revenue retention today?", why: "", multi: false, options: [], recommended: [], allowOther: true, known: [{ id: "m-own", text: "About 104%", how: "own", mine: true, at: Date.now() - 20 * DAY, flow: "find", match: "exact" }] },
   { ...pickQuestion, id: "first", known: [{ id: "m-pick", text: "Regulars", how: "pick", mine: false, name: "Omar", at: Date.now() - 2 * DAY, flow: "focus", match: "near" }] },
+];
+/** The same, answered by them yesterday (src/memory/gate.ts): not asked again. */
+const gatedQuestions = [
+  { ...knownQuestions[0], id: "nrr2", known: [{ ...knownQuestions[0].known[0], at: Date.now() - DAY }] },
+  { ...pickQuestion, id: "first2", known: [{ id: "m-pick2", text: "Regulars", how: "pick", mine: true, at: Date.now() - DAY, flow: "focus", match: "exact" }] },
 ];
 
 async function main() {
@@ -68,6 +73,8 @@ async function main() {
         if (mode === "many") return n < 4 ? turnOf([{ ...pickQuestion, id: `pick${n}`, title: `${pickQuestion.title} (${n + 1})` }]) : done;
         if (mode === "typed") return n === 0 ? turnOf([typedQuestion]) : done;
         if (mode === "known") return n === 0 ? turnOf(knownQuestions) : done;
+        // Once: the core drops a question asked before (the memory round's too), so a later turn never brings them again.
+        if (mode === "gated") return n === 0 ? { ...turnOf(gatedQuestions), done: true } : done;
         return n === 0 ? turnOf(questions) : done;
       },
       "/plan/propose": () => ({ cards: [], start: null, doubt: "", quotes: {} }),
@@ -119,7 +126,7 @@ async function main() {
     for (let i = 0; i < 60 && !(settled = await tab.click("Propose")); i++) await sleep(250);
     check(settled, "What we settled shows before anything is proposed, with Propose");
     for (let i = 0; i < 40 && !tab.stubbed.some((x) => x.path === "/plan/propose"); i++) await sleep(250);
-    type Sent = { asking?: { rounds: { asked: { answer: string; how: string }[] }[] } };
+    type Sent = { asking?: { rounds: { by?: string; asked: { answer: string; how: string }[] }[] } };
     const propose = tab.stubbed.find((x) => x.path === "/plan/propose")?.body as Sent | undefined;
     const answers = propose?.asking?.rounds[0]?.asked ?? null;
     check(!!answers && answers.length === 3 && answers.every((a) => a.answer === "" && a.how === "left"), "What they left goes as nothing, never as what they said", answers);
@@ -221,7 +228,37 @@ async function main() {
       "What was said before shows under the question, and Use it answers with it: their words as theirs, a pick as Qalam AI's pick",
       { ownShown, pickShown, used },
     );
+
+    // What they answered lately isn't asked again: What we settled says what it knew, the plan hears it as it was given, and it isn't remembered anew.
+    const nrrLines = async () => ((await tab.api<Remembered>("/memory"))?.entries ?? []).filter((e) => e.q === "What is net revenue retention today?").length;
+    const nrrBefore = await nrrLines();
+    tab.stubbed.length = 0;
+    asks = 0;
+    mode = "gated";
+    await tab.chat("What should we do about retention this quarter?");
+    let knewShown = false;
+    for (let i = 0; i < 60 && !(knewShown = await tab.js<boolean>(`document.body.innerText.includes('What I already knew') && document.body.innerText.includes('About 104%')`)); i++) await sleep(250);
+    const askedNone = !(await tab.see()).step;
+    for (let i = 0; i < 60 && !(await tab.click("Propose")); i++) await sleep(250);
+    for (let i = 0; i < 40 && !tab.stubbed.some((x) => x.path === "/plan/propose"); i++) await sleep(250);
+    const gatedRounds = (tab.stubbed.find((x) => x.path === "/plan/propose")?.body as Sent | undefined)?.asking?.rounds ?? [];
+    const nrrAfter = await nrrLines();
+    check(
+      knewShown && askedNone && gatedRounds.length === 1 && gatedRounds[0].by === "memory" && gatedRounds[0].asked.map((a) => `${a.answer}:${a.how}`).join("|") === "About 104%:own|Regulars:pick" && nrrAfter === nrrBefore,
+      "What they answered lately isn't asked again: What we settled says what it knew, the plan hears it as given (a pick still a pick), and it isn't remembered anew",
+      { nrrBefore, nrrAfter, knewShown, askedNone, gatedRounds },
+    );
     mode = "first";
+
+    // Help me find one: code's own question they answered yesterday comes back from the project's memory, and only the rest is asked.
+    const seeded = await tab.js<boolean>(
+      `fetch('/api/org/${tab.org}/memory/asked', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ flow: 'find', key: 'smoke-seed', about: { product: null }, answers: [{ qid: 'for-whom', q: 'What does the product do, and who is it for?', a: 'Groceries for new parents', how: 'own' }] }) }).then((r) => r.ok)`,
+    );
+    await tab.canvas("?find=goal");
+    let openingKnew = false;
+    for (let i = 0; i < 60 && !(openingKnew = await tab.js<boolean>(`document.body.innerText.includes("What you told me before, so I'm not asking again") && document.body.innerText.includes('Groceries for new parents')`)); i++) await sleep(250);
+    const openingStep = (await tab.see()).step;
+    check(seeded && openingKnew && openingStep?.title === "What is the team trying to change in the next few months?" && /of 3/.test(openingStep.label), "Help me find one doesn't ask again what they answered lately, says so, and asks the rest", { seeded, openingKnew, step: openingStep?.title, label: openingStep?.label });
 
     // The first run's hand-off: their words reach the chat's plan route on the canvas.
     tab.stubbed.length = 0;

@@ -12,8 +12,8 @@ import { IconBtn, Spinner } from "../../controls";
 import { MenuItem } from "../../menu";
 import { toQuestion } from "../../ai/plan";
 import { Questionnaire } from "../../ai/Questionnaire";
-import { answerWords, initialFlow, type FlowState } from "../../ai/questionFlow";
-import type { FindWhat } from "@/space/find";
+import { answerWords, initialFlow, type FlowState, type Question } from "../../ai/questionFlow";
+import { knewAnswers, type FindWhat } from "@/space/find";
 import { r } from "../../recipes";
 import { answerRound, picksRound, resumeDumps, saveRound, sessionOf, skipRest, useDump } from "../../discovery/dump";
 import { useSources } from "../../discovery/sources";
@@ -234,23 +234,52 @@ function FindRound({ turn, what }: { turn: string; what: FindWhat }) {
 function FindForm({ turn, what }: { turn: string; what: FindWhat }) {
   const job = turnOf(turn)?.job;
   const goal = job?.kind === "find" ? job.goal : undefined;
-  const questions = useMemo(() => {
+  const all = useMemo(() => {
     const j = turnOf(turn)?.job;
-    return findQuestionsOf(j?.kind === "find" ? j : { what }).map(toQuestion);
+    return findQuestionsOf(j?.kind === "find" ? j : { what });
   }, [turn, what]);
-  const [form, setForm] = useState<FlowState>(() => initialFlow(questions));
-  // A choice is their answer in its own words; skipped and empty ones are left out.
-  const answerOf = (f: FlowState, q: (typeof questions)[number]) => answerWords(q, f.answers[q.id]).text;
+  // What they told another conversation lately isn't asked again (src/memory/gate.ts), unless they ask for it.
+  const [again, setAgain] = useState(false);
+  const knew = useMemo(() => (again ? {} : knewAnswers(all, Date.now())), [all, again]);
+  const before = all.filter((q) => knew[q.id]);
+  const questions = useMemo(() => all.filter((q) => !knew[q.id]).map(toQuestion), [all, knew]);
+  // Each answer as it was given (their words, Qalam AI's pick, a don't-know), and what they said before as it was.
+  const send = (f: FlowState | null) => void answerFind(turn, { ...knew, ...Object.fromEntries(questions.map((q) => [q.id, answerWords(q, f?.answers[q.id])])) });
   return (
-    <Questionnaire
-      title={goal ? "To find the problem to focus on" : what === "goal" ? "To find a goal" : "To find a problem"}
-      questions={questions}
-      state={form}
-      onChange={setForm}
-      onSubmit={(f) => void answerFind(turn, Object.fromEntries(questions.map((q) => [q.id, answerOf(f, q)])))}
-      review={{ submitLabel: "Send answers" }}
-    />
+    <div className="flex flex-col gap-[8px]">
+      {before.length > 0 && (
+        <div className="flex flex-col gap-[4px] rounded-lg px-[10px] py-[8px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
+          <p className="text-micro font-medium text-fg-muted">What you told me before, so I&apos;m not asking again</p>
+          {before.map((q) => {
+            const a = knew[q.id];
+            return (
+              <p key={q.id} className="text-caption leading-[18px] text-fg" dir="auto">
+                <span className="text-fg-subtle">{q.title}</span> {a.how === "unknown" ? "You don't know" : a.text}
+                {a.how === "pick" && <span className="text-fg-muted"> · Qalam AI&apos;s pick, which you agreed to</span>}
+                <span className="text-fg-subtle"> · {a.before}</span>
+              </p>
+            );
+          })}
+          <div className="flex flex-wrap items-center gap-[4px]">
+            {!questions.length && (
+              <button type="button" className={r.replyChipPrimary} onClick={() => send(null)}>
+                Go on with these
+              </button>
+            )}
+            <button type="button" className={r.replyChip} onClick={() => setAgain(true)}>
+              Ask me again
+            </button>
+          </div>
+        </div>
+      )}
+      {questions.length > 0 && <FindQuestions key={again ? "all" : "rest"} title={goal ? "To find the problem to focus on" : what === "goal" ? "To find a goal" : "To find a problem"} questions={questions} onSend={send} />}
+    </div>
   );
+}
+
+function FindQuestions({ title, questions, onSend }: { title: string; questions: Question[]; onSend: (f: FlowState) => void }) {
+  const [form, setForm] = useState<FlowState>(() => initialFlow(questions));
+  return <Questionnaire title={title} questions={questions} state={form} onChange={setForm} onSubmit={onSend} review={{ submitLabel: "Send answers" }} />;
 }
 
 /** The questions while a scan reads, each one skippable. If it finishes before they start on them, they go: what's still wanted is asked later. */

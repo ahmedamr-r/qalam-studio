@@ -38,6 +38,8 @@ export interface AskRound {
   said?: Record<string, string>;
   /** Code's own round, checked once against the project's memory (src/memory/known.ts). */
   known?: true;
+  /** Not asked: answered from what they said before (src/memory/gate.ts), each question keeping the answer it took as `known`. */
+  from?: "memory";
 }
 
 /** Something a lookup found, under the id turns and drafts cite it by. */

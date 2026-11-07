@@ -1,6 +1,8 @@
 import type { FocusLook } from "@/goals/focus";
+import { gateOf } from "@/memory/gate";
+import type { AskedFlow } from "@/memory/types";
 import { toQuestion, type PlanBucket } from "@/ui/ai/plan";
-import { REVIEW, answerWords, initialFlow, resolvedAnswers, type Answer, type FlowState } from "@/ui/ai/questionFlow";
+import { REVIEW, answerWords, initialFlow, knownAnswer, resolvedAnswers, type Answer, type FlowState } from "@/ui/ai/questionFlow";
 import type { AskAnswer, AskQuestion, AskRound, AskTurn, AskingState, ChoiceProposal, FoundLine, Lookup, SettledPoint, TermProposal } from "./types";
 
 /*
@@ -85,23 +87,39 @@ function withChoices(had: readonly ChoiceProposal[], add: AskTurn["choices"], id
 }
 
 /**
+ * A question asked again, answered with what they said before instead (src/memory/gate.ts): their own
+ * answer to the same question, given lately, as the question's form takes it. Qalam AI's pick stays its
+ * pick and a don't-know a don't-know. None: it's asked, with what was said shown under it.
+ */
+function fromMemory(q: AskQuestion, now: number): { q: AskQuestion; a: Answer } | null {
+  const k = gateOf(q, now);
+  if (!k) return null;
+  const a: Answer | null = k.how === "unknown" ? { kind: "skipped", unknown: true } : knownAnswer(toQuestion(q), k);
+  return a ? { q: { ...q, known: [k] }, a } : null;
+}
+
+/**
  * A turn of Qalam AI's taken in. Its lookups start now and the next turn waits for them; what it asks
- * now is a round, what waits on something still open is held. After two turns in a row that only
- * looked things up, a web lookup is put to the person instead of run. It ends when nothing is asked,
- * held, looked up or waiting to be read.
+ * now is a round, what waits on something still open is held, and what they answered lately is a round
+ * of what they said, not asked. After two turns in a row that only looked things up, a web lookup is put
+ * to the person instead of run. It ends when nothing is asked, held, looked up or waiting to be read; a
+ * turn whose questions were all answered before goes on to another unless it was done.
  */
 export function applyTurn(s: AskingState, t: AskTurn, o: { now: number; id: (prefix: string) => string }): AskingState {
   const turn = s.turns + 1;
   const quiet = s.quiet ?? 0;
+  const known = t.questions.flatMap((q) => fromMemory(q, o.now) ?? []);
+  const fresh = t.questions.filter((q) => !known.some((k) => k.q.id === q.id));
   const web = t.lookups.filter((l) => l.kind === "web");
   const offerIt = !t.questions.length && quiet >= 2 && web.length > 0;
   const started: Lookup[] = t.lookups.filter((l) => !(offerIt && l.kind === "web")).map((l) => ({ id: l.id, kind: l.kind, query: l.query, waits: turn, state: "running", at: o.now }));
   const lookups = [...s.lookups, ...started];
   const busy = new Set(lookups.filter(running).map((l) => l.id));
-  const here = new Set(t.questions.map((q) => q.id));
+  // What was answered from memory is settled now: nothing waits on it.
+  const here = new Set(fresh.map((q) => q.id));
   const waits = (q: AskQuestion) => (q.after ?? []).some((a) => here.has(a) || busy.has(a));
-  let ask = t.questions.filter((q) => !waits(q));
-  let held = t.questions.filter(waits);
+  let ask = fresh.filter((q) => !waits(q));
+  let held = fresh.filter(waits);
   // Held with nothing running and nothing asked now, nothing would ever settle them: they're asked now.
   if (!ask.length && held.length && !lookups.some((l) => running(l) && forTurns(l))) {
     ask = held;
@@ -115,16 +133,23 @@ export function applyTurn(s: AskingState, t: AskTurn, o: { now: number; id: (pre
     understood: t.understood.length ? t.understood : s.understood,
     terms: withTerms(s.terms, t.terms, o.id),
     choices: withChoices(s.choices, t.choices, o.id),
-    quiet: ask.length ? 0 : started.length || offerIt ? quiet + 1 : quiet,
-    rounds: ask.length ? [...s.rounds, { questions: ask, form: flowOf(ask) }] : s.rounds,
+    quiet: ask.length || known.length ? 0 : started.length || offerIt ? quiet + 1 : quiet,
+    // What they said before goes first, as a round already answered; then what's asked now.
+    rounds: [...s.rounds, ...(known.length ? [memoryRound(known)] : []), ...(ask.length ? [{ questions: ask, form: flowOf(ask) }] : [])],
   };
   delete next.askFirst;
   delete next.offer;
   if (offerIt) next.offer = { id: web[0].id, query: web[0].query };
   const pending = lookups.some((l) => running(l) && forTurns(l));
   const unread = lookups.some((l) => l.state === "done" && l.read === undefined && forTurns(l));
-  if (!ask.length && !held.length && !started.length && !offerIt && !pending && !unread) next.end = { by: t.done ? "done" : "nothing-new", at: o.now };
+  if (!ask.length && !held.length && !started.length && !offerIt && !pending && !unread && (t.done || !known.length)) next.end = { by: t.done ? "done" : "nothing-new", at: o.now };
   return next;
+}
+
+/** The questions answered from what they said before, as a round already sent. */
+function memoryRound(known: readonly { q: AskQuestion; a: Answer }[]): AskRound {
+  const questions = known.map((k) => k.q);
+  return { questions, form: { ...flowOf(questions), answers: Object.fromEntries(known.map((k) => [k.q.id, k.a])), submitted: true, current: REVIEW }, from: "memory" };
 }
 
 /** A round's answers as they're being given (kept so a reload finds them). */
@@ -181,9 +206,18 @@ export const decideChoice = (s: AskingState, id: string, keep: boolean): AskingS
 /** They saw what was settled and said go. */
 export const confirmed = (s: AskingState, now: number): AskingState => ({ ...s, confirmed: now });
 
-/** What was settled, for the card before generating: the points, Qalam AI's picks they agreed to, the words and decisions offered, and what's left open. */
-export function settledOf(s: AskingState): { asked: boolean; points: SettledPoint[]; picks: AskAnswer[]; terms: TermProposal[]; choices: ChoiceProposal[]; left: string[]; unknown: string[] } {
-  const answers = answersOf(s);
+/** An answer taken from what they said before: where and when they said it. */
+export type KnewAnswer = AskAnswer & { flow: AskedFlow; at: number };
+
+/**
+ * What was settled, for the card before generating: the points, Qalam AI's picks they agreed to, the
+ * words and decisions offered, what's left open, and what it knew from what they said before (`knew`),
+ * so nothing is generated on an earlier answer they haven't seen.
+ */
+export function settledOf(s: AskingState): { asked: boolean; points: SettledPoint[]; picks: AskAnswer[]; terms: TermProposal[]; choices: ChoiceProposal[]; left: string[]; unknown: string[]; knew: KnewAnswer[] } {
+  const all = answersOf(s);
+  const before = (a: AskAnswer) => s.rounds[a.round]?.from === "memory";
+  const answers = all.filter((a) => !before(a));
   return {
     asked: s.rounds.length > 0,
     points: s.understood,
@@ -193,6 +227,10 @@ export function settledOf(s: AskingState): { asked: boolean; points: SettledPoin
     left: [...answers.filter((a) => a.how === "left").map((a) => a.question), ...s.held.map((q) => q.title)],
     // What they said they don't know: open too, and not a question to ask them again.
     unknown: answers.filter((a) => a.how === "unknown").map((a) => a.question),
+    knew: all.filter(before).map((a) => {
+      const k = s.rounds[a.round].questions.find((q) => q.id === a.id)?.known?.[0];
+      return { ...a, flow: k?.flow ?? "plan", at: k?.at ?? 0 };
+    }),
   };
 }
 
