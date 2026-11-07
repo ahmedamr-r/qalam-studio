@@ -11,6 +11,7 @@ import { quotePiece, type SourceRecord } from "@/discovery/sources";
 import type { ScanKnown } from "@/scan/session";
 import { nanoid } from "nanoid";
 import type { OrgStore } from "./store";
+import { recallFor } from "./memory";
 
 /**
  * A brief for a card on the canvas (src/discovery/brief.ts), in the core. The window sends the card and
@@ -87,13 +88,15 @@ const SHAPE_WORDS: Record<BriefShape, string> = { build: "a brief (a PRD) for wh
 export async function askBrief(store: OrgStore, req: BriefRequest, asking: AskingInT, emit: (label: string) => void, signal?: AbortSignal, deps: BriefDeps = liveDeps): Promise<AskTurn> {
   emit("Working out what to ask");
   const { m } = await briefParts(store, req);
-  const material = [`What's to be written: ${SHAPE_WORDS[req.shape ?? "build"]}.`, "", m.text, "", askingBlock(asking)].join("\n");
+  // What's already known (src/memory/): the plan's or the scan's answers and any other conversation's, their material, decisions on the card.
+  const known = await recallFor(store, asking, { flow: "brief", words: [req.card.title, req.card.description, req.problem?.title ?? "", req.goal?.title ?? ""].join("\n"), sent: m.text });
+  const material = [`What's to be written: ${SHAPE_WORDS[req.shape ?? "build"]}.`, "", m.text, ...(known.block ? ["", known.block] : []), "", askingBlock(asking)].join("\n");
   const lab = await labOn();
   const decisions = lab === true || lab.includes("decisions");
   const { data, model } = await deps.structured<unknown>(askTurnCall({ flow: "brief", who: "builder", material, kinds: KINDS, terms: true, choices: decisions }), signal);
   const dropped: { why: string; item: unknown }[] = [];
-  const turn = sanitizeTurn(data, checkOf(asking, { who: "builder", hay: `${m.hay}\n${material.replace(/^(\s*- )[\w-]+ ·/gm, "$1")}`, terms: await store.getTerms(), kinds: KINDS, decisions }), (why, item) => dropped.push({ why, item }));
-  await store.putTrace({ id: nanoid(10), projectId: "asking", kind: "ask-turn", flow: "brief", at: Date.now(), ...(model ? { model } : {}), rounds: asking.rounds.length, answer: data, kept: { questions: turn.questions.map((q) => ({ id: q.id, title: q.title, after: q.after })), lookups: turn.lookups, done: turn.done }, dropped } as { id: string; projectId: string }).catch(() => {});
+  const turn = sanitizeTurn(data, checkOf(asking, { who: "builder", hay: `${m.hay}\n${material.replace(/^(\s*- )[\w-]+ ·/gm, "$1")}`, terms: await store.getTerms(), kinds: KINDS, decisions, memory: known.ids }), (why, item) => dropped.push({ why, item }));
+  await store.putTrace({ id: nanoid(10), projectId: "asking", kind: "ask-turn", flow: "brief", at: Date.now(), ...(model ? { model } : {}), rounds: asking.rounds.length, recalled: { items: known.items, chars: known.block.length }, answer: data, kept: { questions: turn.questions.map((q) => ({ id: q.id, title: q.title, after: q.after })), lookups: turn.lookups, done: turn.done }, dropped } as { id: string; projectId: string }).catch(() => {});
   return turn;
 }
 

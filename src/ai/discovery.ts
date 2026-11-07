@@ -27,6 +27,8 @@ import { MAX_RELIED } from "@/ai/reliance";
 
 const text = (max: number) => z.string().max(max);
 const Answer = z.object({ id: text(40), question: text(400), answer: text(2000) });
+/** What's already known, recalled by the core for a turn the window checks (src/memory/recall.ts): the block it reads, the words it may hold to, the ids it may rest on. */
+const Known = z.object({ block: z.string().max(9000), hay: z.string().max(12000), ids: z.array(z.string().max(12)).max(40) });
 
 /** A part of the builder's material, as one extract call reads it (an interview's says who is who). */
 const ChunkIn = z.object({ id: text(12), source: text(300), kind: text(40), text: text(26_000), speakers: text(400).optional() });
@@ -64,7 +66,9 @@ const DumpAim = z.object({ find: z.enum(["goal", "problem"]), asked: z.array(tex
 const DumpFileIn = z.object({ title: text(300), card: text(12), cut: z.boolean().optional() }).optional();
 /** What's known about the company's market (src/market/text.ts): read on the web, never what customers said. */
 const DumpMarketIn = text(3000).optional();
-const DumpBase = { product: text(2000), dump: z.string().trim().min(40).max(DUMP_MAX_CHARS), tree: z.array(DumpCardIn).max(400), aim: DumpAim, file: DumpFileIn, market: DumpMarketIn };
+/** What's already known, recalled for the dump's rounds (src/memory/recall.ts): read so its questions don't ask it again. */
+const DumpKnownIn = z.string().max(9000).optional();
+const DumpBase = { product: text(2000), dump: z.string().trim().min(40).max(DUMP_MAX_CHARS), tree: z.array(DumpCardIn).max(400), aim: DumpAim, file: DumpFileIn, market: DumpMarketIn, known: DumpKnownIn };
 const KId = z.string().regex(/^k\d{1,4}$/);
 /** What the organization already knows, packed for the call: pieces under ids, and which ids are customers' quotes. */
 export const ContextIn = z.object({ block: text(60_000), ids: z.array(KId).max(400), quotes: z.array(KId).max(400) }).optional();
@@ -75,7 +79,7 @@ export const DiscoveryBody = z
   .discriminatedUnion("stage", [
     z.object({ stage: z.literal("followups"), answers: z.array(Answer).min(1).max(12) }),
     // A turn of the interview after the product interview's own questions (src/asking/): as many as it needs.
-    z.object({ stage: z.literal("interview-turn"), answers: z.array(Answer).min(1).max(12), asking: AskingIn }),
+    z.object({ stage: z.literal("interview-turn"), answers: z.array(Answer).min(1).max(12), asking: AskingIn, known: Known.optional() }),
     // Their answers to the interview's turns: a guard on size, not on how many it asked.
     z.object({ stage: z.literal("draft"), answers: z.array(Answer).min(1).max(12), followUps: z.array(Answer).max(40).optional(), context: ContextIn }),
     z.object({ stage: z.literal("extract"), product: text(2000), focus: text(2200).optional(), chunks: z.array(ChunkIn).min(1).max(8), goals: z.array(z.object({ id: text(12), title: text(300), metric: text(200) })).max(12).optional(), propose: z.array(text(300)).max(60).optional(), context: ContextIn }),
@@ -247,8 +251,8 @@ export const followupsContent = (b: Extract<DiscoveryRequest, { stage: "followup
 
 /** A turn of the interview after the product interview's own questions: their answers, then the conversation so far. */
 export function interviewTurnCall(b: Extract<DiscoveryRequest, { stage: "interview-turn" }>) {
-  const material = `${answersBlock(b.answers)}\n\n${askingBlock(b.asking)}`;
-  return { call: askTurnCall({ flow: "interview", who: "builder", material, kinds: [], terms: false, choices: false }), check: checkOf(b.asking, { who: "builder", hay: material.replace(/^(\s*- )[\w-]+ ·/gm, "$1"), kinds: [], decisions: false }) };
+  const material = [answersBlock(b.answers), b.known?.block ?? "", askingBlock(b.asking)].filter(Boolean).join("\n\n");
+  return { call: askTurnCall({ flow: "interview", who: "builder", material, kinds: [], terms: false, choices: false }), check: checkOf(b.asking, { who: "builder", hay: material.replace(/^(\s*- )[\w-]+ ·/gm, "$1"), kinds: [], decisions: false, ...(b.known?.ids.length ? { memory: b.known.ids } : {}) }) };
 }
 
 export const draftContent = (b: Extract<DiscoveryRequest, { stage: "draft" }>) => [answersBlock(b.answers, b.followUps), ...knowledgeBlock(b.context), "", "Draft the tree."].join("\n");
@@ -671,6 +675,8 @@ function fileLine(f: NonNullable<DumpRequest["file"]>, tree: DumpRequest["tree"]
 const dumpMaterial = (b: DumpRequest) => [
   `The product: ${b.product.trim() || "(not described yet)"}`,
   ...(b.market?.trim() ? ["", `What's known about its market, read on the web (context for your questions and wording; never what its customers said, and nothing a card rests on):\n${b.market.trim()}`] : []),
+  // What's already known (src/memory/): read so the rounds never ask it again; placing hears what it always did.
+  ...(b.stage !== "dump-place" && b.known?.trim() ? ["", b.known.trim()] : []),
   "",
   b.tree.length ? "The board (id · kind · title — description [metric] {assumptions} (what backs it), each card under its parent):" : "The board is empty.",
   ...dumpOutline(b.tree),

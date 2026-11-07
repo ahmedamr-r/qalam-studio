@@ -15,6 +15,7 @@ import { termsFold } from "@/terms/fold";
 import { indexFor } from "../index/registry";
 import { labOn } from "../lab";
 import { companyContext } from "./company";
+import { recallFor } from "./memory";
 import { readLinks, realDeps, type MarketDeps } from "./market";
 import type { OrgStore } from "./store";
 
@@ -103,7 +104,9 @@ export async function planNext(store: OrgStore, b: PlanBody, emit: (label: strin
   emit("Working out what to ask");
   const a: AskingInT = b.asking ?? { rounds: [], lookups: [], held: [], understood: [], proposed: [], said: b.said };
   const base = planAskMaterial({ org: store.info.name, about: await aboutLine(store), said: b.said, outline: b.outline, company: await companyContext(store, { near: b.said }) });
-  const material = [base, askingBlock(a)].join("\n\n");
+  // What's already known (src/memory/): other conversations' answers, their material, their best-backed pages, decisions.
+  const known = await recallFor(store, a, { flow: "plan", words: [b.said, ...b.outline.map((c) => c.title)].join("\n"), broad: true, sent: base });
+  const material = [base, known.block, askingBlock(a)].filter(Boolean).join("\n\n");
   const lab = await labOn();
   const decisions = lab === true || lab.includes("decisions");
   const call = askTurnCall({ flow: "plan", who: "team", material, kinds: PLAN_KINDS, terms: true, choices: decisions });
@@ -116,9 +119,9 @@ export async function planNext(store: OrgStore, b: PlanBody, emit: (label: strin
     return { questions: planRound().map((q) => ({ ...planTweak(q), by: "code" as const })), lookups: [], done: false, understood: [], terms: [], choices: [] };
   }
   const dropped: { why: string; item: unknown }[] = [];
-  const turn = sanitizeTurn(answer.data, checkOf(a, { who: "team", hay: material.replace(/(^|\s)[a-z]\d+(?:-\d+)? ·/gm, "$1"), terms: await store.getTerms(), kinds: PLAN_KINDS, decisions, tweak: planTweak }), (why, item) => dropped.push({ why, item }));
+  const turn = sanitizeTurn(answer.data, checkOf(a, { who: "team", hay: material.replace(/(^|\s)[a-z]\d+(?:-\d+)? ·/gm, "$1"), terms: await store.getTerms(), kinds: PLAN_KINDS, decisions, tweak: planTweak, memory: known.ids }), (why, item) => dropped.push({ why, item }));
   await store
-    .putTrace({ id: nanoid(10), projectId: "plan", kind: "ask-turn", flow: "plan", at: Date.now(), ...(answer.model ? { model: answer.model } : {}), rounds: a.rounds.length, answer: answer.data, kept: { questions: turn.questions.map((q) => ({ id: q.id, title: q.title, after: q.after })), lookups: turn.lookups, done: turn.done, terms: turn.terms.map((t) => t.term), choices: turn.choices.length }, dropped } as { id: string; projectId: string })
+    .putTrace({ id: nanoid(10), projectId: "plan", kind: "ask-turn", flow: "plan", at: Date.now(), ...(answer.model ? { model: answer.model } : {}), rounds: a.rounds.length, recalled: { items: known.items, chars: known.block.length }, answer: answer.data, kept: { questions: turn.questions.map((q) => ({ id: q.id, title: q.title, after: q.after })), lookups: turn.lookups, done: turn.done, terms: turn.terms.map((t) => t.term), choices: turn.choices.length }, dropped } as { id: string; projectId: string })
     .catch(() => {});
   return turn;
 }

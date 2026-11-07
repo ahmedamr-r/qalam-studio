@@ -8,6 +8,7 @@ import { AskingIn, askingBlock, checkOf } from "@/asking/wire";
 import { DUMP_ROLES, type DumpRole } from "@/discovery/dump";
 import { labOn } from "../lab";
 import { companyContext } from "./company";
+import { recallFor } from "./memory";
 import type { OrgStore } from "./store";
 
 /*
@@ -55,7 +56,9 @@ export async function askCard(store: OrgStore, b: AskCardBodyT, emit: (label: st
   emit("Working out what to ask");
   const searched = b.asking.lookups.some((l) => l.kind === "project" && l.state === "done");
   const base = cardMaterial(await companyContext(store, { near: b.card.title }), { ...b, searched });
-  const material = [base, askingBlock(b.asking)].join("\n\n");
+  // What's already known about the card (src/memory/): other conversations' answers, their material around it, decisions on it.
+  const known = await recallFor(store, b.asking, { flow: "card", words: [b.card.title, b.card.description, ...b.card.above].join("\n"), sent: base });
+  const material = [base, known.block, askingBlock(b.asking)].filter(Boolean).join("\n\n");
   const lab = await labOn();
   const decisions = lab === true || lab.includes("decisions");
   const call = askTurnCall({ flow: "card", who: "person", material, kinds: KINDS, terms: true, choices: decisions, extra: { role: { type: "string", enum: [...ROLES], description: "What their own words in the first answer are to the tree; none when they wrote nothing" } } });
@@ -63,11 +66,11 @@ export async function askCard(store: OrgStore, b: AskCardBodyT, emit: (label: st
   const dropped: { why: string; item: unknown }[] = [];
   // The ids heading each listed line (q1, l0-2, bg-online-1) are never words a question may rest on.
   const hay = material.replace(/^(\s*- )[\w-]+ ·/gm, "$1");
-  const turn = sanitizeTurn(data, checkOf(b.asking, { who: "person", hay, terms: await store.getTerms(), kinds: KINDS, decisions }), (why, item) => dropped.push({ why, item }));
+  const turn = sanitizeTurn(data, checkOf(b.asking, { who: "person", hay, terms: await store.getTerms(), kinds: KINDS, decisions, memory: known.ids }), (why, item) => dropped.push({ why, item }));
   const r = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
   const role = DUMP_ROLES.find((x) => x === r.role) ?? null;
   await store
-    .putTrace({ id: nanoid(10), projectId: "asking", kind: "ask-turn", flow: "card", step: b.step, at: Date.now(), ...(model ? { model } : {}), rounds: b.asking.rounds.length, answer: data, kept: { questions: turn.questions.map((q) => ({ id: q.id, title: q.title, after: q.after })), lookups: turn.lookups, done: turn.done, terms: turn.terms.map((t) => t.term) }, dropped } as { id: string; projectId: string })
+    .putTrace({ id: nanoid(10), projectId: "asking", kind: "ask-turn", flow: "card", step: b.step, at: Date.now(), ...(model ? { model } : {}), rounds: b.asking.rounds.length, recalled: { items: known.items, chars: known.block.length }, answer: data, kept: { questions: turn.questions.map((q) => ({ id: q.id, title: q.title, after: q.after })), lookups: turn.lookups, done: turn.done, terms: turn.terms.map((t) => t.term) }, dropped } as { id: string; projectId: string })
     .catch(() => {});
   return { ...turn, role };
 }

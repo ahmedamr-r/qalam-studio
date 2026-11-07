@@ -20,6 +20,7 @@ import { nanoid } from "nanoid";
 import { draftSolutions } from "./solutions";
 import { needsNow } from "./needs";
 import type { OrgStore } from "./store";
+import { recallFor } from "./memory";
 
 /**
  * From a scan's problems to what to build first (src/scan/plan.ts), in the core: its questions, the
@@ -79,20 +80,22 @@ export async function askScanPlan(store: OrgStore, o: { target: ScanTarget; sour
   const about = o.target.kind === "idea" ? `What they want to build: ${o.target.said}` : `The product: ${o.target.name}`;
   const text = [about, "", "The problems found:", ...problems.slice(0, 8).map((p) => `- ${p.title}`), "", "What people say, in public:", ...words.slice(0, 24).map((w) => `- ${w.text}`), ...(published.length ? ["", "What's been published around it (someone else's words):", ...published.map((w) => `- ${w}`)] : []), ...(told.length ? ["", "What they've told you already (never ask it again):", toldLines({ said: [...told], off: [] })] : [])].join("\n");
   const m = { text, known: [...problems.map((p) => p.title), ...words.map((w) => w.text), ...published] };
-  const material = [text, "", askingBlock(o.asking)].join("\n");
+  // What's already known (src/memory/): what they told it while it read, other conversations' answers, the best-backed pages.
+  const known = await recallFor(store, o.asking, { flow: "scan", words: [about, ...problems.slice(0, 8).map((p) => p.title)].join("\n"), broad: true, sent: text });
+  const material = [text, ...(known.block ? ["", known.block] : []), "", askingBlock(o.asking)].join("\n");
   const lab = await labOn();
   const decisions = lab === true || lab.includes("decisions");
   const first = !o.asking.rounds.some((r) => !r.by);
   try {
     const { data, model } = await deps.structured<unknown>(askTurnCall({ flow: "scan", who: "person", material, kinds: SCAN_KINDS, terms: true, choices: decisions }), signal);
     const dropped: { why: string; item: unknown }[] = [];
-    const turn = sanitizeTurn(data, checkOf(o.asking, { who: "person", hay: material.replace(/^(\s*- )[\w-]+ ·/gm, "$1"), terms: await store.getTerms(), kinds: SCAN_KINDS, decisions }), (why, item) => dropped.push({ why, item }));
+    const turn = sanitizeTurn(data, checkOf(o.asking, { who: "person", hay: material.replace(/^(\s*- )[\w-]+ ·/gm, "$1"), terms: await store.getTerms(), kinds: SCAN_KINDS, decisions, memory: known.ids }), (why, item) => dropped.push({ why, item }));
     // Choices drawn from what was read, else in their own words.
     const questions = turn.questions.map((q) => {
       const [kept] = sanitizeFindQuestions({ questions: [q] }, m);
       return kept ? { ...kept, id: q.id, ...(q.after?.length ? { after: q.after } : {}) } : { ...q, options: [], recommended: [], allowOther: false };
     });
-    await store.putTrace({ id: nanoid(10), projectId: "asking", kind: "ask-turn", flow: "scan", at: Date.now(), ...(model ? { model } : {}), rounds: o.asking.rounds.length, answer: data, kept: { questions: questions.map((q) => q.title), lookups: turn.lookups, done: turn.done }, dropped } as { id: string; projectId: string }).catch(() => {});
+    await store.putTrace({ id: nanoid(10), projectId: "asking", kind: "ask-turn", flow: "scan", at: Date.now(), ...(model ? { model } : {}), rounds: o.asking.rounds.length, recalled: { items: known.items, chars: known.block.length }, answer: data, kept: { questions: questions.map((q) => q.title), lookups: turn.lookups, done: turn.done }, dropped } as { id: string; projectId: string }).catch(() => {});
     return { ...turn, questions };
   } catch (e) {
     if (signal?.aborted || !first) throw e;

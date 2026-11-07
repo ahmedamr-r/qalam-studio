@@ -513,7 +513,7 @@ export const scanPlanHost = (id: string): AskingHost => ({
   turn: (s, signal) => {
     const j = scanJob(id);
     if (!j) throw new Error("The scan has gone.");
-    return askScanPlan(planOf(j), askingIn(s, { said: j.target.kind === "idea" ? j.target.said : "", terms: useTerms.getState().terms }), step(id), signal);
+    return askScanPlan(planOf(j), askingIn(s, { said: j.target.kind === "idea" ? j.target.said : "", terms: useTerms.getState().terms, memory: scanPlanHost(id).memory?.() }), step(id), signal);
   },
   lookup: async (l, signal) => {
     if (l.kind === "project") return projectLookup(l);
@@ -667,7 +667,7 @@ export const briefHost = (id: string): AskingHost => ({
     const card = briefCard(id);
     const req = card ? briefRequest(studio().doc, card, askedFrom(s), turnOf(id)?.job.kind === "brief" ? briefShape(id) : undefined) : null;
     if (!req) throw new Error("What it would be written from has gone from the canvas.");
-    return askBriefTurn(req, askingIn(s, { said: "", terms: useTerms.getState().terms }), step(id), signal);
+    return askBriefTurn(req, askingIn(s, { said: "", terms: useTerms.getState().terms, memory: briefHost(id).memory?.() }), step(id), signal);
   },
   lookup: async (l, signal) => {
     const card = briefCard(id);
@@ -874,7 +874,7 @@ const planAsk = (id: string): PlanAsk | null => {
   const t = turnOf(id);
   const j = canvasPlan(id);
   if (!t || !j) return null;
-  const asking = j.asking ? askingIn(j.asking, { said: t.said, terms: useTerms.getState().terms }) : undefined;
+  const asking = j.asking ? askingIn(j.asking, { said: t.said, terms: useTerms.getState().terms, memory: planHost(id).memory?.() }) : undefined;
   const found = j.asking ? foundOf(j.asking).flatMap((l) => (l.piece ? [l.piece] : [])) : [];
   return { said: t.said, outline: planOutline(studio().doc, useSpaceView.getState().things), rounds: j.rounds, looks: j.looks, ...(asking ? { asking } : {}), ...(found.length ? { found } : {}) };
 };
@@ -1078,7 +1078,7 @@ export const draftHost = (id: string): AskingHost => ({
     if (!c) throw new Error("The card isn't on the canvas any more.");
     await keepDraftAnswers(id);
     const found = foundOf(s).map((l) => ({ id: l.ref, text: l.text.slice(0, 1200), source: l.from.slice(0, 300), whose: (l.whose ?? "people said").slice(0, 40) })).slice(0, 20);
-    const r = await askCardTurn({ card: { kind: c.kind, title: c.title.slice(0, 400), description: (c.description ?? "").slice(0, 600), above: aboveCard(j.card) }, step: j.step, found, asking: askingIn(s, { said: "", terms: useTerms.getState().terms }) }, step(id), signal);
+    const r = await askCardTurn({ card: { kind: c.kind, title: c.title.slice(0, 400), description: (c.description ?? "").slice(0, 600), above: aboveCard(j.card) }, step: j.step, found, asking: askingIn(s, { said: "", terms: useTerms.getState().terms, memory: draftHost(id).memory?.() }) }, step(id), signal);
     if (r.role) setDraftJob(id, (x) => ({ ...x, role: r.role }));
     return r;
   },

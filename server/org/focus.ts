@@ -7,6 +7,7 @@ import type { MarketLine } from "@/market/types";
 import { sanitizeFindQuestions } from "@/space/find";
 import { readLinks, realDeps, type MarketDeps } from "./market";
 import { NotFoundError, type OrgStore } from "./store";
+import { recall } from "./memory";
 
 /**
  * Finding the problem to focus on for a goal, in the core (src/goals/focus.ts): a look on the web
@@ -59,7 +60,10 @@ export async function lookForGoal(store: OrgStore, goalId: string, o: { query?: 
   if (info) await store.changeGoalWork(goalId, (w) => ({ ...w, focus: { looks: [...(w.focus?.looks ?? []), look].slice(-FOCUS_LIMITS.looks) } }));
   if (!o.open) return { look, questions: [] };
   emit("Qalam AI is working out what to ask you");
-  const m = focusQuestionsMaterial({ org, about: aboutLine, goal, chain, market, lines });
+  const base = focusQuestionsMaterial({ org, about: aboutLine, goal, chain, market, lines });
+  // What's already known about the goal (src/memory/): what they told Help me find one or any other conversation, their pages, decisions.
+  const recalled = await recall(store, { flow: "focus", key: "", about: { product: goal.product ?? null, goal: goalId }, words: [goal.title, ...chain.map((g) => g.title)].join("\n") }, { broad: true, sent: base.text }).catch(() => null);
+  const m = recalled?.block ? { text: `${base.text}\n\n${recalled.block}`, known: [...base.known, ...recalled.hay.split("\n").filter(Boolean)] } : base;
   const questions = await deps.structured<unknown>(focusQuestionsCall(m), signal).then(
     async (r) => {
       const kept = sanitizeFindQuestions(r.data, m);

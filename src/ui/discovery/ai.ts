@@ -3,6 +3,8 @@ import { interviewTurnCall, type CallContext } from "@/ai/discovery";
 import { sanitizeTurn } from "@/asking/sanitize";
 import type { AskTurn, AskingState } from "@/asking/types";
 import { askingIn } from "@/asking/wire";
+import type { AskedAbout, AskedFlow } from "@/memory/types";
+import { recallKnown } from "@/org/memory";
 import { SAMPLE_DRAFT_RAW } from "@/ai/fixtures-discovery";
 import type { InterviewAnswer } from "@/discovery/interview";
 import { replayStream } from "../ai/replay";
@@ -29,9 +31,11 @@ export async function offline(opts: CallOpts = {}) {
  * A turn of the interview after the product interview's own questions (src/asking/), checked here as
  * the board's other calls are. Without AI, or for the sample, there's nothing more to ask.
  */
-export async function runInterviewTurn(answers: InterviewAnswer[], s: AskingState, opts: CallOpts = {}): Promise<AskTurn> {
+export async function runInterviewTurn(answers: InterviewAnswer[], s: AskingState, opts: CallOpts & { memory?: { flow: AskedFlow; key: string; about: AskedAbout } | null } = {}): Promise<AskTurn> {
   if (await offline(opts)) return { questions: [], lookups: [], done: true, understood: [], terms: [], choices: [] };
-  const b = { stage: "interview-turn" as const, answers, asking: askingIn(s, { said: "" }) };
+  // What's already known (src/memory/): other conversations' answers, their material, the best-backed pages.
+  const known = opts.memory ? await recallKnown({ ...opts.memory, words: answers.map((a) => `${a.question} ${a.answer}`).join("\n"), broad: true }) : null;
+  const b = { stage: "interview-turn" as const, answers, asking: askingIn(s, { said: "", ...(opts.memory ? { memory: opts.memory } : {}) }), ...(known ? { known } : {}) };
   const { data } = await callAI<unknown>(PATH, b, opts.onProgress, opts.signal);
   return sanitizeTurn(data, interviewTurnCall(b).check, () => {});
 }

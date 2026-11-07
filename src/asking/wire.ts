@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { Terms } from "@/terms/types";
 import { clashes } from "@/terms/fold";
+import { ASKED_FLOWS, type AskedAbout, type AskedFlow } from "@/memory/types";
 import { DONT_KNOW_STREAK } from "./dontknow";
 import { answersOf, theirWords } from "./engine";
 import type { TurnCheck } from "./sanitize";
@@ -31,6 +32,14 @@ export const AskingIn = z
     clashes: z.array(z.object({ word: z.string().max(80), term: z.string().max(80) })).optional(),
     said: z.string().max(8000),
     askFirst: z.boolean().optional(),
+    /** Which conversation this is in the project's memory (src/memory/): what the core recalls for, and leaves out as read already. */
+    memory: z
+      .object({
+        flow: z.enum(ASKED_FLOWS as [AskedFlow, ...AskedFlow[]]),
+        key: z.string().min(1).max(160),
+        about: z.object({ product: z.string().max(120).nullable(), board: z.string().max(120).optional(), card: z.string().max(120).optional(), goal: z.string().max(120).optional(), topic: z.string().max(120).optional(), source: z.string().max(120).optional() }),
+      })
+      .optional(),
   })
   .superRefine((v, ctx) => {
     if (JSON.stringify(v).length > ASKING_MAX_CHARS) ctx.addIssue({ code: "custom", message: "The conversation is too long to send at once" });
@@ -38,7 +47,7 @@ export const AskingIn = z
 export type AskingInT = z.infer<typeof AskingIn>;
 
 /** What a route is sent about the interview so far. `said`: their own words in what they asked (their answers are added). */
-export function askingIn(s: AskingState, o: { said: string; terms?: Terms }): AskingInT {
+export function askingIn(s: AskingState, o: { said: string; terms?: Terms; memory?: { flow: AskedFlow; key: string; about: AskedAbout } | null }): AskingInT {
   const answers = answersOf(s);
   const last = s.rounds.length - 2;
   const rounds = s.rounds.map((r, i) => ({
@@ -59,6 +68,7 @@ export function askingIn(s: AskingState, o: { said: string; terms?: Terms }): As
     ...(o.terms ? { clashes: clashes(o.terms, said).slice(0, 8) } : {}),
     said: clip(said, 7000),
     ...(s.askFirst ? { askFirst: true } : {}),
+    ...(o.memory ? { memory: o.memory } : {}),
   };
   // Over the size: older answers shorter, then fewer lines a lookup, until it fits.
   for (const cut of [120, 60, 30]) {

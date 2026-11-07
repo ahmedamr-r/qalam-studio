@@ -16,6 +16,7 @@ vi.mock("../index/registry", () => ({
 }));
 
 const { AskCardBody, askCard, cardMaterial } = await import("./ask-card");
+const { rememberRound } = await import("./memory");
 
 let dir: string;
 let store: OrgStore;
@@ -62,6 +63,18 @@ describe("a turn of the questions before a card's draft", () => {
     expect(t.lookups.map((l) => l.kind)).toEqual(["project"]);
     expect(t.role).toBe("idea");
     expect(t.done).toBe(false);
+  });
+
+  it("reads what another conversation was told about the card, and may rest a settled point on it", async () => {
+    await rememberRound(store, { flow: "find", key: "t1", about: { product: null, card: "c1" }, answers: [{ qid: "slot", q: "Which delivery window do parents miss most?", a: "The 8 to 10 morning one", how: "own" }] }, { who: { id: "u1" } });
+    const s = stub({ questions: [], lookups: [], done: true, understood: [{ text: "Parents miss the morning window", from: ["m1"] }], terms: [], role: "none" });
+    const b = { ...body(), asking: askingIn(emptyAsking(), { said: "", memory: { flow: "card", key: "t2", about: { product: null, card: "c1" } } }) };
+    const t = await askCard(store, b, () => {}, signal(), s);
+    const sent = JSON.stringify((s as unknown as { structured: { mock: { calls: unknown[][] } } }).structured.mock.calls[0][0]);
+    expect(sent).toContain("Asked before, in other conversations");
+    expect(sent).toContain("m1 · Help me find one");
+    expect(sent).toContain("The 8 to 10 morning one");
+    expect(t.understood).toEqual([{ text: "Parents miss the morning window", from: ["m1"] }]);
   });
 
   it("may say nothing's open, and the draft runs at once", async () => {

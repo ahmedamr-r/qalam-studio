@@ -255,7 +255,7 @@ function Interview({ followups }: { followups: boolean }) {
       setAsking(next);
       saveInterview({ asking: next });
     },
-    turn: (s, signal) => runInterviewTurn(core, s, { signal, onProgress: (tokens) => setBusy((b) => (b ? { ...b, tokens } : b)) }),
+    turn: (s, signal) => runInterviewTurn(core, s, { signal, onProgress: (tokens) => setBusy((b) => (b ? { ...b, tokens } : b)), memory: memoryOf() }),
     lookup: async () => ({ lines: [] }),
     generate: async (s) => void draft(core, own(s)),
   });

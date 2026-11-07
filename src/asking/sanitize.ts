@@ -23,6 +23,8 @@ export interface TurnCheck {
   held?: readonly { id: string; title: string }[];
   /** How many answers in a row said they don't know: from DONT_KNOW_STREAK on, a question for a fact (one a tool could answer) waits. */
   streak?: number;
+  /** What was recalled for the turn (m1…, src/memory/recall.ts): a settled point may rest on it. */
+  memory?: readonly string[];
   /** Lookups so far: never the same twice. */
   lookups: readonly Pick<Lookup, "id" | "kind" | "query">[];
   /** Their own words: what they asked and what they typed, never a pick. A term must be one of them. */
@@ -47,7 +49,7 @@ const one = (s: string) => s.replace(/\s+/g, " ").trim();
 const str = (v: unknown, max: number) => (typeof v === "string" ? one(v).slice(0, max) : "");
 const ids = (v: unknown) => list(v).filter((x): x is string => typeof x === "string").map((x) => x.trim()).filter(Boolean).slice(0, 12);
 /** The call's own ids out of words people read. */
-const clean = (s: string) => one(withoutIds(s, () => undefined, "qlfwapck"));
+const clean = (s: string) => one(withoutIds(s, () => undefined, "qlfwapckm"));
 /** A whole word or phrase of theirs. */
 const inWords = (hay: string, words: string) => {
   const w = sameWords(words);
@@ -186,7 +188,7 @@ export function sanitizeTurn(raw: unknown, c: TurnCheck, dropped?: (why: string,
       drop("a settled point with nothing left once what wasn't sent is out", item);
       continue;
     }
-    const from = ids(x.from).filter((a) => known.has(a) || questionIds.has(a) || a === "said");
+    const from = ids(x.from).filter((a) => known.has(a) || questionIds.has(a) || a === "said" || !!c.memory?.includes(a));
     understood.push({ text, ...(from.length ? { from } : {}) });
   }
 

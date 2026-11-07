@@ -57,6 +57,16 @@ export async function forgetMemory(id: string): Promise<void> {
   }
 }
 
+/** What's already known, for a turn the window checks itself (the board interview, a brain dump): none when the core can't say. */
+export async function recallKnown(o: { flow: AskedFlow; key: string; about: AskedAbout; words: string; broad?: boolean; sent?: string }): Promise<{ block: string; hay: string; ids: string[] } | null> {
+  try {
+    const r = await orgJson<{ block: string; hay: string; ids: string[] }>("/memory/recall", { method: "POST", json: { ...o, words: o.words.slice(0, 4000) } });
+    return r.block ? r : null;
+  } catch {
+    return null;
+  }
+}
+
 /** A round's answers remembered. False when it didn't reach the core: the next round sends it again. */
 export async function rememberRound(o: { flow: AskedFlow; key: string; about: AskedAbout; answers: RoundAnswer[] }): Promise<boolean> {
   if (!o.answers.length) return true;

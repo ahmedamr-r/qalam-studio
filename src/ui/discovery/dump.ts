@@ -45,7 +45,7 @@ import { arrangeNew, underCard, type Proposal } from "@/discovery/proposals";
 import { partialPlace, sanitizePlace, type PlaceContext } from "@/discovery/place";
 import { answerWords, initialFlow, resolvedAnswers, type FlowState } from "../ai/questionFlow";
 import { toQuestion } from "../ai/plan";
-import { rememberRound } from "@/org/memory";
+import { recallKnown, rememberRound } from "@/org/memory";
 import { openTurn, patchTurn } from "../ai/chats";
 import { appendThought, endAgent, narrate, startAgent, updateAgent } from "../ai/agents";
 import { canvasProduct } from "@/space/view";
@@ -258,7 +258,7 @@ export async function readDump(sourceId: string) {
   await setSession(sourceId, (d) => ({ ...d, phase: "reading", failed: undefined }));
   const { tree, cards } = board();
   try {
-    const { raw, sample, model } = await call(sourceId, reading(s.dump), { stage: "dump-read", product: product(), dump: s.text, tree, ...aimOf(s.dump, cards) }, () => sampleRaw(SAMPLE_DUMP_READ_RAW, cards), 3500);
+    const { raw, sample, model } = await call(sourceId, reading(s.dump), { stage: "dump-read", product: product(), dump: s.text, tree, ...aimOf(s.dump, cards), ...(await knownFor(sourceId)) }, () => sampleRaw(SAMPLE_DUMP_READ_RAW, cards), 3500);
     const r = sanitizeRead(raw, s.text, cards, Date.now(), s.dump.within, !!s.dump.file, openingOf(s.dump.aim));
     // The wrong file: what it is, and the kind that would help (they add another, or have it read anyway).
     if (s.dump.file && (!r.bears || !r.fragments.length)) {
@@ -313,6 +313,23 @@ async function keepRound(sourceId: string) {
     const r = withRound(x.text, x.blocks ?? [], roundAnswers(d)[n - 1] ?? [], n);
     return r.text === x.text ? x : { ...x, text: r.text, blocks: r.blocks };
   });
+}
+
+/** What's already known for a dump's reading and rounds (src/memory/), what the dump holds itself left out; nothing when the core can't say. */
+async function knownFor(sourceId: string): Promise<{ known?: string }> {
+  const s = sourceOf(sourceId);
+  const session = sessionOf(s);
+  if (!s || !session) return {};
+  const goal = session.aim?.goal;
+  const r = await recallKnown({
+    flow: session.aim ? (goal ? "focus" : "find") : "dump",
+    key: sourceId,
+    about: { product: s.product ?? null, source: sourceId, ...(goal ? { goal: goal.id, card: goal.card } : {}) },
+    words: s.text.slice(0, 2000),
+    broad: !!session.aim,
+    sent: s.text.slice(0, 20_000),
+  });
+  return r ? { known: r.block } : {};
 }
 
 /**
@@ -402,7 +419,7 @@ export async function readAnswers(sourceId: string, o: { looked?: boolean } = {}
   const rounds = roundAnswers(session).map((answers, i) => ({ answers: answers.map((a) => ({ question: a.question.slice(0, 200), answer: a.answer })), ...(session.buckets[i]?.analysis ? { analysis: session.buckets[i].analysis!.slice(0, 1500) } : {}) }));
   const look = mayLook(session, !!o.looked);
   // The rounds go as rounds; the source's text without them, so they aren't read twice.
-  const body = { stage: "dump-followup", product: product(), dump: s.text.slice(0, session.base ?? s.text.length), tree, ...aimOf(session, cards), ...fields, rounds, ...(session.held?.length ? { held: session.held.map((q) => q.title.slice(0, 200)).slice(0, 20) } : {}), ...(look ? { look } : {}) };
+  const body = { stage: "dump-followup", product: product(), dump: s.text.slice(0, session.base ?? s.text.length), tree, ...aimOf(session, cards), ...(await knownFor(sourceId)), ...fields, rounds, ...(session.held?.length ? { held: session.held.map((q) => q.title.slice(0, 200)).slice(0, 20) } : {}), ...(look ? { look } : {}) };
   const recorded = () => sampleRaw(SAMPLE_DUMP_FOLLOWUP_RAW[Math.min(session.buckets.length, SAMPLE_DUMP_FOLLOWUP_RAW.length) - 1], cards);
   try {
     const { raw, sample, model } = await call(sourceId, o.looked ? "Qalam AI is reading what it found, with your answers" : "Qalam AI is reading your answers", body, recorded, 2500);

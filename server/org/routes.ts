@@ -62,7 +62,7 @@ import { aboutTopic, lookOnline } from "./posts";
 import { namesSomething, readFirstAnswer, scanNow, startScan, steerQuestions, steerScan, stopScan } from "./scan";
 import { steerRound } from "@/scan/steer";
 import { askBrief, briefRequestOf, writeCardBrief } from "./briefs";
-import { forgetAsked, listMemory, RememberBody, rememberRound } from "./memory";
+import { forgetAsked, listMemory, RecallBody, recallFor, RememberBody, rememberRound } from "./memory";
 import { AskingIn } from "@/asking/wire";
 import { askedOf } from "@/discovery/brief";
 import { askScanPlan, firstBuild, keepAnswers, keepAudience, planAudiences, scanShare, writeBrief } from "./scan-plan";
@@ -1258,6 +1258,13 @@ export function orgRoutes(): Hono<Env> {
     return c.json({ kept: await rememberRound(c.get("store"), b.data, { tab: tabOf(c.req.raw.headers) }) });
   });
   r.delete("/api/org/:org/memory/:id", async (c) => c.json({ ok: await forgetAsked(c.get("store"), c.req.param("id"), { tab: tabOf(c.req.raw.headers) }) }));
+  // What's already known, for a turn the window checks itself (the board interview, a brain dump's rounds).
+  r.post("/api/org/:org/memory/recall", async (c) => {
+    const b = RecallBody.safeParse(await c.req.json().catch(() => null));
+    if (!b.success) return bad("Say which conversation, and what it's about");
+    const known = await recallFor(c.get("store"), { memory: { flow: b.data.flow, key: b.data.key, about: b.data.about } }, { flow: b.data.flow, words: b.data.words, ...(b.data.broad ? { broad: true } : {}), ...(b.data.sent ? { sent: b.data.sent } : {}) });
+    return c.json({ block: known.block, hay: known.hay, ids: known.ids });
+  });
   // The project's words (hub/terms.md): a term added, fixed or taken off.
   r.get("/api/org/:org/terms", async (c) => c.json({ terms: await c.get("store").getTerms() }));
   r.put("/api/org/:org/terms", async (c) => {

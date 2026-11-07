@@ -19,6 +19,7 @@ import type { Competitor, MarketLine } from "@/market/types";
 import { nanoid } from "nanoid";
 import { readPage } from "./pages";
 import type { OrgStore } from "./store";
+import { recall } from "./memory";
 
 /**
  * The first run's lookups, in the core: what the web says about the company (then, in turn, its
@@ -306,7 +307,10 @@ export async function findQuestions(store: OrgStore, what: FindWhat, signal?: Ab
   const market = await store.getMarket();
   if (!knowsMarket(market)) return [];
   const about = await store.getAbout();
-  const m = findQuestionsMaterial({ what, org: store.info.name, about: [about.context, about.audience].filter((x) => x.trim()).join(" "), market });
+  const base = findQuestionsMaterial({ what, org: store.info.name, about: [about.context, about.audience].filter((x) => x.trim()).join(" "), market });
+  // What's already known (src/memory/): what they've told any other conversation lately, their best-backed pages.
+  const known = await recall(store, { flow: "find", key: "", about: { product: null }, words: `${what} ${about.context}` }, { broad: true, sent: base.text }).catch(() => null);
+  const m = known?.block ? { text: `${base.text}\n\n${known.block}`, known: [...base.known, ...known.hay.split("\n").filter(Boolean)] } : base;
   const { data, model } = await deps.structured<unknown>(findQuestionsCall(m), signal);
   const questions = sanitizeFindQuestions(data, m);
   await store.putTrace({ id: nanoid(10), projectId: "market", kind: "find-questions", at: Date.now(), ...(model ? { model } : {}), what, answer: data, kept: questions.map((q) => q.title) } as { id: string; projectId: string }).catch(() => {});
