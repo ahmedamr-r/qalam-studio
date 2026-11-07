@@ -118,7 +118,7 @@ describe("Supabase's answers, read by code", () => {
   });
 
   it("signs in as a client with a secret, and revokes in Supabase's own way", () => {
-    expect(connectorDef("supabase")?.mcp).toMatchObject({ clientAuth: "client_secret_basic", revoke: { url: "https://api.supabase.com/v1/oauth/revoke" } });
+    expect(connectorDef("supabase")?.mcp).toMatchObject({ scope: "organizations:read projects:read database:read", clientAuth: "client_secret_basic", revoke: { url: "https://api.supabase.com/v1/oauth/revoke" } });
     expect(connectorDef("supabase")?.mcp?.url).toBe("https://mcp.supabase.com/mcp?read_only=true&features=account%2Cdatabase");
     expect(JSON.parse(revokeBody({ client_id: "c1", client_secret: "s1" }, "r1"))).toEqual({ client_id: "c1", client_secret: "s1", refresh_token: "r1" });
   });

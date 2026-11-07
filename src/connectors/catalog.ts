@@ -169,7 +169,9 @@ const SUPABASE: ConnectorDef = {
   label: "Supabase",
   group: "database",
   feeds: "numbers",
-  mcp: { url: `${SUPABASE_MCP}?read_only=true&features=account%2Cdatabase`, clientAuth: "client_secret_basic", revoke: { url: "https://api.supabase.com/v1/oauth/revoke" } },
+  // Only the scopes Qalam uses: listing projects, and querying one. Left unset, the sign-in asked for every read scope,
+  // secrets:read among them, through which a token could read a project's service-role key (November 2026).
+  mcp: { url: `${SUPABASE_MCP}?read_only=true&features=account%2Cdatabase`, scope: "organizations:read projects:read database:read", clientAuth: "client_secret_basic", revoke: { url: "https://api.supabase.com/v1/oauth/revoke" } },
   imports: false,
 };
 
