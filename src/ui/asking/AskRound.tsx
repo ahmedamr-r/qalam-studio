@@ -121,7 +121,7 @@ function Offer({ query, onYes, onNo, onStop }: { query: string; onYes: () => voi
   );
 }
 
-const HOW_NOTE = { pick: "Qalam AI's pick, which you agreed to", left: "Left" } as const;
+const HOW_NOTE = { pick: "Qalam AI's pick, which you agreed to", left: "Left", unknown: "You don't know" } as const;
 
 /** A round answered, folded in the thread: each answer, Qalam AI's picks marked as its own. */
 export function AnsweredRound({ state, index }: { state: AskingState; index: number }) {
@@ -134,9 +134,10 @@ export function AnsweredRound({ state, index }: { state: AskingState; index: num
         {said.map((a, i) => (
           <div key={i} className="flex flex-col gap-[2px]">
             <dt className="text-fg-subtle">{a.question}</dt>
-            <dd className={a.how === "left" ? "text-fg-subtle" : "text-fg"} dir="auto">
-              {a.how === "left" ? HOW_NOTE.left : a.text}
+            <dd className={a.how === "left" || (a.how === "unknown" && !a.text) ? "text-fg-subtle" : "text-fg"} dir="auto">
+              {a.how === "left" ? HOW_NOTE.left : a.how === "unknown" && !a.text ? HOW_NOTE.unknown : a.text}
               {a.how === "pick" && <span className="ml-[6px] text-micro text-fg-muted">· {HOW_NOTE.pick}</span>}
+              {a.how === "unknown" && a.text && <span className="ml-[6px] text-micro text-fg-muted">· {HOW_NOTE.unknown}</span>}
             </dd>
           </div>
         ))}
@@ -247,6 +248,11 @@ export function SettledCard({ state, go, onGo, onOff, onTerm, onChoice }: Settle
             )}
           </div>
         ))}
+      {s.unknown.length > 0 && (
+        <p className="text-caption text-fg-muted" dir="auto">
+          You don&apos;t know yet: {s.unknown.join("; ")}. I won&apos;t assume an answer.
+        </p>
+      )}
       {s.left.length > 0 && (
         <p className="text-caption text-fg-muted" dir="auto">
           Left open: {s.left.join("; ")}.

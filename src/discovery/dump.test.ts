@@ -287,6 +287,11 @@ describe("rounds of questions", () => {
     // One they left stays empty, and reads as skipped: never a preference, never their words.
     const left = roundAnswers(closeDumpRound(session(r), { ...answered(session(r)), answers: {} }, "analyzing"))[0];
     expect(left.every((a) => a.answer === "" && a.words === "" && a.said === "")).toBe(true);
+    // "I don't know" reads as that, and never goes into the text as their words.
+    const unsure = roundAnswers(closeDumpRound(session(r), { ...answered(session(r)), answers: { "tickets-source": { kind: "text", text: "no idea" } } }, "analyzing"))[0];
+    const tickets = unsure.find((a) => a.questionId === "tickets-source")!;
+    expect(tickets).toMatchObject({ answer: "(they don't know: “no idea”)", words: "", said: "", how: "unknown" });
+    expect(withRound("Their dump.", [], unsure, 1).text).toBe("Their dump.");
     expect(round[2].words).toBe("Omar's guess from a busy week, we never counted them.");
     const brief = briefFromDump("d1", s, 5);
     expect(brief.map((a) => a.id)).toEqual(["dump:d1:which-goal", "dump:d1:subscription-need", "dump:d1:tickets-source", "dump:d1:singles"]);

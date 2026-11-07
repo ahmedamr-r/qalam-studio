@@ -41,6 +41,11 @@ describe("the questions before a card's draft", () => {
     expect(answered([{ ...own, form: answer(own.form, "who", { kind: "single", value: OTHER, other: "Night riders" }) }])[0].words).toBe("Night riders");
     expect(answered([{ ...own, form: answer(own.form, "who", { kind: "skipped" }) }])).toEqual([]);
     expect(answered([{ ...own, form: answer(own.form, "who", { kind: "single", value: "airport", pick: true }) }])).toEqual([]);
+    // "I don't know", pressed or typed, is never a quote of theirs.
+    expect(answered([{ ...own, form: answer(own.form, "who", { kind: "skipped", unknown: true }) }])).toEqual([]);
+    let unsure = round([openQuestion("opportunity")]);
+    unsure = { ...unsure, form: answer(unsure.form, OPEN_ID, { kind: "text", text: "no idea, that's why I'm here" }) };
+    expect(answered([unsure])).toEqual([]);
     expect(answerWords({ id: "x", kind: "multi", title: "", groups: [{ id: "g", label: "", options: segment.options }] }, { kind: "multi", values: ["first-time"], custom: ["drivers' friends"] }).text).toBe("First-time riders; drivers' friends");
   });
 

@@ -38,6 +38,7 @@ export function askingRules(who: AskWho, o: AskingOpts = {}): string {
     look,
     `- Never ask what the material or an earlier answer already settles, and never ask again a question that was asked, answered or left. One they left isn't a decision: assume no answer to it.`,
     `- An answer marked as your recommendation they agreed to is agreement with you, not something they told you: never treat it as their words or as evidence.`,
+    `- What they said they don't know is an answer: never ask it again in other words. Where it matters, look it up or say how they could find out. After several in a row, ask only what they can decide, or set done.`,
     `- Each choice question has 2–4 options written for this case (never "Option A"), a one-line description each, and your recommendation. A number they may know is an open question asking for the figure: never offer ranges. An open question (no options) only for what they know and you can't find out.`,
     `- Ask until nothing that would change what's proposed is left open, then set done and ask nothing. Never pad a round. A clear request with enough to go on may need no questions at all.`,
     `- understood: what's settled so far, a short line each, in their words where you can, each with the ids it rests on (an answer's question id, a found line's id, or "said" for what they asked).`,

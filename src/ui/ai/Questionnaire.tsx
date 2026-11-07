@@ -219,6 +219,11 @@ export function Questionnaire({ questions, state, onChange, onSubmit, review, ti
           </Button>
         )}
         <div className="flex-1" />
+        {q?.dontKnow && cur !== REVIEW && (
+          <Button size="sm" variant="ghost" onClick={() => dispatch({ type: "unknown" })}>
+            I don&apos;t know
+          </Button>
+        )}
         {q?.optional && cur !== REVIEW && (
           <Button size="sm" variant="ghost" onClick={() => dispatch({ type: "skip" })}>
             Skip

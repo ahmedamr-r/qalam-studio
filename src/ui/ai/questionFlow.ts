@@ -6,6 +6,7 @@
  * on an earlier answer (dependsOn) simply appears or disappears; only answers are stored.
  */
 
+import { saysDontKnow } from "@/asking/dontknow";
 import type { ToolAsk } from "@/connectors/suggest";
 
 export interface QOption {
@@ -23,6 +24,8 @@ interface QBase {
   why?: string;
   /** Can be skipped. */
   optional?: boolean;
+  /** Can be answered "I don't know": a question about their own work, where not knowing is an answer of its own. */
+  dontKnow?: boolean;
   /** Single choice: the option Qalam AI would pick (pre-selected). */
   recommended?: string;
   /** Single choice: the option Qalam AI would pick, marked and not picked: what they haven't chosen isn't what they said. */
@@ -78,7 +81,8 @@ export type Answer =
   | { kind: "single"; value: string; other?: string; pick?: true }
   | { kind: "multi"; values: string[]; custom: string[]; pick?: true }
   | { kind: "text"; text: string }
-  | { kind: "skipped" };
+  /** Left, or (`unknown`) "I don't know": nothing they said, so nothing to quote. */
+  | { kind: "skipped"; unknown?: true };
 export type Answers = Record<string, Answer>;
 
 /** The value of a single-choice answer typed as "Other…". */
@@ -101,6 +105,8 @@ export type FlowAction =
   | { type: "next" }
   | { type: "back" }
   | { type: "skip" }
+  /** "I don't know": on, like Skip, but it says so. */
+  | { type: "unknown" }
   | { type: "edit"; id: string }
   | { type: "submit" }
   | { type: "reopen" };
@@ -135,7 +141,7 @@ export function answerOf(q: Question, answers: Answers): Answer {
 const groupCount = (g: MultiGroup, a: { values: string[]; custom: string[] }) => a.values.filter((v) => g.options.some((o) => o.value === v)).length + (g.custom ? a.custom.length : 0);
 
 export function validate(q: Question, a: Answer): string | null {
-  if (a.kind === "skipped") return q.optional ? null : "Answer this one to go on.";
+  if (a.kind === "skipped") return q.optional || (a.unknown && q.dontKnow) ? null : "Answer this one to go on.";
   if (a.kind === "single" && q.kind === "single") {
     if (!a.value) return q.optional ? null : "Pick an answer.";
     if (a.value === OTHER) return a.other?.trim() ? null : "Type your answer.";
@@ -235,6 +241,10 @@ export function reduceFlow(s: FlowState, action: FlowAction, qs: Question[], rev
       if (!q?.optional) return { state: s };
       return move(setAnswer(s, q, { kind: "skipped" }, qs), cur, qs, review);
     }
+    case "unknown": {
+      if (!q?.dontKnow) return { state: s };
+      return move(setAnswer(s, q, { kind: "skipped", unknown: true }, qs), cur, qs, review);
+    }
     case "back": {
       const i = cur === REVIEW ? qs.length : qs.findIndex((x) => x.id === cur);
       const prev = qs[i - 1];
@@ -262,41 +272,49 @@ export function optionAt(q: Question, n: number): string | null {
   return null;
 }
 
-/** How an answer was given: their own pick or words, Qalam AI's pick they agreed to with one press, or left unanswered. */
-export type AnswerHow = "own" | "pick" | "left";
+/** How an answer was given: their own pick or words, Qalam AI's pick they agreed to with one press, "I don't know" (pressed, typed or picked), or left unanswered. */
+export type AnswerHow = "own" | "pick" | "left" | "unknown";
 
 /**
  * An answer as the model reads it and as it's kept: every label it picked (never a description), nothing
  * cut, what they typed apart from what they picked, and how it was given. A skipped, untouched or empty
- * answer is left. Words they typed make it theirs even beside a pick.
+ * answer is left. Words they typed make it theirs even beside a pick. An answer that says they don't
+ * know (the control, or words or a choice saying it, `saysDontKnow`) is that: its words are kept to
+ * read, never as words of theirs a card may quote.
  */
 export function answerWords(q: Question, a: Answer | undefined): { text: string; typed: string; how: AnswerHow } {
   const left = { text: "", typed: "", how: "left" as const };
-  if (!a || a.kind === "skipped") return left;
+  const unknown = (text: string) => ({ text, typed: "", how: "unknown" as const });
+  if (!a) return left;
+  if (a.kind === "skipped") return a.unknown ? unknown("") : left;
   if (a.kind === "text") {
     const t = a.text.trim();
-    return t ? { text: t, typed: t, how: "own" } : left;
+    return !t ? left : saysDontKnow(t) ? unknown(t) : { text: t, typed: t, how: "own" };
   }
   if (a.kind === "single" && q.kind === "single") {
     if (a.value === OTHER) {
       const t = a.other?.trim() ?? "";
-      return t ? { text: t, typed: t, how: "own" } : left;
+      return !t ? left : saysDontKnow(t) ? unknown(t) : { text: t, typed: t, how: "own" };
     }
     const label = q.options.find((o) => o.value === a.value)?.label ?? "";
-    return label ? { text: label, typed: "", how: a.pick ? "pick" : "own" } : left;
+    if (!label) return left;
+    // Qalam AI's pick stays its pick, whatever it says.
+    return !a.pick && saysDontKnow(label) ? unknown(label) : { text: label, typed: "", how: a.pick ? "pick" : "own" };
   }
   if (a.kind === "multi" && q.kind === "multi") {
     const labels = q.groups.flatMap((g) => g.options.filter((o) => a.values.includes(o.value)).map((o) => o.label));
     const custom = a.custom.map((c) => c.trim()).filter(Boolean);
     if (!labels.length && !custom.length) return left;
-    return { text: [...labels, ...custom].join("; "), typed: custom.join("; "), how: a.pick && !custom.length ? "pick" : "own" };
+    const all = [...labels, ...custom];
+    if (!a.pick && all.every(saysDontKnow)) return unknown(all.join("; "));
+    return { text: all.join("; "), typed: custom.join("; "), how: a.pick && !custom.length ? "pick" : "own" };
   }
   return left;
 }
 
 /** An answer in a few words, for the review step and the chat. Never for the model: a long multi answer is cut ("+N more"); use answerWords. */
 export function summarize(q: Question, a: Answer): string {
-  if (a.kind === "skipped") return "Skipped";
+  if (a.kind === "skipped") return a.unknown ? "Don't know" : "Skipped";
   if (a.kind === "single" && q.kind === "single") {
     if (a.value === OTHER) return a.other?.trim() || "—";
     return q.options.find((o) => o.value === a.value)?.label ?? "—";

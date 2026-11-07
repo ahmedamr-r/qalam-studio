@@ -4,7 +4,7 @@ import { editTerms } from "@/terms/edit";
 import { emptyTerms } from "@/terms/types";
 import { emptyAsking, applyTurn } from "./engine";
 import { sanitizeTurn, type TurnCheck } from "./sanitize";
-import { askingBlock, askingIn, checkOf } from "./wire";
+import { askingBlock, askingIn, checkOf, unknownStreak } from "./wire";
 
 const q = (id: string, title: string, x: Record<string, unknown> = {}) => ({ id, title, why: "", multi: false, options: [], recommended: [], allowOther: false, from: "none", look_for: "", after: [], ...x });
 const terms = editTerms(emptyTerms(), { op: "add", term: "Basket", means: "The order before checkout", avoid: ["cart"] }, { now: 1, id: () => "t1" });
@@ -33,6 +33,21 @@ describe("a turn as code keeps it", () => {
     const c = checkOf(askingIn(s, { said: "" }), { who: "team", hay: "", kinds: [] });
     expect(c.held?.map((h) => h.id)).toEqual(["b"]);
     expect(c.asked.some((a) => a.id === "b")).toBe(false);
+  });
+
+  it("after several don't-knows in a row, asks no more facts: only what they can decide", () => {
+    const answered = (how: "own" | "unknown" | "left", i: number) => ({ id: `a${i}`, title: `Question ${i}?`, answer: how === "own" ? "Yes" : "", how });
+    const wire = (hows: ("own" | "unknown" | "left")[]) => ({ ...askingIn(emptyAsking(), { said: "" }), rounds: [{ asked: hows.map(answered) }] });
+    expect(unknownStreak(wire(["own", "unknown", "left", "unknown", "unknown"]))).toBe(3);
+    expect(unknownStreak(wire(["unknown", "unknown", "own"]))).toBe(0);
+    const streak = wire(["unknown", "unknown", "unknown"]);
+    expect(askingBlock(streak)).toContain("Ask no more facts");
+    expect(askingBlock(wire(["unknown", "own"]))).not.toContain("Ask no more facts");
+    const fact = q("f", "What's the failure rate?", { from: "numbers", look_for: "failure rate" });
+    const decide = q("d", "Which city goes first?");
+    const t = sanitizeTurn({ questions: [fact, decide] }, checkOf(streak, { who: "team", hay: "", kinds: [] }));
+    expect(t.questions.map((x) => x.id)).toEqual(["d"]);
+    expect(sanitizeTurn({ questions: [fact, decide] }, checkOf(wire(["unknown"]), { who: "team", hay: "", kinds: [] })).questions.map((x) => x.id)).toEqual(["f", "d"]);
   });
 
   it("keeps what a question waits on only where it's a question or a lookup, and breaks a loop", () => {

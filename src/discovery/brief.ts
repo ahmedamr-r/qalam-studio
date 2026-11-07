@@ -71,8 +71,10 @@ const CODE_ASKED = new Set(["platform", "exists", "needs"]);
 
 /** What a brief's interview settled, as the brief keeps it: code's own questions' answers, then what else was settled, their words, and Qalam AI's picks they agreed to marked as such. */
 export function askedFromAnswers(answers: readonly AskAnswer[]): BriefAsked {
-  const of = (id: string) => answers.find((a) => a.id === id && a.how !== "left")?.text;
-  const more = answers.filter((a) => a.how !== "left" && a.text && !CODE_ASKED.has(a.id)).map((a) => ({ question: a.question, answer: a.how === "pick" ? `Qalam AI's pick, which they agreed to: ${a.text}` : a.text }));
+  // Only what was answered: what they left, or said they don't know, isn't an answer to write down.
+  const answered = (a: AskAnswer) => a.how === "own" || a.how === "pick";
+  const of = (id: string) => answers.find((a) => a.id === id && answered(a))?.text;
+  const more = answers.filter((a) => answered(a) && a.text && !CODE_ASKED.has(a.id)).map((a) => ({ question: a.question, answer: a.how === "pick" ? `Qalam AI's pick, which they agreed to: ${a.text}` : a.text }));
   const [platform, exists, needs] = [of("platform"), of("exists"), of("needs")];
   return { ...(platform ? { platform } : {}), ...(exists ? { exists } : {}), ...(needs ? { needs } : {}), ...(more.length ? { more } : {}) };
 }

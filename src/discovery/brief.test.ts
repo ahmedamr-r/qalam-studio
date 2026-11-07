@@ -174,7 +174,7 @@ describe("what was asked before a brief is written", () => {
   });
 
   it("keeps what the interview settled: code's own answers as before, the rest as said, Qalam AI's picks marked, nothing left", () => {
-    const a = (id: string, question: string, text: string, how: "own" | "pick" | "left") => ({ id, round: 0, question, text, typed: how === "own" ? text : "", how });
+    const a = (id: string, question: string, text: string, how: "own" | "pick" | "left" | "unknown") => ({ id, round: 0, question, text, typed: how === "own" ? text : "", how });
     expect(
       askedFromAnswers([
         a("platform", "Where does it run?", "A web app", "own"),
@@ -182,6 +182,8 @@ describe("what was asked before a brief is written", () => {
         a("q1", "Who first?", "Night nurses", "own"),
         a("q2", "Paid or free?", "Free to start", "pick"),
         a("q3", "Which country?", "", "left"),
+        a("q4", "How many nurses a shift?", "no idea", "unknown"),
+        a("exists", "What exists already?", "I don't know yet", "unknown"),
       ]),
     ).toEqual({ platform: "A web app", more: [{ question: "Who first?", answer: "Night nurses" }, { question: "Paid or free?", answer: "Qalam AI's pick, which they agreed to: Free to start" }] });
     expect(askedFromAnswers([a("needs", "Accounts or payments?", "Payments", "pick")])).toEqual({ needs: "Payments" });

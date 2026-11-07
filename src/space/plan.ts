@@ -160,11 +160,11 @@ export interface PlanSent {
   read: Map<string, { text: string; url?: string; title?: string; quote?: string }>;
 }
 
-/** An answer as proposing reads it: their own, Qalam AI's pick they agreed to, or left. */
+/** An answer as proposing reads it: their own, Qalam AI's pick they agreed to, "I don't know", or left. */
 export interface PlanAnswer {
   question: string;
   answer: string;
-  how: "own" | "pick" | "left";
+  how: "own" | "pick" | "left" | "unknown";
 }
 
 /** A plan's rounds from before, as answers. */
@@ -181,6 +181,7 @@ export function planMaterial(o: { org: string; about?: string; said: string; out
   const answers = new Map(o.answers.filter((a) => a.how === "own" && a.answer.trim()).map((a, i) => [`a${i + 1}`, { question: one(a.question), answer: a.answer }]));
   const picks = new Map(o.answers.filter((a) => a.how === "pick" && a.answer.trim()).map((a, i) => [`p${i + 1}`, { question: one(a.question), answer: a.answer }]));
   const leftOver = o.answers.filter((a) => a.how === "left").map((a) => one(a.question));
+  const notKnown = o.answers.filter((a) => a.how === "unknown").map((a) => one(a.question));
   const pieces = new Map<string, PlanPiece>();
   // Words found on their words (a lookup in their project) are behind no card on the canvas yet.
   const ordered = [...o.pieces.filter((p) => p.evidence), ...o.pieces.filter((p) => !p.evidence)].filter((p) => !p.card || ids.has(p.card)).slice(0, PLAN_LIMITS.pieces);
@@ -205,7 +206,8 @@ export function planMaterial(o: { org: string; about?: string; said: string; out
     ...(read.size ? [...read].map(([id, l]) => `- ${id} · ${one(l.text)}${l.quote ? ` “${one(l.quote)}”` : ""}${l.url ? ` · ${hostOf(l.url)}` : ""}`) : ["(nothing)"]),
   ].join("\n");
   const left = leftOver.length ? ["Asked and left unanswered, so you don't know these. Don't assume an answer:", ...leftOver.map((q) => `- ${q}`)].join("\n") : "";
-  const text = [body, left, o.company?.trim()].filter(Boolean).join("\n\n");
+  const unknown = notKnown.length ? ["They said they don't know these. Don't assume an answer; where it matters, say how they could find out:", ...notKnown.map((q) => `- ${q}`)].join("\n") : "";
+  const text = [body, left, unknown, o.company?.trim()].filter(Boolean).join("\n\n");
   // What words and numbers may come from: the material without its ids, and without the picks (agreement, not their words).
   const hay = body.replace(/\nYour recommendations they agreed to[^\n]*\n(?:- p\d+ ·[^\n]*\n?)*/u, "\n").replace(/(^|\s)[acqw]\d+ ·/gm, "$1");
   return { text, hay, cards, pieces, answers, picks, read };

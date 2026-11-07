@@ -495,6 +495,8 @@ export function roundAnswers(s: Pick<Rounds, "buckets">): DumpAnswer[][] {
       // the choice they picked (its label) or what they typed; `words` only what they typed, the only answer
       // words a card may rest on.
       const w = answerWords(q, answers[q.id]);
+      // "I don't know" is heard as that, and never goes into the text as words of theirs.
+      if (w.how === "unknown") return { questionId: q.id, question: q.title, answer: `(they don't know${w.text ? `: “${w.text.slice(0, 300)}”` : ""})`, words: "", said: "", how: w.how };
       const said = w.text.slice(0, 600);
       const answer = said ? answerText(q, answers[q.id]).slice(0, 600) : "";
       // A pick is heard as Qalam AI's recommendation they agreed to: agreement, never their words.

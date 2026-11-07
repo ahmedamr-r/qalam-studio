@@ -148,6 +148,31 @@ describe("answerWords: an answer as the model reads it", () => {
     expect(answerWords(text, { kind: "text", text: " Half the tickets " })).toEqual({ text: "Half the tickets", typed: "Half the tickets", how: "own" });
   });
 
+  it("hears \"I don't know\", pressed, typed or picked, as that: never words of theirs to quote", () => {
+    expect(answerWords(text, { kind: "skipped", unknown: true })).toEqual({ text: "", typed: "", how: "unknown" });
+    expect(answerWords(text, { kind: "text", text: "I don't know yet, I've only been here two weeks" })).toEqual({ text: "I don't know yet, I've only been here two weeks", typed: "", how: "unknown" });
+    expect(answerWords(single, { kind: "single", value: OTHER, other: "no idea" }).how).toBe("unknown");
+    const withDontKnow: Question = { ...single, options: [...(single as { options: { value: string; label: string }[] }).options, { value: "u", label: "We don't know yet" }] } as Question;
+    expect(answerWords(withDontKnow, { kind: "single", value: "u" })).toEqual({ text: "We don't know yet", typed: "", how: "unknown" });
+    // Qalam AI's pick stays its pick, whatever it says.
+    expect(answerWords(withDontKnow, { kind: "single", value: "u", pick: true }).how).toBe("pick");
+    // A figure, a guess or what there is stays their words.
+    expect(answerWords(text, { kind: "text", text: "Nothing on this yet" }).how).toBe("own");
+    expect(answerWords(text, { kind: "text", text: "Maybe 9% of ARR" }).how).toBe("own");
+    expect(summarize(text, { kind: "skipped", unknown: true })).toBe("Don't know");
+  });
+
+  it("takes \"I don't know\" only where the question offers it, and goes on", () => {
+    const qs: Question[] = [{ ...text, dontKnow: true, optional: false }, { ...single, id: "b" }];
+    const s = initialFlow(qs);
+    const on = reduceFlow(s, { type: "unknown" }, qs).state;
+    expect(on.answers.know).toEqual({ kind: "skipped", unknown: true });
+    expect(on.current).toBe("b");
+    expect(validate(qs[0], { kind: "skipped", unknown: true })).toBeNull();
+    // Not offered: nothing happens.
+    expect(reduceFlow(reduceFlow(s, { type: "next" }, qs).state, { type: "unknown" }, qs).state.answers.b).toBeUndefined();
+  });
+
   it("says when it's Qalam AI's pick, unless they added words of their own", () => {
     expect(answerWords(single, { kind: "single", value: "a", pick: true }).how).toBe("pick");
     expect(answerWords(multi, { kind: "multi", values: ["t0"], custom: [], pick: true }).how).toBe("pick");

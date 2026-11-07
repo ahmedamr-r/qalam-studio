@@ -77,6 +77,12 @@ describe("Qalam AI's picks", () => {
     const settled = settledOf({ ...done, end: { by: "done", at: 1 } });
     expect(settled.picks.map((a) => a.id)).toEqual(["who", "which"]);
     expect(settled.left).toEqual(["Why now?"]);
+    expect(settled.unknown).toEqual([]);
+    // "I don't know" is open too, apart from what was left, and Qalam AI's picks never fill it.
+    const unsure = closeRound(s, { ...form, answers: { ...form.answers, why: { kind: "skipped", unknown: true } } });
+    expect(answersOf(unsure).find((a) => a.id === "why")?.how).toBe("unknown");
+    expect(settledOf({ ...unsure, end: { by: "done", at: 1 } }).unknown).toEqual(["Why now?"]);
+    expect(settledOf({ ...unsure, end: { by: "done", at: 1 } }).left).toEqual([]);
   });
 
   it("keeps all of a long choice of several", () => {

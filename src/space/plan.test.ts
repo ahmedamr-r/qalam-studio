@@ -299,5 +299,13 @@ describe("what they left unanswered", () => {
     expect(m.hay).not.toContain("How many engineers?");
     expect([...m.answers.values()].map((a) => a.question)).toEqual(["Who pays first?"]);
   });
+
+  it("hears what they said they don't know apart: never an answer, never asked again", () => {
+    const m = planMaterial({ org: "Basket", said: "What now?", outline: [], answers: [{ question: "What's the failure rate?", answer: "no idea", how: "unknown" }, { question: "Who pays first?", answer: "Salons", how: "own" }], looks: [], pieces: [] });
+    expect(m.text).toContain("They said they don't know these");
+    expect(m.text).toContain("- What's the failure rate?");
+    expect(m.hay).not.toContain("no idea");
+    expect([...m.answers.values()].map((a) => a.answer)).toEqual(["Salons"]);
+  });
 });
 });

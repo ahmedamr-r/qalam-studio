@@ -182,7 +182,7 @@ export const decideChoice = (s: AskingState, id: string, keep: boolean): AskingS
 export const confirmed = (s: AskingState, now: number): AskingState => ({ ...s, confirmed: now });
 
 /** What was settled, for the card before generating: the points, Qalam AI's picks they agreed to, the words and decisions offered, and what's left open. */
-export function settledOf(s: AskingState): { asked: boolean; points: SettledPoint[]; picks: AskAnswer[]; terms: TermProposal[]; choices: ChoiceProposal[]; left: string[] } {
+export function settledOf(s: AskingState): { asked: boolean; points: SettledPoint[]; picks: AskAnswer[]; terms: TermProposal[]; choices: ChoiceProposal[]; left: string[]; unknown: string[] } {
   const answers = answersOf(s);
   return {
     asked: s.rounds.length > 0,
@@ -191,6 +191,8 @@ export function settledOf(s: AskingState): { asked: boolean; points: SettledPoin
     terms: s.terms.filter((t) => t.state !== "left"),
     choices: s.choices.filter((c) => c.state !== "left"),
     left: [...answers.filter((a) => a.how === "left").map((a) => a.question), ...s.held.map((q) => q.title)],
+    // What they said they don't know: open too, and not a question to ask them again.
+    unknown: answers.filter((a) => a.how === "unknown").map((a) => a.question),
   };
 }
 

@@ -4,7 +4,7 @@ import { setEngineState } from "@/ai/engine";
 import { briefRound } from "@/discovery/brief";
 import { sanitizePlace, type PlaceContext } from "@/discovery/place";
 import { saysNoIdea } from "@/scan/input";
-import { answerOf, initialFlow, reduceFlow, summarize, type FlowState } from "@/ui/ai/questionFlow";
+import { answerOf, answerWords, initialFlow, reduceFlow, summarize, type FlowState } from "@/ui/ai/questionFlow";
 import { sanitizeAsked, toQuestion } from "@/ui/ai/plan";
 import { findClaude } from "../../server/claude";
 import { writeCardBrief } from "../../server/org/briefs";
@@ -32,6 +32,12 @@ async function main() {
   const after = reduceFlow(flow, { type: "next" }, [q], false);
   const said = summarize(q, answerOf(q, after.state.answers));
   line(said === "—" && !after.error, "Enter on a card nobody touched answers nothing, and isn't refused", { said, error: after.error ?? null });
+
+  // "I don't know", pressed or typed, is an answer of its own, and never words a card may quote.
+  const open = toQuestion({ id: "o", title: "What's the failure rate by segment?", why: "", multi: false, options: [], recommended: [], allowOther: true });
+  const pressed = answerWords(open, answerOf(open, reduceFlow(initialFlow([open]), { type: "unknown" }, [open], false).state.answers));
+  const typedIt = answerWords(open, { kind: "text", text: "I don't know yet, I've only been here two weeks" });
+  line(pressed.how === "unknown" && typedIt.how === "unknown" && !pressed.typed && !typedIt.typed, "\"I don't know\" is its own answer, pressed or typed, and never a quote", { pressed, typed: typedIt });
 
   // A number is asked for, not bucketed.
   const asked = sanitizeAsked([{ id: "c", title: "Monthly churn?", why: "", multi: false, options: ["Under 3%", "3–7%", "Over 7%", "Don't know"].map((label, i) => ({ value: `o${i}`, label, description: "" })), recommended: [], allowOther: false }])[0];

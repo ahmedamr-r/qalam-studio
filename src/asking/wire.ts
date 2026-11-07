@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { Terms } from "@/terms/types";
 import { clashes } from "@/terms/fold";
+import { DONT_KNOW_STREAK } from "./dontknow";
 import { answersOf, theirWords } from "./engine";
 import type { TurnCheck } from "./sanitize";
 import type { AskingState, Lookup, LookupKind } from "./types";
@@ -17,7 +18,7 @@ const clip = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1
 /** How big the conversation may be in one request: a guard on size, not on how many rounds. */
 export const ASKING_MAX_CHARS = 60_000;
 
-const Answer = z.object({ id: z.string().max(80), title: z.string().max(400), answer: z.string().max(1600), how: z.enum(["own", "pick", "left"]) });
+const Answer = z.object({ id: z.string().max(80), title: z.string().max(400), answer: z.string().max(1600), how: z.enum(["own", "pick", "left", "unknown"]) });
 const Line = z.object({ ref: z.string().max(40), text: z.string().max(800), from: z.string().max(300), whose: z.string().max(60).optional() });
 
 export const AskingIn = z
@@ -71,7 +72,26 @@ export function askingIn(s: AskingState, o: { said: string; terms?: Terms }): As
 const KIND_WORD: Record<LookupKind, string> = { project: "their project", web: "the web", online: "people online" };
 
 const answerLine = (a: AskingInT["rounds"][number]["asked"][number]) =>
-  `- ${a.id} · ${a.title} → ${a.how === "own" ? `“${a.answer}”` : a.how === "pick" ? `your recommendation, which they agreed to with one press: “${a.answer}” (agreement, not their words)` : "left unanswered: they don't know or won't say; don't assume an answer, and don't ask it again"}`;
+  `- ${a.id} · ${a.title} → ${
+    a.how === "own"
+      ? `“${a.answer}”`
+      : a.how === "pick"
+        ? `your recommendation, which they agreed to with one press: “${a.answer}” (agreement, not their words)`
+        : a.how === "unknown"
+          ? `they don't know${a.answer ? ` (“${a.answer}”)` : ""}: don't ask it again in other words; say how they could find out`
+          : "left unanswered: they don't know or won't say; don't assume an answer, and don't ask it again"
+  }`;
+
+/** How many of the latest answers say they don't know, one after another (what they left neither counts nor breaks it). */
+export function unknownStreak(a: Pick<AskingInT, "rounds">): number {
+  let n = 0;
+  for (const x of a.rounds.flatMap((r) => r.asked).reverse()) {
+    if (x.how === "left") continue;
+    if (x.how !== "unknown") break;
+    n++;
+  }
+  return n;
+}
 
 /** The conversation so far as the model reads it, ids shown so a question can say what it waits on. */
 export function askingBlock(a: AskingInT): string {
@@ -95,12 +115,15 @@ export function askingBlock(a: AskingInT): string {
   if (a.clashes?.length) out.push("", "Words they used that the project's words say to avoid (ask which they mean, unless it's plain):", ...a.clashes.map((x) => `- “${x.word}”: the project says “${x.term}”`));
   if (a.proposed.length) out.push("", `Terms offered already in this conversation (never again): ${a.proposed.map((t) => `“${t}”`).join(", ")}`);
   if (a.askFirst) out.push("", "They'd rather be asked than have more looked up: ask, or say done. No lookups this turn.");
+  const streak = unknownStreak(a);
+  if (streak >= DONT_KNOW_STREAK) out.push("", `They've said they don't know the last ${streak} things asked. Ask no more facts: only what they can decide, or say done. Where a fact matters, look it up or say how they could find out.`);
   return out.join("\n");
 }
 
 /** What code checks a turn against, from what the route was sent. */
-export function checkOf(a: AskingInT, o: Omit<TurnCheck, "asked" | "held" | "lookups" | "said" | "proposed"> & { hay: string }): TurnCheck {
+export function checkOf(a: AskingInT, o: Omit<TurnCheck, "asked" | "held" | "lookups" | "said" | "proposed" | "streak"> & { hay: string }): TurnCheck {
   return {
+    streak: unknownStreak(a),
     ...o,
     asked: a.rounds.flatMap((r) => r.asked.map((x) => ({ id: x.id, title: x.title }))),
     // Held, it's asked again once what it waits on settles, as the turn is told: never dropped as asked already.

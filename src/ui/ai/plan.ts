@@ -192,7 +192,8 @@ export function toQuestion(q: PlanQuestion): Question {
   // What a tool brings back goes in the answer, so a question with a tool always takes words of its own.
   const open = q.allowOther || !!q.tool;
   const tool = withTool(q.tool);
-  const base = { id: q.id, title: q.title, why: q.why || undefined, source: "ai" as const, optional: true };
+  // About their own work, "I don't know" is an answer of its own: never a quote, never asked again.
+  const base = { id: q.id, title: q.title, why: q.why || undefined, source: "ai" as const, optional: true, dontKnow: true };
   if (!q.options.length) return { ...base, kind: "text", placeholder: "Answer in your own words, or skip", maxLength: q.tool ? 1200 : 600, ...tool };
   if (q.multi) return { ...base, kind: "multi", groups: [{ id: "picks", label: "Pick any", options: q.options, ...(open ? { custom: { placeholder: "Add your own" } } : {}) }], ...(q.recommended.length ? { suggested: [...q.recommended] } : {}), ...tool };
   return {
@@ -372,7 +373,7 @@ export function planRounds(state: PlanState): PlanRoundsT {
 
 /** An answer in words the model can use: labels with their descriptions, and anything typed. */
 export function answerText(q: Question, a: Answer): string {
-  if (a.kind === "skipped") return "No preference";
+  if (a.kind === "skipped") return a.unknown ? "They don't know" : "No preference";
   if (a.kind === "single" && q.kind === "single") {
     if (a.value === OTHER) return a.other?.trim() || "No preference";
     const o = q.options.find((x) => x.value === a.value);

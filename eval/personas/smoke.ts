@@ -152,6 +152,28 @@ async function main() {
     const typed = ((tab.stubbed.find((x) => x.path === "/plan/propose")?.body as Sent | undefined)?.asking?.rounds ?? []).flatMap((r) => r.asked);
     const decoy = await tab.js<string>(`(() => { const t = document.getElementById('decoy'); const v = t?.value ?? ''; t?.remove(); return v; })()`);
     check(typedIn && typedProposed && typed.length === 1 && typed[0].answer === "We tried a reorder button in March" && typed[0].how === "own" && decoy === "", "What the bench's driver types goes in the question's own box, as their words, not another box on the page", { typed, decoy });
+
+    // "I don't know" is an answer of its own: the button, or the words, go as that, never as their words.
+    const unknownSent = async (answerIt: () => Promise<unknown>) => {
+      tab.stubbed.length = 0;
+      asks = 0;
+      await tab.chat("What should we do about refunds?");
+      for (let i = 0; i < 60 && !(await tab.see()).step?.text; i++) await sleep(250);
+      await answerIt();
+      await sleep(250);
+      for (let i = 0; i < 20 && !(await tab.see()).step?.review; i++) await sleep(250);
+      await tab.inCard("Send answers");
+      for (let i = 0; i < 60 && !(await tab.click("Propose")); i++) await sleep(250);
+      for (let i = 0; i < 40 && !tab.stubbed.some((x) => x.path === "/plan/propose"); i++) await sleep(250);
+      return ((tab.stubbed.find((x) => x.path === "/plan/propose")?.body as Sent | undefined)?.asking?.rounds ?? []).flatMap((r) => r.asked);
+    };
+    const pressed = await unknownSent(() => tab.inCard("I don't know"));
+    const typedUnknown = await unknownSent(async () => {
+      await tab.typeInCard("textarea", "I don't know yet, I've only been here two weeks");
+      await sleep(150);
+      await tab.inCard((await tab.see()).step?.next ?? "Next");
+    });
+    check(pressed.length === 1 && pressed[0].how === "unknown" && typedUnknown.length === 1 && typedUnknown[0].how === "unknown", "\"I don't know\", pressed or typed, goes as that, never as their words", { pressed, typed: typedUnknown });
     mode = "first";
 
     // The first run's hand-off: their words reach the chat's plan route on the canvas.

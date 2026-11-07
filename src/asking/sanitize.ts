@@ -3,6 +3,7 @@ import { holdWords, sameTopic, sameWords } from "@/hub/topics";
 import { termFor } from "@/terms/edit";
 import type { Terms } from "@/terms/types";
 import { sanitizeAsked, sanitizeQuestions } from "@/ui/ai/plan";
+import { DONT_KNOW_STREAK } from "./dontknow";
 import type { AskQuestion, AskTurn, AskWho, Lookup, LookupKind, SettledPoint } from "./types";
 
 /*
@@ -20,6 +21,8 @@ export interface TurnCheck {
   asked: readonly { id: string; title: string }[];
   /** Questions held last turn until what they wait on settles: asked again then, under their own id, never dropped as asked already. */
   held?: readonly { id: string; title: string }[];
+  /** How many answers in a row said they don't know: from DONT_KNOW_STREAK on, a question for a fact (one a tool could answer) waits. */
+  streak?: number;
   /** Lookups so far: never the same twice. */
   lookups: readonly Pick<Lookup, "id" | "kind" | "query">[];
   /** Their own words: what they asked and what they typed, never a pick. A term must be one of them. */
@@ -63,7 +66,7 @@ export const ASK_LIMITS = { query: 200, point: 200, points: 12, term: 60, means:
  */
 export function keepQuestions(
   raw: readonly unknown[],
-  c: Pick<TurnCheck, "who" | "asked" | "held" | "lookups" | "tweak"> & { taken?: Set<string>; lookupIds?: ReadonlyMap<string, string>; readable?: (q: AskQuestion) => AskQuestion },
+  c: Pick<TurnCheck, "who" | "asked" | "held" | "lookups" | "tweak" | "streak"> & { taken?: Set<string>; lookupIds?: ReadonlyMap<string, string>; readable?: (q: AskQuestion) => AskQuestion },
   dropped?: (why: string, item: unknown) => void,
 ): { questions: AskQuestion[]; questionIds: Map<string, string> } {
   const drop = (why: string, item: unknown) => void dropped?.(why, item);
@@ -88,6 +91,11 @@ export function keepQuestions(
     }
     if (asked.some((a) => (a.id === q.id ? sameTopic(a.title, q.title) || sameWords(a.title) === sameWords(q.title) : sameTopic(a.title, q.title)))) {
       drop("asked already", item);
+      continue;
+    }
+    // Several don't-knows in a row: a fact (one their numbers or docs would hold) waits; what they can decide doesn't.
+    if ((c.streak ?? 0) >= DONT_KNOW_STREAK && q.tool) {
+      drop("they've said they don't know several things in a row: facts wait", item);
       continue;
     }
     const again = held.findIndex((h) => h.id === q.id || sameTopic(h.title, q.title));
