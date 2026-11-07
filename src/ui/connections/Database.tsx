@@ -11,6 +11,7 @@ import type { Checked } from "@/database/view";
 import type { MetricView } from "@/database/view";
 import { databaseDb, loadDatabase, useDatabase, type ConnectAnswer } from "@/org/database";
 import { rememberRound, withKnownAnswers } from "@/org/memory";
+import { loadGoals, useGoals } from "@/goals/client";
 import { KnownStrip } from "../ai/KnownStrip";
 import { Button, IconBtn, Spinner } from "../controls";
 import { r } from "../recipes";
@@ -47,7 +48,11 @@ function useRun() {
 
 export function DatabaseCard() {
   const { view, loaded, error } = useDatabase();
-  useEffect(() => void loadDatabase(), []);
+  useEffect(() => {
+    void loadDatabase();
+    // Each draft names the goal it's for.
+    if (!useGoals.getState().loaded) void loadGoals();
+  }, []);
   if (!loaded) return <div className={clsx(r.skeleton, "h-[120px] rounded-lg")} aria-hidden />;
   const c = view?.connection ?? null;
   return (
@@ -220,6 +225,7 @@ function Drafts() {
 }
 
 function DraftCard({ d, home }: { d: Draft; home: string }) {
+  const goal = useGoals((g) => (d.goal ? g.goals.find((x) => x.id === d.goal)?.title : undefined));
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(d.name);
   const [means, setMeans] = useState(d.means);
@@ -240,7 +246,11 @@ function DraftCard({ d, home }: { d: Draft; home: string }) {
       </div>
       {editing ? <textarea value={means} onChange={(e) => setMeans(e.target.value)} rows={2} aria-label="What it means" className={clsx(r.textarea, "w-full text-caption")} /> : <p className="text-caption text-fg-muted">{d.means}</p>}
       {d.error && <p className="text-caption text-danger">{d.error}</p>}
-      {!!d.reads.length && <p className="text-micro text-fg-subtle">Reads {d.reads.map((c) => shortColumn(c, home)).join(", ")}{d.sample ? `, just now, read-only` : ""}</p>}
+      {(!!d.reads.length || goal) && (
+        <p className="text-micro text-fg-subtle">
+          {[goal ? `For your goal: ${goal}` : null, d.reads.length ? `Reads ${d.reads.map((c) => shortColumn(c, home)).join(", ")}` : null, d.sample ? "Ran just now, read-only" : null].filter(Boolean).join(" · ")}
+        </p>
+      )}
       {!!d.assumes.length && (
         <ul className="list-disc pl-[16px] text-micro text-fg-subtle">
           {d.assumes.map((a, i) => (

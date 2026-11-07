@@ -124,9 +124,9 @@ export async function draftMetrics(store: OrgStore, o: { answers?: DraftAnswer[]
     repaired = [...repaired, ...failed.filter((f) => !fixedNames.has(f.draft.name.toLowerCase())).map((f) => f.draft)];
   }
   drafts = [...drafts, ...repaired];
-  // Drafts not decided before stay, unless a new one has their name.
-  const fresh = new Set(drafts.map((d) => d.name.toLowerCase()));
-  const kept = leftBefore.filter((d) => !fresh.has(d.name.toLowerCase()) && !ctx.kept.some((k) => k.toLowerCase() === d.name.toLowerCase()));
+  // Drafting again gives a fresh list (it heard what's kept, and their answers): the undecided ones before
+  // it go, so two drafts of one number never sit side by side. Only when nothing new held up do they stay.
+  const kept = drafts.length ? [] : leftBefore.filter((d) => !ctx.kept.some((k) => k.toLowerCase() === d.name.toLowerCase()));
   const out: Drafts = { at: o.now ?? Date.now(), where: local.where, drafts: [...kept, ...drafts], questions: first.questions, dropped: first.dropped, answers };
   await putDrafts(store, out);
   await trace(store, { model, sent: sentText, raw: data, kept: drafts.map((d) => ({ name: d.name, sql: d.sql, error: d.error ?? null })), dropped: first.dropped, questions: first.questions });

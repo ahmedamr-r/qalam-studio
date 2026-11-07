@@ -18,6 +18,9 @@ const db = await PGlite.create();
 await db.exec(SAMPLE_SCHEMA);
 const server = new PGLiteSocketServer({ db, port: 0, host: "127.0.0.1", maxConnections: 8 });
 await server.start();
+// "--as reader": the session's role from the start, for a run with nothing writing to stdin.
+const startAs = process.argv[process.argv.indexOf("--as") + 1];
+if (process.argv.includes("--as") && /^[a-z_]+$/.test(startAs ?? "") && startAs !== "postgres") await db.exec(`SET ROLE ${startAs}`);
 console.log(`READY ${server.getServerConn().split(":").pop()}`);
 const lines = createInterface({ input: process.stdin });
 lines.on("line", (line) => {
