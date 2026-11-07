@@ -27,7 +27,7 @@ export async function readLayout(store: OrgStore, o: { emit?: (label: string) =>
     async (r, local) => {
       if (r.dialect === "mysql") {
         const { readMysqlLayout } = await import("./mysql-layout");
-        return keepLayout(store, await readMysqlLayout(r, { emit: o.emit, signal: o.signal }), local.where);
+        return keepLayout(store, await readMysqlLayout(r, { emit: o.emit, signal: o.signal, version: local.version }), local.where);
       }
       return keepLayout(store, await readPostgresLayout(r, { hidden: local.hidden, version: local.version, emit: o.emit, signal: o.signal }), local.where);
     },

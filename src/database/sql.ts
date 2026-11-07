@@ -14,6 +14,8 @@ export type Dialect = "postgres" | "mysql";
 export interface TableRef {
   schema?: string;
   name: string;
+  /** The name the query gives it ("FROM orders o"), when it gives one. */
+  alias?: string;
 }
 
 export type Guarded = { ok: true; sql: string; tables: TableRef[]; functions: string[] } | { ok: false; why: string };
@@ -250,6 +252,14 @@ function tablesOf(toks: Tok[]): { tables: TableRef[]; ctes: Set<string> } | { wh
     }
   }
   const tables: TableRef[] = [];
+  /** The alias after a table, if any: "AS o", or a bare name that isn't a keyword. */
+  const aliasAt = (j: number): string | undefined => {
+    const t = toks[j];
+    if (word(t) === "as") return toks[j + 1]?.t === "word" ? (toks[j + 1] as { v: string }).v : undefined;
+    if (t?.t !== "word") return undefined;
+    const w = word(t);
+    return w && (STOP.has(w) || ALIAS_NOT.has(w)) ? undefined : (t as { v: string }).v;
+  };
   const read = (i: number): number => {
     // A table name, maybe schema-qualified, then an alias. "(" is a subquery or a function's rows; LATERAL too.
     let j = i;
@@ -260,10 +270,12 @@ function tablesOf(toks: Tok[]): { tables: TableRef[]; ctes: Set<string> } | { wh
       const b = toks[j + 2];
       if (b?.t !== "word") return j;
       if (isOp(toks[j + 3], ".")) return -1; // a third part: another database
-      tables.push({ schema: a.quoted ? a.v : lower(a.v), name: b.quoted ? b.v : lower(b.v) });
+      const alias = aliasAt(j + 3);
+      tables.push({ schema: a.quoted ? a.v : lower(a.v), name: b.quoted ? b.v : lower(b.v), ...(alias ? { alias } : {}) });
       return j + 3;
     }
-    if (!ctes.has(lower(a.v))) tables.push({ name: a.quoted ? a.v : lower(a.v) });
+    const alias = aliasAt(j + 1);
+    if (!ctes.has(lower(a.v))) tables.push({ name: a.quoted ? a.v : lower(a.v), ...(alias ? { alias } : {}) });
     return j + 1;
   };
   for (let i = 0; i < toks.length; i++) {
@@ -284,6 +296,9 @@ function tablesOf(toks: Tok[]): { tables: TableRef[]; ctes: Set<string> } | { wh
   }
   return { tables, ctes };
 }
+
+/** Words after a table that aren't its alias. */
+const ALIAS_NOT = new Set(["as", "for", "lateral", "with", "returning", "union", "intersect", "except", "limit", "offset", "where", "group", "order", "having", "window", "on", "using"]);
 
 /** Words that end a FROM list. */
 const STOP = new Set(["where", "group", "order", "limit", "having", "union", "intersect", "except", "join", "left", "right", "inner", "full", "cross", "natural", "on", "using", "window", "offset", "fetch", "qualify", "tablesample"]);

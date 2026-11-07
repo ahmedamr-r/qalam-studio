@@ -62,11 +62,16 @@ export function postgresPlan(json: unknown): PlanRead {
   return { tables, columns: [...columns], cost: typeof root["Total Cost"] === "number" ? root["Total Cost"] : 0 };
 }
 
-/** MySQL's EXPLAIN FORMAT=JSON: each table's name and used_columns, wherever it sits in the query blocks. */
-export function mysqlPlan(json: unknown, database: string): PlanRead {
+/**
+ * MySQL's EXPLAIN FORMAT=JSON. Its second format (MySQL 8.3 and later) names each table, its schema
+ * and its alias, with the columns it reads and the plan's total cost. The first names a table only by
+ * the alias the query gave it, so the query's own aliases (code's guard reads them) say which table.
+ */
+export function mysqlPlan(json: unknown, database: string, aliases: Readonly<Record<string, { schema?: string; name: string }>> = {}): PlanRead {
   const tables = new Set<string>();
   const columns = new Set<string>();
-  let cost = 0;
+  const top = rec(json);
+  let cost = typeof top.estimated_total_cost === "number" ? top.estimated_total_cost : 0;
   const walk = (v: unknown) => {
     if (Array.isArray(v)) return v.forEach(walk);
     const o = rec(v);
@@ -76,8 +81,8 @@ export function mysqlPlan(json: unknown, database: string): PlanRead {
     if (typeof ci.query_cost === "string" && !cost) cost = Number(ci.query_cost) || 0;
     if (typeof o.table_name === "string" && !o.table_name.startsWith("<")) {
       // A derived table (<derived2>) or a union's temporary isn't a table of theirs.
-      const name = o.table_name;
-      const table = `${database}.${name}`;
+      const named = typeof o.schema_name === "string" ? { schema: o.schema_name, name: o.table_name } : aliases[o.table_name] ?? { name: o.table_name };
+      const table = `${named.schema ?? database}.${named.name}`;
       tables.add(table);
       for (const c of Array.isArray(o.used_columns) ? o.used_columns : []) if (typeof c === "string") columns.add(`${table}.${c}`);
     }

@@ -20,13 +20,22 @@ describe("the guard on a metric's query: what a read looks like", () => {
   });
 
   it("reads joins, schemas, comma lists and a subquery's own tables", () => {
-    expect(ok("SELECT count(*) FROM public.orders o JOIN public.customers c ON c.id = o.customer_id").tables).toEqual([
-      { schema: "public", name: "orders" },
-      { schema: "public", name: "customers" },
+    expect(ok("SELECT count(*) FROM public.orders o JOIN public.customers AS c ON c.id = o.customer_id").tables).toEqual([
+      { schema: "public", name: "orders", alias: "o" },
+      { schema: "public", name: "customers", alias: "c" },
     ]);
-    expect(ok("SELECT count(*) FROM orders o, refunds r WHERE r.order_id = o.id").tables).toEqual([{ name: "orders" }, { name: "refunds" }]);
+    expect(ok("SELECT count(*) FROM orders o, refunds r WHERE r.order_id = o.id").tables).toEqual([
+      { name: "orders", alias: "o" },
+      { name: "refunds", alias: "r" },
+    ]);
+    // A keyword after a table isn't its alias.
+    expect(ok("SELECT count(*) FROM orders WHERE status = 'paid'").tables).toEqual([{ name: "orders" }]);
     expect(ok("SELECT count(*) FROM (SELECT id FROM orders) s, refunds r").tables.map((t) => t.name).sort()).toEqual(["orders", "refunds"]);
     expect(ok("SELECT count(*) FROM orders o LEFT JOIN LATERAL (SELECT 1 FROM refunds r WHERE r.order_id = o.id LIMIT 1) x ON true").tables.map((t) => t.name)).toEqual(["orders", "refunds"]);
+    expect(ok("SELECT COUNT(*) FROM shop.orders o JOIN shop.refunds r ON r.order_id = o.id", "mysql").tables).toEqual([
+      { schema: "shop", name: "orders", alias: "o" },
+      { schema: "shop", name: "refunds", alias: "r" },
+    ]);
   });
 
   it("leaves its own CTE names out of the tables", () => {

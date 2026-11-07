@@ -94,7 +94,7 @@ function toSample(l: Layout): { t: LayoutTable; c: LayoutColumn }[] {
   return out.slice(0, MAX_SAMPLED);
 }
 
-async function sampleValues(r: Runner, l: Layout, o: { emit?: (label: string) => void; signal?: AbortSignal }) {
+export async function sampleValues(r: Runner, l: Layout, o: { emit?: (label: string) => void; signal?: AbortSignal }) {
   const wanted = toSample(l);
   if (!wanted.length) return;
   o.emit?.(`Looking at the values of ${wanted.length === 1 ? "a column" : `${wanted.length} columns`} like status and type`);
