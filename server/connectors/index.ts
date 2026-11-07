@@ -1,5 +1,6 @@
 import { CATALOG, connectorDef, signInGroup, type ConnectorDef } from "@/connectors/catalog";
 import { matchClaudeCode, type ListedStatus } from "@/connectors/claude-code";
+import { readOnly } from "@/connectors/everywhere";
 import { itemText, RECIPES, type Hit, type Recipe, type ToolCall } from "@/connectors/recipes";
 import type { Ingested } from "@/discovery/ingest/core";
 import { capText } from "@/discovery/ingest/text";
@@ -122,12 +123,54 @@ async function siteOf(id: string, recipe: Recipe, ask: (call: ToolCall) => Promi
 
 type How = Awaited<ReturnType<typeof how>>;
 
+/** Qalam only reads: a call that isn't one of the tool's read tools is refused before it's made (src/connectors/everywhere.ts). */
+export function mayCall(id: string, c: ToolCall): ToolCall {
+  if (!readOnly(id, c)) throw new Error(`Qalam only reads from ${connectorDef(id)?.label ?? id}, so it won't call ${c.tool}.`);
+  return c;
+}
+const guarded =
+  (id: string, call: (c: ToolCall) => Promise<string | null>) =>
+  (c: ToolCall): Promise<string | null> =>
+    call(mayCall(id, c));
+
 /** Calls on the connector's tools, however it's reached (Qalam's sign-in, or Claude Code: a run per call), the site first when its recipe needs one. */
 async function onTools<T>(id: string, h: Exclude<How, { via: "token" } | { via: "google" }>, fn: (call: (c: ToolCall) => Promise<string | null>, site: string | undefined) => Promise<T>): Promise<T> {
   const recipe = RECIPES[id];
-  if (h.via === "mcp") return withSignedIn(id, h.url, async (call) => fn(call, await siteOf(id, recipe, call)));
-  const ask = async (c: ToolCall) => (await runTools(h.server, [c]))[0];
+  if (h.via === "mcp")
+    return withSignedIn(id, h.url, async (raw) => {
+      const call = guarded(id, raw);
+      return fn(call, await siteOf(id, recipe, call));
+    });
+  const ask = guarded(id, async (c: ToolCall) => (await runTools(h.server, [c]))[0]);
   return fn(ask, await siteOf(id, recipe, ask));
+}
+
+/**
+ * Several searches on one tool in one go, for a look across every tool (server/connectors/everywhere.ts):
+ * one session on Qalam's sign-in, one Claude Code run for them all (each run starts its servers, about a
+ * minute). Each search's hits, or why it failed; a sign-in the service stopped taking ends it.
+ */
+export async function searchMany(id: string, queries: readonly string[], signal?: AbortSignal): Promise<(Hit[] | Error)[]> {
+  const failed = (e: unknown) => (e instanceof SignInAgain ? Promise.reject(e) : e instanceof Error ? e : new Error(String(e)));
+  const h = await how(id);
+  if (h.via === "token") return Promise.all(queries.map((q) => notionSearch(h.token, q).catch(failed)));
+  if (h.via === "google") return Promise.all(queries.map((q) => browseDrive({ query: q }).catch(failed)));
+  const recipe = RECIPES[id];
+  const label = connectorDef(id)?.label ?? id;
+  if (h.via === "mcp")
+    return withSignedIn(id, h.url, async (raw) => {
+      const call = guarded(id, raw);
+      const site = await siteOf(id, recipe, call);
+      const out: (Hit[] | Error)[] = [];
+      for (const q of queries) {
+        if (signal?.aborted) break;
+        out.push(await call(recipe.search(q, site)).then((a) => (a === null ? new Error(`${label} didn't search it.`) : recipe.hits(a, site)), failed));
+      }
+      return out;
+    });
+  const site = await siteOf(id, recipe, async (c) => (await runTools(h.server, [mayCall(id, c)], signal))[0]);
+  const answers = await runTools(h.server, queries.map((q) => mayCall(id, recipe.search(q, site))), signal);
+  return answers.map((a) => (a === null ? new Error("Claude Code didn't search it. Is it signed in there?") : recipe.hits(a, site)));
 }
 
 export async function searchConnector(id: string, query: string): Promise<Hit[]> {
@@ -191,13 +234,14 @@ async function readTexts(id: string, hits: Hit[], emit: (label: string) => void)
   // A sign-in Google stopped taking ends it; a file it can't give is noted.
   if (h.via === "google") return Promise.all(hits.map((x) => readDriveFile(x).then((i) => i.text, (e: unknown) => (e instanceof SignInAgain ? Promise.reject(e) : null))));
   if (h.via === "mcp")
-    return withSignedIn(id, h.url, async (call) => {
+    return withSignedIn(id, h.url, async (raw) => {
+      const call = guarded(id, raw);
       const out: (string | null)[] = [];
       // An item the tool can't give is noted; a sign-in the service stopped taking ends it.
       for (const x of hits) out.push(await call(recipe.fetch(x)).then((t) => (t === null ? null : read(t)), (e: unknown) => (e instanceof SignInAgain ? Promise.reject(e) : null)));
       return out;
     });
-  return (await runTools(h.server, hits.map((x) => recipe.fetch(x)))).map((t) => (t === null ? null : read(t)));
+  return (await runTools(h.server, hits.map((x) => mayCall(id, recipe.fetch(x))))).map((t) => (t === null ? null : read(t)));
 }
 
 const readingLabel = (label: string, hits: Hit[]) => `Reading ${hits.length === 1 ? `“${hits[0].title}”` : `${hits.length} items`} from ${label}`;
@@ -231,8 +275,8 @@ export async function readItems(id: string, hits: Hit[], emit: (label: string) =
   });
 }
 
-/** Read the picked items and take each in. `emit` hears how it's going; `scope` limits where they're placed (a feed's wiring). */
-export async function importItems(store: OrgStore, id: string, hits: Hit[], emit: (label: string) => void, opts: Pick<CaptureOpts, "scope"> = {}): Promise<ImportResult> {
+/** Read the picked items and take each in. `emit` hears how it's going; `scope` limits where they're placed (a feed's wiring, a card's look); `product`: the canvas's they came in on. */
+export async function importItems(store: OrgStore, id: string, hits: Hit[], emit: (label: string) => void, opts: Pick<CaptureOpts, "scope" | "product"> = {}): Promise<ImportResult> {
   // Drive's files read here as files are, so a PDF keeps its pages and a Doc its headings; the rest as words.
   const google = (await how(id)).via === "google";
   const reads: (Omit<Ingested, "kind" | "title" | "origin"> | null)[] = google

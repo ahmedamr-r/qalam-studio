@@ -18,7 +18,7 @@ vi.mock("./claude-code", () => ({
   },
 }));
 
-const { browseConnector, readItems } = await import("./index");
+const { browseConnector, mayCall, readItems, searchMany } = await import("./index");
 
 const page = (id: string, title: string) => ({ id, title, url: `https://www.notion.so/${id}` });
 
@@ -76,5 +76,22 @@ describe("browsing a connector for the chat box", () => {
 
   it("needs the connector connected first", async () => {
     await expect(browseConnector("confluence", {})).rejects.toThrow(/Connect it first/);
+  });
+});
+
+describe("several searches in one go, for a look across every tool", () => {
+  it("makes them in one Claude Code run, each search's hits or why it gave none", async () => {
+    const out = await searchMany("notion", ["meal plans", "nothing like it"]);
+    expect(runs).toHaveLength(1);
+    expect(runs[0].map((c) => c.args.query)).toEqual(["meal plans", "nothing like it"]);
+    expect((out[0] as { title: string }[]).map((h) => h.title)).toEqual(["Meal plans", "Interview notes"]);
+    expect(out[1]).toBeInstanceOf(Error);
+  });
+});
+
+describe("Qalam only reads", () => {
+  it("refuses a call that isn't one of the tool's read tools before it's made", () => {
+    expect(() => mayCall("notion", { tool: "notion-update-page", args: { page_id: "n1" } })).toThrow(/Qalam only reads from Notion, so it won't call notion-update-page/);
+    expect(mayCall("notion", { tool: "notion-fetch", args: { id: "n1" } }).tool).toBe("notion-fetch");
   });
 });

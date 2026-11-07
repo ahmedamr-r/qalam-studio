@@ -10,7 +10,7 @@ import { lab } from "@/lab";
  * a step is picked (src/ui/discovery/next.ts). What v0.1 hides (src/lab.ts) isn't offered.
  */
 
-export type StepId = "draft-solutions" | "draft-tests" | "design-this" | "page" | "pass-line" | "next-job" | "find-problems" | "break-down" | "review-parts" | "others" | "find-backing" | "watch" | "connect" | "add-file" | "draft-problems" | "review-problems" | "focus" | "find-goal" | "write-brief" | "open-brief" | "word-message" | "run-steps" | "plan-modules";
+export type StepId = "draft-solutions" | "draft-tests" | "design-this" | "page" | "pass-line" | "next-job" | "find-problems" | "break-down" | "review-parts" | "others" | "find-backing" | "look-tools" | "watch" | "connect" | "add-file" | "draft-problems" | "review-problems" | "focus" | "find-goal" | "write-brief" | "open-brief" | "word-message" | "run-steps" | "plan-modules";
 
 export interface NextStep {
   id: StepId;
@@ -46,6 +46,8 @@ export interface CardFacts {
   material: boolean;
   /** The connected tools that bring material in, by name (null: not known yet). */
   tools: string[] | null;
+  /** The connected tools a look across them would search (material and numbers), by name (null: not known, or the look is hidden). */
+  lookIn?: string[] | null;
   /** The tools watching for it already, by name. */
   feeds: string[];
   /** The person answered questions about it already (the card rests on their answers, or they're kept for it, drafted with). */
@@ -80,8 +82,15 @@ export function thin(f: CardFacts): boolean {
 /** A draft's hint while nothing backs the card: it asks first, in the chat, or picks up where they left it. */
 const asksHint = (f: CardFacts) => (f.asking ? "Picks up your answers where you left them" : "Asks you first, in the chat");
 
-/** Ways to ground a card: the organization's words, a tool watched for it, a file read for it. */
-function grounding(f: CardFacts): { find: NextStep | null; watch: NextStep | null; file: NextStep } {
+/** Tools by name, in a line: "Notion", "Notion and Slack", "Notion, Slack and 2 more". */
+export function toolNames(names: readonly string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  return names.length === 3 ? `${names[0]}, ${names[1]} and ${names[2]}` : `${names[0]}, ${names[1]} and ${names.length - 2} more`;
+}
+
+/** Ways to ground a card: the organization's words, every connected tool looked in for it, a tool watched for it, a file read for it. */
+function grounding(f: CardFacts): { find: NextStep | null; look: NextStep | null; watch: NextStep | null; file: NextStep } {
   const quotable = f.kind === "opportunity" || f.kind === "solution";
   const find: NextStep | null = quotable && f.search && f.material ? { id: "find-backing", label: f.evidence.quotes ? "Find more that backs it" : "Find what backs it", hint: "In your organization · free" } : null;
   const tools = f.tools ?? [];
@@ -92,7 +101,9 @@ function grounding(f: CardFacts): { find: NextStep | null; watch: NextStep | nul
     : lab("connectors") ? { id: "connect", label: "Connect a tool", hint: "Intercom, Slack, Notion… in Connections" }
     : null;
   const file: NextStep = { id: "add-file", label: "Add a file for it", hint: f.kind === "outcome" ? "Any file: Qalam AI asks about it, then proposes its problems" : "Any file: Qalam AI asks about it, then places it under it" };
-  return { find, watch, file };
+  // Hidden in v0.1 (src/lab.ts): one look in every connected tool, its finds brought in under the card.
+  const look: NextStep | null = lab("everywhere") && f.lookIn?.length && f.kind !== "test" ? { id: "look-tools", label: "Look in your tools for it", hint: `${toolNames(f.lookIn)}, side by side`, ai: true } : null;
+  return { find, look, watch, file };
 }
 
 /** The steps that fit a card, best first. */
@@ -114,8 +125,8 @@ export function nextSteps(f: CardFacts): NextStep[] {
       // No goal above it: which one solving it would move, its own or one found, and that goal's number.
       const goal: NextStep | null = f.underGoal ? null : { id: "find-goal", label: "Find the goal it could move", hint: "Your goals first, then the web, then its number", ai: true };
       // Nothing behind it yet: what the organization has first, when it has something.
-      if ((asks || bare) && ground.find) push(ground.find, draft, brief, goal, ground.watch, ground.file, page);
-      else push(draft, brief, goal, ground.find, ground.watch, ground.file, page);
+      if ((asks || bare) && (ground.find || ground.look)) push(ground.find, ground.look, draft, brief, goal, ground.watch, ground.file, page);
+      else push(draft, brief, goal, ground.find, ground.look, ground.watch, ground.file, page);
       break;
     }
     case "solution":
@@ -129,7 +140,7 @@ export function nextSteps(f: CardFacts): NextStep[] {
         if (f.solutionType === "product" && !f.under.solutions) out.unshift({ id: "plan-modules", label: "Work out its modules", hint: "Qalam AI asks, looks online, then proposes them", ai: true });
         push(brief);
       }
-      push(ground.find);
+      push(ground.find, ground.look);
       break;
     case "test":
       if (f.suggested) out.push({ id: "pass-line", label: "Use the suggested pass line" });
@@ -151,7 +162,7 @@ export function nextSteps(f: CardFacts): NextStep[] {
       // What waits to be decided first; then the problem to focus on, then, while nothing is behind it, its problems (found among the pages when there are some, else drafted).
       const waiting = [g.pending ? parts : null, g.drafted ? drafted : null];
       const rest = [g.pending ? null : parts, find, g.drafted ? null : drafted];
-      push(...waiting, focus, brief, ...(g.behind ? rest : [rest[1], rest[2], rest[0]]), extras ? { id: "others", label: "What others aim for", hint: "Numbers others report · a minute or two", ai: true } : null, ground.watch, ground.file);
+      push(...waiting, focus, ground.look, brief, ...(g.behind ? rest : [rest[1], rest[2], rest[0]]), extras ? { id: "others", label: "What others aim for", hint: "Numbers others report · a minute or two", ai: true } : null, ground.watch, ground.file);
       if (g.job && extras) push({ id: "next-job", label: `Next: ${g.job}`, hint: "What we don't know yet" });
       break;
     }

@@ -31,7 +31,7 @@ import { stopBusy, useBusy, type Busy, type Done } from "./busy";
 import { SPACE, addFeed, checkFeed, refreshFeed, useFeeds, wiredCards, type FeedNews } from "./feeds";
 import { ACCEPT } from "./ingest";
 import { useSources } from "./sources";
-import { useTools, type Tool } from "./tools";
+import { useLookTools, useTools, type Tool } from "./tools";
 import { foldNextSteps, runStep, useNextSteps } from "./next";
 import { useReview } from "./review";
 import { useDiscovery } from "./store";
@@ -82,6 +82,7 @@ export function useCardFacts(id: string | null): CardFacts | null {
   const jobs = useJobs();
   const pending = usePending(thing?.type === "goal" ? thing.goal : null);
   const tools = useTools();
+  const lookIn = useLookTools();
   const material = useSources((s) => s.list.some((x) => x.quotes.length > 0));
   // Answers drafted with count as what it rests on; answers left half-way are picked up by its draft.
   const asked = useSources((s) => (!id ? null : s.list.some((x) => x.answers?.card === id && x.answers.done) ? "done" : s.list.some((x) => x.answers?.card === id) ? "half" : null));
@@ -119,6 +120,7 @@ export function useCardFacts(id: string | null): CardFacts | null {
       search: !rows?.some((r) => r.id === "search"),
       material,
       tools: tools?.map((t) => t.label) ?? null,
+      lookIn: lookIn?.map((t) => t.label) ?? null,
       feeds: [...new Set(watching(feeds, id).map((f) => f.label))],
       answered: asked === "done" || card.evidence.some((e) => e.answerId?.startsWith("ask:")),
       asking: asked === "half",
@@ -127,7 +129,7 @@ export function useCardFacts(id: string | null): CardFacts | null {
       reviewing,
       busyElsewhere: !!busy && busy.card !== id,
     };
-  }, [id, node, doc, inputs, thing, busy, reviewing, rows, jobs, pending, tools, material, feeds, asked]);
+  }, [id, node, doc, inputs, thing, busy, reviewing, rows, jobs, pending, tools, lookIn, material, feeds, asked]);
 }
 
 /** Whether a goal is above a card on the canvas. */

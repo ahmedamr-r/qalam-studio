@@ -26,7 +26,7 @@ export const AskingIn = z
   .object({
     /** `by`: code's own questions, or what they said before in another conversation, not asked now. */
     rounds: z.array(z.object({ by: z.enum(["code", "memory"]).optional(), asked: z.array(Answer) })),
-    lookups: z.array(z.object({ id: z.string().max(40), kind: z.enum(["project", "web"]), query: z.string().max(400), state: z.enum(["running", "done", "failed", "stopped"]), lines: z.array(Line) })),
+    lookups: z.array(z.object({ id: z.string().max(40), kind: z.enum(["project", "web", "tools"]), query: z.string().max(400), state: z.enum(["running", "done", "failed", "stopped"]), lines: z.array(Line) })),
     held: z.array(z.object({ id: z.string().max(80), title: z.string().max(400), after: z.array(z.string().max(80)) })),
     understood: z.array(z.string().max(400)),
     proposed: z.array(z.string().max(80)),
@@ -61,7 +61,7 @@ export function askingIn(s: AskingState, o: { said: string; terms?: Terms; memor
   const out: AskingInT = {
     rounds,
     lookups: s.lookups
-      .filter((l): l is Lookup & { kind: "project" | "web" } => l.waits !== "draft" && l.kind !== "online")
+      .filter((l): l is Lookup & { kind: "project" | "web" | "tools" } => l.waits !== "draft" && l.kind !== "online")
       .map((l) => ({ id: l.id, kind: l.kind, query: clip(one(l.query), 300), state: l.state, lines: (l.lines ?? []).slice(0, 8).map((x) => ({ ref: x.ref, text: clip(one(x.text), 600), from: clip(one(x.from), 200), ...(x.whose ? { whose: x.whose } : {}) })) })),
     held: s.held.map((q) => ({ id: q.id, title: clip(one(q.title), 300), after: q.after ?? [] })),
     understood: s.understood.map((p) => clip(p.text, 300)),
@@ -80,7 +80,7 @@ export function askingIn(s: AskingState, o: { said: string; terms?: Terms; memor
   return out;
 }
 
-const KIND_WORD: Record<LookupKind, string> = { project: "their project", web: "the web", online: "people online" };
+const KIND_WORD: Record<LookupKind, string> = { project: "their project", web: "the web", online: "people online", tools: "their tools (what they brought in)" };
 
 const answerLine = (a: AskingInT["rounds"][number]["asked"][number]) =>
   `- ${a.id} · ${a.title} → ${

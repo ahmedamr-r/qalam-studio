@@ -112,16 +112,19 @@ export function applyTurn(s: AskingState, t: AskTurn, o: { now: number; id: (pre
   const fresh = t.questions.filter((q) => !known.some((k) => k.q.id === q.id));
   const web = t.lookups.filter((l) => l.kind === "web");
   const offerIt = !t.questions.length && quiet >= 2 && web.length > 0;
-  const started: Lookup[] = t.lookups.filter((l) => !(offerIt && l.kind === "web")).map((l) => ({ id: l.id, kind: l.kind, query: l.query, waits: turn, state: "running", at: o.now }));
+  // A look in their tools needs their picks before anything comes of it: put to them, never run by a turn.
+  const tools = offerIt ? [] : t.lookups.filter((l) => l.kind === "tools");
+  const started: Lookup[] = t.lookups.filter((l) => l.kind !== "tools" && !(offerIt && l.kind === "web")).map((l) => ({ id: l.id, kind: l.kind, query: l.query, waits: turn, state: "running", at: o.now }));
   const lookups = [...s.lookups, ...started];
-  const busy = new Set(lookups.filter(running).map((l) => l.id));
+  // What waits on the look put to them waits with it.
+  const busy = new Set([...lookups.filter(running).map((l) => l.id), ...tools.slice(0, 1).map((l) => l.id)]);
   // What was answered from memory is settled now: nothing waits on it.
   const here = new Set(fresh.map((q) => q.id));
   const waits = (q: AskQuestion) => (q.after ?? []).some((a) => here.has(a) || busy.has(a));
   let ask = fresh.filter((q) => !waits(q));
   let held = fresh.filter(waits);
-  // Held with nothing running and nothing asked now, nothing would ever settle them: they're asked now.
-  if (!ask.length && held.length && !lookups.some((l) => running(l) && forTurns(l))) {
+  // Held with nothing running, nothing put to them and nothing asked now, nothing would ever settle them: they're asked now.
+  if (!ask.length && held.length && !tools.length && !lookups.some((l) => running(l) && forTurns(l))) {
     ask = held;
     held = [];
   }
@@ -133,16 +136,17 @@ export function applyTurn(s: AskingState, t: AskTurn, o: { now: number; id: (pre
     understood: t.understood.length ? t.understood : s.understood,
     terms: withTerms(s.terms, t.terms, o.id),
     choices: withChoices(s.choices, t.choices, o.id),
-    quiet: ask.length || known.length ? 0 : started.length || offerIt ? quiet + 1 : quiet,
+    quiet: ask.length || known.length ? 0 : started.length || offerIt || tools.length ? quiet + 1 : quiet,
     // What they said before goes first, as a round already answered; then what's asked now.
     rounds: [...s.rounds, ...(known.length ? [memoryRound(known)] : []), ...(ask.length ? [{ questions: ask, form: flowOf(ask) }] : [])],
   };
   delete next.askFirst;
   delete next.offer;
   if (offerIt) next.offer = { id: web[0].id, query: web[0].query };
+  else if (tools.length) next.offer = { id: tools[0].id, query: tools[0].query, kind: "tools" };
   const pending = lookups.some((l) => running(l) && forTurns(l));
   const unread = lookups.some((l) => l.state === "done" && l.read === undefined && forTurns(l));
-  if (!ask.length && !held.length && !started.length && !offerIt && !pending && !unread && (t.done || !known.length)) next.end = { by: t.done ? "done" : "nothing-new", at: o.now };
+  if (!ask.length && !held.length && !started.length && !offerIt && !tools.length && !pending && !unread && (t.done || !known.length)) next.end = { by: t.done ? "done" : "nothing-new", at: o.now };
   return next;
 }
 

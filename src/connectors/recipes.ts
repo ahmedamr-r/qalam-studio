@@ -87,9 +87,12 @@ export function notionHits(result: string): Hit[] {
   return (j?.results ?? []).flatMap((r) => {
     const id = str(r.id) ?? notionId(str(r.url));
     if (!id) return [];
-    return [{ id, title: str(r.title) ?? "Untitled", ...(str(r.url) ? { url: plainUrl(str(r.url)!) } : {}), ...(str(r.highlight) ? { snippet: str(r.highlight)!.slice(0, 200) } : {}), ...(str(r.timestamp) ? { at: str(r.timestamp) } : {}), ...(r.type === "database" ? { type: "other" as const } : { opens: true }) }];
+    return [{ id, title: str(r.title) ?? "Untitled", ...(str(r.url) ? { url: plainUrl(str(r.url)!) } : {}), ...(str(r.highlight) ? { snippet: notionHighlight(str(r.highlight)!).slice(0, 200) } : {}), ...(str(r.timestamp) ? { at: str(r.timestamp) } : {}), ...(r.type === "database" ? { type: "other" as const } : { opens: true }) }];
   });
 }
+
+/** A search's highlight as words: Notion marks the matched words in bold (**word**) and joins its fragments with ---. */
+export const notionHighlight = (h: string) => h.replace(/\*\*/g, "").replace(/\s+---\s+/g, " … ").replace(/\s+/g, " ").trim();
 
 /** A fetched page's own words: its content without the tool's wrapping, the pages inside it by their titles. */
 export function notionText(result: string): string {

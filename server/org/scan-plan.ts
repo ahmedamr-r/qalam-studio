@@ -4,6 +4,7 @@ import { sanitizeTurn } from "@/asking/sanitize";
 import type { AskTurn } from "@/asking/types";
 import { askingBlock, checkOf, type AskingInT } from "@/asking/wire";
 import { labOn } from "../lab";
+import { lookupKinds } from "../connectors/everywhere";
 import type { PlanQuestion } from "@/ai/plan";
 import { structured } from "@/ai/server";
 import { quotePiece, type SourceQuote, type SourceRecord } from "@/discovery/sources";
@@ -87,9 +88,10 @@ export async function askScanPlan(store: OrgStore, o: { target: ScanTarget; sour
   const decisions = lab === true || lab.includes("decisions");
   const first = !o.asking.rounds.some((r) => !r.by);
   try {
-    const { data, model } = await deps.structured<unknown>(askTurnCall({ flow: "scan", who: "person", material, kinds: SCAN_KINDS, terms: true, choices: decisions }), signal);
+    const kinds = await lookupKinds(SCAN_KINDS);
+    const { data, model } = await deps.structured<unknown>(askTurnCall({ flow: "scan", who: "person", material, kinds, terms: true, choices: decisions }), signal);
     const dropped: { why: string; item: unknown }[] = [];
-    const turn = sanitizeTurn(data, checkOf(o.asking, { who: "person", hay: material.replace(/^(\s*- )[\w-]+ ·/gm, "$1"), terms: await store.getTerms(), kinds: SCAN_KINDS, decisions, memory: known.ids }), (why, item) => dropped.push({ why, item }));
+    const turn = sanitizeTurn(data, checkOf(o.asking, { who: "person", hay: material.replace(/^(\s*- )[\w-]+ ·/gm, "$1"), terms: await store.getTerms(), kinds, decisions, memory: known.ids }), (why, item) => dropped.push({ why, item }));
     // Choices drawn from what was read, else in their own words.
     const questions = turn.questions.map((q) => {
       const [kept] = sanitizeFindQuestions({ questions: [q] }, m);

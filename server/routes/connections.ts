@@ -13,6 +13,8 @@ import { storeFor } from "../org/home";
 import type { OrgStore } from "../org/store";
 import type { OstWork } from "@/discovery/types";
 import { lookInside } from "../connectors/look";
+import { bringIn, findEverywhere, lookDeps, lookEverywhere, type BringPick } from "../connectors/everywhere";
+import { toolAsk } from "@/connectors/suggest";
 import { readInsight, searchEvents, searchInsights, toolsOffered } from "../connectors/numbers";
 import { cancelGoogleSignIn, googleClient, signInGoogle } from "../connectors/google";
 import { cancelSignIn, keepApp, signIn } from "../connectors/oauth";
@@ -226,6 +228,48 @@ export function connectionsRoutes(): Hono {
     // Taken in to the end even if the window goes: each item is kept, read, filed and placed.
     return ndjson((emit) => importItems(store, c.req.param("id"), picked, emit));
   });
+  // One question looked for in every connected tool at once: a line per tool as it goes, then what they found (nothing taken in).
+  r.post("/api/org/:org/everywhere", async (c) => {
+    const store = await storeFor(c.req.param("org"));
+    if (!store) return noOrg(c);
+    const { about, tools } = (await c.req.json().catch(() => ({}))) as { about?: unknown; tools?: unknown };
+    if (typeof about !== "string" || about.trim().length < 3) return c.json({ error: "bad_request", message: "What should it look for?" }, 400);
+    const only = Array.isArray(tools) ? tools.filter((t): t is string => typeof t === "string" && !!connectorDef(t)).slice(0, 12) : undefined;
+    return ndjson((_emit, send) => lookEverywhere({ about, ...(only ? { tools: only } : {}) }, send, c.req.raw.signal, lookDeps(store)));
+  });
+  // The ones picked, taken in tool by tool (a card's look places them only under it), to the end even if the window goes.
+  r.post("/api/org/:org/everywhere/bring", async (c) => {
+    const store = await storeFor(c.req.param("org"));
+    if (!store) return noOrg(c);
+    const { picks, scope, product } = (await c.req.json().catch(() => ({}))) as { picks?: unknown; scope?: unknown; product?: unknown };
+    const list = (Array.isArray(picks) ? picks : [])
+      .flatMap((p): BringPick[] => {
+        const tool = (p as { tool?: unknown } | null)?.tool;
+        const [hit] = pickedHits([(p as { hit?: unknown } | null)?.hit]);
+        return typeof tool === "string" && connectorDef(tool) && hit ? [{ tool, hit }] : [];
+      })
+      .slice(0, 20);
+    if (!list.length) return c.json({ error: "bad_request", message: "Pick something to bring in." }, 400);
+    const placed = scopeOf(scope);
+    const forProduct = typeof product === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(product) ? { product } : product === null ? { product: null } : {};
+    return ndjson((emit) => bringIn(store, list, emit, { ...(placed ? { scope: placed } : {}), ...forProduct }));
+  });
+  // Under a question: every tool its kind fits searched with its words, no model call.
+  const foundEverywhere = async (c: Context, store?: OrgStore) => {
+    const { kind, words, question } = (await c.req.json().catch(() => ({}))) as { kind?: unknown; words?: unknown; question?: unknown };
+    const ask = toolAsk(kind, words);
+    if (!ask || typeof question !== "string" || !question.trim()) return c.json({ error: "bad_request", message: "What's the question?" }, 400);
+    try {
+      return c.json({ found: await findEverywhere(ask, question.trim().slice(0, 400), { store }) });
+    } catch (e) {
+      return c.json({ error: "search_failed", message: e instanceof Error ? e.message : String(e) }, 400);
+    }
+  };
+  r.post("/api/org/:org/everywhere/words", async (c) => {
+    const store = await storeFor(c.req.param("org"));
+    return store ? foundEverywhere(c, store) : noOrg(c);
+  });
+  r.post("/api/everywhere/words", (c) => foundEverywhere(c));
   r.get("/api/connectors/:id/tools", async (c) => {
     try {
       return c.json({ tools: await toolsOffered(c.req.param("id")) });
@@ -285,6 +329,17 @@ export function connectionsRoutes(): Hono {
     return c.json({ statuses: await workStatuses(store, list, { force: force === true }) });
   });
   return r;
+}
+
+/** Where a card's look places what it brings: boards, each with the cards under which (ten boards, twenty cards each, at most); none, nowhere. */
+function scopeOf(raw: unknown): Record<string, string[]> | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const out: Record<string, string[]> = {};
+  for (const [board, cards] of Object.entries(raw as Record<string, unknown>).slice(0, 10)) {
+    const ids = (Array.isArray(cards) ? cards : []).filter((x): x is string => typeof x === "string" && x.length <= 80).slice(0, 20);
+    if (board.length <= 80) out[board] = ids;
+  }
+  return out;
 }
 
 /** The hits a request picked: an id and a title each, twenty at most, folders left out. */

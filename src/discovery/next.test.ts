@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { setLab } from "@/lab";
-import { backingLine, nextSteps, type CardFacts } from "./next";
+import { backingLine, nextSteps, toolNames, type CardFacts } from "./next";
 
 const none = { quotes: 0, sources: 0, ours: 0, online: 0, against: 0, who: [], from: [] };
 const facts = (over: Partial<CardFacts> = {}): CardFacts => ({ kind: "opportunity", evidence: none, page: null, under: { solutions: 0, tests: 0 }, underGoal: true, pages: 0, search: false, material: false, tools: null, feeds: [], answered: false, ai: true, reviewing: false, busyElsewhere: false, ...over });
@@ -8,6 +8,36 @@ const goal = (over: Partial<NonNullable<CardFacts["goal"]>> = {}) => ({ id: "g1"
 // A brief is offered on every goal, problem and solution (its own tests, below): the rest keep their order around it.
 const others = (f: CardFacts) => nextSteps(f).filter((s) => s.id !== "write-brief");
 const ids = (f: CardFacts) => others(f).map((s) => s.id);
+
+describe("looking in their tools for a card", () => {
+  const tools = { lookIn: ["Notion", "Slack", "PostHog"] };
+  afterEach(() => setLab(true));
+
+  it("is offered where a tool is connected to look in: after what the project has, and before drafting while nothing backs a problem", () => {
+    expect(ids(facts(tools))).toEqual(["look-tools", "draft-solutions", "add-file"]);
+    expect(ids(facts({ ...tools, search: true, material: true }))).toEqual(["find-backing", "look-tools", "draft-solutions", "add-file"]);
+    expect(ids(facts({ ...tools, evidence: { ...none, quotes: 3, sources: 2 } }))).toEqual(["draft-solutions", "look-tools", "add-file"]);
+    expect(others(facts(tools))[0]).toMatchObject({ label: "Look in your tools for it", hint: "Notion, Slack and PostHog, side by side", ai: true });
+  });
+
+  it("is offered on a solution and a goal too, never a test, and is Qalam AI's to run", () => {
+    expect(ids(facts({ ...tools, kind: "solution" }))).toContain("look-tools");
+    expect(ids(facts({ ...tools, kind: "outcome", goal: goal() }))[1]).toBe("look-tools");
+    expect(ids(facts({ ...tools, kind: "test", suggested: true }))).toEqual(["pass-line"]);
+    expect(others(facts({ ...tools, ai: false })).find((s) => s.id === "look-tools")?.blocked).toBe("Qalam AI isn't ready here");
+  });
+
+  it("isn't offered with nothing to look in, or while v0.1 hides it", () => {
+    expect(ids(facts({ lookIn: [] }))).not.toContain("look-tools");
+    expect(ids(facts({ lookIn: null }))).not.toContain("look-tools");
+    setLab([]);
+    expect(ids(facts(tools))).not.toContain("look-tools");
+  });
+
+  it("names the tools in a line", () => {
+    expect([["Notion"], ["Notion", "Slack"], ["Notion", "Slack", "Drive"], ["Notion", "Slack", "Drive", "PostHog", "Intercom"]].map(toolNames)).toEqual(["Notion", "Notion and Slack", "Notion, Slack and Drive", "Notion, Slack and 3 more"]);
+  });
+});
 
 describe("a card's next steps", () => {
   it("lead a problem with drafting its solutions, then its page", () => {

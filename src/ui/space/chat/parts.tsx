@@ -44,6 +44,7 @@ import { FoundGoalRow } from "../../chat/FoundGoalRow";
 import { moreLine } from "@/onboarding/start";
 import { answerWhose, goalForTopProblem, anotherFile, briefAgain, briefStart, changeDocBasis, chooseDraft, decideDocGoal, dropTurn, leaveFile, leaveFit, lookPastFits, openProblems, pickAudience, placeFirstBuild, placeStatement, planAgain, planFirst, planOf, planStart, retake, retryGoalFor, scanAgain, scanHere, scanInNewProject, scanIsMine, scanOtherWay, setPlanGoal, settleNumber, steerOff, stopTurn, takeAsBasis, takeFit, takeGoalNumber, takeIdea, turnOf, useCanvasChat, retryCanvasPlan, runAs, showCanvasPlan, stopAskingPlan, confirmCanvasPlan, offCanvasPlan, reproposeCanvasPlan, decidePlanTerm, confirmDraft, decideDraftTerm, draftGo, draftNow, offDraft, retryDraft, confirmBrief, offBrief, decideBriefTerm, confirmScan, offScan, decideScanTerm, decidePlanChoice, decideDraftChoice, decideBriefChoice, decideScanChoice } from "./store";
 import { AnsweredRound, FoundInProject, SettledCard } from "../../asking/AskRound";
+import { LookToolsPart, ToolsAgainPart, ToolsBroughtPart, ToolsFoundPart, ToolsLookingPart } from "./tools-parts";
 import { titleFrom } from "@/space/route";
 import { otherReading, projectName } from "@/scan/input";
 import { firstGoal, GOAL_ACTIONS, riskiest, type GoalAction, type ScanAudience } from "@/scan/plan";
@@ -1907,6 +1908,11 @@ function NoEnginePart({ data }: { data: PartData }) {
 }
 
 export const PARTS: Record<string, PartComponent> = {
+  lookTools: LookToolsPart,
+  toolsLooking: ToolsLookingPart,
+  toolsFound: ToolsFoundPart,
+  toolsBrought: ToolsBroughtPart,
+  toolsAgain: ToolsAgainPart,
   noEngine: NoEnginePart,
   brief: BriefPart,
   planLook: LookedPart,

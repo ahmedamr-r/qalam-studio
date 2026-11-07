@@ -51,11 +51,14 @@ export function toolsForAsk(ask: ToolAsk, connectors: readonly ConnectorState[])
 /** Longest passage shown, and put in an answer. */
 const PASSAGE_MAX = 400;
 
+/** The inline marks a tool's text may carry (Notion's <b>, <span color>, <mention-page>), taken off a passage: its words stay. */
+const INLINE_TAG = /<\/?(?:b|i|u|s|em|strong|span|br|code|mark|sup|sub|a|mention-[a-z]+)\b[^<>]*>/gi;
+
 /** A document's passages nearest what was asked, its own words, most shared words first (with none sharing, its first ones). */
 export function passagesFor(text: string, asked: string, count = 4): string[] {
   const passages = text
     .split(/\n\s*\n|\n(?=[-*#] )/)
-    .map((p) => p.replace(/\s+/g, " ").replace(/^[-*#]+ /, "").trim())
+    .map((p) => p.replace(INLINE_TAG, "").replace(/\s+/g, " ").replace(/^[-*#]+ /, "").trim())
     .filter((p) => p.length >= 30)
     .map((p) => (p.length > PASSAGE_MAX ? `${p.slice(0, p.lastIndexOf(" ", PASSAGE_MAX))}…` : p));
   return passages

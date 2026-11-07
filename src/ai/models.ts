@@ -26,6 +26,8 @@ export const TIER_OF = {
   "pdf-pictures": "read",
   "image-read": "read",
   market: "read",
+  // Searching one connected tool in a look across them (src/connectors/everywhere.ts): small and many.
+  "tool-search": "read",
   // Deciding: proposing, asking, pushing back, judging.
   synthesize: "decide",
   draft: "decide",

@@ -63,6 +63,38 @@ describe("the interview's rounds", () => {
   });
 });
 
+describe("a look in their tools", () => {
+  it("is put to them, never run by a turn, and what waits on it waits with it", () => {
+    const s = applyTurn(emptyAsking(), turn({ questions: [q("first", "Who first?"), q("why", "Why do they leave?", { after: ["t1"] })], lookups: [{ id: "t1", kind: "tools", query: "checkout drop-off" }, { id: "p1", kind: "project", query: "checkout" }] }), o);
+    expect(s.offer).toEqual({ id: "t1", query: "checkout drop-off", kind: "tools" });
+    expect(s.lookups.map((l) => l.id)).toEqual(["p1"]);
+    // Asked now: what doesn't wait on it; held: what does. The round goes first, then the look is put to them.
+    expect(currentRound(s)?.questions.map((x) => x.id)).toEqual(["first"]);
+    expect(s.held.map((x) => x.id)).toEqual(["why"]);
+    expect(nextAfter(send(s))).toBe("offer");
+  });
+
+  it("keeps a question that waits only on it held, rather than asking it before the look", () => {
+    const s = applyTurn(emptyAsking(), turn({ questions: [q("why", "Why do they leave?", { after: ["t1"] })], lookups: [{ id: "t1", kind: "tools", query: "checkout drop-off" }] }), o);
+    expect(currentRound(s)).toBeNull();
+    expect(s.held.map((x) => x.id)).toEqual(["why"]);
+    expect(s.end).toBeUndefined();
+    expect(nextAfter(s)).toBe("offer");
+  });
+
+  it("starts as a look in their tools when they say yes, and the next turn waits for what they bring in", () => {
+    let s = applyTurn(emptyAsking(), turn({ lookups: [{ id: "t1", kind: "tools", query: "checkout drop-off" }] }), o);
+    s = startLookup(s, { id: "t1", kind: s.offer!.kind ?? "web", query: s.offer!.query, waits: s.turns }, 2);
+    expect(s.offer).toBeUndefined();
+    expect(s.lookups).toEqual([expect.objectContaining({ id: "t1", kind: "tools", state: "running" })]);
+    expect(nextAfter(s)).toBe("wait");
+    const landed = lookupLanded(s, "t1", { lines: [{ ref: "t1-1", text: "38% leave at the address step", from: "Checkout research", piece: "hub:quote:q1" }] });
+    expect(foundOf(landed).map((l) => l.piece)).toEqual(["hub:quote:q1"]);
+    // What they brought in reaches the next turn like any lookup's lines.
+    expect(askingIn(markRead(landed), { said: "" }).lookups[0]).toMatchObject({ kind: "tools", state: "done", lines: [{ ref: "t1-1", text: "38% leave at the address step" }] });
+  });
+});
+
 describe("Qalam AI's picks", () => {
   it("fills only what they haven't answered that has a recommendation, marked as its pick", () => {
     const s = applyTurn(emptyAsking(), turn({ questions: [choice("who", "Who first?", "a"), choice("where", "Where?", "b"), q("why", "Why now?"), choice("which", "Which?", "a", { multi: true })] }), o);

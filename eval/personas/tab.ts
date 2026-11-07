@@ -132,6 +132,9 @@ export class Tab {
       if (up && up < 500) break;
       if (i === 119) throw new Error("The dev server didn't come up.");
     }
+    // Something else answering on the port (another run's server) while this one exited: it would walk that app, not this checkout's.
+    await sleep(1500);
+    if (this.server.exitCode !== null) throw new Error(`This run's dev server exited as it started (port ${this.port} in use by another run?). See server.log.`);
     const debug = 9400 + Math.floor(Math.random() * 400);
     this.profile = mkdtempSync(path.join(os.tmpdir(), "qalam-tab-"));
     this.chrome = spawn(CHROME, [`--remote-debugging-port=${debug}`, "--remote-allow-origins=*", `--user-data-dir=${this.profile}`, "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist", "--no-first-run", "about:blank"], { stdio: "ignore" });
@@ -212,8 +215,8 @@ export class Tab {
       const body = d.params.request.postData ? JSON.parse(d.params.request.postData) : null;
       if (route) this.stubbed.push({ path: route, body });
       const data = route ? await routes[route](body) : null;
-      // A plan's steps, the discovery calls and a check of proposals stream; the rest answer in plain JSON.
-      const plain = !route?.startsWith("/plan/") && route !== "/api/discovery" && route !== "/challenge";
+      // A plan's steps, the discovery calls, a check of proposals and a look in their tools stream; the rest answer in plain JSON.
+      const plain = !route?.startsWith("/plan/") && route !== "/api/discovery" && route !== "/challenge" && route !== "/everywhere" && route !== "/everywhere/bring";
       const text = plain ? JSON.stringify(data) : `${JSON.stringify({ type: "result", data })}\n`;
       void this.send("Fetch.fulfillRequest", { requestId: d.params.requestId, responseCode: 200, responseHeaders: [{ name: "content-type", value: plain ? "application/json" : "application/x-ndjson" }], body: Buffer.from(text).toString("base64") });
     };

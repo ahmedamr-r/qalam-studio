@@ -28,7 +28,7 @@ const pickQuestion = { id: "pick", title: "Which customers first", why: "", mult
 /** A turn of the interview as the core answers it. */
 const turnOf = (qs: unknown[]) => ({ questions: qs, lookups: [], done: false, understood: [], terms: [], choices: [] });
 const done = { questions: [], lookups: [], done: true, understood: [{ text: "They want something that makes money" }], terms: [], choices: [] };
-let mode: "first" | "many" | "typed" | "known" | "gated" | "challenge" = "first";
+let mode: "first" | "many" | "typed" | "known" | "gated" | "challenge" | "tools" = "first";
 /** a2's plan: the PM's payment ideas, as plan mode proposes them. */
 const paymentPlan = {
   cards: [
@@ -53,6 +53,10 @@ const checked = (origin: string, items: { id: string; kind: string }[]) => ({
     { id: "c-gap", key: `funnel-gap:${checks}`, kind: "funnel-gap", on: [], line: "Nothing proposed works on Picked a delivery slot, where 4,400 of 10,000 leave in “a2-funnel”.", settle: "", cites: [slotRow], by: "code" },
   ],
 });
+/** A turn that asks for a look in their tools (src/asking/engine.ts puts it to them first). */
+const toolsTurn = { questions: [], lookups: [{ id: "t1", kind: "tools", query: "checkout drop-off" }], done: false, understood: [], terms: [], choices: [] };
+/** What came in from the look, as a source with one point (the bring-in's stub names it). */
+const broughtSource = { id: "src_look", title: "Checkout research Q3", kind: "connector", origin: "https://www.notion.so/n1", text: "38% of people leave at the address step of checkout, the research found.", quotes: [{ id: "qlook1", text: "38% of people leave at the address step of checkout", kind: "finding", span: [0, 51] }], needs: [], boards: [], at: Date.now() };
 const typedQuestion = { id: "typed", title: "What have you tried so far?", why: "", multi: false, options: [], recommended: [], allowOther: true };
 const DAY = 86_400_000;
 /** Questions as the core sends them when one like each was answered before (src/memory/known.ts): their own words from weeks ago, and a teammate's pick. */
@@ -66,13 +70,32 @@ const gatedQuestions = [
   { ...pickQuestion, id: "first2", known: [{ id: "m-pick2", text: "Regulars", how: "pick", mine: true, at: Date.now() - DAY, flow: "focus", match: "exact" }] },
 ];
 
+/** A tool as Connections shows it, connected by Qalam's own sign-in. */
+const connected = (id: string, label: string, group: "docs" | "numbers") => ({ id, label, group, feeds: group === "docs" ? "material" : "numbers", imports: group === "docs", status: null, numbers: group === "numbers", screens: false, claudeCode: null, token: null, canToken: false, tokenHelp: null, canSignIn: true, needsClient: false, account: null, regions: null, ownApp: null, via: "oauth", word: "Connected", tone: "ok" });
+/** What a look in every tool answers (server/connectors/everywhere.ts): Notion's pick, one it left, one already a source, and PostHog failing. */
+const lookResult = () => ({
+  about: "What do we know about checkout drop-off?",
+  at: Date.now(),
+  runs: [
+    { tool: "notion", label: "Notion", holds: "docs", slow: false, state: "done", searched: ["checkout research", "address step"], seen: 3, calls: 2, picked: 1, ms: 9000 },
+    { tool: "posthog", label: "PostHog", holds: "charts", slow: false, state: "failed", searched: ["checkout funnel"], seen: 0, calls: 1, picked: 0, ms: 3000, why: "PostHog didn't answer. Is it still signed in?" },
+  ],
+  candidates: [
+    { key: "notion:n1", tool: "notion", hit: { id: "n1", title: "Checkout research Q3", url: "https://www.notion.so/n1" }, origin: "https://www.notion.so/n1", picked: true, why: "A research summary on where checkout loses people", passages: ["38% of people leave at the address step of checkout, the research found."] },
+    { key: "notion:n2", tool: "notion", hit: { id: "n2", title: "Pricing page notes" }, origin: "notion:n2", picked: false },
+    { key: "notion:n3", tool: "notion", hit: { id: "n3", title: "Checkout FAQ" }, origin: "notion:n3", picked: false, inSources: "src_faq" },
+  ],
+});
+
 async function main() {
   const base = path.resolve(".qalam-dev/stress");
   await mkdir(base, { recursive: true });
   const out = await mkdtemp(path.join(base, "smoke-"));
   const p = personaById("a1")!;
   const player = makePlayer(p, { structured: (async () => ({ data: { ids: [], pick: "", words: "" } })) as never });
-  const tab = new Tab(p, player, path.join(out, "home"), 3235, process.cwd());
+  // QALAM_SMOKE_PORT: another port, when another checkout's walk may be running at the same time.
+  const port = Number(process.env.QALAM_SMOKE_PORT) || 3235;
+  const tab = new Tab(p, player, path.join(out, "home"), port, process.cwd());
   await tab.prepare();
   try {
     await tab.start();
@@ -82,6 +105,14 @@ async function main() {
     const sessionOf = (target: unknown) => ({ v: 1, state: "reading", at: Date.now(), target, steps: ["Starting", "Looking for what people use today"], competitors: [], read: [], skipped: { reddit: 0, before: 0, articles: 0, unreadable: 0 }, checked: { kept: 0, notFound: 0, unbacked: 0 }, problems: [], thin: false });
     const firstRead = (said: string) => (/Basket/.test(said) ? { named: true, product: "Basket", name: "Basket" } : /freelancers/i.test(said) ? { named: true, product: "", name: "Freelancer invoice chasing" } : { named: false, product: "", name: "" });
     await tab.stub({
+      // A look in every connected tool is on (src/lab.ts), with Notion and PostHog connected: the window's view of them.
+      "/api/lab": () => ({ on: ["everywhere"] }),
+      "/api/connectors": () => ({ checkedAt: Date.now(), connectors: [connected("notion", "Notion", "docs"), connected("posthog", "PostHog", "numbers")] }),
+      // Before "/everywhere": a route is found by the first that the address holds.
+      "/everywhere/bring": () => ({ added: ["Checkout research Q3"], skipped: [], failed: [], sources: ["src_look"], pages: [] }),
+      "/sources/src_look": () => broughtSource,
+      "/everywhere/words": () => ({ found: [] }),
+      "/everywhere": () => lookResult(),
       "/api/start/read": (b: { said: string }) => firstRead(b.said),
       "/scan/named": () => ({ named: false }),
       "/scan/ask": () => ({ questions: [] }),
@@ -100,6 +131,7 @@ async function main() {
         // Once: the core drops a question asked before (the memory round's too), so a later turn never brings them again.
         if (mode === "gated") return n === 0 ? { ...turnOf(gatedQuestions), done: true } : done;
         if (mode === "challenge") return done;
+        if (mode === "tools") return n === 0 ? toolsTurn : done;
         return n === 0 ? turnOf(questions) : done;
       },
       "/plan/propose": () => (mode === "challenge" ? paymentPlan : { cards: [], start: null, doubt: "", quotes: {} }),
@@ -415,7 +447,7 @@ async function main() {
     await tab.shot(path.join(out, "3-first-run.png"));
 
     // Someone who explains their idea: the project is named from it, and what's read is everything they said.
-    const orgs = async () => ((await (await fetch(`http://127.0.0.1:${3235}/api/orgs`)).json()) as { orgs: { id: string; name: string }[] }).orgs;
+    const orgs = async () => ((await (await fetch(`http://127.0.0.1:${port}/api/orgs`)).json()) as { orgs: { id: string; name: string }[] }).orgs;
     const before = (await orgs()).length;
     const explained = "Something to help freelancers chase the invoices their clients pay late, so they stop doing it by hand";
     tab.stubbed.length = 0;
@@ -438,6 +470,63 @@ async function main() {
     for (let i = 0; i < 80 && !tab.stubbed.some((x) => x.path === "/scan" && (x.body as { target?: unknown } | null)?.target); i++) await sleep(250);
     const company = tab.stubbed.filter((x) => x.path === "/scan").map((x) => x.body as { target?: unknown } | null).find((b) => b?.target);
     check(JSON.stringify(company?.target) === JSON.stringify({ kind: "product", name: "Basket", mine: true }), "A sentence about their product reads its name out of it, and it's theirs", company?.target);
+
+    // A look in every connected tool: the box set to look, what they found by tool, only Qalam AI's picks ticked, nothing taken in until they bring it.
+    await tab.canvas();
+    // From a new chat: the step before leaves a round of questions in the box, where the + would be.
+    await tab.js(`document.querySelector('button[aria-label="New chat"]')?.click()`);
+    for (let i = 0; i < 20 && !(await tab.js<boolean>(`!!document.querySelector('button[aria-label="Add docs"]')`)); i++) await sleep(250);
+    tab.stubbed.length = 0;
+    await tab.js(`document.querySelector('button[aria-label="Add docs"]')?.click()`);
+    await sleep(400);
+    check(await tab.click("Look in your tools"), "The chat box's + offers a look in every connected tool");
+    await sleep(300);
+    await tab.chat("What do we know about checkout drop-off?");
+    const seesText = (words: string) => tab.js<boolean>(`document.body.innerText.includes(${JSON.stringify(words)})`);
+    for (let i = 0; i < 40 && !(await seesText("Found in Notion")); i++) await sleep(250);
+    const looked = tab.stubbed.find((x) => x.path === "/everywhere")?.body as { about?: string } | undefined;
+    check(looked?.about === "What do we know about checkout drop-off?" && tab.stubbed.filter((x) => x.path === "/everywhere").length === 1, "One request looks in every tool for what they wrote", tab.stubbed.map((x) => x.path));
+    check((await seesText("Found in Notion")) && (await seesText("38% of people leave at the address step")), "What they found shows by tool, with the passage that answers it");
+    check(await seesText("PostHog: couldn't"), "A tool that failed says so in a line, and the rest still show");
+    check(await seesText("In your sources already"), "What's already a source is said, not offered again");
+    const ticked = await tab.js<string[]>(`[...document.querySelectorAll('[role="checkbox"]')].filter((b) => b.getAttribute('aria-checked') === 'true').map((b) => (b.closest('label')?.innerText ?? '').trim())`);
+    check(ticked.length === 1 && ticked[0].startsWith("Checkout research Q3"), "Only Qalam AI's pick is ticked to start", ticked);
+    check(!tab.stubbed.some((x) => x.path === "/everywhere/bring"), "Nothing is taken in until they bring it in");
+    await tab.shot(path.join(out, "5-tools.png"));
+    const brought = await tab.click("Bring in 1");
+    for (let i = 0; i < 40 && !tab.stubbed.some((x) => x.path === "/everywhere/bring"); i++) await sleep(250);
+    const picks = (tab.stubbed.find((x) => x.path === "/everywhere/bring")?.body as { picks?: { tool: string; hit: { id: string } }[] } | undefined)?.picks;
+    check(brought && picks?.length === 1 && picks[0].tool === "notion" && picks[0].hit.id === "n1", "Bring in takes only what's ticked", picks);
+    for (let i = 0; i < 40 && !(await seesText("I took in 1 item")); i++) await sleep(250);
+    check(await seesText("I took in 1 item"), "It says what was taken in");
+
+    // An interview's look in their tools: a turn asks for one, it's put to them first, it runs in the chat, and the point they brought in reaches the next turn and the proposal.
+    tab.stubbed.length = 0;
+    asks = 0;
+    mode = "tools";
+    await tab.chat("What should we do about checkout drop-off?");
+    for (let i = 0; i < 60 && !(await seesText("Look in your tools for “checkout drop-off”")); i++) await sleep(250);
+    check(await seesText("Look in your tools for “checkout drop-off”"), "A turn's look in their tools is put to them first, never run on its own");
+    check(!tab.stubbed.some((x) => x.path === "/everywhere"), "Nothing is looked for in their tools before they say yes", tab.stubbed.map((x) => x.path));
+    check(await tab.click("Look in them"), "They can say yes to it");
+    for (let i = 0; i < 40 && !tab.stubbed.some((x) => x.path === "/everywhere"); i++) await sleep(250);
+    const interviewLook = tab.stubbed.find((x) => x.path === "/everywhere")?.body as { about?: string } | undefined;
+    check(interviewLook?.about === "checkout drop-off", "It looks in every tool for what the turn asked", interviewLook);
+    let broughtIn = false;
+    for (let i = 0; i < 40 && !(broughtIn = await tab.click("Bring in 1")); i++) await sleep(250);
+    for (let i = 0; i < 60 && tab.stubbed.filter((x) => x.path === "/plan/next").length < 2; i++) await sleep(250);
+    type NextBody = { asking?: { lookups?: { kind: string; state: string; lines: { text: string }[] }[] } };
+    const nextTurn = tab.stubbed.filter((x) => x.path === "/plan/next")[1]?.body as NextBody | undefined;
+    const toolsLook = nextTurn?.asking?.lookups?.find((l) => l.kind === "tools");
+    check(broughtIn && toolsLook?.state === "done" && toolsLook.lines.some((l) => l.text === broughtSource.quotes[0].text), "What they brought in reaches the next turn as what the look found", toolsLook);
+    // Nothing was asked, so it proposes straight away (What we settled shows only after a round): Propose is pressed if it shows.
+    for (let i = 0; i < 60 && !tab.stubbed.some((x) => x.path === "/plan/propose"); i++) {
+      await tab.click("Propose");
+      await sleep(250);
+    }
+    const proposedFound = (tab.stubbed.find((x) => x.path === "/plan/propose")?.body as { found?: string[] } | undefined)?.found;
+    check(!!proposedFound?.includes("hub:quote:qlook1"), "The proposal may rest on it, by its piece", proposedFound);
+
     check(!tab.errors.length, "No errors in the window", tab.errors.slice(0, 3));
     console.log(`\n${failed ? `${failed} failed` : "All as expected"} · no model calls · ${out}`);
   } finally {

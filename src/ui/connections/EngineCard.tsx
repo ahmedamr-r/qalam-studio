@@ -38,6 +38,7 @@ const JOB: Record<CallKind | "other", string> = {
   "goal-ideas": "Finding the goal a problem could move",
   "goal-number": "Suggesting a goal's number",
   "tool-look": "Looking inside a connected tool",
+  "tool-search": "Searching your tools",
   "scan-searches": "Writing searches for what people complain about",
   "scan-audience": "Proposing who to build for",
   "scan-pick": "Picking what to build first",

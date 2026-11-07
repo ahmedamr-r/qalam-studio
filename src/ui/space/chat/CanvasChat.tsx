@@ -17,6 +17,7 @@ import { knewAnswers, type FindWhat } from "@/space/find";
 import { r } from "../../recipes";
 import { answerRound, picksRound, resumeDumps, saveRound, sessionOf, skipRest, useDump } from "../../discovery/dump";
 import { useSources } from "../../discovery/sources";
+import { useLookTools } from "../../discovery/tools";
 import { ChatComposer, ChatThread } from "../../chat/ChatThread";
 import { attachFiles, clearAttachments, docsCheck, readyDocs, useAttach } from "../../chat/attach";
 import { AttachmentChips, SourceMenu } from "../../chat/SourcePicker";
@@ -40,10 +41,12 @@ import { AskRound } from "../../asking/AskRound";
 export const CHAT_W = 420;
 
 /** What the box is for when a button set it (src/space/route.ts's modes), in a word on the box. */
-const MODE_LABEL: Record<ChatMode, string> = { ask: "A question", dump: "Brain dump", take: "To take in", goal: "A goal", problem: "A problem", scan: "An idea or a product", plan: "A plan" };
+const MODE_LABEL: Record<ChatMode, string> = { ask: "A question", dump: "Brain dump", take: "To take in", goal: "A goal", problem: "A problem", scan: "An idea or a product", plan: "A plan", tools: "Look in your tools" };
 
 export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
   useEffect(() => void openChat(space), [space]);
+  // Connected tools to look in, where the look is on (src/lab.ts).
+  const lookTools = useLookTools();
   const chat = useCanvasChat((s) => s.chat);
   const loaded = useCanvasChat((s) => s.loaded);
   const sources = useSources((s) => s.list);
@@ -176,6 +179,11 @@ export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
                         Help me find {w === "goal" ? "a goal" : "a problem"}
                       </MenuItem>
                     ))}
+                  {!busy && lookTools?.length ? (
+                    <MenuItem icon={<QalamAIGlyph size={14} />} onSelect={() => composeIn({ mode: "tools" })}>
+                      Look in your tools
+                    </MenuItem>
+                  ) : null}
                   {!busy && (
                     <MenuItem icon={<QalamAIGlyph size={14} />} onSelect={() => composeIn({ mode: "plan" })}>
                       Work something out as a plan
@@ -201,6 +209,7 @@ export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
                 const docs = docsCheck(t, attached, null);
                 if (docs) return docs;
                 if (compose.mode === "scan") return t.trim().length >= 2 ? null : "Name a product, or say what you want to build.";
+                if (compose.mode === "tools") return t.trim().length >= 3 ? null : "Say what to look for in your tools.";
                 if (compose.mode === "dump" && !readyDocs(attached).length && t.trim().length < 40) return "Write a few sentences more: what you think, and why.";
                 return readyDocs(attached).length || t.trim().length >= 3 ? null : "Write a little more.";
               }}

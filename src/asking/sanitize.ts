@@ -168,6 +168,10 @@ export function sanitizeTurn(raw: unknown, c: TurnCheck, dropped?: (why: string,
       drop("one web lookup at a time", item);
       continue;
     }
+    if (kind === "tools" && lookups.some((l) => l.kind === "tools")) {
+      drop("one look in their tools at a time", item);
+      continue;
+    }
     let id = /^[a-z][\w-]{0,23}$/i.test(raw) ? raw : `l${taken.size + 1}`;
     while (taken.has(id)) id = `l${taken.size + 1}-${lookups.length + 1}`;
     taken.add(id);

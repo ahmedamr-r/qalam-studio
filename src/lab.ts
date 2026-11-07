@@ -33,6 +33,8 @@ export const LAB_FEATURES = [
   "tests",
   /** Quick capture from the menu bar (⌃⌥Space). */
   "capture",
+  /** Look in your tools: one question searched in every connected tool at once (src/connectors/everywhere.ts). */
+  "everywhere",
 ] as const;
 
 export type LabFeature = (typeof LAB_FEATURES)[number];

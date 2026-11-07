@@ -7,6 +7,7 @@ import type { AskTurn } from "@/asking/types";
 import { AskingIn, askingBlock, checkOf } from "@/asking/wire";
 import { DUMP_ROLES, type DumpRole } from "@/discovery/dump";
 import { labOn } from "../lab";
+import { lookupKinds } from "../connectors/everywhere";
 import { companyContext } from "./company";
 import { recallFor, subjectOf, withKnown } from "./memory";
 import type { OrgStore } from "./store";
@@ -61,12 +62,13 @@ export async function askCard(store: OrgStore, b: AskCardBodyT, emit: (label: st
   const material = [base, known.block, askingBlock(b.asking)].filter(Boolean).join("\n\n");
   const lab = await labOn();
   const decisions = lab === true || lab.includes("decisions");
-  const call = askTurnCall({ flow: "card", who: "person", material, kinds: KINDS, terms: true, choices: decisions, extra: { role: { type: "string", enum: [...ROLES], description: "What their own words in the first answer are to the tree; none when they wrote nothing" } } });
+  const kinds = await lookupKinds(KINDS);
+  const call = askTurnCall({ flow: "card", who: "person", material, kinds, terms: true, choices: decisions, extra: { role: { type: "string", enum: [...ROLES], description: "What their own words in the first answer are to the tree; none when they wrote nothing" } } });
   const { data, model } = await deps.structured<unknown>(call, signal);
   const dropped: { why: string; item: unknown }[] = [];
   // The ids heading each listed line (q1, l0-2, bg-online-1) are never words a question may rest on.
   const hay = material.replace(/^(\s*- )[\w-]+ ·/gm, "$1");
-  const turn = sanitizeTurn(data, checkOf(b.asking, { who: "person", hay, terms: await store.getTerms(), kinds: KINDS, decisions, memory: known.ids }), (why, item) => dropped.push({ why, item }));
+  const turn = sanitizeTurn(data, checkOf(b.asking, { who: "person", hay, terms: await store.getTerms(), kinds, decisions, memory: known.ids }), (why, item) => dropped.push({ why, item }));
   const r = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
   const role = DUMP_ROLES.find((x) => x === r.role) ?? null;
   await store

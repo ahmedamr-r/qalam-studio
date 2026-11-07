@@ -14,6 +14,7 @@ import { planAnswers, planAskMaterial, planMaterial, planRound, planTask, planTw
 import { termsFold } from "@/terms/fold";
 import { indexFor } from "../index/registry";
 import { labOn } from "../lab";
+import { lookupKinds } from "../connectors/everywhere";
 import { companyContext } from "./company";
 import { recallFor, subjectOf, withKnown } from "./memory";
 import { readLinks, realDeps, type MarketDeps } from "./market";
@@ -94,7 +95,7 @@ export async function lookForPlan(store: OrgStore, b: PlanBody & { query?: strin
 }
 
 /** What comes next: a round of questions, a look, or ready to propose. A call that fails asks code's own questions, or goes on. */
-/** The plan's lookups: their project's own material, and the web. */
+/** The plan's lookups: their project's own material, and the web (and their tools, where a look in them can be offered). */
 const PLAN_KINDS = ["project", "web"] as const;
 
 /**
@@ -111,7 +112,8 @@ export async function planNext(store: OrgStore, b: PlanBody, emit: (label: strin
   const material = [base, known.block, askingBlock(a)].filter(Boolean).join("\n\n");
   const lab = await labOn();
   const decisions = lab === true || lab.includes("decisions");
-  const call = askTurnCall({ flow: "plan", who: "team", material, kinds: PLAN_KINDS, terms: true, choices: decisions });
+  const kinds = await lookupKinds(PLAN_KINDS);
+  const call = askTurnCall({ flow: "plan", who: "team", material, kinds, terms: true, choices: decisions });
   let answer: { data: unknown; model?: string };
   try {
     answer = await deps.structured<unknown>(call, signal);
@@ -121,7 +123,7 @@ export async function planNext(store: OrgStore, b: PlanBody, emit: (label: strin
     return { questions: planRound().map((q) => ({ ...planTweak(q), by: "code" as const })), lookups: [], done: false, understood: [], terms: [], choices: [] };
   }
   const dropped: { why: string; item: unknown }[] = [];
-  const turn = sanitizeTurn(answer.data, checkOf(a, { who: "team", hay: material.replace(/(^|\s)[a-z]\d+(?:-\d+)? ·/gm, "$1"), terms: await store.getTerms(), kinds: PLAN_KINDS, decisions, tweak: planTweak, memory: known.ids }), (why, item) => dropped.push({ why, item }));
+  const turn = sanitizeTurn(answer.data, checkOf(a, { who: "team", hay: material.replace(/(^|\s)[a-z]\d+(?:-\d+)? ·/gm, "$1"), terms: await store.getTerms(), kinds, decisions, tweak: planTweak, memory: known.ids }), (why, item) => dropped.push({ why, item }));
   await store
     .putTrace({ id: nanoid(10), projectId: "plan", kind: "ask-turn", flow: "plan", at: Date.now(), ...(answer.model ? { model: answer.model } : {}), rounds: a.rounds.length, recalled: { items: known.items, chars: known.block.length }, answer: answer.data, kept: { questions: turn.questions.map((q) => ({ id: q.id, title: q.title, after: q.after })), lookups: turn.lookups, done: turn.done, terms: turn.terms.map((t) => t.term), choices: turn.choices.length }, dropped } as { id: string; projectId: string })
     .catch(() => {});

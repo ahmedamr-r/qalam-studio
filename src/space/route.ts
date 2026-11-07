@@ -12,12 +12,12 @@ import { isAppLink } from "@/scan/input";
  * app's link, or the box set to it, reads what people complain about (src/scan/). A question can be
  * asking what's known or asking to work something out, which words can't tell, so that one's left to a
  * small call to read (`read`; src/space/plan.ts); if it can't, it's asked.
- * A mode a button set (Write a goal, Find a problem…) wins. The chat says how it took each message,
- * and they can switch.
+ * A mode a button set (Write a goal, Find a problem…, Look in your tools) wins. The chat says how it
+ * took each message, and they can switch.
  */
 
 /** What a message can be taken as. */
-export type ChatMode = "ask" | "dump" | "take" | "goal" | "problem" | "scan" | "plan";
+export type ChatMode = "ask" | "dump" | "take" | "goal" | "problem" | "scan" | "plan" | "tools";
 
 export type Routed = { job: ChatMode; read?: true } | { job: "choose"; first: "goal" | "problem" };
 

@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { create } from "zustand";
+import { toolsToLook, type LookTool } from "@/connectors/everywhere";
 import { connectorsDb } from "@/org/connectors";
 import { lab } from "@/lab";
 
@@ -31,4 +32,23 @@ export function useTools(): Tool[] | null {
     );
   }, []);
   return useToolsState((s) => s.tools);
+}
+
+const useLookState = create<{ tools: LookTool[] | null }>(() => ({ tools: null }));
+let lookAsked = false;
+
+/** The tools a look across them would search: connected ones holding material or numbers (null until known, and while the look is hidden). */
+export function useLookTools(): LookTool[] | null {
+  useEffect(() => {
+    if (lookAsked || !lab("everywhere")) return;
+    lookAsked = true;
+    void connectorsDb.list().then(
+      (v) => useLookState.setState({ tools: toolsToLook(v.connectors) }),
+      () => {
+        lookAsked = false;
+        useLookState.setState({ tools: [] });
+      },
+    );
+  }, []);
+  return useLookState((s) => s.tools);
 }

@@ -19,7 +19,7 @@ import type { FlowState } from "../ai/questionFlow";
 
 const ICON = { absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 
-const WHERE = { project: "in your project", web: "on the web", online: "at what people say online" } as const;
+const WHERE = { project: "in your project", web: "on the web", online: "at what people say online", tools: "in your tools" } as const;
 
 /** The lookups running for the next turn, each with Stop: what waited on one is asked again without it. A look in the background only the draft waits on says so. */
 export function Waiting({ lookups, onStop }: { lookups: readonly Lookup[]; onStop: (id: string) => void }) {
@@ -32,7 +32,7 @@ export function Waiting({ lookups, onStop }: { lookups: readonly Lookup[]; onSto
           <Spinner size={12} />
           <span className="min-w-0 flex-1 truncate">
             Looking {WHERE[l.kind]}
-            {l.waits === "draft" ? " on it, for the draft" : `${l.query ? ` for “${l.query}”` : " for what people do about this"} while you answer`}
+            {l.kind === "tools" ? ` for “${l.query}”: tick what to bring in, in the chat` : l.waits === "draft" ? " on it, for the draft" : `${l.query ? ` for “${l.query}”` : " for what people do about this"} while you answer`}
           </span>
           <IconBtn size="sm" label="Stop this lookup" onClick={() => onStop(l.id)}>
             <X size={12} {...ICON} />
@@ -63,7 +63,7 @@ export function AskRound(p: AskRoundProps) {
   return (
     <div className="flex flex-col gap-[6px]">
       <Waiting lookups={p.state.lookups} onStop={p.onStopLookup} />
-      {offer && !round ? <Offer query={offer.query} onYes={p.onLookItUp} onNo={p.onAskMe} onStop={() => p.onStop(null)} /> : round ? <RoundBox key={p.state.rounds.length} round={round} n={p.state.rounds.length} {...p} /> : null}
+      {offer && !round ? <Offer query={offer.query} kind={offer.kind ?? "web"} onYes={p.onLookItUp} onNo={p.onAskMe} onStop={() => p.onStop(null)} /> : round ? <RoundBox key={p.state.rounds.length} round={round} n={p.state.rounds.length} {...p} /> : null}
     </div>
   );
 }
@@ -100,16 +100,16 @@ function RoundBox({ round, n, title, onKeep, onSend, onPicks, onStop }: AskRound
 }
 
 /** After two turns of only looking things up, the next lookup is theirs to say yes to. */
-function Offer({ query, onYes, onNo, onStop }: { query: string; onYes: () => void; onNo: () => void; onStop: () => void }) {
+function Offer({ query, kind, onYes, onNo, onStop }: { query: string; kind: "web" | "tools"; onYes: () => void; onNo: () => void; onStop: () => void }) {
   return (
     <div className="q-sheet flex flex-col gap-[8px] rounded-xl p-[12px]">
       <p className="flex items-start gap-[6px] text-body leading-[20px] text-fg">
         <Search size={14} {...ICON} className="mt-[3px] shrink-0 text-fg-muted" />
-        <span>Look up “{query}” on the web too, before asking you more?</span>
+        <span>{kind === "tools" ? `Look in your tools for “${query}” before asking you more? You pick what's brought in.` : `Look up “${query}” on the web too, before asking you more?`}</span>
       </p>
       <div className="flex flex-wrap items-center gap-[4px]">
         <button type="button" className={r.replyChipPrimary} onClick={onYes}>
-          Look it up
+          {kind === "tools" ? "Look in them" : "Look it up"}
         </button>
         <button type="button" className={r.replyChip} onClick={onNo}>
           Ask me instead

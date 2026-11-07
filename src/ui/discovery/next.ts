@@ -70,6 +70,10 @@ export async function runStep(card: string, step: NextStep, f: CardFacts, o: { l
       return;
     case "find-backing":
       return findBackingFor(card);
+    // In the canvas's chat: every connected tool looked in at once, what's ticked brought in under it.
+    case "look-tools":
+      void import("../space/chat/store").then((m) => m.lookInToolsFor(card));
+      return;
     case "connect":
       navigate(placeHref("connections"));
       return;

@@ -5,7 +5,10 @@ import { countsEvents } from "@/connectors/analytics";
 import type { InsightNumbers } from "@/connectors/numbers";
 import type { Hit } from "@/connectors/recipes";
 import { findIn, numberLine, passageLine, passagesFor, searchedAlone, toolConnected, toolsForAsk, type FindDeps, type ToolAsk, type ToolFind } from "@/connectors/suggest";
+import type { FoundIn } from "@/connectors/everywhere";
+import { lab } from "@/lab";
 import { connectorsDb, numbersDb, type ConnectorState } from "@/org/connectors";
+import { everywhereDb } from "@/org/everywhere";
 import { ConnectorLogo } from "../brand/ConnectorLogo";
 import { Browse, useConnectorView } from "../chat/SourcePicker";
 import { ConnectActions, type View } from "../connections/Connectors";
@@ -17,8 +20,8 @@ import { StatusDot } from "../viz";
 /*
  * Under a question a tool could answer better than memory: the tools that fit. One that isn't
  * connected connects right here. A connected one Qalam reaches itself is searched as the question
- * shows (no tokens), and what it has is listed under it; one reached through Claude Code is searched
- * on a press. Whatever the person picks goes in their answer, for them to read and change; nothing
+ * shows (no tokens; with the lab's `everywhere`, all of them in one request), and what it has is
+ * listed under it; one reached through Claude Code is searched on a press. Whatever the person picks goes in their answer, for them to read and change; nothing
  * goes there on its own.
  */
 
@@ -71,6 +74,18 @@ const FIND: FindDeps = {
   numbers: (id, ref) => numbersDb.read(ref, id),
 };
 
+/** Every tool searched in one request (lab "everywhere"), kept five minutes like a tool's own. */
+const searchedAll = new Map<string, { at: number; found: Promise<FoundIn[]> }>();
+function findAllOnce(ask: ToolAsk, question: string): Promise<FoundIn[]> {
+  const key = `${ask.kind}|${ask.lookFor ?? ""}|${question}`;
+  const had = searchedAll.get(key);
+  if (had && Date.now() - had.at < 5 * 60_000) return had.found;
+  const found = everywhereDb.words(ask, question);
+  searchedAll.set(key, { at: Date.now(), found });
+  found.catch(() => searchedAll.delete(key));
+  return found;
+}
+
 /** A search kept five minutes, so going back to a question doesn't search again. */
 const searched = new Map<string, { at: number; finds: Promise<ToolFind[]> }>();
 function findOnce(c: ConnectorState, ask: ToolAsk, question: string): Promise<ToolFind[]> {
@@ -90,13 +105,19 @@ function Found({ tools, ask, question, onFill }: { tools: ConnectorState[]; ask:
   const ids = tools.map((c) => c.id).join(",");
   useEffect(() => {
     let alive = true;
-    for (const c of tools) {
-      setFound((f) => ({ ...f, [c.id]: f[c.id] ?? "looking" }));
-      findOnce(c, ask, question).then(
-        (finds) => alive && setFound((f) => ({ ...f, [c.id]: finds })),
-        () => alive && setFound((f) => ({ ...f, [c.id]: "failed" })),
+    setFound((f) => ({ ...f, ...Object.fromEntries(tools.map((c) => [c.id, f[c.id] ?? "looking"])) }));
+    // Every tool in one request, side by side in the core: a tool it didn't search says nothing here.
+    if (lab("everywhere"))
+      findAllOnce(ask, question).then(
+        (all) => alive && setFound((f) => ({ ...f, ...Object.fromEntries(tools.map((c) => [c.id, all.find((x) => x.tool === c.id)?.finds ?? "failed"])) })),
+        () => alive && setFound((f) => ({ ...f, ...Object.fromEntries(tools.map((c) => [c.id, "failed"])) })),
       );
-    }
+    else
+      for (const c of tools)
+        findOnce(c, ask, question).then(
+          (finds) => alive && setFound((f) => ({ ...f, [c.id]: finds })),
+          () => alive && setFound((f) => ({ ...f, [c.id]: "failed" })),
+        );
     return () => {
       alive = false;
     };

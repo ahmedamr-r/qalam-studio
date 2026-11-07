@@ -24,12 +24,20 @@ export interface AskingOpts {
 
 const WHO: Record<AskWho, string> = { person: "the person", team: "the team", builder: "the builder", designer: "the designer" };
 
+/** Each kind of lookup, as the rules name it. */
+const LOOKUP_WORDS: Record<LookupKind, string> = {
+  project: "project (their own sources and pages, found by search)",
+  web: "web (what's published)",
+  online: "online (what people say in public)",
+  tools: "tools (their connected tools, such as their docs, team chat, support conversations and analytics, searched for what isn't in the project yet; they pick what's brought in, so ask for it only when the project lookup can't have it)",
+};
+
 /** The rules every asking call carries, worded for who answers. Stable, so they're cached as their own block. */
 export function askingRules(who: AskWho, o: AskingOpts = {}): string {
   const them = WHO[who];
   const kinds = o.kinds ?? [];
   const look = kinds.length
-    ? `- Facts are yours to find; decisions are ${them}'s. Before asking them for a fact (what their customers said, what's in their material, what others do, what something costs), ask for a lookup instead: ${kinds.map((k) => (k === "project" ? "project (their own sources and pages, found by search)" : "web (what's published)")).join(" or ")}, each with a short query. Keep asking whatever doesn't need it now: only a question that depends on a lookup waits for it (after: its id).`
+    ? `- Facts are yours to find; decisions are ${them}'s. Before asking them for a fact (what their customers said, what's in their material, what others do, what something costs), ask for a lookup instead: ${kinds.map((k) => LOOKUP_WORDS[k]).join(" or ")}, each with a short query. Keep asking whatever doesn't need it now: only a question that depends on a lookup waits for it (after: its id).`
     : `- Facts are yours to work out from what you were sent; decisions are ${them}'s. Never ask them for what the material already says.`;
   return [
     `How you ask: an interview before anything is proposed, with ${them}. There is no limit on rounds.`,
@@ -61,7 +69,7 @@ export function askingFields(who: AskWho, o: AskingOpts = {}): Record<string, un
   const kinds = o.kinds ?? [];
   return {
     questions: arr(question, "Every question you can ask now, then those waiting on something still open (with their after). [] when nothing is left to ask"),
-    ...(kinds.length ? { lookups: arr(obj({ id: str("Your id for it: l1, l2…"), kind: { type: "string", enum: [...kinds], description: "project: their own material · web: what's published" }, query: str("What to look up, in a few words") }), "Facts to look up rather than ask. [] when none") } : {}),
+    ...(kinds.length ? { lookups: arr(obj({ id: str("Your id for it: l1, l2…"), kind: { type: "string", enum: [...kinds], description: `project: their own material · web: what's published${kinds.includes("tools") ? " · tools: their connected tools" : ""}` }, query: str("What to look up, in a few words") }), "Facts to look up rather than ask. [] when none") } : {}),
     done: bool("true when nothing that would change what's proposed is left open"),
     understood: arr(obj({ text: str("A point settled so far, one short line"), from: arr(str("An id it rests on"), "The ids it rests on") }), "What's settled so far"),
     ...(o.terms ? { terms: arr(obj({ term: str("Their own word"), means: str("What it is, in one or two sentences"), avoid: arr(str("A word"), "Other words for it the project shouldn't use") }), "Terms an answer settled. [] when none") } : {}),

@@ -48,6 +48,8 @@ describe("a tool that could answer a question", () => {
     const text = "Our office moved to a new building last spring, near the river.\n\nActivation fell to 31% after the signup change in March.\n\nshort";
     expect(passagesFor(text, "Where does activation stand after signup?")[0]).toBe("Activation fell to 31% after the signup change in March.");
     expect(passagesFor(text, "x")).not.toContain("short");
+    // A tool's inline marks come off; the words stay, and a "<" that isn't a mark stays too.
+    expect(passagesFor("<b>Key observations:</b> activation fell to <span color=\"red\">31%</span> when the signup form grew, and 3 < 4.", "activation signup")).toEqual(["Key observations: activation fell to 31% when the signup form grew, and 3 < 4."]);
   });
 
   it("puts what came back in the answer, however the question takes words", () => {

@@ -16,9 +16,11 @@ export type AskWho = "person" | "team" | "builder" | "designer";
 /**
  * Where a fact is looked up by Qalam AI itself: the project's own material (no tokens), or the web.
  * `online`: what people say online, kept as sources (lab "online"); only code starts one, in the
- * background before a draft, never a turn.
+ * background before a draft, never a turn. `tools`: their connected tools, searched side by side
+ * (src/connectors/everywhere.ts, lab "everywhere"); it needs their picks, so a turn's is always put to
+ * them first, and it lands with what they brought in.
  */
-export type LookupKind = "project" | "web" | "online";
+export type LookupKind = "project" | "web" | "online" | "tools";
 
 /** A question as the engine keeps it. `after`: the questions or lookups whose answers it waits on. `by: "code"`: code's own. */
 export interface AskQuestion extends PlanQuestion {
@@ -113,8 +115,8 @@ export interface AskingState {
   end?: { by: "done" | "nothing-new" | "stopped"; at: number };
   /** Turns in a row that only looked things up: after two, a web lookup is put to them first. */
   quiet?: number;
-  /** A web lookup waiting for their go-ahead. */
-  offer?: { id: string; query: string };
+  /** A lookup waiting for their go-ahead: a web lookup after quiet turns, or any look in their tools. */
+  offer?: { id: string; query: string; kind?: "web" | "tools" };
   /** They said to ask rather than look: the next turn asks or ends. */
   askFirst?: true;
   /** They saw what was settled and said go. */

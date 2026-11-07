@@ -192,7 +192,7 @@ export const off = (h: AskingHost) => h.set(offPoint);
 /** The lookup put to them: yes, look it up; or ask me instead. */
 export function lookItUp(h: AskingHost, signal: AbortSignal): Promise<Paused> {
   const s = h.get();
-  if (s?.offer) h.set((x) => startLookup(x, { id: s.offer!.id, kind: "web", query: s.offer!.query, waits: x.turns }, Date.now()));
+  if (s?.offer) h.set((x) => startLookup(x, { id: s.offer!.id, kind: s.offer!.kind ?? "web", query: s.offer!.query, waits: x.turns }, Date.now()));
   return goOn(h, signal);
 }
 

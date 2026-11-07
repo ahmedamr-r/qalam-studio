@@ -51,6 +51,8 @@ describe("reading Notion", () => {
     const res = JSON.stringify({ results: [{ id: "p1", title: "Interview: Sara", url: "https://www.notion.so/p1", type: "page", highlight: "I rebuild my basket", timestamp: "2026-10-20T10:00:00Z" }, { title: "no id" }], type: "workspace_search" });
     expect(notionHits(res)).toEqual([{ id: "p1", title: "Interview: Sara", url: "https://www.notion.so/p1", snippet: "I rebuild my basket", at: "2026-10-20T10:00:00Z", opens: true }]);
     expect(RECIPES.notion.fetch({ id: "p1", title: "x" })).toEqual({ tool: "notion-fetch", args: { id: "p1" } });
+    // Its highlight's bold marks and fragment joins (as its search answered, November 2026) read as words.
+    expect(notionHits(JSON.stringify({ results: [{ id: "p2", title: "Koinz funnel", highlight: "1- **Signup** **funnel** --- 2- order **funnel**" }] }))[0].snippet).toBe("1- Signup funnel … 2- order funnel");
     expect(itemText(JSON.stringify({ title: "t", text: "  Every Sunday I rebuild it.  " }))).toBe("Every Sunday I rebuild it.");
     expect(itemText("plain words")).toBe("plain words");
   });

@@ -39,13 +39,44 @@ describe("the canvas's chat", () => {
       { id: "a:ai", role: "assistant", parts: [{ type: "data", name: "working", data: { turn: "a" } }] },
     ]);
     c = withJob(c, "a", () => ({ kind: "ask", state: "answered", answer, secs: 4 }));
-    // An answer offers to take the words another way ("Not a question?").
+    // An answer offers to look further in their tools (where it's on), and to take the words another way ("Not a question?").
     expect(threadOf(c)[1].parts).toEqual([
       { type: "data", name: "answer", data: { turn: "a" } },
+      { type: "data", name: "lookTools", data: { turn: "a" } },
       { type: "data", name: "switch", data: { turn: "a" } },
     ]);
     c = withJob(c, "a", () => ({ kind: "ask", state: "failed", error: "No engine" }));
     expect(threadOf(c)[1].parts[0]).toEqual({ type: "text", text: "I couldn't answer that: No engine" });
+  });
+});
+
+describe("a look in their tools", () => {
+  const run = { tool: "notion", label: "Notion", holds: "docs" as const, slow: false, state: "done" as const, searched: ["checkout"], seen: 3, calls: 2, picked: 1 };
+  const hit = { id: "n1", title: "Checkout research" };
+  const look = (x: Partial<Extract<ChatTurn["job"], { kind: "tools" }>> = {}): ChatTurn["job"] => ({ kind: "tools", about: "checkout drop-off", state: "looking", runs: [], ...x });
+
+  it("shows each tool as it goes, then what they found to tick, then where it went", () => {
+    const parts = (j: ChatTurn["job"]) => threadOf(withTurn(emptyChat(), turn("t", j, "Look in your tools for “checkout drop-off”")))[1].parts.map((p) => (p.type === "data" ? p.name : p.text));
+    expect(parts(look())).toEqual(["toolsLooking"]);
+    expect(parts(look({ state: "found", runs: [run], found: [{ key: "notion:n1", tool: "notion", hit, origin: "notion:n1", picked: true }], ticked: ["notion:n1"] }))).toEqual(["toolsFound"]);
+    expect(parts(look({ state: "bringing" }))).toEqual(["working"]);
+    expect(parts(look({ state: "brought", brought: { added: ["Checkout research"], skipped: [], failed: [], sources: ["s1"], pages: [] } }))).toEqual(["toolsBrought"]);
+    expect(parts(look({ state: "left" }))).toEqual(["You left them. Nothing was taken in.", "toolsAgain"]);
+    expect(parts(look({ state: "failed", error: "No tool is connected" }))).toEqual(["I couldn't look: No tool is connected", "toolsAgain"]);
+  });
+
+  it("runs while it looks, not while what's ticked goes in (that goes on in the core)", () => {
+    expect(running(withTurn(emptyChat(), turn("t", look())))?.id).toBe("t");
+    expect(running(withTurn(emptyChat(), turn("t", look({ state: "bringing" }))))).toBeNull();
+  });
+
+  it("reads back after a reload: a look that hadn't finished stopped, bringing in went on in the core", () => {
+    const c = chatOf({ v: 1, turns: [turn("a", look()), turn("b", look({ state: "bringing" })), turn("c", look({ state: "found", runs: [run], found: [], ticked: [] }))] });
+    expect(c.turns.map((t) => (t.job.kind === "tools" ? [t.job.state, t.job.error ?? ""] : []))).toEqual([
+      ["failed", "It stopped when the page closed. Look again."],
+      ["failed", "The page closed while they were being taken in. What was kept is in the sources."],
+      ["found", ""],
+    ]);
   });
 });
 

@@ -20,7 +20,8 @@ import { draftSolutionsFor } from "../../discovery/solutions";
 import { breakDownFor, draftProblemsFor } from "../../discovery/goal-steps";
 import { draftTestsFor } from "../../discovery/tests";
 import { fileAfterReading } from "../../topics/filing";
-import type { AskingState, Lookup } from "@/asking/types";
+import type { AskingState, FoundLine, Lookup } from "@/asking/types";
+import { basisOf } from "@/discovery/basis";
 import { askingIn } from "@/asking/wire";
 import { hostOf } from "@/ai/research-shared";
 import { editTerm, useTerms } from "@/org/terms";
@@ -41,7 +42,8 @@ import { askOrganization } from "@/org/ask";
 import { captureIngested, decideFoundGoal, setSourceBasis } from "@/org/capture";
 import { currentOrg, orgFetch, orgJson } from "@/org/client";
 import type { Ingested } from "@/discovery/ingest/core";
-import { chatKey, chatOf, emptyChat, withJob, withTurn, type CanvasChat, type ChatDoc, type ChatJob, type ChatTurn, type FiledPage, type FocusGoal, type GoalForJob, type GoalForOn, type BriefState, type ScanJob, type ScanPlan, type TakenDoc, type WhoseJob, type PlanJob, type DraftJob, type KeptChallenge } from "@/space/chat";
+import { chatKey, chatOf, emptyChat, withJob, withTurn, type CanvasChat, type ChatDoc, type ChatJob, type ChatTurn, type FiledPage, type FocusGoal, type GoalForJob, type GoalForOn, type BriefState, type ScanJob, type ScanPlan, type TakenDoc, type WhoseJob, type PlanJob, type DraftJob, type KeptChallenge, type ToolsJob } from "@/space/chat";
+import { everywhereDb } from "@/org/everywhere";
 import type { StartHandoff } from "@/onboarding/handoff";
 
 /** A doc taken in: read already, or a picture kept in the project to read now. */
@@ -270,6 +272,7 @@ export async function runAs(at: string | null, said: string, mode: ChatMode, doc
   if (mode === "dump") return dumpIt(at, said, docs);
   if (mode === "scan") return scanIt(at, said);
   if (mode === "plan") return workOut(at, said);
+  if (mode === "tools") return void (await lookInTools(at, said, { typed: true }));
 }
 
 /** Words sent to the chat from elsewhere (the first run's idea), taken as `mode`. */
@@ -516,6 +519,7 @@ export const scanPlanHost = (id: string): AskingHost => ({
     return askScanPlan(planOf(j), askingIn(s, { said: j.target.kind === "idea" ? j.target.said : "", terms: useTerms.getState().terms, memory: scanPlanHost(id).memory?.() }), step(id), signal);
   },
   lookup: async (l, signal) => {
+    if (l.kind === "tools") return toolsLookup(l, signal, { turn: id });
     if (l.kind === "project") return projectLookup(l);
     const j = scanJob(id);
     const about = j?.target.kind === "idea" ? j.target.said : (j?.target.name ?? "");
@@ -671,6 +675,7 @@ export const briefHost = (id: string): AskingHost => ({
   },
   lookup: async (l, signal) => {
     const card = briefCard(id);
+    if (l.kind === "tools") return toolsLookup(l, signal, { turn: id, ...(card ? { card } : {}) });
     if (l.kind === "project") return projectLookup(l, { product: card ? productOfCard(card) : null });
     const look = await planLook({ said: `What's needed to build or run: ${card ? cardTitle(card) : ""}`.slice(0, 4000), outline: [], rounds: [], looks: [], ...(l.query ? { query: l.query } : {}) }, undefined, signal);
     return { look, lines: look.lines.map((x, i) => ({ ref: `${l.id}-${i + 1}`, text: x.text, from: x.url ? hostOf(x.url) : "a page", whose: "a page online", ...(x.url ? { url: x.url } : {}), ...(x.quote ? { quote: x.quote } : {}) })) };
@@ -897,6 +902,7 @@ export const planHost = (id: string): AskingHost => ({
   set: (fn) => setCanvasPlan(id, (j) => ({ ...j, asking: fn(planAsking(j)) })),
   turn: (_s, signal) => planAhead(planAsk(id)!, step(id), signal),
   lookup: async (l, signal) => {
+    if (l.kind === "tools") return toolsLookup(l, signal, { turn: id });
     if (l.kind === "project") return projectLookup(l);
     const look = await planLook({ ...planAsk(id)!, ...(l.query ? { query: l.query } : {}) }, undefined, signal);
     setCanvasPlan(id, (j) => ({ ...j, looks: [...j.looks, { ...look, after: (j.asking?.rounds.length ?? 0) - 1 }] }));
@@ -1102,6 +1108,7 @@ export const draftHost = (id: string): AskingHost => ({
   },
   lookup: async (l, signal) => {
     const j = draftJob(id)!;
+    if (l.kind === "tools") return toolsLookup(l, signal, { turn: id, card: j.card });
     if (l.kind === "project") {
       // Search ranks what's nearest, near or not: only a quote sharing two telling words with the card, their words and what was looked for counts as found, so the draft never rests on one that isn't about it.
       const r = await projectLookup(l, { product: productOfCard(j.card) });
@@ -1868,6 +1875,151 @@ export function aboutNow(): string | null {
   if (shown) return `${shown} (its page is open)`;
   const g = "goal" in open.ref ? goalById(goalsNow(), open.ref.goal) : undefined;
   return g ? `Goal: ${g.title} (its page is open)` : null;
+}
+
+// ---------------------------------------------------------------------------
+// Look in your tools: every connected tool searched for it at once (src/connectors/everywhere.ts)
+
+const setTools = (id: string, fn: (j: ToolsJob) => ToolsJob) => change((c) => withJob(c, id, (j) => (j.kind === "tools" ? fn(j) : j)));
+
+/** A card's words, as a look hears what to find: its title, and the start of what it says. */
+function cardWords(id: string): string {
+  const n = studio().doc.nodes[id];
+  if (!isOstCard(n)) return "";
+  const c = n.meta.ost;
+  const more = c.description?.replace(/\s+/g, " ").trim().slice(0, 300);
+  return [c.title.trim(), more].filter(Boolean).join("\n");
+}
+
+/**
+ * A look across every connected tool, in the thread: each tool's searcher as it goes, then what they
+ * found for them to tick (Qalam AI's picks ticked). Nothing is taken in until they bring it in. `card`:
+ * a card's look, its finds placed only under it; `from`: the question it looks further for; `typed`:
+ * their own words, sent with the box set to look.
+ */
+export async function lookInTools(at: string | null, about: string, o: { card?: string; from?: string; typed?: boolean; lookup?: ToolsJob["lookup"] } = {}): Promise<string | null> {
+  // A card's look hears its words, unless something more particular is asked (an interview's lookup).
+  const words = (about.trim() || (o.card ? cardWords(o.card) : "")).replace(/[ \t]+/g, " ").trim();
+  if (words.length < 3) return null;
+  toggleChat(true);
+  const card = o.card ? { id: o.card, title: cardTitle(o.card) || words } : undefined;
+  const board = card ? boardOfCard(card.id) : null;
+  // A card whose board isn't made yet: its finds are kept and filed, and placed nowhere.
+  const scope = card ? (board ? { [board]: [card.id] } : {}) : undefined;
+  const said = o.typed ? words : `Look in your tools for “${about.trim() || card?.title || words}”`;
+  const job: ToolsJob = { kind: "tools", about: words, state: "looking", runs: [], ...(card ? { card } : {}), ...(scope ? { scope } : {}), ...(o.from ? { from: o.from } : {}), ...(o.lookup ? { lookup: o.lookup } : {}) };
+  const id = jobAt(at, said, job);
+  if (await engineMissing()) {
+    jobAt(id, said, { kind: "noEngine", mode: "tools" });
+    return id;
+  }
+  const ctrl = begin(id);
+  const started = Date.now();
+  try {
+    const r = await everywhereDb.look(words, {
+      signal: ctrl.signal,
+      // Each tool's searcher as it goes, in the order the look started them.
+      onRun: (run) => setTools(id, (j) => ({ ...j, runs: j.runs.some((x) => x.tool === run.tool) ? j.runs.map((x) => (x.tool === run.tool ? run : x)) : [...j.runs, run] })),
+    });
+    setTools(id, (j) => ({ ...j, state: "found", runs: r.runs, found: r.candidates, ticked: r.candidates.filter((c) => c.picked && !c.inSources).map((c) => c.key), secs: Math.round((Date.now() - started) / 1000) }));
+  } catch (e) {
+    const stopped = (e as Error).name === "AbortError" || ctrl.signal.aborted;
+    setTools(id, (j) => ({ ...j, state: "failed", error: stopped ? "You stopped it." : message(e) }));
+  } finally {
+    end(id);
+  }
+  return id;
+}
+
+/** A card's look, from its next steps: in the chat, its finds placed only under it. */
+export const lookInToolsFor = (card: string) => void lookInTools(null, "", { card });
+
+/** Until a look's ticked ones are brought in, it's left, it fails, or it found nothing new to bring in (rejected when the interview stops waiting). */
+function settledTools(id: string, signal: AbortSignal): Promise<ToolsJob> {
+  return new Promise((resolve, reject) => {
+    let unsub = () => {};
+    const off = () => {
+      unsub();
+      signal.removeEventListener("abort", stop);
+    };
+    const stop = () => {
+      off();
+      reject(new DOMException("Stopped", "AbortError"));
+    };
+    const check = () => {
+      const j = turnOf(id)?.job;
+      if (j?.kind !== "tools") return (off(), reject(new Error("The look in your tools went away.")));
+      // Nothing they could bring in (none found, or all of it a source already): nothing to wait for.
+      const nothingNew = j.state === "found" && !(j.found ?? []).some((c) => !c.inSources);
+      if (j.state === "brought" || j.state === "left" || j.state === "failed" || nothingNew) {
+        off();
+        resolve(j);
+      }
+    };
+    unsub = useCanvasChat.subscribe(check);
+    signal.addEventListener("abort", stop, { once: true });
+    check();
+  });
+}
+
+/** Whose words a source's point holds, as an interview's lookups say it. */
+const WHOSE_IS: Record<string, string> = { said: "people said", measured: "measured", studied: "studied", read: "read elsewhere", own: "the team's" };
+
+/**
+ * A look in their tools an interview asked for and they said yes to: it runs in the chat, where they
+ * tick what to bring in. It lands with the points of what they brought in, each under its own piece, so
+ * the next turn reads them and a draft may rest on them; nothing brought in, nothing found.
+ */
+async function toolsLookup(l: Pick<Lookup, "id" | "query">, signal: AbortSignal, o: { turn: string; card?: string }): Promise<{ lines: FoundLine[] }> {
+  const id = await lookInTools(null, l.query, { ...(o.card ? { card: o.card } : {}), lookup: { turn: o.turn, id: l.id } });
+  if (!id) return { lines: [] };
+  const j = await settledTools(id, signal);
+  if (j.state === "failed") throw new Error(j.error ?? "The look in your tools failed.");
+  const sources = j.state === "brought" ? (j.brought?.sources ?? []) : [];
+  const read = await Promise.all(sources.map((s) => sourcesDb.get(s).catch(() => null)));
+  const lines = read.flatMap((s) => (s ? s.quotes.map((q) => ({ s, q })) : [])).slice(0, 8);
+  return { lines: lines.map(({ s, q }, i): FoundLine => ({ ref: `${l.id}-${i + 1}`, text: q.text, from: s.title, whose: WHOSE_IS[basisOf(s, q)] ?? "people said", piece: quotePiece(q.id) })) };
+}
+
+/** One found item ticked or not. */
+export function tickFound(id: string, key: string, on: boolean) {
+  setTools(id, (j) => ({ ...j, ticked: on ? [...new Set([...(j.ticked ?? []), key])] : (j.ticked ?? []).filter((k) => k !== key) }));
+}
+
+/**
+ * The ticked ones taken in, tool by tool, as the canvas's product's (a card's look: only under the
+ * card). It goes on in the core to its end, whatever the window does, so it has no Stop.
+ */
+export async function bringFound(id: string): Promise<void> {
+  const j = turnOf(id)?.job;
+  if (j?.kind !== "tools" || j.state !== "found") return;
+  const ticked = new Set(j.ticked ?? []);
+  const picks = (j.found ?? []).filter((c) => ticked.has(c.key) && !c.inSources).map((c) => ({ tool: c.tool, hit: c.hit }));
+  if (!picks.length) return;
+  setTools(id, (x) => ({ ...x, state: "bringing" }));
+  begin(id);
+  step(id)(`Taking in ${picks.length === 1 ? `“${picks[0].hit.title}”` : `${picks.length} items`}`);
+  await saveNow();
+  try {
+    const r = await everywhereDb.bring(picks, { ...(j.scope ? { scope: j.scope } : {}), product: st().space, onActivity: step(id) });
+    for (const t of r.added) sourceCame(t);
+    setTools(id, (x) => ({ ...x, state: "brought", brought: { added: r.added, skipped: r.skipped, failed: r.failed, sources: r.sources ?? [], pages: r.pages ?? [] } }));
+  } catch (e) {
+    setTools(id, (x) => ({ ...x, state: "failed", error: `They couldn't be taken in: ${message(e)}` }));
+  } finally {
+    end(id);
+  }
+}
+
+/** None taken: nothing came in. */
+export const leaveFound = (id: string) => setTools(id, (j) => (j.state === "found" ? { ...j, state: "left" } : j));
+
+/** The same look again, in its turn. */
+export function lookAgain(id: string) {
+  const j = turnOf(id)?.job;
+  if (j?.kind !== "tools") return;
+  const t = turnOf(id)!;
+  void lookInTools(id, j.about, { ...(j.card ? { card: j.card.id } : {}), ...(j.from ? { from: j.from } : {}), typed: t.said === j.about });
 }
 
 // ---------------------------------------------------------------------------

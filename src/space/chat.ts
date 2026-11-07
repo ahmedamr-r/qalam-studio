@@ -20,6 +20,7 @@ import type { ChatMode } from "./route";
 import type { AskingState } from "@/asking/types";
 import type { KeptChallenge } from "@/challenge/types";
 import { awaitsConfirm, currentRound, forDraft, loaded } from "@/asking/engine";
+import type { Candidate, ToolRun } from "@/connectors/everywhere";
 
 /*
  * Qalam AI's chat on the left of a space's canvas (src/ui/space/chat/), as it's kept: one file per
@@ -93,7 +94,32 @@ export type ChatJob =
   | DraftJob
   | { kind: "find"; what: FindWhat; error?: string; /** Qalam AI's opening questions, from what's known about the company and its domain (none: code's own). */ questions?: PlanQuestion[]; /** Those being worked out. */ loading?: true; goal?: FocusGoal; look?: FocusLook }
   | GoalForJob
-  | WhoseJob;
+  | WhoseJob
+  | ToolsJob;
+
+/**
+ * Looking in every connected tool for something (src/connectors/everywhere.ts): `looking` while each
+ * tool's searcher runs (`runs`, as they go), `found` with what they found for them to tick (Qalam AI's
+ * picks ticked to start), `bringing` while the ticked ones are taken in, `brought` with where they
+ * went, `left` when they took none. `card`: a card's look, whose finds are placed only under it
+ * (`scope`; {} when its board isn't made yet). `from`: the question it looked further for.
+ */
+export interface ToolsJob {
+  kind: "tools";
+  about: string;
+  state: "looking" | "found" | "bringing" | "brought" | "left" | "failed";
+  runs: ToolRun[];
+  found?: Candidate[];
+  ticked?: string[];
+  card?: { id: string; title: string };
+  scope?: Record<string, string[]>;
+  from?: string;
+  /** The interview's lookup it is (a turn asked for it and they said yes): what they bring in lands there. */
+  lookup?: { turn: string; id: string };
+  brought?: { added: string[]; skipped: string[]; failed: { title: string; why: string }[]; sources: string[]; pages: string[] };
+  secs?: number;
+  error?: string;
+}
 
 /**
  * Whose it is, asked after the start page's box when its words didn't say: whether the product
@@ -320,10 +346,13 @@ function stopped(j: ChatJob): ChatJob {
   if (j.kind === "draft") return { ...j, asking: loaded(j.asking) };
   // A number still being worked out when the page went: theirs to type.
   if (j.kind === "goalfor" && j.step === "suggesting") return { ...j, step: "suggested", suggestion: null };
+  // A look across the tools that hadn't finished: nothing runs it now. Bringing in goes on in the core.
+  if (j.kind === "tools" && j.state === "looking") return { ...j, state: "failed", error: "It stopped when the page closed. Look again." };
+  if (j.kind === "tools" && j.state === "bringing") return { ...j, state: "failed", error: "The page closed while they were being taken in. What was kept is in the sources." };
   return j;
 }
 
-const KINDS = new Set(["ask", "choose", "noEngine", "add", "take", "dump", "find", "goalfor", "scan", "brief", "plan", "draft", "whose"]);
+const KINDS = new Set(["ask", "choose", "noEngine", "add", "take", "dump", "find", "goalfor", "scan", "brief", "plan", "draft", "whose", "tools"]);
 
 /** A chat as read from its file (what it doesn't know is left out). */
 export function chatOf(raw: unknown): CanvasChat {
@@ -436,7 +465,7 @@ function draftReply(t: ChatTurn, j: DraftJob): ChatPart[] {
       // Asked all it needed, and the draft waits on a look in the background: they can draft now.
       return s.end && forDraft(s).length ? [...out, part("working", id), part("draftNow", id)] : [...out, part("working", id)];
     case "asking":
-      return [...out, text(s.offer ? "I'd look this up next, before asking you more. Should I?" : "Answer what you can, or take my picks.")];
+      return [...out, text(s.offer ? offerLine(s.offer) : "Answer what you can, or take my picks.")];
     case "settled":
       return awaitsConfirm(s) ? [...out, part("draftSettled", id)] : [...out, part("working", id)];
     case "done":
@@ -477,7 +506,7 @@ function planReply(t: ChatTurn, j: PlanJob): ChatPart[] {
       return [...out, part("working", id)];
     case "asking":
       if (!s) return [...out, text(j.rounds.length > 1 ? "A few more, then I'll propose it." : "A few questions first: answer what you can."), part("planSkip", id)];
-      return [...out, text(s.offer ? "I'd look this up next, before asking you more. Should I?" : s.rounds.length > 1 ? "More I can't tell from here: answer what you can, or take my picks." : "Some questions first: answer what you can, or take my picks.")];
+      return [...out, text(s.offer ? offerLine(s.offer) : s.rounds.length > 1 ? "More I can't tell from here: answer what you can, or take my picks." : "Some questions first: answer what you can, or take my picks.")];
     case "settled":
       return s && awaitsConfirm(s) ? [...out, part("askSettled", id)] : [...out, part("working", id)];
     case "review":
@@ -489,6 +518,27 @@ function planReply(t: ChatTurn, j: PlanJob): ChatPart[] {
   }
 }
 
+/** A lookup put to them, in a line. */
+const offerLine = (o: NonNullable<AskingState["offer"]>) => (o.kind === "tools" ? "I'd look in your tools for this next, before asking you more. Should I?" : "I'd look this up next, before asking you more. Should I?");
+
+/** A look across the tools in the thread: each tool as it goes, then what they found to tick, then where the ticked ones went. */
+function toolsReply(j: ToolsJob, id: PartData): ChatPart[] {
+  switch (j.state) {
+    case "looking":
+      return [part("toolsLooking", id)];
+    case "found":
+      return [part("toolsFound", id)];
+    case "bringing":
+      return [part("working", id)];
+    case "brought":
+      return [part("toolsBrought", id)];
+    case "left":
+      return [text("You left them. Nothing was taken in."), part("toolsAgain", id)];
+    case "failed":
+      return [text(`I couldn't look: ${j.error ?? "something went wrong"}`), part("toolsAgain", id)];
+  }
+}
+
 /** What Qalam AI says to a turn, from its job. */
 function replyTo(t: ChatTurn, dumpOf: DumpOf): ChatPart[] {
   const j = t.job;
@@ -497,7 +547,9 @@ function replyTo(t: ChatTurn, dumpOf: DumpOf): ChatPart[] {
     case "ask":
       if (j.state === "asking") return [part("working", id)];
       if (j.state === "failed") return [text(`I couldn't answer that: ${j.error ?? "something went wrong"}`), part("switch", id)];
-      return [part("answer", id), part("switch", id)];
+      return [part("answer", id), part("lookTools", id), part("switch", id)];
+    case "tools":
+      return toolsReply(j, id);
     case "choose":
       return [text("Is it a goal or a problem? I'll suggest how to word it for the canvas."), part("choose", id)];
     case "noEngine":
@@ -607,7 +659,7 @@ export function asking(c: CanvasChat, dumpOf: DumpOf, first?: string | null): ({
 
 // A goal's opening look runs here (the box offers Stop); the questions it works out are asked after.
 const scanBusy = (j: ScanJob) => (!j.error && !j.where && (!j.session || j.session.state === "reading")) || (!!j.plan && (j.plan.step === "questioning" || j.plan.step === "reading" || j.plan.step === "picking" || (!!j.plan.brief && briefWorking(j.plan.brief))));
-const busy = (j: ChatJob) => (j.kind === "scan" && scanBusy(j)) || (j.kind === "brief" && briefWorking(j.brief)) || (j.kind === "ask" && j.state === "asking") || (j.kind === "take" && j.state === "taking") || (j.kind === "find" && !!j.goal && !!j.loading) || (j.kind === "goalfor" && (j.step === "looking" || j.step === "suggesting")) || (j.kind === "plan" && (j.step === "looking" || j.step === "thinking" || j.step === "proposing")) || (j.kind === "draft" && (j.phase === "thinking" || j.phase === "looking" || j.phase === "drafting"));
+const busy = (j: ChatJob) => (j.kind === "scan" && scanBusy(j)) || (j.kind === "brief" && briefWorking(j.brief)) || (j.kind === "ask" && j.state === "asking") || (j.kind === "take" && j.state === "taking") || (j.kind === "find" && !!j.goal && !!j.loading) || (j.kind === "goalfor" && (j.step === "looking" || j.step === "suggesting")) || (j.kind === "plan" && (j.step === "looking" || j.step === "thinking" || j.step === "proposing")) || (j.kind === "draft" && (j.phase === "thinking" || j.phase === "looking" || j.phase === "drafting")) || (j.kind === "tools" && j.state === "looking");
 
 /** What in the chat is still running (the composer offers Stop). */
 export const running = (c: CanvasChat): ChatTurn | null => [...c.turns].reverse().find((t) => busy(t.job)) ?? null;

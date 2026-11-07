@@ -380,6 +380,20 @@ export function registerDiscoveryCommands() {
       run: () => draftAsking("draft-tests"),
     },
     {
+      id: "discovery.look-in-tools",
+      label: "Look in your tools…",
+      category: "discovery",
+      keywords: ["search", "find", "connected", "notion", "slack", "confluence", "drive", "intercom", "posthog", "amplitude", "mixpanel", "what do we know", "qalam ai"],
+      hidden: !lab("everywhere"),
+      // A card picked: its look, brought in under it. Else the chat's box, set to look.
+      run: () => {
+        const id = oneCard();
+        const kind = id ? cardOf(s().doc, id)?.kind : null;
+        if (id && kind && kind !== "test") void import("../space/chat/store").then((m) => m.lookInToolsFor(id));
+        else void import("../space/chat/compose").then((m) => m.composeIn({ mode: "tools" }));
+      },
+    },
+    {
       id: "discovery.write-brief",
       label: "Write a brief",
       category: "discovery",

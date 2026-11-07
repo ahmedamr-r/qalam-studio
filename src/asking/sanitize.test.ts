@@ -10,6 +10,21 @@ const q = (id: string, title: string, x: Record<string, unknown> = {}) => ({ id,
 const terms = editTerms(emptyTerms(), { op: "add", term: "Basket", means: "The order before checkout", avoid: ["cart"] }, { now: 1, id: () => "t1" });
 const check = (x: Partial<TurnCheck> = {}): TurnCheck => ({ who: "team", asked: [{ id: "who", title: "Who pays first?" }], lookups: [{ id: "l0", kind: "web", query: "what people do about late orders" }], said: "Riders say a run means a full night shift. We lose 30 orders a week.", hay: "Late orders cost us 30 orders a week.", terms, kinds: ["project", "web"], ...x });
 
+describe("a look in their tools, as a turn asks for it", () => {
+  it("keeps one at a time, only where the flow can offer it", () => {
+    const raw = { questions: [], lookups: [{ id: "t1", kind: "tools", query: "checkout drop-off" }, { id: "t2", kind: "tools", query: "payment errors" }], done: false, understood: [] };
+    expect(sanitizeTurn(raw, check({ kinds: ["project", "web", "tools"] })).lookups).toEqual([{ id: "t1", kind: "tools", query: "checkout drop-off" }]);
+    expect(sanitizeTurn(raw, check()).lookups).toEqual([]);
+  });
+
+  it("is named in the rules and the fields only where the flow can offer it", () => {
+    expect(askingRules("team", { kinds: ["project", "web", "tools"] })).toContain("tools (their connected tools");
+    expect(askingRules("team", { kinds: ["project", "web"] })).not.toContain("connected tools");
+    const kinds = (askingFields("team", { kinds: ["project", "web", "tools"] }).lookups as { items: { properties: { kind: { enum: string[] } } } }).items.properties.kind.enum;
+    expect(kinds).toEqual(["project", "web", "tools"]);
+  });
+});
+
 describe("a turn as code keeps it", () => {
   it("keeps every question it can ask, never one asked before, and gives a colliding id one of its own", () => {
     const topics = ["riders", "salons", "pricing", "weekends", "refunds", "drivers", "kitchens", "coupons", "airports"];
