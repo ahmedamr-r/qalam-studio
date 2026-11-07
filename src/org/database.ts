@@ -64,6 +64,13 @@ export const databaseDb = {
     return r;
   },
   forget: async () => take(await orgJson<DatabaseView>("/database", { method: "DELETE" })),
+  /** The Supabase projects this computer's Supabase sign-in reaches. */
+  supabaseProjects: async () => (await orgJson<{ projects: { ref: string; name: string; region?: string }[] }>("/database/supabase/projects")).projects,
+  connectSupabase: async (ref: string, name?: string, anyway = false) => {
+    const r = await orgJson<ConnectAnswer>("/database", { method: "POST", json: { supabase: ref, ...(name ? { name } : {}), anyway } });
+    if (r.state === "connected") take(r.view);
+    return r;
+  },
   readLayout: async (onActivity?: (label: string) => void, signal?: AbortSignal) => take((await streamed<{ view: DatabaseView }>("/database/layout", {}, onActivity, signal)).view),
   draft: async (answers: DraftAnswer[], onActivity?: (label: string) => void, signal?: AbortSignal) => take(await streamed<DatabaseView>("/database/draft", { answers }, onActivity, signal)),
   use: async (id: string, edit?: DraftEditIn) => take(await orgJson<DatabaseView>(`/database/drafts/${encodeURIComponent(id)}`, { method: "PUT", json: { use: true, ...(edit ? { edit } : {}) } })),

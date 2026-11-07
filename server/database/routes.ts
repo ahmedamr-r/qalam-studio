@@ -6,7 +6,8 @@ import type { DraftAnswer } from "@/database/draft";
 import { aiConfigured } from "@/ai/server";
 import { NoSecretStore } from "../secrets";
 import type { OrgStore } from "../org/store";
-import { connectDatabase, forgetDatabase } from "./connect";
+import { connectDatabase, connectSupabase, forgetDatabase } from "./connect";
+import { supabaseProjects } from "./supabase";
 import { draftMetrics } from "./draft";
 import { databaseView, readLayout } from "./index";
 import { approveMetric, checkMetric, leaveDraft, readMetrics, useDraft, type DraftEdit } from "./metrics";
@@ -95,11 +96,22 @@ export function databaseRoutes(r: Hono<Env>) {
   const store = (c: Context<Env>) => c.get("store");
   r.get("/api/org/:org/database", async (c) => c.json(await databaseView(store(c))));
   r.post("/api/org/:org/database", async (c) => {
-    const b = (await c.req.json().catch(() => null)) as { url?: unknown; ca?: unknown; anyway?: unknown } | null;
-    if (typeof b?.url !== "string" || !b.url.trim()) return bad("Paste a connection string.");
+    const b = (await c.req.json().catch(() => null)) as { url?: unknown; ca?: unknown; anyway?: unknown; supabase?: unknown; name?: unknown } | null;
+    const supabase = typeof b?.supabase === "string" ? b.supabase.slice(0, 40) : null;
+    if (!supabase && (typeof b?.url !== "string" || !b.url.trim())) return bad("Paste a connection string.");
     try {
-      const done = await connectDatabase(store(c), { url: b.url.slice(0, 2000), ...(typeof b.ca === "string" ? { ca: b.ca } : {}), anyway: b.anyway === true }, { tab: tabOf(c.req.raw.headers) });
+      const done = supabase
+        ? await connectSupabase(store(c), { ref: supabase, ...(typeof b?.name === "string" ? { name: b.name } : {}), anyway: b?.anyway === true }, { tab: tabOf(c.req.raw.headers) })
+        : await connectDatabase(store(c), { url: (b!.url as string).slice(0, 2000), ...(typeof b?.ca === "string" ? { ca: b.ca } : {}), anyway: b?.anyway === true }, { tab: tabOf(c.req.raw.headers) });
       return c.json(done.state === "writes" ? { state: "writes", writes: done.rights.writes, writesCount: done.rights.writesCount, user: done.rights.user, superuser: done.rights.superuser, sql: done.sql } : { state: "connected", view: await databaseView(store(c)) });
+    } catch (e) {
+      return databaseFailure(e);
+    }
+  });
+  // The Supabase projects this computer's sign-in reaches, to pick one.
+  r.get("/api/org/:org/database/supabase/projects", async (c) => {
+    try {
+      return c.json({ projects: await supabaseProjects() });
     } catch (e) {
       return databaseFailure(e);
     }

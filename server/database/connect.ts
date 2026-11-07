@@ -65,12 +65,51 @@ export async function connectDatabase(store: OrgStore, input: { url: string; ca?
       ...(rights.hidden.length ? { hidden: rights.hidden } : {}),
       version: rights.version,
       at: now,
-      // What this computer checked stays, with the database it was checked on.
-      ...(was?.approved ? { approved: was.approved } : {}),
       ...(was?.readings && was.where === c.where ? { readings: was.readings } : {}),
     }),
     { tab: o.tab },
   );
+  return { state: "connected", local: local! };
+}
+
+/**
+ * Connect a Supabase project, through this computer's Supabase sign-in: no string kept, its tokens are
+ * the sign-in's. Its queries run as Supabase's read-only role, which is checked as any user is.
+ */
+export async function connectSupabase(store: OrgStore, input: { ref: string; name?: string; anyway?: boolean }, o: { now?: number; tab?: string } = {}): Promise<ConnectResult> {
+  const ref = input.ref.trim();
+  if (!/^[a-z]{20}$/.test(ref)) throw new DatabaseError("That isn't a Supabase project's ref (20 letters, in its dashboard's address).");
+  const name = input.name?.replace(/\s+/g, " ").trim().slice(0, 120);
+  const where = `supabase:${ref}`;
+  const { openSupabase } = await import("./supabase");
+  const runner = await openSupabase({ projectRef: ref, where });
+  let rights: Rights;
+  try {
+    rights = await runner.rights();
+  } finally {
+    await runner.close();
+  }
+  if (rights.writesCount > 0 && !input.anyway) return { state: "writes", rights, sql: readerSql("supabase") };
+  const now = o.now ?? Date.now();
+  const local = await store.changeDatabaseLocal(
+    (was) => ({
+      kind: "supabase",
+      label: name ? `Supabase · ${name}` : `Supabase · ${ref}`,
+      where,
+      projectRef: ref,
+      user: rights.user,
+      canWrite: rights.writesCount > 0,
+      ...(rights.writes.length ? { writes: rights.writes } : {}),
+      ...(rights.writesCount > 0 ? { letIn: true } : {}),
+      ...(rights.hidden.length ? { hidden: rights.hidden } : {}),
+      version: rights.version,
+      at: now,
+      ...(was?.readings && was.where === where ? { readings: was.readings } : {}),
+    }),
+    { tab: o.tab },
+  );
+  // A string kept for a database connected before goes: this project's database is Supabase's now.
+  await secrets().remove(secretName(store)).catch(() => {});
   return { state: "connected", local: local! };
 }
 
@@ -101,6 +140,7 @@ export async function withDatabase<T>(store: OrgStore, fn: (r: Runner, local: Da
   if (local.kind === "supabase") {
     const { openSupabase } = await import("./supabase");
     const runner = await openSupabase(local);
+    // Supabase's sign-in is this computer's; a session checks the role as any other.
     return session(store, runner, local, fn);
   }
   const k = await kept(store);

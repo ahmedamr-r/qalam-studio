@@ -45,7 +45,7 @@ export async function jobTools(store?: OrgStore): Promise<JobTool[]> {
   );
   const lab = store ? await labOn() : [];
   if (!store || !(lab === true || lab.includes("database"))) return tools;
-  const metrics = metricViews((await store.getMetrics()).metrics, store.databaseLocal);
+  const metrics = metricViews((await store.getMetrics()).metrics, store.databaseLocal, store.databaseApproved);
   if (!metrics.length) return tools;
   const names = metrics.slice(0, 12).map((m) => m.metric.name).join("; ");
   return [...tools, { id: DATABASE, label: "Your database", kind: "numbers", what: `reads one of the team's own numbers from its database: ${names}`, connected: metrics.some((m) => m.state === "ready") }];

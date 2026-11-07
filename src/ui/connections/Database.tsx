@@ -9,11 +9,12 @@ import { KIND_LABEL } from "@/database/local";
 import type { KnownAnswer } from "@/memory/known";
 import type { Checked } from "@/database/view";
 import type { MetricView } from "@/database/view";
+import { connectorsDb } from "@/org/connectors";
 import { databaseDb, loadDatabase, useDatabase, type ConnectAnswer } from "@/org/database";
 import { rememberRound, withKnownAnswers } from "@/org/memory";
 import { loadGoals, useGoals } from "@/goals/client";
 import { KnownStrip } from "../ai/KnownStrip";
-import { Button, IconBtn, Spinner } from "../controls";
+import { Button, IconBtn, Segmented, Spinner } from "../controls";
 import { r } from "../recipes";
 import { ago } from "../time";
 
@@ -70,6 +71,97 @@ export function DatabaseCard() {
 }
 
 function ConnectForm() {
+  const [how, setHow] = useState<"string" | "supabase">("string");
+  return (
+    <div className="flex flex-col gap-[8px]">
+      <Segmented
+        label="Connect with"
+        value={how}
+        onChange={setHow}
+        options={[
+          { value: "string", label: "A connection string" },
+          { value: "supabase", label: "Supabase" },
+        ]}
+      />
+      {how === "string" ? <StringForm /> : <SupabaseForm />}
+    </div>
+  );
+}
+
+/** Supabase: Qalam's own sign-in to Supabase's server, then one project picked; its queries go only there, read-only. */
+function SupabaseForm() {
+  const signedIn = useDatabase((s) => s.view?.supabase.signedIn ?? false);
+  const [page, setPage] = useState<string | null>(null);
+  const [projects, setProjects] = useState<{ ref: string; name: string; region?: string }[] | null>(null);
+  const [writes, setWrites] = useState<Extract<ConnectAnswer, { state: "writes" }> | null>(null);
+  const [picked, setPicked] = useState<{ ref: string; name: string } | null>(null);
+  const { busy, error, run } = useRun();
+  const signIn = () =>
+    run("Waiting for you to sign in with Supabase in your browser", async () => {
+      await connectorsDb.signIn("supabase", (url) => setPage(url));
+      setPage(null);
+      await loadDatabase();
+    });
+  const list = () => run("Asking Supabase for your projects", async () => setProjects(await databaseDb.supabaseProjects()));
+  useEffect(() => {
+    if (signedIn && !projects) void list();
+  }, [signedIn]);
+  const pick = (p: { ref: string; name: string }, anyway = false) =>
+    run(`Connecting ${p.name}`, async () => {
+      setPicked(p);
+      const r = await databaseDb.connectSupabase(p.ref, p.name, anyway);
+      if (r.state === "writes") return setWrites(r);
+      feedback(`Connected ${p.name}. Qalam only reads it.`, { kind: "success", id: "database.connect" });
+    });
+  return (
+    <div className="flex flex-col gap-[8px]">
+      <p className="text-caption text-fg-muted">
+        Supabase's sign-in covers your Supabase account. Qalam keeps it in this computer's Keychain, and sends only read-only queries, to the one project you pick, where they run as Supabase's read-only role and count every row.
+      </p>
+      {!signedIn ? (
+        <Button size="sm" className="self-start" disabled={!!busy} onClick={() => void signIn()}>
+          Sign in with Supabase
+        </Button>
+      ) : (
+        <div className="flex flex-col gap-[2px]">
+          <span className="text-micro text-fg-subtle">Which project?</span>
+          {projects?.map((p) => (
+            <button key={p.ref} type="button" disabled={!!busy} onClick={() => void pick(p)} className="q-item flex items-center gap-[8px] rounded-md px-[6px] py-[4px] text-left hover:bg-hover">
+              <DatabaseIcon {...ICON} className="shrink-0 text-fg-subtle" />
+              <span className="min-w-0 flex-1 truncate text-caption text-fg">{p.name}</span>
+              <span className="shrink-0 font-mono text-micro text-fg-subtle">{p.region ?? p.ref}</span>
+            </button>
+          ))}
+          {projects && !projects.length && <p className="text-caption text-fg-muted">Your Supabase sign-in reaches no project.</p>}
+        </div>
+      )}
+      {page && (
+        <p className="text-caption text-fg-muted">
+          Supabase's page opened in your browser.{" "}
+          <a href={page} target="_blank" rel="noreferrer" className="text-fg underline">
+            Open it again
+          </a>
+        </p>
+      )}
+      {writes && (
+        <div role="alert" className="flex flex-col gap-[6px] rounded-lg bg-warning-subtle px-[10px] py-[8px]">
+          <p className="text-caption text-fg">{writes.user} can change {plural(writes.writesCount, "table")} in this project. Qalam only reads, but it expected Supabase's read-only role.</p>
+          <span className="flex gap-[6px]">
+            <Button size="sm" variant="secondary" disabled={!!busy || !picked} onClick={() => picked && void pick(picked, true)}>
+              Use it anyway
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setWrites(null)}>
+              Cancel
+            </Button>
+          </span>
+        </div>
+      )}
+      <Status busy={busy} error={error} />
+    </div>
+  );
+}
+
+function StringForm() {
   const [url, setUrl] = useState("");
   const [ca, setCa] = useState("");
   const [showCa, setShowCa] = useState(false);

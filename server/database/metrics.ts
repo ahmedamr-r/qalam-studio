@@ -92,7 +92,10 @@ export async function leaveDraft(store: OrgStore, id: string, o: { tab?: string 
 }
 
 async function approve(store: OrgStore, m: Metric, reading: Reading, now: number, tab?: string) {
-  await store.changeDatabaseLocal((d) => (d ? { ...d, approved: { ...d.approved, [m.id]: { q: queryHash(m), where: d.where, at: now } }, readings: { ...d.readings, [m.id]: reading } } : d), { tab });
+  const where = store.databaseLocal?.where;
+  if (!where) throw new DatabaseError("Connect your database in Connections first.", "unconnected");
+  await store.approveMetric(m.id, { q: queryHash(m), where, at: now }, { tab });
+  await store.changeDatabaseLocal((d) => (d ? { ...d, readings: { ...d.readings, [m.id]: reading } } : d), { tab });
 }
 
 /** Check a kept number on this computer beside a fresh sample, before it may read here. */
@@ -100,8 +103,8 @@ export async function checkMetric(store: OrgStore, id: string, o: { open?: Opene
   const m = (await store.getMetrics()).metrics.find((x) => x.id === id);
   if (!m) throw new DatabaseError("That number isn't there any more.");
   const local = store.databaseLocal;
-  if (metricState(m, local) === "unconnected") throw new DatabaseError("Connect your database in Connections first.", "unconnected");
-  if (metricState(m, local) === "dialect") throw new DatabaseError(`It's written for ${m.dialect === "mysql" ? "MySQL" : "Postgres"}, and the database here is another kind.`);
+  if (metricState(m, local, store.databaseApproved) === "unconnected") throw new DatabaseError("Connect your database in Connections first.", "unconnected");
+  if (metricState(m, local, store.databaseApproved) === "dialect") throw new DatabaseError(`It's written for ${m.dialect === "mysql" ? "MySQL" : "Postgres"}, and the database here is another kind.`);
   const layout = await layoutFor(store, o);
   const c = await withDatabase(store, (r) => checkOnDatabase(r, layout, asDraft(m, layout), o.signal), { open: o.open });
   return { q: queryHash(m), ...(c.draft.sample ? { sample: c.draft.sample } : {}), reads: c.draft.reads, flags: c.draft.flags, ...(c.draft.error ? { error: c.draft.error } : {}) };
@@ -129,7 +132,7 @@ export async function readMetrics(store: OrgStore, ids: readonly string[], o: { 
       out[id] = { error: "That number isn't there any more." };
       continue;
     }
-    const state = metricState(m, local);
+    const state = metricState(m, local, store.databaseApproved);
     if (state !== "ready") {
       out[id] = { error: state === "unconnected" ? "Connect your database in Connections first." : state === "elsewhere" ? "It was checked on another database: check it on this one first." : state === "dialect" ? "It's written for another kind of database." : "Check it beside a sample on this computer first.", state };
       continue;

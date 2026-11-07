@@ -28,7 +28,7 @@ import type { MarketSession } from "@/market/session";
 import { termsFromMarkdown, termsToMarkdown } from "@/terms/terms-md";
 import { metricsFromMarkdown, metricsToMarkdown } from "@/database/metrics-md";
 import type { Metrics } from "@/database/types";
-import type { DatabaseLocal } from "@/database/local";
+import type { Approval, DatabaseLocal } from "@/database/local";
 import type { Terms } from "@/terms/types";
 import type { ScanSession } from "@/scan/session";
 import type { FeedLog } from "@/feeds/feeds";
@@ -194,6 +194,8 @@ interface LocalState {
   code?: CodeRepo[];
   /** The database this computer reads for the team's numbers (its connection string is in the Keychain). */
   database?: DatabaseLocal;
+  /** The team's numbers this computer checked beside a sample, each with the database it was checked on. */
+  databaseApproved?: Record<string, Approval>;
 }
 
 /** A line of hub/notices.jsonl: a notice dismissed or brought back, a review's finding, a review ran. */
@@ -1163,6 +1165,24 @@ export class OrgStore {
     });
     this.emit({ kind: "metrics", local: true, tab: opts.tab });
     return next;
+  }
+
+  /** The team's numbers this computer checked beside a sample, by id. */
+  get databaseApproved(): Record<string, Approval> {
+    return this.local.databaseApproved ?? {};
+  }
+
+  /** Approve one here (or take its approval back, null), under the local state's lock. */
+  async approveMetric(id: string, a: Approval | null, opts: { tab?: string } = {}): Promise<void> {
+    const file = this.abs(".qalam/local/state.json");
+    await locked(file, async () => {
+      const next = { ...(this.local.databaseApproved ?? {}) };
+      if (a) next[id] = a;
+      else delete next[id];
+      this.local.databaseApproved = next;
+      await atomicWrite(file, stableStringify(this.local));
+    });
+    this.emit({ kind: "metrics", local: true, tab: opts.tab });
   }
 
   /** Where this computer keeps what it read of its database's layout, and the drafts waiting on it (out of Git). */

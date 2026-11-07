@@ -72,14 +72,14 @@ export function readError(e: unknown, ms: number): DatabaseError {
   return new DatabaseError(m, code, m);
 }
 
-const WRITES = `SELECT n.nspname || '.' || c.relname AS t, count(*) OVER () AS n
+export const WRITES = `SELECT n.nspname || '.' || c.relname AS t, count(*) OVER () AS n
 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
 WHERE c.relkind IN ('r', 'p', 'v', 'm', 'f')
   AND n.nspname NOT IN ('pg_catalog', 'information_schema') AND n.nspname NOT LIKE 'pg_toast%' AND n.nspname NOT LIKE 'pg_temp%'
   AND (has_table_privilege(c.oid, 'INSERT') OR has_table_privilege(c.oid, 'UPDATE') OR has_table_privilege(c.oid, 'DELETE') OR has_table_privilege(c.oid, 'TRUNCATE'))
 ORDER BY 1 LIMIT 6`;
 
-const HIDDEN = `SELECT n.nspname || '.' || c.relname AS t
+export const HIDDEN = `SELECT n.nspname || '.' || c.relname AS t
 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
 WHERE c.relkind IN ('r', 'p') AND c.relrowsecurity
   AND n.nspname NOT IN ('pg_catalog', 'information_schema')
@@ -88,7 +88,7 @@ WHERE c.relkind IN ('r', 'p') AND c.relrowsecurity
   AND (c.relforcerowsecurity OR NOT pg_has_role(c.relowner, 'USAGE'))
 ORDER BY 1 LIMIT 50`;
 
-const WHO = `SELECT current_user::text AS u, coalesce((SELECT rolsuper FROM pg_roles WHERE rolname = current_user), false) AS su, version() AS v`;
+export const WHO = `SELECT current_user::text AS u, coalesce((SELECT rolsuper FROM pg_roles WHERE rolname = current_user), false) AS su, version() AS v`;
 
 export async function openPostgres(t: PostgresTarget): Promise<Runner> {
   const config = pgConfig(t);

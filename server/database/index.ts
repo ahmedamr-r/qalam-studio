@@ -1,5 +1,6 @@
 import type { Layout } from "@/database/layout";
 import { connectionView, layoutSummary, metricViews, type DatabaseView, type LayoutSummary } from "@/database/view";
+import { signedIn } from "../connectors/oauth";
 import type { OrgStore } from "../org/store";
 import { withDatabase, type Opener } from "./connect";
 import { getDrafts, getLayout, putLayout } from "./files";
@@ -17,7 +18,7 @@ export async function databaseView(store: OrgStore): Promise<DatabaseView> {
   const local = store.databaseLocal;
   const file = await store.getMetrics();
   const layout = local ? await getLayout(store) : null;
-  return { connection: connectionView(local), layout: layout ? layoutSummary(layout) : null, drafts: local ? await getDrafts(store) : null, metrics: metricViews(file.metrics, local) };
+  return { connection: connectionView(local), supabase: { signedIn: await signedIn("supabase").catch(() => false) }, layout: layout ? layoutSummary(layout) : null, drafts: local ? await getDrafts(store) : null, metrics: metricViews(file.metrics, local, store.databaseApproved) };
 }
 
 /** Read the database's layout again, with no tokens, and keep it on this computer. */

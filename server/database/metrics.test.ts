@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { METRICS, OrgStore } from "../org/store";
 import { resetSecrets } from "../secrets";
-import { connectDatabase } from "./connect";
+import { connectDatabase, forgetDatabase } from "./connect";
 import { draftMetrics } from "./draft";
 import { databaseView, readLayout } from "./index";
 import { approveMetric, checkMetric, leaveDraft, readMetrics, useDraft } from "./metrics";
@@ -89,6 +89,15 @@ describe("the team's numbers on this computer", () => {
     const { metric, reading } = await useDraft(store, (await draftNamed("Refunds, ever")).id);
     expect((await readMetrics(store, [metric.id]))[metric.id]).toEqual(reading);
     expect((await readMetrics(store, [metric.id], { now: reading.at + 6 * 60_000 }))[metric.id]).toMatchObject({ value: 30 });
+  }, 60_000);
+
+  it("keeps what this computer checked through a disconnect, for the same database", async () => {
+    const { metric } = await useDraft(store, (await draftNamed("Refunds, ever")).id);
+    await forgetDatabase(store);
+    expect((await databaseView(store)).metrics[0].state).toBe("unconnected");
+    await connectDatabase(store, { url: db.url("reader") });
+    expect((await databaseView(store)).metrics[0].state).toBe("ready");
+    expect((await readMetrics(store, [metric.id], { fresh: true }))[metric.id]).toMatchObject({ value: 30 });
   }, 60_000);
 
   it("says a number checked on another database must be checked on this one", async () => {

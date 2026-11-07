@@ -9,7 +9,8 @@ import { SLACK_CALLBACK, SLACK_SCOPES, slackAppLink } from "./slack";
  * rest show where they stand and come next.
  */
 
-export type ConnectorGroup = "docs" | "voice" | "build" | "numbers";
+/** "database" is the team's own database (behind the database switch): never one of the grid's groups, it's on Connections' Database card. */
+export type ConnectorGroup = "docs" | "voice" | "build" | "numbers" | "database";
 
 export const GROUPS: readonly { id: ConnectorGroup; label: string }[] = [
   { id: "docs", label: "Docs and notes" },
@@ -33,7 +34,17 @@ export interface ConnectorDef {
    * servers of the regions a workspace may live in (the first is `url`'s), and the account a sign-in
    * shares with other connectors (one Atlassian sign-in serves Jira and Confluence).
    */
-  mcp?: { url: string; scope?: string; regions?: readonly { id: string; label: string; url: string }[]; ownApp?: OwnApp; account?: { id: string; label: string } };
+  mcp?: {
+    url: string;
+    scope?: string;
+    regions?: readonly { id: string; label: string; url: string }[];
+    ownApp?: OwnApp;
+    account?: { id: string; label: string };
+    /** How Qalam's registration pays its token endpoint, where the service takes only clients with a secret (Supabase). */
+    clientAuth?: "client_secret_basic" | "client_secret_post";
+    /** Where the service drops a token, when it says so in its own way (Supabase: JSON, not RFC 7009's form). */
+    revoke?: { url: string };
+  };
   imports: boolean;
   /** Its items' status shows on solution cards linked to them: once connected (a token or Qalam's sign-in), or with nothing (public). */
   status?: "token" | "public";
@@ -145,7 +156,24 @@ export const CATALOG: readonly ConnectorDef[] = [
   },
 ];
 
-export const connectorDef = (id: string) => CATALOG.find((c) => c.id === id);
+/**
+ * Supabase's hosted MCP server, for the team's database (server/database/supabase.ts): signed in once
+ * on this computer, its account tools only to pick a project; every query then goes to that project's
+ * address, read-only. Its client registrations take only clients with a secret, and it revokes by its
+ * own endpoint. Never in the connectors' grid.
+ */
+export const SUPABASE_MCP = "https://mcp.supabase.com/mcp";
+export const supabaseProjectUrl = (ref: string) => `${SUPABASE_MCP}?project_ref=${encodeURIComponent(ref)}&read_only=true&features=database`;
+const SUPABASE: ConnectorDef = {
+  id: "supabase",
+  label: "Supabase",
+  group: "database",
+  feeds: "numbers",
+  mcp: { url: `${SUPABASE_MCP}?read_only=true&features=account%2Cdatabase`, clientAuth: "client_secret_basic", revoke: { url: "https://api.supabase.com/v1/oauth/revoke" } },
+  imports: false,
+};
+
+export const connectorDef = (id: string) => CATALOG.find((c) => c.id === id) ?? (id === SUPABASE.id ? SUPABASE : undefined);
 
 /** The connectors one sign-in serves: those sharing its account (Jira and Confluence), else just this one. */
 export function signInGroup(id: string): string[] {

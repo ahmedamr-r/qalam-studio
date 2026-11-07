@@ -9,7 +9,7 @@ export type DatabaseKind = "postgres" | "mysql" | "supabase";
 
 export const KIND_LABEL: Record<DatabaseKind, string> = { postgres: "Postgres", mysql: "MySQL", supabase: "Supabase" };
 
-/** A number this computer checked beside a fresh sample: the query's hash then, and the database it ran on. */
+/** A number this computer checked beside a fresh sample: the query's hash then, and the database it ran on. Kept apart from the connection, so disconnecting and connecting the same database again doesn't ask again. */
 export interface Approval {
   q: string;
   where: string;
@@ -40,7 +40,6 @@ export interface DatabaseLocal {
   at: number;
   /** When its layout was last read. */
   readAt?: number;
-  approved?: Record<string, Approval>;
   readings?: Record<string, Reading>;
 }
 
