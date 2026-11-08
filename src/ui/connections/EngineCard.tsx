@@ -47,6 +47,7 @@ const JOB: Record<CallKind | "other", string> = {
   "ask-turn": "Asking before it proposes",
   "plan-place": "Proposing a plan for the canvas",
   challenge: "Checking proposals against your evidence",
+  metrics: "Drafting the numbers in your database",
   reader: "Reading code",
   research: "Looking things up",
   "pdf-pictures": "Reading pictures in PDFs",

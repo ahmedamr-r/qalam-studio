@@ -27,6 +27,9 @@ import { marketFromMarkdown, marketToMarkdown } from "@/market/market-md";
 import type { Market } from "@/market/types";
 import type { MarketSession } from "@/market/session";
 import { termsFromMarkdown, termsToMarkdown } from "@/terms/terms-md";
+import { metricsFromMarkdown, metricsToMarkdown } from "@/database/metrics-md";
+import type { Metrics } from "@/database/types";
+import type { Approval, DatabaseLocal } from "@/database/local";
 import type { Terms } from "@/terms/types";
 import type { ScanSession } from "@/scan/session";
 import type { FeedLog } from "@/feeds/feeds";
@@ -97,6 +100,8 @@ export type OrgEvent = { tab?: string } & (
   | { kind: "market"; session?: boolean }
   /** The project's words changed (hub/terms.md). */
   | { kind: "terms" }
+  /** The team's numbers from its database changed (hub/metrics.md), or this computer's connection to it (`local`). */
+  | { kind: "metrics"; local?: boolean }
   /** What Qalam AI asked and how it was answered changed (hub/asked.jsonl, .qalam/local/asked.jsonl). */
   | { kind: "asked" }
   /** A scan of what people complain about moved on (chats/scan/session.json). */
@@ -122,6 +127,8 @@ export const GOALS = "goals.md";
 export const MARKET = "hub/market.md";
 /** The project's words: its terms, what each means, and the words to avoid. */
 export const TERMS = "hub/terms.md";
+/** The team's numbers from its own database: each in plain words, with the exact query that reads it. */
+export const METRICS = "hub/metrics.md";
 /** How long taking a change to a goal back counts as undoing it (as on a board). */
 const GOAL_UNDO_WINDOW = 10 * 60_000;
 
@@ -186,6 +193,10 @@ interface LocalState {
   firstRun?: number;
   /** The repositories and folders this computer reads for the products. */
   code?: CodeRepo[];
+  /** The database this computer reads for the team's numbers (its connection string is in the Keychain). */
+  database?: DatabaseLocal;
+  /** The team's numbers this computer checked beside a sample, each with the database it was checked on. */
+  databaseApproved?: Record<string, Approval>;
 }
 
 /** A line of hub/notices.jsonl: a notice dismissed or brought back, a review's finding, a review ran, a challenge kept on a card. */
@@ -1065,6 +1076,24 @@ export class OrgStore {
     return next;
   }
 
+  // The team's numbers (hub/metrics.md): definitions only, never data. Changes are edits, made under
+  // its lock on the file as it is now, so a hand edit and one through the window never lose each other.
+
+  async getMetrics(): Promise<Metrics> {
+    return metricsFromMarkdown(await readFile(this.abs(METRICS), "utf8").catch(() => ""));
+  }
+
+  async changeMetrics(fn: (t: Metrics) => Metrics, opts: { tab?: string } = {}): Promise<Metrics> {
+    const file = this.abs(METRICS);
+    const next = await locked(file, async () => {
+      const t = fn(metricsFromMarkdown(await readFile(file, "utf8").catch(() => "")));
+      await this.write(file, metricsToMarkdown(t, { org: this.info.name }));
+      return t;
+    });
+    this.emit({ kind: "metrics", tab: opts.tab });
+    return next;
+  }
+
   getMarketSession(): Promise<MarketSession | null> {
     return readJson<MarketSession>(this.abs("chats/market/session.json"));
   }
@@ -1120,6 +1149,48 @@ export class OrgStore {
   async setCodeRepos(list: CodeRepo[]): Promise<void> {
     this.local.code = list;
     await locked(this.abs(".qalam/local/state.json"), () => atomicWrite(this.abs(".qalam/local/state.json"), stableStringify(this.local)));
+  }
+
+  /** The database this computer reads for the team's numbers, if any. */
+  get databaseLocal(): DatabaseLocal | null {
+    return this.local.database ?? null;
+  }
+
+  /** Change it under the local state's lock; null forgets it. Announced, so every window on this computer follows. */
+  async changeDatabaseLocal(fn: (d: DatabaseLocal | null) => DatabaseLocal | null, opts: { tab?: string } = {}): Promise<DatabaseLocal | null> {
+    const file = this.abs(".qalam/local/state.json");
+    const next = await locked(file, async () => {
+      const d = fn(this.local.database ?? null);
+      if (d) this.local.database = d;
+      else delete this.local.database;
+      await atomicWrite(file, stableStringify(this.local));
+      return d;
+    });
+    this.emit({ kind: "metrics", local: true, tab: opts.tab });
+    return next;
+  }
+
+  /** The team's numbers this computer checked beside a sample, by id. */
+  get databaseApproved(): Record<string, Approval> {
+    return this.local.databaseApproved ?? {};
+  }
+
+  /** Approve one here (or take its approval back, null), under the local state's lock. */
+  async approveMetric(id: string, a: Approval | null, opts: { tab?: string } = {}): Promise<void> {
+    const file = this.abs(".qalam/local/state.json");
+    await locked(file, async () => {
+      const next = { ...(this.local.databaseApproved ?? {}) };
+      if (a) next[id] = a;
+      else delete next[id];
+      this.local.databaseApproved = next;
+      await atomicWrite(file, stableStringify(this.local));
+    });
+    this.emit({ kind: "metrics", local: true, tab: opts.tab });
+  }
+
+  /** Where this computer keeps what it read of its database's layout, and the drafts waiting on it (out of Git). */
+  databaseFile(name: "layout" | "drafts"): string {
+    return this.abs(`.qalam/database/${name}.json`);
   }
 
   /** Where this computer keeps its copy of a repository's code (never shared: .qalam is out of Git). */
@@ -1932,6 +2003,8 @@ export class OrgStore {
       this.emit({ kind: "market" });
     } else if (rel === TERMS) {
       this.emit({ kind: "terms" });
+    } else if (rel === METRICS) {
+      this.emit({ kind: "metrics" });
     } else if (rel === "about.md") {
       this.emit({ kind: "about" });
     } else if (rel === GOALS) {

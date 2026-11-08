@@ -64,6 +64,8 @@ export const TIER_OF = {
   "plan-place": "decide",
   // Trying to break what was proposed with the project's own evidence, before the person sees it (src/challenge/).
   challenge: "decide",
+  // The business numbers a team's database could give, each with its query, from its layout (src/ai/metrics.ts).
+  metrics: "decide",
   // Fetching: the tool-runner makes the calls code planned.
   connector: "fetch",
   numbers: "fetch",

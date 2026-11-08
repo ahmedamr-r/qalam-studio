@@ -15,7 +15,10 @@ import type { ToolCall } from "@/connectors/recipes";
 
 export type McpCall = (call: ToolCall) => Promise<string | null>;
 
-export async function withMcp<T>(url: string, authProvider: OAuthClientProvider, fn: (call: McpCall, tools: () => Promise<string[]>, schemas: () => Promise<ToolSchemas>) => Promise<T>, fetchFn?: FetchLike): Promise<T> {
+/** A call that says why a tool failed (its own words) rather than null, with a time limit and a way to stop it. */
+export type McpFullCall = (call: ToolCall, o?: { timeoutMs?: number; signal?: AbortSignal }) => Promise<{ text: string; error: boolean }>;
+
+export async function withMcp<T>(url: string, authProvider: OAuthClientProvider, fn: (call: McpCall, tools: () => Promise<string[]>, schemas: () => Promise<ToolSchemas>, full: McpFullCall) => Promise<T>, fetchFn?: FetchLike): Promise<T> {
   const transport = new StreamableHTTPClientTransport(new URL(url), { authProvider, ...(fetchFn ? { fetch: fetchFn } : {}) });
   const client = new Client({ name: "Qalam Studio", version: "1" });
   await client.connect(transport);
@@ -47,6 +50,11 @@ export async function withMcp<T>(url: string, authProvider: OAuthClientProvider,
         }),
       () => inTurn(async () => Object.keys(await listed())),
       () => inTurn(listed),
+      (c, o = {}) =>
+        inTurn(async () => {
+          const r = await client.callTool({ name: c.tool, arguments: c.args }, undefined, { ...(o.timeoutMs ? { timeout: o.timeoutMs } : {}), ...(o.signal ? { signal: o.signal } : {}) });
+          return { text: resultText(r.content), error: !!r.isError };
+        }),
     );
   } finally {
     await transport.terminateSession().catch(() => {});

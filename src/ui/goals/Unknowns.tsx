@@ -15,8 +15,10 @@ import { jobsDb } from "@/org/jobs";
 import { placeHref, topicHref } from "@/projects/model";
 import { QalamAIGlyph } from "../brand";
 import { Button, Checkbox, Tip } from "../controls";
-import { connectorDef } from "@/connectors/catalog";
+import { DATABASE, sourceOf } from "@/connectors/source";
+import { lab } from "@/lab";
 import { MetricSource } from "../numbers/MetricSource";
+import { useDatabaseNumbers } from "../numbers/DatabasePick";
 import { AddToOrg } from "../org/AddToOrg";
 import { r } from "../recipes";
 import { StatusDot } from "../viz";
@@ -148,7 +150,10 @@ export function Unknowns({ goal, gaps, jobs, onChanged }: { goal: Goal; gaps: Ga
 function JobRow({ job, goal, tools, hasCode, open, onOpen, onChange, onChanged }: { job: Job; goal: Goal; tools: ConnectorState[] | null; hasCode: boolean; open: boolean; onOpen: () => void; onChange: (p: { status: Job["status"]; outcome?: string }) => void; onChanged: () => void }) {
   const Icon = KIND_ICON[job.kind];
   const tool = job.connector ? tools?.find((t) => t.id === job.connector) : undefined;
-  const connected = tool?.tone === "ok";
+  // A number from the team's database: ready when one of its numbers reads on this computer.
+  const fromDb = job.connector === DATABASE;
+  const dbReady = useDatabaseNumbers(fromDb && lab("database")).some((m) => m.state === "ready");
+  const connected = fromDb ? dbReady : tool?.tone === "ok";
   const action =
     job.kind === "read-code" && !hasCode ? (
       <a href={placeHref("connections")} className={clsx(r.buttonSm, r.buttonGhost)}>
@@ -156,7 +161,7 @@ function JobRow({ job, goal, tools, hasCode, open, onOpen, onChange, onChanged }
       </a>
     ) : (job.kind === "search" || job.kind === "numbers") && tools && !connected ? (
       <a href={placeHref("connections")} className={clsx(r.buttonSm, r.buttonGhost)}>
-        Connect {tool?.label ?? job.connector}
+        {fromDb ? "Check your numbers in Connections" : `Connect ${tool?.label ?? job.connector}`}
       </a>
     ) : (
       <Button size="sm" variant={open ? "ghost" : "secondary"} disabled={!tools && job.kind !== "talk"} onClick={onOpen}>
@@ -291,11 +296,11 @@ function NumbersRun({ job, goal, onDone }: { job: Job; goal: Goal; onDone: (outc
     const first = m.baseline === null && m.current === null;
     const metric: OstMetric = { ...next, name: next.name || next.source.label || "", ...(first ? { baseline: next.current } : {}) };
     void changeGoal(goal.id, { metric }).then(
-      () => onDone(`Read ${next.current} from ${connectorDef(next.source?.connector ?? "")?.label ?? "your analytics"}${next.source?.label ? ` · ${next.source.label}` : ""}${first ? ", where it starts" : ""}`),
+      () => onDone(`Read ${next.current} from ${next.source ? sourceOf(next.source).from : "your analytics"}${next.source?.label ? ` · ${next.source.label}` : ""}${first ? ", where it starts" : ""}`),
       (e) => feedback(`Couldn't save the number: ${message(e)}`, { kind: "error", id: "goal.metric" }),
     );
   };
-  return <MetricSource m={m} onChange={read} query={job.query} open />;
+  return <MetricSource m={m} onChange={read} query={job.query} open tool={job.connector} goal={goal.id} />;
 }
 
 /** A question for the product's code: Qalam AI reads it, and the answer stands only where the code says it. */

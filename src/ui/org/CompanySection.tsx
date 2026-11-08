@@ -1,3 +1,4 @@
+import { lab } from "@/lab";
 import { useEffect, useState, type ReactNode } from "react";
 import clsx from "clsx";
 import { Link2, Pencil, Plus, X } from "lucide-react";
@@ -10,6 +11,7 @@ import { r } from "../recipes";
 import { DomainReading, hostOf, LookForRivals, LookUpCompany } from "./CompanyLookUp";
 import { WordsGroup } from "./WordsGroup";
 import { MemoryGroup } from "./MemoryGroup";
+import { MetricsGroup } from "./MetricsGroup";
 
 /*
  * What's known about the company on its canvas: the facts and competitors kept, read here on asking
@@ -195,6 +197,8 @@ export function CompanySection({ close }: { close?: ReactNode }) {
       </Group>
 
       <WordsGroup />
+
+      {lab("database") && <MetricsGroup />}
 
       <MemoryGroup />
 

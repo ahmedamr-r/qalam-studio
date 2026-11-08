@@ -4,6 +4,7 @@ import type { ProductMap } from "@/code/map";
 import type { SeenMap } from "@/seen/types";
 import type { Market } from "@/market/types";
 import type { Terms } from "@/terms/types";
+import type { Metrics } from "@/database/types";
 import { dayOf, type Decision } from "@/decisions/model";
 import { metricText } from "@/discovery/dump";
 import { KIND_LABEL, stageLabel } from "@/discovery/kinds";
@@ -325,6 +326,33 @@ export function termPieces(t: Terms, orgName: string): Built {
     at: x.at,
   }));
   return { pieces, edges: [], entities: [] };
+}
+
+export const metricRef = (id: string) => `hub:metric:${id}`;
+
+/**
+ * The team's numbers (hub/metrics.md): how each is counted, in its words, heard by search, packs and
+ * Ask; never its query's result, which stays on the computer that read it. Linked to the goal it was
+ * drafted for.
+ */
+export function metricPieces(t: Metrics, orgName: string): Built {
+  const pieces: HubPiece[] = [];
+  const edges: HubEdge[] = [];
+  for (const m of t.metrics) {
+    const ref = metricRef(m.id);
+    pieces.push({
+      ref,
+      type: "context",
+      sub: "metric",
+      text: `${m.name}: ${m.means}${m.assumes.length ? ` It takes for granted: ${m.assumes.join("; ")}` : ""}`,
+      line: `How ${orgName} counts one of its numbers, read from its own database by a query the team checked`,
+      title: m.name,
+      product: null,
+      at: m.at,
+    });
+    if (m.goal) edges.push({ from: ref, to: goalRef(m.goal), kind: "for" });
+  }
+  return { pieces, edges, entities: [] };
 }
 
 // ---------------------------------------------------------------------------

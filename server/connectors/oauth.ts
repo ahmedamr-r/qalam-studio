@@ -9,7 +9,7 @@ import { WORK_RECIPES } from "@/connectors/work";
 import { NoSecretStore, secrets } from "../secrets";
 import { readSettings, writeSettings } from "../settings";
 import { listen, openInBrowser, webAddress } from "./loopback";
-import { withMcp, type McpCall } from "./mcp";
+import { withMcp, type McpCall, type McpFullCall } from "./mcp";
 
 /*
  * Qalam's own sign-in to a connector's MCP server, for one not signed in to in Claude Code: OAuth
@@ -87,9 +87,10 @@ const redirectsOf = (c: OAuthClientInformationMixed | undefined): string[] => (c
  * The SDK's view of what's kept. `register` lets it register Qalam again (a sign-in only: a call
  * never does it behind the user's back); `onRedirect` is where it sends the user to sign in.
  */
-function provider(k: Kept, o: { redirectUrl: string; state?: string; register: boolean; ownClient?: boolean; onRedirect: (url: URL) => void | Promise<void>; onChange?: () => Promise<void> }): OAuthClientProvider {
+function provider(k: Kept, o: { redirectUrl: string; state?: string; register: boolean; ownClient?: boolean; authMethod?: "client_secret_basic" | "client_secret_post"; onRedirect: (url: URL) => void | Promise<void>; onChange?: () => Promise<void> }): OAuthClientProvider {
   let verifier = "";
-  const metadata: OAuthClientMetadata = { client_name: "Qalam Studio", redirect_uris: [o.redirectUrl], grant_types: ["authorization_code", "refresh_token"], response_types: ["code"], token_endpoint_auth_method: "none" };
+  // A public client (PKCE, no secret), unless the service registers only clients with a secret (Supabase).
+  const metadata: OAuthClientMetadata = { client_name: "Qalam Studio", redirect_uris: [o.redirectUrl], grant_types: ["authorization_code", "refresh_token"], response_types: ["code"], token_endpoint_auth_method: o.authMethod ?? "none" };
   return {
     redirectUrl: o.redirectUrl,
     clientMetadata: metadata,
@@ -166,7 +167,7 @@ export async function signIn(id: string, o: SignInOptions = {}): Promise<void> {
     const k: Kept = { client: own || redirectsOf(before.client).includes(back.url) ? before.client : undefined, discovery: before.discovery };
     const state = randomBytes(32).toString("base64url");
     let page: URL | undefined;
-    const p = provider(k, { redirectUrl: back.url, state, register: !own, ownClient: !!own, onRedirect: (url) => void (page = url) });
+    const p = provider(k, { redirectUrl: back.url, state, register: !own, ownClient: !!own, authMethod: def.mcp?.clientAuth, onRedirect: (url) => void (page = url) });
     const scope = def.mcp?.scope;
     const fetchFn = sayNo(o.fetchFn ?? fetch);
     if ((await auth(p, { serverUrl, scope, fetchFn }).catch((e: unknown) => Promise.reject(new Error(`${label} didn't let Qalam start a sign-in: ${message(e)}`)))) !== "REDIRECT" || !page) throw new Error(`${label} didn't offer a sign-in page.`);
@@ -198,6 +199,9 @@ export async function signIn(id: string, o: SignInOptions = {}): Promise<void> {
       a.reply(true, `Signed in to ${label}`, "You can close this tab and go back to Qalam Studio.");
     } catch (e) {
       a.reply(false, `${label} isn't connected`, message(e));
+      // A registration the service has dropped (Supabase deletes one not approved within minutes) is
+      // forgotten, so the next sign-in registers again; the tokens kept before stay.
+      if (!own && k.client && /client_id|invalid_client|unrecognized client/i.test(`${a.error ?? ""} ${a.errorDescription ?? ""} ${message(e)}`)) await keep(id, { ...before, client: undefined, discovery: undefined }).catch(() => {});
       throw e;
     }
   } finally {
@@ -242,7 +246,7 @@ function sayNo(f: FetchLike): FetchLike {
 // Calls with what's kept
 
 /** Calls to a connector signed in here, one session at a time per connector (a token refreshed twice at once would be refused). */
-export function withSignedIn<T>(id: string, serverUrl: string, fn: (call: McpCall, schemas: () => Promise<ToolSchemas>) => Promise<T>, fetchFn?: FetchLike): Promise<T> {
+export function withSignedIn<T>(id: string, serverUrl: string, fn: (call: McpCall, schemas: () => Promise<ToolSchemas>, full: McpFullCall) => Promise<T>, fetchFn?: FetchLike): Promise<T> {
   const turns = (g.__qalamOAuthTurns ??= new Map());
   const run = async () => {
     const label = labelOf(id);
@@ -257,7 +261,7 @@ export function withSignedIn<T>(id: string, serverUrl: string, fn: (call: McpCal
     };
     const p = provider(k, { redirectUrl: redirectsOf(k.client)[0] ?? "http://127.0.0.1/callback", register: false, ownClient: !!connectorDef(id)?.mcp?.ownApp, onRedirect, onChange: () => keep(id, k) });
     try {
-      return await withMcp(serverUrl, p, (call, _tools, schemas) => fn(call, schemas), sayNo(fetchFn ?? fetch));
+      return await withMcp(serverUrl, p, (call, _tools, schemas, full) => fn(call, schemas, full), sayNo(fetchFn ?? fetch));
     } catch (e) {
       throw e instanceof UnauthorizedError ? new SignInAgain(label) : e;
     }
@@ -268,13 +272,22 @@ export function withSignedIn<T>(id: string, serverUrl: string, fn: (call: McpCal
   return next;
 }
 
-/** Forget a sign-in: the service is asked to drop its tokens (RFC 7009, when it says where), then the Keychain lets them go. */
+/** Supabase's revoke request: its client and the refresh token, as JSON. */
+export const revokeBody = (client: { client_id?: string; client_secret?: string }, refresh: string) => JSON.stringify({ client_id: client.client_id, ...(client.client_secret ? { client_secret: client.client_secret } : {}), refresh_token: refresh });
+
+/** Forget a sign-in: the service is asked to drop its tokens (RFC 7009, when it says where, or its own way), then the Keychain lets them go. */
 export async function forgetSignIn(id: string, fetchFn: FetchLike = fetch): Promise<void> {
   cancelSignIn(id);
   const k = await load(id).catch((): Kept => ({}));
   const at = (k.discovery?.authorizationServerMetadata as { revocation_endpoint?: string } | undefined)?.revocation_endpoint;
   const client = k.client as { client_id?: string; client_secret?: string } | undefined;
-  if (at && client?.client_id && k.tokens) {
+  const own = connectorDef(id)?.mcp?.revoke;
+  if (own && client?.client_id && k.tokens?.refresh_token) {
+    // The service's own way (Supabase): one JSON request with the refresh token.
+    await Promise.resolve()
+      .then(() => fetchFn(webAddress(new URL(own.url)), { method: "POST", headers: { "content-type": "application/json" }, body: revokeBody(client, k.tokens!.refresh_token!), signal: AbortSignal.timeout(5000) }))
+      .catch(() => {});
+  } else if (at && client?.client_id && k.tokens) {
     for (const [token, hint] of [
       [k.tokens.refresh_token, "refresh_token"],
       [k.tokens.access_token, "access_token"],
