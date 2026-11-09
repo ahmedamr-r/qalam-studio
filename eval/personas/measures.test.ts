@@ -63,3 +63,13 @@ describe("what was asked again", () => {
     expect(r.longestDontKnow).toBe(4);
   });
 });
+
+describe("jargon asked of someone new", () => {
+  it("finds product words whole, once each, in English and Arabic", async () => {
+    const { jargonIn } = await import("./jargon");
+    expect(jargonIn("What's your conversion rate at the basket, and is churn up? Conversion rate matters.")).toEqual(["conversion rate", "churn"]);
+    expect(jargonIn("How do people find you?")).toEqual([]);
+    expect(jargonIn("Segmented lists, a segment of buyers")).toEqual(["segment"]);
+    expect(jargonIn("ما هو معدل التحويل عندكم؟")).toEqual(["معدل التحويل"]);
+  });
+});

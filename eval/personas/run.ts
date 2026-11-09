@@ -10,11 +10,11 @@ import { realDeps, type MarketDeps } from "../../server/org/market";
 import { namesSomething } from "../../server/org/scan";
 import { OrgStore } from "../../server/org/store";
 import { runBaseline, type BaselineRun } from "./baseline";
-import { planFlow, scanFlow, type PlanRun, type ScanRun } from "./bench";
+import { consultFlow, planFlow, scanFlow, type PlanRun, type ScanRun } from "./bench";
 import { lint, paperWalk } from "./lint";
-import { baselineCosts, blindEngineer, challenging, contamination, costs, prdFields, questioning, reasks, searching, trapHits, type CheckedRun } from "./measures";
+import { baselineCosts, blindEngineer, challenging, consulting, contamination, costs, prdFields, questioning, reasks, searching, trapHits, type CheckedRun } from "./measures";
 import { PERSONAS, personaById } from "./personas";
-import { makePlayer } from "./player";
+import { makePlayer, type Player } from "./player";
 import { neutral, renderBaseline, renderPlan, renderScan, renderTab } from "./render";
 import { seedOrg, seedText } from "./seed";
 import { CANNED } from "./stage1";
@@ -99,12 +99,13 @@ interface Options {
 }
 
 /** One side, on the road a person takes. A path the window drives goes by its plan route here; those run whole in the real app. */
-async function runQalam(p: Persona, dir: string, t: Tap, o: Options, ctrl: AbortController, route: "plan" | "scan") {
+async function runQalam(p: Persona, dir: string, t: Tap, o: Options, ctrl: AbortController, route: Route) {
   const flip = o.flip ? p.flips.find((x) => x.fact === o.flip) : undefined;
   const player = makePlayer(p, tapPlayerDeps(t), { rep: o.rep, ...(flip ? { flip } : {}) });
   const store = await storeFor(dir, p);
   try {
     // As the first run does (src/ui/start/flow.ts): with nothing named to read about, it's worked out in the chat.
+    if (route === "consult") return { run: (await consultFlow(store, p, player, t, ctrl.signal, { firstRoundOnly: o.firstRoundOnly })) as PlanRun | ScanRun, player };
     const reads = route === "scan" && (await namesSomething(p.opener, ctrl.signal, tapped(realDeps, t)));
     const run: PlanRun | ScanRun = reads ? await scanFlow(store, p, player, t, ctrl.signal, { firstRoundOnly: o.firstRoundOnly }) : await planFlow(store, p, player, t, ctrl.signal, { firstRoundOnly: o.firstRoundOnly });
     return { run, player };
@@ -113,7 +114,10 @@ async function runQalam(p: Persona, dir: string, t: Tap, o: Options, ctrl: Abort
   }
 }
 
-async function oneSide(p: Persona, out: string, route: "plan" | "scan", o: Options, ctrl: AbortController) {
+/** Which road a side takes: plan mode, the first run's scan, or the consultant. */
+type Route = "plan" | "scan" | "consult";
+
+async function oneSide(p: Persona, out: string, route: Route, o: Options, ctrl: AbortController) {
   const t = newTap();
   const began = Date.now();
   const dir = path.join(out, `home-${route}`);
@@ -137,6 +141,8 @@ async function oneSide(p: Persona, out: string, route: "plan" | "scan", o: Optio
     contamination: contamination(player, run),
     searching: searching(t, run),
     traps: text ? trapHits(p, text) : [],
+    // How the consultant went, where it was the road (src/consult/).
+    consulting: run.path === "plan" ? consulting(p, run) : null,
     // What their own evidence said against what was proposed, before they saw it (src/challenge/).
     challenges: run.path === "plan" ? challenging(p, run.checks ?? [], (run.draft?.cards ?? []).map((c) => ({ id: c.ref, kind: c.kind, title: c.title, description: c.description, parent: c.under && "ref" in c.under ? c.under.ref : null }))) : null,
     prd,
@@ -233,7 +239,7 @@ async function runPersona(p: Persona, root: string, o: Options, ctrl: AbortContr
   const sides: unknown[] = [];
   let spent = 0;
   const inWindow = !o.firstRoundOnly && (p.path === "focus" || p.path === "docs" || p.path === "find");
-  const routes: ("plan" | "scan")[] = inWindow ? [] : p.path === "scan" ? (o.planOnly ? ["plan"] : o.planToo ? ["scan", "plan"] : ["scan"]) : ["plan"];
+  const routes: Route[] = inWindow ? [] : p.path === "consult" ? ["consult"] : p.path === "scan" ? (o.planOnly ? ["plan"] : o.planToo ? ["scan", "plan"] : ["scan"]) : ["plan"];
   if (inWindow) {
     console.log(`  ${p.id}: Qalam, in the real app (${p.path})…`);
     const s = await tabSide(p, out, o);
@@ -381,6 +387,70 @@ function stubDeps(): MarketDeps {
   };
 }
 
+/** A stand-in for the model on the consultant's road (src/consult/): a read, three turns, a proposal. */
+function consultStubDeps(): MarketDeps {
+  let turn = 0;
+  const q = (id: string, title: string, x: Record<string, unknown> = {}) => ({ id, title, why: "So we know where to look", multi: false, options: [], recommended: [], allowOther: true, from: "none", look_for: "", example: "", explain: { term: "", plain: "" }, after: [], ...x });
+  const choice = (id: string, title: string) => q(id, title, { options: [{ value: "a", label: "A fee", description: "" }, { value: "b", label: "A cut", description: "" }] });
+  const base = { done: false, understood: [], terms: [], open: [], situation: { level: "new", role: "", position: "", stage: "running", theirs: "yes", whose: "unsure", from: [] }, playbook: "page", business: [] as unknown[] };
+  const plan = stubDeps();
+  return {
+    ...plan,
+    structured: (async (call: { kind?: string }, signal?: AbortSignal) => {
+      // The read of who's asking: someone new, with their own app, at one page.
+      if (call.kind === "chat-route") return { data: { said: "named", product: "", name: "Delivery app", role: "", position: "", level: "new", stage: "running", theirs: "yes", whose: "unsure", layer: "page" } };
+      if (call.kind === "ask-turn") {
+        turn++;
+        // Five questions, a look before any answer (dropped), and a note from an answer there isn't (dropped).
+        if (turn === 1) return { data: { ...base, questions: [q("q1", "What happens on the basket page?", { example: "People add things, then leave" }), choice("q3", "How does the app earn on an order?"), q("q2", "When did it start?"), q("q4", "Who has it?"), q("q5", "What have you tried?")], lookups: [{ id: "l1", kind: "web", query: "basket abandonment", why: "To see what usually makes people leave" }], business: [{ section: "earns", text: "A delivery fee", q: "q9", theirs: true }] } };
+        // After an answer: a look with its reason, what's settled and open, and a note in their own words.
+        if (turn === 2) return { data: { ...base, questions: [q("q6", "Did anything change around then?")], understood: [{ text: "People add things and then leave", from: ["q1"] }], open: ["What changed around then"], lookups: [{ id: "l2", kind: "web", query: "delivery fee shown at the basket", why: "To see whether a fee shown late makes people leave" }], business: [{ section: "serves", text: "People add things and then leave", q: "q1", theirs: true }] } };
+        return { data: { ...base, questions: [], lookups: [], done: true } };
+      }
+      return plan.structured(call as never, signal);
+    }) as MarketDeps["structured"],
+  };
+}
+
+/** A person for the stubbed road: the first choice, or the same words, for every question. */
+const stubPlayer = (): Player => ({
+  fill: async (qs) => Object.fromEntries(qs.map((x) => [x.id, x.options.length ? x.options[0].label : "People add things and then leave"])),
+  answer: async () => "",
+  pressesPicks: () => false,
+  tookPick: () => {},
+  ledger: [],
+  released: new Set(),
+  typed: () => 0,
+});
+
+/** The consultant's road walked with a stand-in for the model: what its rules promise, held. */
+async function consultStub() {
+  const p = personaById("d1")!;
+  const dir = path.join(OUT, `stub-consult-${stamp()}`);
+  await mkdir(dir, { recursive: true });
+  const store = await storeFor(dir, p);
+  try {
+    const run = await consultFlow(store, p, stubPlayer(), newTap(), new AbortController().signal, { deps: consultStubDeps() });
+    const c = run.consult!;
+    const fail = (why: string) => {
+      throw new Error(`Consultant stub: ${why}`);
+    };
+    if (c.situation?.level !== "new" || c.playbook !== "page") fail(`read them as ${c.situation?.level} at ${c.playbook}`);
+    if (c.lookups.some((l) => l.afterAnswered === 0)) fail("looked something up before they'd answered anything");
+    if (c.rounds[0]?.questions.map((x) => x.id).join(",") !== "q1,q2,q4") fail(`the first round was ${c.rounds[0]?.questions.map((x) => x.id).join(",")}, not three open questions`);
+    if (!c.rounds[0].questions[0].example) fail("the example for someone new was lost");
+    if (!c.rounds[1]?.reflect?.open.length) fail("no reflect-back before the second round");
+    if (!c.lookups.some((l) => l.why && l.afterAnswered >= 1)) fail("the later lookup lost its reason");
+    const line = c.business.lines.find((l) => l.section === "serves");
+    if (!line || line.by !== "said" || line.from?.[0]?.q !== "q1") fail("the business line wasn't kept as their words with the answer it came from");
+    if (c.business.lines.some((l) => l.from?.[0]?.q === "q9")) fail("a note from an answer there isn't was kept");
+    const m = consulting(p, run)!;
+    console.log(`Stubbed consultant on ${p.id}: read ${m.levelRead}, ${m.rounds} rounds, biggest for someone new ${m.biggestRoundForNew}, first web look after ${m.roundsBeforeWeb} answered, ${m.business.lines} business lines. Fine.`);
+  } finally {
+    store.dispose();
+  }
+}
+
 async function stage0() {
   const problems = lint(ROOT);
   console.log(problems.length ? `Lint:\n${problems.map((x) => `  - ${x}`).join("\n")}` : "Lint: clean");
@@ -409,6 +479,7 @@ async function stage0() {
   } finally {
     store.dispose();
   }
+  await consultStub();
 }
 
 /** The player alone: on questions with a known answer, does it say only what it was asked? */

@@ -1,7 +1,7 @@
 import type { Persona } from "./types";
 
 /**
- * The 13 people. Arithmetic traps are worked out here so the answer key can be checked:
+ * The 17 people (group D works with the consultant). Arithmetic traps are worked out here so the answer key can be checked:
  *
  * B2, a 12-month exit-ARR move for the same effort, from 15,000 accounts at $600 a year ($9M ARR):
  *   churn 3.1% to 2.6% a month: 75 accounts a month kept, $45,000 of ARR a month, about $540k in 12 months;
@@ -330,6 +330,100 @@ export const PERSONAS: Persona[] = [
     behavior: { enterRate: 0.1, skipRate: 0, maxWords: 16, lang: "en", style: "Precise, a bit sceptical of business talk.", dontKnow: "no idea, not my area" },
     flips: [{ fact: "demand", to: "Three fintechs have asked our CEO for a quote this quarter." }],
     wants: ["a one-pager for the CFO"],
+  },
+  // Group D: the consultant (src/consult/). People who come in at a page, a business or an idea, at every level.
+  {
+    id: "d1",
+    group: "D",
+    title: "Not a product person, a problem on one page",
+    path: "consult",
+    org: { name: "Sallety", about: "A food and grocery delivery app in Cairo.", shape: "solo" },
+    opener: "I want to work on a problem on my basket page in my delivery app",
+    facts: [
+      { id: "seen", topic: "what goes wrong on the basket page, what people do there", value: "People add things to the basket and then just leave without ordering.", mustLearn: true },
+      { id: "told", topic: "how they noticed it, who told them, when it started", value: "My cousin who runs the app side told me about three weeks ago.", mustLearn: false },
+      { id: "fee", topic: "what changed recently: prices, the delivery fee, a minimum order, a new version", value: "We raised the delivery fee from 15 to 25 pounds about a month ago.", mustLearn: true },
+      { id: "orders", topic: "how many orders a day, before and now", value: "We used to get around 380 orders a day, now it's about 300.", mustLearn: true },
+      { id: "earns", topic: "how the app makes money on an order", value: "We keep the delivery fee and take 12% from the shop.", mustLearn: true },
+      { id: "where", topic: "where customers first see the delivery fee", value: "Only on the basket page, at the end.", mustLearn: true },
+      { id: "minimum", topic: "a minimum order amount", value: "The minimum order is 100 pounds.", mustLearn: false },
+      { id: "pay", topic: "how customers pay", value: "Most pay cash at the door.", mustLearn: false },
+    ],
+    unknowns: [
+      { id: "counts", topic: "how many people open the basket against how many order, or any analytics numbers" },
+      { id: "rivals", topic: "what other delivery apps charge for delivery" },
+    ],
+    traps: [{ id: "redesign", plant: "Fixing how the basket page looks", truth: "The fee went to 25 a month ago and is first shown on the basket page: that's the likely cause, not the design", caught: /fee|delivery (charge|cost)/i }],
+    cause: { truth: /fee|delivery (charge|cost)/i },
+    expects: { business: ["earns"] },
+    behavior: { enterRate: 0.2, skipRate: 0.1, maxWords: 25, lang: "en", fluency: "new", style: "Not a product person: plain, everyday words, no jargon, a little unsure, short answers.", dontKnow: "no idea, my cousin handles that" },
+    flips: [{ fact: "fee", to: "Nothing changed, the prices are the same as last year." }],
+    wants: ["to know what to fix first"],
+  },
+  {
+    id: "d2",
+    group: "D",
+    title: "Seasoned PM, a step that dropped",
+    path: "consult",
+    org: { name: "Ledgerly", about: "Bookkeeping software for small businesses in Europe.", audience: "Small-business owners and their bookkeepers", shape: "team" },
+    opener: "Bank-connection completion in onboarding dropped from 71% to 58% over the last six weeks. I need the root cause before our planning cycle.",
+    facts: [
+      { id: "provider", topic: "what changed in how banks get connected, the provider or the integration", value: "We moved to a new open-banking provider seven weeks ago.", mustLearn: true },
+      { id: "banks", topic: "which banks or countries fail, where the drop is", value: "Most failures are customers of smaller German and Dutch banks; the new provider doesn't cover some of them.", mustLearn: true },
+      { id: "metric", topic: "which business number this step feeds", value: "Trial-to-paid conversion: people who don't connect a bank rarely pay.", mustLearn: true },
+      { id: "capacity", topic: "how much the team can build", value: "One squad of five engineers.", mustLearn: false },
+      { id: "tried", topic: "what has been tried", value: "We added a retry button; it didn't help.", mustLearn: false },
+    ],
+    unknowns: [{ id: "competitors", topic: "how competitors handle connecting banks" }],
+    traps: [{ id: "ui", plant: "Redesigning the onboarding step's screens", truth: "The new provider doesn't cover some smaller banks: the drop is coverage, not the screens", caught: /provider|coverage|cover|unsupported/i }],
+    cause: { truth: /provider|coverage|cover|unsupported/i },
+    behavior: { enterRate: 0.05, skipRate: 0, maxWords: 30, lang: "en", fluency: "seasoned", style: "A seasoned PM: precise product terms (conversion, funnel, cohort), brisk, no small talk.", dontKnow: "don't have that cut yet" },
+    flips: [{ fact: "provider", to: "Nothing changed in the integration; same provider for two years." }],
+    wants: ["a one-pager for leadership"],
+  },
+  {
+    id: "d3",
+    group: "D",
+    title: "Wants to grow; the limit is people not coming back",
+    path: "consult",
+    org: { name: "Bright Smile Clinic", about: "A dental clinic with two branches.", shape: "team" },
+    opener: "I own a dental clinic and I want more people to book online. How do I get more customers?",
+    facts: [
+      { id: "full", topic: "how full the clinic's schedule is, its capacity", value: "Our chairs are about 70% booked most weeks.", mustLearn: true },
+      { id: "noshow", topic: "people who book and don't come, missed appointments", value: "About one in five online bookings don't show up.", mustLearn: true },
+      { id: "return", topic: "how many patients come back for a second visit", value: "Most patients come once for a cleaning and we never see them again.", mustLearn: true },
+      { id: "earns", topic: "how the clinic makes money, what a visit is worth", value: "A cleaning is cheap; the money is in treatment plans that need several visits.", mustLearn: true },
+      { id: "channels", topic: "where new patients come from", value: "Google Maps and word of mouth; we tried Facebook ads last year.", mustLearn: false },
+      { id: "ads", topic: "what happened with the ads", value: "The Facebook ads brought bookings, but most of those people never came back.", mustLearn: false },
+    ],
+    unknowns: [{ id: "reviews", topic: "what patients write in online reviews" }],
+    traps: [{ id: "ads", plant: "Spending more on ads to get more bookings", truth: "The chairs aren't full because patients don't come back and one in five don't show: getting them back is worth more than new ads", caught: /no[- ]show|come back|return|second visit|remind/i }],
+    cause: { truth: /no[- ]show|don'?t (come|show)|come back|return|second visit/i },
+    expects: { business: ["earns", "finds"] },
+    behavior: { enterRate: 0.3, skipRate: 0.1, maxWords: 25, lang: "en", fluency: "new", style: "A busy clinic owner, not a tech person: friendly, plain words, answers what's asked.", dontKnow: "not sure, my receptionist would know" },
+    flips: [{ fact: "return", to: "Most patients come back every six months." }],
+    wants: ["more patients"],
+  },
+  {
+    id: "d4",
+    group: "D",
+    title: "An idea, in Arabic",
+    path: "consult",
+    org: { name: "غدا البيت", shape: "solo" },
+    opener: "عندي فكرة: أكل بيتي للموظفين في الرياض وقت الغدا، بس مش عارفة أبدأ منين",
+    facts: [
+      { id: "who", topic: "who exactly has the problem, which people", value: "زميلاتي في الشغل، بيطلبوا أكل جاهز كل يوم وبيشتكوا إنه تقيل وغالي", mustLearn: true },
+      { id: "today", topic: "what they do today for lunch", value: "بيطلبوا من تطبيقات التوصيل أو بياكلوا من الكافتيريا", mustLearn: true },
+      { id: "cooks", topic: "who would cook, the cooks", value: "في ستات في الحي بيطبخوا حلو ومحتاجين دخل", mustLearn: true },
+      { id: "tried", topic: "anything tried already", value: "جربت أطبخ لخمس زميلات أسبوع واحد ودفعوا", mustLearn: true },
+      { id: "price", topic: "what people would pay for a meal", value: "قالوا ٢٥ ريال للوجبة معقول", mustLearn: false },
+    ],
+    unknowns: [{ id: "permit", topic: "the rules or permits for selling food cooked at home" }],
+    traps: [{ id: "app", plant: "Building an app first", truth: "She already sold a week of lunches by hand to five colleagues: the next check is doing it again for more people, not an app", caught: /يدوي|بنفسك|واتساب|بدون تطبيق|by hand|whatsapp/i }],
+    cause: { truth: /زميل|موظف|غدا|colleague/i },
+    behavior: { enterRate: 0.2, skipRate: 0.1, maxWords: 25, lang: "ar", fluency: "new", style: "تتكلم عامية مصرية بسيطة، مش من مجال المنتجات، متحمسة ومترددة شوية", dontKnow: "مش عارفة" },
+    flips: [{ fact: "tried", to: "لسه ما جربتش حاجة" }],
+    wants: ["أعرف أبدأ منين"],
   },
 ];
 

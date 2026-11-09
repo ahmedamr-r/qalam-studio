@@ -32,6 +32,11 @@ import type { CheckedRun } from "./measures";
 import type { Player } from "./player";
 import { tapped, type Tap } from "./tap";
 import type { Persona } from "./types";
+import { emptyBusiness, type Business, type BusinessLine } from "@/business/types";
+import { capFor } from "@/consult/pace";
+import type { PlaybookId } from "@/consult/playbooks.gen";
+import { levelOf, nextPlaybook, type Layer, type Level, type Situation } from "@/consult/situation";
+import type { ConsultTurn } from "../../server/org/consult";
 
 /**
  * The flows whose logic lives in the core, run in process: the window only carries the conversation
@@ -59,9 +64,25 @@ export interface PlanRun {
   /** The checks of what was proposed (src/challenge/), and what was proposed before it was proposed again by them. */
   checks?: CheckedRun[];
   before?: PlanDraft;
+  /** Worked out with the consultant. */
+  consult?: ConsultDetail;
 }
 
 type Ended = "done" | "nothing-new" | "stopped" | "guard";
+
+/**
+ * A consultant's conversation as it went (src/consult/): who it read them as, the playbook, each round
+ * with the level it was paced for and what it showed before it, every lookup with its reason and how
+ * many rounds had been answered when it started, and what it noted on the business page.
+ */
+export interface ConsultDetail {
+  situation: Situation | null;
+  playbook: string | null;
+  rounds: { questions: AskQuestion[]; level: Level; reflect?: { so: string[]; open: string[] } }[];
+  lookups: { kind: string; query: string; why?: string; afterAnswered: number }[];
+  noted: BusinessLine[];
+  business: Business;
+}
 
 /** A brief's interview as it went: each round's questions, how it ended, and every answer as calls read it. */
 export interface BriefInterview {
@@ -292,6 +313,95 @@ export async function planFlow(store: OrgStore, p: Persona, player: Player, t: T
   }
   const made2 = await briefForDraft(store, draft, player, deps, t, signal, (at, body) => void bodies.push({ path: at, body }));
   return { path: "plan", said, route, body: withAsking(), questions, draft, ...(draft !== first ? { before: first } : {}), checks, brief: made2?.brief ?? null, ...(made2 ? { briefAsk: made2.asked } : {}), bodies, ended };
+}
+
+/**
+ * The consultant's road, as `consultOn` and the plan's host run it in the window: no look before an
+ * answer, each turn through the core with who's asking and the playbook in use, rounds paced to the level
+ * the read found (the person never presses Explain more here), what it notes kept, then the proposal and
+ * its check. No brief: what it proposes is a diagnosis to check first.
+ */
+export async function consultFlow(store: OrgStore, p: Persona, player: Player, t: Tap, signal: AbortSignal, o: { firstRoundOnly?: boolean; outline?: OutlineCard[]; deps?: MarketDeps } = {}): Promise<PlanRun> {
+  const deps = tapped(o.deps ?? realDeps, t);
+  const said = p.opener.slice(0, 4000);
+  const body: PlanBody = { said, outline: o.outline ?? (await outlineOf(store)), rounds: [], looks: [], mode: "consult" };
+  const questions: PlanQuestion[][] = [];
+  const say = emit(t);
+  const bodies: { path: string; body: unknown }[] = [];
+  const detail: ConsultDetail = { situation: null, playbook: null, rounds: [], lookups: [], noted: [], business: emptyBusiness() };
+  let s: AskingState = emptyAsking();
+  let since = 1;
+  const level = () => levelOf({ read: detail.situation?.level ?? null });
+  const consultIn = () => ({ level: level(), ...(detail.situation ? { situation: detail.situation } : {}), ...(detail.playbook ? { playbook: detail.playbook as PlaybookId } : {}) });
+  const withAsking = (): PlanBody => ({ ...body, consult: consultIn(), asking: askingIn(s, { said, memory: { flow: "consult", key: "consult", about: { product: null } } }) });
+  const answered = () => s.rounds.filter((r) => r.form.submitted).length;
+  const run = async (l: Lookup) => {
+    if (l.kind !== "web") return void (s = lookupLanded(s, l.id, { lines: [] }));
+    const look = await lookForPlan(store, { ...withAsking(), ...(l.query ? { query: l.query } : {}) }, say, signal, deps).catch((e: unknown) => {
+      if (signal.aborted) throw e;
+      return null;
+    });
+    if (look) body.looks.push({ ...look, after: s.rounds.length - 1 });
+    s = lookupLanded(s, l.id, look ? { look, lines: look.lines.map((x, i) => ({ ref: `${l.id}-${i + 1}`, text: x.text, from: x.url ?? "a page", whose: "a page online" })) } : { error: "It failed" });
+  };
+  let ended: PlanRun["ended"];
+  let made = 0;
+  for (let turns = 0; ; ) {
+    for (const l of s.lookups.filter((x) => x.state === "running")) await run(l);
+    const next = nextAfter(s);
+    if (next === "end") {
+      ended = s.end?.by;
+      break;
+    }
+    if (next === "offer" && s.offer) {
+      detail.lookups.push({ kind: "web", query: s.offer.query, ...(s.offer.why ? { why: s.offer.why } : {}), afterAnswered: answered() });
+      s = startLookup(s, { id: s.offer.id, kind: "web", query: s.offer.query, waits: s.turns }, Date.now());
+      continue;
+    }
+    if (next === "ask") {
+      const r = currentRound(s)!;
+      questions.push(r.questions);
+      detail.rounds.push({ questions: r.questions, level: level(), ...(r.reflect ? { reflect: r.reflect } : {}) });
+      if (o.firstRoundOnly) break;
+      s = withForm(s, await answerRound(player, r, { flow: "consult", round: s.rounds.length - 1 }, signal));
+      await rememberIn(store, "consult", "consult", { product: null }, s);
+      continue;
+    }
+    if (next === "wait") continue;
+    if (turns++ >= BENCH_TURNS) {
+      ended = "guard";
+      break;
+    }
+    const sent = withAsking();
+    bodies.push({ path: "plan/next", body: JSON.parse(JSON.stringify(sent)) });
+    s = markRead(s);
+    const turn = (await planNext(store, sent, say, signal, deps)) as ConsultTurn;
+    // What the window's host keeps of a turn (`keepConsult`): who's asking, the playbook (a switch holds a while), what it noted.
+    if (turn.situation) detail.situation = turn.situation;
+    const now = (detail.playbook ?? detail.situation?.layer ?? null) as Layer | null;
+    if (now) {
+      const next2 = turn.picked ? nextPlaybook(now, turn.picked, { turn: s.turns + 1, since }) : { playbook: now, since };
+      detail.playbook = next2.playbook;
+      since = next2.since;
+    }
+    if (turn.noted?.length) detail.noted.push(...turn.noted);
+    for (const l of turn.lookups) if (l.kind !== "tools") detail.lookups.push({ kind: l.kind, query: l.query, ...(l.why ? { why: l.why } : {}), afterAnswered: answered() });
+    const cap = capFor(level());
+    s = applyTurn(s, turn, { now: Date.now(), id: (x) => `${x}${++made}`, ...(cap ? { cap } : {}), openFirst: level() === "new" });
+  }
+  detail.business = await store.getBusiness();
+  if (o.firstRoundOnly) return { path: "plan", said, route: { job: "consult" }, body: withAsking(), questions, draft: null, brief: null, firstRoundOnly: true, bodies, ...(ended ? { ended } : {}), consult: detail };
+  bodies.push({ path: "plan/propose", body: withAsking() });
+  const draft = await proposePlan(store, withAsking(), say, signal, deps);
+  const checks: CheckedRun[] = [];
+  const items = itemsOfDraft(draft);
+  if (items.length) {
+    const req: CheckRequest = { origin: "consult:bench", asked: said, product: null, outline: body.outline.map((c) => ({ id: c.id, kind: c.kind, title: c.title, parent: c.parent, ...(c.topic ? { topic: c.topic } : {}) })), items };
+    const checked = await challengeProposals(store, req, say, signal, deps).catch(() => null);
+    if (checked) checks.push({ ...checked, titles: Object.fromEntries(items.map((i) => [i.id, i.title])) });
+  }
+  detail.business = await store.getBusiness();
+  return { path: "plan", said, route: { job: "consult" }, body: withAsking(), questions, draft, checks, brief: null, bodies, ...(ended ? { ended } : {}), consult: detail };
 }
 
 /** A plan's cards as the window sends them to be checked: by their proposals' ids, each under a card on the canvas or another card of the draft. */

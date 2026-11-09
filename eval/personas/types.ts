@@ -42,18 +42,21 @@ export interface Behavior {
   dontKnow: string;
   /** From this round on they change their mind about a fact they've already given. */
   contradicts?: { fact: string; round: number; says: string };
+  /** How much product and business work they really know: what the consultant's read of them is held to. */
+  fluency?: "new" | "some" | "seasoned";
 }
 
 /**
  * Which way a person reaches this in the app.
  * plan: the canvas chat works it out. scan: the first run reads the idea, then what to build first.
+ * consult: the consultant works it out with them (src/consult/).
  * focus, docs, find: the window drives these, so they run in the real app.
  */
-export type Path = "plan" | "scan" | "focus" | "docs" | "find";
+export type Path = "plan" | "scan" | "focus" | "docs" | "find" | "consult";
 
 export interface Persona {
   id: string;
-  group: "A" | "B" | "C";
+  group: "A" | "B" | "C" | "D";
   title: string;
   path: Path;
   org: { name: string; about?: string; audience?: string; shape: "solo" | "team" };
@@ -81,4 +84,8 @@ export interface Persona {
   flips: { fact: string; to: string }[];
   /** What they'd want next that may have no path: feature candidates. */
   wants: string[];
+  /** The real cause behind what they came with: whether the diagnosis names it, and how high. */
+  cause?: { truth: RegExp };
+  /** What the business page should hold once they've talked it through. */
+  expects?: { business?: ("serves" | "gets" | "earns" | "costs" | "finds" | "numbers" | "stands")[] };
 }

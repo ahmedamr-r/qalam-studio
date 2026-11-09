@@ -6,6 +6,7 @@ import type { Player } from "./player";
 import { prdOf } from "./render";
 import { costOf, freshTokensOf, hostsOf, tokensOf, type Tap } from "./tap";
 import type { Persona } from "./types";
+import { jargonIn } from "./jargon";
 
 /** What code can say about a run. A judge decides the rest; a regex hit on a trap is only a first pass. */
 
@@ -133,6 +134,47 @@ export function searching(t: Tap, run: PlanRun | ScanRun | null) {
     /** A look that failed or found nothing, which the chat says as "nothing held up". */
     emptyLooks: looks.filter((l) => !l.lines.length).length,
     failedCalls: t.failed,
+  };
+}
+
+/**
+ * How the consultant went (src/consult/), by what code can count: what it read the person as against
+ * who they are; how many rounds they'd answered before it looked on the web (never none, the rule says
+ * at least one); lookups with no reason; the biggest round asked of someone new and how much of the
+ * first round was open; jargon asked of someone new with no word of explanation; examples given to
+ * someone seasoned; whether the real cause is among the problems proposed, and how high; what the
+ * business page holds; solutions nobody asked for; and, for an Arabic speaker, how much it wrote in Arabic.
+ */
+export function consulting(p: Persona, run: PlanRun) {
+  const c = run.consult;
+  if (!c) return null;
+  const web = c.lookups.filter((l) => l.kind === "web");
+  const newRounds = c.rounds.filter((r) => r.level === "new");
+  const qs = c.rounds.flatMap((r) => r.questions);
+  const words = (q: (typeof qs)[number]) => `${q.title} ${q.why} ${q.options.map((o) => `${o.label} ${o.description}`).join(" ")}`;
+  const unexplained = p.behavior.fluency === "new" ? qs.flatMap((q) => jargonIn(words(q)).filter((w) => w.toLowerCase() !== q.explain?.term.toLowerCase())) : [];
+  const cards = run.draft?.cards ?? [];
+  const problems = cards.filter((x) => x.kind === "opportunity");
+  const at = p.cause ? problems.findIndex((x) => p.cause!.truth.test(`${x.title} ${x.description ?? ""}`)) : -1;
+  const bySection: Record<string, number> = {};
+  for (const l of c.business.lines) bySection[l.section] = (bySection[l.section] ?? 0) + 1;
+  const first = c.rounds[0]?.questions ?? [];
+  return {
+    levelRead: c.situation?.level ?? null,
+    levelTrue: p.behavior.fluency ?? null,
+    playbook: c.playbook,
+    rounds: c.rounds.length,
+    roundsBeforeWeb: web.length ? Math.min(...web.map((l) => l.afterAnswered)) : null,
+    lookupsWithoutWhy: c.lookups.filter((l) => !l.why).length,
+    biggestRoundForNew: newRounds.length ? Math.max(...newRounds.map((r) => r.questions.length)) : null,
+    openShareFirstRound: first.length ? +(first.filter((q) => !q.options.length).length / first.length).toFixed(2) : null,
+    reflects: c.rounds.filter((r) => r.reflect).length,
+    jargonUnexplained: [...new Set(unexplained)],
+    examplesToSeasoned: p.behavior.fluency === "seasoned" ? qs.filter((q) => q.example).length : 0,
+    causeCaught: p.cause ? { caught: at >= 0, rank: at >= 0 ? at + 1 : null, of: problems.length } : null,
+    business: { lines: c.business.lines.length, bySection, theirs: c.business.lines.filter((l) => l.by !== "qalam").length, readings: c.business.lines.filter((l) => l.by === "qalam").length, missing: (p.expects?.business ?? []).filter((x) => !bySection[x]) },
+    solutionsUnasked: cards.filter((x) => x.kind === "solution").length,
+    arabic: p.behavior.lang === "ar" ? +(qs.filter((q) => /\p{Script=Arabic}/u.test(q.title)).length / Math.max(1, qs.length)).toFixed(2) : null,
   };
 }
 
