@@ -49,6 +49,13 @@ import { SOURCE, sourceTile } from "@/discovery/look";
 import { quotable, type SourceRecord } from "@/discovery/sources";
 import { sourceOf, useSources } from "@/ui/discovery/sources";
 import type { LaneRender } from "./lane-painter";
+import type { PlaceRender } from "./ost-painter";
+import { placeCardOf, type PlaceCard } from "@/business/card";
+import { useBusiness } from "@/org/business";
+import { useOrgContext } from "@/org/context";
+import { useMarket } from "@/org/market";
+import { businessHref } from "@/projects/model";
+import { navigate } from "@/ui/nav";
 import { openSource } from "@/ui/discovery/sources";
 
 /** The board's sources lane, its feeds among them (kept while the document, its sources and feeds are the same; none with the view option off). */
@@ -92,6 +99,36 @@ export function boardLane(): Lane {
   laneMemo = { doc, list, visiting, feeds, news, goals, groups, briefs, slots, things: space.things, lane: helps.length ? { ...lane, edges: [...lane.edges, ...helps] } : lane };
   return laneMemo.lane;
 }
+
+/** The Business card (src/business/card.ts), kept while what it reads is the same. */
+let placeMemo: { business: unknown; about: unknown; market: unknown; org: string; card: PlaceCard } | null = null;
+
+/** Where the Business card is on the canvas (a review's ghosts lay it out as accepting would), or null. */
+export function placeSlot() {
+  const space = useSpaceView.getState();
+  return space.active ? ((space.preview?.slots ?? space.slots).get("place") ?? null) : null;
+}
+
+/** The Business card as the painter draws it: what it says, and the goals at the top of the trees its wires reach. */
+function placeRender(lit: boolean): PlaceRender | null {
+  const box = placeSlot();
+  if (!box) return null;
+  const business = useBusiness.getState().business;
+  const about = useOrgContext.getState().about;
+  const { market, org } = useMarket.getState();
+  if (!placeMemo || placeMemo.business !== business || placeMemo.about !== about || placeMemo.market !== market || placeMemo.org !== org) placeMemo = { business, about, market, org, card: placeCardOf({ business, about, market, org }) };
+  const drawn = useSpaceView.getState().preview?.doc ?? studio().doc;
+  const to = drawn.roots.flatMap((id) => {
+    const n = drawn.nodes[id];
+    return isOstCard(n) && n.meta.ost.kind === "outcome" && n.visible !== false ? [{ x: n.x + n.w / 2, y: n.y }] : [];
+  });
+  return { box, card: placeMemo.card, to, lit };
+}
+
+const placeAt = (world: Pt) => {
+  const b = placeSlot();
+  return !!b && world.x >= b.x && world.x <= b.x + b.w && world.y >= b.y && world.y <= b.y + b.h;
+};
 
 /** The lane's source card at a world point. */
 function laneAt(world: Pt): LaneItem | null {
@@ -208,6 +245,8 @@ export function createOstTools(): CanvasDelegate {
   let hoverLane: string | null = null;
   /** A lane source's port under the pointer. */
   let hoverPort: string | null = null;
+  /** The Business card under the pointer: its wires light, and a click opens its page. */
+  let hoverPlace = false;
   /** A cord being drawn from a source's port: where the pointer is, the card under it, and whether it can rest on the source's words. */
   let cord: { item: LaneItem; to: Pt; target: string | null; ok: boolean } | null = null;
 
@@ -342,6 +381,11 @@ export function createOstTools(): CanvasDelegate {
         s.invalidate();
         return true;
       }
+      // The Business card opens how the business works in the panel.
+      if (placeAt(p.world)) {
+        navigate(businessHref());
+        return true;
+      }
       // A source in the lane opens its reader (what it backs, its words marked).
       const source = laneAt(p.world);
       if (source) {
@@ -394,13 +438,15 @@ export function createOstTools(): CanvasDelegate {
       const t = toggleAt(s.doc, p.world);
       const port = t ? null : (portAt(p.world)?.key ?? null);
       const lane = t ? null : (laneAt(p.world)?.key ?? null);
-      if (t !== hoverToggle || lane !== hoverLane || port !== hoverPort) {
+      const onPlace = !t && !lane && !port && placeAt(p.world);
+      if (t !== hoverToggle || lane !== hoverLane || port !== hoverPort || onPlace !== hoverPlace) {
         hoverToggle = t;
         hoverLane = lane;
         hoverPort = port;
+        hoverPlace = onPlace;
         s.invalidate();
       }
-      return !!t || !!lane || !!port;
+      return !!t || !!lane || !!port || onPlace;
     },
 
     pointerUp() {
@@ -445,12 +491,12 @@ export function createOstTools(): CanvasDelegate {
       if (cord) return cord.ok ? "copy" : "crosshair";
       if (drag?.active) return drag.drop && !drag.drop.ok ? "not-allowed" : "grabbing";
       if (hoverPort) return "crosshair";
-      if (hoverToggle || hoverLane) return "pointer";
+      if (hoverToggle || hoverLane || hoverPlace) return "pointer";
       const tool = studio().tool;
       return tool === "card" || tool === "sticky" ? "crosshair" : null;
     },
 
-    fitBoxes: () => boardLane().items.map(({ x, y, w, h }) => ({ x, y, w, h })),
+    fitBoxes: () => [...boardLane().items.map(({ x, y, w, h }) => ({ x, y, w, h })), ...(placeSlot() ? [placeSlot()!] : [])],
 
     render(): OstRenderInput {
       const ui = discovery();
@@ -466,6 +512,7 @@ export function createOstTools(): CanvasDelegate {
         work: workChips(ui.work),
         faint: useSpaceView.getState().active ? useSpaceView.getState().faint : undefined,
         fainter: useSpaceView.getState().active ? useSpaceView.getState().fainter : undefined,
+        place: placeRender(hoverPlace),
       };
     },
   };

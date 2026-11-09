@@ -25,6 +25,8 @@ export interface LayoutOptions {
   lanes?: ReadonlyMap<string, number>;
   /** Cards with a brief: its tile hangs under the card, before what's under it. */
   briefs?: ReadonlySet<string>;
+  /** The Business card's size: drawn above the trees, centred over them (`slots`' "place"). */
+  place?: { w: number; h: number };
 }
 
 /** What a goal's sources lane takes on its left, as the layout keeps room for it. */
@@ -96,6 +98,8 @@ export function layoutSpace(doc: Doc, o: LayoutOptions = {}): { doc: Doc; slots:
   };
   let x = 0;
   const column: string[] = [];
+  /** Where the trees run, side to side: the Business card goes over them. */
+  const across = { x0: Infinity, x1: -Infinity };
   for (const root of d.roots) {
     if (!isOstCard(d.nodes[root])) continue;
     if (o.column?.(root)) {
@@ -121,8 +125,11 @@ export function layoutSpace(doc: Doc, o: LayoutOptions = {}): { doc: Doc; slots:
     const r = { x: x - x0, y: 0 };
     want.set(root, { x: r.x, y: r.y, visible: true });
     place(t, at, { x: 0, y: 0 }, null, r);
+    across.x0 = Math.min(across.x0, x);
+    across.x1 = Math.max(across.x1, x + x1 - x0);
     x += x1 - x0 + TREE_GAP;
   }
+  if (o.place && across.x1 > across.x0) slots.set("place", { x: Math.round((across.x0 + across.x1) / 2 - o.place.w / 2), y: -(o.place.h + GAPS.tb.levelGap), w: o.place.w, h: o.place.h });
   let y = 0;
   for (const id of column) {
     const box = cardBox(d.nodes[id].meta.ost!);

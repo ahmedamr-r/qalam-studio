@@ -292,6 +292,9 @@ export class Renderer {
       this.lanes.begin(this.theme.dark, false);
       this.lanes.drawWires(canvas, doc, lane, input.camera.zoom, input.hoverId);
     }
+    // A space's Business card: its wires to the goals under the cards, the card itself over them.
+    const place = !input.exporting ? input.ost?.place : null;
+    if (place) this.ost.drawPlaceWires(canvas, place, input.camera.zoom);
     // A Discovery tree's root box isn't what it covers: cull by its cards (rootBounds).
     for (const id of doc.roots) {
       if (!doc.nodes[id] || input.coveredRoots?.has(id)) continue;
@@ -299,6 +302,7 @@ export class Renderer {
       this.drawNode(canvas, doc, id, input);
     }
     if (lane) this.lanes.drawItems(canvas, lane, input.camera.zoom);
+    if (place && boxesIntersect(place.box, view)) this.ost.drawPlace(canvas, place);
     // Routes' state cards: their components, on the cards the route painter drew.
     const cards = input.view?.routeParts ? cardDoc(doc) : null;
     for (const id of cards?.roots ?? []) if (boxesIntersect(rootBounds(cards!, id), view)) this.drawNode(canvas, cards!, id, input);

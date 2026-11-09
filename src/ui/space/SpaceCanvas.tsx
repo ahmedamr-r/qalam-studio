@@ -6,7 +6,7 @@ import { boundsOf, worldBounds } from "@/doc/geometry";
 import { studio, useStudio, type Camera } from "@/doc/store";
 import type { Controller } from "@/engine/controller";
 import { bootEngine } from "@/engine/boot";
-import { boardLane } from "@/engine/ost-tools";
+import { boardLane, placeSlot } from "@/engine/ost-tools";
 import { openSpace, useSpaceStatus, type SpaceInputs } from "@/space/session";
 import { useSpaceView } from "@/space/view";
 import type { SourceRecord } from "@/discovery/sources";
@@ -63,12 +63,17 @@ export function readableCamera(c: Controller): Camera | null {
   const boxes = doc.roots.flatMap((r) => visibleCards(doc, r).map((id) => worldBounds(doc, id)));
   for (const it of boardLane().items) boxes.push(it);
   if (!boxes.length) return null;
-  const b = boundsOf(boxes.flatMap((x) => [{ x: x.x, y: x.y }, { x: x.x + x.w, y: x.y + x.h }]));
+  const around = (list: { x: number; y: number; w: number; h: number }[]) => boundsOf(list.flatMap((x) => [{ x: x.x, y: x.y }, { x: x.x + x.w, y: x.y + x.h }]));
+  // The Business card over the trees is part of the space's view; opened on the first tree, its top only where the card is in sight.
+  const place = placeSlot();
+  const b = around(place ? [...boxes, place] : boxes);
   const { w: W, h: H } = c.viewport;
   const zoom = Math.min(1, (W - PAD * 2) / Math.max(1, b.w), (H - PAD * 2) / Math.max(1, b.h));
   if (zoom >= READABLE) return { x: b.x + b.w / 2 - W / 2 / zoom, y: b.y + b.h / 2 - H / 2 / zoom, zoom };
   const first = doc.roots[0] ? worldBounds(doc, doc.roots[0]) : b;
-  return { x: Math.max(b.x - PAD / READABLE, first.x + first.w / 2 - W / 2 / READABLE), y: b.y - PAD / READABLE, zoom: READABLE };
+  const x = Math.max(b.x - PAD / READABLE, first.x + first.w / 2 - W / 2 / READABLE);
+  const seen = place && place.x < x + W / READABLE && place.x + place.w > x;
+  return { x, y: (seen ? b : around(boxes)).y - PAD / READABLE, zoom: READABLE };
 }
 
 export function SpaceCanvas({ org, space, inputs, sources }: { org: string | null; space: string | null; inputs: SpaceInputs | null; sources: SourceRecord[] }) {

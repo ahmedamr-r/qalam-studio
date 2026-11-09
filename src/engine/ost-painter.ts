@@ -13,6 +13,16 @@ import { getEngine, hexToColor } from "./canvaskit";
 import { buildParagraph } from "./text";
 import { OST_PALETTE, type OstPalette } from "./ost-palette";
 import type { LaneRender } from "./lane-painter";
+import type { PlaceCard } from "@/business/card";
+
+/** The Business card over a space's trees (src/business/card.ts): where it is, what it says, the goals its wires reach, lit while hovered. */
+export interface PlaceRender {
+  box: { x: number; y: number; w: number; h: number };
+  card: PlaceCard;
+  /** Each root goal's top edge, centred: where its wires go. */
+  to: Pt[];
+  lit: boolean;
+}
 
 /*
  * Painting the Discovery board's tree cards (CanvasKit). A card is a frame with no paint of its
@@ -41,6 +51,8 @@ export interface OstRenderInput {
   lane?: LaneRender | null;
   /** Cards drawn faint (the space's map: problems not on a board yet). */
   faint?: ReadonlySet<string>;
+  /** The Business card at the top of a space's canvas, and its wires to the goals. */
+  place?: PlaceRender | null;
   /** Of those, fainter still: little behind them yet. */
   fainter?: ReadonlySet<string>;
 }
@@ -152,6 +164,73 @@ export class OstPainter {
           this.titles.delete(id);
         }
     }
+  }
+
+  /** The Business card's wires, down to each goal at the top of a tree: under the cards, as a lane's are. */
+  drawPlaceWires(canvas: Canvas, r: PlaceRender, zoom: number) {
+    const p = this.pal;
+    const from = { x: r.box.x + r.box.w / 2, y: r.box.y + r.box.h };
+    const dash = this.ck.PathEffect.MakeDash([2 / Math.max(zoom, 0.25), 3 / Math.max(zoom, 0.25)], 0);
+    this.stroke.setColor(this.col(r.lit ? p.lineStrong : p.line));
+    this.stroke.setStrokeWidth((r.lit ? 2 : 1.25) / Math.max(zoom, 0.5));
+    this.stroke.setPathEffect(dash);
+    for (const to of r.to) {
+      const path = new this.ck.PathBuilder();
+      const dy = Math.max(24, (to.y - from.y) / 2);
+      path.moveTo(from.x, from.y);
+      path.cubicTo(from.x, from.y + dy, to.x, to.y - dy, to.x, to.y);
+      const built = path.detachAndDelete();
+      canvas.drawPath(built, this.stroke);
+      built.delete();
+    }
+    this.stroke.setPathEffect(null);
+    dash.delete();
+  }
+
+  /** The Business card: a card's body with its tag, "How X works", and how it earns, who it serves and its numbers. Faint until something's known. */
+  drawPlace(canvas: Canvas, r: PlaceRender) {
+    const p = this.pal;
+    const { x, y, w, h } = r.box;
+    const inner = w - CARD.pad * 2;
+    canvas.save();
+    canvas.translate(x, y);
+    const body = this.rrect(0, 0, w, h, CARD.radius);
+    this.blur ??= this.ck.MaskFilter.MakeBlur(this.ck.BlurStyle.Normal, 6, true);
+    this.shadow.setColor(this.col(p.shadow));
+    this.shadow.setMaskFilter(this.blur);
+    canvas.save();
+    canvas.translate(0, 2);
+    canvas.drawRRect(body, this.shadow);
+    canvas.restore();
+    this.shadow.setMaskFilter(null);
+    this.fill.setColor(this.col(p.card));
+    canvas.drawRRect(body, this.fill);
+    const dash = r.card.empty ? this.ck.PathEffect.MakeDash([5, 4], 0) : null;
+    this.stroke.setColor(this.col(r.lit ? p.lineStrong : r.card.empty ? p.subtle : p.border));
+    this.stroke.setStrokeWidth(r.lit ? 1.5 : 1);
+    this.stroke.setPathEffect(dash);
+    canvas.drawRRect(this.rrect(0.5, 0.5, w - 1, h - 1, CARD.radius - 0.5), this.stroke);
+    this.stroke.setPathEffect(null);
+    dash?.delete();
+    if (p.edge) {
+      this.stroke.setColor(this.col(p.edge));
+      this.stroke.setStrokeWidth(1);
+      canvas.drawLine(CARD.radius, 1.5, w - CARD.radius, 1.5, this.stroke);
+    }
+    this.kindTag(canvas, "place", "Business", false);
+    const title = this.label(r.card.title, r.card.empty ? p.subtle : p.ink, 13, 600, inner);
+    canvas.drawParagraph(title, CARD.pad, 18);
+    if (r.card.empty) {
+      canvas.drawParagraph(this.label("Fills in as you talk with Qalam AI", p.subtle, 11.5, 400, inner), CARD.pad, 46);
+    } else {
+      let at = 44;
+      for (const row of r.card.rows) {
+        canvas.drawParagraph(this.label(row.label, p.muted, 11, 500, 60), CARD.pad, at + 1);
+        canvas.drawParagraph(this.label(row.text || "Not known yet", row.text ? p.ink : p.subtle, 12, 400, inner - 64), CARD.pad + 64, at);
+        at += 22;
+      }
+    }
+    canvas.restore();
   }
 
   private col(hex: string, alpha = 1) {

@@ -6,13 +6,14 @@ import { planOutline, planProposals } from "@/space/plan";
 import { answersOf, currentRound, decideChoice, decideTerm, dropCurrentRound, emptyAsking, foundOf, fromBuckets, fromPlanRounds, loaded, looksOf, startLookup, theirWords } from "@/asking/engine";
 import { capFor } from "@/consult/pace";
 import type { PlaybookId } from "@/consult/playbooks.gen";
-import { levelOf, nextPlaybook, pastBasics, simpler, type Level } from "@/consult/situation";
+import { levelOf, nextPlaybook, pastBasics, simpler, type Level, type Situation } from "@/consult/situation";
 import { loadYou, setFluency, useYou, type Position } from "@/org/you";
 import { OPEN_ID, answered, answersRecord, openQuestion, type AskFor, type CardAnswers } from "@/discovery/questions";
 import { DUMP_ROLES } from "@/discovery/dump";
 import { sharedWords } from "@/discovery/near";
 import type { GoalLever } from "@/goals/types";
 import { lab } from "@/lab";
+import { SECTION_LABEL, type BusinessSection } from "@/business/types";
 import { askCardTurn } from "@/org/ask-card";
 import { lookOnline } from "@/org/online";
 import { boardOfCard, productOfCard } from "@/space/view";
@@ -1028,10 +1029,32 @@ function workOut(at: string | null, said: string) {
  * Worked out with a consultant: no look before they've answered anything. Its first turn reads who's
  * asking, then asks the way the playbook for where they came in says, paced to how much they know.
  */
-function consultOn(at: string | null, said: string, o: { first?: "goal" | "problem"; playbook?: PlaybookId } = {}) {
+function consultOn(at: string | null, said: string, o: { first?: "goal" | "problem"; playbook?: PlaybookId; situation?: Situation } = {}) {
   void ensureYou();
-  const id = jobAt(at, said, { kind: "plan", step: "thinking", rounds: [], looks: [], asking: emptyAsking(), consult: { noted: [], ...(o.first ? { first: o.first } : {}), ...(o.playbook ? { playbook: o.playbook } : {}) } });
+  const id = jobAt(at, said, { kind: "plan", step: "thinking", rounds: [], looks: [], asking: emptyAsking(), consult: { noted: [], ...(o.first ? { first: o.first } : {}), ...(o.playbook ? { playbook: o.playbook } : {}), ...(o.situation ? { situation: o.situation } : {}) } });
   void runCanvasPlan(id, (signal) => goOn(planHost(id), signal));
+}
+
+/**
+ * Talk it through, from an empty section of the business page: the consultant on how the business works,
+ * starting with that section. With something already going on in the chat, or a conversation about the
+ * business still open, the chat opens on it instead.
+ */
+export async function talkThrough(section: BusinessSection, org: string) {
+  toggleChat(true);
+  // One conversation about the business at a time: an open one is carried on.
+  const open = st().chat.turns.some((t) => t.job.kind === "plan" && t.job.consult?.playbook === "business" && (t.job.step === "thinking" || t.job.step === "looking" || t.job.step === "asking" || t.job.step === "settled"));
+  if (!st().loaded || open || running(st().chat)) return;
+  // The words that open it are Qalam AI's, so nothing is read from them about who's asking: what an
+  // earlier conversation read from theirs stands, else what's known here.
+  await ensureYou();
+  const info = await currentOrg().catch(() => null);
+  if (running(st().chat)) return;
+  const before = [...st().chat.turns].reverse().find((t) => t.job.kind === "plan" && t.job.consult?.situation)?.job;
+  const known = before?.kind === "plan" ? before.consult?.situation : undefined;
+  const whose = info?.shape === "solo" ? "solo" : info?.shape === "team" ? "team" : "unsure";
+  const situation: Situation = known ? { ...known, layer: "business" } : { named: true, product: "", name: org, role: "", level: useYou.getState().fluency?.level ?? "some", stage: "unknown", theirs: "yes", whose, layer: "business" };
+  consultOn(null, `Work out how ${org} works, starting with ${SECTION_LABEL[section].toLowerCase()}`, { playbook: "business", situation });
 }
 
 /** How much they know, loaded once this window works something out with them. */

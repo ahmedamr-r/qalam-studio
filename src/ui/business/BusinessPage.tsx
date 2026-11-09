@@ -1,16 +1,18 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import clsx from "clsx";
-import { Check, Pencil, Plus, X } from "lucide-react";
+import { Check, MessageCircle, Pencil, Plus, X } from "lucide-react";
 import { sameTopic } from "@/hub/topics";
 import { BUSINESS_SECTIONS, SECTION_LABEL, linesIn, type BusinessLine, type BusinessSection } from "@/business/types";
 import type { FactField, MarketLine } from "@/market/types";
 import { editBusinessLine, loadBusiness, useBusiness } from "@/org/business";
 import { useOrgContext } from "@/org/context";
 import { useMarket } from "@/org/market";
+import { lab } from "@/lab";
 import { Button, IconBtn } from "../controls";
 import { useCurrentOrg } from "../frame/store";
 import { r } from "../recipes";
 import { doneWithAt, PanelPageHeader, scrollToSection, usePanelEnter } from "../space/page";
+import { talkThrough } from "../space/chat/store";
 
 /*
  * How the business works (business.md), open in the canvas's panel: its seven sections, each line
@@ -122,7 +124,7 @@ function LinkedRow({ text, from, url, section }: { text: string; from: string; u
   );
 }
 
-function SectionPart({ section, lines, linked }: { section: BusinessSection; lines: BusinessLine[]; linked: { text: string; from: string; url?: string }[] }) {
+function SectionPart({ section, lines, linked, org }: { section: BusinessSection; lines: BusinessLine[]; linked: { text: string; from: string; url?: string }[]; org: string }) {
   const [adding, setAdding] = useState(false);
   const id = `business-${section}`;
   return (
@@ -144,7 +146,17 @@ function SectionPart({ section, lines, linked }: { section: BusinessSection; lin
       {linked.map((x) => (
         <LinkedRow key={`${x.from}:${x.text}`} {...x} section={section} />
       ))}
-      {!lines.length && !linked.length && !adding && <p className="text-caption text-fg-subtle">Not known yet.</p>}
+      {!lines.length && !linked.length && !adding && (
+        <div className="flex items-center justify-between gap-[8px]">
+          <p className="text-caption text-fg-subtle">Not known yet.</p>
+          {lab("consult") && org && (
+            <Button size="sm" variant="ghost" onClick={() => talkThrough(section, org)}>
+              <MessageCircle size={14} {...ICON} className="mr-[4px]" />
+              Talk it through
+            </Button>
+          )}
+        </div>
+      )}
       {adding && (
         <LineForm
           label={`Add to ${SECTION_LABEL[section]}`}
@@ -196,7 +208,7 @@ export default function BusinessView({ at }: { at: string | null }) {
       {!loaded ? (
         <div className={clsx(r.skeleton, "h-[120px] rounded-lg")} aria-hidden />
       ) : (
-        BUSINESS_SECTIONS.map((s) => <SectionPart key={s} section={s} lines={linesIn(business, s)} linked={linked(s)} />)
+        BUSINESS_SECTIONS.map((s) => <SectionPart key={s} section={s} lines={linesIn(business, s)} linked={linked(s)} org={name} />)
       )}
       {error && (
         <p role="alert" className="text-caption text-danger">

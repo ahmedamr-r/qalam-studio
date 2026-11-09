@@ -26,6 +26,11 @@ import { goalsLast, groupsOf, laneRows, layoutSpace } from "./layout";
 import { splitSpace } from "./split";
 import { addedGoals, sameCards, withContent, withGoals } from "./history";
 import { resetSpaceView, useSpaceView, type SpacePreview } from "./view";
+import { PLACE_CARD } from "@/business/card";
+import { lab } from "@/lab";
+import { useBusiness } from "@/org/business";
+import { useMarket } from "@/org/market";
+import { useOrgContext } from "@/org/context";
 
 /*
  * A space's canvas in this window (the home): its boards loaded, composed into one document the
@@ -251,13 +256,16 @@ function rowsFor(doc: Doc) {
 }
 const sameGroups = (a: { head: string; cards: string[] }[], b: { head: string; cards: string[] }[]) => a.length === b.length && a.every((g, i) => g.head === b[i].head && g.cards.join() === b[i].cards.join());
 
+/** The Business card over the trees, while the consultant is built (src/lab.ts). */
+const placeOption = () => (lab("consult") ? { place: PLACE_CARD } : {});
+
 /** The cards with a brief, whose tiles the layout makes room for. */
 const briefCards = () => new Set(useBriefs.getState().list.map((b) => b.card));
 
 function laidOut(doc: Doc): Doc {
   const lanes = useStudio.getState().view.sources;
   const { groups, rows } = lanes ? rowsFor(doc) : { groups: groupsOf(doc, isGoalCard), rows: undefined };
-  const { doc: laid, slots } = layoutSpace(doc, { column: inColumn, isGoal: isGoalCard, lanes: rows, ...(lanes ? { briefs: briefCards() } : {}) });
+  const { doc: laid, slots } = layoutSpace(doc, { column: inColumn, isGoal: isGoalCard, lanes: rows, ...(lanes ? { briefs: briefCards() } : {}), ...placeOption() });
   useSpaceView.setState({ groups, slots });
   return laid;
 }
@@ -273,7 +281,7 @@ export function previewLayout(doc: Doc, goals: ReadonlySet<string> = new Set()):
   const groups = groupsOf(next, isGoal);
   // Its own lane rows (the canvas's are remembered for the canvas as it is).
   const rows = useStudio.getState().view.sources ? laneRows(laneOf(next, useSources.getState().list, groups).items) : undefined;
-  const { doc: laid, slots } = layoutSpace(next, { column: inColumn, isGoal, lanes: rows, ...(rows ? { briefs: briefCards() } : {}) });
+  const { doc: laid, slots } = layoutSpace(next, { column: inColumn, isGoal, lanes: rows, ...(rows ? { briefs: briefCards() } : {}), ...placeOption() });
   return { doc: laid, groups, slots };
 }
 
@@ -320,6 +328,10 @@ function install() {
   useStudio.subscribe((s, prev) => s.view.sources !== prev.view.sources && relayoutSpace());
   useSources.subscribe((s, prev) => s.list !== prev.list && relayoutSpace());
   useBriefs.subscribe((s, prev) => s.list !== prev.list && relayoutSpace());
+  // The Business card says what the business page, the market and the About say: drawn again when one changes.
+  useBusiness.subscribe((s, prev) => s.business !== prev.business && studio().invalidate());
+  useMarket.subscribe((s, prev) => s.market !== prev.market && studio().invalidate());
+  useOrgContext.subscribe((s, prev) => s.about !== prev.about && studio().invalidate());
   document.addEventListener("visibilitychange", () => document.visibilityState === "hidden" && void flushSpace());
   window.addEventListener("pagehide", () => {
     keepLeft();
