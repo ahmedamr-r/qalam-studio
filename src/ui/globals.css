@@ -650,6 +650,14 @@ input, textarea { caret-color: var(--color-fg-accent); }
   transition: opacity var(--dur-fast) var(--ease-out-quint), transform var(--dur-fast) var(--ease-out-quint), visibility 0s linear var(--dur-fast);
 }
 
+/* A chat thread reads a step larger than the rest of the app (Ahmed, November 9, 2026): its named sizes, one step up within it. */
+.q-chat-text {
+  --text-micro: 12px;    --text-micro--line-height: 16px;
+  --text-caption: 13px;  --text-caption--line-height: 18px;
+  --text-body: 14px;     --text-body--line-height: 20px;
+  --text-title: 15px;    --text-title--line-height: 22px;
+}
+
 /* Enter for new content: chat turns, tab switch content, pen hint bar */
 .q-rise { animation: q-lift-in var(--dur-base) var(--ease-out-quint) both; }
 /* The canvas's panel going deeper (a page opened) or back. `backwards`: no transform stays on it, or a pinned head and anything fixed inside would have a new containing block. */
