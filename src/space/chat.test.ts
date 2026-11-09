@@ -226,6 +226,8 @@ describe("short statements and what came of them", () => {
     expect(names({ docs: [], screens: { ...screens, state: "done", review: "r1" } })).toEqual(["takenScreens"]);
     // With a doc taken in beside them, both.
     expect(names({ sources: ["a"], docs: [{ source: "a", title: "Funnel", points: {} }], screens: { ...screens, state: "done" } })).toEqual(["taken", "takenScreens"]);
+    // While the rest is still being read, the screens found so far show above what's working.
+    expect(names({ state: "taking", screens: { shots: screens.shots, state: "keeping" } })).toEqual(["takenScreens", "working"]);
 
     // The page closed on the look: the screens say so, and nothing else does.
     const c = chatOf({ v: 1, turns: [turn("t", { kind: "take", state: "taking", sources: [], pages: [], quotes: 0, screens })] });

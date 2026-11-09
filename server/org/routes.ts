@@ -877,14 +877,14 @@ export function orgRoutes(): Hono<Env> {
     if (!shots.length || shots.length > KEEP_MAX) return bad(shots.length ? `Up to ${KEEP_MAX} screenshots at a time.` : "Which screenshots?");
     const product = typeof b?.product === "string" && b.product ? b.product.slice(0, 120) : null;
     const about = typeof b?.about === "string" ? b.about.slice(0, 200) : "";
-    const tab = tabOf(c.req.raw.headers);
-    return streamed(c.req.raw.signal, (emit, signal) => keepShots(store, { shots, product, about, emit, signal, ...(tab ? { tab } : {}) }));
+    // Untagged: the screens kept are sources and screens every window shows, the one that asked included.
+    return streamed(c.req.raw.signal, (emit, signal) => keepShots(store, { shots, product, about, emit, signal }));
   });
   /** A picture kept as a screen of theirs that isn't one (`{asset}`: its hash): out of their screens, its source too. */
   r.post("/api/org/:org/screens/not-ours", async (c) => {
     const b = (await c.req.json().catch(() => null)) as { asset?: unknown } | null;
     if (typeof b?.asset !== "string" || !/^[0-9a-f]{24}$/.test(b.asset)) return bad("Which picture?");
-    const reviews = await notAScreen(c.get("store"), b.asset, { tab: tabOf(c.req.raw.headers) });
+    const reviews = await notAScreen(c.get("store"), b.asset);
     return c.json({ ok: true, reviews });
   });
   /** The looks with something found on one screenshot (`shot`: the asset's hash), the latest first. */
@@ -932,7 +932,8 @@ export function orgRoutes(): Hono<Env> {
     const about = text(b?.about, 200);
     const tab = tabOf(c.req.raw.headers);
     return streamed(c.req.raw.signal, async (emit, signal) => {
-      const kept = await keepShots(store, { shots, product, about, emit, signal, ...(tab ? { tab } : {}) });
+      // Kept untagged, so every window lists the new sources, this one included; the look is this tab's.
+      const kept = await keepShots(store, { shots, product, about, emit, signal });
       const review = await reviewShots(store, { kept, focus, product, answers, emit, signal, ...(tab ? { tab } : {}) });
       return { kept, review };
     });

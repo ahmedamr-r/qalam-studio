@@ -63,6 +63,7 @@ import { goalsForProblem, lookForGoal, suggestGoalNumber } from "@/org/goal-work
 import { loadMarket, useMarket } from "@/org/market";
 import { useSpaceView } from "@/space/view";
 import { keepScreens, notOurScreen, reviewScreens, useScreenReviews } from "@/org/screens";
+import type { KeptShots } from "@/screens/types";
 import { screensProposals } from "@/screens/proposals";
 import { reviewLines, screenLines } from "@/screens/lines";
 import { rememberRound, withKnownAnswers } from "@/org/memory";
@@ -2111,12 +2112,14 @@ async function takeIn(at: string | null, said: string, docs: readonly TakeDoc[])
         change((c) => withJob(c, id, (j) => (j.kind === "take" ? { ...j, left: [...left] } : j)));
         continue;
       }
-      sourceCame(ing.title);
       // A screenshot of their own product: kept as one of its screens, never read for anyone's words (server/org/screens.ts).
+      // It shows in the thread as soon as it's read, and reaches Sources only once it's kept (lookAtTaken).
       if (ing.image?.shows === "screen") {
         shots.push({ asset: `asset:${ing.image.asset}`, title: ing.title });
+        change((c) => withJob(c, id, (j) => (j.kind === "take" ? { ...j, screens: { shots: [...shots], state: "keeping" } } : j)));
         continue;
       }
+      sourceCame(ing.title);
       const r = await captureIngested(ing, { product: st().space, own: p.own, ...(p.basis ? { basis: p.basis } : {}), holdOwn: !!p.doc && !p.basis, proposeGoals: !!p.doc, onActivity: step(id), signal: ctrl.signal });
       if (r.heldOwn) {
         held.push(p.doc!);
@@ -2128,7 +2131,7 @@ async function takeIn(at: string | null, said: string, docs: readonly TakeDoc[])
       for (const f of r.filed?.pages ?? []) if (f.kind === "need") pages.set(f.id, { id: f.id, title: f.title });
       change((c) => withJob(c, id, (j) => (j.kind === "take" ? { ...j, sources: [...sources], pages: [...pages.values()], quotes, docs: [...taken] } : j)));
     }
-    if (shots.length) await lookAtTaken(id, said, shots, ctrl.signal);
+    if (shots.length) await lookAtTaken(id, said, shots, ctrl.signal, { fresh: true });
     change((c) => withJob(c, id, (j) => (j.kind === "take" ? (left.length && !sources.length && !held.length && !shots.length ? { ...j, state: "failed", error: "Nothing could be taken in." } : { ...j, state: "done", ...(shots.length ? { docs: j.docs ?? [] } : {}) }) : j)));
   } catch (e) {
     const stopped = (e as Error).name === "AbortError";
@@ -2145,20 +2148,26 @@ const setScreens = (id: string, fn: (s: TakenScreens) => TakenScreens) => change
 /**
  * Screenshots of their own product taken in from the chat: kept as its screens, and looked at for what
  * they said with them, else the card picked, else the conversation under way. With none of those,
- * they're kept, and the chat asks what to look at them for.
+ * they're kept, and the chat asks what to look at them for. `fresh`: just taken in, so once kept they
+ * fly to Sources (a look again keeps the same ones).
  */
-async function lookAtTaken(id: string, said: string, shots: { asset: string; title: string }[], signal: AbortSignal) {
+async function lookAtTaken(id: string, said: string, shots: { asset: string; title: string }[], signal: AbortSignal, o: { fresh?: boolean } = {}) {
   const open = st().chat.turns.findLast((t) => t.job.kind === "plan" && !!t.job.consult && t.job.step !== "placed" && t.job.step !== "failed" && t.id !== id);
   const focus = (said.trim() && wordsIn(said) < DUMP_WORDS ? said.trim() : "") || aboutNow() || open?.said || "";
   // Their words say what they are working out, not what the screens are: a flow dropped in is named for its screens (server/org/screens.ts).
   const about = "";
   change((c) => withJob(c, id, (j) => (j.kind === "take" ? { ...j, screens: { shots, state: focus ? "looking" : "keeping", ...(focus ? { focus } : {}) } } : j)));
   try {
+    // Once kept they're sources, so they fly to Sources then, never while they're still being read.
+    const came = (kept: KeptShots) => {
+      if (o.fresh) for (const s of kept.shots) sourceCame(s.screen?.name ?? s.title);
+    };
     if (focus) {
-      const { review } = await reviewScreens({ shots, product: st().space ?? null, about, focus: { said: focus, settled: [] }, answers: [] }, signal, step(id));
+      const { kept, review } = await reviewScreens({ shots, product: st().space ?? null, about, focus: { said: focus, settled: [] }, answers: [] }, signal, step(id));
+      came(kept);
       setScreens(id, (s) => ({ ...s, state: "done", ...(review ? { review: review.id } : {}) }));
     } else {
-      await keepScreens({ shots, product: st().space ?? null, about }, signal, step(id));
+      came(await keepScreens({ shots, product: st().space ?? null, about }, signal, step(id)));
       setScreens(id, (s) => ({ ...s, state: "kept" }));
     }
   } catch (e) {
