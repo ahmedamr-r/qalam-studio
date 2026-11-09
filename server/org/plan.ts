@@ -176,7 +176,7 @@ export async function proposePlan(store: OrgStore, b: PlanBody, emit: (label: st
   const m = planMaterial({ org: store.info.name, about: await aboutLine(store), said: b.said, outline: b.outline, answers: answersFor(b), looks: b.looks, pieces, company: await companyContext(store, { near: b.said }), ...(b.kept?.length ? { kept: b.kept } : {}) });
   // Worked out with a consultant: what its playbook proposes (a diagnosis, or goals), and fixes only when they asked.
   const playbook = b.mode === "consult" ? PLAYBOOKS.find((p) => p.id === (b.consult?.playbook ?? b.consult?.situation?.layer)) : undefined;
-  const shape = b.mode === "consult" ? (playbook?.propose ?? "diagnosis") : "plan";
+  const shape = b.mode === "consult" ? (playbook && playbook.propose !== "review" ? playbook.propose : "diagnosis") : "plan";
   const fixes = !!b.consult?.fixes;
   emit(shape === "diagnosis" ? "Qalam AI is working out what's likely behind it" : "Qalam AI is working out what to propose");
   const { data, model } = await deps.structured<unknown>(planCall(m, { shape, fixes }), signal);

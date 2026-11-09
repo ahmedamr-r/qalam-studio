@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { generated, playbookFiles } from "../../scripts/playbooks.mts";
+import { generated, playbookFiles, skillFiles } from "../../scripts/playbooks.mts";
 import { PLAYBOOK_HEADINGS, playbookFrom, unusable, wordsIn } from "./playbook-md";
-import { PLAYBOOKS, PLAYBOOK_IDS } from "./playbooks.gen";
+import { PLAYBOOKS, PLAYBOOK_IDS, SKILLS, SKILL_IDS } from "./playbooks.gen";
 
 describe("the consultant's playbooks", () => {
   it("are what the Markdown says: run pnpm gen:playbooks after changing one", () => {
@@ -39,6 +39,20 @@ describe("the consultant's playbooks", () => {
     }
     expect(unusable("CC BY-NC-SA 4.0")).toBe(true);
     expect(unusable("MIT")).toBe(false);
+  });
+
+  it("keep the skills apart: what one call goes by, held to the same rules, never a playbook the consultant switches to", () => {
+    expect([...SKILL_IDS]).toEqual(["screens"]);
+    expect(skillFiles().map((f) => f.path)).toEqual(["src/consult/skills/screens.md"]);
+    for (const s of SKILLS) {
+      expect([...s.body.matchAll(/^## (.+)$/gm)].map((m) => m[1])).toEqual([...PLAYBOOK_HEADINGS]);
+      expect(s.propose).toBe("review");
+      expect(wordsIn(s.body), s.id).toBeLessThanOrEqual(700);
+      expect(s.body, s.id).not.toMatch(/\p{Nd}/u);
+      expect(`${s.title} ${s.when.join(" ")} ${s.body}`, s.id).not.toMatch(/\b(basket|cart|checkout|delivery app|grocery|talabat|uber)\b/i);
+      expect(s.credits.length).toBeGreaterThan(0);
+      for (const c of s.credits) expect(unusable(c.license), `${s.id}: ${c.source}`).toBe(false);
+    }
   });
 
   it("refuses a file that isn't whole", () => {

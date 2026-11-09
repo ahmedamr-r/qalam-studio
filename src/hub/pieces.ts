@@ -2,6 +2,7 @@ import { basisOf, basisSub, pieceBasis, type Basis, isPublic } from "@/discovery
 import type { Doc } from "@/doc/schema";
 import type { ProductMap } from "@/code/map";
 import type { SeenMap } from "@/seen/types";
+import type { ScreenReview } from "@/screens/types";
 import type { Market } from "@/market/types";
 import type { Terms } from "@/terms/types";
 import { SECTION_LABEL, type Business } from "@/business/types";
@@ -449,6 +450,26 @@ export function seenPieces(m: SeenMap, n: Names): Built {
     for (const s of new Set(f.steps)) edges.push({ from: screenRef(m.key, s), to: ref, kind: "in" });
     if (f.goal) edges.push({ from: ref, to: goalRef(f.goal), kind: "for" });
   }
+  return { pieces, edges, entities: [] };
+}
+
+export const findingRef = (review: string, n: number) => `hub:screen-finding:${review}:${n}`;
+
+/**
+ * What Qalam AI found on someone's screenshots for the problem they were working out (hub/seen/reviews):
+ * each finding a piece about its screen, as its reading, never anyone's words.
+ */
+export function screenReviewPieces(reviews: readonly ScreenReview[], key: string, product: string | null, n: Names): Built {
+  const pieces: HubPiece[] = [];
+  const edges: HubEdge[] = [];
+  const who = product ? (n.product(product) ?? "a product") : "the organization";
+  for (const r of reviews)
+    r.findings.forEach((f, i) => {
+      const ref = findingRef(r.id, i + 1);
+      const text = [`${f.title}.`, f.why, f.change ? `Change: ${f.change.what}${f.change.insteadOf ? ` (in place of “${f.change.insteadOf}”)` : ""}` : ""].filter(Boolean).join(" ");
+      pieces.push({ ref, type: "context", sub: "screen-finding", text, line: join(`Qalam AI's look at the ${f.name} screen in ${who}`, `for “${r.focus.slice(0, 120)}”, from the ${f.side}'s side`), title: f.title, product, at: r.at });
+      if (f.screen) edges.push({ from: ref, to: screenRef(key, f.screen), kind: "about" });
+    });
   return { pieces, edges, entities: [] };
 }
 

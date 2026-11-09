@@ -1,9 +1,22 @@
+import { readFile } from "node:fs/promises";
+import { nanoid } from "nanoid";
+import { seesPictures } from "@/ai/abilities";
+import { backend } from "@/ai/engine";
+import { screensCall } from "@/ai/screens";
+import type { ShotImage } from "@/ai/seen";
+import { aiConfigured, structured } from "@/ai/server";
+import { SECTION_LABEL } from "@/business/types";
 import type { Ingested } from "@/discovery/ingest/core";
+import { sureLines } from "@/discovery/ingest/image";
 import type { SourceRecord } from "@/discovery/sources";
+import { goalLine } from "@/goals/text";
+import type { ShotRead } from "@/seen/shot";
 import { ORG_SEEN, type ShotNote } from "@/seen/types";
-import { KEEP_MAX, type KeptShot, type KeptShots, type ShownShot } from "@/screens/types";
+import { reviewMaterial, sanitizeScreenReview, type ReviewFocus, type ReviewScreen } from "@/screens/review";
+import { KEEP_MAX, REVIEW_LIMITS, type KeptShot, type KeptShots, type ScreenReview, type ShownShot } from "@/screens/types";
 import { captureSource, newSource } from "../capture";
 import { NO_IMAGE_READER, readImage, type ImageDeps } from "../image";
+import { prepShot, readShots, seeAvailable } from "../see";
 import { addShots, flowName, productOf, type SeenDeps } from "./seen";
 import type { OrgStore } from "./store";
 
@@ -90,4 +103,73 @@ export async function keepShots(store: OrgStore, o: { shots: readonly ShownShot[
   }
   const flow = added?.flow ? { key: added.flow, name: added.map.flows.find((f) => f.key === added.flow)?.name ?? flowName(o.about) } : undefined;
   return { map, ...(flow ? { flow } : {}), shots: out };
+}
+
+// ---------------------------------------------------------------------------
+// The review: what on the screens bears on the problem they're working out
+
+/** What a look reaches for besides the store: this Mac's words and copies, whether the engine sees, and Qalam AI (stand-ins in tests). */
+export interface ReviewDeps {
+  sees: () => boolean;
+  reader: () => Promise<boolean>;
+  words: (orgDir: string, shots: { hash: string; file: string }[]) => Promise<Map<string, ShotRead | null>>;
+  prep: typeof prepShot;
+  call: (opts: ReturnType<typeof screensCall>, signal?: AbortSignal) => Promise<{ data: unknown; model?: string }>;
+}
+
+const reviewDeps: ReviewDeps = {
+  sees: () => aiConfigured() && seesPictures(backend()),
+  reader: seeAvailable,
+  words: (dir, shots) => readShots(dir, shots),
+  prep: prepShot,
+  call: (opts, signal) => structured<unknown>(opts, signal),
+};
+
+/** The longest side of a screenshot the look is sent. */
+const LOOK_SIDE = 1568;
+const PICTURE = /^image\/(png|jpeg|webp|gif)$/;
+
+/**
+ * Look at the screens an answer gave for the problem they're working out: every finding that bears on it,
+ * ranked, a change each, from the customer's side and the business's, kept as code holds it
+ * (src/screens/review.ts), in hub/seen/reviews. An engine that can't see pictures isn't asked: the look
+ * says so, and the screens stay kept. None: nothing given was a screen.
+ */
+export async function reviewShots(
+  store: OrgStore,
+  o: { kept: KeptShots; focus: ReviewFocus; product: string | null; answers?: readonly { q: string; a: string }[]; emit?: (label: string) => void; signal?: AbortSignal; tab?: string; deps?: Partial<ReviewDeps> },
+): Promise<ScreenReview | null> {
+  const d = { ...reviewDeps, ...o.deps };
+  const shown = o.kept.shots.filter((s) => s.screen).slice(0, REVIEW_LIMITS.screens);
+  if (!shown.length) return null;
+  const base = { v: 1 as const, id: nanoid(10), at: Date.now(), map: o.kept.map, ...(o.kept.flow ? { flow: o.kept.flow } : {}), focus: o.focus.said.replace(/\s+/g, " ").trim().slice(0, 600), shots: shown.map((s) => ({ asset: s.asset, name: s.screen!.name, screen: s.screen!.key, source: s.source })), findings: [], left: [] };
+  const keep = (r: ScreenReview) => store.changeScreenReview(r.id, () => r, o.tab ? { tab: o.tab } : {}).then(() => r);
+  if (!d.sees()) return keep({ ...base, unseen: true });
+
+  o.emit?.(shown.length === 1 ? "Looking at the screen for what you're working out" : `Looking at the ${shown.length} screens for what you're working out`);
+  const files = shown.flatMap((s) => {
+    const a = store.getAsset(s.asset);
+    return a ? [{ hash: s.asset, file: a.file, type: a.type }] : [];
+  });
+  const reader = await d.reader();
+  const read = reader ? await d.words(store.dir, files.map(({ hash, file }) => ({ hash, file }))).catch(() => new Map<string, ShotRead | null>()) : new Map<string, ShotRead | null>();
+  const screens: ReviewScreen[] = shown.map((s, i) => ({ id: `s${i + 1}`, shot: s.asset, name: s.screen!.name, screen: s.screen!.key, read: reader ? (sureLines(read.get(s.asset)) ?? null) : null }));
+  const images = await Promise.all(
+    files.map(async (f) => {
+      const copy = await d.prep(store.dir, f.hash, f.file, LOOK_SIDE, "png").catch(() => ({ file: f.file, type: f.type }));
+      return PICTURE.test(copy.type) ? { hash: f.hash, image: { mediaType: copy.type as ShotImage["mediaType"], data: (await readFile(copy.file)).toString("base64") } } : { hash: f.hash, image: null };
+    }),
+  );
+  const business = (await store.getBusiness())?.lines.map((l) => `${SECTION_LABEL[l.section]}: ${l.text}${l.by === "qalam" ? " (Qalam AI's reading of their answers)" : ""}`) ?? [];
+  const tree = await store.getGoals();
+  const goals = tree.goals.filter((g) => g.status === "active" && (!o.product || !g.product || g.product === o.product)).slice(0, 8).map((g) => goalLine(tree, g.id));
+  const m = reviewMaterial({ screens, focus: o.focus, ...(o.kept.flow ? { flow: o.kept.flow.name } : {}), business, goals, answers: o.answers ?? [] });
+  const call = screensCall({ intro: m.intro, screens: m.screens.map((s, i) => ({ head: s.head, words: s.words, image: images.find((x) => x.hash === screens[i].shot)?.image ?? null })) });
+  const { data, model } = await d.call(call, o.signal);
+  if (o.signal?.aborted) throw new DOMException("Stopped", "AbortError");
+  const kept = sanitizeScreenReview(data, { screens, sent: m.sent, also: m.also });
+  await store
+    .putTrace({ id: nanoid(10), projectId: "screens", kind: "screen-review", at: Date.now(), ...(model ? { model } : {}), focus: base.focus, screens: screens.map((s) => ({ id: s.id, name: s.name, read: !!s.read })), answer: data, kept: kept.findings.map((f) => ({ title: f.title, side: f.side, on: f.on?.words, change: f.change?.does })), dropped: kept.left } as { id: string; projectId: string })
+    .catch(() => {});
+  return keep({ ...base, findings: kept.findings, left: kept.left, ...(kept.none ? { none: true as const } : {}), ...(screens.every((s) => !s.read) ? { unread: true as const } : {}) });
 }

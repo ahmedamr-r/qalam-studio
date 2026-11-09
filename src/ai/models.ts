@@ -66,6 +66,8 @@ export const TIER_OF = {
   challenge: "decide",
   // The business numbers a team's database could give, each with its query, from its layout (src/ai/metrics.ts).
   metrics: "decide",
+  // What on someone's screenshots bears on the problem they're working out, ranked, a change each (src/ai/screens.ts).
+  "screen-review": "decide",
   // Fetching: the tool-runner makes the calls code planned.
   connector: "fetch",
   numbers: "fetch",

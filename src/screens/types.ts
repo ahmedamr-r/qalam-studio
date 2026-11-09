@@ -37,3 +37,68 @@ export interface KeptShots {
 
 /** Most screenshots kept from one answer. */
 export const KEEP_MAX = 12;
+
+// ---------------------------------------------------------------------------
+// The review: what on the screens bears on the problem, from the customer's side and the business's
+
+export type FindingSide = "customer" | "business";
+export const FINDING_SIDES: readonly FindingSide[] = ["customer", "business"];
+export type ChangeDoes = "remove" | "reword" | "move" | "replace" | "add";
+export const CHANGE_DOES: readonly ChangeDoes[] = ["remove", "reword", "move", "replace", "add"];
+
+/** One change, the smallest that would fix it. `insteadOf`: what it takes away or replaces there, as the screen prints it. */
+export interface FindingChange {
+  does: ChangeDoes;
+  what: string;
+  insteadOf?: string;
+}
+
+/** What a finding rests on beside the screen: how their business works, a goal, or what they said. */
+export interface FindingRest {
+  kind: "business" | "goal" | "answer";
+  text: string;
+}
+
+export interface ScreenFinding {
+  /** The screenshot it's on and what it says: the same finding on the same screenshot keeps it. */
+  key: string;
+  /** The screenshot it's on (the asset's bare hash), the screen it's kept as, and that screen's name. */
+  shot: string;
+  screen?: string;
+  name: string;
+  side: FindingSide;
+  /** What goes wrong, and for whom. */
+  title: string;
+  /** How it bears on the problem they're working out. */
+  why: string;
+  /** The printed words it points at, as the screen prints them, and where they are (0..1, from the top left). */
+  on?: { words: string; box: [number, number, number, number] };
+  /** Left out when it would add to the screen without taking anything away, or acts on what isn't printed there. */
+  change?: FindingChange;
+  rests?: FindingRest[];
+}
+
+export interface ScreenReview {
+  v: 1;
+  id: string;
+  at: number;
+  /** The map the screens are in, and the flow they make. */
+  map: string;
+  flow?: { key: string; name: string };
+  /** What it was looked at for: the problem they're working out, as they put it. */
+  focus: string;
+  shots: { asset: string; name: string; screen?: string; source: string }[];
+  /** Ranked: what costs the problem most first. */
+  findings: ScreenFinding[];
+  /** Nothing on them bears on the problem, as Qalam AI found. */
+  none?: true;
+  /** Not looked at: the engine can't see pictures (the screens are kept all the same). */
+  unseen?: true;
+  /** Off a Mac nothing printed could be checked: no marks, nothing quoted as printed. */
+  unread?: true;
+  /** What code left out of Qalam AI's answer, and why. */
+  left: { what: string; why: string }[];
+}
+
+/** A review's guards on size: every finding that bears on the problem is kept, ranked, up to these. */
+export const REVIEW_LIMITS = { perScreen: 12, all: 24, title: 90, why: 220, what: 200, on: 120, screens: 6 } as const;

@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ADDRESS, CART, CART_COUPON, PAY } from "@/seen/fixtures";
 import type { SeenText } from "@/seen/types";
 import type { ImageDeps } from "../image";
-import { keepShots } from "./screens";
+import { keepShots, reviewShots, type ReviewDeps } from "./screens";
 import type { SeenDeps } from "./seen";
 import { OrgStore } from "./store";
 
@@ -155,5 +155,60 @@ describe("keeping the screenshots an answer gave", () => {
     const cart = await shot("cart.png", CART);
     expect((await keepShots(store, { shots: [cart], product: null, about: "the basket", deps: { image: image(), seen } })).map).toBe("org");
     await expect(keepShots(store, { shots: [cart], product: "gone", about: "x", deps: { image: image(), seen } })).rejects.toThrow("No such product");
+  });
+});
+
+describe("looking at the screens for the problem", () => {
+  const focus = { said: "People add items but leave before they pay", asked: "What does the basket look like?", typed: "After they add items", settled: [] };
+  const look = (answer: unknown, o: { sees?: boolean } = {}) => {
+    const calls: { content: unknown; system: unknown }[] = [];
+    const deps: Partial<ReviewDeps> = {
+      sees: () => o.sees ?? true,
+      reader: async () => true,
+      words: async (_dir, shots) => new Map(shots.map((s) => [s.hash, words.get(s.hash) ?? null])),
+      prep: async (_dir, _hash, file) => ({ file, type: "image/png" }),
+      call: async (opts) => {
+        calls.push({ content: opts.content, system: opts.system });
+        return { data: answer, model: "test" };
+      },
+    };
+    return { deps, calls };
+  };
+
+  it("looks at the screens they showed for what they're working out, and keeps what code holds of it", async () => {
+    const [cart, pay] = [await shot("cart.png", CART), await shot("pay.png", PAY)];
+    const kept = await keepShots(store, { shots: [cart, pay], product: "grocery", about: "the basket", deps: { image: image(), seen } });
+    const { deps, calls } = look({
+      findings: [
+        { screen: "s1", side: "customer", title: "The coupon link pulls people away from paying", why: "People leave to look for a code", on: "Apply coupon", cites: [], change: { does: "remove", what: "Take the coupon link off the basket", instead_of: "Apply coupon" } },
+        { screen: "s2", side: "business", title: "Nothing on the payment screen", why: "It rests on nothing they said", on: "", cites: [], change: { does: "none", what: "", instead_of: "" } },
+      ],
+      none: false,
+    });
+    const review = (await reviewShots(store, { kept, focus, product: "grocery", answers: [{ q: "Since when?", a: "March" }], deps }))!;
+
+    // One call: what they're working out first, then each screen's picture and its printed words, the skill as its own block.
+    const text = JSON.stringify(calls[0].content);
+    expect(text.indexOf("People add items but leave before they pay")).toBeLessThan(text.indexOf("Apply coupon"));
+    expect((calls[0].content as { type: string }[]).filter((b) => b.type === "image")).toHaveLength(2);
+    expect(calls[0].system).toHaveLength(2);
+
+    expect(review.findings).toHaveLength(1);
+    expect(review.findings[0]).toMatchObject({ side: "customer", on: { words: "Apply coupon" }, change: { does: "remove", insteadOf: "Apply coupon" }, screen: kept.shots[0].screen!.key });
+    expect(review.left).toEqual([{ what: "Nothing on the payment screen", why: "A finding from the business's side has to rest on how their business works, a goal or what they said" }]);
+    expect(review.shots.map((s) => s.source)).toEqual(kept.shots.map((s) => s.source));
+    // Kept with the screens, for the team.
+    expect(await store.getScreenReview(review.id)).toEqual(review);
+    expect((await store.listScreenReviews()).map((r) => r.id)).toEqual([review.id]);
+  });
+
+  it("doesn't ask an engine that can't see pictures, and says so; nothing given as a screen, no look", async () => {
+    const cart = await shot("cart.png", CART);
+    const kept = await keepShots(store, { shots: [cart], product: "grocery", about: "the basket", deps: { image: image(), seen } });
+    const { deps, calls } = look({ findings: [], none: true }, { sees: false });
+    const review = await reviewShots(store, { kept, focus, product: "grocery", deps });
+    expect(calls).toHaveLength(0);
+    expect(review).toMatchObject({ unseen: true, findings: [] });
+    expect(await reviewShots(store, { kept: { map: "grocery", shots: [{ ...kept.shots[0], screen: undefined }] }, focus, product: "grocery", deps })).toBeNull();
   });
 });

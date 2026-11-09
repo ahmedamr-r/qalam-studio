@@ -13,8 +13,8 @@ import { readFrontMatter } from "@/org/context-md";
 /** The four sections every playbook has, in this order. */
 export const PLAYBOOK_HEADINGS = ["What to find out", "What people usually miss", "How to ask", "What to propose"] as const;
 
-/** What the conversation ends in: a diagnosis (a goal, likely causes, a check under each) or goals. */
-export type PlaybookPropose = "diagnosis" | "goals";
+/** What the conversation ends in: a diagnosis (a goal, likely causes, a check under each) or goals. A skill (src/consult/skills/) ends in its own: `review`, findings on screens. */
+export type PlaybookPropose = "diagnosis" | "goals" | "review";
 
 export interface PlaybookCredit {
   source: string;
@@ -48,7 +48,7 @@ export function playbookFrom(text: string, path = "a playbook"): Playbook {
   const layer = typeof f.layer === "string" ? f.layer.trim() : "";
   const title = typeof f.title === "string" ? f.title.trim() : "";
   const when = strings(f.when);
-  const propose = f.propose === "diagnosis" || f.propose === "goals" ? f.propose : null;
+  const propose = f.propose === "diagnosis" || f.propose === "goals" || f.propose === "review" ? f.propose : null;
   const credits = (Array.isArray(f.credits) ? f.credits : []).flatMap((c): PlaybookCredit[] => {
     const r = c && typeof c === "object" ? (c as Record<string, unknown>) : {};
     return typeof r.source === "string" && typeof r.license === "string" && typeof r.used === "string" ? [{ source: r.source, license: r.license, ...(typeof r.url === "string" ? { url: r.url } : {}), used: r.used }] : [];

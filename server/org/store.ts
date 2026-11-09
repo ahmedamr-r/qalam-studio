@@ -22,6 +22,7 @@ import type { GoalWork } from "@/goals/breakdown";
 import { mapFromMarkdown, mapToMarkdown, type CodeRepo, type ProductMap } from "@/code/map";
 import { seenFromMarkdown, seenToMarkdown } from "@/seen/seen-md";
 import { SEEN_KEY, type SeenMap, type SeenReading } from "@/seen/types";
+import type { ScreenReview } from "@/screens/types";
 import { CHAT_KEY, chatOf, type CanvasChat } from "@/space/chat";
 import { marketFromMarkdown, marketToMarkdown } from "@/market/market-md";
 import type { Market } from "@/market/types";
@@ -113,7 +114,7 @@ export type OrgEvent = { tab?: string } & (
   /** A card's brief was written or taken off (hub/briefs/). */
   | { kind: "brief" }
   /** What people see in a product changed (hub/seen/<key>.md), or a reading of screenshots moved on (`reading`). */
-  | { kind: "seen"; key: string; removed?: boolean; reading?: boolean }
+  | { kind: "seen"; key: string; removed?: boolean; reading?: boolean; review?: string }
   | { kind: "notice" }
   | { kind: "relation" }
   /** Something changed in the inbox folder (server/inbox.ts reads what's new). */
@@ -1018,6 +1019,38 @@ export class OrgStore {
       return m;
     });
     this.emit({ kind: "seen", key, ...(next ? {} : { removed: true }), tab: opts.tab });
+    return next;
+  }
+
+  // What Qalam AI found on someone's screenshots for a problem (server/org/screens.ts): one file a look,
+  // in hub/seen/reviews, the team's like the screens they're about.
+
+  private screenReviewFile(id: string) {
+    if (!/^[A-Za-z0-9_-]{6,40}$/.test(id)) throw new NotFoundError("No such review");
+    return path.join(this.dir, "hub", "seen", "reviews", `${id}.json`);
+  }
+
+  async getScreenReview(id: string): Promise<ScreenReview | null> {
+    const j = await readJson<ScreenReview>(this.screenReviewFile(id));
+    return j?.v === 1 && Array.isArray(j.findings) ? j : null;
+  }
+
+  async listScreenReviews(): Promise<ScreenReview[]> {
+    const dir = path.join(this.dir, "hub", "seen", "reviews");
+    const names = await readdir(dir).catch(() => [] as string[]);
+    const all = await Promise.all(names.filter((n) => n.endsWith(".json")).map((n) => this.getScreenReview(n.slice(0, -5)).catch(() => null)));
+    return all.filter((r): r is ScreenReview => !!r).sort((a, b) => b.at - a.at);
+  }
+
+  /** Change one look under its lock: `fn` gets it as it is (null when there's none) and returns it as it should be. */
+  async changeScreenReview(id: string, fn: (r: ScreenReview | null) => ScreenReview | null, opts: { tab?: string } = {}): Promise<ScreenReview | null> {
+    const file = this.screenReviewFile(id);
+    const next = await locked(file, async () => {
+      const r = fn(await this.getScreenReview(id));
+      if (r) await this.write(file, stableStringify(r));
+      return r;
+    });
+    if (next) this.emit({ kind: "seen", key: next.map, review: id, tab: opts.tab });
     return next;
   }
 

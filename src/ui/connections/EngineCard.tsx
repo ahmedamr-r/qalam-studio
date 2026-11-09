@@ -53,6 +53,7 @@ const JOB: Record<CallKind | "other", string> = {
   "pdf-pictures": "Reading pictures in PDFs",
   "image-read": "Looking at pictures",
   "seen-read": "Reading screenshots",
+  "screen-review": "Looking at screens for a problem",
   market: "Checking what the web says about the company",
   synthesize: "Placing quotes on boards",
   draft: "Drafting trees",

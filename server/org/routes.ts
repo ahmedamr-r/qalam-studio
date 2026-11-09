@@ -31,7 +31,7 @@ import { isBasis } from "@/discovery/basis";
 import { captureSource, changeBasis, decideFoundGoal, fileSources, readAsOwn, splitSetupSource } from "../capture";
 import { readPdfPictures } from "../pictures";
 import { IMAGE_MAX, readImage, type ImageInput } from "../image";
-import { KEEP_MAX, keepShots } from "./screens";
+import { KEEP_MAX, keepShots, reviewShots } from "./screens";
 import { imageFrom } from "@/discovery/ingest/image";
 import { MAX_FILE, type Ingested } from "@/discovery/ingest/core";
 import type { Proposal } from "@/discovery/proposals";
@@ -879,6 +879,37 @@ export function orgRoutes(): Hono<Env> {
     const about = typeof b?.about === "string" ? b.about.slice(0, 200) : "";
     const tab = tabOf(c.req.raw.headers);
     return streamed(c.req.raw.signal, (emit, signal) => keepShots(store, { shots, product, about, emit, signal, ...(tab ? { tab } : {}) }));
+  });
+  /**
+   * The same screenshots kept, then looked at for the problem they're working out (`focus`: what they said,
+   * the question the screenshots answered, what they typed with them, what's settled), with their answers
+   * so far: what's kept and the look. Saying how it's going (NDJSON); stopped when the request goes.
+   */
+  r.post("/api/org/:org/screens/review", async (c) => {
+    if (rateLimited(c.req.raw)) return c.json({ error: "rate_limited", message: "Too many requests, try again in a few minutes." }, 429);
+    const store = c.get("store");
+    const b = (await c.req.json().catch(() => null)) as { shots?: unknown; product?: unknown; about?: unknown; focus?: unknown; answers?: unknown } | null;
+    const text = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : "");
+    const shots = (Array.isArray(b?.shots) ? b.shots : []).flatMap((s: unknown) => {
+      const x = (s && typeof s === "object" ? s : {}) as { asset?: unknown; title?: unknown };
+      return typeof x.asset === "string" && typeof x.title === "string" ? [{ asset: x.asset.slice(0, 40), title: x.title.slice(0, 160) }] : [];
+    });
+    if (!shots.length || shots.length > KEEP_MAX) return bad(shots.length ? `Up to ${KEEP_MAX} screenshots at a time.` : "Which screenshots?");
+    const f = (b?.focus && typeof b.focus === "object" ? b.focus : {}) as Record<string, unknown>;
+    const focus = { said: text(f.said, 4000), ...(text(f.asked, 400) ? { asked: text(f.asked, 400) } : {}), ...(text(f.typed, 1600) ? { typed: text(f.typed, 1600) } : {}), settled: (Array.isArray(f.settled) ? f.settled : []).map((x) => text(x, 400)).filter(Boolean).slice(0, 20) };
+    if (!focus.said.trim()) return bad("What are they looking at these for?");
+    const answers = (Array.isArray(b?.answers) ? b.answers : []).flatMap((x: unknown) => {
+      const a = (x && typeof x === "object" ? x : {}) as { q?: unknown; a?: unknown };
+      return typeof a.q === "string" && typeof a.a === "string" && a.a.trim() ? [{ q: a.q.slice(0, 400), a: a.a.slice(0, 1600) }] : [];
+    }).slice(0, 30);
+    const product = typeof b?.product === "string" && b.product ? b.product.slice(0, 120) : null;
+    const about = text(b?.about, 200);
+    const tab = tabOf(c.req.raw.headers);
+    return streamed(c.req.raw.signal, async (emit, signal) => {
+      const kept = await keepShots(store, { shots, product, about, emit, signal, ...(tab ? { tab } : {}) });
+      const review = await reviewShots(store, { kept, focus, product, answers, emit, signal, ...(tab ? { tab } : {}) });
+      return { kept, review };
+    });
   });
   /**
    * A PDF read here rather than in the window, so what's inside its pictures can be read and checked

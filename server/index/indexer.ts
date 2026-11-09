@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
-import { boardPieces, businessPieces, contextPieces, decisionPieces, goalPieces, mapPieces, marketPieces, meaningText, metricPieces, seenPieces, sourcePieces, termPieces, topicPieces, type Built, type HubPiece, type Names } from "@/hub/pieces";
+import { boardPieces, businessPieces, contextPieces, decisionPieces, goalPieces, mapPieces, marketPieces, meaningText, metricPieces, screenReviewPieces, seenPieces, sourcePieces, termPieces, topicPieces, type Built, type HubPiece, type Names } from "@/hub/pieces";
 import { fold } from "@/hub/words";
 import type { Models } from "../models/client";
 import { contentHash, stableStringify } from "../org/fsx";
@@ -241,7 +241,11 @@ export class OrgIndex {
       }
       case "seen": {
         const m = await store.getSeen(id);
-        return m?.screens.length ? seenPieces(m, names) : null;
+        // What Qalam AI found on the map's screens goes with them (hub/seen/reviews).
+        const reviews = (await store.listScreenReviews()).filter((r) => r.map === id && r.findings.length);
+        const shown = m?.screens.length ? seenPieces(m, names) : null;
+        const found = reviews.length ? screenReviewPieces(reviews, id, m?.product ?? (id === "org" ? null : id), names) : null;
+        return shown && found ? { pieces: [...shown.pieces, ...found.pieces], edges: [...shown.edges, ...found.edges], entities: [...shown.entities, ...found.entities] } : (shown ?? found);
       }
       case "context": {
         if (id === "org") return contextPieces({ product: null, name: store.info.name, at: store.info.createdAt }, await store.getAbout());

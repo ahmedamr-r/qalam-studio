@@ -37,7 +37,7 @@ export type OrgChange = { tab?: string } & (
   | { kind: "asked" }
   | { kind: "scan" }
   | { kind: "brief" }
-  | { kind: "seen"; key: string; removed?: boolean; reading?: boolean }
+  | { kind: "seen"; key: string; removed?: boolean; reading?: boolean; review?: string }
   | { kind: "notice" }
   | { kind: "relation" }
   | { kind: "inbox" }
