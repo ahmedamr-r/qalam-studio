@@ -1,6 +1,7 @@
 import { isBasis } from "@/discovery/basis";
 import type { Ingested } from "@/discovery/ingest/core";
 import type { SetupDoc } from "@/org/setup";
+import { sanitizeSituation } from "@/consult/situation";
 import { scanRequest } from "@/scan/session";
 import type { StartTurn, Whose } from "./start";
 
@@ -39,6 +40,8 @@ function turnOf(raw: unknown): StartTurn | null {
   const said = str(t.said, HANDOFF_LIMITS.said);
   if (said === null) return null;
   if (t.mode === "take" || t.mode === "dump" || t.mode === "plan") return { mode: t.mode, said };
+  // Who's asking as Send read it, kept again to its lists and to their words.
+  if (t.mode === "consult") return { mode: "consult", said, ...(t.situation && typeof t.situation === "object" ? { situation: sanitizeSituation({ ...rec(t.situation), said: rec(t.situation).named === false ? "none" : "named" }, said) } : {}), ...(t.offer === true ? { offer: true as const } : {}) };
   if (t.mode !== "scan") return null;
   const target = scanRequest({ target: t.target, country: "us" })?.target;
   return target ? { mode: "scan", said, target, ...(t.read === true ? { read: true as const } : {}) } : null;

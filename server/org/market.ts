@@ -7,7 +7,6 @@ import { termsText } from "@/terms/text";
 import { sanitizeStatement, statementMaterial, type StatementWhat } from "@/space/statement";
 import type { PlanQuestion } from "@/ai/plan";
 import { findQuestionsMaterial, sanitizeFindQuestions, type FindWhat } from "@/space/find";
-import { knowsMarket } from "@/market/types";
 import type { ResearchInfo, ResearchPurpose } from "@/ai/research-shared";
 import { research, structured } from "@/ai/server";
 import type { OutsidePage } from "@/goals/outside";
@@ -305,10 +304,11 @@ export async function lookUpDomain(store: OrgStore, opts: { deps?: MarketDeps } 
 
 /** The opening questions for finding a goal or a problem, their choices drawn from the market; none when nothing's known. */
 export async function findQuestions(store: OrgStore, what: FindWhat, signal?: AbortSignal, deps: Pick<MarketDeps, "structured"> = realDeps): Promise<PlanQuestion[]> {
+  // Asked from what's known, however little: with nothing known its questions are open (code keeps choices only where they're drawn from something).
   const market = await store.getMarket();
-  if (!knowsMarket(market)) return [];
   const about = await store.getAbout();
-  const base = findQuestionsMaterial({ what, org: store.info.name, about: [about.context, about.audience].filter((x) => x.trim()).join(" "), market });
+  const business = await businessFor(store, { for: "call", max: 600 });
+  const base = findQuestionsMaterial({ what, org: store.info.name, about: [about.context, about.audience, business].filter((x) => x.trim()).join(" "), market });
   // What's already known (src/memory/): what they've told any other conversation lately, their best-backed pages.
   const known = await recall(store, { flow: "find", key: "", about: { product: null }, words: `${what} ${about.context}` }, { broad: true, sent: base.text }).catch(() => null);
   const m = known?.block ? { text: `${base.text}\n\n${known.block}`, known: [...base.known, ...known.hay.split("\n").filter(Boolean)] } : base;

@@ -60,13 +60,12 @@ import type { PlanQuestion } from "@/ai/plan";
 import { focusRound, focusTranscript } from "@/goals/focus";
 import { nowFrom, numberRound, targetFrom } from "@/goals/moves";
 import { goalsForProblem, lookForGoal, suggestGoalNumber } from "@/org/goal-work";
-import { knowsMarket } from "@/market/types";
 import { loadMarket, useMarket } from "@/org/market";
 import { useSpaceView } from "@/space/view";
 import { rememberRound, withKnownAnswers } from "@/org/memory";
 import { onOrgChange } from "@/org/live";
 import { needsDb } from "@/org/needs";
-import { otherReading, requestOf, scanInput } from "@/scan/input";
+import { isAppLink, otherReading, requestOf, scanInput } from "@/scan/input";
 import { peopleQuotes, type ScanTarget } from "@/scan/session";
 import { steerAnswers, steerRound, type ScanSaid } from "@/scan/steer";
 import { askedFromAnswers, briefRound, type BriefAsked, type BriefShape } from "@/discovery/brief";
@@ -126,7 +125,7 @@ interface ChatState {
   /** "Help me find one" asked for a canvas whose chat isn't loaded yet: started as it loads. */
   pending: { key: string; what: FindWhat } | null;
   /** Words for a scan from a canvas whose chat isn't loaded yet (the first run's box): started as it loads. */
-  pendingScan: { key: string; said: string; mode?: "plan" } | null;
+  pendingScan: { key: string; said: string; mode?: "consult" } | null;
   /** What the start page's box handed this canvas, held until its chat has loaded. */
   pendingStart: { key: string; start: StartHandoff } | null;
   /** A goal asked for by the address before the chat has loaded: started as it loads. */
@@ -213,9 +212,9 @@ export function turnOf(id: string): ChatTurn | undefined {
   return st().chat.turns.find((t) => t.id === id);
 }
 
-function addTurn(said: string, job: ChatJob, docs?: ChatDoc[]): string {
+function addTurn(said: string, job: ChatJob, docs?: ChatDoc[], o: { quiet?: true } = {}): string {
   const id = nanoid(10);
-  change((c) => withTurn(c, { id, at: Date.now(), said, ...(docs?.length ? { docs } : {}), job }));
+  change((c) => withTurn(c, { id, at: Date.now(), said, ...(docs?.length ? { docs } : {}), ...(o.quiet ? { quiet: true as const } : {}), job }));
   return id;
 }
 
@@ -255,20 +254,19 @@ export function send(text: string, docs: readonly SentDoc[]): boolean {
   if (!routed) return false;
   // Sent: the box's text and mode are spent (the box drawn again after a round of questions starts empty).
   useCompose.setState({ text: "", mode: null });
-  if (routed.job === "choose") {
-    addTurn(said, { kind: "choose", first: routed.first });
-    return true;
-  }
   if (routed.read) {
     void readQuestion(said);
     return true;
   }
-  void runAs(null, said, routed.job, docs);
+  void runAs(null, said, routed.job, docs, { ...(routed.first ? { first: routed.first } : {}), ...(routed.offer ? { offer: routed.offer } : {}) });
   return true;
 }
 
-/** A turn's words taken one way: as a new turn, or (`at`) a turn taken another way than it was. */
-export async function runAs(at: string | null, said: string, mode: ChatMode, docs: readonly SentDoc[] = []): Promise<void> {
+/**
+ * A turn's words taken one way: as a new turn, or (`at`) a turn taken another way than it was. A
+ * consultant's: `first`, which "Just add it" leads; `offer`, reading what people say about it offered.
+ */
+export async function runAs(at: string | null, said: string, mode: ChatMode, docs: readonly SentDoc[] = [], o: { first?: "goal" | "problem"; offer?: "scan" } = {}): Promise<void> {
   if (at) stopTurn(at);
   if (mode === "goal" || mode === "problem") return void addCard(at, said, mode);
   if (await engineMissing()) return void jobAt(at, said, { kind: "noEngine", mode });
@@ -277,7 +275,7 @@ export async function runAs(at: string | null, said: string, mode: ChatMode, doc
   if (mode === "dump") return dumpIt(at, said, docs);
   if (mode === "scan") return scanIt(at, said);
   if (mode === "plan") return workOut(at, said);
-  if (mode === "consult") return consultOn(at, said);
+  if (mode === "consult") return consultOn(at, said, { ...(o.first ? { first: o.first } : {}), ...(o.offer || isAppLink(said) ? { offer: said } : {}) });
   if (mode === "tools") return void (await lookInTools(at, said, { typed: true }));
 }
 
@@ -296,7 +294,7 @@ export function retake(id: string, mode: ChatMode) {
 // What people complain about
 
 /** Words from the one box (the first run's, the empty canvas's): into this canvas's chat, once it's loaded. */
-export function scanFrom(said: string, space: string | null, mode?: "plan") {
+export function scanFrom(said: string, space: string | null, mode?: "consult") {
   toggleChat(true);
   const key = chatKey(space);
   if (st().key !== key || !st().loaded) return useCanvasChat.setState({ pendingScan: { key, said, ...(mode ? { mode } : {}) } });
@@ -328,17 +326,29 @@ async function runStart(h: StartHandoff) {
   // The words show once, on the first turn: a scan beside docs is Qalam AI's own turn.
   let shown = false;
   let scan: string | undefined;
+  const going: Promise<unknown>[] = [];
   for (const t of h.turns) {
     const said = shown ? "" : t.said;
+    const quiet = shown && !!t.said;
     shown = shown || !!t.said;
-    if (t.mode === "scan") {
+    if (t.mode === "consult") {
+      // Their words, worked out with them once what came with them is in (it reads their material).
+      await Promise.allSettled(going);
+      consultOn(null, t.said, { ...(t.situation ? { situation: t.situation } : {}), ...(t.offer ? { offer: t.said } : {}), ...(quiet ? { quiet: true as const } : {}) });
+      // Who's asking was read from their own words on the start page: kept as the first read is.
+      if (t.situation) {
+        void setFluency(t.situation.level, "qalam").catch(() => {});
+        if (t.situation.position) void setMeOnce(t.situation.position);
+      }
+    } else if (t.mode === "scan") {
       void scanIt(null, said, t.target, undefined, t.said, !!t.read);
       scan = [...st().chat.turns].reverse().find((x) => x.job.kind === "scan")?.id;
-    } else if (t.mode === "take") void takeIn(null, said, docs);
-    else if (t.mode === "plan") void workOut(null, t.said);
-    else void dumpIt(null, said, docs.filter((d): d is SentDoc => !!d.ingested));
+    } else if (t.mode === "take") going.push(takeIn(null, said, docs));
+    else if (t.mode === "plan") consultOn(null, t.said);
+    else going.push(dumpIt(null, said, docs.filter((d): d is SentDoc => !!d.ingested)));
   }
-  if (h.whose.sure) return;
+  // The consultant asks whose it is where it matters, in the conversation.
+  if (h.whose.sure || h.turns.some((t) => t.mode === "consult")) return;
   const target = h.turns.find((t) => t.mode === "scan");
   const name = target?.mode === "scan" && target.target.kind === "product" ? target.target.name || undefined : undefined;
   const ask = h.whose.ask === "product" && name ? "product" : "shape";
@@ -371,7 +381,7 @@ async function scanIt(at: string | null, said: string, target: ScanTarget | null
   void saveNow();
   // Nothing named to read about: reading would go on their sentence, so it's worked out with them instead.
   // (`read`: the start page's box read them already, `readFirst`.)
-  if (target.kind === "idea" && !told?.length && !read && !(await namesSomething(words))) return workOut(id, words);
+  if (target.kind === "idea" && !told?.length && !read && !(await namesSomething(words))) return consultOn(id, words);
   try {
     const session = await startScan({ ...requestOf(target, words, typeof navigator === "undefined" ? "" : navigator.language), ...(told?.length ? { told: [...told] } : {}) });
     change((c) => withJob(c, id, (j) => (j.kind === "scan" ? { ...j, session } : j)));
@@ -639,13 +649,17 @@ export function briefFor(card: string, shape: BriefShape = "build") {
   const open = st().chat.turns.some((t) => t.job.kind === "brief" && t.job.card === card && t.job.brief.step !== "ready" && t.job.brief.step !== "failed");
   if (open) return;
   const title = cardTitle(card);
-  addTurn(BRIEF_ASK[shape](title), { kind: "brief", card, title, ...(shape !== "build" ? { shape } : {}), brief: { step: "asking", asking: emptyAsking(briefRound(shape)) } });
+  // Qalam AI asks first, from what it would be written from; code's own questions only when it can't.
+  const id = addTurn(BRIEF_ASK[shape](title), { kind: "brief", card, title, ...(shape !== "build" ? { shape } : {}), brief: { step: "thinking", asking: emptyAsking() } });
+  void runBriefAsk(id, (signal) => goOn(briefHost(id), signal));
 }
 
 /** A scan's first pick: on the canvas first, since a brief's tile hangs under its card. */
 export async function briefStart(id: string) {
   if (scanJob(id)?.plan?.step !== "placed") await placeFirstBuild(id);
-  if (scanJob(id)?.plan?.step === "placed") setBrief(id, { step: "asking", asking: emptyAsking(briefRound()) });
+  if (scanJob(id)?.plan?.step !== "placed") return;
+  setBrief(id, { step: "thinking", asking: emptyAsking() });
+  void runBriefAsk(id, (signal) => goOn(briefHost(id), signal));
 }
 
 const briefShape = (id: string): BriefShape => {
@@ -660,7 +674,8 @@ export function briefAgain(id: string) {
     setBrief(id, { ...b, step: "thinking", error: undefined, asking: loaded(b.asking) });
     return void runBriefAsk(id, (signal) => goOn(briefHost(id), signal));
   }
-  setBrief(id, { step: "asking", asking: emptyAsking(briefRound(briefShape(id))) });
+  setBrief(id, { step: "thinking", asking: emptyAsking() });
+  void runBriefAsk(id, (signal) => goOn(briefHost(id), signal));
 }
 
 /** A brief's interview (src/asking/): code's questions first, then Qalam AI's; a brief from before reads its questions as the first round. */
@@ -696,7 +711,13 @@ export const briefHost = (id: string): AskingHost => ({
     const card = briefCard(id);
     const req = card ? briefRequest(studio().doc, card, askedFrom(s), turnOf(id)?.job.kind === "brief" ? briefShape(id) : undefined) : null;
     if (!req) throw new Error("What it would be written from has gone from the canvas.");
-    return askBriefTurn(req, askingIn(s, { said: "", terms: useTerms.getState().terms, memory: briefHost(id).memory?.() }), step(id), signal);
+    try {
+      return await askBriefTurn(req, askingIn(s, { said: "", terms: useTerms.getState().terms, memory: briefHost(id).memory?.() }), step(id), signal);
+    } catch (e) {
+      // A first turn that can't be had: code's own questions, so they're still asked.
+      if (signal.aborted || s.rounds.length) throw e;
+      return { questions: briefRound(turnOf(id)?.job.kind === "brief" ? briefShape(id) : "build").map((q) => ({ ...q, by: "code" as const })), lookups: [], done: false, understood: [], terms: [], choices: [] };
+    }
   },
   lookup: async (l, signal) => {
     const card = briefCard(id);
@@ -1031,7 +1052,8 @@ async function readQuestion(said: string) {
   );
   end(id);
   if (ctrl.signal.aborted) return change((c) => withJob(c, id, () => ({ kind: "ask", state: "failed", error: "You stopped it." })));
-  if (route === "plan") workOut(id, said);
+  // Asking to work something out: worked out with them, the way a consultant would.
+  if (route === "plan") consultOn(id, said);
   else void ask(said, id);
 }
 
@@ -1049,9 +1071,12 @@ function workOut(at: string | null, said: string) {
  * Worked out with a consultant: no look before they've answered anything. Its first turn reads who's
  * asking, then asks the way the playbook for where they came in says, paced to how much they know.
  */
-function consultOn(at: string | null, said: string, o: { first?: "goal" | "problem"; playbook?: PlaybookId; situation?: Situation } = {}) {
+function consultOn(at: string | null, said: string, o: { first?: "goal" | "problem"; playbook?: PlaybookId; situation?: Situation; offer?: string; quiet?: true } = {}) {
   void ensureYou();
-  const id = jobAt(at, said, { kind: "plan", step: "thinking", rounds: [], looks: [], asking: emptyAsking(), consult: { noted: [], ...(o.first ? { first: o.first } : {}), ...(o.playbook ? { playbook: o.playbook } : {}), ...(o.situation ? { situation: o.situation } : {}) } });
+  // An app's link: reading its reviews is offered from the start, beside the first round, never read unasked.
+  const asking = o.offer ? { ...emptyAsking(), scan: { id: "scan-0", query: o.offer, why: "Its reviews show what the people using it run into." } } : emptyAsking();
+  const job: PlanJob = { kind: "plan", step: "thinking", rounds: [], looks: [], asking, consult: { noted: [], ...(o.first ? { first: o.first } : {}), ...(o.playbook ? { playbook: o.playbook } : {}), ...(o.situation ? { situation: o.situation } : {}) } };
+  const id = o.quiet ? addTurn(said, job, undefined, { quiet: true }) : jobAt(at, said, job);
   void runCanvasPlan(id, (signal) => goOn(planHost(id), signal));
 }
 
@@ -1600,10 +1625,9 @@ export async function findWith(what: FindWhat, space: string | null): Promise<vo
   // Before they answer anything: it would be read by what isn't there.
   if (await engineMissing()) return void addTurn(FIND_SAID[what], { kind: "noEngine", mode: null });
   if (open) dropTurn(open.id);
-  // With the company and its domain known, Qalam AI asks from them; else code's own questions.
-  const known = knowsMarket(useMarket.getState().market);
-  const id = addTurn(FIND_SAID[what], { kind: "find", what, ...(known ? { loading: true as const } : {}) });
-  void (known ? askFrom(id, what) : codeOpening(id));
+  // Qalam AI asks from what's known, however little; code's own questions when it can't.
+  const id = addTurn(FIND_SAID[what], { kind: "find", what, loading: true });
+  void askFrom(id, what);
 }
 
 /** Qalam AI's opening questions, from what's known (code's own stand in when it has none). */

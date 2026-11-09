@@ -338,6 +338,8 @@ export interface ChatTurn {
   at: number;
   /** Their words as sent. */
   said: string;
+  /** Their words were shown on an earlier turn (the start page's box): read here, not shown again. */
+  quiet?: true;
   docs?: ChatDoc[];
   job: ChatJob;
 }
@@ -420,7 +422,7 @@ export interface ChatMessage {
 const you = (t: ChatTurn): ChatMessage => ({
   id: `${t.id}:you`,
   role: "user",
-  parts: [...(t.said.trim() ? [{ type: "text" as const, text: t.said }] : []), ...(t.docs?.length ? [{ type: "data" as const, name: "docs", data: { turn: t.id } }] : [])],
+  parts: [...(t.said.trim() && !t.quiet ? [{ type: "text" as const, text: t.said }] : []), ...(t.docs?.length ? [{ type: "data" as const, name: "docs", data: { turn: t.id } }] : [])],
 });
 
 const reply = (t: ChatTurn, parts: ChatPart[]): ChatMessage => ({ id: `${t.id}:ai`, role: "assistant", parts });
@@ -558,6 +560,8 @@ function consultReply(t: ChatTurn, j: PlanJob, c: ConsultState): ChatPart[] {
   const reflect = c.level !== "seasoned";
   const looks = (after: number) => j.looks.flatMap((l, i) => (l.after === after ? [part("planLook", { turn: t.id, look: i })] : []));
   const out: ChatPart[] = [text("Let's work it out. I'll ask what only you know, then put what we find on your canvas.")];
+  // A short statement: a way to just add it as it is, until they've answered something.
+  if (c.first && !s?.rounds.some((r) => r.form.submitted || !!r.said) && j.step !== "review" && j.step !== "placed") out.push(part("consultFirst", id));
   const rounds = s?.rounds ?? [];
   const open = s ? !!currentRound(s) : false;
   rounds.forEach((r, i) => {

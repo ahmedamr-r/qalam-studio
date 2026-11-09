@@ -361,29 +361,36 @@ export default function Home({ product: productId = null }: { product?: string |
 }
 
 /** Nothing on the canvas yet: a goal or a problem, written on the canvas or found with Qalam AI in the chat. */
-/** The one box: an idea or a product, read for what people already complain about. */
+/**
+ * The one box: what they're working on, worked out with them in the chat (src/consult/); or, switched,
+ * an idea or a product read for what people already complain about.
+ */
 function ScanBox({ space }: { space: string | null }) {
   const [said, setSaid] = useState("");
-  const ready = !!scanInput(said);
+  const [read, setRead] = useState(false);
+  const ready = read ? !!scanInput(said) : said.trim().length >= 3;
   return (
     <form
       className="flex flex-col gap-[8px]"
       onSubmit={(e) => {
         e.preventDefault();
         if (!ready) return;
-        scanFrom(said.trim(), space);
+        scanFrom(said.trim(), space, read ? undefined : "consult");
         setSaid("");
       }}
     >
       <label htmlFor="scan-box" className="flex flex-col gap-[4px] text-center">
-        <span className="text-body font-medium text-fg">What do you want to build, or which product should I look at?</span>
+        <span className="text-body font-medium text-fg">{read ? "Which idea or product should I read about?" : "What are you working on?"}</span>
       </label>
       <span className="flex gap-[6px]">
-        <input id="scan-box" dir="auto" value={said} onChange={(e) => setSaid(e.target.value)} placeholder="An idea, an app's name or its link" className={clsx(r.field, r.fieldInput, "min-w-0 flex-1")} />
+        <input id="scan-box" dir="auto" value={said} onChange={(e) => setSaid(e.target.value)} placeholder={read ? "An idea, an app's name or its link" : "A product, an idea, or a problem with one"} className={clsx(r.field, r.fieldInput, "min-w-0 flex-1")} />
         <button type="submit" disabled={!ready} className={clsx(r.buttonSm, r.buttonPrimary, "shrink-0 gap-[6px]")}>
-          <QalamAIGlyph size={12} /> Look
+          <QalamAIGlyph size={12} /> {read ? "Look" : "Start"}
         </button>
       </span>
+      <button type="button" className="self-center text-caption text-fg-muted underline decoration-fg/20 underline-offset-2 hover:text-fg" onClick={() => setRead((x) => !x)}>
+        {read ? "Or work it out with me" : "Or read what people say about an idea or a product"}
+      </button>
     </form>
   );
 }

@@ -62,6 +62,7 @@ import { decideSolution, draftSolutions, solutionsView, type SolutionsCard } fro
 import { draftTests, type TestsRequest } from "./tests";
 import { aboutTopic, lookOnline } from "./posts";
 import { namesSomething, readFirstAnswer, scanNow, startScan, steerQuestions, steerScan, stopScan } from "./scan";
+import { readSituation } from "./consult";
 import { steerRound } from "@/scan/steer";
 import { askBrief, briefRequestOf, writeCardBrief } from "./briefs";
 import { forgetAsked, KnownBody, listMemory, RecallBody, recallFor, RememberBody, rememberRound, subjectOf, withKnown } from "./memory";
@@ -121,6 +122,12 @@ export function orgRoutes(): Hono<Env> {
     const b = (await c.req.json().catch(() => null)) as { said?: unknown } | null;
     if (typeof b?.said !== "string" || !b.said.trim() || !aiConfigured() || rateLimited(c.req.raw)) return c.json({ named: true, product: "", name: "" });
     return c.json(await readFirstAnswer(b.said, c.req.raw.signal));
+  });
+  // The first run's words, read for who's asking before there's a project: the consultant's first turn takes it from here.
+  r.post("/api/start/situation", async (c) => {
+    const b = (await c.req.json().catch(() => null)) as { said?: unknown } | null;
+    if (typeof b?.said !== "string" || !b.said.trim() || !aiConfigured() || rateLimited(c.req.raw)) return c.json({ situation: null });
+    return c.json({ situation: await readSituation(b.said, c.req.raw.signal) });
   });
   r.post("/api/orgs", async (c) => {
     const { name, shape } = (await c.req.json().catch(() => ({}))) as { name?: string; shape?: unknown };

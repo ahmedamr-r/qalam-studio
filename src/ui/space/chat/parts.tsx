@@ -643,6 +643,22 @@ function AskAnsweredPart({ data }: { data: PartData }) {
   return state && state.rounds[Number(data.round)] ? <AnsweredRound state={state} index={Number(data.round)} /> : null;
 }
 
+/** A short statement worked out with them: or just added as it is, the goal first when it has a number. */
+function ConsultFirstPart({ data }: { data: PartData }) {
+  const t = useTurn(data.turn);
+  if (t?.job.kind !== "plan" || !t.job.consult?.first) return null;
+  const order: ("goal" | "problem")[] = t.job.consult.first === "goal" ? ["goal", "problem"] : ["problem", "goal"];
+  return (
+    <ReplyChips>
+      {order.map((w) => (
+        <button key={w} type="button" className={r.replyChip} onClick={() => retake(t.id, w)}>
+          Just add it as a {w}
+        </button>
+      ))}
+    </ReplyChips>
+  );
+}
+
 /** Reading what people say online, offered once beside the rounds: it reads on its own, and the conversation goes on. */
 function ConsultScanPart({ data }: { data: PartData }) {
   const state = usePlanAsking(data.turn);
@@ -978,8 +994,8 @@ function ChoosePart({ data }: { data: PartData }) {
       <button type="button" className={r.replyChip} onClick={() => retake(t.id, "ask")}>
         Ask about it
       </button>
-      <button type="button" className={r.replyChip} onClick={() => retake(t.id, "plan")}>
-        Work it out as a plan
+      <button type="button" className={r.replyChip} onClick={() => retake(t.id, "consult")}>
+        Work it out with me
       </button>
       <button type="button" className={r.replyChip} onClick={() => retake(t.id, "scan")}>
         Look into it
@@ -1077,8 +1093,8 @@ function SwitchPart({ data }: { data: PartData }) {
   if (!t) return null;
   const plan = (
     <ReplyChips>
-      <button type="button" className={r.replyChip} onClick={() => void runAs(null, t.said, "plan")}>
-        <QalamAIGlyph size={12} /> Plan from this
+      <button type="button" className={r.replyChip} onClick={() => void runAs(null, t.said, "consult")}>
+        <QalamAIGlyph size={12} /> Work it out from this
       </button>
     </ReplyChips>
   );
@@ -2025,6 +2041,14 @@ function NoEnginePart({ data }: { data: PartData }) {
           Try again
         </button>
       )}
+      {/* Working it out needs Qalam AI; adding their words as a card doesn't. */}
+      {mode === "consult" &&
+        t.said &&
+        (/\d/.test(t.said) ? (["goal", "problem"] as const) : (["problem", "goal"] as const)).map((w) => (
+          <button key={w} type="button" className={r.replyChip} onClick={() => retake(t.id, w)}>
+            Add it as a {w}
+          </button>
+        ))}
     </div>
   );
 }
@@ -2043,6 +2067,7 @@ export const PARTS: Record<string, PartComponent> = {
   askAnswered: AskAnsweredPart,
   consultReflect: ConsultReflectPart,
   consultScan: ConsultScanPart,
+  consultFirst: ConsultFirstPart,
   consultNoted: ConsultNotedPart,
   askFound: AskFoundPart,
   askSettled: AskSettledPart,

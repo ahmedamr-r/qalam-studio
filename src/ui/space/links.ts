@@ -67,7 +67,7 @@ export function consumeChatParams() {
   if (start === "1") void takeStart().then((h) => h && startFrom(h, currentSpace()), () => {});
   if (plan === "1") {
     const text = takeWords();
-    if (text) scanFrom(text, currentSpace(), "plan");
+    if (text) scanFrom(text, currentSpace(), "consult");
   }
 }
 

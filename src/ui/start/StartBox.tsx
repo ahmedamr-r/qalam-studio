@@ -125,7 +125,7 @@ export function StartBox({ search, sample = true, onBusy }: { search: string; sa
       <LoneComposer
         variant="hero"
         label="What you're working on"
-        placeholder="Basket, an App Store link, or your idea in a sentence"
+        placeholder="Your product, an idea, or what's going wrong with it"
         submit="enter"
         disabled={busy}
         running={false}

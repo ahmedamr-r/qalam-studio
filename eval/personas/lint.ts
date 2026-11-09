@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { PERSONAS } from "./personas";
-import { startTarget } from "@/onboarding/start";
+import { startPlan } from "@/onboarding/start";
 import { routeOf } from "@/space/route";
 
 /**
@@ -36,12 +36,11 @@ export function lint(root: string): string[] {
   return out;
 }
 
-/** What the app does with each first message: the chat's route, and the first run's reading of it on each card. */
+/** What the app does with each first message: the chat's route, and what the start page's one box makes of it. */
 export function paperWalk() {
   return PERSONAS.map((p) => {
     const chat = routeOf({ text: p.opener, docs: [] });
-    const idea = startTarget("idea", p.opener);
-    const company = startTarget("company", p.opener);
-    return { id: p.id, title: p.title, path: p.path, chat: chat?.job ?? "none", firstRunIdea: idea ? idea.kind : "turned away", firstRunCompany: company ? `${company.kind}${company.kind === "product" ? `: ${company.name}` : ""}` : "asked again" };
+    const start = startPlan(p.opener, []);
+    return { id: p.id, title: p.title, path: p.path, chat: chat?.job ?? "none", firstRun: start ? start.turns.map((t) => t.mode).join(" + ") : "turned away", project: start?.name ?? "", whose: start ? `${start.whose.shape}${start.whose.mine ? ", theirs" : ""}` : "" };
   });
 }

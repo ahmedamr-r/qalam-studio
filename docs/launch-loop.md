@@ -21,6 +21,8 @@ Written November 3, 2026. Where this differs from `docs/v0.1.md`, this plan wins
 
 Steps 2 and 3 are where the value shows. They must work on a stranger's idea in the first session.
 
+**Since November 9: the consultant comes first.** A tester playing someone who isn't a product person typed "I want to work on a problem on my basket page in my delivery app", and the box read the web and asked "You want… Right?" before asking anything about their app. Now the box's words, and anything said in the canvas's chat that isn't a question, a doc or long thinking, are worked out with them by Qalam AI as a product and business consultant (see The consultant in `AGENTS.md`): it reads who's asking and talks at their level, asks before it looks anything up, says why when it does, fills in how the business works as they talk, and ends in a diagnosis with a check under each likely cause. The scan above is still all here, offered by the consultant once something's named and they've answered something (Read it or Not now), and still the empty canvas's second choice ("Or read what people say about an idea or a product") and an app's link's. Steps 2 to 8 run as before once it's read.
+
 ## Decisions this plan makes
 
 Each one is a default to confirm before its phase starts.
@@ -112,7 +114,7 @@ Built on November 3, 2026. Decided while building: "This is my product" comes af
 - **The thread:** a `scan` job in `src/space/chat.ts` with parts in `src/ui/space/chat/parts.tsx`: what it's reading, what it found, then the ranked problems. The problems panel opens when filing is done (`?panel=problems`).
 - **The canvas:** problems arrive as faint cards under "No goal yet", the same way pages are drawn today. Check this at the first card and at 15 cards.
 - **First run (since changed):** it now asks who it's for first, a company's product or their own idea, then three questions with suggested answers while a researcher reads, full screen, before the canvas. See First run in `AGENTS.md`. A company's path can still set it up in detail with today's steps.
-- **Empty canvas:** the box leads, above Write it and Help me find one.
+- **Empty canvas:** the box leads, above Write it and Help me find one. Since November 9 it asks "What are you working on?" and starts the consultant, with "Or read what people say about an idea or a product" switching it to the scan.
 
 **Done when:** on `studio-fresh`, a new person gets from the app opening to ranked problems with one sentence typed, and a reload midway picks up where it was.
 

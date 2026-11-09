@@ -7,7 +7,6 @@ import type { FactField, MarketLine } from "@/market/types";
 import { editBusinessLine, loadBusiness, useBusiness } from "@/org/business";
 import { useOrgContext } from "@/org/context";
 import { useMarket } from "@/org/market";
-import { lab } from "@/lab";
 import { Button, IconBtn } from "../controls";
 import { useCurrentOrg } from "../frame/store";
 import { r } from "../recipes";
@@ -149,7 +148,7 @@ function SectionPart({ section, lines, linked, org }: { section: BusinessSection
       {!lines.length && !linked.length && !adding && (
         <div className="flex items-center justify-between gap-[8px]">
           <p className="text-caption text-fg-subtle">Not known yet.</p>
-          {lab("consult") && org && (
+          {org && (
             <Button size="sm" variant="ghost" onClick={() => talkThrough(section, org)}>
               <MessageCircle size={14} {...ICON} className="mr-[4px]" />
               Talk it through

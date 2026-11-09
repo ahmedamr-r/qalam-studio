@@ -1,6 +1,6 @@
 import { createOrg, type OrgRef } from "@/org/client";
 import { nameAfterRead, startPlan, targetAfterRead, type BoxDoc, type StartPlan } from "@/onboarding/start";
-import { readFirstAnswer } from "@/org/scan";
+import { readFirstAnswer, readStartSituation } from "@/org/scan";
 import type { HandedImage, StartHandoff } from "@/onboarding/handoff";
 import { putAssetIn } from "@/doc/assets";
 import { orgHref } from "@/projects/model";
@@ -34,15 +34,33 @@ const pictureType = (f: File) => f.type || ({ png: "image/png", jpg: "image/jpeg
  * scan would read their sentence. Any trouble: it goes as it was.
  */
 async function readFirst(plan: StartPlan): Promise<StartPlan> {
-  const scan = plan.turns.find((t) => t.mode === "scan");
   const e = useEngineCheck.getState();
-  if (!scan || scan.mode !== "scan" || !(e.test ?? e.view?.test)?.ok) return plan;
+  if (!(e.test ?? e.view?.test)?.ok) return plan;
+  const consult = plan.turns.find((t) => t.mode === "consult");
+  if (consult?.mode === "consult") return readWho(plan, consult);
+  const scan = plan.turns.find((t) => t.mode === "scan");
+  if (!scan || scan.mode !== "scan") return plan;
   const read = await readFirstAnswer(scan.said);
   const target = targetAfterRead(plan.whose.shape === "team" ? "company" : "idea", scan.target, read);
   const named = read.named || target.kind === "product";
   const turns = plan.turns.map((t) => (t !== scan ? t : named ? { ...scan, target, read: true as const } : { mode: "plan" as const, said: scan.said }));
   const mine = target.kind === "product" && !!target.mine;
   return { ...plan, turns, name: plan.turns.length === 1 || named ? nameAfterRead(target, read) : plan.name, whose: mine ? { shape: "team", mine: true, sure: true } : plan.whose };
+}
+
+/**
+ * Who's asking, read from their words before the project is made (one small call): the project named
+ * from what they named, made a team's or one person's as they said, and the consultant's first turn
+ * starting from it. With nothing named it's "My project", theirs to rename. Any trouble: as it was.
+ */
+async function readWho(plan: StartPlan, turn: Extract<StartPlan["turns"][number], { mode: "consult" }>): Promise<StartPlan> {
+  const s = await readStartSituation(turn.said);
+  if (!s) return plan;
+  const turns = plan.turns.map((t) => (t === turn ? { ...turn, situation: s } : t));
+  const only = plan.turns.length === 1;
+  const name = !only ? plan.name : s.product || (s.named ? s.name : "") || (s.named ? plan.name : "My project");
+  const shape = s.whose === "team" || s.whose === "solo" ? s.whose : plan.whose.shape;
+  return { ...plan, turns, name, whose: { shape, mine: s.theirs === "yes" || plan.whose.mine, sure: true } };
 }
 
 /**

@@ -29,7 +29,6 @@ import { PARTS } from "./parts";
 import { clearMode, composeIn, useCompose } from "./compose";
 import { relevel, answerScanRound, askMeInsteadScan, keepScanRound, lookItUpScan, picksScan, scanRoundOf, stopAskingScan, stopScanLookup, answerBriefRound, askMeInsteadBrief, briefRoundOf, keepBriefRound, lookItUpBrief, picksBrief, stopAskingBrief, stopBriefLookup, answerCanvasPlan, answerDraft, answerFind, answerNumber, answerSteer, ask, askMeInsteadDraft, askMeInsteadPlan, keepDraftRound, lookItUpDraft, picksDraft, stopAskingDraft, stopDraftLookup, clearChat, findQuestionsOf, findWith, keepPlanRound, leaveSteer, lookItUpPlan, numberQuestions, openChat, picksCanvasPlan, resumePlans, send, steerQuestionsOf, stopAskingPlan, stopPlanLookup, stopTurn, turnOf, useCanvasChat } from "./store";
 import { AskRound } from "../../asking/AskRound";
-import { lab } from "@/lab";
 
 /*
  * Qalam AI's chat on the left of a space's canvas, as Figma keeps its panel there: one box for
@@ -126,10 +125,15 @@ export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
               <SampleIntro />
             ) : (
               <div className="flex flex-col gap-[10px] pt-[8px]">
-                <p className="text-body text-fg">Ask what your {org} knows, or bring something to the canvas.</p>
-                <button type="button" className={clsx(r.replyChip, "self-start")} onClick={() => composeIn({ mode: "scan" })}>
-                  <QalamAIGlyph size={12} /> Look into an idea or a product
-                </button>
+                <p className="text-body text-fg">Tell me what you're working on, ask what your {org} knows, or bring something to the canvas.</p>
+                <div className="flex flex-wrap gap-[6px]">
+                  <button type="button" className={r.replyChipPrimary} onClick={() => composeIn({ mode: "consult" })}>
+                    <QalamAIGlyph size={12} /> Work it out with me
+                  </button>
+                  <button type="button" className={r.replyChip} onClick={() => composeIn({ mode: "scan" })}>
+                    <QalamAIGlyph size={12} /> Look into an idea or a product
+                  </button>
+                </div>
                 <p className="text-caption text-fg-muted">A question is answered from its problem pages, sources, boards and decisions. Reports, research, interviews and tickets go into problems&apos; pages, each saying what it is; your thinking is read and placed as cards; a goal or a problem is worded for the canvas, for you to use or change.</p>
                 <div className="flex flex-wrap gap-[6px]">
                   {(["goal", "problem"] as FindWhat[]).map((w) => (
@@ -186,8 +190,8 @@ export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
                     </MenuItem>
                   ) : null}
                   {!busy && (
-                    <MenuItem icon={<QalamAIGlyph size={14} />} onSelect={() => composeIn({ mode: lab("consult") ? "consult" : "plan" })}>
-                      {lab("consult") ? "Work it out with Qalam AI" : "Work something out as a plan"}
+                    <MenuItem icon={<QalamAIGlyph size={14} />} onSelect={() => composeIn({ mode: "consult" })}>
+                      Work it out with Qalam AI
                     </MenuItem>
                   )}
                 </SourceMenu>

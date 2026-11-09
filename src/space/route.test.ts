@@ -36,9 +36,11 @@ describe("what a message to the canvas's chat is for", () => {
     expect(routeOf({ text: `${long}?`, docs: [] })).toEqual({ job: "dump" });
   });
 
-  it("asks whether a short statement is a goal or a problem, the goal first when it has a number", () => {
-    expect(routeOf({ text: "Customers can't plan around the delivery window", docs: [] })).toEqual({ job: "choose", first: "problem" });
-    expect(routeOf({ text: "Raise driver acceptance in New Cairo above 85%", docs: [] })).toEqual({ job: "choose", first: "goal" });
+  it("works a short statement out with them, with a way to just add it, the goal first when it has a number", () => {
+    expect(routeOf({ text: "Customers can't plan around the delivery window", docs: [] })).toEqual({ job: "consult", first: "problem" });
+    expect(routeOf({ text: "Raise driver acceptance in New Cairo above 85%", docs: [] })).toEqual({ job: "consult", first: "goal" });
+    // The tester's sentence: not a scan, and not two buttons.
+    expect(routeOf({ text: "I want to work on a problem on my basket page in my delivery app", docs: [] })).toEqual({ job: "consult", first: "problem" });
   });
 
   it("titles a card in their words, on one line", () => {
@@ -46,8 +48,8 @@ describe("what a message to the canvas's chat is for", () => {
     expect(titleFrom("x".repeat(300))).toHaveLength(200);
   });
 
-  it("reads an app's link alone as what its users complain about", () => {
-    expect(routeOf({ text: "https://apps.apple.com/us/app/x/id11", docs: [] })).toEqual({ job: "scan" });
+  it("works an app's link out with them, its reviews offered, and reads it only when the box is set to", () => {
+    expect(routeOf({ text: "https://apps.apple.com/us/app/x/id11", docs: [] })).toEqual({ job: "consult", offer: "scan" });
     expect(routeOf({ text: "https://apps.apple.com/us/app/x/id11", docs: [{}] })).toEqual({ job: "take" });
     expect(routeOf({ text: "a meal planner", docs: [], mode: "scan" })).toEqual({ job: "scan" });
   });

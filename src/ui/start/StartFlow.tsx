@@ -12,7 +12,7 @@ import { Stage } from "./Stage";
 
 /** What the researcher says, by what's going on. */
 const LINES = {
-  idle: "Tell me what you're making. I'll find the people it annoys.",
+  idle: "Tell me what's wrong, or what you're making. I'll ask the annoying questions.",
   reading: "Reading it now. Don't watch.",
   writing: "Making you a project. Try to look busy.",
   shrug: "I need a brain to borrow. Claude Code or Codex will do.",
@@ -24,7 +24,7 @@ export function StartFlow() {
   const fresh = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("new") === "1";
   const pose = busy ? "writing" : missing ? "shrug" : reading ? "reading" : "idle";
   return (
-    <Stage pose={pose} line={LINES[pose]} home={fresh ? orgsHref() : "/welcome"} title="What are you working on?" about="A product, an idea, or what your customers told you. Add files or screenshots as you go.">
+    <Stage pose={pose} line={LINES[pose]} home={fresh ? orgsHref() : "/welcome"} title="What are you working on?" about="A product, an idea, or a problem with one. I'll ask what only you know, then put it on the canvas. Add files or screenshots as you go.">
       <StartBox search={typeof window === "undefined" ? "" : window.location.search} onBusy={setSending} />
       {fresh && (
         <a href={orgsHref()} className={clsx(r.buttonSm, r.buttonGhost, "self-center")}>

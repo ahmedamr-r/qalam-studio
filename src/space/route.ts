@@ -6,20 +6,21 @@ import { isAppLink } from "@/scan/input";
  * What a message to the canvas's chat is for, worked out by code with no tokens
  * (src/ui/space/chat/): a question asks the organization; what customers said is taken in as
  * material (read for what it states, kept, filed into problem pages, placed where it fits), as is any
- * doc, unless they said it's their own thinking; the person's own long text or
- * doc set to their own thinking is a brain dump, read and placed on the canvas; a short statement could be a goal, a
- * problem or a question, so the chat asks which (its chips, a number putting the goal first); an
- * app's link, or the box set to it, reads what people complain about (src/scan/). A question can be
- * asking what's known or asking to work something out, which words can't tell, so that one's left to a
- * small call to read (`read`; src/space/plan.ts); if it can't, it's asked.
- * A mode a button set (Write a goal, Find a problem…, Look in your tools) wins. The chat says how it
- * took each message, and they can switch.
+ * doc, unless they said it's their own thinking; the person's own long text or doc set to their own
+ * thinking is a brain dump, read and placed on the canvas; anything else they say about what they're
+ * working on is worked out with them by the consultant (src/consult/), with a way to just add it as a
+ * goal or a problem (`first`, a number putting the goal first); an app's link is worked out too, with
+ * reading its reviews offered (`offer`). A question can be asking what's known or asking to work
+ * something out, which words can't tell, so that one's left to a small call to read (`read`;
+ * src/space/plan.ts); if it can't, it's asked. A mode a button set (Write a goal, Find a problem…,
+ * Look in your tools) wins. The chat says how it took each message, and they can switch.
  */
 
 /** What a message can be taken as. */
 export type ChatMode = "ask" | "dump" | "take" | "goal" | "problem" | "scan" | "plan" | "consult" | "tools";
 
-export type Routed = { job: ChatMode; read?: true } | { job: "choose"; first: "goal" | "problem" };
+/** `first`: which of "Just add it" leads; `offer: "scan"`: reading what people say about it is offered (an app's link). */
+export type Routed = { job: ChatMode; read?: true; first?: "goal" | "problem"; offer?: "scan" };
 
 /** At least this many words, or this many lines, and their own text is a brain dump. */
 export const DUMP_WORDS = 40;
@@ -36,13 +37,13 @@ export function routeOf(i: { text: string; docs: readonly { basis?: Basis }[]; p
   const text = i.text.trim();
   if (!text && !i.docs.length) return null;
   if (i.mode) return { job: i.mode };
-  // An app's link alone: what its users complain about.
-  if (!i.docs.length && isAppLink(text)) return { job: "scan" };
+  // An app's link alone: worked out with them, its reviews offered rather than read unasked.
+  if (!i.docs.length && isAppLink(text)) return { job: "consult", offer: "scan" };
   // Any doc is read for what it states, with whatever of theirs came along; so is a paste of who said what.
   if (i.docs.some((d) => d.basis !== "own") || (text && i.pasted === "customers")) return { job: "take" };
   if (i.docs.length || wordsIn(text) >= DUMP_WORDS || lines(text) >= DUMP_LINES) return { job: "dump" };
   if (isQuestion(text)) return { job: "ask", read: true };
-  return { job: "choose", first: /\d/.test(text) ? "goal" : "problem" };
+  return { job: "consult", first: /\d/.test(text) ? "goal" : "problem" };
 }
 
 /** A card's title from what they wrote: their words, on one line, as long as a title runs. */

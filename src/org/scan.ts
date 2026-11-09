@@ -8,6 +8,7 @@ import type { ScanSaid, ScanSteer } from "@/scan/steer";
 import { NOT_READ, type FirstRead } from "@/scan/input";
 import { callAI } from "@/ai/client";
 import type { AskTurn } from "@/asking/types";
+import type { Situation } from "@/consult/situation";
 import type { AskingInT } from "@/asking/wire";
 import { orgFetch, orgJson, orgPath } from "./client";
 
@@ -26,6 +27,13 @@ export const startScan = (req: ScanRequest) => orgJson<{ session: ScanSession }>
 /** A first answer read before there's a project: what they named, and what to call it. Any trouble: it reads as asked. */
 export const readFirstAnswer = (said: string): Promise<FirstRead> =>
   fetch("/api/start/read", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ said }) }).then((r) => (r.ok ? (r.json() as Promise<FirstRead>) : NOT_READ), () => NOT_READ);
+
+/** The start page's words read for who's asking, before there's a project (src/consult/). Any trouble: null, and the consultant's first turn reads them. */
+export const readStartSituation = (said: string): Promise<Situation | null> =>
+  fetch("/api/start/situation", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ said }) }).then(
+    (r) => (r.ok ? (r.json() as Promise<{ situation: Situation | null }>).then((x) => x.situation) : null),
+    () => null,
+  );
 
 /** Whether their words name anything to read about (any trouble: they do, and it reads as asked). */
 export const namesSomething = (said: string, signal?: AbortSignal) => orgJson<{ named: boolean }>("/scan/named", { method: "POST", json: { said }, ...(signal ? { signal } : {}) }).then((r) => r.named, () => true);

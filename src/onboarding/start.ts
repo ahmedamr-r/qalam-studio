@@ -1,6 +1,7 @@
 import type { Basis } from "@/discovery/basis";
 import type { OrgShape } from "@/org/words";
-import { projectName, scanInput, type FirstRead } from "@/scan/input";
+import type { Situation } from "@/consult/situation";
+import { isAppLink, projectName, scanInput, type FirstRead } from "@/scan/input";
 import type { ScanTarget } from "@/scan/session";
 
 /*
@@ -79,8 +80,15 @@ export interface Whose {
   ask?: "product" | "shape";
 }
 
-/** `plan`: words that name nothing to read about, worked out with them in the canvas's chat. */
-export type StartTurn = { mode: "scan"; said: string; target: ScanTarget; /** Read already for whether it names anything (Send's first read). */ read?: true } | { mode: "take" | "dump" | "plan"; said: string };
+/**
+ * `consult`: their words worked out with them in the canvas's chat (src/consult/), with who's asking
+ * as Send read it (`situation`) and, for an app's link, reading its reviews offered (`offer`). `plan`
+ * and `scan` are a chat's from before.
+ */
+export type StartTurn =
+  | { mode: "scan"; said: string; target: ScanTarget; /** Read already for whether it names anything (Send's first read). */ read?: true }
+  | { mode: "take" | "dump" | "plan"; said: string }
+  | { mode: "consult"; said: string; situation?: Situation; offer?: true };
 
 export interface StartPlan {
   turns: StartTurn[];
@@ -94,6 +102,8 @@ const COMPANY_LEAD = [
   /^i work (?:at|on|for)\s+/i,
   /^(?:تطبيقنا|منتجنا|شركتنا)(?:\s+(?:هو|هي|اسمه|اسمها))?\s*:?\s*/,
 ];
+/** An opening that says nothing of whose it is: taken off, nothing more. */
+const PLAIN_LEAD = [/^i (?:want|need|'d like|would like) to (?:work on|fix|improve|look (?:at|into)|figure out)\s+/i, /^(?:help me (?:with|figure out)|can you help (?:me )?with)\s+/i];
 const IDEA_LEAD = [
   /^(?:my (?:own )?idea|the idea|an idea)(?:\s+is|\s*:|\s*,|\s*-)?\s+/i,
   /^i(?:'m| am) (?:building|making|working on|thinking (?:of|about) (?:building|making)?)\s*/i,
@@ -120,6 +130,10 @@ export function stripPreamble(text: string): { rest: string; cue: StartPath | nu
     const rest = after(re);
     if (rest) return { rest, cue: "idea" };
   }
+  for (const re of PLAIN_LEAD) {
+    const rest = after(re);
+    if (rest) return { rest, cue: null };
+  }
   return { rest: t, cue: null };
 }
 
@@ -139,7 +153,7 @@ export function boxTarget(text: string): { target: ScanTarget | null; cue: Start
   return { target: scanInput(rest), cue };
 }
 
-const TEAM_WORDS = /\b(?:we|we're|we've|we'd|our|ours|us)\b|\bmy (?:company|team|startup|employer|job|manager)\b|\bat work\b|\bi work (?:at|for|on)\b|تطبيقنا|شركتنا|عملاؤنا|عملائنا|فريقنا|منتجنا|نحن/i;
+const TEAM_WORDS = /\b(?:we|we're|we've|we'd|our|ours|us)\b|\bmy (?:company|team|startup|employer|job|manager)\b|\bmy (?:own )?(?:[\w-]+ ){0,2}(?:app|store|shop|business|product|platform|clinic|restaurant|website|service)\b|\bat work\b|\bi work (?:at|for|on)\b|تطبيقنا|شركتنا|عملاؤنا|عملائنا|فريقنا|منتجنا|نحن/i;
 const SOLO_WORDS = /\bmy (?:own )?idea\b|\bi (?:want|plan|would like|'d like) to (?:build|make|create|start)\b|\bi(?:'m| am) (?:building|making|thinking (?:of|about))\b|\bside project\b|\bwould (?:people|anyone) pay\b|\bjust me\b|فكرتي|أفكر في|مشروعي/i;
 
 /**
@@ -164,27 +178,26 @@ const titleName = (title: string) => {
 };
 
 /**
- * What the box's message becomes in the canvas chat, and the project it makes. Words alone are read
- * for what people say (a scan), or taken in as customers' words, or kept as their thinking when
- * they're long. Docs are taken in, with a scan beside them when the words name what to look at.
- * `pasted`: whose words the text reads as (`guessVoice`).
+ * What the box's message becomes in the canvas chat, and the project it makes. Words alone are worked
+ * out with them by the consultant (an app's link with its reviews offered), or taken in as customers'
+ * words, or kept as their thinking when they're long. Docs are taken in, then their words are worked
+ * out with them; their own thinking's docs ask their own rounds. `pasted`: whose words the text reads
+ * as (`guessVoice`).
  */
 export function startPlan(text: string, docs: readonly BoxDoc[], pasted?: "customers" | "own"): StartPlan | null {
   const said = text.trim();
   const { target, cue } = said && said.length <= SCAN_MAX ? boxTarget(said) : { target: null, cue: null };
   const whose = whoseOf(said, docs, target, cue);
-  const scan: StartTurn[] = target ? [{ mode: "scan", said, target: whose.mine && target.kind === "product" ? { ...target, mine: true } : target }] : [];
   const name = target ? projectName(target) : titleName(docs.find((d) => !d.image)?.title ?? "") || "New project";
+  const consult: StartTurn[] = said && said.length <= SCAN_MAX ? [{ mode: "consult", said, ...(isAppLink(said) ? { offer: true as const } : {}) }] : [];
   if (!docs.length) {
     if (!said) return null;
     if (pasted === "customers") return { turns: [{ mode: "take", said }], name, whose };
     if (said.length > SCAN_MAX) return { turns: [{ mode: "dump", said }], name, whose };
-    return scan.length ? { turns: scan, name, whose } : null;
+    return { turns: consult, name, whose };
   }
   const own = docs.every((d) => d.basis === "own");
-  // A scan beside the docs only when the words name what to look at: a product, or an idea they say is one.
-  const names = target && (target.kind === "product" || cue !== null);
-  return { turns: [{ mode: own ? "dump" : "take", said }, ...(names ? scan : [])], name, whose };
+  return { turns: [{ mode: own ? "dump" : "take", said }, ...(own ? [] : consult)], name, whose };
 }
 
 /** What stops the box's message, in words; null when it can go. */

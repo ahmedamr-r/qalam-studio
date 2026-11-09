@@ -26,7 +26,7 @@ interface Seen {
   buttons: string[];
   busy: boolean;
   alert: string;
-  /** What we settled is showing: its verb (Propose, Place it on the canvas, Draft them…), the button before "Something's off". */
+  /** What we settled is showing: its verb (Propose, Place it on the canvas, Draft them…), the button before "Something's off" (a consultant's "With fixes too", so solutions come as plan mode's did). */
   settle: string | null;
   /** A lookup put to them after two turns of only looking: Look it up, or Ask me instead. */
   offer: boolean;
@@ -619,8 +619,9 @@ export async function tabPlan(tab: Tab, said: string, out: string): Promise<TabR
   await tab.canvas();
   await finishOpen(tab, "docs");
   await tab.chat(said);
-  const hit = await tab.until(["Accept all", "Work it out as a plan"], "plan");
-  if (hit === "Work it out as a plan") {
+  // A question to work out opens the consultant; a short one may offer it among other ways.
+  const hit = await tab.until(["Accept all", "Work it out with me"], "plan");
+  if (hit === "Work it out with me") {
     await tab.click(hit);
     await tab.until(["Accept all"], "plan");
   }
@@ -643,7 +644,8 @@ export async function tabPlan(tab: Tab, said: string, out: string): Promise<TabR
 export async function tabFocus(tab: Tab, p: Persona, out: string): Promise<TabResult> {
   await tab.canvas();
   await tab.chat(p.opener);
-  const chip = await tab.until(["Add as a goal"], "add");
+  // A short statement opens the consultant, with a way to just add it as it is.
+  const chip = await tab.until(["Just add it as a goal"], "add");
   if (chip) await tab.click(chip);
   const worded = await tab.until(["Use it", "Keep my words", "Find the problem to focus on"], "add");
   if (worded && worded !== "Find the problem to focus on") await tab.click("Use it");

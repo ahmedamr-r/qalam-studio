@@ -27,7 +27,6 @@ import { splitSpace } from "./split";
 import { addedGoals, sameCards, withContent, withGoals } from "./history";
 import { resetSpaceView, useSpaceView, type SpacePreview } from "./view";
 import { PLACE_CARD } from "@/business/card";
-import { lab } from "@/lab";
 import { useBusiness } from "@/org/business";
 import { useMarket } from "@/org/market";
 import { useOrgContext } from "@/org/context";
@@ -256,8 +255,8 @@ function rowsFor(doc: Doc) {
 }
 const sameGroups = (a: { head: string; cards: string[] }[], b: { head: string; cards: string[] }[]) => a.length === b.length && a.every((g, i) => g.head === b[i].head && g.cards.join() === b[i].cards.join());
 
-/** The Business card over the trees, while the consultant is built (src/lab.ts). */
-const placeOption = () => (lab("consult") ? { place: PLACE_CARD } : {});
+/** The Business card over the trees. */
+const placeOption = () => ({ place: PLACE_CARD });
 
 /** The cards with a brief, whose tiles the layout makes room for. */
 const briefCards = () => new Set(useBriefs.getState().list.map((b) => b.card));

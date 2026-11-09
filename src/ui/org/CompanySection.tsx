@@ -158,15 +158,13 @@ export function CompanySection({ close }: { close?: ReactNode }) {
         <p className="text-caption text-fg-muted">What&apos;s known about it, from the web and from you. Qalam AI hears it as context, never as what customers said.</p>
       </div>
 
-      {lab("consult") && (
-        <a href={businessHref()} className="flex items-center justify-between gap-[8px] rounded-lg bg-panel px-[12px] py-[10px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)] hover:bg-raised">
-          <span className="flex min-w-0 flex-col gap-[2px]">
-            <span className="text-body font-medium text-fg">How {org?.name ?? "it"} works</span>
-            <span className="text-caption text-fg-muted">Who it serves, how it earns, what it takes to run</span>
-          </span>
-          <ChevronRight size={14} {...ICON} className="shrink-0 text-fg-subtle" />
-        </a>
-      )}
+      <a href={businessHref()} className="flex items-center justify-between gap-[8px] rounded-lg bg-panel px-[12px] py-[10px] shadow-[inset_0_0_0_1px_var(--color-line-subtle)] hover:bg-raised">
+        <span className="flex min-w-0 flex-col gap-[2px]">
+          <span className="text-body font-medium text-fg">How {org?.name ?? "it"} works</span>
+          <span className="text-caption text-fg-muted">Who it serves, how it earns, what it takes to run</span>
+        </span>
+        <ChevronRight size={14} {...ICON} className="shrink-0 text-fg-subtle" />
+      </a>
 
       {error && (
         <p role="alert" className="text-caption text-danger">

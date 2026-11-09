@@ -62,6 +62,8 @@ describe("the one box", () => {
   it("takes the opening that says whose it is off what's read", () => {
     expect(stripPreamble("Our app is Basket")).toEqual({ rest: "Basket", cue: "company" });
     expect(stripPreamble("My idea is a meal planner for nurses")).toEqual({ rest: "a meal planner for nurses", cue: "idea" });
+    // An opening that says nothing of whose it is is taken off all the same.
+    expect(stripPreamble("I want to work on a problem on my basket page")).toEqual({ rest: "a problem on my basket page", cue: null });
     expect(stripPreamble("I'm building a meal planner")).toEqual({ rest: "a meal planner", cue: "idea" });
     expect(stripPreamble("فكرتي هي تطبيق للوجبات")).toEqual({ rest: "تطبيق للوجبات", cue: "idea" });
     expect(stripPreamble("A meal planner")).toEqual({ rest: "A meal planner", cue: null });
@@ -90,19 +92,27 @@ describe("the one box", () => {
     expect(whose("", [{ title: "notes.pdf" }])).toEqual({ shape: "solo", mine: false, sure: false, ask: "shape" });
   });
 
-  it("turns words alone into a scan, customers' words into a take, and long thinking into a dump", () => {
-    expect(startPlan("Our app is Basket", [])).toEqual({ turns: [{ mode: "scan", said: "Our app is Basket", target: { kind: "product", name: "Basket", mine: true } }], name: "Basket", whose: { shape: "team", mine: true, sure: true } });
-    expect(startPlan("A meal planner for nurses", [])?.turns).toEqual([{ mode: "scan", said: "A meal planner for nurses", target: { kind: "idea", said: "A meal planner for nurses" } }]);
+  it("works words alone out with them, takes customers' words in, and reads long thinking as a dump", () => {
+    expect(startPlan("Our app is Basket", [])).toEqual({ turns: [{ mode: "consult", said: "Our app is Basket" }], name: "Basket", whose: { shape: "team", mine: true, sure: true } });
+    expect(startPlan("A meal planner for nurses", [])?.turns).toEqual([{ mode: "consult", said: "A meal planner for nurses" }]);
+    // The tester's sentence: worked out with them, and theirs.
+    expect(startPlan("I want to work on a problem on my basket page in my delivery app", [])).toMatchObject({ turns: [{ mode: "consult" }], whose: { shape: "team", sure: true } });
+    // An app's link: its reviews offered, never read unasked.
+    expect(startPlan("https://apps.apple.com/us/app/basket/id11", [])?.turns).toEqual([{ mode: "consult", said: "https://apps.apple.com/us/app/basket/id11", offer: true }]);
     expect(startPlan("Sara: it's late\nOmar: always", [], "customers")?.turns).toEqual([{ mode: "take", said: "Sara: it's late\nOmar: always" }]);
     expect(startPlan("x".repeat(SCAN_MAX + 1), [])?.turns[0].mode).toBe("dump");
     expect(startPlan("", [])).toBeNull();
   });
 
-  it("takes docs in, with a scan beside them only when the words name what to look at", () => {
+  it("takes docs in first, then works their words out with them; their own thinking asks its own rounds", () => {
     const pdf: BoxDoc = { title: "Interviews with nurses.pdf" };
-    expect(startPlan("Here are my notes from last week", [pdf])?.turns).toEqual([{ mode: "take", said: "Here are my notes from last week" }]);
-    expect(startPlan("Our app is Basket", [pdf])?.turns.map((x) => x.mode)).toEqual(["take", "scan"]);
-    expect(startPlan("My idea is a meal planner for nurses", [pdf])?.turns.map((x) => x.mode)).toEqual(["take", "scan"]);
+    expect(startPlan("Here are my notes from last week", [pdf])?.turns).toEqual([
+      { mode: "take", said: "Here are my notes from last week" },
+      { mode: "consult", said: "Here are my notes from last week" },
+    ]);
+    expect(startPlan("Our app is Basket", [pdf])?.turns.map((x) => x.mode)).toEqual(["take", "consult"]);
+    expect(startPlan("", [pdf])?.turns).toEqual([{ mode: "take", said: "" }]);
+    expect(startPlan("My plan for the quarter", [{ title: "Plan.md", basis: "own" }])?.turns).toEqual([{ mode: "dump", said: "My plan for the quarter" }]);
     expect(startPlan("", [{ title: "Plan.md", basis: "own" }])?.turns).toEqual([{ mode: "dump", said: "" }]);
   });
 

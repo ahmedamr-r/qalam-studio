@@ -27,4 +27,17 @@ describe("what the start page hands its canvas", () => {
   it("says unsure when whose it is came in as nothing", () => {
     expect(handoffOf({ v: 1, turns: [{ mode: "dump", said: "a lot of thinking" }] }, ing)?.whose).toEqual({ shape: "solo", mine: false, sure: false });
   });
+
+  it("carries a consultant's turn with who's asking, kept to its lists and their words", () => {
+    const said = "I want to work on a problem on my basket page in my delivery app";
+    const h = handoffOf({ v: 1, turns: [{ mode: "consult", said, offer: true, situation: { named: true, product: "Talabat", name: "Delivery app", role: "owns it", level: "new", stage: "running", theirs: "yes", whose: "team", layer: "page", position: "founder" } }], whose: { shape: "team", mine: true, sure: true }, docs: [], images: [] }, ing);
+    const t = h?.turns[0];
+    expect(t?.mode).toBe("consult");
+    if (t?.mode !== "consult") return;
+    expect(t.offer).toBe(true);
+    // A product's name they never wrote, and a role that shares nothing with their words, don't come along.
+    expect(t.situation).toMatchObject({ product: "", name: "Delivery app", role: "", level: "new", stage: "running", theirs: "yes", whose: "team", layer: "page" });
+    expect(t.situation?.position).toBeUndefined();
+    expect(handoffOf({ v: 1, turns: [{ mode: "consult", said }], whose: {}, docs: [], images: [] }, ing)?.turns[0]).toEqual({ mode: "consult", said });
+  });
 });

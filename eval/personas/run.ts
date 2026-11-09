@@ -456,7 +456,7 @@ async function stage0() {
   console.log(problems.length ? `Lint:\n${problems.map((x) => `  - ${x}`).join("\n")}` : "Lint: clean");
   const walk = paperWalk();
   console.log("\nThe paper walk: what the app does with each first message");
-  for (const w of walk) console.log(`  ${w.id}  chat: ${w.chat.padEnd(7)} first run, idea card: ${w.firstRunIdea.padEnd(11)} company card: ${w.firstRunCompany}`);
+  for (const w of walk) console.log(`  ${w.id}  chat: ${w.chat.padEnd(7)} first run: ${w.firstRun.padEnd(14)} ${w.whose.padEnd(12)} “${w.project}”`);
   await mkdir(OUT, { recursive: true });
   await writeFile(path.join(OUT, "paper-walk.json"), JSON.stringify(walk, null, 2));
 
