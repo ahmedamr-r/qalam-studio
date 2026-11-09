@@ -229,9 +229,11 @@ export async function reviewShots(
   const reader = await d.reader();
   const read = reader ? await d.words(store.dir, files.map(({ hash, file }) => ({ hash, file }))).catch(() => new Map<string, ShotRead | null>()) : new Map<string, ShotRead | null>();
   const screens: ReviewScreen[] = shown.map((s, i) => ({ id: `s${i + 1}`, shot: s.asset, name: s.screen!.name, screen: s.screen!.key, read: reader ? (sureLines(read.get(s.asset)) ?? null) : null }));
+  // Up to six go as PNG for the crispest print; more go as JPEG, so twenty screens stay well under a request's size.
+  const format = files.length > 6 ? "jpeg" : "png";
   const images = await Promise.all(
     files.map(async (f) => {
-      const copy = await d.prep(store.dir, f.hash, f.file, LOOK_SIDE, "png").catch(() => ({ file: f.file, type: f.type }));
+      const copy = await d.prep(store.dir, f.hash, f.file, LOOK_SIDE, format).catch(() => ({ file: f.file, type: f.type }));
       return PICTURE.test(copy.type) ? { hash: f.hash, image: { mediaType: copy.type as ShotImage["mediaType"], data: (await readFile(copy.file)).toString("base64") } } : { hash: f.hash, image: null };
     }),
   );

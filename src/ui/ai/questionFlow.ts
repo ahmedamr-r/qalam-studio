@@ -94,7 +94,7 @@ export interface ShotsQuestion extends QBase {
 export type Question = SingleQuestion | MultiQuestion | TextQuestion | ShotsQuestion;
 
 /** Most screenshots one answer takes: more can go in another answer. */
-export const SHOTS_MAX = 6;
+export const SHOTS_MAX = 20;
 
 /** A screenshot given as an answer: the asset it's kept as ("asset:<hash>") and its name (the file's, or "Screenshot 2"). */
 export interface AnswerShot {

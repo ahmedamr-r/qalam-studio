@@ -36,7 +36,7 @@ export interface KeptShots {
 }
 
 /** Most screenshots kept from one answer. */
-export const KEEP_MAX = 12;
+export const KEEP_MAX = 20;
 
 // ---------------------------------------------------------------------------
 // The review: what on the screens bears on the problem, from the customer's side and the business's
@@ -124,7 +124,7 @@ export interface ScreenReview {
 }
 
 /** A review's guards on size: every finding that bears on the problem is kept, ranked, up to these. */
-export const REVIEW_LIMITS = { perScreen: 12, all: 24, title: 90, why: 220, what: 200, on: 120, screens: 6, side: 220 } as const;
+export const REVIEW_LIMITS = { perScreen: 12, all: 40, title: 90, why: 220, what: 200, on: 120, screens: 20, side: 220 } as const;
 
 /** What a look needs to know before it can weigh both sides, asked between a first look and a weighed one. */
 export const MUST_KNOW = ["what these screens are for: what people should do on them, and the number that moves when they do", "who uses them: which customers come through them, and what they came for", "what the business needs from them, and what it won't change: how it earns there, its brand, partners, rules or decisions already made"] as const;

@@ -67,9 +67,12 @@ describe("screenshots in an answer", () => {
     expect(empty).toEqual({ kind: "shots", shots: [], text: "" });
     let a = addAnswerShots(empty, [shot(1), shot(2), shot(1)]);
     expect(a.shots.map((s) => s.title)).toEqual(["Screen 1", "Screen 2"]);
-    a = addAnswerShots(a, [3, 4, 5, 6, 7, 8].map((n) => shot(n)));
+    // Twenty at most: past that, the rest aren't added.
+    a = addAnswerShots(a, Array.from({ length: SHOTS_MAX + 2 }, (_, i) => shot(i + 3)));
+    expect(SHOTS_MAX).toBe(20);
     expect(a.shots).toHaveLength(SHOTS_MAX);
-    expect(removeShot(a, shot(2).asset).shots.map((s) => s.title)).toEqual(["Screen 1", "Screen 3", "Screen 4", "Screen 5", "Screen 6"]);
+    expect(a.shots.at(-1)?.title).toBe(`Screen ${SHOTS_MAX}`);
+    expect(removeShot(a, shot(2).asset).shots.map((s) => s.title).slice(0, 4)).toEqual(["Screen 1", "Screen 3", "Screen 4", "Screen 5"]);
   });
 
   it("keeps what they typed as their words, and the screenshots apart", () => {
@@ -83,7 +86,8 @@ describe("screenshots in an answer", () => {
   it("takes screenshots, words or nothing (it can be left), but not more than it holds", () => {
     expect(validate(q, { kind: "shots", shots: [], text: "" })).toBeNull();
     expect(validate({ ...q, optional: false }, { kind: "shots", shots: [], text: "" })).toBe("Add a screenshot, or say it in words.");
-    expect(validate(q, { kind: "shots", shots: [1, 2, 3, 4, 5, 6, 7].map((n) => shot(n)), text: "" })).toBe(`Up to ${SHOTS_MAX} screenshots in one answer.`);
+    expect(validate(q, { kind: "shots", shots: Array.from({ length: SHOTS_MAX }, (_, i) => shot(i + 1)), text: "" })).toBeNull();
+    expect(validate(q, { kind: "shots", shots: Array.from({ length: SHOTS_MAX + 1 }, (_, i) => shot(i + 1)), text: "" })).toBe(`Up to ${SHOTS_MAX} screenshots in one answer.`);
   });
 
   it("takes words said before as words, never as screenshots", () => {

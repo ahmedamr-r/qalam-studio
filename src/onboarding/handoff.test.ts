@@ -24,6 +24,14 @@ describe("what the start page hands its canvas", () => {
     expect(handoffOf({ v: 1, turns: [{ mode: "take", said: "" }], images: [{ ...IMG, type: "image/svg+xml" }] }, ing)).toBeNull();
   });
 
+  it("carries up to twenty pictures and twenty docs from the box", () => {
+    const img = (n: number) => ({ ...IMG, asset: n.toString(16).padStart(24, "0"), title: `IMG_${n}.png` });
+    const h = handoffOf({ v: 1, turns: [{ mode: "take", said: "how to improve the flow" }], images: Array.from({ length: 22 }, (_, i) => img(i + 1)), docs: Array.from({ length: 22 }, () => DOC) }, ing);
+    expect(h?.images).toHaveLength(20);
+    expect(h?.images.at(-1)?.title).toBe("IMG_20.png");
+    expect(h?.docs).toHaveLength(20);
+  });
+
   it("says unsure when whose it is came in as nothing", () => {
     expect(handoffOf({ v: 1, turns: [{ mode: "dump", said: "a lot of thinking" }] }, ing)?.whose).toEqual({ shape: "solo", mine: false, sure: false });
   });

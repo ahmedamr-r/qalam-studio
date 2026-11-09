@@ -151,6 +151,13 @@ describe("keeping the screenshots an answer gave", () => {
     expect(map.screens).toHaveLength(1);
   });
 
+  it("keeps up to twenty screenshots at a time", async () => {
+    const many = await Promise.all(Array.from({ length: 21 }, (_, i) => shot(`Screen ${i + 1}.png`, { ...CART, lines: [...CART.lines, { text: `Row ${i + 1}`, box: [0.1, 0.9, 0.3, 0.03], conf: 0.95 }] })));
+    const kept = await keepShots(store, { shots: many, product: "grocery", about: "the basket", deps: { image: image(), seen } });
+    expect(kept.shots).toHaveLength(20);
+    expect(kept.shots.at(-1)?.title).toBe("Screen 20");
+  });
+
   it("names a flow for where it starts and where it ends when nothing was said about it", async () => {
     const [cart, address, pay] = [await shot("Basket.png", CART), await shot("Address.png", ADDRESS), await shot("Payment.png", PAY)];
     const kept = await keepShots(store, { shots: [cart, address, pay], product: "grocery", about: "", deps: { image: image(), seen } });

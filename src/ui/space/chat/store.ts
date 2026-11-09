@@ -64,6 +64,7 @@ import { loadMarket, useMarket } from "@/org/market";
 import { useSpaceView } from "@/space/view";
 import { keepScreens, notOurScreen, reviewScreens, useScreenReviews } from "@/org/screens";
 import type { KeptShots, ScreenReview } from "@/screens/types";
+import { bounded } from "@/space/bounded";
 import { screensProposals } from "@/screens/proposals";
 import { reviewLines, screenLines } from "@/screens/lines";
 import { rememberRound, withKnownAnswers } from "@/org/memory";
@@ -2121,12 +2122,19 @@ async function takeIn(at: string | null, said: string, docs: readonly TakeDoc[])
   const pages = new Map<string, FiledPage>();
   const shots: { asset: string; title: string }[] = [];
   let quotes = 0;
+  // Read three at a time (a held picture is read in the core: its words, then one look), each taken in the order given.
+  const reads = bounded(
+    parts.map((p) => p.ing),
+    3,
+  );
+  // One not reached when it stops says nothing.
+  for (const r of reads) r.catch(() => {});
   try {
-    for (const p of parts) {
+    for (const [i, p] of parts.entries()) {
       // One that can't be read or kept is said so, and the rest go on.
       let ing: Ingested;
       try {
-        ing = await p.ing();
+        ing = await reads[i];
       } catch (e) {
         if ((e as Error).name === "AbortError") throw e;
         left.push({ title: p.title, why: message(e) });

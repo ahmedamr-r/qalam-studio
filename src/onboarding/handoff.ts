@@ -28,7 +28,7 @@ export interface StartHandoff {
   images: HandedImage[];
 }
 
-export const HANDOFF_LIMITS = { docs: 20, images: 6, said: 100_000 } as const;
+export const HANDOFF_LIMITS = { docs: 20, images: 20, said: 100_000 } as const;
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 const str = (v: unknown, max: number) => (typeof v === "string" && v.length <= max ? v : null);
