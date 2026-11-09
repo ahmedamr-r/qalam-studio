@@ -124,7 +124,10 @@ describe("the one box", () => {
 
   it("says what stops a message", () => {
     expect(startProblem("", [], "ok")).toMatch(/Say what/);
-    expect(startProblem("", Array.from({ length: START_PICTURES + 1 }, (_, i) => ({ title: `${i}.png`, image: true as const })), "ok")).toMatch(/Up to/);
+    // Twenty pictures go, as many as the hand-over carries; twenty-one don't.
+    expect(START_PICTURES).toBe(20);
+    expect(startProblem("Find an opportunity", Array.from({ length: START_PICTURES }, (_, i) => ({ title: `${i}.png`, image: true as const })), "ok")).toBeNull();
+    expect(startProblem("", Array.from({ length: START_PICTURES + 1 }, (_, i) => ({ title: `${i}.png`, image: true as const })), "ok")).toBe("Up to 20 pictures at a time.");
     expect(startProblem("Basket", [{ title: "a.pdf" }], "none")).toMatch(/needs to be set up/);
     expect(startProblem("Basket", [], "none")).toBeNull();
   });

@@ -3,6 +3,7 @@ import type { OrgShape } from "@/org/words";
 import type { Situation } from "@/consult/situation";
 import { isAppLink, projectName, scanInput, type FirstRead } from "@/scan/input";
 import type { ScanTarget } from "@/scan/session";
+import { HANDOFF_LIMITS } from "./handoff";
 
 /*
  * The first run's one box (pure): what its words say to look at, whose it is, and what it becomes
@@ -58,8 +59,8 @@ export const moreLine = (path: StartPath) => `This is only a start. Add ${path =
 
 /** The longest an idea is read as one (the scan's own limit, `scanRequest`); longer is their thinking. */
 export const SCAN_MAX = 2000;
-/** Pictures in one message: each costs a call. */
-export const START_PICTURES = 6;
+/** Pictures in one message (each costs a call): as many as the hand-over to the new project carries, so the two never disagree. */
+export const START_PICTURES = HANDOFF_LIMITS.images;
 
 /** What the box knows of an attached doc before it's sent. */
 export interface BoxDoc {
