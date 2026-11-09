@@ -114,8 +114,8 @@ export async function consultNext(store: OrgStore, b: { said: string; outline: O
   const dropped: { why: string; item: unknown }[] = [];
   const hay = material.replace(/(^|\s)[a-z]\d+(?:-\d+)? ·/gm, "$1");
   // Nothing looked up before they've answered anything: the rules and fields stay as they are, so the cache holds.
-  // Asking to see the screen: only about a page or a step of something they run.
-  const screens = playbook === "page" && situation.stage !== "idea";
+  // Asking to see the screen: about anything they run, whichever playbook it is (a problem on a page, growing it, how it works), never an idea.
+  const screens = playbook !== "idea" && situation.stage !== "idea";
   const turn = sanitizeTurn(answer.data, checkOf(a, { who: "person", hay, terms: await store.getTerms(), kinds: answered ? kinds : [], decisions, tweak: planTweak, memory: known.ids, why: true, teach: level !== "seasoned", reflect: true, screens }), (why, item) => dropped.push({ why, item }));
   const raw = rec(answer.data);
   const theirs = answers.filter((x) => x.how === "own");
