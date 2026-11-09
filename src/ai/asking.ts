@@ -37,6 +37,7 @@ const LOOKUP_WORDS: Record<LookupKind, string> = {
   web: "web (what's published)",
   online: "online (what people say in public)",
   tools: "tools (their connected tools, such as their docs, team chat, support conversations and analytics, searched for what isn't in the project yet; they pick what's brought in, so ask for it only when the project lookup can't have it)",
+  scan: "scan (what people say in public about the product or idea they named: its app reviews and forum threads, read into problems with their quotes; it takes a few minutes, so it's offered to them once and nothing waits on it; ask for it only when what people complain about would change what you'd propose, with the product's or idea's name in their words as its query)",
 };
 
 /** The rules every asking call carries, worded for who answers. Stable, so they're cached as their own block. */
@@ -80,7 +81,7 @@ export function askingFields(who: AskWho, o: AskingOpts = {}): Record<string, un
     : {};
   const question = { ...item, properties: { ...item.properties, ...teach, after: arr(str("An id"), "The ids of the questions or lookups whose answers it waits on. [] when it can be asked now") }, required: [...item.required, ...Object.keys(teach), "after"] };
   const kinds = o.kinds ?? [];
-  const lookup = { id: str("Your id for it: l1, l2…"), kind: { type: "string", enum: [...kinds], description: `project: their own material · web: what's published${kinds.includes("tools") ? " · tools: their connected tools" : ""}` }, query: str("What to look up, in a few words"), ...(o.why ? { why: str("Why it's looked up rather than asked, in a line they'd read") } : {}) };
+  const lookup = { id: str("Your id for it: l1, l2…"), kind: { type: "string", enum: [...kinds], description: `project: their own material · web: what's published${kinds.includes("tools") ? " · tools: their connected tools" : ""}${kinds.includes("scan") ? " · scan: what people say online about what they named" : ""}` }, query: str("What to look up, in a few words"), ...(o.why ? { why: str("Why it's looked up rather than asked, in a line they'd read") } : {}) };
   return {
     questions: arr(question, "Every question you can ask now, then those waiting on something still open (with their after). [] when nothing is left to ask"),
     ...(kinds.length ? { lookups: arr(obj(lookup), "Facts to look up rather than ask. [] when none") } : {}),

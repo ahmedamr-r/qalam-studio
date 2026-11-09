@@ -57,8 +57,11 @@ export const theirWords = (s: Pick<AskingState, "rounds">): string =>
 const running = (l: Lookup) => l.state === "running";
 const forTurns = (l: Lookup) => l.waits !== "draft";
 
+/** What a turn waits for: a lookup it asked for, never a scan (nothing waits on one) or a look for the draft. */
+const turnBound = (l: Lookup) => typeof l.waits === "number";
+
 /** The lookups the next turn waits for. */
-export const waitedOn = (s: AskingState): Lookup[] => s.lookups.filter((l) => running(l) && forTurns(l) && (l.waits as number) <= s.turns);
+export const waitedOn = (s: AskingState): Lookup[] => s.lookups.filter((l) => running(l) && turnBound(l) && (l.waits as number) <= s.turns);
 
 export type AskNext = "ask" | "offer" | "wait" | "turn" | "end";
 
@@ -114,7 +117,9 @@ export function applyTurn(s: AskingState, t: AskTurn, o: { now: number; id: (pre
   const offerIt = !t.questions.length && quiet >= 2 && web.length > 0;
   // A look in their tools needs their picks before anything comes of it: put to them, never run by a turn.
   const tools = offerIt ? [] : t.lookups.filter((l) => l.kind === "tools");
-  const started: Lookup[] = t.lookups.filter((l) => l.kind !== "tools" && !(offerIt && l.kind === "web")).map((l) => ({ id: l.id, kind: l.kind, query: l.query, ...(l.why ? { why: l.why } : {}), waits: turn, state: "running", at: o.now }));
+  // A scan takes minutes: offered beside the rounds, once a conversation, and never run by a turn.
+  const scan = s.scan ? undefined : t.lookups.find((l) => l.kind === "scan");
+  const started: Lookup[] = t.lookups.filter((l) => l.kind !== "tools" && l.kind !== "scan" && !(offerIt && l.kind === "web")).map((l) => ({ id: l.id, kind: l.kind, query: l.query, ...(l.why ? { why: l.why } : {}), waits: turn, state: "running", at: o.now }));
   const lookups = [...s.lookups, ...started];
   // What waits on the look put to them waits with it.
   const busy = new Set([...lookups.filter(running).map((l) => l.id), ...tools.slice(0, 1).map((l) => l.id)]);
@@ -149,6 +154,7 @@ export function applyTurn(s: AskingState, t: AskTurn, o: { now: number; id: (pre
     understood: t.understood.length ? t.understood : s.understood,
     ...(t.open ? { open: t.open } : {}),
     ...(explained.length ? { explained } : {}),
+    ...(scan ? { scan: { id: scan.id, query: scan.query, ...(scan.why ? { why: scan.why } : {}) } } : {}),
     terms: withTerms(s.terms, t.terms, o.id),
     choices: withChoices(s.choices, t.choices, o.id),
     quiet: ask.length || known.length ? 0 : started.length || offerIt || tools.length ? quiet + 1 : quiet,
@@ -159,7 +165,7 @@ export function applyTurn(s: AskingState, t: AskTurn, o: { now: number; id: (pre
   delete next.offer;
   if (offerIt) next.offer = { id: web[0].id, query: web[0].query, ...(web[0].why ? { why: web[0].why } : {}) };
   else if (tools.length) next.offer = { id: tools[0].id, query: tools[0].query, kind: "tools", ...(tools[0].why ? { why: tools[0].why } : {}) };
-  const pending = lookups.some((l) => running(l) && forTurns(l));
+  const pending = lookups.some((l) => running(l) && turnBound(l));
   const unread = lookups.some((l) => l.state === "done" && l.read === undefined && forTurns(l));
   if (!ask.length && !held.length && !started.length && !offerIt && !tools.length && !pending && !unread && (t.done || !known.length)) next.end = { by: t.done ? "done" : "nothing-new", at: o.now };
   return next;
@@ -220,11 +226,27 @@ export const askInstead = (s: AskingState): AskingState => ({ ...s, offer: undef
 export function endNow(s: AskingState, now: number): AskingState {
   const cur = currentRound(s);
   const closed = cur ? closeRound(s, cur.form) : s;
-  return { ...closed, offer: undefined, end: { by: "stopped", at: now }, lookups: closed.lookups.map((l) => (running(l) && forTurns(l) ? { ...l, state: "stopped" } : l)) };
+  // A scan they said yes to goes on: it's its own job in the chat, and its problems are theirs either way.
+  return { ...closed, offer: undefined, end: { by: "stopped", at: now }, lookups: closed.lookups.map((l) => (running(l) && turnBound(l) ? { ...l, state: "stopped" } : l)) };
 }
 
+/** A scan reads on in the core, its job in the chat following it: the window finds it again after a reload. */
+const stale = (l: Lookup) => running(l) && l.kind !== "scan";
+
 /** Running lookups found stopped after a reload: nothing runs them any more. */
-export const loaded = (s: AskingState): AskingState => (s.lookups.some(running) ? { ...s, lookups: s.lookups.map((l) => (running(l) ? { ...l, state: "stopped" } : l)) } : s);
+export const loaded = (s: AskingState): AskingState => (s.lookups.some(stale) ? { ...s, lookups: s.lookups.map((l) => (stale(l) ? { ...l, state: "stopped" } : l)) } : s);
+
+/**
+ * Reading what people say online, as they answered the offer: yes starts it as a lookup nothing waits on
+ * (its job runs it, src/ui/space/chat/store.ts), and the next turn after it lands reads what it found;
+ * not now leaves it. Either way it's never offered again in this conversation.
+ */
+export function scanSaid(s: AskingState, yes: boolean, now: number): AskingState {
+  if (!s.scan || s.scan.said) return s;
+  const scan = { ...s.scan, said: yes ? ("yes" as const) : ("no" as const) };
+  if (!yes) return { ...s, scan };
+  return { ...s, scan, lookups: [...s.lookups.filter((l) => l.id !== scan.id), { id: scan.id, kind: "scan", query: scan.query, ...(scan.why ? { why: scan.why } : {}), waits: "later", state: "running", at: now }] };
+}
 
 /** "Something's off" about what was settled: a round of code's asks what, and the next turn reads it. */
 export const offPoint = (s: AskingState): AskingState =>

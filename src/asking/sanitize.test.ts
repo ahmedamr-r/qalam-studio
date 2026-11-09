@@ -134,3 +134,23 @@ describe("what a route is sent, and the rules every turn carries", () => {
     expect(call.system).toHaveLength(2);
   });
 });
+
+describe("a scan asked for in a turn", () => {
+  const said = "My delivery app Sallety loses orders at the basket.";
+  const scan = (query: string, id = "s1") => ({ id, kind: "scan", query, why: "What people complain about may show a cause you can't see." });
+  const kept = (lookups: unknown[], x: Partial<TurnCheck> = {}) => sanitizeTurn({ questions: [], lookups, done: false, understood: [] }, check({ said, kinds: ["project", "web", "scan"], why: true, ...x })).lookups.map((l) => l.query);
+
+  it("reads about what they named, once a turn, and only where this flow offers it", () => {
+    expect(kept([scan("Sallety")])).toEqual(["Sallety"]);
+    expect(kept([scan("Sallety"), scan("Sallety delivery app reviews", "s2")])).toEqual(["Sallety"]);
+    // Something they never named isn't read about.
+    expect(kept([scan("Talabat")])).toEqual([]);
+    expect(kept([scan("Sallety")], { kinds: ["project", "web"] })).toEqual([]);
+  });
+
+  it("isn't offered again once it was", () => {
+    const s = { ...emptyAsking(), scan: { id: "s1", query: "Sallety", said: "no" as const } };
+    expect(checkOf(askingIn(s, { said }), { who: "person", hay: "", terms, kinds: ["project", "web", "scan"] }).kinds).toEqual(["project", "web"]);
+    expect(askingBlock(askingIn(s, { said }))).toContain("They said not now to reading what people say online about “Sallety”");
+  });
+});

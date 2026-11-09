@@ -151,14 +151,14 @@ A scan takes a few minutes, and most of that is the last step: reading pages and
 
 | When | Question | What it changes |
 |---|---|---|
-| As it starts | How it took them: "You want a meal planner built around night shifts. Right?" | What the searches and the reader hear, from their correction or their yes |
 | As it starts (an idea) | "Who do you picture using this first?" | The same, plus who it's for later on |
 | As it starts | "Anything you've seen yourself that I should look for?" | The same, and it's kept as their own words |
 | Once it's found them | What it found people using, each one with a way to take it off | Its reviews aren't read into anything, and it isn't proposed again |
 
 - **Their words say where to look first, never what to find** (`focusWith`). Otherwise "nurses" gets only what agrees with them. What points elsewhere or speaks against it stays.
 - **Not asked twice:** "Work out what to build first" asks only what's left, and their answers join its own.
-- **Say it back:** one short call from their words alone, since there's nothing read yet. Its kinds of people are choices a person decides, never claims, and without numbers. With no engine, or nothing back in time, code asks the same questions in the open.
+- **Who first:** one short call from their words alone, since there's nothing read yet. Its kinds of people are choices a person decides, never claims, and without numbers. With no engine, or nothing back in time, code asks the same questions in the open.
+- **No confirmation:** it used to open on "You want … Right?", saying back how it took them. Testers read that as a question with nothing behind it, so it went (November 9): what they said is what they meant. A scan that starts with what they've said already (a consultant's conversation offering it) asks nothing.
 
 **Done when:** tests show an answer reaching the reader and a competitor taken off never read into anything, and a real scan answered mid-way comes out different from the same scan left alone.
 

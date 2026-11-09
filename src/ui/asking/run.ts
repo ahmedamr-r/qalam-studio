@@ -20,8 +20,8 @@ export interface AskingHost {
   set(fn: (s: AskingState) => AskingState): void;
   /** Qalam AI's turn, as the core kept it. */
   turn(s: AskingState, signal: AbortSignal): Promise<AskTurn>;
-  /** A fact looked up (each lookup has its own signal: it runs on while they answer). */
-  lookup(l: Lookup, signal: AbortSignal): Promise<{ lines?: FoundLine[]; look?: FocusLook }>;
+  /** A fact looked up (each lookup has its own signal: it runs on while they answer). `stopped`: they stopped it where it runs (a scan's job). */
+  lookup(l: Lookup, signal: AbortSignal): Promise<{ lines?: FoundLine[]; look?: FocusLook; stopped?: true }>;
   /** It ended and they said go, or nothing needed asking: the generation. */
   generate(s: AskingState, signal: AbortSignal): Promise<void>;
   /** What it's doing now, for the thread. */

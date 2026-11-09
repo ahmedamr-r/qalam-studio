@@ -3,7 +3,7 @@ import { checkFirst, setAside, startReview, useReview } from "../../discovery/re
 import { keptChallenges, useChallenges } from "../../discovery/challenges";
 import { planAhead, planLook, planPropose, planRoute, type ConsultTurn, type PlanAsk } from "@/org/plan";
 import { planOutline, planProposals } from "@/space/plan";
-import { answersOf, currentRound, decideChoice, decideTerm, dropCurrentRound, emptyAsking, foundOf, fromBuckets, fromPlanRounds, loaded, looksOf, startLookup, theirWords } from "@/asking/engine";
+import { answersOf, currentRound, decideChoice, decideTerm, dropCurrentRound, emptyAsking, foundOf, fromBuckets, fromPlanRounds, loaded, looksOf, scanSaid, startLookup, theirWords } from "@/asking/engine";
 import { capFor } from "@/consult/pace";
 import type { PlaybookId } from "@/consult/playbooks.gen";
 import { levelOf, nextPlaybook, pastBasics, simpler, type Level, type Situation } from "@/consult/situation";
@@ -67,7 +67,7 @@ import { rememberRound, withKnownAnswers } from "@/org/memory";
 import { onOrgChange } from "@/org/live";
 import { needsDb } from "@/org/needs";
 import { otherReading, requestOf, scanInput } from "@/scan/input";
-import type { ScanTarget } from "@/scan/session";
+import { peopleQuotes, type ScanTarget } from "@/scan/session";
 import { steerAnswers, steerRound, type ScanSaid } from "@/scan/steer";
 import { askedFromAnswers, briefRound, type BriefAsked, type BriefShape } from "@/discovery/brief";
 import { askBriefTurn, writeCardBrief } from "@/org/briefs";
@@ -424,7 +424,7 @@ async function followScan() {
   change((c) => withJob(c, open.id, (j) => (j.kind === "scan" ? { ...j, session } : j)));
   // They said it's theirs while it read: its reviews are its customers' words now that they're kept.
   if (session.state === "done" && open.job.mineSaid && !open.job.mine) await scanIsMine(open.id);
-  if (session.state === "done" && session.problems.length) openProblems();
+  if (session.state === "done" && session.problems.length && !open.job.lookup) openProblems();
 }
 
 /** The panel on the ranked problems (src/ui/home/Home.tsx hears this). */
@@ -465,7 +465,26 @@ export async function scanInNewProject(id: string) {
 /** Again, as it was read, and what they said still stands. */
 export function scanAgain(id: string) {
   const t = turnOf(id);
-  if (t?.job.kind === "scan") void scanIt(id, t.said, t.job.target, t.job.told);
+  if (t?.job.kind !== "scan") return;
+  if (t.job.lookup) return void lookupScanAgain(id, t.job, t.job.lookup);
+  void scanIt(id, t.said, t.job.target, t.job.told);
+}
+
+/** A conversation's scan asked again: the same look, still beside the same conversation, asking nothing. */
+async function lookupScanAgain(id: string, j: ScanJob, at: { turn: string; id: string }) {
+  const l = canvasPlan(at.turn)?.asking?.lookups.find((x) => x.id === at.id);
+  if (!l) return;
+  setCanvasPlan(at.turn, (x) => (x.asking ? { ...x, asking: startLookup(x.asking, { id: l.id, kind: "scan", query: l.query, ...(l.why ? { why: l.why } : {}), waits: "later" }, Date.now()) } : x));
+  change((c) => withJob(c, id, (x) => (x.kind === "scan" ? { kind: "scan", target: x.target, asked: Date.now(), ...(x.mine ? { mine: true as const } : {}), ...(x.told?.length ? { told: x.told } : {}), lookup: at } : x)));
+  startLookups(planHost(at.turn));
+  try {
+    const words = [turnOf(at.turn)?.said ?? "", ...(j.told ?? []).map((x) => x.answer)].join("\n");
+    const session = await startScan({ ...requestOf(j.target, words, typeof navigator === "undefined" ? "" : navigator.language), ...(j.told?.length ? { told: [...j.told] } : {}) });
+    change((c) => withJob(c, id, (x) => (x.kind === "scan" ? { ...x, session } : x)));
+    void followScan();
+  } catch (e) {
+    change((c) => withJob(c, id, (x) => (x.kind === "scan" ? { ...x, error: message(e) } : x)));
+  }
 }
 
 /** They say the product is theirs: its reviews are its customers' words, and what rests on them moves to "We know". */
@@ -975,6 +994,7 @@ export const planHost = (id: string): AskingHost => ({
   lookup: async (l, signal) => {
     if (l.kind === "tools") return toolsLookup(l, signal, { turn: id });
     if (l.kind === "project") return projectLookup(l);
+    if (l.kind === "scan") return scanLookup(l, signal, { turn: id });
     const look = await planLook({ ...planAsk(id)!, ...(l.query ? { query: l.query } : {}) }, undefined, signal);
     setCanvasPlan(id, (j) => ({ ...j, looks: [...j.looks, { ...look, after: (j.asking?.rounds.length ?? 0) - 1 }] }));
     return { look, lines: look.lines.map((x, i) => ({ ref: `${l.id}-${i + 1}`, text: x.text, from: x.url ? hostOf(x.url) : "a page", whose: "a page online", ...(x.url ? { url: x.url } : {}), ...(x.quote ? { quote: x.quote } : {}) })) };
@@ -1055,6 +1075,101 @@ export async function talkThrough(section: BusinessSection, org: string) {
   const whose = info?.shape === "solo" ? "solo" : info?.shape === "team" ? "team" : "unsure";
   const situation: Situation = known ? { ...known, layer: "business" } : { named: true, product: "", name: org, role: "", level: useYou.getState().fluency?.level ?? "some", stage: "unknown", theirs: "yes", whose, layer: "business" };
   consultOn(null, `Work out how ${org} works, starting with ${SECTION_LABEL[section].toLowerCase()}`, { playbook: "business", situation });
+}
+
+/**
+ * Reading what people say online, as a consultant's conversation offered it (src/asking/: a `scan`
+ * lookup nothing waits on): yes starts it as its own job in the chat, hearing what they've said so far,
+ * and the conversation goes on; what it finds goes back to the next turn. Not now leaves it.
+ */
+export async function readScan(id: string) {
+  const j = canvasPlan(id);
+  const offer = j?.asking?.scan;
+  if (!j?.asking || !offer || offer.said) return;
+  const target = scanTargetOf(offer.query, id, j);
+  if (!target) return skipScan(id);
+  // What they've said in their own words, the latest last: where the scan looks first.
+  const told = answersOf(j.asking)
+    .filter((a) => a.how === "own" && a.text)
+    .slice(-8)
+    .map((a) => ({ question: a.question, answer: a.text }));
+  const label = target.kind === "product" ? target.name || "the app" : `“${target.said}”`;
+  setCanvasPlan(id, (x) => (x.asking ? { ...x, asking: scanSaid(x.asking, true, Date.now()) } : x));
+  const scan = addTurn(`Read what people say online about ${label}`, { kind: "scan", target, asked: Date.now(), ...(target.kind === "product" && target.mine ? { mine: true as const } : {}), ...(told.length ? { told } : {}), lookup: { turn: id, id: offer.id } });
+  void saveNow();
+  startLookups(planHost(id));
+  try {
+    const words = [turnOf(id)?.said ?? "", ...told.map((x) => x.answer)].join("\n");
+    const session = await startScan({ ...requestOf(target, words, typeof navigator === "undefined" ? "" : navigator.language), ...(told.length ? { told } : {}) });
+    change((c) => withJob(c, scan, (x) => (x.kind === "scan" ? { ...x, session } : x)));
+    void followScan();
+  } catch (e) {
+    change((c) => withJob(c, scan, (x) => (x.kind === "scan" ? { ...x, error: message(e) } : x)));
+  }
+}
+
+export const skipScan = (id: string) => setCanvasPlan(id, (x) => (x.asking ? { ...x, asking: scanSaid(x.asking, false, Date.now()) } : x));
+
+/**
+ * What a conversation's scan reads about: the product they named (theirs when they said so, so its
+ * reviews are its customers' words), else the idea in their words. A name they never wrote is read as
+ * words about an idea, never as some app that happens to share it.
+ */
+function scanTargetOf(query: string, id: string, j: PlanJob): ScanTarget | null {
+  const sit = j.consult?.situation;
+  const mine = sit?.theirs === "yes";
+  const q = query.replace(/\s+/g, " ").trim();
+  if (sit?.product && q.toLowerCase().includes(sit.product.toLowerCase())) return { kind: "product", name: sit.product, ...(mine ? { mine: true } : {}) };
+  const t = scanInput(q);
+  if (t?.kind !== "product") return t;
+  const theirs = [turnOf(id)?.said ?? "", ...(j.asking ? answersOf(j.asking).filter((a) => a.how === "own").map((a) => a.text) : [])].join("\n").toLowerCase();
+  if (t.app || (t.name && theirs.includes(t.name.toLowerCase()))) return { ...t, ...(mine ? { mine: true } : {}) };
+  return { kind: "idea", said: q };
+}
+
+/** A conversation's scan, followed until it's read: the problems people raise and their words nearest it, for the next turn. */
+async function scanLookup(l: Pick<Lookup, "id" | "query">, signal: AbortSignal, o: { turn: string }): Promise<{ lines: FoundLine[]; stopped?: true }> {
+  const at = () => st().chat.turns.find((t) => t.job.kind === "scan" && t.job.lookup?.turn === o.turn && t.job.lookup.id === l.id);
+  const settled = () => {
+    const j = at()?.job;
+    return !j || j.kind !== "scan" || !!j.error || (!!j.session && j.session.state !== "reading");
+  };
+  await new Promise<void>((resolve) => {
+    if (settled() || signal.aborted) return resolve();
+    const off = useCanvasChat.subscribe(() => {
+      if (!settled()) return;
+      off();
+      resolve();
+    });
+    signal.addEventListener(
+      "abort",
+      () => {
+        off();
+        resolve();
+      },
+      { once: true },
+    );
+  });
+  const t = at();
+  if (signal.aborted) {
+    if (t) stopTurn(t.id);
+    throw new DOMException("Stopped", "AbortError");
+  }
+  const j = t?.job.kind === "scan" ? t.job : null;
+  const s = j?.session;
+  // Stopped where it reads (its own Stop): stopped here too, so nothing reads it as a failure.
+  if (s?.state === "stopped") return { lines: [], stopped: true };
+  if (!j || j.error || !s || s.state !== "done") throw new Error(j?.error ?? s?.error ?? "It stopped before it finished.");
+  const pages = s.problems.slice(0, 6).map((p, i): FoundLine => ({ ref: `${l.id}-${i + 1}`, text: p.title, from: "a problem page, from what people say online", whose: "people online" }));
+  // People's words nearest it, each saying whose they are: people online, or their customers (their own app's reviews are).
+  const near = await projectLookup({ id: l.id, query: l.query }).catch(() => ({ lines: [] as FoundLine[] }));
+  const quotes = near.lines
+    .filter((x) => x.whose === "people online" || x.whose === "people said")
+    .slice(0, 5)
+    .map((x, i) => ({ ...x, ref: `${l.id}-q${i + 1}` }));
+  const said = peopleQuotes(s.read);
+  const thin: FoundLine[] = s.thin ? [{ ref: `${l.id}-0`, text: `Little to go on: ${s.problems.length === 1 ? "1 problem" : `${s.problems.length} problems`} from ${said === 1 ? "1 quote" : `${said} quotes`}, not a pattern`, from: "what it read" }] : [];
+  return { lines: [...thin, ...pages, ...quotes] };
 }
 
 /** How much they know, loaded once this window works something out with them. */
@@ -1432,6 +1547,8 @@ export function showCanvasPlan(id: string) {
 
 /** After a reload: the proposals a plan waited on come back on the canvas. */
 export function resumePlans() {
+  // A scan a conversation asked for reads on in the core: its lookup follows its job again.
+  for (const t of st().chat.turns) if (t.job.kind === "plan" && t.job.asking?.lookups.some((l) => l.kind === "scan" && l.state === "running")) startLookups(planHost(t.id));
   if (useReview.getState().proposals.length) return;
   const t = [...st().chat.turns].reverse().find((x) => x.job.kind === "plan" && x.job.step === "review" && !!x.job.proposals?.length);
   if (t) showCanvasPlan(t.id);

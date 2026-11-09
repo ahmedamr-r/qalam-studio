@@ -235,6 +235,11 @@ export interface ScanJob {
   told?: ScanSaid[];
   /** From its problems to what to build first. */
   plan?: ScanPlan;
+  /**
+   * A look a consultant's conversation offered and they said yes to (src/asking/: a `scan` lookup): it
+   * reads beside the conversation, which goes on, and what it finds goes back there.
+   */
+  lookup?: { turn: string; id: string };
 }
 
 /** Where a brief stands: `asking` what it lacks, `writing`, then `ready` with which it is, a tile under its card. */
@@ -563,6 +568,8 @@ function consultReply(t: ChatTurn, j: PlanJob, c: ConsultState): ChatPart[] {
     out.push(...looks(i));
   });
   if (s?.lookups.some((l) => l.kind === "project" && l.state === "done" && l.lines?.length)) out.push(part("askFound", id));
+  // Reading what people say online, offered beside the rounds until they say yes or not now.
+  if (s?.scan && !s.scan.said && j.step !== "review" && j.step !== "placed" && j.step !== "failed") out.push(part("consultScan", id));
   switch (j.step) {
     case "looking":
     case "thinking":
@@ -724,7 +731,8 @@ export function asking(c: CanvasChat, dumpOf: DumpOf, first?: string | null): ({
 }
 
 // A goal's opening look runs here (the box offers Stop); the questions it works out are asked after.
-const scanBusy = (j: ScanJob) => (!j.error && !j.where && (!j.session || j.session.state === "reading")) || (!!j.plan && (j.plan.step === "questioning" || j.plan.step === "reading" || j.plan.step === "picking" || (!!j.plan.brief && briefWorking(j.plan.brief))));
+// A scan a conversation asked for reads beside it: the box stays theirs to answer in.
+const scanBusy = (j: ScanJob) => (!j.lookup && !j.error && !j.where && (!j.session || j.session.state === "reading")) || (!!j.plan && (j.plan.step === "questioning" || j.plan.step === "reading" || j.plan.step === "picking" || (!!j.plan.brief && briefWorking(j.plan.brief))));
 const busy = (j: ChatJob) => (j.kind === "scan" && scanBusy(j)) || (j.kind === "brief" && briefWorking(j.brief)) || (j.kind === "ask" && j.state === "asking") || (j.kind === "take" && j.state === "taking") || (j.kind === "find" && !!j.goal && !!j.loading) || (j.kind === "goalfor" && (j.step === "looking" || j.step === "suggesting")) || (j.kind === "plan" && (j.step === "looking" || j.step === "thinking" || j.step === "proposing")) || (j.kind === "draft" && (j.phase === "thinking" || j.phase === "looking" || j.phase === "drafting")) || (j.kind === "tools" && j.state === "looking");
 
 /** What in the chat is still running (the composer offers Stop). */

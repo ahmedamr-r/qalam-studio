@@ -1,3 +1,4 @@
+import { sharedWords } from "@/discovery/near";
 import { withoutIds } from "@/goals/said";
 import { holdWords, sameTopic, sameWords } from "@/hub/topics";
 import { termFor } from "@/terms/edit";
@@ -179,6 +180,9 @@ export function frontierOf(questions: readonly AskQuestion[]): { ask: AskQuestio
   return ask.length ? { ask, held } : { ask: [...held], held: [] };
 }
 
+/** A scan's query is a name or an idea in a few words, never a paragraph. */
+const SCAN_QUERY = 120;
+
 export function sanitizeTurn(raw: unknown, c: TurnCheck, dropped?: (why: string, item: unknown) => void): AskTurn {
   const r = rec(raw);
   const drop = (why: string, item: unknown) => void dropped?.(why, item);
@@ -206,6 +210,11 @@ export function sanitizeTurn(raw: unknown, c: TurnCheck, dropped?: (why: string,
     }
     if (kind === "tools" && lookups.some((l) => l.kind === "tools")) {
       drop("one look in their tools at a time", item);
+      continue;
+    }
+    // A scan reads what people say about what they named: its query is in their words, and one is enough.
+    if (kind === "scan" && (lookups.some((l) => l.kind === "scan") || query.length > SCAN_QUERY || sharedWords(query, c.said) < 1)) {
+      drop("a scan about something they didn't name", item);
       continue;
     }
     // Why it's looked up rather than asked, held to what was sent: a consultant says so, or doesn't look.

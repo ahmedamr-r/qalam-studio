@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import { ArrowUpRight, Check, ChevronDown, ChevronRight, Quote, RotateCcw, X } from "lucide-react";
 import { nanoid } from "nanoid";
+import { useThreadViewport } from "@assistant-ui/react";
 import { studio, useStudio } from "@/doc/store";
 import { assetURL } from "@/doc/assets";
 import { isOstCard } from "@/doc/board";
@@ -45,7 +46,7 @@ import { useCurrentOrg, useWords } from "../../frame/store";
 import { show } from "../links";
 import { FoundGoalRow } from "../../chat/FoundGoalRow";
 import { moreLine } from "@/onboarding/start";
-import { withFixes, answerWhose, goalForTopProblem, anotherFile, briefAgain, briefStart, changeDocBasis, chooseDraft, decideDocGoal, dropTurn, leaveFile, leaveFit, lookPastFits, openProblems, pickAudience, placeFirstBuild, placeStatement, planAgain, planFirst, planOf, planStart, retake, retryGoalFor, scanAgain, scanHere, scanInNewProject, scanIsMine, scanOtherWay, setPlanGoal, settleNumber, steerOff, stopTurn, takeAsBasis, takeFit, takeGoalNumber, takeIdea, turnOf, useCanvasChat, retryCanvasPlan, runAs, showCanvasPlan, stopAskingPlan, confirmCanvasPlan, offCanvasPlan, reproposeCanvasPlan, decidePlanTerm, confirmDraft, decideDraftTerm, draftGo, draftNow, offDraft, retryDraft, confirmBrief, offBrief, decideBriefTerm, confirmScan, offScan, decideScanTerm, decidePlanChoice, decideDraftChoice, decideBriefChoice, decideScanChoice } from "./store";
+import { readScan, skipScan, withFixes, answerWhose, goalForTopProblem, anotherFile, briefAgain, briefStart, changeDocBasis, chooseDraft, decideDocGoal, dropTurn, leaveFile, leaveFit, lookPastFits, openProblems, pickAudience, placeFirstBuild, placeStatement, planAgain, planFirst, planOf, planStart, retake, retryGoalFor, scanAgain, scanHere, scanInNewProject, scanIsMine, scanOtherWay, setPlanGoal, settleNumber, steerOff, stopTurn, takeAsBasis, takeFit, takeGoalNumber, takeIdea, turnOf, useCanvasChat, retryCanvasPlan, runAs, showCanvasPlan, stopAskingPlan, confirmCanvasPlan, offCanvasPlan, reproposeCanvasPlan, decidePlanTerm, confirmDraft, decideDraftTerm, draftGo, draftNow, offDraft, retryDraft, confirmBrief, offBrief, decideBriefTerm, confirmScan, offScan, decideScanTerm, decidePlanChoice, decideDraftChoice, decideBriefChoice, decideScanChoice } from "./store";
 import { AnsweredRound, FoundInProject, SettledCard } from "../../asking/AskRound";
 import { LookToolsPart, ToolsAgainPart, ToolsBroughtPart, ToolsFoundPart, ToolsLookingPart } from "./tools-parts";
 import { titleFrom } from "@/space/route";
@@ -640,6 +641,33 @@ function DraftNowPart({ data }: { data: PartData }) {
 function AskAnsweredPart({ data }: { data: PartData }) {
   const state = usePlanAsking(data.turn);
   return state && state.rounds[Number(data.round)] ? <AnsweredRound state={state} index={Number(data.round)} /> : null;
+}
+
+/** Reading what people say online, offered once beside the rounds: it reads on its own, and the conversation goes on. */
+function ConsultScanPart({ data }: { data: PartData }) {
+  const state = usePlanAsking(data.turn);
+  const offer = state?.scan;
+  if (!offer || offer.said) return null;
+  return (
+    <div className="q-sheet flex flex-col gap-[8px] rounded-xl p-[12px]">
+      <p className="text-body leading-[20px] text-fg" dir="auto">
+        Read what people say online about {offer.query}? It takes a few minutes, and you can keep answering.
+        {offer.why && (
+          <span className="block text-caption text-fg-muted" dir="auto">
+            {offer.why}
+          </span>
+        )}
+      </p>
+      <ReplyChips>
+        <button type="button" className={r.replyChipPrimary} onClick={() => void readScan(String(data.turn))}>
+          Read it
+        </button>
+        <button type="button" className={r.replyChip} onClick={() => skipScan(String(data.turn))}>
+          Not now
+        </button>
+      </ReplyChips>
+    </div>
+  );
 }
 
 /** Before a round that follows answers, a consultant's: what's settled so far and what's still open. */
@@ -1402,7 +1430,8 @@ function ScanningPart({ data }: { data: PartData }) {
   const t = useTurn(data.turn);
   if (t?.job.kind !== "scan") return null;
   const s = t.job.session;
-  const other = otherReading(t.job.target, t.said);
+  // A conversation's scan was worded by Qalam AI: there's no other way to read its words.
+  const other = t.job.lookup ? null : otherReading(t.job.target, t.said);
   const found = (s?.competitors ?? []).filter((c) => !isOff(s?.steer, c.name));
   const canTake = !!s && !s.read.length;
   return (
@@ -1439,8 +1468,8 @@ function ScanningPart({ data }: { data: PartData }) {
           </>
         )}
       </p>
-      {/* The questions sit where the box's Stop would be. */}
-      {t.job.ask?.step === "asking" && (
+      {/* The questions sit where the box's Stop would be; a conversation's scan leaves the box to the conversation. */}
+      {(t.job.ask?.step === "asking" || !!t.job.lookup) && (
         <button type="button" className="self-start text-caption text-fg-muted underline decoration-fg/20 underline-offset-2 hover:text-fg" onClick={() => stopTurn(t.id)}>
           Stop reading
         </button>
@@ -1594,6 +1623,16 @@ function KnownFold({ known }: { known: readonly ScanKnown[] }) {
   );
 }
 
+/** A conversation's scan, read: what it found goes to the conversation's next turn, whose round waits at the bottom. */
+function BackToConversation() {
+  const toBottom = useThreadViewport((v) => v.scrollToBottom);
+  return (
+    <button type="button" className={r.replyChipPrimary} onClick={() => toBottom()}>
+      Back to our conversation
+    </button>
+  );
+}
+
 function ScannedPart({ data }: { data: PartData }) {
   const t = useTurn(data.turn);
   if (t?.job.kind !== "scan" || !t.job.session) return null;
@@ -1633,21 +1672,26 @@ function ScannedPart({ data }: { data: PartData }) {
         </p>
       )}
       {s.noWeb && <p className="text-caption text-fg-subtle">There's no web search here, so I read only what I can reach directly.</p>}
-      <p className="text-caption text-fg-muted">{moreLine(job.mine ? "company" : "idea")}</p>
+      <p className="text-caption text-fg-muted">{job.lookup ? "What it found goes into our conversation with your next answer." : moreLine(job.mine ? "company" : "idea")}</p>
       <KnownFold known={s.known ?? []} />
       {!s.thin && s.problems.length > 0 && <ShareBlock job={job} />}
       <ReplyChips>
-        {!s.thin && !job.plan && (
-          <button type="button" className={r.replyChipPrimary} onClick={() => void planStart(t.id)}>
-            <QalamAIGlyph size={12} /> Work out what to build first
-          </button>
+        {job.lookup ? (
+          <BackToConversation />
+        ) : (
+          !s.thin &&
+          !job.plan && (
+            <button type="button" className={r.replyChipPrimary} onClick={() => void planStart(t.id)}>
+              <QalamAIGlyph size={12} /> Work out what to build first
+            </button>
+          )
         )}
         {(s.problems.length > 0 || already) && (
           <button type="button" className={s.thin || job.plan ? r.replyChipPrimary : r.replyChip} onClick={openProblems}>
             See them ranked
           </button>
         )}
-        {!s.thin && s.problems.length > 0 && (
+        {!s.thin && s.problems.length > 0 && !job.lookup && (
           <button type="button" className={r.replyChip} onClick={() => void goalForTopProblem()}>
             Find goals for a problem
           </button>
@@ -1998,6 +2042,7 @@ export const PARTS: Record<string, PartComponent> = {
   planSkip: PlanSkipPart,
   askAnswered: AskAnsweredPart,
   consultReflect: ConsultReflectPart,
+  consultScan: ConsultScanPart,
   consultNoted: ConsultNotedPart,
   askFound: AskFoundPart,
   askSettled: AskSettledPart,

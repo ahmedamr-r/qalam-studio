@@ -2,7 +2,7 @@ import { nanoid } from "nanoid";
 import { askTurnCall } from "@/ai/asking";
 import { consultFields, playbookBlock, situationCall } from "@/ai/consult";
 import { sanitizeTurn } from "@/asking/sanitize";
-import type { AskTurn } from "@/asking/types";
+import type { AskTurn, LookupKind } from "@/asking/types";
 import { askingBlock, checkOf, type AskingInT } from "@/asking/wire";
 import { noteLines } from "@/business/edit";
 import { sanitizeNotes } from "@/business/notes";
@@ -98,7 +98,9 @@ export async function consultNext(store: OrgStore, b: { said: string; outline: O
   const material = [base, known.block, askingBlock(a)].filter(Boolean).join("\n\n");
   const lab = await labOn();
   const decisions = lab === true || lab.includes("decisions");
-  const kinds = await lookupKinds(CONSULT_KINDS);
+  // Reading what people say online, once something's named to read about: offered once a conversation.
+  const scan = (situation.named || !!situation.product) && !a.scan;
+  const kinds: readonly LookupKind[] = [...(await lookupKinds(CONSULT_KINDS)), ...(scan ? (["scan"] as const) : [])];
   const call = askTurnCall({ flow: "consult", who: "person", material, kinds, terms: true, choices: decisions, teach: true, why: true, reflect: true, playbook: playbookBlock(playbook), extra: consultFields() });
   let answer: { data: unknown; model?: string };
   try {

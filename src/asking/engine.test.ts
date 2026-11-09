@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { answersOf, applyTurn, askInstead, awaitsConfirm, closeRound, currentRound, emptyAsking, endNow, forDraft, foundOf, fromPlanRounds, lookupLanded, markRead, nextAfter, offPoint, settledOf, startLookup, takePicks } from "./engine";
+import { answersOf, applyTurn, askInstead, awaitsConfirm, closeRound, currentRound, emptyAsking, endNow, forDraft, foundOf, fromPlanRounds, loaded, lookupLanded, markRead, nextAfter, offPoint, scanSaid, settledOf, startLookup, takePicks } from "./engine";
 import { askingIn } from "./wire";
 import type { AskQuestion, AskTurn, AskingState } from "./types";
 
@@ -162,5 +162,44 @@ describe("looks in the background before a draft", () => {
     const online = lookupLanded(bg(emptyAsking(), "bg-online", "online"), "bg-online", { lines: [{ ref: "bg-online-1", text: "The slots fill by noon", from: "App Store", whose: "people online", piece: "hub:quote:x1" }] });
     expect(foundOf(online).map((l) => l.piece)).toEqual(["hub:quote:x1"]);
     expect(askingIn(online, { said: "" }).lookups).toEqual([]);
+  });
+});
+
+describe("reading what people say online, offered once beside the rounds", () => {
+  const scanTurn = (x: Partial<AskTurn> = {}) => turn({ questions: [q("q2", "When did it start?")], lookups: [{ id: "l1", kind: "scan", query: "Sallety", why: "What people complain about may show a cause you can't see." }], ...x });
+
+  it("is offered, never run by a turn, and the round is asked beside it", () => {
+    const s = applyTurn(emptyAsking(), scanTurn(), o);
+    expect(s.scan).toEqual({ id: "l1", query: "Sallety", why: "What people complain about may show a cause you can't see." });
+    expect(s.lookups).toEqual([]);
+    expect(nextAfter(s)).toBe("ask");
+    expect(currentRound(s)?.questions.map((x) => x.id)).toEqual(["q2"]);
+  });
+
+  it("is offered once a conversation, whatever they said", () => {
+    const s = applyTurn(emptyAsking(), scanTurn(), o);
+    const again = applyTurn(send(s, { q2: { kind: "text", text: "Last month" } }), scanTurn({ questions: [q("q3", "What changed?")], lookups: [{ id: "l9", kind: "scan", query: "Sallety reviews" }] }), o);
+    expect(again.scan?.id).toBe("l1");
+    expect(scanSaid(scanSaid(again, false, 2), true, 3).lookups).toEqual([]);
+    expect(askingIn(scanSaid(again, false, 2), { said: "x" }).scan).toEqual({ query: "Sallety", said: "no" });
+  });
+
+  it("yes reads on while nothing waits, and what it found lands in the next turn before the end", () => {
+    const s0 = scanSaid(applyTurn(emptyAsking(), scanTurn(), o), true, 2);
+    expect(s0.lookups).toMatchObject([{ id: "l1", kind: "scan", waits: "later", state: "running" }]);
+    // Answered while it reads: the next turn doesn't wait for it, and the conversation can end around it.
+    const s1 = send(s0, { q2: { kind: "text", text: "Last month" } });
+    expect(nextAfter(s1)).toBe("turn");
+    // Stop asking and a reload leave it reading: it's its own job in the chat.
+    expect(endNow(s1, 3).lookups[0].state).toBe("running");
+    expect(loaded(s1).lookups[0].state).toBe("running");
+    const landed = lookupLanded(s1, "l1", { lines: [{ ref: "l1-1", text: "The delivery fee shows only at the basket", from: "a problem page", whose: "people online" }] });
+    // A turn with nothing new doesn't end while what it found is unread.
+    const after = applyTurn(landed, turn({ done: true }), o);
+    expect(after.end).toBeUndefined();
+    const read = markRead(after);
+    expect(read.lookups[0].read).toBe(after.turns + 1);
+    expect(askingIn(read, { said: "x" }).lookups[0]).toMatchObject({ kind: "scan", state: "done" });
+    expect(applyTurn(read, turn({ done: true }), o).end?.by).toBe("done");
   });
 });

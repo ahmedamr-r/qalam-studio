@@ -20,7 +20,8 @@ export type AskWho = "person" | "team" | "builder" | "designer";
  * (src/connectors/everywhere.ts, lab "everywhere"); it needs their picks, so a turn's is always put to
  * them first, and it lands with what they brought in.
  */
-export type LookupKind = "project" | "web" | "online" | "tools";
+/** `scan`: what people say online about what they named (src/scan/), offered to them first and run as its own job in the chat; nothing waits on it. */
+export type LookupKind = "project" | "web" | "online" | "tools" | "scan";
 
 /** A question as the engine keeps it. `after`: the questions or lookups whose answers it waits on. `by: "code"`: code's own. */
 export interface AskQuestion extends PlanQuestion {
@@ -69,8 +70,12 @@ export interface Lookup {
   query: string;
   /** Why it's looked up rather than asked, in a line, as the thread shows it. */
   why?: string;
-  /** The turn that asked for it: the next turn waits for it. "draft": only the generation waits (a look in the background). */
-  waits: number | "draft";
+  /**
+   * The turn that asked for it: the next turn waits for it. "draft": only the generation waits (a look in
+   * the background). "later": nothing waits (a scan they said yes to); what it found is read by the next
+   * turn after it lands.
+   */
+  waits: number | "draft" | "later";
   state: "running" | "done" | "failed" | "stopped";
   lines?: FoundLine[];
   /** A web look as it's kept and shown in the thread. */
@@ -127,6 +132,11 @@ export interface AskingState {
   quiet?: number;
   /** A lookup waiting for their go-ahead: a web lookup after quiet turns, or any look in their tools. */
   offer?: { id: string; query: string; kind?: "web" | "tools"; why?: string };
+  /**
+   * Reading what people say online about what they named, offered once beside the rounds: nothing waits
+   * on their answer, and once they've said (`said`), it's never offered again in this conversation.
+   */
+  scan?: { id: string; query: string; why?: string; said?: "yes" | "no" };
   /** They said to ask rather than look: the next turn asks or ends. */
   askFirst?: true;
   /** They saw what was settled and said go. */

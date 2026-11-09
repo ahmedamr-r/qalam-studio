@@ -26,7 +26,9 @@ export const AskingIn = z
   .object({
     /** `by`: code's own questions, or what they said before in another conversation, not asked now. */
     rounds: z.array(z.object({ by: z.enum(["code", "memory"]).optional(), asked: z.array(Answer) })),
-    lookups: z.array(z.object({ id: z.string().max(40), kind: z.enum(["project", "web", "tools"]), query: z.string().max(400), state: z.enum(["running", "done", "failed", "stopped"]), lines: z.array(Line) })),
+    lookups: z.array(z.object({ id: z.string().max(40), kind: z.enum(["project", "web", "tools", "scan"]), query: z.string().max(400), state: z.enum(["running", "done", "failed", "stopped"]), lines: z.array(Line) })),
+    /** Reading what people say online, offered once: still waiting on them, or what they said. */
+    scan: z.object({ query: z.string().max(400), said: z.enum(["offered", "yes", "no"]) }).optional(),
     held: z.array(z.object({ id: z.string().max(80), title: z.string().max(400), after: z.array(z.string().max(80)), later: z.boolean().optional() })),
     understood: z.array(z.string().max(400)),
     /** What the last turn said was still open (a consultant's turn). */
@@ -65,7 +67,7 @@ export function askingIn(s: AskingState, o: { said: string; terms?: Terms; memor
   const out: AskingInT = {
     rounds,
     lookups: s.lookups
-      .filter((l): l is Lookup & { kind: "project" | "web" | "tools" } => l.waits !== "draft" && l.kind !== "online")
+      .filter((l): l is Lookup & { kind: "project" | "web" | "tools" | "scan" } => l.waits !== "draft" && l.kind !== "online")
       .map((l) => ({ id: l.id, kind: l.kind, query: clip(one(l.query), 300), state: l.state, lines: (l.lines ?? []).slice(0, 8).map((x) => ({ ref: x.ref, text: clip(one(x.text), 600), from: clip(one(x.from), 200), ...(x.whose ? { whose: x.whose } : {}) })) })),
     held: s.held.map((q) => ({ id: q.id, title: clip(one(q.title), 300), after: q.after ?? [], ...(q.later ? { later: true } : {}) })),
     understood: s.understood.map((p) => clip(p.text, 300)),
@@ -75,6 +77,7 @@ export function askingIn(s: AskingState, o: { said: string; terms?: Terms; memor
     ...(o.terms ? { clashes: clashes(o.terms, said).slice(0, 8) } : {}),
     said: clip(said, 7000),
     ...(s.askFirst ? { askFirst: true } : {}),
+    ...(s.scan ? { scan: { query: clip(one(s.scan.query), 300), said: s.scan.said ?? "offered" } } : {}),
     ...(o.memory ? { memory: o.memory } : {}),
   };
   // Over the size: older answers shorter, then fewer lines a lookup, until it fits.
@@ -86,7 +89,7 @@ export function askingIn(s: AskingState, o: { said: string; terms?: Terms; memor
   return out;
 }
 
-const KIND_WORD: Record<LookupKind, string> = { project: "their project", web: "the web", online: "people online", tools: "their tools (what they brought in)" };
+const KIND_WORD: Record<LookupKind, string> = { project: "their project", web: "the web", online: "people online", tools: "their tools (what they brought in)", scan: "what people say online (problems people raise, and their quotes)" };
 
 const answerLine = (a: AskingInT["rounds"][number]["asked"][number]) =>
   `- ${a.id} · ${a.title} → ${
@@ -137,6 +140,8 @@ export function askingBlock(a: AskingInT): string {
   if (a.clashes?.length) out.push("", "Words they used that the project's words say to avoid (ask which they mean, unless it's plain):", ...a.clashes.map((x) => `- “${x.word}”: the project says “${x.term}”`));
   if (a.proposed.length) out.push("", `Terms offered already in this conversation (never again): ${a.proposed.map((t) => `“${t}”`).join(", ")}`);
   if (a.askFirst) out.push("", "They'd rather be asked than have more looked up: ask, or say done. No lookups this turn.");
+  if (a.scan?.said === "offered") out.push("", `Reading what people say online about “${a.scan.query}” is offered to them; they haven't said yet. Don't ask for it again.`);
+  if (a.scan?.said === "no") out.push("", `They said not now to reading what people say online about “${a.scan.query}”. Don't ask for it again.`);
   const streak = unknownStreak(a);
   if (streak >= DONT_KNOW_STREAK) out.push("", `They've said they don't know the last ${streak} things asked. Ask no more facts: only what they can decide, or say done. Where a fact matters, look it up or say how they could find out.`);
   return out.join("\n");
@@ -153,7 +158,8 @@ export function checkOf(a: AskingInT, o: Omit<TurnCheck, "asked" | "held" | "loo
     lookups: a.lookups.map((l) => ({ id: l.id, kind: l.kind, query: l.query })),
     said: a.said,
     proposed: a.proposed,
-    kinds: a.askFirst ? [] : o.kinds,
+    // A scan is offered once a conversation.
+    kinds: a.askFirst ? [] : o.kinds.filter((k) => k !== "scan" || !a.scan),
     ...(a.explained?.length ? { explained: a.explained } : {}),
   };
 }

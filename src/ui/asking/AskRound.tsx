@@ -19,7 +19,7 @@ import type { FlowState } from "../ai/questionFlow";
 
 const ICON = { absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 
-const WHERE = { project: "in your project", web: "on the web", online: "at what people say online", tools: "in your tools" } as const;
+const WHERE = { project: "in your project", web: "on the web", online: "at what people say online", tools: "in your tools", scan: "at what people say online" } as const;
 
 /** The lookups running for the next turn, each with Stop: what waited on one is asked again without it. A look in the background only the draft waits on says so. */
 export function Waiting({ lookups, onStop }: { lookups: readonly Lookup[]; onStop: (id: string) => void }) {
@@ -31,8 +31,8 @@ export function Waiting({ lookups, onStop }: { lookups: readonly Lookup[]; onSto
         <div key={l.id} className={clsx(r.chatStatus, "flex items-center gap-[6px] text-fg-muted")}>
           <Spinner size={12} />
           <span className="min-w-0 flex-1 truncate" title={l.why}>
-            Looking {WHERE[l.kind]}
-            {l.why ? `: ${l.why.replace(/^\p{Lu}/u, (c) => c.toLowerCase())}` : l.kind === "tools" ? ` for “${l.query}”: tick what to bring in, in the chat` : l.waits === "draft" ? " on it, for the draft" : `${l.query ? ` for “${l.query}”` : " for what people do about this"} while you answer`}
+            {l.kind === "scan" ? `Reading what people say online about ${l.query} while you answer` : <>Looking {WHERE[l.kind]}</>}
+            {l.kind === "scan" ? null : l.why ? `: ${l.why.replace(/^\p{Lu}/u, (c) => c.toLowerCase())}` : l.kind === "tools" ? ` for “${l.query}”: tick what to bring in, in the chat` : l.waits === "draft" ? " on it, for the draft" : `${l.query ? ` for “${l.query}”` : " for what people do about this"} while you answer`}
           </span>
           <IconBtn size="sm" label="Stop this lookup" onClick={() => onStop(l.id)}>
             <X size={12} {...ICON} />

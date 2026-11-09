@@ -242,16 +242,17 @@ describe("a scan", () => {
     expect(vi.mocked(d.capture).mock.calls[0][2].focus).toContain("Night nurses");
   });
 
-  it("works out the questions from their words alone, and asks code's own when it can't", async () => {
-    const answer = { understood: "You want a meal planner for shift workers.", who: ["Nurses", "Drivers"] };
-    const ask = vi.fn(async () => ({ data: answer }));
+  it("works out who an idea is for from their words alone, asks code's own when it can't, and asks no model about a product", async () => {
+    const ask = vi.fn(async () => ({ data: { who: ["Nurses", "Drivers"] } }));
     const q = await steerQuestions({ target: idea.target }, new AbortController().signal, { structured: ask as never });
-    expect(q.map((x) => x.id)).toEqual(["meant", "who", "seen"]);
-    expect(q[0].title).toBe("You want a meal planner for shift workers. Right?");
-    expect(q[1].options.map((o) => o.label)).toEqual(["Nurses", "Drivers"]);
+    expect(q.map((x) => x.id)).toEqual(["who", "seen"]);
+    expect(q[0].options.map((o) => o.label)).toEqual(["Nurses", "Drivers"]);
     const failed = await steerQuestions({ target: idea.target }, new AbortController().signal, { structured: (async () => { throw new Error("No engine"); }) as never });
-    expect(failed[0].title).toBe(`You want to build: ${idea.target.said}. Right?`);
-    expect(failed[1].options).toEqual([]);
+    expect(failed.map((x) => x.id)).toEqual(["who", "seen"]);
+    expect(failed[0].options).toEqual([]);
+    const none = vi.fn();
+    expect((await steerQuestions({ target: { kind: "product", name: "Beamer" } }, new AbortController().signal, { structured: none as never })).map((x) => x.id)).toEqual(["seen"]);
+    expect(none).not.toHaveBeenCalled();
   });
 
   it("never reads Reddit, says so, and keeps no usernames", async () => {

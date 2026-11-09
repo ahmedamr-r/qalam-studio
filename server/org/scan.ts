@@ -103,10 +103,11 @@ export async function readFirstAnswer(said: string, signal: AbortSignal, deps: P
 export const namesSomething = async (said: string, signal: AbortSignal, deps: Pick<ScanDeps, "structured"> = liveDeps): Promise<boolean> => (await readFirstAnswer(said, signal, deps)).named;
 
 export async function steerQuestions(req: Pick<ScanRequest, "target">, signal: AbortSignal, deps: Pick<ScanDeps, "structured"> = liveDeps): Promise<PlanQuestion[]> {
-  const about = req.target.kind === "idea" ? req.target.said : req.target.name;
+  // Only an idea is asked who it's for first; a product's one question is code's own.
+  const about = req.target.kind === "idea" ? req.target.said : "";
   if (!about) return steerRound(req.target);
   try {
-    const { data } = await deps.structured<unknown>(steerCall(about, req.target.kind), AbortSignal.any([signal, AbortSignal.timeout(SCAN_LIMITS.askMs)]));
+    const { data } = await deps.structured<unknown>(steerCall(about), AbortSignal.any([signal, AbortSignal.timeout(SCAN_LIMITS.askMs)]));
     return sanitizeSteer(data, req.target);
   } catch (e) {
     if (signal.aborted) throw e;
