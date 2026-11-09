@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import type { Lookup } from "@/asking/types";
 import { loadScreenReview, useScreenReviews } from "@/org/screens";
 import type { ScreenFinding, ScreenReview } from "@/screens/types";
@@ -8,7 +8,7 @@ import { QalamAIGlyph } from "../../brand/ai-glyph";
 import { Spinner } from "../../controls";
 import { r } from "../../recipes";
 import { Shot } from "../../seen/Shot";
-import { lookAtScreensAgain, useCanvasChat } from "./store";
+import { lookAtScreensAgain, putScreensOnCanvas, useCanvasChat } from "./store";
 
 /** A plan turn's interview, followed as the chat changes. */
 const usePlanAsking = (turn: unknown) =>
@@ -79,6 +79,43 @@ function Finding({ f, n }: { f: ScreenFinding; n: number }) {
   );
 }
 
+/** The findings onto the canvas: each a problem resting on its screen, its change a solution under it, reviewed there; what's decided already said in a line. */
+function OnCanvas({ review }: { review: ScreenReview }) {
+  const [busy, setBusy] = useState(false);
+  const decided = Object.values(review.decided ?? {});
+  const taken = decided.filter((d) => d === "accepted").length;
+  const left = decided.filter((d) => d === "discarded").length;
+  const open = review.findings.filter((f) => !review.decided?.[f.key]).length;
+  return (
+    <div className="flex flex-wrap items-center gap-[8px]">
+      {open > 0 && (
+        <button
+          type="button"
+          disabled={busy}
+          className={r.replyChipPrimary}
+          onClick={() => {
+            setBusy(true);
+            void putScreensOnCanvas(review.id).finally(() => setBusy(false));
+          }}
+        >
+          {busy ? (
+            <>
+              <Spinner size={12} /> Checking them against your evidence
+            </>
+          ) : (
+            "Put on the canvas"
+          )}
+        </button>
+      )}
+      {(taken > 0 || left > 0) && (
+        <span className="text-caption text-fg-muted">
+          {[taken ? `${taken} on the canvas` : "", left ? `${left} left out` : ""].filter(Boolean).join(" · ")}
+        </span>
+      )}
+    </div>
+  );
+}
+
 /** The screenshots a round gave, looked at for the problem. */
 export function ScreenReviewPart({ data }: { data: PartData }) {
   const state = usePlanAsking(data.turn);
@@ -138,6 +175,7 @@ export function ScreenReviewPart({ data }: { data: PartData }) {
             </ol>
           )}
           {review.unread && <p className="text-micro text-fg-subtle">Nothing printed on them could be read on this computer, so nothing&apos;s marked or quoted.</p>}
+          {review.findings.length > 0 && <OnCanvas review={review} />}
           {review.left.length > 0 && (
             <details className="q-fold text-caption text-fg-muted">
               <summary className="cursor-pointer list-none hover:text-fg [&::-webkit-details-marker]:hidden">Left out ({review.left.length})</summary>

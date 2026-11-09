@@ -105,6 +105,21 @@ export async function keepShots(store: OrgStore, o: { shots: readonly ShownShot[
   return { map, ...(flow ? { flow } : {}), shots: out };
 }
 
+/** A finding taken onto the canvas or left out, kept on its look (null: no such look or finding). */
+export async function decideFinding(store: OrgStore, id: string, key: string, decision: "accepted" | "discarded", o: { tab?: string } = {}): Promise<ScreenReview | null> {
+  let found = false;
+  const next = await store.changeScreenReview(
+    id,
+    (r) => {
+      if (!r || !r.findings.some((f) => f.key === key)) return r;
+      found = true;
+      return { ...r, decided: { ...r.decided, [key]: decision } };
+    },
+    o,
+  );
+  return found ? next : null;
+}
+
 // ---------------------------------------------------------------------------
 // The review: what on the screens bears on the problem they're working out
 
@@ -167,7 +182,10 @@ export async function reviewShots(
   const call = screensCall({ intro: m.intro, screens: m.screens.map((s, i) => ({ head: s.head, words: s.words, image: images.find((x) => x.hash === screens[i].shot)?.image ?? null })) });
   const { data, model } = await d.call(call, o.signal);
   if (o.signal?.aborted) throw new DOMException("Stopped", "AbortError");
-  const kept = sanitizeScreenReview(data, { screens, sent: m.sent, also: m.also });
+  const checked = sanitizeScreenReview(data, { screens, sent: m.sent, also: m.also });
+  // One they left out on the canvas before isn't raised again from the same screenshot.
+  const dropped = new Set((await store.listScreenReviews()).flatMap((r) => Object.entries(r.decided ?? {}).flatMap(([k, d]) => (d === "discarded" ? [k] : []))));
+  const kept = { ...checked, findings: checked.findings.filter((f) => !dropped.has(f.key)), left: [...checked.left, ...checked.findings.filter((f) => dropped.has(f.key)).map((f) => ({ what: f.title, why: "You left it out on the canvas before" }))] };
   await store
     .putTrace({ id: nanoid(10), projectId: "screens", kind: "screen-review", at: Date.now(), ...(model ? { model } : {}), focus: base.focus, screens: screens.map((s) => ({ id: s.id, name: s.name, read: !!s.read })), answer: data, kept: kept.findings.map((f) => ({ title: f.title, side: f.side, on: f.on?.words, change: f.change?.does })), dropped: kept.left } as { id: string; projectId: string })
     .catch(() => {});

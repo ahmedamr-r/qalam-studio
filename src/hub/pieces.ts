@@ -172,7 +172,7 @@ type Node = { parentId?: string | null; meta?: { ost?: OstCard } };
 /** A point that isn't people's words, as a line says what it is. */
 const POINT_WHAT: Record<Basis, string> = { said: "A quote", measured: "A measured finding", studied: "A finding from a study", read: "Something read elsewhere", own: "The team's thinking" };
 
-const EVIDENCE_WHAT: Record<OstEvidence["kind"], string> = { answer: "The team's answer", note: "A note", quote: "A quote", dump: "The team's words from a brain dump", read: "Something read online" };
+const EVIDENCE_WHAT: Record<OstEvidence["kind"], string> = { answer: "The team's answer", note: "A note", quote: "A quote", dump: "The team's words from a brain dump", read: "Something read online", screen: "What Qalam AI saw on their screen" };
 
 /** A card's words: its title, what it means, and its number or test. */
 function cardText(c: OstCard): string {

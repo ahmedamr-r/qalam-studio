@@ -10,7 +10,8 @@ import type { OutsidePage } from "@/goals/outside";
 import { isEvidence, isOnline, sameTopic } from "@/hub/topics";
 import { pageLines, pagesBlock, type PagesSent } from "@/market/rivals";
 import type { MarketLine } from "@/market/types";
-import { planAnswers, planAskMaterial, planMaterial, planRound, planTask, planTweak, sanitizePlan, sanitizeRoute, type OutlineCard, type PlanAnswer, type PlanDraft, type PlanKept, type PlanLook, type PlanPiece, type PlanRound } from "@/space/plan";
+import { planAnswers, planAskMaterial, planMaterial, planRound, planTask, planTweak, sanitizePlan, sanitizeRoute, type OutlineCard, type PlanAnswer, type PlanDraft, type PlanKept, type PlanLook, type PlanPiece, type PlanRound, type PlanSeen } from "@/space/plan";
+import type { ScreenReview } from "@/screens/types";
 import { termsFold } from "@/terms/fold";
 import { indexFor } from "../index/registry";
 import { labOn } from "../lab";
@@ -44,6 +45,8 @@ export interface PlanBody {
   /** Worked out with a consultant (server/org/consult.ts): who's asking, how much they know, the playbook in use. */
   mode?: "consult";
   consult?: ConsultIn;
+  /** What a look at their screens found that isn't on the canvas (by review and finding: the core reads them from the looks kept). */
+  seen?: { review: string; key: string }[];
 }
 
 /** What proposing reads as answers: the interview's, else a plan's rounds from before. */
@@ -173,7 +176,8 @@ async function piecesFor(store: OrgStore, outline: readonly OutlineCard[], found
 export async function proposePlan(store: OrgStore, b: PlanBody, emit: (label: string) => void, signal: AbortSignal, deps: Pick<MarketDeps, "structured"> = realDeps): Promise<PlanDraft> {
   emit("Reading what's behind your problems");
   const pieces = await piecesFor(store, b.outline, b.found);
-  const m = planMaterial({ org: store.info.name, about: await aboutLine(store), said: b.said, outline: b.outline, answers: answersFor(b), looks: b.looks, pieces, company: await companyContext(store, { near: b.said }), ...(b.kept?.length ? { kept: b.kept } : {}) });
+  const seen = b.seen?.length ? await seenFor(store, b.seen) : [];
+  const m = planMaterial({ org: store.info.name, about: await aboutLine(store), said: b.said, outline: b.outline, answers: answersFor(b), looks: b.looks, pieces, company: await companyContext(store, { near: b.said }), ...(b.kept?.length ? { kept: b.kept } : {}), ...(seen.length ? { seen } : {}) });
   // Worked out with a consultant: what its playbook proposes (a diagnosis, or goals), and fixes only when they asked.
   const playbook = b.mode === "consult" ? PLAYBOOKS.find((p) => p.id === (b.consult?.playbook ?? b.consult?.situation?.layer)) : undefined;
   const shape = b.mode === "consult" ? (playbook && playbook.propose !== "review" ? playbook.propose : "diagnosis") : "plan";
@@ -215,5 +219,26 @@ export function planBodyOf(raw: unknown): PlanBody | null {
     return line ? [{ line, from: list(k.from).slice(0, 4).map((f) => clip(f, 400)).filter(Boolean) }] : [];
   });
   const consult = b.mode === "consult" ? { mode: "consult" as const, consult: consultInOf(b.consult, said) } : {};
-  return { said, outline, rounds, looks, ...(asking?.success ? { asking: asking.data } : {}), ...(found.length ? { found } : {}), ...(kept.length ? { kept } : {}), ...consult };
+  const seen = list(b.seen).slice(0, 24).flatMap((x) => {
+    const s = rec(x);
+    const review = clip(s.review, 40);
+    const key = clip(s.key, 240);
+    return /^[A-Za-z0-9_-]{6,40}$/.test(review) && key ? [{ review, key }] : [];
+  });
+  return { said, outline, rounds, looks, ...(asking?.success ? { asking: asking.data } : {}), ...(found.length ? { found } : {}), ...(kept.length ? { kept } : {}), ...consult, ...(seen.length ? { seen } : {}) };
+}
+
+/** What a look at their screens found that a proposal may rest on, read from the looks kept: their words are the look's, never the window's. */
+async function seenFor(store: OrgStore, refs: readonly { review: string; key: string }[]): Promise<PlanSeen[]> {
+  const out: PlanSeen[] = [];
+  const reviews = new Map<string, ScreenReview | null>();
+  for (const { review, key } of refs) {
+    if (!reviews.has(review)) reviews.set(review, await store.getScreenReview(review).catch(() => null));
+    const r = reviews.get(review);
+    const f = r?.findings.find((x) => x.key === key);
+    if (!r || !f || r.decided?.[key]) continue;
+    const source = r.shots.find((s) => s.asset === f.shot)?.source;
+    out.push({ review, key, title: f.title, why: f.why, name: f.name, shot: f.shot, ...(source ? { source } : {}), ...(f.on ? { on: f.on.words, box: f.on.box } : {}) });
+  }
+  return out;
 }

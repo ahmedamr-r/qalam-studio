@@ -26,7 +26,7 @@ import type { SpaceThing } from "./compose";
  * links, never deletes or rewords: nothing lands until it's accepted.
  */
 
-export const PLAN_LIMITS = { query: 200, said: 4000, outline: 80, words: 40, pieces: 30, goals: 3, problems: 6, solutionsPer: 3, modules: 8, cards: 24, assumptions: 3, title: 100, description: 420, why: 240, how: 120, assumption: 240, what: 120, testHow: 360, pass: 240, doubt: 240, metric: 80 } as const;
+export const PLAN_LIMITS = { query: 200, said: 4000, outline: 80, words: 40, pieces: 30, seen: 16, goals: 3, problems: 6, solutionsPer: 3, modules: 8, cards: 24, assumptions: 3, title: 100, description: 420, why: 240, how: 120, assumption: 240, what: 120, testHow: 360, pass: 240, doubt: 240, metric: 80 } as const;
 
 /** A card on the canvas as a plan is told about it. `topic`: a problem's page; `faint`: only a page so far. */
 export interface OutlineCard {
@@ -161,6 +161,22 @@ export interface PlanSent {
   /** Qalam AI's recommendations they agreed to with one press (p…): agreement, never their words. */
   picks?: Map<string, { question: string; answer: string }>;
   read: Map<string, { text: string; url?: string; title?: string; quote?: string }>;
+  /** What Qalam AI saw on their screens (v…): its own reading, never anyone's words. */
+  seen?: Map<string, PlanSeen>;
+}
+
+/** A finding of a look at their screens, not on the canvas yet (server/org/screens.ts): what a cause seen there may rest on. */
+export interface PlanSeen {
+  review: string;
+  key: string;
+  title: string;
+  why: string;
+  /** The screen it's on, the screenshot's asset hash, its source, and the printed words it points at and where. */
+  name: string;
+  shot: string;
+  source?: string;
+  on?: string;
+  box?: [number, number, number, number];
 }
 
 /** An answer as proposing reads it: their own, Qalam AI's pick they agreed to, "I don't know", or left. */
@@ -185,7 +201,7 @@ export interface PlanKept {
  * kept. Each has its id but the last, which is context: its words and numbers may be used, its pieces
  * are among the words behind the problems.
  */
-export function planMaterial(o: { org: string; about?: string; said: string; outline: readonly OutlineCard[]; answers: readonly PlanAnswer[]; looks: readonly PlanLook[]; pieces: readonly PlanPiece[]; company?: string; kept?: readonly PlanKept[] }): PlanSent {
+export function planMaterial(o: { org: string; about?: string; said: string; outline: readonly OutlineCard[]; answers: readonly PlanAnswer[]; looks: readonly PlanLook[]; pieces: readonly PlanPiece[]; company?: string; kept?: readonly PlanKept[]; seen?: readonly PlanSeen[] }): PlanSent {
   const cards = new Map<string, OutlineCard>();
   const ids = new Map<string, string>();
   o.outline.slice(0, PLAN_LIMITS.outline).forEach((c, i) => {
@@ -201,6 +217,7 @@ export function planMaterial(o: { org: string; about?: string; said: string; out
   const ordered = [...o.pieces.filter((p) => p.evidence), ...o.pieces.filter((p) => !p.evidence)].filter((p) => !p.card || ids.has(p.card)).slice(0, PLAN_LIMITS.pieces);
   ordered.forEach((p, i) => pieces.set(`q${i + 1}`, p));
   const read = new Map(o.looks.flatMap((l) => l.lines).map((l, i) => [`w${i + 1}`, { text: l.text, ...(l.url ? { url: l.url } : {}), ...(l.title ? { title: l.title } : {}), ...(l.quote ? { quote: l.quote } : {}) }]));
+  const seen = new Map((o.seen ?? []).slice(0, PLAN_LIMITS.seen).map((s, i) => [`v${i + 1}`, s]));
   const body = [
     `What they asked: “${one(o.said)}”`,
     "",
@@ -218,6 +235,7 @@ export function planMaterial(o: { org: string; about?: string; said: string; out
     "",
     "What was read on the web (id · the line · the page). Others' words, never evidence about these customers:",
     ...(read.size ? [...read].map(([id, l]) => `- ${id} · ${one(l.text)}${l.quote ? ` “${one(l.quote)}”` : ""}${l.url ? ` · ${hostOf(l.url)}` : ""}`) : ["(nothing)"]),
+    ...(seen.size ? ["", "What you saw on their own screens (id · the screen · what). Your reading of their screens, never anyone's words: a cause seen there may rest on it:", ...[...seen].map(([id, s]) => `- ${id} · ${one(s.name)} · ${one(s.title)}. ${one(s.why)}`)] : []),
     ...(o.kept?.length
       ? [
           "",
@@ -230,9 +248,12 @@ export function planMaterial(o: { org: string; about?: string; said: string; out
   const unknown = notKnown.length ? ["They said they don't know these. Don't assume an answer; where it matters, say how they could find out:", ...notKnown.map((q) => `- ${q}`)].join("\n") : "";
   const text = [body, left, unknown, o.company?.trim()].filter(Boolean).join("\n\n");
   // What words and numbers may come from: the material without its ids, and without the picks (agreement, not their words).
-  const hay = body.replace(/\nYour recommendations they agreed to[^\n]*\n(?:- p\d+ ·[^\n]*\n?)*/u, "\n").replace(/(^|\s)[acqw]\d+ ·/gm, "$1");
-  return { text, hay, cards, pieces, answers, picks, read };
+  const hay = body.replace(/\nYour recommendations they agreed to[^\n]*\n(?:- p\d+ ·[^\n]*\n?)*/u, "\n").replace(/(^|\s)[acqwv]\d+ ·/gm, "$1");
+  return { text, hay, cards, pieces, answers, picks, read, ...(seen.size ? { seen } : {}) };
 }
+
+/** Where a card nothing backs came from, when it was only seen on their screens: that, rather than Qalam AI's idea. */
+const seenOr = (c: { came?: Came }, seen: boolean): { came?: Came } => (seen && c.came === "idea" ? { came: "seen" } : c);
 
 /** A card a plan proposes, as code kept it. */
 export interface PlanCard {
@@ -256,6 +277,8 @@ export interface PlanCard {
   answers: { question: string; answer: string }[];
   /** What was read online that it draws on. */
   read: { text: string; url?: string; title?: string }[];
+  /** What was seen on their screens that it rests on (Qalam AI's reading, the screen as its evidence). */
+  seen?: PlanSeen[];
   /** The other problems it helps: on the canvas, or in this draft (`ref`). */
   helps: (OstHelpTarget | { ref: string; title: string })[];
   assumptions: { id: string; category: AssumptionCategory; text: string; importance: 1 | 2 | 3 }[];
@@ -410,6 +433,7 @@ export function sanitizePlan(raw: unknown, m: PlanSent, o: { id: () => string; f
     const pieces = refs.flatMap((c) => m.pieces.get(c) ?? []);
     const answers = refs.flatMap((c) => m.answers.get(c) ?? []);
     const read = refs.flatMap((c) => m.read.get(c) ?? []);
+    const seen = refs.flatMap((c) => m.seen?.get(c) ?? []);
     const own = answers.map(() => ({ evidence: false, basis: "own" as Basis }));
     // Qalam AI's picks they agreed to: never their words, so a card resting only on them is Assumed.
     const picked = refs.some((c) => m.picks?.has(c));
@@ -451,12 +475,13 @@ export function sanitizePlan(raw: unknown, m: PlanSent, o: { id: () => string; f
       ...(type && r.kind === "solution" && !module ? { type } : {}),
       ...(how ? { how } : {}),
       ...(needed ? { needed: true as const } : {}),
-      // A part the product needs claims nothing, so there's nothing to say about where it came from.
-      ...(needed ? {} : cameFrom([...pieces, ...own], read.length > 0, false, picked)),
+      // A part the product needs claims nothing, so there's nothing to say about where it came from; one only seen on their screens says so.
+      ...(needed ? {} : seenOr(cameFrom([...pieces, ...own], read.length > 0, false, picked), seen.length > 0)),
       ...(metricName ? { metric: { name: metricName, target: word(metric.target) && Number.isFinite(target) && numbers.has(target) ? target : null } } : {}),
       quotes: [...new Set(pieces.map((p) => p.ref))],
       answers,
       read: read.map((l) => ({ text: l.text, ...(l.url ? { url: l.url } : {}), ...(l.title ? { title: l.title } : {}) })),
+      ...(seen.length ? { seen } : {}),
       helps: [],
       assumptions,
       ...(what && testHow && riskiest ? { test: { assumption: named.get(Number(word(t.assumption))) ?? riskiest.id, what, how: testHow, suggested: pass } } : {}),
@@ -571,6 +596,8 @@ export function planProposals(d: PlanDraft, ctx: { doc: Doc; things: ReadonlyMap
     const words = [
       ...c.answers.map((a) => evidenceId(ctx, ctx.now, { kind: "answer", text: a.answer, answerId: `plan:${a.question}` })),
       ...c.read.map((l) => evidenceId(ctx, ctx.now, { kind: "read", text: l.text, ...(l.url ? { url: l.url } : {}), ...(l.title ? { sourceTitle: l.title } : {}) })),
+      // What was seen on their screens: the screen itself, marked where it is (no one's words).
+      ...(c.seen ?? []).map((s) => evidenceId(ctx, ctx.now, { kind: "screen", text: s.on ?? s.title, ...(s.source ? { sourceId: s.source } : {}), sourceTitle: s.name, shot: { asset: `asset:${s.shot}`, name: s.name, ...(s.box ? { box: s.box } : {}), review: s.review, finding: s.key } })),
     ];
     const quotes = c.quotes.flatMap((r) => d.quotes[r] ?? []);
     out.push({ id: `${c.kind === "solution" ? "sol" : "plan"}:${c.ref}`, kind: "card", cardId, parentId, card, backing: { quotes, words }, why: c.why || c.description });

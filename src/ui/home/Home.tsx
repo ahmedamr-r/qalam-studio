@@ -28,6 +28,7 @@ import { show as showCard } from "../space/links";
 import { PanelPageProvider, closePage, usePanelMove, usePanelPage } from "../space/page";
 import { useMoves } from "../nav";
 import { SpaceConflictBanner } from "../space/ConflictBanner";
+import { ShotZoom } from "../seen/Shot";
 import { r } from "../recipes";
 import { CompanySection } from "../org/CompanySection";
 import { NeedsALook } from "../org/NeedsALook";
@@ -253,6 +254,8 @@ export default function Home({ product: productId = null }: { product?: string |
           {inputs && empty && !proposing && !working && !drawing && <EmptyMap space={space} />}
           {!chatOpen && <ChatPill />}
           <SpaceConflictBanner />
+          {/* A screenshot opened big with its marks, from the chat or a card's evidence. */}
+          <ShotZoom />
           <SectionButtons buttons={buttons} open={covered ? null : section} onPick={pickSection}>
             <EngineNotice />
           </SectionButtons>

@@ -12,7 +12,7 @@ import type { DesignHandoff, ServesLink } from "./types";
  * project's Knowledge hub is seeded from it, so critiques judge the screens against the need.
  */
 
-const SOURCE = { answer: "the builder's interview", note: "a team note", quote: "a source", dump: "the builder's brain dump" } as const;
+const SOURCE = { answer: "the builder's interview", note: "a team note", quote: "a source", dump: "the builder's brain dump", screen: "what Qalam AI saw on the builder's screen" } as const;
 const metricLine = (m: NonNullable<ReturnType<typeof cardOf>>["metric"]) =>
   m?.name ? `${m.name}${m.baseline !== null && m.target !== null ? `, ${m.baseline} → ${m.target}${m.unit ? ` ${m.unit}` : ""}` : ""}${m.timeframe ? ` ${m.timeframe}` : ""}` : "";
 

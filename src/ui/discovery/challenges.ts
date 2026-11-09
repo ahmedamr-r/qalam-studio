@@ -28,11 +28,12 @@ export interface ChallengeUI {
 export const useChallenges = create<ChallengeUI>(() => ({ key: null, run: null, checking: false, open: false }));
 
 /** A review's origin, as far as its check is keyed. */
-export type CheckedOrigin = { kind: string; turn?: string; sourceId?: string; topic?: string | null; goal?: string };
+export type CheckedOrigin = { kind: string; turn?: string; sourceId?: string; topic?: string | null; goal?: string; review?: string };
 
-/** Which review a check is for: plan mode's, a brain dump's, or a card's draft (null: one that isn't checked). */
+/** Which review a check is for: plan mode's, a brain dump's, a card's draft, or a look at their screens (null: one that isn't checked). */
 export function checkKey(origin: CheckedOrigin, proposals: readonly Proposal[]): string | null {
   if (origin.kind === "plan" && origin.turn) return `plan:${origin.turn}`;
+  if (origin.kind === "screens" && origin.review) return `screens:${origin.review}`;
   if (origin.kind === "dump" && origin.sourceId) return `dump:${origin.sourceId}`;
   if ((origin.kind === "problems" || origin.kind === "breakdown") && origin.goal) return `${origin.kind}:${origin.goal}`;
   if (origin.kind === "solutions") {

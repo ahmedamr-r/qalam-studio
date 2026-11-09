@@ -31,7 +31,7 @@ import { isBasis } from "@/discovery/basis";
 import { captureSource, changeBasis, decideFoundGoal, fileSources, readAsOwn, splitSetupSource } from "../capture";
 import { readPdfPictures } from "../pictures";
 import { IMAGE_MAX, readImage, type ImageInput } from "../image";
-import { KEEP_MAX, keepShots, reviewShots } from "./screens";
+import { KEEP_MAX, decideFinding, keepShots, reviewShots } from "./screens";
 import { imageFrom } from "@/discovery/ingest/image";
 import { MAX_FILE, type Ingested } from "@/discovery/ingest/core";
 import type { Proposal } from "@/discovery/proposals";
@@ -880,10 +880,24 @@ export function orgRoutes(): Hono<Env> {
     const tab = tabOf(c.req.raw.headers);
     return streamed(c.req.raw.signal, (emit, signal) => keepShots(store, { shots, product, about, emit, signal, ...(tab ? { tab } : {}) }));
   });
+  /** The looks with something found on one screenshot (`shot`: the asset's hash), the latest first. */
+  r.get("/api/org/:org/screens/reviews", async (c) => {
+    const shot = c.req.query("shot") ?? "";
+    if (!/^[0-9a-f]{24}$/.test(shot)) return bad("Which screenshot?");
+    const reviews = (await c.get("store").listScreenReviews()).filter((r) => r.findings.some((f) => f.shot === shot)).slice(0, 3);
+    return c.json({ reviews });
+  });
   /** One look at screenshots, as it's kept (hub/seen/reviews). */
   r.get("/api/org/:org/screens/reviews/:id", async (c) => {
     const review = await c.get("store").getScreenReview(c.req.param("id"));
     return review ? c.json({ review }) : c.json({ error: "not_found", message: "No such look" }, 404);
+  });
+  /** A finding of a look taken onto the canvas or left out (`{key, decision}`). */
+  r.put("/api/org/:org/screens/reviews/:id/findings", async (c) => {
+    const b = (await c.req.json().catch(() => null)) as { key?: unknown; decision?: unknown } | null;
+    if (typeof b?.key !== "string" || (b.decision !== "accepted" && b.decision !== "discarded")) return bad("Which finding, and what was decided?");
+    const review = await decideFinding(c.get("store"), c.req.param("id"), b.key, b.decision, { tab: tabOf(c.req.raw.headers) });
+    return review ? c.json({ review }) : c.json({ error: "not_found", message: "No such finding" }, 404);
   });
   /**
    * The same screenshots kept, then looked at for the problem they're working out (`focus`: what they said,

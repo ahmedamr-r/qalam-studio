@@ -57,7 +57,7 @@ Propose what the request calls for, as a list of cards, each with:
 - how: for a solution or a module, a few words on how it's done, naming the kind of tool it needs (SMS, through a tool like Twilio). Empty otherwise.
 - needed: "yes" only for a module nobody asked for that its product can't run without (login, billing). "no" otherwise.
 - helps: the other problems (c…, n…) this solution helps besides the one it's under, across goals too. [] when none. Don't stretch it: only where it really does.
-- cites: the ids of what it rests on: words behind a problem (q…), their answers (a…), what was read online (w…). Leave it empty when nothing does; don't stretch a quote to fit. The card will say it's an idea to check, and that's fine.
+- cites: the ids of what it rests on: words behind a problem (q…), their answers (a…), what was read online (w…), what you saw on their screens (v…). Leave it empty when nothing does; don't stretch a quote to fit. The card will say it's an idea to check, and that's fine.
 - metric: for a goal, what to measure (name) and a target only if they said one. Both empty otherwise.
 - assumptions: for a solution, 1 to 3 things that must be true for it to work, riskiest first, with category (desirability · usability · feasibility · viability · ethical) and importance (3: it fails without it, 2: it matters, 1: it helps). [] for anything else, and for a module unless it's the riskiest part.
 - test: for the card to start with and the riskiest solutions, one way to find out cheaply and this week whether its riskiest assumption holds: assumption (its number in your list, from "1"), what (a short title), how (one or two sentences), pass (what would count). All empty otherwise.
@@ -84,7 +84,7 @@ Propose, as a list of cards:
 - They asked for fixes too: under the likeliest one or two problems, one solution each, of any kind (${SOLUTION_TYPE_HINT}), with how it's done, its riskiest assumptions and a test of the riskiest.` : `
 - No solutions: they come once a check shows a cause is real.`}
 
-Each card has: ref (n1, n2…); kind; under (a card on the canvas, c…, or one you propose, n…; empty for a goal on its own); title (at most 10 words); description (one or two sentences); why (one sentence: why it's likely, for them); cites (what it rests on: their answers a…, words behind a problem q…, what was read online w…; empty when nothing does); metric for a goal (what to measure, and a target only if they said one); check for a problem (empty for anything else).${fixes ? " For a solution: type, how, assumptions (1 to 3, riskiest first, with category and importance) and a test of the riskiest." : " type is none, how empty, needed no, helps [], assumptions [] and test empty for every card."}
+Each card has: ref (n1, n2…); kind; under (a card on the canvas, c…, or one you propose, n…; empty for a goal on its own); title (at most 10 words); description (one or two sentences); why (one sentence: why it's likely, for them); cites (what it rests on: their answers a…, words behind a problem q…, what was read online w…, what you saw on their screens v…; empty when nothing does); metric for a goal (what to measure, and a target only if they said one); check for a problem (empty for anything else).${fixes ? " For a solution: type, how, assumptions (1 to 3, riskiest first, with category and importance) and a test of the riskiest." : " type is none, how empty, needed no, helps [], assumptions [] and test empty for every card."}
 
 Then start: the ref of the problem whose check to run first; and doubt: one sentence on what you doubt most, in plain words.
 
@@ -114,7 +114,7 @@ export function planSchema(m: Pick<PlanSent, "cards">, o: { shape?: PlanShape; f
         how: str("For a solution or module: how it's done, naming the kind of tool. Empty otherwise"),
         needed: enm(["yes", "no"], "yes only for a module nobody asked for that its product can't run without"),
         helps: arr(str("A problem's id: c… or n…"), "The other problems it helps besides the one it's under. [] when none"),
-        cites: arr(str("An id it rests on: q…, a…, w…"), "What it rests on, best first. [] when nothing does"),
+        cites: arr(str("An id it rests on: q…, a…, w…, v…"), "What it rests on, best first. [] when nothing does"),
         metric: obj({ name: str("For a goal: what to measure. Empty otherwise"), target: str("Only a number they said. Empty otherwise") }),
         assumptions: arr(
           obj({

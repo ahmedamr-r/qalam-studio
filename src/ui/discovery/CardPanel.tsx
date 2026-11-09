@@ -6,7 +6,8 @@ import { noticesDb, onNoticesWritten, type LinkedCard } from "@/org/notices";
 import { useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import clsx from "clsx";
-import { ExternalLink, PenLine, Plus, Quote, X } from "lucide-react";
+import { ExternalLink, Image as ImageIcon, PenLine, Plus, Quote, X } from "lucide-react";
+import { Shot } from "../seen/Shot";
 import { studio, useStudio } from "@/doc/store";
 import { newId } from "@/doc/factory";
 import { isOstCard } from "@/doc/board";
@@ -342,7 +343,7 @@ function WorkSection({ id, card }: { id: string; card: OstCard }) {
   );
 }
 
-const CAME_HINT: Record<NonNullable<OstCard["came"]>, string> = { answers: "from your answers", read: "from what it read online", picks: "from its own recommendations, which you agreed to", idea: "as its own idea" };
+const CAME_HINT: Record<NonNullable<OstCard["came"]>, string> = { answers: "from your answers", read: "from what it read online", picks: "from its own recommendations, which you agreed to", idea: "as its own idea", seen: "from what it saw on your screens" };
 
 const NOT_SET = "none";
 const SOLUTION_TYPE_OPTIONS = [{ value: NOT_SET, label: "Not set" }, ...SOLUTION_TYPES.map((t) => ({ value: t, label: SOLUTION_TYPE_LABEL[t] }))] as { value: SolutionType | typeof NOT_SET; label: string }[];
@@ -413,9 +414,9 @@ function AlsoHelpsSection({ id, card }: { id: string; card: OstCard }) {
   );
 }
 
-const SOURCE: Record<OstEvidence["kind"], string> = { answer: "From your answers", note: "Your note", quote: "Quote", dump: "From your brain dump", read: "Read online" };
+const SOURCE: Record<OstEvidence["kind"], string> = { answer: "From your answers", note: "Your note", quote: "Quote", dump: "From your brain dump", read: "Read online", screen: "Seen on your screen" };
 /** Whose words a row is when no one is named: the team's own, by kind. */
-const SHORT: Record<OstEvidence["kind"], string> = { answer: "Your answer", note: "Your note", quote: "Quote", dump: "Brain dump", read: "Read online" };
+const SHORT: Record<OstEvidence["kind"], string> = { answer: "Your answer", note: "Your note", quote: "Quote", dump: "Brain dump", read: "Read online", screen: "Your screen" };
 /** A source's title up to its first comma or bracket ("Support tickets, week of Oct 6": "Support tickets"), for a row's narrow label. */
 const shortTitle = (title: string) => title.split(/\s*[,(]/)[0].trim() || title;
 const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
@@ -477,8 +478,8 @@ function EvidenceSection({ id, card }: { id: string; card: OstCard }) {
 function EvidenceRow({ id, e }: { id: string; e: OstEvidence }) {
   const [open, setOpen] = useState(false);
   const against = e.stance === "against";
-  const who = e.kind === "quote" ? (e.speaker ?? (e.sourceTitle ? shortTitle(e.sourceTitle) : SHORT.quote)) : e.kind === "read" && e.sourceTitle ? shortTitle(e.sourceTitle) : e.answerId?.startsWith("ask:") ? SHORT.answer : SHORT[e.kind];
-  const Mark = e.kind === "quote" ? Quote : PenLine;
+  const who = e.kind === "quote" ? (e.speaker ?? (e.sourceTitle ? shortTitle(e.sourceTitle) : SHORT.quote)) : e.kind === "read" && e.sourceTitle ? shortTitle(e.sourceTitle) : e.kind === "screen" && e.shot ? shortTitle(e.shot.name) : e.answerId?.startsWith("ask:") ? SHORT.answer : SHORT[e.kind];
+  const Mark = e.kind === "quote" ? Quote : e.kind === "screen" ? ImageIcon : PenLine;
   return (
     <li className="flex flex-col">
       <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} className="q-item flex h-[28px] w-full items-center gap-[6px] rounded-md px-[6px] text-left hover:bg-hover aria-expanded:bg-hover">
@@ -493,6 +494,8 @@ function EvidenceRow({ id, e }: { id: string; e: OstEvidence }) {
       </button>
       {open && (
         <figure className="mx-[6px] mt-[2px] mb-[6px] flex flex-col gap-[6px] rounded-md bg-muted px-[10px] py-[8px]">
+          {/* What Qalam AI saw on their screen: the screenshot, marked where it is; a click opens it big. */}
+          {e.kind === "screen" && e.shot && <Shot shot={e.shot.asset} label={e.shot.name} w={88} marks={e.shot.box ? [{ box: e.shot.box }] : []} />}
           <blockquote className="text-caption leading-[18px] text-fg" dir="auto">
             {e.text}
           </blockquote>

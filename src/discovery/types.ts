@@ -43,9 +43,13 @@ export interface OstEvidence {
    * answer: the builder's own words answering Qalam AI (the interview, or its questions about a
    * brain dump) · note: written by hand · quote: from a source (documents, pages) · dump: the
    * builder's own words in a brain dump (theirs, not their customers') · read: a line read on the web
-   * while working something out, with the page it's on: never a source, never evidence.
+   * while working something out, with the page it's on: never a source, never evidence · screen: what
+   * Qalam AI saw on their own screenshot (server/org/screens.ts), the picture and where on it: it shows,
+   * and wires the screen into the lane, but it's no one's words and never makes a card known.
    */
-  kind: "answer" | "note" | "quote" | "dump" | "read";
+  kind: "answer" | "note" | "quote" | "dump" | "read" | "screen";
+  /** A screen's (`kind: "screen"`): the screenshot, its screen's name, where on it (0..1, from the top left), and the look and finding it came from. */
+  shot?: { asset: string; name: string; box?: [number, number, number, number]; review?: string; finding?: string };
   /** The words themselves: what the source says, never the model's rewording of it. */
   text: string;
   /** The question the words answer (an interview's, or `dump:<sourceId>:<question>` for a brain dump's). */
@@ -151,8 +155,8 @@ export interface OstHelp {
  * their answers, what was read online, or Qalam AI's own idea. Evidence is better when there is some,
  * but it isn't asked for: a card with none says so instead (./evidence.ts).
  */
-/** Where a card nothing backs came from: their answers, what was read online, Qalam AI's recommendations they agreed to with one press (`picks`), or Qalam AI's idea. */
-export type Came = "answers" | "read" | "picks" | "idea";
+/** Where a card nothing backs came from: their answers, what was read online, Qalam AI's recommendations they agreed to with one press (`picks`), Qalam AI's idea, or what it saw on their screens (`seen`). */
+export type Came = "answers" | "read" | "picks" | "idea" | "seen";
 
 export interface OstCard {
   v: 1;

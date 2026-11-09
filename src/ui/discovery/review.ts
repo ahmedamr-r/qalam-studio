@@ -22,6 +22,7 @@ import type { DumpCounts } from "@/discovery/dump";
 import { recordAccepted, recordDiscarded } from "../decisions/recorder";
 import { orgFetch } from "@/org/client";
 import { decidePart, decideProblem } from "@/org/goal-work";
+import { decideFinding } from "@/org/screens";
 import { goalsNow, loadGoals } from "@/goals/client";
 import type { Relation } from "@/goals/math";
 import { childrenOf } from "@/goals/tree";
@@ -55,7 +56,9 @@ export type ReviewOrigin =
   /** The problems behind a goal Qalam AI drafted (kept in the goal's work file), as problems under its card. */
   | { kind: "problems"; goal: string }
   /** What a plan in the canvas's chat proposes (kept on its turn). */
-  | { kind: "plan"; turn: string };
+  | { kind: "plan"; turn: string }
+  /** What Qalam AI found on their screens (a look in hub/seen/reviews): each finding a problem, its change a solution under it. */
+  | { kind: "screens"; review: string };
 
 export interface ReviewUI {
   origin: ReviewOrigin | null;
@@ -246,6 +249,7 @@ const WAITS: Record<ReviewOrigin["kind"], string> = {
   breakdown: "Accept or discard the goals proposed under it first",
   problems: "Accept or discard the drafted problems first",
   plan: "Accept or discard what the plan proposes first",
+  screens: "Accept or discard what Qalam AI found on your screens first",
 };
 
 /** What the review that's open waits for, in words (null: none is open). A draft asks before it calls Qalam AI. */
@@ -345,6 +349,7 @@ function fromOf(origin: ReviewOrigin | null, list: Proposal[]): string {
   if (origin?.kind === "breakdown") return "the goals proposed under it";
   if (origin?.kind === "problems") return "the drafted problems";
   if (origin?.kind === "plan") return "the plan";
+  if (origin?.kind === "screens") return "Qalam AI's look at your screens";
   const ids = new Set(list.flatMap((p) => (p.kind === "attach" || p.kind === "against" ? [p.quote.sourceId] : p.kind === "card" ? p.backing.quotes.map((q) => q.sourceId) : [])));
   const titles = [...ids].map((id) => sourceOf(id)?.title).filter((t): t is string => !!t);
   if (!titles.length) return "your sources";
@@ -354,6 +359,8 @@ function fromOf(origin: ReviewOrigin | null, list: Proposal[]): string {
 /** Drafts taken or left: a problem's page remembers its solutions' (`sol:<draft>`), a goal's work file its problems' (`prob:<draft>`). */
 function decided(origin: ReviewOrigin | null, list: Proposal[], decision: "accepted" | "discarded") {
   if (origin?.kind === "problems") for (const p of list) if (p.id.startsWith("prob:")) void decideProblem(origin.goal, p.id.slice(5), decision).catch(() => {});
+  // A finding on their screens taken or left: its look remembers (one left isn't raised again from the same screenshot).
+  if (origin?.kind === "screens") for (const p of list) if (p.id.startsWith("screen:")) void decideFinding(origin.review, p.id.slice(7), decision).catch(() => {});
   if (origin?.kind !== "solutions" || !origin.topic) return;
   for (const p of list) if (p.id.startsWith("sol:")) void orgFetch(`/topics/${encodeURIComponent(origin.topic)}/solutions/${encodeURIComponent(p.id.slice(4))}`, { method: "PUT", json: { decision } }).catch(() => {});
 }

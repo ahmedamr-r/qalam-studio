@@ -17,8 +17,11 @@ export type EvidenceTier = "customer" | "answers" | "note" | "none";
 /** The evidence that backs a card (not the words against it). */
 export const backing = (card: Pick<OstCard, "evidence">): OstEvidence[] => card.evidence.filter((e) => e.stance !== "against");
 
-/** What backs a card from its own customers and team (not people online, nor what's read elsewhere). */
-const ownBacking = (card: Pick<OstCard, "evidence">): OstEvidence[] => backing(card).filter((e) => evidenceBasis(e) !== "read");
+/** What backs a card from its own customers and team (not people online, nor what's read elsewhere, nor what Qalam AI saw on a screen). */
+const ownBacking = (card: Pick<OstCard, "evidence">): OstEvidence[] => backing(card).filter((e) => evidenceBasis(e) !== "read" && e.kind !== "screen");
+
+/** How many of their screens a card was seen on (Qalam AI's look at them): it shows, and on its own leaves a card Assumed. */
+export const seenCount = (card: Pick<OstCard, "evidence">) => new Set(backing(card).flatMap((e) => (e.kind === "screen" ? [e.shot?.asset ?? e.id] : []))).size;
 
 /** What in that can reach "We know": what's said, measured or studied. */
 const knownBacking = (card: Pick<OstCard, "evidence">): OstEvidence[] => ownBacking(card).filter((e) => reachesKnow(evidenceBasis(e)));
@@ -108,7 +111,7 @@ export function evidenceRows(card: Pick<OstCard, "evidence">): OstEvidence[] {
 }
 
 /** How a card with nothing behind it says where it came from. */
-export const CAME_WORDS: Record<Came, string> = { answers: "your answers", read: "read online", picks: "Qalam AI's picks", idea: "Qalam AI's idea" };
+export const CAME_WORDS: Record<Came, string> = { answers: "your answers", read: "read online", picks: "Qalam AI's picks", idea: "Qalam AI's idea", seen: "seen on your screens" };
 
 /**
  * A card that nothing of its own backs yet (dashed on the board): an opportunity Qalam AI drafted, as
@@ -131,8 +134,10 @@ export function evidenceLabel(card: Pick<OstCard, "kind" | "createdBy" | "eviden
   const posts = online ? ` · ${online} ${online === 1 ? "post" : "posts"} online` : "";
   const read = readCount(card);
   const reads = read ? ` · ${read} read elsewhere` : "";
-  if (card.came && isAssumed(card)) return `Assumed · ${CAME_WORDS[card.came]}${posts}${card.came === "read" ? "" : reads}${tail}`;
-  if (isAssumed(card)) return against || online || read ? `Assumed${posts}${reads}${tail}` : "Assumed · needs evidence";
+  const seen = seenCount(card);
+  const shown = seen ? ` · seen on ${seen === 1 ? "your screen" : `${seen} of your screens`}` : "";
+  if (card.came && isAssumed(card)) return `Assumed · ${card.came === "seen" && seen > 1 ? `seen on ${seen} of your screens` : CAME_WORDS[card.came]}${posts}${card.came === "read" ? "" : reads}${tail}`;
+  if (isAssumed(card)) return against || online || read || seen ? `Assumed${shown}${posts}${reads}${tail}` : "Assumed · needs evidence";
   if (isAIIdea(card)) return `Qalam AI idea${tail}`;
   const n = (k: OstEvidence["kind"]) => ownBacking(card).filter((e) => e.kind === k).length;
   const known = evidenceSummary(card);

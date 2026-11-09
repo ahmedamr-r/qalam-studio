@@ -1,4 +1,4 @@
-import type { Canvas, CanvasKit, MaskFilter, Paint, Paragraph, Path } from "canvaskit-wasm";
+import type { Canvas, CanvasKit, Image, MaskFilter, Paint, Paragraph, Path } from "canvaskit-wasm";
 import { brandOn, logoFor } from "@/connectors/logos";
 import { iconDrawing } from "@/design-system/icons";
 import { litByHelps, type Lane, type LaneItem } from "@/discovery/lane";
@@ -41,6 +41,8 @@ export class LanePainter {
   private paths = new Map<string, Path | null>();
   private brands = new Map<string, string | null>();
   private pal: OstPalette = OST_PALETTE.dark;
+  /** A picture by its address, once it's loaded (the renderer's cache; it draws again when one lands). */
+  images: ((src: string) => Image | null) | null = null;
 
   constructor(private ck: CanvasKit) {
     this.fill = new ck.Paint();
@@ -234,6 +236,16 @@ export class LanePainter {
     this.shadow.setMaskFilter(null);
     this.fill.setColor(this.col(p.card));
     canvas.drawRRect(tile, this.fill);
+    // A screen of theirs: its picture fills the tile, its top as wide as the tile (where a screen says what it is).
+    const img = it.shot ? (this.images?.(it.shot) ?? null) : null;
+    if (img) {
+      const w = img.width();
+      const h = img.height();
+      canvas.save();
+      canvas.clipRRect(tile, this.ck.ClipOp.Intersect, true);
+      canvas.drawImageRect(img, this.ck.XYWHRect(0, 0, w, Math.min(w, h)), this.ck.XYWHRect(t.x, t.y, t.s, t.s), this.fill, false);
+      canvas.restore();
+    }
     this.stroke.setColor(this.col(hot ? p.selection : p.border));
     this.stroke.setStrokeWidth(hot ? 1.5 : 1);
     const inset = hot ? 0.75 : 0.5;
@@ -243,7 +255,7 @@ export class LanePainter {
       this.stroke.setStrokeWidth(1);
       canvas.drawLine(t.x + R, t.y + 1.5, t.x + t.s - R, t.y + 1.5, this.stroke);
     }
-    this.mark(canvas, it.mark, t.x + t.s / 2, t.y + t.s / 2);
+    if (!img) this.mark(canvas, it.shot ? "image" : it.mark, t.x + t.s / 2, t.y + t.s / 2);
     // Its port, on the right edge, where its wires leave (a brief's wire comes in from above: it has none).
     if (!it.brief) {
       this.fill.setColor(this.col(p.card));

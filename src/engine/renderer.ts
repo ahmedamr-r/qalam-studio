@@ -161,6 +161,8 @@ export class Renderer {
     this.vectorPainter = new VectorPainter(ck);
     this.ost = new OstPainter(ck);
     this.lanes = new LanePainter(ck);
+    // A screen's tile shows its picture, from the same cache the board's images use.
+    this.lanes.images = (src) => this.image(src);
     this.routes = new RoutePainter(ck);
     // An icon set finished loading: drop what was cached without it and draw again.
     this.offIcons = onIconSetLoaded(() => {

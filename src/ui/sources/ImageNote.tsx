@@ -3,6 +3,8 @@ import { assetURL } from "@/doc/assets";
 import { imageUnreadLine } from "@/discovery/ingest/image";
 import type { SourceImage } from "@/discovery/sources";
 import { QalamAIGlyph } from "../brand/ai-glyph";
+import { useLatestReviewOn } from "@/org/screens";
+import { Shot } from "../seen/Shot";
 
 /*
  * A picture kept as a source, above its words: the picture, then Qalam AI's reading of it, said to
@@ -12,8 +14,39 @@ import { QalamAIGlyph } from "../brand/ai-glyph";
 
 const SHOWS: Record<SourceImage["shows"], string> = { screen: "A product's screen", reviews: "Reviews", chat: "A conversation", chart: "A chart", table: "A table", document: "A document", photo: "A photo", other: "A picture" };
 
+/** What the latest look at their screens found on this one: the screen with its numbered marks, and the findings, a line each. */
+function SeenOnIt({ shot, about }: { shot: string; about?: string }) {
+  const review = useLatestReviewOn(shot);
+  const found = review ? review.findings.flatMap((f, i) => (f.shot === shot ? [{ f, n: i + 1 }] : [])) : [];
+  if (!review || !found.length) return null;
+  return (
+    <section aria-label="What Qalam AI saw on it" className="flex flex-col gap-[8px]">
+      <Shot shot={`asset:${shot}`} label={about ?? "The screen"} w={220} marks={found.flatMap(({ f, n }) => (f.on ? [{ box: f.on.box, label: String(n) }] : []))} />
+      <div className="q-sheet flex flex-col gap-[6px] rounded-lg px-[10px] py-[8px]">
+        <p className="flex items-center gap-[6px] text-micro font-medium text-fg-muted">
+          <QalamAIGlyph size={12} />
+          What Qalam AI saw on it, for “{review.focus.length > 80 ? `${review.focus.slice(0, 79)}…` : review.focus}”
+        </p>
+        <ol className="flex flex-col gap-[6px]">
+          {found.map(({ f, n }) => (
+            <li key={f.key} className="flex gap-[6px] text-caption leading-[18px]">
+              <span className="font-medium text-fg-muted tnum">{n}</span>
+              <span className="min-w-0" dir="auto">
+                <span className="text-fg">{f.title}</span>
+                {f.change && <span className="block text-fg-muted">Change: {f.change.what}</span>}
+              </span>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </section>
+  );
+}
+
 export function ImageNote({ image, about, hasText }: { image: SourceImage | undefined; about?: string; hasText: boolean }) {
   const [url, setUrl] = useState<string | null>(null);
+  const review = useLatestReviewOn(image?.shows === "screen" ? image.asset : null);
+  const seen = !!review?.findings.some((f) => f.shot === image?.asset);
   useEffect(() => {
     if (!image) return;
     let live = true;
@@ -26,7 +59,7 @@ export function ImageNote({ image, about, hasText }: { image: SourceImage | unde
   const unread = imageUnreadLine(image, hasText);
   return (
     <div className="mb-[12px] flex flex-col gap-[10px]">
-      {url && <img src={url} alt={about ?? "The picture"} className="max-h-[360px] w-full rounded-lg object-contain shadow-[inset_0_0_0_1px_var(--color-line-subtle)]" style={image.w && image.h ? { aspectRatio: `${image.w} / ${image.h}` } : undefined} />}
+      {seen ? <SeenOnIt shot={image.asset} about={about} /> : url && <img src={url} alt={about ?? "The picture"} className="max-h-[360px] w-full rounded-lg object-contain shadow-[inset_0_0_0_1px_var(--color-line-subtle)]" style={image.w && image.h ? { aspectRatio: `${image.w} / ${image.h}` } : undefined} />}
       {(about || image.reading.length > 0) && (
         <section aria-label="Qalam AI's reading of it" className="q-sheet flex flex-col gap-[6px] rounded-lg px-[10px] py-[8px]">
           <p className="flex items-center gap-[6px] text-micro font-medium text-fg-muted">

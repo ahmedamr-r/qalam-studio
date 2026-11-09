@@ -25,6 +25,8 @@ export interface PlanAsk {
   /** Worked out with a consultant (server/org/consult.ts): how much they know, who's asking, the playbook in use. */
   mode?: "consult";
   consult?: { level?: Level; situation?: Situation; playbook?: PlaybookId; fixes?: true };
+  /** What a look at their screens found that isn't on the canvas, by look and finding: the core reads its words from the look kept. */
+  seen?: { review: string; key: string }[];
 }
 
 /** A consultant's turn: the interview's, with who's asking as read, the playbook a turn picked, and the lines it noted on the business page. */

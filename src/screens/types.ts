@@ -98,6 +98,8 @@ export interface ScreenReview {
   unread?: true;
   /** What code left out of Qalam AI's answer, and why. */
   left: { what: string; why: string }[];
+  /** What they did with each finding on the canvas, by its key: one left out isn't raised again from the same screenshot. */
+  decided?: Record<string, "accepted" | "discarded">;
 }
 
 /** A review's guards on size: every finding that bears on the problem is kept, ranked, up to these. */

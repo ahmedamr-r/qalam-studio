@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { create } from "zustand";
 import type { KeptShots, ScreenReview, ShownShot } from "@/screens/types";
 import { TAB, orgFetch, orgPath } from "./client";
@@ -54,8 +55,32 @@ export async function reviewScreens(o: { shots: readonly ShownShot[]; product: s
   return out;
 }
 
-/** The looks this window has, by id: kept when one lands, read once after a reload. */
-export const useScreenReviews = create<{ reviews: Record<string, ScreenReview>; missing: Record<string, true> }>(() => ({ reviews: {}, missing: {} }));
+/** A finding taken onto the canvas or left out: its look remembers. */
+export async function decideFinding(review: string, key: string, decision: "accepted" | "discarded"): Promise<void> {
+  const r = await orgFetch(`/screens/reviews/${encodeURIComponent(review)}/findings`, { method: "PUT", json: { key, decision } });
+  if (!r.ok) return;
+  const out = ((await r.json()) as { review: ScreenReview }).review;
+  useScreenReviews.setState((s) => ({ reviews: { ...s.reviews, [review]: out } }));
+}
+
+/** The looks this window has, by id: kept when one lands, read once after a reload. `byShot`: the looks with something found on a screenshot, the latest first. */
+export const useScreenReviews = create<{ reviews: Record<string, ScreenReview>; missing: Record<string, true>; byShot: Record<string, string[]> }>(() => ({ reviews: {}, missing: {}, byShot: {} }));
+
+/** The latest look with something found on a screenshot (by its hash), read from the project once a page load. */
+export function useLatestReviewOn(shot: string | null): ScreenReview | null {
+  const ids = useScreenReviews((s) => (shot ? s.byShot[shot] : undefined));
+  const reviews = useScreenReviews((s) => s.reviews);
+  useEffect(() => {
+    if (!shot || ids) return;
+    void orgFetch(`/screens/reviews?shot=${encodeURIComponent(shot)}`)
+      .then((r) => (r.ok ? (r.json() as Promise<{ reviews: ScreenReview[] }>) : { reviews: [] }))
+      .then(({ reviews: found }) => useScreenReviews.setState((s) => ({ reviews: { ...s.reviews, ...Object.fromEntries(found.map((x) => [x.id, x])) }, byShot: { ...s.byShot, [shot]: found.map((x) => x.id) } })))
+      .catch(() => {});
+  }, [shot, ids]);
+  // A look that lands in this window counts too, the latest first.
+  const all = Object.values(reviews).filter((r) => shot && r.findings.some((f) => f.shot === shot));
+  return all.sort((a, b) => b.at - a.at)[0] ?? null;
+}
 
 const loading = new Set<string>();
 

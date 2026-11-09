@@ -1,10 +1,10 @@
-import { AudioLines, FileText, Globe, PenLine, ScrollText } from "lucide-react";
+import { AudioLines, FileText, Globe, Image, PenLine, ScrollText } from "lucide-react";
 import { sourceMark, type SourceIcon } from "@/discovery/look";
 import type { SetupDoc } from "@/org/setup";
 import { ConnectorLogo } from "../brand/ConnectorLogo";
 
 const ICON = { absoluteStrokeWidth: true, strokeWidth: 1.5 } as const;
-const ICONS: Record<SourceIcon, typeof PenLine> = { "pen-line": PenLine, globe: Globe, "file-text": FileText, "audio-lines": AudioLines, "scroll-text": ScrollText };
+const ICONS: Record<SourceIcon, typeof PenLine> = { "pen-line": PenLine, globe: Globe, "file-text": FileText, "audio-lines": AudioLines, "scroll-text": ScrollText, image: Image };
 
 /** Where a part of a source came from: the tool's logo, or an icon for what it is. */
 export function SourceMark({ doc }: { doc: SetupDoc | undefined }) {

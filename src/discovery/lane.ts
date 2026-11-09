@@ -29,7 +29,7 @@ export const LANE_ITEM_H = SOURCE.h;
 export const LANE_GAP = 72;
 export const LANE_ROW_GAP = 16;
 
-type LaneSource = Pick<SourceRecord, "id" | "title" | "kind" | "origin" | "quotes" | "pages" | "setup">;
+type LaneSource = Pick<SourceRecord, "id" | "title" | "kind" | "origin" | "quotes" | "pages" | "setup"> & Partial<Pick<SourceRecord, "image" | "screen">>;
 
 export interface LaneItem {
   /** One per tree and source (or dump part). */
@@ -49,6 +49,8 @@ export interface LaneItem {
   feed?: { id: string; fresh?: number; off?: boolean };
   /** A brief written for this card, not a source: what came out of it, under it on the canvas. */
   brief?: { id: string; card: string };
+  /** A screenshot of their product kept as one of its screens: drawn in its tile ("asset:<hash>"). */
+  shot?: string;
   x: number;
   y: number;
   w: number;
@@ -127,7 +129,8 @@ export function laneOf(doc: Doc, sources: readonly (LaneSource & { text?: string
       const card = doc.nodes[id].meta.ost!;
       const box = worldBounds(doc, id);
       for (const e of card.evidence) {
-        if (!fromSource(e) || !e.sourceId) continue;
+        // Words from a source, or a screen Qalam AI saw something on: both wire their source in.
+        if (!(fromSource(e) || e.kind === "screen") || !e.sourceId) continue;
         const source = byId.get(e.sourceId);
         if (!source) continue;
         const q = quoteOf(source, e);
@@ -138,7 +141,9 @@ export function laneOf(doc: Doc, sources: readonly (LaneSource & { text?: string
         const key = `${root}:${source.id}${part ? `#${pi}` : ""}`;
         let it = found.get(key);
         if (!it) {
-          it = { key, root, sourceId: source.id, ...(part ? { part } : {}), title: part ? partTitle(source, part) : source.title, mark: markOf(source, part), line: part ? partLine(part) : sourceLine(source), quotes: [], cards: [], at: [] };
+          // A screen of theirs shows its picture in its tile, named for the screen it is.
+          const shot = source.screen && source.image?.asset ? `asset:${source.image.asset}` : undefined;
+          it = { key, root, sourceId: source.id, ...(part ? { part } : {}), title: part ? partTitle(source, part) : source.title, mark: markOf(source, part), line: part ? partLine(part) : shot ? "Your screen" : sourceLine(source), ...(shot ? { shot } : {}), quotes: [], cards: [], at: [] };
           found.set(key, it);
         }
         if (q && !it.quotes.includes(q.id)) it.quotes.push(q.id);

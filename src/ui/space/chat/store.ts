@@ -1,5 +1,5 @@
 import { nanoid } from "nanoid";
-import { checkFirst, setAside, startReview, useReview } from "../../discovery/review";
+import { checkFirst, checkThenReview, setAside, startReview, useReview } from "../../discovery/review";
 import { keptChallenges, useChallenges } from "../../discovery/challenges";
 import { planAhead, planLook, planPropose, planRoute, type ConsultTurn, type PlanAsk } from "@/org/plan";
 import { planOutline, planProposals } from "@/space/plan";
@@ -62,7 +62,8 @@ import { nowFrom, numberRound, targetFrom } from "@/goals/moves";
 import { goalsForProblem, lookForGoal, suggestGoalNumber } from "@/org/goal-work";
 import { loadMarket, useMarket } from "@/org/market";
 import { useSpaceView } from "@/space/view";
-import { reviewScreens } from "@/org/screens";
+import { reviewScreens, useScreenReviews } from "@/org/screens";
+import { screensProposals } from "@/screens/proposals";
 import { reviewLines, screenLines } from "@/screens/lines";
 import { rememberRound, withKnownAnswers } from "@/org/memory";
 import { onOrgChange } from "@/org/live";
@@ -933,7 +934,10 @@ const planAsk = (id: string): PlanAsk | null => {
   const kept = (j.kept ?? []).map(({ line, from }) => ({ line, from }));
   // Worked out with a consultant: how much they know (theirs over the read), who's asking, the playbook in use.
   const consult = j.consult ? { mode: "consult" as const, consult: { level: levelNow(j), ...(j.consult.situation ? { situation: j.consult.situation } : {}), ...(j.consult.playbook ? { playbook: j.consult.playbook } : {}), ...(j.consult.fixes ? { fixes: true as const } : {}) } } : {};
-  return { said: t.said, outline: planOutline(studio().doc, useSpaceView.getState().things, goalsNow().north), rounds: j.rounds, looks: j.looks, ...(asking ? { asking } : {}), ...(found.length ? { found } : {}), ...(kept.length ? { kept } : {}), ...consult };
+  // What a look at their screens found that isn't on the canvas: a cause seen there may rest on it (the core reads its words).
+  const reviews = useScreenReviews.getState().reviews;
+  const seen = (j.asking?.lookups ?? []).flatMap((l) => (l.kind === "screens" && l.review && reviews[l.review] ? reviews[l.review].findings.filter((f) => !reviews[l.review!].decided?.[f.key]).map((f) => ({ review: l.review!, key: f.key })) : []));
+  return { said: t.said, outline: planOutline(studio().doc, useSpaceView.getState().things, goalsNow().north), rounds: j.rounds, looks: j.looks, ...(asking ? { asking } : {}), ...(found.length ? { found } : {}), ...(kept.length ? { kept } : {}), ...consult, ...(seen.length ? { seen } : {}) };
 };
 
 /** How much a consultant's turn teaches: what they set wins, then what the read found, then what's kept on this computer. */
@@ -1169,6 +1173,23 @@ async function screensLookup(id: string, l: Pick<Lookup, "id" | "query" | "shots
   const answers = s ? answersOf(s).filter((a) => a.how === "own" && a.text).map((a) => ({ q: a.question, a: a.text })) : [];
   const { kept, review } = await reviewScreens({ shots: l.shots, product: useSpaceView.getState().space ?? null, about: l.query, focus, answers }, signal);
   return { lines: [...screenLines(l.id, kept), ...reviewLines(l.id, review)], ...(review ? { review: review.id } : {}) };
+}
+
+/**
+ * What a look at their screens found, onto the canvas: each finding a problem resting on its screen, its
+ * change a solution under it, under the card picked (a goal or a problem), else the North Star, else a
+ * tree of their own; checked against the project's own evidence, then reviewed like any proposal.
+ */
+export async function putScreensOnCanvas(reviewId: string): Promise<boolean> {
+  const r = useScreenReviews.getState().reviews[reviewId];
+  if (!r) return false;
+  const outline = planOutline(studio().doc, useSpaceView.getState().things, goalsNow().north);
+  const sel = studio().selection;
+  const picked = sel.length === 1 ? outline.find((c) => c.id === sel[0] && !c.faint && (c.kind === "outcome" || c.kind === "opportunity")) : undefined;
+  const parentId = picked?.id ?? outline.find((c) => c.north)?.id ?? null;
+  const proposals = screensProposals(r, { parentId, id: () => nanoid(10), now: Date.now() });
+  if (!proposals.length) return false;
+  return checkThenReview({ kind: "screens", review: r.id }, proposals, { asked: `What on their screens bears on “${r.focus}”` });
 }
 
 /** A look at their screens that stopped or failed, run again: the next turn after it lands reads it. */
