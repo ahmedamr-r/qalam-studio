@@ -5,7 +5,7 @@ import { type CardNode, isOstCard } from "@/doc/board";
 import type { Pt } from "@/doc/geometry";
 import { CARD, cardBox, METRIC_H, placeholderTitle, titleProps } from "@/discovery/metrics";
 import { type Kind, KIND_MARK, KIND_OF, MARK_STROKE, TAG } from "@/discovery/look";
-import { foldToggle, isModule, isSubOutcome, kindLabel, orientationOf } from "@/discovery/tree";
+import { foldToggle, isCheck, isModule, isSubOutcome, kindLabel, orientationOf } from "@/discovery/tree";
 import { isAssumed } from "@/discovery/evidence";
 import { NUQTA_POLYGON, PENCIL_POLYGONS } from "@/ui/brand/pencil";
 import type { OstCard } from "@/discovery/types";
@@ -492,7 +492,7 @@ export class OstPainter {
     }
 
     // On the top edge: the kind on the left; on the right, its linked work and whether something needs a look at it (the card panel says what).
-    this.kindTag(canvas, KIND_OF[card.kind], kindLabel(doc, n.id), isSubOutcome(doc, n.id) || isModule(doc, n.id));
+    this.kindTag(canvas, KIND_OF[card.kind], kindLabel(doc, n.id), isSubOutcome(doc, n.id) || isModule(doc, n.id) || isCheck(doc, n.id));
     let right = w - CARD.pad;
     const work = !ghost && !f.exporting ? f.ost?.work?.get(n.id) : undefined;
     if (work) right = this.workTag(canvas, w, work) - 6;

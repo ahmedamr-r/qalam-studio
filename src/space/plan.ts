@@ -1,3 +1,4 @@
+import type { PlanShape } from "@/ai/canvas-plan";
 import type { PlanQuestion } from "@/ai/plan";
 import { hostOf } from "@/ai/research-shared";
 import { isOstCard } from "@/doc/board";
@@ -37,6 +38,8 @@ export interface OutlineCard {
   faint?: boolean;
   type?: SolutionType;
   metric?: string;
+  /** The company's North Star: what a new goal hangs under. */
+  north?: true;
 }
 
 /** A look, with the round it came after (-1: before the first). */
@@ -55,7 +58,7 @@ const strs = (v: unknown): string[] => list(v).filter((x): x is string => typeof
 const word = (v: unknown) => (typeof v === "string" ? v.trim() : "");
 
 /** The cards on the canvas, goals and problems first, as a plan is told about them. A test is left out: nothing hangs under one. */
-export function planOutline(doc: Doc, things: ReadonlyMap<string, SpaceThing>): OutlineCard[] {
+export function planOutline(doc: Doc, things: ReadonlyMap<string, SpaceThing>, north?: string | null): OutlineCard[] {
   const out: OutlineCard[] = [];
   for (const n of Object.values(doc.nodes)) {
     if (!isOstCard(n)) continue;
@@ -63,7 +66,7 @@ export function planOutline(doc: Doc, things: ReadonlyMap<string, SpaceThing>): 
     if (c.kind === "test") continue;
     const t = things.get(n.id);
     const metric = c.kind === "outcome" && c.metric ? [c.metric.name, c.metric.target !== null ? `target ${c.metric.target}${c.metric.unit ? ` ${c.metric.unit}` : ""}` : ""].filter(Boolean).join(": ") : "";
-    out.push({ id: n.id, kind: c.kind, title: c.title, parent: n.parentId ?? null, ...(t?.type === "problem" ? { topic: t.topic, faint: true } : {}), ...(c.solutionType ? { type: c.solutionType } : {}), ...(metric ? { metric } : {}) });
+    out.push({ id: n.id, kind: c.kind, title: c.title, parent: n.parentId ?? null, ...(t?.type === "problem" ? { topic: t.topic, faint: true } : {}), ...(c.solutionType ? { type: c.solutionType } : {}), ...(metric ? { metric } : {}), ...(north && t?.type === "goal" && t.goal === north ? { north: true as const } : {}) });
   }
   const order = { outcome: 0, opportunity: 1, solution: 2 } as const;
   return out.sort((a, b) => order[a.kind] - order[b.kind]).slice(0, PLAN_LIMITS.outline);
@@ -87,7 +90,7 @@ export function leftOf(rounds: readonly PlanRound[]): string[] {
 export const canvasLines = (outline: readonly OutlineCard[], ref: (id: string) => string | undefined) =>
   outline.map((c) => {
     const parent = c.parent ? ref(c.parent) : null;
-    return `- ${ref(c.id)} · ${KIND_WORD[c.kind]} · “${one(c.title)}”${c.metric ? ` · ${one(c.metric)}` : ""}${c.type ? ` · ${c.type}` : ""}${parent ? ` · under ${parent}` : ""}${c.faint ? " · only a page so far" : ""}`;
+    return `- ${ref(c.id)} · ${c.north ? "Goal, the North Star" : KIND_WORD[c.kind]} · “${one(c.title)}”${c.metric ? ` · ${one(c.metric)}` : ""}${c.type ? ` · ${c.type}` : ""}${parent ? ` · under ${parent}` : ""}${c.faint ? " · only a page so far" : ""}`;
   });
 
 /** What the research step is asked: what people do about this, whichever way, or (`query`) what their answers called for. */
@@ -257,6 +260,8 @@ export interface PlanCard {
   helps: (OstHelpTarget | { ref: string; title: string })[];
   assumptions: { id: string; category: AssumptionCategory; text: string; importance: 1 | 2 | 3 }[];
   test?: { assumption: string; what: string; how: string; suggested: string | null };
+  /** A problem's check, in a diagnosis: the cheapest way to find out whether it's really behind the goal. */
+  check?: { what: string; how: string; suggested: string | null };
 }
 
 export interface PlanDraft {
@@ -277,7 +282,11 @@ export interface PlanDraft {
  * problem, a module only under a New product (one proposed here becomes one when something hangs
  * under it), and "needed" only on a module.
  */
-export function sanitizePlan(raw: unknown, m: PlanSent, o: { id: () => string; fold?: (s: string) => string }, dropped?: (why: string, item: unknown) => void): PlanDraft {
+export function sanitizePlan(raw: unknown, m: PlanSent, o: { id: () => string; fold?: (s: string) => string; shape?: PlanShape; fixes?: boolean }, dropped?: (why: string, item: unknown) => void): PlanDraft {
+  const shape = o.shape ?? "plan";
+  const diagnosis = shape === "diagnosis";
+  // A diagnosis: a goal or two, at most four likely causes, and a solution only where they asked for fixes.
+  const limits = diagnosis ? { ...PLAN_LIMITS, goals: 2, problems: 4, solutionsPer: 1 } : shape === "goals" ? { ...PLAN_LIMITS, goals: 2 } : PLAN_LIMITS;
   const drop = (why: string, x: unknown) => void dropped?.(why, x);
   const name = (ref: string) => m.cards.get(ref)?.title;
   // Some models put a whole line in quote marks: it's the line, not someone's words.
@@ -301,6 +310,10 @@ export function sanitizePlan(raw: unknown, m: PlanSent, o: { id: () => string; f
     const kind = x.kind === "outcome" || x.kind === "opportunity" || x.kind === "solution" ? x.kind : null;
     if (!ref || !kind || rows.some((r) => r.ref === ref)) {
       drop("no id of its own, or a kind it can't be", item);
+      continue;
+    }
+    if ((shape === "goals" && kind !== "outcome") || (diagnosis && !o.fixes && kind === "solution")) {
+      drop(shape === "goals" ? "only goals here" : "no solutions in a diagnosis until a check shows a cause is real", item);
       continue;
     }
     const title = held(x.title, PLAN_LIMITS.title, "title", item);
@@ -345,19 +358,21 @@ export function sanitizePlan(raw: unknown, m: PlanSent, o: { id: () => string; f
 
   const counts = { goals: 0, problems: 0, per: new Map<string, number>() };
   const fit = (r: Row, under: PlanCard["under"]): string | null => {
-    if (out.size >= PLAN_LIMITS.cards) return "over the limit";
-    if (r.kind === "outcome") return ++counts.goals > PLAN_LIMITS.goals ? "over the limit of goals" : null;
-    if (r.kind === "opportunity") return ++counts.problems > PLAN_LIMITS.problems ? "over the limit of problems" : null;
+    if (out.size >= limits.cards) return "over the limit";
+    if (r.kind === "outcome") return ++counts.goals > limits.goals ? "over the limit of goals" : null;
+    if (r.kind === "opportunity") return ++counts.problems > limits.problems ? "over the limit of problems" : null;
     const key = under && "card" in under ? under.card : under && "ref" in under ? under.ref : "";
     const n = (counts.per.get(key) ?? 0) + 1;
     counts.per.set(key, n);
     const parentProduct = under && "ref" in under ? typeOf.get(under.ref) === "product" : under && "card" in under ? outline.find((c) => c.id === under.card)?.type === "product" : false;
-    return n > (parentProduct ? PLAN_LIMITS.modules : PLAN_LIMITS.solutionsPer) ? "over the limit under it" : null;
+    return n > (parentProduct ? limits.modules : limits.solutionsPer) ? "over the limit under it" : null;
   };
 
+  // Company goals first: in a diagnosis, a goal on its own goes under the North Star when the canvas has one.
+  const north = diagnosis ? outline.find((c) => c.north) : undefined;
   const under = (r: Row): PlanCard["under"] | "no" => {
     const at = place(word(r.x.under));
-    if (!at) return r.kind === "solution" ? "no" : null;
+    if (!at) return r.kind === "solution" ? "no" : r.kind === "outcome" && north ? { card: north.id } : null;
     const kind = "card" in at ? at.card.kind : at.row.kind;
     const here = "card" in at ? { card: at.card.id } : { ref: at.row.ref };
     if (r.kind === "outcome") return kind === "outcome" ? here : null;
@@ -421,6 +436,11 @@ export function sanitizePlan(raw: unknown, m: PlanSent, o: { id: () => string; f
     const testHow = planWords(t.how, PLAN_LIMITS.testHow, true);
     const pass = planWords(t.pass, PLAN_LIMITS.pass, true);
     const riskiest = [...assumptions].sort((a, b) => b.importance - a.importance)[0];
+    // A problem's check, in a diagnosis: a plan like a test, its own numbers (how many people) its own.
+    const ck = rec(r.x.check);
+    const checkWhat = diagnosis && r.kind === "opportunity" ? planWords(ck.what, PLAN_LIMITS.what, true) : "";
+    const checkHow = checkWhat ? planWords(ck.how, PLAN_LIMITS.testHow, true) : "";
+    const checkPass = checkHow ? planWords(ck.pass, PLAN_LIMITS.pass, true) : "";
     const card: PlanCard = {
       ref: r.ref,
       kind: r.kind,
@@ -440,6 +460,7 @@ export function sanitizePlan(raw: unknown, m: PlanSent, o: { id: () => string; f
       helps: [],
       assumptions,
       ...(what && testHow && riskiest ? { test: { assumption: named.get(Number(word(t.assumption))) ?? riskiest.id, what, how: testHow, suggested: pass } } : {}),
+      ...(checkWhat && checkHow ? { check: { what: checkWhat, how: checkHow, suggested: checkPass || null } } : {}),
     };
     out.set(r.ref, card);
     return card;
@@ -468,7 +489,8 @@ export function sanitizePlan(raw: unknown, m: PlanSent, o: { id: () => string; f
 
   const cards = [...out.values()];
   const named = word(rec(raw).start);
-  const startable = (c: PlanCard) => c.kind === "solution" && !c.needed;
+  // A diagnosis starts with the check to run first; a plan, with a solution.
+  const startable = (c: PlanCard) => (diagnosis ? c.kind === "opportunity" && !!c.check : c.kind === "solution" && !c.needed);
   const start = out.get(named) && startable(out.get(named)!) ? named : (cards.find(startable)?.ref ?? null);
   const doubt = holdWords(unwrapped(rec(raw).doubt), m.hay, { max: PLAN_LIMITS.doubt, shape: "prose" }).text;
   const quotes: Record<string, QuoteRef> = {};
@@ -485,7 +507,7 @@ export function planLine(list: readonly Proposal[]): string {
   const products = cards.filter((p) => p.card.solutionType === "product");
   const under = (p: { cardId: string }) => cards.filter((c) => c.parentId === p.cardId && c.card.kind === "solution").length;
   const modules = new Set(products.flatMap((p) => cards.filter((c) => c.parentId === p.cardId && c.card.kind === "solution").map((c) => c.cardId)));
-  const count = (k: OstCard["kind"]) => cards.filter((c) => c.card.kind === k && !modules.has(c.cardId) && c.card.solutionType !== "product" && !c.replaces).length;
+  const count = (k: OstCard["kind"]) => cards.filter((c) => c.card.kind === k && !modules.has(c.cardId) && c.card.solutionType !== "product" && !c.replaces && !c.card.check).length;
   const n = (k: number, one: string, many = `${one}s`) => (k ? `${k} ${k === 1 ? one : many}` : "");
   const parts = [
     ...products.map((p) => `a New product, “${p.card.title}”${under(p) ? `, with ${n(under(p), "module")}` : ""}`),
@@ -493,6 +515,7 @@ export function planLine(list: readonly Proposal[]): string {
     n(count("opportunity"), "problem"),
     n(count("solution"), "solution"),
     n(count("test"), "test"),
+    n(cards.filter((c) => c.card.check).length, "check"),
     n(list.filter((p) => p.kind === "helps").length, "link to another problem", "links to other problems"),
   ].filter(Boolean);
   return parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}` : (parts[0] ?? "");
@@ -541,7 +564,7 @@ export function planProposals(d: PlanDraft, ctx: { doc: Doc; things: ReadonlyMap
       ...(c.type ? { solutionType: c.type } : {}),
       ...(c.how ? { how: c.how } : {}),
       ...(c.needed ? { needed: true as const } : {}),
-      ...(d.start === c.ref ? { start: true as const } : {}),
+      ...(d.start === c.ref && !c.check ? { start: true as const } : {}),
       ...(c.metric ? { metric: { name: c.metric.name, direction: "increase" as const, baseline: null, current: null, target: c.metric.target } } : {}),
       ...(assumptions.length ? { assumptions } : {}),
     });
@@ -552,6 +575,8 @@ export function planProposals(d: PlanDraft, ctx: { doc: Doc; things: ReadonlyMap
     const quotes = c.quotes.flatMap((r) => d.quotes[r] ?? []);
     out.push({ id: `${c.kind === "solution" ? "sol" : "plan"}:${c.ref}`, kind: "card", cardId, parentId, card, backing: { quotes, words }, why: c.why || c.description });
     if (c.test) out.push({ id: `test:${c.ref}`, kind: "card", cardId: ctx.id(), parentId: cardId, card: newCard("test", { title: c.test.what, createdBy: "ai", test: { assumptionIds: [c.test.assumption], method: c.test.how, ...(c.test.suggested ? { suggested: { criterion: c.test.suggested } } : {}) } }), backing: { quotes: [], words: [] }, why: "" });
+    // A diagnosis: each likely cause with its check under it, the one to run first marked.
+    if (c.check) out.push({ id: `check:${c.ref}`, kind: "card", cardId: ctx.id(), parentId: cardId, card: newCard("test", { title: c.check.what, createdBy: "ai", check: true, ...(d.start === c.ref ? { start: true as const } : {}), test: { assumptionIds: [], method: c.check.how, ...(c.check.suggested ? { suggested: { criterion: c.check.suggested } } : {}) } }), backing: { quotes: [], words: [] }, why: "" });
   }
   for (const c of d.cards)
     for (const h of c.helps) {

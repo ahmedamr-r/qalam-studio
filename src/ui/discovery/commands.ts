@@ -13,7 +13,7 @@ import { addCardIn, addChild, addSibling, cardOf, deleteKeepIn, makeCardNode, ne
 import { neighbor, type Dir } from "@/discovery/navigate";
 import { allCards } from "@/discovery/tree";
 import { isAssumed } from "@/discovery/evidence";
-import { CHILD_KINDS, KIND_LABEL, KIND_NOUN, STAGES, holdsCard } from "@/discovery/kinds";
+import { CHILD_KINDS, KIND_LABEL, KIND_NOUN, STAGES, holdsCard, holdsLine } from "@/discovery/kinds";
 import type { OstKind } from "@/discovery/types";
 import { commandCanvas } from "@/commands/canvas";
 import { useDiscovery } from "./store";
@@ -89,7 +89,7 @@ export function addChildCard(parent: string, kind?: OstKind) {
   // Adding under a folded card unfolds it.
   if (c.collapsed) s().mutate((d) => updateCardIn(d, parent, (k) => void delete k.collapsed));
   const id = addChild(parent, kind);
-  created(id, () => s().cancelTx(), CHILD_KINDS[c.kind].length ? `${KIND_LABEL[c.kind]} cards hold ${CHILD_KINDS[c.kind].map((k) => PLURAL[k]).join(" and ")}` : "Tests hold no other cards");
+  created(id, () => s().cancelTx(), CHILD_KINDS[c.kind].length ? holdsLine(c.kind) : "Tests hold no other cards");
 }
 
 export function addSiblingCard(of: string) {

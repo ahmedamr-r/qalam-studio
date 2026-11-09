@@ -18,6 +18,7 @@ import type { TopicInfo } from "@/hub/topics";
 import { topicsDb } from "@/org/topics";
 import { businessHref, placeHref, topicHref } from "@/projects/model";
 import { SECTION_LABEL } from "@/business/types";
+import { PLAYBOOKS } from "@/consult/playbooks.gen";
 import { editBusinessLine, useBusiness } from "@/org/business";
 import type { PartData } from "../../chat/types";
 import type { PartComponent } from "../../chat/ChatThread";
@@ -44,7 +45,7 @@ import { useCurrentOrg, useWords } from "../../frame/store";
 import { show } from "../links";
 import { FoundGoalRow } from "../../chat/FoundGoalRow";
 import { moreLine } from "@/onboarding/start";
-import { answerWhose, goalForTopProblem, anotherFile, briefAgain, briefStart, changeDocBasis, chooseDraft, decideDocGoal, dropTurn, leaveFile, leaveFit, lookPastFits, openProblems, pickAudience, placeFirstBuild, placeStatement, planAgain, planFirst, planOf, planStart, retake, retryGoalFor, scanAgain, scanHere, scanInNewProject, scanIsMine, scanOtherWay, setPlanGoal, settleNumber, steerOff, stopTurn, takeAsBasis, takeFit, takeGoalNumber, takeIdea, turnOf, useCanvasChat, retryCanvasPlan, runAs, showCanvasPlan, stopAskingPlan, confirmCanvasPlan, offCanvasPlan, reproposeCanvasPlan, decidePlanTerm, confirmDraft, decideDraftTerm, draftGo, draftNow, offDraft, retryDraft, confirmBrief, offBrief, decideBriefTerm, confirmScan, offScan, decideScanTerm, decidePlanChoice, decideDraftChoice, decideBriefChoice, decideScanChoice } from "./store";
+import { withFixes, answerWhose, goalForTopProblem, anotherFile, briefAgain, briefStart, changeDocBasis, chooseDraft, decideDocGoal, dropTurn, leaveFile, leaveFit, lookPastFits, openProblems, pickAudience, placeFirstBuild, placeStatement, planAgain, planFirst, planOf, planStart, retake, retryGoalFor, scanAgain, scanHere, scanInNewProject, scanIsMine, scanOtherWay, setPlanGoal, settleNumber, steerOff, stopTurn, takeAsBasis, takeFit, takeGoalNumber, takeIdea, turnOf, useCanvasChat, retryCanvasPlan, runAs, showCanvasPlan, stopAskingPlan, confirmCanvasPlan, offCanvasPlan, reproposeCanvasPlan, decidePlanTerm, confirmDraft, decideDraftTerm, draftGo, draftNow, offDraft, retryDraft, confirmBrief, offBrief, decideBriefTerm, confirmScan, offScan, decideScanTerm, decidePlanChoice, decideDraftChoice, decideBriefChoice, decideScanChoice } from "./store";
 import { AnsweredRound, FoundInProject, SettledCard } from "../../asking/AskRound";
 import { LookToolsPart, ToolsAgainPart, ToolsBroughtPart, ToolsFoundPart, ToolsLookingPart } from "./tools-parts";
 import { titleFrom } from "@/space/route";
@@ -720,8 +721,14 @@ function AskFoundPart({ data }: { data: PartData }) {
 function AskSettledPart({ data }: { data: PartData }) {
   const id = String(data.turn);
   const state = usePlanAsking(id);
+  // A consultant proposes what its playbook says: a diagnosis to check, with fixes only when they ask; or goals.
+  const consult = useCanvasChat((s) => {
+    const j = s.chat.turns.find((t) => t.id === id)?.job;
+    return j?.kind === "plan" && j.consult ? (PLAYBOOKS.find((p) => p.id === (j.consult?.playbook ?? j.consult?.situation?.layer))?.propose ?? "diagnosis") : null;
+  });
   if (!state) return null;
-  return <SettledCard state={state} go="Propose" onGo={() => confirmCanvasPlan(id)} onOff={() => offCanvasPlan(id)} onTerm={(t, keep) => void decidePlanTerm(id, t, keep)} {...(lab("decisions") ? { onChoice: (c: string, keep: boolean) => decidePlanChoice(id, c, keep) } : {})} />;
+  const go = consult === "diagnosis" ? "Propose a diagnosis" : consult === "goals" ? "Propose its goals" : "Propose";
+  return <SettledCard state={state} go={go} onGo={() => confirmCanvasPlan(id)} {...(consult === "diagnosis" ? { also: { label: "With fixes too", onGo: () => withFixes(id) } } : {})} onOff={() => offCanvasPlan(id)} onTerm={(t, keep) => void decidePlanTerm(id, t, keep)} {...(lab("decisions") ? { onChoice: (c: string, keep: boolean) => decidePlanChoice(id, c, keep) } : {})} />;
 }
 
 /** What their own evidence says against what's under review, beside the proposals (src/challenge/); `again` proposes again with what they kept. */

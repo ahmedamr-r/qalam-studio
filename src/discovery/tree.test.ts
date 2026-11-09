@@ -144,7 +144,7 @@ describe("editing the tree", () => {
     expect(dropProblem(doc(), [need], s)).toBe("Solution cards hold tests");
     expect(dropProblem(doc(), [o], a)).toBe("A card can't go inside itself");
     const other = add("outcome", null, "Other", { x: 0, y: 900 });
-    expect(dropProblem(doc(), [other], a)).toBe("Problem cards hold problems and solutions");
+    expect(dropProblem(doc(), [other], a)).toBe("Problem cards hold problems, solutions and checks");
     expect(dropProblem(doc(), [a], a)).toBe("A card can't go inside itself");
   });
 
@@ -204,7 +204,7 @@ describe("editing the tree", () => {
     const a = add("opportunity", o, "A");
     const goal = add("outcome", null, "Reorder weekly", { x: 900, y: 0 });
     studio().mutate((d) => updateCardIn(d, goal, (c) => void (c.orientation = "lr")));
-    expect(dropProblem(doc(), [goal], a)).toBe("Problem cards hold problems and solutions");
+    expect(dropProblem(doc(), [goal], a)).toBe("Problem cards hold problems, solutions and checks");
     expect(dropProblem(doc(), [goal], o)).toBeNull();
     studio().mutate((d) => void moveCardsIn(d, [goal], o));
     expect(node(o).children).toEqual([a, goal]);

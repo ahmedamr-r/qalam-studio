@@ -34,6 +34,8 @@ export interface ConsultIn {
   level?: Level;
   situation?: Situation;
   playbook?: PlaybookId;
+  /** They asked for fixes as well as the diagnosis. */
+  fixes?: true;
 }
 
 /** A consultant's turn as code kept it: the interview's, with who's asking, the playbook a turn picked, and the lines it noted. */
@@ -64,7 +66,7 @@ export function consultInOf(raw: unknown, said: string): ConsultIn {
   const playbook = PLAYBOOK_IDS.find((p) => p === c.playbook);
   // A situation the window kept from the read: kept again to its lists and their words.
   const situation = c.situation && typeof c.situation === "object" ? sanitizeSituation({ ...rec(c.situation), said: rec(c.situation).named === false ? "none" : "named" }, said) : undefined;
-  return { ...(level ? { level } : {}), ...(situation ? { situation } : {}), ...(playbook ? { playbook } : {}) };
+  return { ...(level ? { level } : {}), ...(situation ? { situation } : {}), ...(playbook ? { playbook } : {}), ...(c.fixes === true ? { fixes: true as const } : {}) };
 }
 
 /**

@@ -17,6 +17,7 @@ import { labOn } from "../lab";
 import { lookupKinds } from "../connectors/everywhere";
 import { companyContext, researchAbout } from "./company";
 import { consultInOf, consultNext, type ConsultIn } from "./consult";
+import { PLAYBOOKS } from "@/consult/playbooks.gen";
 import { recallFor, subjectOf, withKnown } from "./memory";
 import { readLinks, realDeps, type MarketDeps } from "./market";
 import type { OrgStore } from "./store";
@@ -173,10 +174,14 @@ export async function proposePlan(store: OrgStore, b: PlanBody, emit: (label: st
   emit("Reading what's behind your problems");
   const pieces = await piecesFor(store, b.outline, b.found);
   const m = planMaterial({ org: store.info.name, about: await aboutLine(store), said: b.said, outline: b.outline, answers: answersFor(b), looks: b.looks, pieces, company: await companyContext(store, { near: b.said }), ...(b.kept?.length ? { kept: b.kept } : {}) });
-  emit("Qalam AI is working out what to propose");
-  const { data, model } = await deps.structured<unknown>(planCall(m), signal);
+  // Worked out with a consultant: what its playbook proposes (a diagnosis, or goals), and fixes only when they asked.
+  const playbook = b.mode === "consult" ? PLAYBOOKS.find((p) => p.id === (b.consult?.playbook ?? b.consult?.situation?.layer)) : undefined;
+  const shape = b.mode === "consult" ? (playbook?.propose ?? "diagnosis") : "plan";
+  const fixes = !!b.consult?.fixes;
+  emit(shape === "diagnosis" ? "Qalam AI is working out what's likely behind it" : "Qalam AI is working out what to propose");
+  const { data, model } = await deps.structured<unknown>(planCall(m, { shape, fixes }), signal);
   const dropped: { why: string; item: unknown }[] = [];
-  const draft = sanitizePlan(data, m, { id: () => nanoid(10), fold: termsFold(await store.getTerms()) }, (why, item) => dropped.push({ why, item }));
+  const draft = sanitizePlan(data, m, { id: () => nanoid(10), fold: termsFold(await store.getTerms()), shape, fixes }, (why, item) => dropped.push({ why, item }));
   await store.putTrace({ id: nanoid(10), projectId: "plan", kind: "plan-place", at: Date.now(), ...(model ? { model } : {}), sent: { cards: m.cards.size, pieces: [...m.pieces].map(([ref, p]) => ({ ref, piece: p.ref })), answers: m.answers.size, read: m.read.size }, answer: data, kept: draft.cards.length, dropped } as { id: string; projectId: string }).catch(() => {});
   return draft;
 }
@@ -195,7 +200,7 @@ export function planBodyOf(raw: unknown): PlanBody | null {
     const id = clip(c.id, 200);
     const kind = c.kind === "outcome" || c.kind === "opportunity" || c.kind === "solution" ? c.kind : null;
     if (!id || !kind) return [];
-    return [{ id, kind, title: clip(c.title, 400), parent: clip(c.parent, 200) || null, ...(clip(c.topic, 80) ? { topic: clip(c.topic, 80) } : {}), ...(c.faint === true ? { faint: true } : {}), ...(typeof c.type === "string" ? { type: c.type as OutlineCard["type"] } : {}), ...(clip(c.metric, 200) ? { metric: clip(c.metric, 200) } : {}) }];
+    return [{ id, kind, title: clip(c.title, 400), parent: clip(c.parent, 200) || null, ...(clip(c.topic, 80) ? { topic: clip(c.topic, 80) } : {}), ...(c.faint === true ? { faint: true } : {}), ...(typeof c.type === "string" ? { type: c.type as OutlineCard["type"] } : {}), ...(clip(c.metric, 200) ? { metric: clip(c.metric, 200) } : {}), ...(c.north === true ? { north: true as const } : {}) }];
   });
   // The conversation is the window's own, kept on its chat turn; a look's lines were checked as they were read.
   // However many rounds it has: the one guard is the interview's size (src/asking/wire.ts).

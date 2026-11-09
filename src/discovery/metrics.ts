@@ -91,7 +91,7 @@ export interface Chip {
 }
 
 /** The footer's last item: where the card stands. */
-export const stageItem = (card: OstCard): Chip => ({ text: stageLabel(card.kind, card.stage), tone: "neutral", glyph: "stage" });
+export const stageItem = (card: OstCard): Chip => ({ text: stageLabel(card.kind, card.stage, card.check), tone: "neutral", glyph: "stage" });
 
 /** How it's done, as much as a card's chip holds: whole words; the panel has the rest. */
 const shortHow = (how: string) => {

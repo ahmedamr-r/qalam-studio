@@ -669,9 +669,16 @@ function TestSection({ id, card }: { id: string; card: OstCard }) {
   });
   const t = card.test ?? { assumptionIds: [] };
   const set = (patch: Partial<typeof t>) => edit(id, (c) => void (c.test = { ...t, ...patch }));
-  const assumptions = parent?.assumptions ?? [];
+  // Under a problem it's a Check: what it finds out is whether the problem is really there, not an assumption of a solution.
+  const check = !!card.check || parent?.kind === "opportunity";
+  const assumptions = check ? [] : (parent?.assumptions ?? []);
   return (
-    <Section title="Test">
+    <Section title={check ? "Check" : "Test"}>
+      {check && parent && (
+        <p className="text-caption text-fg-muted" dir="auto">
+          It finds out whether “{parent.title}” is really behind the goal. Confirmed when it is; Ruled out when it isn&apos;t.
+        </p>
+      )}
       {assumptions.length > 0 && (
         <Field label="It tests">
           <div className="flex flex-col gap-[4px]">

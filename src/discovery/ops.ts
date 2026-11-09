@@ -4,7 +4,7 @@ import { isOstCard } from "@/doc/board";
 import { type Pt, isDescendant } from "@/doc/geometry";
 import { newId } from "@/doc/factory";
 import { reparentIn } from "@/doc/ops";
-import { CARD_WIDTH, CHILD_KINDS, DEFAULT_STAGE, KIND_LABEL, defaultChildKind, holdsCard } from "./kinds";
+import { CARD_WIDTH, DEFAULT_STAGE, defaultChildKind, holdsCard, holdsLine } from "./kinds";
 import { targetScope } from "./tree";
 import type { OstCard, OstKind, OstStage, SolutionType } from "./types";
 
@@ -14,7 +14,6 @@ import type { OstCard, OstKind, OstStage, SolutionType } from "./types";
  * here: the layout pass (pass.ts) places every card after each edit.
  */
 
-const PLURAL: Record<OstKind, string> = { outcome: "goals", opportunity: "problems", solution: "solutions", test: "tests" };
 
 export function newCard(kind: OstKind, data: Partial<OstCard> = {}): OstCard {
   return { v: 1, kind, title: "", stage: DEFAULT_STAGE[kind], createdBy: "user", evidence: [], ...data };
@@ -69,7 +68,7 @@ export function dropProblem(doc: Doc, ids: string[], target: string | null): str
     const c = cardOf(doc, id);
     if (!c) return "Only cards go in the tree";
     if (id === target || isDescendant(doc, target, id)) return "A card can't go inside itself";
-    if (!holdsCard(t, c.kind)) return CHILD_KINDS[t.kind].length ? `${KIND_LABEL[t.kind]} cards hold ${CHILD_KINDS[t.kind].map((k) => PLURAL[k]).join(" and ")}` : `${KIND_LABEL[t.kind]} cards hold no other cards`;
+    if (!holdsCard(t, c.kind)) return holdsLine(t.kind);
   }
   return null;
 }
@@ -220,7 +219,7 @@ export function addChild(parentId: string, kind?: OstKind, data: Partial<OstCard
   const childKinds = doc.nodes[parentId].children.map((c) => cardOf(doc, c)?.kind).filter((k): k is OstKind => !!k);
   const k = kind ?? defaultChildKind(p, childKinds);
   if (!k || !holdsCard(p, k)) return null;
-  const node = makeCardNode(newCard(k, data));
+  const node = makeCardNode(newCard(k, { ...(k === "test" && p.kind === "opportunity" ? { check: true as const } : {}), ...data }));
   studio().mutate((d) => addCardIn(d, node, parentId));
   return node.id;
 }

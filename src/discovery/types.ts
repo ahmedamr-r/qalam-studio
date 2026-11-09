@@ -177,6 +177,8 @@ export interface OstCard {
   needed?: true;
   /** Where to start: the strongest signal so far, never "the best". One on a canvas. */
   start?: true;
+  /** A test under a problem (a Check): it finds out whether the problem is really there. Its stages read Confirmed and Ruled out. */
+  check?: true;
   /** Solutions: the problems it helps besides the one above it. */
   helps?: OstHelp[];
   /** Solutions: what has to be true for it to work. */

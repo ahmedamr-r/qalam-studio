@@ -101,7 +101,7 @@ export function useCardFacts(id: string | null): CardFacts | null {
       ...(brief ? { brief } : {}),
       evidence: evidenceSummary(card),
       page: need ? { topic: need.topic, strength: strengthOf(need), quotes: need.quotes, sources: need.sources, mix: need.mix } : null,
-      under: { solutions: kids.filter((k) => k === "solution").length, tests: kids.filter((k) => k === "test").length },
+      under: { solutions: kids.filter((k) => k === "solution").length, tests: kids.filter((k) => k === "test").length, confirmed: node.children.filter((k) => isOstCard(doc.nodes[k]) && doc.nodes[k].meta.ost.kind === "test" && doc.nodes[k].meta.ost.stage === "passed").length },
       underGoal: hasGoalAbove(doc, id),
       ...(goal && inputs
         ? {

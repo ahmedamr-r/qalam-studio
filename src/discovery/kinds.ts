@@ -17,6 +17,12 @@ export const SUB_OUTCOME_LABEL = "Sub-goal";
 /** A solution under a New product, as the board names it. */
 export const MODULE_LABEL = "Module";
 
+/** A test under a problem: it checks whether the problem is really there, as "Sub-goal" names a goal under a goal. */
+export const CHECK_LABEL = "Check";
+
+/** A check's stages say what it found about its problem. */
+const CHECK_STAGE: Partial<Record<OstStage, string>> = { passed: "Confirmed", failed: "Ruled out" };
+
 /** How people see each type of solution. */
 export const SOLUTION_TYPE_LABEL: Record<SolutionType, string> = { change: "Change to the product", feature: "New feature", product: "New product", message: "Message or campaign", service: "Service or by hand" };
 
@@ -33,12 +39,22 @@ export const KIND_NOUN: Record<OstKind, string> = { outcome: "a goal", opportuni
  */
 export const CHILD_KINDS: Record<OstKind, readonly OstKind[]> = {
   outcome: ["outcome", "opportunity"],
-  opportunity: ["opportunity", "solution"],
+  // A test under a problem is a Check: the cheapest way to find out whether it's really behind the goal.
+  opportunity: ["opportunity", "solution", "test"],
   solution: ["test"],
   test: [],
 };
 
 export const canHold = (parent: OstKind, child: OstKind) => CHILD_KINDS[parent].includes(child);
+
+const HELD: Record<OstKind, string> = { outcome: "goals", opportunity: "problems", solution: "solutions", test: "tests" };
+
+/** What a kind of card holds, in words ("Problem cards hold problems, solutions and checks"): a test under a problem is a check. */
+export function holdsLine(kind: OstKind): string {
+  const words = CHILD_KINDS[kind].map((k) => (kind === "opportunity" && k === "test" ? "checks" : HELD[k]));
+  if (!words.length) return `${KIND_LABEL[kind]} cards hold no other cards`;
+  return `${KIND_LABEL[kind]} cards hold ${words.length > 1 ? `${words.slice(0, -1).join(", ")} and ${words.at(-1)}` : words[0]}`;
+}
 
 /**
  * What this card can hold: what its kind holds, and a New product holds solutions too, its modules.
@@ -77,7 +93,7 @@ export const STAGES: Record<OstKind, readonly { value: OstStage; label: string }
 export const DEFAULT_STAGE: Record<OstKind, OstStage> = { outcome: "active", opportunity: "exploring", solution: "idea", test: "planned" };
 
 export const isStageOf = (kind: OstKind, stage: unknown): stage is OstStage => STAGES[kind].some((s) => s.value === stage);
-export const stageLabel = (kind: OstKind, stage: OstStage) => STAGES[kind].find((s) => s.value === stage)?.label ?? stage;
+export const stageLabel = (kind: OstKind, stage: OstStage, check?: boolean) => (check && kind === "test" ? CHECK_STAGE[stage] : undefined) ?? STAGES[kind].find((s) => s.value === stage)?.label ?? stage;
 
 /** Card widths on the board (heights follow the title). */
 export const CARD_WIDTH: Record<OstKind, number> = { outcome: 320, opportunity: 248, solution: 232, test: 216 };
@@ -93,7 +109,9 @@ export function defaultChildKind(parent: OstCard, childKinds: readonly OstKind[]
   // A New product gets modules until it has a test of its own.
   if (parent.kind === "solution") return parent.solutionType === "product" && !childKinds.includes("test") ? "solution" : "test";
   if (parent.kind === "test") return null;
-  if (childKinds.length) return childKinds.every((k) => k === "solution") ? "solution" : "opportunity";
+  // A problem's checks don't say what it holds: what's added under it is a problem or a solution.
+  const kids = childKinds.filter((k) => k !== "test");
+  if (kids.length) return kids.every((k) => k === "solution") ? "solution" : "opportunity";
   return parent.stage === "target" ? "solution" : "opportunity";
 }
 

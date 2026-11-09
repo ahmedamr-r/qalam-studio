@@ -33,8 +33,8 @@ export interface CardFacts {
   evidence: EvidenceSummary;
   /** A problem's page, and how much it rests on. */
   page: { topic: string; strength: Strength; quotes: number; sources: number; mix?: BasisCounts } | null;
-  /** What's under it already. */
-  under: { solutions: number; tests: number };
+  /** What's under it already: for a problem, its checks that confirmed it (`confirmed`). */
+  under: { solutions: number; tests: number; confirmed?: number };
   /** A goal is above it on the canvas. */
   underGoal?: boolean;
   /** A goal's number in a line (null: none yet), the problems behind it, its next job, and what was proposed for it not decided yet: goals under it, problems behind it. */
@@ -124,8 +124,10 @@ export function nextSteps(f: CardFacts): NextStep[] {
       const page: NextStep | null = f.page ? { id: "page", label: "Its page", hint: "Everything known about it" } : null;
       // No goal above it: which one solving it would move, its own or one found, and that goal's number.
       const goal: NextStep | null = f.underGoal ? null : { id: "find-goal", label: "Find the goal it could move", hint: "Your goals first, then the web, then its number", ai: true };
+      // A check confirmed it's really there: what to do about it comes first.
+      if (f.under.confirmed) push(draft, brief, goal, ground.find, ground.look, ground.watch, ground.file, page);
       // Nothing behind it yet: what the organization has first, when it has something.
-      if ((asks || bare) && (ground.find || ground.look)) push(ground.find, ground.look, draft, brief, goal, ground.watch, ground.file, page);
+      else if ((asks || bare) && (ground.find || ground.look)) push(ground.find, ground.look, draft, brief, goal, ground.watch, ground.file, page);
       else push(draft, brief, goal, ground.find, ground.look, ground.watch, ground.file, page);
       break;
     }

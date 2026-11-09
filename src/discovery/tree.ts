@@ -1,7 +1,7 @@
 import type { Doc, SceneNode } from "@/doc/schema";
 import { isOstCard, treeRootOf } from "@/doc/board";
 import type { Orientation } from "./layout";
-import { KIND_LABEL, MODULE_LABEL, SUB_OUTCOME_LABEL } from "./kinds";
+import { CHECK_LABEL, KIND_LABEL, MODULE_LABEL, SUB_OUTCOME_LABEL } from "./kinds";
 import type { OstCard } from "./types";
 
 /** Reading the tree (pure). */
@@ -83,6 +83,13 @@ export function isModule(doc: Doc, id: string): boolean {
   return isOstCard(n) && n.meta.ost.kind === "solution" && isOstCard(p) && p.meta.ost.kind === "solution";
 }
 
+/** A test under a problem: a Check of whether the problem is really there. */
+export function isCheck(doc: Doc, id: string): boolean {
+  const n = doc.nodes[id];
+  const p = n?.parentId ? doc.nodes[n.parentId] : undefined;
+  return isOstCard(n) && n.meta.ost.kind === "test" && (!!n.meta.ost.check || (isOstCard(p) && p.meta.ost.kind === "opportunity"));
+}
+
 /** The problem a card is nearest under (itself for a problem): a module's is its product's. */
 export function nearestProblem(doc: Doc, id: string): string | null {
   let n: SceneNode | undefined = doc.nodes[id];
@@ -97,7 +104,7 @@ export function nearestProblem(doc: Doc, id: string): string | null {
 export function kindLabel(doc: Doc, id: string): string {
   const c = doc.nodes[id]?.meta.ost;
   if (!c) return "";
-  return isSubOutcome(doc, id) ? SUB_OUTCOME_LABEL : isModule(doc, id) ? MODULE_LABEL : KIND_LABEL[c.kind];
+  return isSubOutcome(doc, id) ? SUB_OUTCOME_LABEL : isModule(doc, id) ? MODULE_LABEL : isCheck(doc, id) ? CHECK_LABEL : KIND_LABEL[c.kind];
 }
 
 /** The trees that start at an outcome, in board order. */

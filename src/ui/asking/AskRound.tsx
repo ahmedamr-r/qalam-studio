@@ -210,13 +210,15 @@ export interface SettledProps {
   /** The flow's verb: Propose, Place it, Draft them… */
   go: string;
   onGo: () => void;
+  /** A second way to go, beside it (a consultant's "With fixes too"). */
+  also?: { label: string; onGo: () => void };
   onOff: () => void;
   onTerm: (id: string, keep: boolean) => void;
   onChoice?: (id: string, keep: boolean) => void;
 }
 
 /** What we settled, before it generates: the points, Qalam AI's picks, words and decisions to keep, what's left open. */
-export function SettledCard({ state, go, onGo, onOff, onTerm, onChoice }: SettledProps) {
+export function SettledCard({ state, go, onGo, also, onOff, onTerm, onChoice }: SettledProps) {
   const s = settledOf(state);
   return (
     <div className="q-sheet flex flex-col gap-[10px] rounded-xl p-[14px]">
@@ -309,6 +311,11 @@ export function SettledCard({ state, go, onGo, onOff, onTerm, onChoice }: Settle
         <button type="button" className={r.replyChipPrimary} onClick={onGo}>
           {go}
         </button>
+        {also && (
+          <button type="button" className={r.replyChip} onClick={also.onGo}>
+            {also.label}
+          </button>
+        )}
         <button type="button" className={r.replyChip} onClick={onOff}>
           Something&apos;s off
         </button>

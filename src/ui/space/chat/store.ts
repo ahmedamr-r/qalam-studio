@@ -889,8 +889,8 @@ const planAsk = (id: string): PlanAsk | null => {
   const found = [...new Set([...(j.asking ? foundOf(j.asking).flatMap((l) => (l.piece ? [l.piece] : [])) : []), ...(j.kept ?? []).flatMap((k) => k.pieces)])];
   const kept = (j.kept ?? []).map(({ line, from }) => ({ line, from }));
   // Worked out with a consultant: how much they know (theirs over the read), who's asking, the playbook in use.
-  const consult = j.consult ? { mode: "consult" as const, consult: { level: levelNow(j), ...(j.consult.situation ? { situation: j.consult.situation } : {}), ...(j.consult.playbook ? { playbook: j.consult.playbook } : {}) } } : {};
-  return { said: t.said, outline: planOutline(studio().doc, useSpaceView.getState().things), rounds: j.rounds, looks: j.looks, ...(asking ? { asking } : {}), ...(found.length ? { found } : {}), ...(kept.length ? { kept } : {}), ...consult };
+  const consult = j.consult ? { mode: "consult" as const, consult: { level: levelNow(j), ...(j.consult.situation ? { situation: j.consult.situation } : {}), ...(j.consult.playbook ? { playbook: j.consult.playbook } : {}), ...(j.consult.fixes ? { fixes: true as const } : {}) } } : {};
+  return { said: t.said, outline: planOutline(studio().doc, useSpaceView.getState().things, goalsNow().north), rounds: j.rounds, looks: j.looks, ...(asking ? { asking } : {}), ...(found.length ? { found } : {}), ...(kept.length ? { kept } : {}), ...consult };
 };
 
 /** How much a consultant's turn teaches: what they set wins, then what the read found, then what's kept on this computer. */
@@ -1104,6 +1104,12 @@ export const stopAskingPlan = (id: string, form: FlowState | null) => void runCa
 
 /** They saw what was settled: propose. */
 export const confirmCanvasPlan = (id: string) => void runCanvasPlan(id, (signal) => confirm(planHost(id), signal));
+
+/** "With fixes too": the consultant's diagnosis, with a solution under the likeliest causes. */
+export function withFixes(id: string) {
+  setCanvasPlan(id, (j) => (j.consult ? { ...j, consult: { ...j.consult, fixes: true } } : j));
+  confirmCanvasPlan(id);
+}
 
 /**
  * Propose again with the challenges they kept (src/challenge/): what's under review is set aside, not
