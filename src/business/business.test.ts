@@ -19,7 +19,7 @@ describe("business.md", () => {
     const b = page();
     const md = businessToMarkdown(b, { org: "Talabeya" });
     expect(md).toContain("# How Talabeya works");
-    for (const h of ["## Who it serves", "## What they get", "## How it earns", "## What it costs to run", "## How customers find it", "## The numbers that matter", "## Where it stands"]) expect(md).toContain(h);
+    for (const h of ["## Who it serves", "## What they get", "## How it earns", "## What it takes to run", "## How customers find it", "## The numbers that matter", "## Where it stands"]) expect(md).toContain(h);
     expect(md).toContain("- A cut from each shop and the delivery fee <!-- qalam ");
     expect(businessFromMarkdown(md)).toEqual(b);
   });
@@ -46,6 +46,10 @@ describe("business.md", () => {
     expect(b.notes).toContain("Our cousin ran a shop.");
     expect(b.notes).toContain("A note of ours.");
     expect(businessFromMarkdown(businessToMarkdown(b, { org: "X" })).notes).toBe(b.notes);
+  });
+
+  it("still reads a section under the heading it had before", () => {
+    expect(businessFromMarkdown("## What it costs to run\n\n- Riders' pay\n").lines).toEqual([expect.objectContaining({ section: "costs", text: "Riders' pay" })]);
   });
 
   it("reads nothing from a file of another version, and loses nothing", () => {

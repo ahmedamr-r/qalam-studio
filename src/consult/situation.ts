@@ -101,3 +101,32 @@ export function situationLine(s: Situation): string {
   const theirs = s.theirs === "yes" ? "It's their own product or business." : s.theirs === "no" ? "It's something they're looking into, not theirs." : "Whether it's theirs isn't settled.";
   return [`Who's asking: ${s.role ? `${s.role}, ` : ""}${level}.`, theirs, s.stage !== "unknown" ? `Stage: ${s.stage}.` : ""].filter(Boolean).join(" ");
 }
+
+/**
+ * A later turn's reading, as code keeps it: a field changes only where it cites an answer they gave
+ * (`from`), and a role and position only in words they used. Nothing cited: it stands as it was.
+ */
+export function situationAfter(was: Situation, raw: unknown, o: { answered: ReadonlySet<string>; said: string }): Situation {
+  const r = rec(raw);
+  const from = (Array.isArray(r.from) ? r.from : []).filter((x): x is string => typeof x === "string" && o.answered.has(x));
+  if (!from.length) return was;
+  const read = sanitizeSituation({ ...r, said: was.named ? "named" : "none", product: was.product, name: was.name }, o.said);
+  return {
+    ...was,
+    level: pick(r.level, LEVELS, was.level),
+    stage: pick(r.stage, STAGES, was.stage),
+    theirs: pick(r.theirs, ["yes", "no", "unsure"] as const, was.theirs),
+    whose: pick(r.whose, ["team", "solo", "unsure"] as const, was.whose),
+    ...(read.role ? { role: read.role } : {}),
+    ...(read.position ? { position: read.position } : {}),
+  };
+}
+
+/** How many turns a playbook holds before a turn may switch it: a conversation shouldn't lurch. */
+export const PLAYBOOK_HOLD = 3;
+
+/** The playbook from the next turn on: the one a turn picked, once the current one has held a while. */
+export function nextPlaybook(now: Layer, picked: unknown, o: { turn: number; since: number }): { playbook: Layer; since: number } {
+  const p = pick(picked, PLAYBOOK_IDS, now);
+  return p !== now && o.turn - o.since >= PLAYBOOK_HOLD ? { playbook: p, since: o.turn } : { playbook: now, since: o.since };
+}

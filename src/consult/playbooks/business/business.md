@@ -2,7 +2,7 @@
 id: "business"
 layer: "business"
 title: "How the business works"
-when: ["What's being worked out needs how the business earns, who pays, what it costs to run or what it measures, and the business page doesn't say yet.", "They ask about the business itself: how it makes money, who it serves, what to focus on as a company."]
+when: ["What's being worked out needs how the business earns, who pays, what it takes to run or what it measures, and the business page doesn't say yet.", "They ask about the business itself: how it makes money, who it serves, what to focus on as a company."]
 propose: "goals"
 credits: [{"source": "phuryn/pm-skills: business-model, lean-canvas, startup-canvas, north-star-metric", "license": "MIT", "url": "https://github.com/phuryn/pm-skills", "used": "Which parts a business model covers, and a number that shows customers get value"}, {"source": "Strategyzer: Business Model Canvas, Value Proposition Canvas", "license": "ideas only", "url": "https://www.strategyzer.com", "used": "The parts of a business, as a structure"}, {"source": "Y Combinator: the application's questions", "license": "ideas only", "url": "https://www.ycombinator.com", "used": "How it makes money, and what's understood that others miss"}]
 ---
@@ -14,7 +14,7 @@ Only as deep as the work in front of you needs; the business page fills in over 
 - Who it serves, and who pays: the person who uses it and the person who pays aren't always the same (a family and the parent who orders, a patient and the clinic, a shop on a marketplace and its buyers). Where it serves two sides, both.
 - What they get: the job it does for them, and what they used before it, which is what it really competes with.
 - How it earns: walk through one real sale ("the last order: what did the customer pay, and what did you keep?"). A fee, a cut, a margin on goods, a subscription, ads.
-- What it costs to run: the biggest few costs, and which grow with every sale (delivery, payment fees, discounts) and which don't.
+- What it takes to run: the biggest few costs, which grow with every sale (delivery, payment fees, discounts) and which don't, and who and what it runs on (the people, partners and suppliers it can't do without).
 - How customers find it: where most new customers come from today.
 - The numbers they watch: the few they'd check first thing in a week, and where those numbers live.
 - Where it stands: how long it's been going, whether it's growing, flat or shrinking, how it's funded, and what the people it answers to want next (a profit, a raise, a target, a date).

@@ -103,7 +103,20 @@ export function connectionsRoutes(): Hono {
     return c.json({ limits: await planLimits(c.req.query("fresh") === "1") });
   });
   // Who's on this Mac: their name, from the first run.
-  r.get("/api/you", async (c) => c.json({ name: (await readSettings()).you?.name ?? null }));
+  r.get("/api/you", async (c) => {
+    const s = await readSettings();
+    return c.json({ name: s.you?.name ?? null, fluency: s.fluency ?? null });
+  });
+  // How much product work they know: what they set wins over any reading of Qalam AI's, which never replaces it.
+  r.put("/api/you/level", async (c) => {
+    const b = (await c.req.json().catch(() => ({}))) as { level?: unknown; by?: unknown };
+    const level = b.level === "new" || b.level === "some" || b.level === "seasoned" ? b.level : null;
+    const by = b.by === "you" ? "you" : "qalam";
+    if (!level) return c.json({ error: "bad_request", message: "Say new, some or seasoned." }, 400);
+    const now = await readSettings();
+    if (by === "qalam" && now.fluency?.by === "you") return c.json({ fluency: now.fluency });
+    return c.json({ fluency: (await writeSettings({ fluency: { level, by, at: Date.now() } })).fluency ?? null });
+  });
   r.put("/api/you", async (c) => {
     const { name } = (await c.req.json().catch(() => ({}))) as { name?: unknown };
     const n = nameShape(name);

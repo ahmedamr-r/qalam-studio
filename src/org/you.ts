@@ -65,7 +65,10 @@ export function personLine(p: Person): string {
 // ---------------------------------------------------------------------------
 // This Mac's name, in the window
 
-export const useYou = create<{ name: string | null; loaded: boolean }>(() => ({ name: null, loaded: false }));
+/** How much product work they know, as kept on this computer (src/consult/situation.ts): theirs (`you`), or Qalam AI's last reading. */
+export type Fluency = { level: "new" | "some" | "seasoned"; by: "you" | "qalam"; at: number };
+
+export const useYou = create<{ name: string | null; fluency: Fluency | null; loaded: boolean }>(() => ({ name: null, fluency: null, loaded: false }));
 
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) throw new Error(((await res.json().catch(() => null)) as { message?: string } | null)?.message ?? `Qalam couldn't answer (${res.status})`);
@@ -73,8 +76,17 @@ async function json<T>(res: Response): Promise<T> {
 }
 
 export async function loadYou(): Promise<void> {
-  const v = await fetch("/api/you").then((r) => json<{ name: string | null }>(r));
-  useYou.setState({ name: v.name, loaded: true });
+  const v = await fetch("/api/you").then((r) => json<{ name: string | null; fluency?: Fluency | null }>(r));
+  useYou.setState({ name: v.name, fluency: v.fluency ?? null, loaded: true });
+}
+
+/** How much product work they know: set by them (Explain more, Skip the basics), or Qalam AI's reading, which never replaces theirs. */
+export async function setFluency(level: Fluency["level"], by: Fluency["by"]): Promise<void> {
+  const was = useYou.getState().fluency;
+  if (by === "qalam" && was?.by === "you") return;
+  useYou.setState({ fluency: { level, by, at: Date.now() } });
+  const v = await fetch("/api/you/level", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ level, by }) }).then((r) => json<{ fluency: Fluency | null }>(r));
+  useYou.setState({ fluency: v.fluency });
 }
 
 export async function setYourName(name: string): Promise<void> {

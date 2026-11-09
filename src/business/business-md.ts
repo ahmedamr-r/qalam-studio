@@ -65,7 +65,8 @@ export function businessToMarkdown(b: Business, o: { org: string }): string {
   return out.join("\n").replace(/\n{3,}/g, "\n\n");
 }
 
-const SECTION_OF = new Map<string, BusinessSection>(BUSINESS_SECTIONS.map((s) => [SECTION_LABEL[s].toLowerCase(), s]));
+/** Each section by its heading, and by headings it had before (a file written then still reads). */
+const SECTION_OF = new Map<string, BusinessSection>([...BUSINESS_SECTIONS.map((s): [string, BusinessSection] => [SECTION_LABEL[s].toLowerCase(), s]), ["what it costs to run", "costs"]]);
 const BULLET = /^\s*[-*+]\s+(.*)$/;
 
 function lineOf(raw: string, section: BusinessSection): BusinessLine | null {

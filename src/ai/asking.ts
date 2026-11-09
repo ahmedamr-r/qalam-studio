@@ -21,6 +21,12 @@ export interface AskingOpts {
   terms?: boolean;
   /** Decisions may be offered (the Decisions lab switch). */
   choices?: boolean;
+  /** A question may carry an example of a useful answer and explain a word it uses (for someone new to this). */
+  teach?: boolean;
+  /** Each lookup says why it's looked up rather than asked. */
+  why?: boolean;
+  /** The turn says what's still open (a consultant's turn). */
+  reflect?: boolean;
 }
 
 const WHO: Record<AskWho, string> = { person: "the person", team: "the team", builder: "the builder", designer: "the designer" };
@@ -66,13 +72,21 @@ export function askingRules(who: AskWho, o: AskingOpts = {}): string {
 /** The fields every asking call answers in, worded for who answers. No numeric limits: code keeps the frontier and the end. */
 export function askingFields(who: AskWho, o: AskingOpts = {}): Record<string, unknown> {
   const item = questionItem(who === "designer" ? "designer" : who, "which of these fit") as { properties: Record<string, unknown>; required: string[] } & Record<string, unknown>;
-  const question = { ...item, properties: { ...item.properties, after: arr(str("An id"), "The ids of the questions or lookups whose answers it waits on. [] when it can be asked now") }, required: [...item.required, "after"] };
+  const teach = o.teach
+    ? {
+        example: str("For someone new to this: an example of a useful answer, in plain words, never one of the choices; empty when the question is plain enough"),
+        explain: obj({ term: str("A word the question uses that they may not know; empty when none"), plain: str("What it means, plainly, in a sentence; empty when none") }),
+      }
+    : {};
+  const question = { ...item, properties: { ...item.properties, ...teach, after: arr(str("An id"), "The ids of the questions or lookups whose answers it waits on. [] when it can be asked now") }, required: [...item.required, ...Object.keys(teach), "after"] };
   const kinds = o.kinds ?? [];
+  const lookup = { id: str("Your id for it: l1, l2…"), kind: { type: "string", enum: [...kinds], description: `project: their own material · web: what's published${kinds.includes("tools") ? " · tools: their connected tools" : ""}` }, query: str("What to look up, in a few words"), ...(o.why ? { why: str("Why it's looked up rather than asked, in a line they'd read") } : {}) };
   return {
     questions: arr(question, "Every question you can ask now, then those waiting on something still open (with their after). [] when nothing is left to ask"),
-    ...(kinds.length ? { lookups: arr(obj({ id: str("Your id for it: l1, l2…"), kind: { type: "string", enum: [...kinds], description: `project: their own material · web: what's published${kinds.includes("tools") ? " · tools: their connected tools" : ""}` }, query: str("What to look up, in a few words") }), "Facts to look up rather than ask. [] when none") } : {}),
+    ...(kinds.length ? { lookups: arr(obj(lookup), "Facts to look up rather than ask. [] when none") } : {}),
     done: bool("true when nothing that would change what's proposed is left open"),
     understood: arr(obj({ text: str("A point settled so far, one short line"), from: arr(str("An id it rests on"), "The ids it rests on") }), "What's settled so far"),
+    ...(o.reflect ? { open: arr(str("Something still open, one short line"), "What's still open that would change what's proposed. [] when nothing") } : {}),
     ...(o.terms ? { terms: arr(obj({ term: str("Their own word"), means: str("What it is, in one or two sentences"), avoid: arr(str("A word"), "Other words for it the project shouldn't use") }), "Terms an answer settled. [] when none") } : {}),
     ...(o.choices ? { choices: arr(obj({ choice: str("What was decided, in a line"), why: str("Why, in their words"), instead: str("What was weighed against it"), hard_to_undo: bool("Changing it later would cost a lot"), surprising: bool("Someone reading it later would wonder why"), trade_off: bool("There were real alternatives") }), "Decisions worth keeping. Usually []") } : {}),
   };

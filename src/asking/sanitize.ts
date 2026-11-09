@@ -41,6 +41,14 @@ export interface TurnCheck {
   decisions?: boolean;
   /** A flow's own say over each question (null: left out). */
   tweak?: (q: AskQuestion) => AskQuestion | null;
+  /** Every lookup needs a line saying why it's looked up rather than asked: one without is dropped. */
+  why?: boolean;
+  /** Someone new to this: a question may carry an example of a useful answer, and explain a word it uses. */
+  teach?: boolean;
+  /** Words explained already in this conversation (lowercased): never again. */
+  explained?: readonly string[];
+  /** What's still open is kept (a consultant's turn). */
+  reflect?: boolean;
 }
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
@@ -58,7 +66,30 @@ const inWords = (hay: string, words: string) => {
 /** How a thing is built, not what it is: never in the project's words. */
 const BUILT = /\b(api|endpoint|database|table|column|schema|json|field|button|screen|backend|frontend|server|repo)\b/i;
 
-export const ASK_LIMITS = { query: 200, point: 200, points: 12, term: 60, means: 240, avoid: 6, why: 240, choice: 160 } as const;
+export const ASK_LIMITS = { query: 200, point: 200, points: 12, term: 60, means: 240, avoid: 6, why: 240, choice: 160, reason: 140, example: 140, plain: 160, open: 8 } as const;
+
+/** Every figure in some words, as digits. */
+const figures = (s: string) => s.match(/\p{Nd}+/gu) ?? [];
+/** No figure that wasn't sent. */
+const noNewFigures = (words: string, hay: string) => figures(words).every((n) => hay.includes(n));
+
+/** An example of a useful answer: short, not one of the choices, no figure it wasn't sent. */
+function exampleOf(raw: unknown, q: AskQuestion, hay: string): string | undefined {
+  const t = clean(str(raw, 400));
+  if (!t || t.length > ASK_LIMITS.example || !noNewFigures(t, hay)) return undefined;
+  if (q.options.some((o) => sameWords(o.label) === sameWords(t))) return undefined;
+  return t;
+}
+
+/** A word the question uses, said plainly: once per conversation, no figure it wasn't sent. */
+function explainOf(raw: unknown, q: AskQuestion, hay: string, explained: ReadonlySet<string>): { term: string; plain: string } | undefined {
+  const x = rec(raw);
+  const term = str(x.term, 60).replace(/^["“']+|["”']+$/g, "");
+  const plain = clean(str(x.plain, 400));
+  if (!term || !plain || plain.length > ASK_LIMITS.plain || plain.split(" ").length < 3) return undefined;
+  if (explained.has(term.toLowerCase()) || !inWords(`${q.title} ${q.why} ${q.options.map((o) => `${o.label} ${o.description}`).join(" ")}`, term)) return undefined;
+  return noNewFigures(plain, hay) ? { term, plain } : undefined;
+}
 
 /**
  * A turn's questions as code keeps them, for any flow that asks (the interview's own turns, a brain
@@ -68,7 +99,7 @@ export const ASK_LIMITS = { query: 200, point: 200, points: 12, term: 60, means:
  */
 export function keepQuestions(
   raw: readonly unknown[],
-  c: Pick<TurnCheck, "who" | "asked" | "held" | "lookups" | "tweak" | "streak"> & { taken?: Set<string>; lookupIds?: ReadonlyMap<string, string>; readable?: (q: AskQuestion) => AskQuestion },
+  c: Pick<TurnCheck, "who" | "asked" | "held" | "lookups" | "tweak" | "streak" | "teach" | "explained"> & { taken?: Set<string>; lookupIds?: ReadonlyMap<string, string>; readable?: (q: AskQuestion) => AskQuestion; hay?: string },
   dropped?: (why: string, item: unknown) => void,
 ): { questions: AskQuestion[]; questionIds: Map<string, string> } {
   const drop = (why: string, item: unknown) => void dropped?.(why, item);
@@ -78,6 +109,7 @@ export function keepQuestions(
   const asked = [...c.asked];
   // Held last turn: asked again now that it can be, keeping its id; each one once.
   const held = [...(c.held ?? [])];
+  const explained = new Set(c.explained ?? []);
   for (const item of raw) {
     const x = rec(item);
     const kept = (c.who === "designer" ? sanitizeQuestions([item], { max: 1 }) : sanitizeAsked([item], { max: 1 }))[0];
@@ -112,7 +144,11 @@ export function keepQuestions(
       drop("this flow leaves it out", item);
       continue;
     }
-    questions.push({ ...tweaked, ...(ids(x.after).length ? { after: ids(x.after) } : {}) });
+    // For someone new: an example of a useful answer, and a word it uses said plainly (once).
+    const example = c.teach ? exampleOf(x.example, tweaked, c.hay ?? "") : undefined;
+    const explain = c.teach ? explainOf(x.explain, tweaked, c.hay ?? "", explained) : undefined;
+    if (explain) explained.add(explain.term.toLowerCase());
+    questions.push({ ...tweaked, ...(example ? { example } : {}), ...(explain ? { explain } : {}), ...(ids(x.after).length ? { after: ids(x.after) } : {}) });
     asked.push({ id, title: q.title });
   }
 
@@ -172,14 +208,20 @@ export function sanitizeTurn(raw: unknown, c: TurnCheck, dropped?: (why: string,
       drop("one look in their tools at a time", item);
       continue;
     }
+    // Why it's looked up rather than asked, held to what was sent: a consultant says so, or doesn't look.
+    const why = holdWords(clean(str(x.why, 400)), `${c.hay}\n${c.said}`, { max: ASK_LIMITS.reason, shape: "prose" }).text;
+    if (c.why && why.split(" ").length < 3) {
+      drop("a lookup with no reason given", item);
+      continue;
+    }
     let id = /^[a-z][\w-]{0,23}$/i.test(raw) ? raw : `l${taken.size + 1}`;
     while (taken.has(id)) id = `l${taken.size + 1}-${lookups.length + 1}`;
     taken.add(id);
     if (raw) lookupIds.set(raw, id);
-    lookups.push({ id, kind, query });
+    lookups.push({ id, kind, query, ...(why.split(" ").length >= 3 ? { why } : {}) });
   }
 
-  const { questions, questionIds } = keepQuestions(list(r.questions), { ...c, taken, lookupIds }, dropped);
+  const { questions, questionIds } = keepQuestions(list(r.questions), { ...c, taken, lookupIds, hay: `${c.hay}\n${c.said}` }, dropped);
   const known = new Set([...c.asked.map((a) => a.id), ...c.lookups.map((l) => l.id)]);
 
   // What it takes as settled: its own words, held to what it was sent.
@@ -194,6 +236,13 @@ export function sanitizeTurn(raw: unknown, c: TurnCheck, dropped?: (why: string,
     }
     const from = ids(x.from).filter((a) => known.has(a) || questionIds.has(a) || a === "said" || !!c.memory?.includes(a));
     understood.push({ text, ...(from.length ? { from } : {}) });
+  }
+
+  // What's still open, a line each, held to what was sent (a consultant's turn).
+  const open: string[] = [];
+  for (const item of c.reflect ? list(r.open).slice(0, ASK_LIMITS.open) : []) {
+    const text = holdWords(clean(str(item, 400)), hay, { max: ASK_LIMITS.point, shape: "prose" }).text;
+    if (text.split(" ").length >= 2 && !open.some((o) => sameWords(o) === sameWords(text))) open.push(text);
   }
 
   // A term: one of their own words, said in their words, not one the project has or took off.
@@ -230,5 +279,5 @@ export function sanitizeTurn(raw: unknown, c: TurnCheck, dropped?: (why: string,
     choices.push({ choice, why, instead });
   }
 
-  return { questions, lookups, done: r.done === true, understood, terms, choices };
+  return { questions, lookups, done: r.done === true, understood, ...(c.reflect ? { open } : {}), terms, choices };
 }

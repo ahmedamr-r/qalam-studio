@@ -16,6 +16,7 @@ import { indexFor } from "../index/registry";
 import { labOn } from "../lab";
 import { lookupKinds } from "../connectors/everywhere";
 import { companyContext, researchAbout } from "./company";
+import { consultInOf, consultNext, type ConsultIn } from "./consult";
 import { recallFor, subjectOf, withKnown } from "./memory";
 import { readLinks, realDeps, type MarketDeps } from "./market";
 import type { OrgStore } from "./store";
@@ -39,6 +40,9 @@ export interface PlanBody {
   found?: string[];
   /** What their own evidence said against what was proposed before, which they kept (src/challenge/): proposing again goes by it. */
   kept?: PlanKept[];
+  /** Worked out with a consultant (server/org/consult.ts): who's asking, how much they know, the playbook in use. */
+  mode?: "consult";
+  consult?: ConsultIn;
 }
 
 /** What proposing reads as answers: the interview's, else a plan's rounds from before. */
@@ -104,6 +108,8 @@ const PLAN_KINDS = ["project", "web"] as const;
  * frontier and the end. A first turn that fails asks code's own questions; a later one fails for Try again.
  */
 export async function planNext(store: OrgStore, b: PlanBody, emit: (label: string) => void, signal: AbortSignal, deps: Pick<MarketDeps, "structured"> = realDeps): Promise<AskTurn> {
+  // Worked out with a consultant: who's asking, its playbook, its pacing (server/org/consult.ts).
+  if (b.mode === "consult") return consultNext(store, b, emit, signal, deps);
   emit("Working out what to ask");
   const a: AskingInT = b.asking ?? { rounds: [], lookups: [], held: [], understood: [], proposed: [], said: b.said };
   const base = planAskMaterial({ org: store.info.name, about: await aboutLine(store), said: b.said, outline: b.outline, company: await companyContext(store, { near: b.said }) });
@@ -203,5 +209,6 @@ export function planBodyOf(raw: unknown): PlanBody | null {
     const line = clip(k.line, 600).trim();
     return line ? [{ line, from: list(k.from).slice(0, 4).map((f) => clip(f, 400)).filter(Boolean) }] : [];
   });
-  return { said, outline, rounds, looks, ...(asking?.success ? { asking: asking.data } : {}), ...(found.length ? { found } : {}), ...(kept.length ? { kept } : {}) };
+  const consult = b.mode === "consult" ? { mode: "consult" as const, consult: consultInOf(b.consult, said) } : {};
+  return { said, outline, rounds, looks, ...(asking?.success ? { asking: asking.data } : {}), ...(found.length ? { found } : {}), ...(kept.length ? { kept } : {}), ...consult };
 }

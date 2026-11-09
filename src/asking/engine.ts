@@ -105,7 +105,7 @@ function fromMemory(q: AskQuestion, now: number): { q: AskQuestion; a: Answer } 
  * to the person instead of run. It ends when nothing is asked, held, looked up or waiting to be read; a
  * turn whose questions were all answered before goes on to another unless it was done.
  */
-export function applyTurn(s: AskingState, t: AskTurn, o: { now: number; id: (prefix: string) => string }): AskingState {
+export function applyTurn(s: AskingState, t: AskTurn, o: { now: number; id: (prefix: string) => string; cap?: number; openFirst?: boolean }): AskingState {
   const turn = s.turns + 1;
   const quiet = s.quiet ?? 0;
   const known = t.questions.flatMap((q) => fromMemory(q, o.now) ?? []);
@@ -114,7 +114,7 @@ export function applyTurn(s: AskingState, t: AskTurn, o: { now: number; id: (pre
   const offerIt = !t.questions.length && quiet >= 2 && web.length > 0;
   // A look in their tools needs their picks before anything comes of it: put to them, never run by a turn.
   const tools = offerIt ? [] : t.lookups.filter((l) => l.kind === "tools");
-  const started: Lookup[] = t.lookups.filter((l) => l.kind !== "tools" && !(offerIt && l.kind === "web")).map((l) => ({ id: l.id, kind: l.kind, query: l.query, waits: turn, state: "running", at: o.now }));
+  const started: Lookup[] = t.lookups.filter((l) => l.kind !== "tools" && !(offerIt && l.kind === "web")).map((l) => ({ id: l.id, kind: l.kind, query: l.query, ...(l.why ? { why: l.why } : {}), waits: turn, state: "running", at: o.now }));
   const lookups = [...s.lookups, ...started];
   // What waits on the look put to them waits with it.
   const busy = new Set([...lookups.filter(running).map((l) => l.id), ...tools.slice(0, 1).map((l) => l.id)]);
@@ -128,22 +128,37 @@ export function applyTurn(s: AskingState, t: AskTurn, o: { now: number; id: (pre
     ask = held;
     held = [];
   }
+  // For someone new: open questions first, and only a few at a time. The rest wait for a later round,
+  // where the next turn asks them or drops them; nothing they'd wait on, so nothing is lost.
+  if (o.openFirst) ask = [...ask.filter((q) => !q.options.length), ...ask.filter((q) => q.options.length)];
+  if (o.cap && ask.length > o.cap) {
+    held = [...held, ...ask.slice(o.cap).map((q) => ({ ...q, later: true as const, after: [] }))];
+    ask = ask.slice(0, o.cap);
+  }
+  // Before a round that follows answers: what's settled so far and what's still open.
+  const answered = s.rounds.some((r) => r.form.submitted || !!r.said);
+  const so = (t.understood.length ? t.understood : s.understood).map((p) => p.text);
+  const open = t.open ?? [];
+  const reflect = answered && ask.length && (so.length || open.length) ? { so, open } : null;
+  const explained = [...new Set([...(s.explained ?? []), ...ask.flatMap((q) => (q.explain ? [q.explain.term.toLowerCase()] : []))])];
   const next: AskingState = {
     ...s,
     turns: turn,
     lookups,
     held,
     understood: t.understood.length ? t.understood : s.understood,
+    ...(t.open ? { open: t.open } : {}),
+    ...(explained.length ? { explained } : {}),
     terms: withTerms(s.terms, t.terms, o.id),
     choices: withChoices(s.choices, t.choices, o.id),
     quiet: ask.length || known.length ? 0 : started.length || offerIt || tools.length ? quiet + 1 : quiet,
     // What they said before goes first, as a round already answered; then what's asked now.
-    rounds: [...s.rounds, ...(known.length ? [memoryRound(known)] : []), ...(ask.length ? [{ questions: ask, form: flowOf(ask) }] : [])],
+    rounds: [...s.rounds, ...(known.length ? [memoryRound(known)] : []), ...(ask.length ? [{ questions: ask, form: flowOf(ask), ...(reflect ? { reflect } : {}) }] : [])],
   };
   delete next.askFirst;
   delete next.offer;
-  if (offerIt) next.offer = { id: web[0].id, query: web[0].query };
-  else if (tools.length) next.offer = { id: tools[0].id, query: tools[0].query, kind: "tools" };
+  if (offerIt) next.offer = { id: web[0].id, query: web[0].query, ...(web[0].why ? { why: web[0].why } : {}) };
+  else if (tools.length) next.offer = { id: tools[0].id, query: tools[0].query, kind: "tools", ...(tools[0].why ? { why: tools[0].why } : {}) };
   const pending = lookups.some((l) => running(l) && forTurns(l));
   const unread = lookups.some((l) => l.state === "done" && l.read === undefined && forTurns(l));
   if (!ask.length && !held.length && !started.length && !offerIt && !tools.length && !pending && !unread && (t.done || !known.length)) next.end = { by: t.done ? "done" : "nothing-new", at: o.now };
@@ -154,6 +169,17 @@ export function applyTurn(s: AskingState, t: AskTurn, o: { now: number; id: (pre
 function memoryRound(known: readonly { q: AskQuestion; a: Answer }[]): AskRound {
   const questions = known.map((k) => k.q);
   return { questions, form: { ...flowOf(questions), answers: Object.fromEntries(known.map((k) => [k.q.id, k.a])), submitted: true, current: REVIEW }, from: "memory" };
+}
+
+/**
+ * The round being asked taken back while nobody has touched it (Explain more, Skip the basics): the next
+ * turn asks again, so a word it explained there is explained again.
+ */
+export function dropCurrentRound(s: AskingState): AskingState {
+  const r = currentRound(s);
+  if (!r || Object.keys(r.form.answers).length) return s;
+  const gone = new Set(r.questions.flatMap((q) => (q.explain ? [q.explain.term.toLowerCase()] : [])));
+  return { ...s, rounds: s.rounds.slice(0, -1), ...(s.explained ? { explained: s.explained.filter((t) => !gone.has(t)) } : {}) };
 }
 
 /** A round's answers as they're being given (kept so a reload finds them). */
@@ -185,7 +211,7 @@ export function lookupLanded(s: AskingState, id: string, r: { lines?: FoundLine[
 }
 
 /** A lookup they or code started, outside a turn (an opening look; one they said yes to). */
-export const startLookup = (s: AskingState, l: Pick<Lookup, "id" | "kind" | "query" | "waits">, now: number): AskingState => ({ ...s, offer: s.offer?.id === l.id ? undefined : s.offer, quiet: s.offer?.id === l.id ? 0 : s.quiet, lookups: [...s.lookups.filter((x) => x.id !== l.id), { ...l, state: "running", at: now }] });
+export const startLookup = (s: AskingState, l: Pick<Lookup, "id" | "kind" | "query" | "waits" | "why">, now: number): AskingState => ({ ...s, offer: s.offer?.id === l.id ? undefined : s.offer, quiet: s.offer?.id === l.id ? 0 : s.quiet, lookups: [...s.lookups.filter((x) => x.id !== l.id), { ...l, state: "running", at: now }] });
 
 /** They'd rather be asked than have it looked up: the next turn asks, or ends. */
 export const askInstead = (s: AskingState): AskingState => ({ ...s, offer: undefined, quiet: 0, askFirst: true });

@@ -17,7 +17,7 @@ import { isAppLink } from "@/scan/input";
  */
 
 /** What a message can be taken as. */
-export type ChatMode = "ask" | "dump" | "take" | "goal" | "problem" | "scan" | "plan" | "tools";
+export type ChatMode = "ask" | "dump" | "take" | "goal" | "problem" | "scan" | "plan" | "consult" | "tools";
 
 export type Routed = { job: ChatMode; read?: true } | { job: "choose"; first: "goal" | "problem" };
 

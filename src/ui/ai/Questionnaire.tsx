@@ -174,6 +174,17 @@ export function Questionnaire({ questions, state, onChange, onSubmit, review, ti
                   {q.why}
                 </p>
               )}
+              {/* For someone new to this: a word it uses said plainly, and what a useful answer looks like. Never filled in. */}
+              {q.explain && (
+                <p className={qr.why} dir="auto">
+                  <span className="font-medium text-fg-muted">What I mean by {q.explain.term}:</span> {q.explain.plain}
+                </p>
+              )}
+              {q.example && (
+                <p className={qr.why} dir="auto">
+                  <span className="font-medium text-fg-muted">For example:</span> {q.example}
+                </p>
+              )}
             </div>
             {q.kind === "single" && <SingleStep q={q} a={answerOf(q, state.answers)} onAnswer={answer} />}
             {q.kind === "multi" && <MultiStep q={q} a={answerOf(q, state.answers)} onAnswer={answer} />}

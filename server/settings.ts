@@ -25,6 +25,8 @@ export interface Settings {
   you?: { name: string };
   /** This computer's person as the project's memory names who answered (hub/asked.jsonl, src/memory/): made once, never shown. */
   youId?: string;
+  /** How much product and business work this computer's person knows (src/consult/situation.ts): what they set with Explain more or Skip the basics (`you`), else Qalam AI's last reading (`qalam`). */
+  fluency?: { level: "new" | "some" | "seasoned"; by: "you" | "qalam"; at: number };
   /** Talking instead of typing: the engine they chose, their own dictation app, or none (unset: Apple's engine where the Mac has it, src/voice/model.ts). */
   voice?: { use: VoiceChoice };
   /** How each connector is reached: through Claude Code's server of that name, a token in the Keychain, Qalam's own sign-in to the service's MCP server at `url`, or Qalam's own Google sign-in to Drive's API (tokens in the Keychain). */

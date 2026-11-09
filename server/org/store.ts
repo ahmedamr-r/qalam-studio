@@ -131,7 +131,7 @@ export const GOALS = "goals.md";
 export const MARKET = "hub/market.md";
 /** The project's words: its terms, what each means, and the words to avoid. */
 export const TERMS = "hub/terms.md";
-/** How the business works: who it serves, how it earns, what it costs to run, the numbers that matter. At the root, beside the About and the goals. */
+/** How the business works: who it serves, how it earns, what it takes to run, the numbers that matter. At the root, beside the About and the goals. */
 export const BUSINESS = "business.md";
 /** The team's numbers from its own database: each in plain words, with the exact query that reads it. */
 export const METRICS = "hub/metrics.md";

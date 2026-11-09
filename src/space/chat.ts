@@ -1,3 +1,6 @@
+import type { BusinessLine } from "@/business/types";
+import type { PlaybookId } from "@/consult/playbooks.gen";
+import type { Level, Situation } from "@/consult/situation";
 import type { FoundGoal } from "@/goals/found";
 import type { Basis, BasisCounts } from "@/discovery/basis";
 import type { DumpSession } from "@/discovery/dump";
@@ -141,8 +144,28 @@ export interface WhoseJob {
  * settled. The conversation is the interview's (`asking`, src/asking/), kept here and sent with each
  * call; `rounds` are a plan's from before it, and `looks` every web look, for the thread.
  */
+/**
+ * Worked out with a consultant (src/consult/, server/org/consult.ts): who's asking, the playbook in use
+ * and since which turn, the level its last turn was asked at, and the lines noted on the business page
+ * after the round whose answers said them. Plan mode without it is as it was.
+ */
+export interface ConsultState {
+  situation?: Situation;
+  playbook?: PlaybookId;
+  /** The turn the playbook was last picked at: a switch holds a while (src/consult/situation.ts). */
+  since?: number;
+  level?: Level;
+  noted: { round: number; lines: BusinessLine[] }[];
+  /** A short statement: which "Just add it" chip leads. */
+  first?: "goal" | "problem";
+  /** They asked for fixes as well as the diagnosis. */
+  fixes?: true;
+}
+
 export interface PlanJob {
   kind: "plan";
+  /** Worked out with a consultant. */
+  consult?: ConsultState;
   step: "looking" | "thinking" | "asking" | "settled" | "proposing" | "review" | "placed" | "failed";
   rounds: PlanRound[];
   looks: PlanLook[];
@@ -488,6 +511,7 @@ const WHOSE_SAID: Record<NonNullable<WhoseJob["answer"]>, (name?: string) => str
  * What we settled before it proposes, then where it stands. A plan from before the interview reads as it did.
  */
 function planReply(t: ChatTurn, j: PlanJob): ChatPart[] {
+  if (j.consult) return consultReply(t, j, j.consult);
   const id = { turn: t.id };
   const s = j.asking;
   const looks = (after: number) => j.looks.flatMap((l, i) => (l.after === after ? [part("planLook", { turn: t.id, look: i })] : []));
@@ -507,6 +531,48 @@ function planReply(t: ChatTurn, j: PlanJob): ChatPart[] {
     case "asking":
       if (!s) return [...out, text(j.rounds.length > 1 ? "A few more, then I'll propose it." : "A few questions first: answer what you can."), part("planSkip", id)];
       return [...out, text(s.offer ? offerLine(s.offer) : s.rounds.length > 1 ? "More I can't tell from here: answer what you can, or take my picks." : "Some questions first: answer what you can, or take my picks.")];
+    case "settled":
+      return s && awaitsConfirm(s) ? [...out, part("askSettled", id)] : [...out, part("working", id)];
+    case "review":
+      return [...out, part("planProposed", id)];
+    case "placed":
+      return [...out, part("planPlaced", id)];
+    case "failed":
+      return [...out, text(`I couldn't finish: ${j.error ?? "something went wrong"}`), part("planRetry", id)];
+  }
+}
+
+/**
+ * A conversation with the consultant in the thread: before each round that follows answers, what's
+ * settled and what's still open (not for someone seasoned); each round answered, then what it noted on
+ * the business page and the looks that came after it; What we settled before it proposes.
+ */
+function consultReply(t: ChatTurn, j: PlanJob, c: ConsultState): ChatPart[] {
+  const id = { turn: t.id };
+  const s = j.asking;
+  const reflect = c.level !== "seasoned";
+  const looks = (after: number) => j.looks.flatMap((l, i) => (l.after === after ? [part("planLook", { turn: t.id, look: i })] : []));
+  const out: ChatPart[] = [text("Let's work it out. I'll ask what only you know, then put what we find on your canvas.")];
+  const rounds = s?.rounds ?? [];
+  const open = s ? !!currentRound(s) : false;
+  rounds.forEach((r, i) => {
+    if (open && i === rounds.length - 1) return;
+    if (reflect && r.reflect) out.push(part("consultReflect", { turn: t.id, round: i }));
+    out.push(part("askAnswered", { turn: t.id, round: i }));
+    if (c.noted.some((n) => n.round === i && n.lines.length)) out.push(part("consultNoted", { turn: t.id, round: i }));
+    out.push(...looks(i));
+  });
+  if (s?.lookups.some((l) => l.kind === "project" && l.state === "done" && l.lines?.length)) out.push(part("askFound", id));
+  switch (j.step) {
+    case "looking":
+    case "thinking":
+    case "proposing":
+      return [...out, part("working", id)];
+    case "asking": {
+      const cur = s ? currentRound(s) : null;
+      if (reflect && cur?.reflect) out.push(part("consultReflect", { turn: t.id, round: rounds.length - 1 }));
+      return [...out, text(s?.offer ? offerLine(s.offer) : rounds.length > 1 ? "Answer what you can, and skip anything you don't know." : "A few questions first. Answer what you can, and skip anything you don't know.")];
+    }
     case "settled":
       return s && awaitsConfirm(s) ? [...out, part("askSettled", id)] : [...out, part("working", id)];
     case "review":

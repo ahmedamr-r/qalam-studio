@@ -27,8 +27,9 @@ import type { Space } from "../../frame/spaces";
 import { ASK_EVENT, takeAskNext } from "../../org/ask-next";
 import { PARTS } from "./parts";
 import { clearMode, composeIn, useCompose } from "./compose";
-import { answerScanRound, askMeInsteadScan, keepScanRound, lookItUpScan, picksScan, scanRoundOf, stopAskingScan, stopScanLookup, answerBriefRound, askMeInsteadBrief, briefRoundOf, keepBriefRound, lookItUpBrief, picksBrief, stopAskingBrief, stopBriefLookup, answerCanvasPlan, answerDraft, answerFind, answerNumber, answerSteer, ask, askMeInsteadDraft, askMeInsteadPlan, keepDraftRound, lookItUpDraft, picksDraft, stopAskingDraft, stopDraftLookup, clearChat, findQuestionsOf, findWith, keepPlanRound, leaveSteer, lookItUpPlan, numberQuestions, openChat, picksCanvasPlan, resumePlans, send, steerQuestionsOf, stopAskingPlan, stopPlanLookup, stopTurn, turnOf, useCanvasChat } from "./store";
+import { relevel, answerScanRound, askMeInsteadScan, keepScanRound, lookItUpScan, picksScan, scanRoundOf, stopAskingScan, stopScanLookup, answerBriefRound, askMeInsteadBrief, briefRoundOf, keepBriefRound, lookItUpBrief, picksBrief, stopAskingBrief, stopBriefLookup, answerCanvasPlan, answerDraft, answerFind, answerNumber, answerSteer, ask, askMeInsteadDraft, askMeInsteadPlan, keepDraftRound, lookItUpDraft, picksDraft, stopAskingDraft, stopDraftLookup, clearChat, findQuestionsOf, findWith, keepPlanRound, leaveSteer, lookItUpPlan, numberQuestions, openChat, picksCanvasPlan, resumePlans, send, steerQuestionsOf, stopAskingPlan, stopPlanLookup, stopTurn, turnOf, useCanvasChat } from "./store";
 import { AskRound } from "../../asking/AskRound";
+import { lab } from "@/lab";
 
 /*
  * Qalam AI's chat on the left of a space's canvas, as Figma keeps its panel there: one box for
@@ -41,7 +42,7 @@ import { AskRound } from "../../asking/AskRound";
 export const CHAT_W = 420;
 
 /** What the box is for when a button set it (src/space/route.ts's modes), in a word on the box. */
-const MODE_LABEL: Record<ChatMode, string> = { ask: "A question", dump: "Brain dump", take: "To take in", goal: "A goal", problem: "A problem", scan: "An idea or a product", plan: "A plan", tools: "Look in your tools" };
+const MODE_LABEL: Record<ChatMode, string> = { ask: "A question", dump: "Brain dump", take: "To take in", goal: "A goal", problem: "A problem", scan: "An idea or a product", plan: "A plan", consult: "Work it out", tools: "Look in your tools" };
 
 export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
   useEffect(() => void openChat(space), [space]);
@@ -185,8 +186,8 @@ export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
                     </MenuItem>
                   ) : null}
                   {!busy && (
-                    <MenuItem icon={<QalamAIGlyph size={14} />} onSelect={() => composeIn({ mode: "plan" })}>
-                      Work something out as a plan
+                    <MenuItem icon={<QalamAIGlyph size={14} />} onSelect={() => composeIn({ mode: lab("consult") ? "consult" : "plan" })}>
+                      {lab("consult") ? "Work it out with Qalam AI" : "Work something out as a plan"}
                     </MenuItem>
                   )}
                 </SourceMenu>
@@ -363,10 +364,16 @@ function CanvasPlanRound({ turn }: { turn: string }) {
     const j = s.chat.turns.find((t) => t.id === turn)?.job;
     return j?.kind === "plan" ? (j.asking ?? null) : null;
   });
+  // A consultant pitches its questions to who's asking: Explain more, or Skip the basics.
+  const level = useCanvasChat((s) => {
+    const j = s.chat.turns.find((t) => t.id === turn)?.job;
+    return j?.kind === "plan" && j.consult ? (j.consult.level ?? "some") : null;
+  });
   if (!state) return null;
   return (
     <AskRound
       state={state}
+      {...(level ? { level: { ...(level !== "new" ? { simpler: () => relevel(turn, "simpler") } : {}), ...(level !== "seasoned" ? { pastBasics: () => relevel(turn, "pastBasics") } : {}) } } : {})}
       onKeep={(f) => keepPlanRound(turn, f)}
       onSend={(f) => answerCanvasPlan(turn, f)}
       onPicks={(f) => picksCanvasPlan(turn, f)}

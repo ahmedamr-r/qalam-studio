@@ -14,7 +14,7 @@ export const SECTION_LABEL: Record<BusinessSection, string> = {
   serves: "Who it serves",
   gets: "What they get",
   earns: "How it earns",
-  costs: "What it costs to run",
+  costs: "What it takes to run",
   finds: "How customers find it",
   numbers: "The numbers that matter",
   stands: "Where it stands",

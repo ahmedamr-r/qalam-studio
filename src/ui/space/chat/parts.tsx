@@ -16,7 +16,9 @@ import { DUMP_WORDS, wordsIn, type ChatMode } from "@/space/route";
 import { claimStrip } from "@/hub/ask";
 import type { TopicInfo } from "@/hub/topics";
 import { topicsDb } from "@/org/topics";
-import { placeHref, topicHref } from "@/projects/model";
+import { businessHref, placeHref, topicHref } from "@/projects/model";
+import { SECTION_LABEL } from "@/business/types";
+import { editBusinessLine, useBusiness } from "@/org/business";
 import type { PartData } from "../../chat/types";
 import type { PartComponent } from "../../chat/ChatThread";
 import { ReplyChips } from "../../chat/ChatThread";
@@ -38,7 +40,7 @@ import { Button, Spinner, Tag, Tip } from "../../controls";
 import { Dots, StatusDot } from "../../viz";
 import { r } from "../../recipes";
 import { useTopics } from "../../topics/list";
-import { useWords } from "../../frame/store";
+import { useCurrentOrg, useWords } from "../../frame/store";
 import { show } from "../links";
 import { FoundGoalRow } from "../../chat/FoundGoalRow";
 import { moreLine } from "@/onboarding/start";
@@ -637,6 +639,75 @@ function DraftNowPart({ data }: { data: PartData }) {
 function AskAnsweredPart({ data }: { data: PartData }) {
   const state = usePlanAsking(data.turn);
   return state && state.rounds[Number(data.round)] ? <AnsweredRound state={state} index={Number(data.round)} /> : null;
+}
+
+/** Before a round that follows answers, a consultant's: what's settled so far and what's still open. */
+function ConsultReflectPart({ data }: { data: PartData }) {
+  const state = usePlanAsking(data.turn);
+  const reflect = state?.rounds[Number(data.round)]?.reflect;
+  if (!reflect || (!reflect.so.length && !reflect.open.length)) return null;
+  return (
+    <div className="flex flex-col gap-[8px] text-body leading-[20px] text-fg">
+      {reflect.so.length > 0 && (
+        <div className="flex flex-col gap-[2px]">
+          <p className="text-caption font-medium text-fg-muted">So far</p>
+          <ul className="flex list-disc flex-col gap-[2px] pl-[18px]">
+            {reflect.so.map((x) => (
+              <li key={x} dir="auto">
+                {x}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {reflect.open.length > 0 && (
+        <div className="flex flex-col gap-[2px]">
+          <p className="text-caption font-medium text-fg-muted">Still open</p>
+          <ul className="flex list-disc flex-col gap-[2px] pl-[18px] text-fg-muted">
+            {reflect.open.map((x) => (
+              <li key={x} dir="auto">
+                {x}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** What a round's answers told about the business, noted on its page as they came: each with Fix and Take off. */
+function ConsultNotedPart({ data }: { data: PartData }) {
+  const j = useTurn(data.turn)?.job;
+  const business = useBusiness((s) => s.business);
+  const org = useCurrentOrg();
+  if (j?.kind !== "plan" || !j.consult) return null;
+  // What's still on the page: a line taken off since is gone from here too, and a fix shows as fixed.
+  const lines = j.consult.noted.filter((n) => n.round === Number(data.round)).flatMap((n) => n.lines.flatMap((l) => business.lines.filter((b) => b.id === l.id)));
+  if (!lines.length) return null;
+  return (
+    <div className="q-sheet flex flex-col gap-[6px] rounded-lg px-[10px] py-[8px]">
+      <a href={businessHref()} className="text-caption font-medium text-fg-muted hover:text-fg hover:underline">
+        Noted on How {org?.name ?? "it"} works
+      </a>
+      {lines.map((l) => (
+        <div key={l.id} className="flex items-start justify-between gap-[8px]">
+          <p className="min-w-0 text-body leading-[20px] text-fg" dir="auto">
+            <span className="text-fg-muted">{SECTION_LABEL[l.section]}:</span> {l.text}
+            {l.by === "qalam" && <span className="text-caption text-fg-subtle"> (my reading of what you said)</span>}
+          </p>
+          <span className="flex shrink-0 items-center gap-[2px]">
+            <a href={businessHref(undefined, l.section)} className={r.replyChip}>
+              Fix
+            </a>
+            <button type="button" className={r.replyChip} onClick={() => void editBusinessLine({ op: "remove", id: l.id })}>
+              Take off
+            </button>
+          </span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 /** What lookups in their project found. */
@@ -1919,6 +1990,8 @@ export const PARTS: Record<string, PartComponent> = {
   planAnswered: PlanAnsweredPart,
   planSkip: PlanSkipPart,
   askAnswered: AskAnsweredPart,
+  consultReflect: ConsultReflectPart,
+  consultNoted: ConsultNotedPart,
   askFound: AskFoundPart,
   askSettled: AskSettledPart,
   draftSettled: DraftSettledPart,

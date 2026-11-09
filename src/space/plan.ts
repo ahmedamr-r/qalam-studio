@@ -84,7 +84,7 @@ export function leftOf(rounds: readonly PlanRound[]): string[] {
   return rounds.flatMap((r) => (r.answers ? r.questions.filter((q) => !(r.answers?.[q.id] ?? "").trim()).map((q) => one(q.title)) : []));
 }
 
-const canvasLines = (outline: readonly OutlineCard[], ref: (id: string) => string | undefined) =>
+export const canvasLines = (outline: readonly OutlineCard[], ref: (id: string) => string | undefined) =>
   outline.map((c) => {
     const parent = c.parent ? ref(c.parent) : null;
     return `- ${ref(c.id)} · ${KIND_WORD[c.kind]} · “${one(c.title)}”${c.metric ? ` · ${one(c.metric)}` : ""}${c.type ? ` · ${c.type}` : ""}${parent ? ` · under ${parent}` : ""}${c.faint ? " · only a page so far" : ""}`;

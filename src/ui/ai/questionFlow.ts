@@ -39,6 +39,10 @@ interface QBase {
   tool?: ToolAsk;
   /** What was said before to a question like it (src/memory/known.ts): shown under it, with Use it. */
   known?: KnownAnswer[];
+  /** An example of a useful answer, shown under it for someone new to this; never filled in. */
+  example?: string;
+  /** A word the question uses, said plainly, the first time it's used. */
+  explain?: { term: string; plain: string };
 }
 
 export interface SingleQuestion extends QBase {

@@ -27,8 +27,12 @@ export const AskingIn = z
     /** `by`: code's own questions, or what they said before in another conversation, not asked now. */
     rounds: z.array(z.object({ by: z.enum(["code", "memory"]).optional(), asked: z.array(Answer) })),
     lookups: z.array(z.object({ id: z.string().max(40), kind: z.enum(["project", "web", "tools"]), query: z.string().max(400), state: z.enum(["running", "done", "failed", "stopped"]), lines: z.array(Line) })),
-    held: z.array(z.object({ id: z.string().max(80), title: z.string().max(400), after: z.array(z.string().max(80)) })),
+    held: z.array(z.object({ id: z.string().max(80), title: z.string().max(400), after: z.array(z.string().max(80)), later: z.boolean().optional() })),
     understood: z.array(z.string().max(400)),
+    /** What the last turn said was still open (a consultant's turn). */
+    open: z.array(z.string().max(400)).max(20).optional(),
+    /** Words explained to them already in this conversation. */
+    explained: z.array(z.string().max(80)).max(60).optional(),
     proposed: z.array(z.string().max(80)),
     clashes: z.array(z.object({ word: z.string().max(80), term: z.string().max(80) })).optional(),
     said: z.string().max(8000),
@@ -63,8 +67,10 @@ export function askingIn(s: AskingState, o: { said: string; terms?: Terms; memor
     lookups: s.lookups
       .filter((l): l is Lookup & { kind: "project" | "web" | "tools" } => l.waits !== "draft" && l.kind !== "online")
       .map((l) => ({ id: l.id, kind: l.kind, query: clip(one(l.query), 300), state: l.state, lines: (l.lines ?? []).slice(0, 8).map((x) => ({ ref: x.ref, text: clip(one(x.text), 600), from: clip(one(x.from), 200), ...(x.whose ? { whose: x.whose } : {}) })) })),
-    held: s.held.map((q) => ({ id: q.id, title: clip(one(q.title), 300), after: q.after ?? [] })),
+    held: s.held.map((q) => ({ id: q.id, title: clip(one(q.title), 300), after: q.after ?? [], ...(q.later ? { later: true } : {}) })),
     understood: s.understood.map((p) => clip(p.text, 300)),
+    ...(s.open?.length ? { open: s.open.map((x) => clip(x, 300)) } : {}),
+    ...(s.explained?.length ? { explained: s.explained.slice(-60) } : {}),
     proposed: s.terms.map((t) => t.term),
     ...(o.terms ? { clashes: clashes(o.terms, said).slice(0, 8) } : {}),
     said: clip(said, 7000),
@@ -121,8 +127,13 @@ export function askingBlock(a: AskingInT): string {
       else out.push(`${head}:`, ...l.lines.map((x) => `  - ${x.ref} · “${x.text}” · ${x.from}${x.whose ? ` (${x.whose})` : ""}`));
     }
   }
-  if (a.held.length) out.push("", "Waiting on something still open, not asked yet (ask again once it settles, if it still matters):", ...a.held.map((q) => `- ${q.id} · ${q.title} (after ${q.after.join(", ")})`));
+  const waiting = a.held.filter((q) => !q.later);
+  const later = a.held.filter((q) => q.later);
+  if (waiting.length) out.push("", "Waiting on something still open, not asked yet (ask again once it settles, if it still matters):", ...waiting.map((q) => `- ${q.id} · ${q.title} (after ${q.after.join(", ")})`));
+  if (later.length) out.push("", "Kept for a later round, to keep the last one short (ask now what still matters, under the same id; drop the rest):", ...later.map((q) => `- ${q.id} · ${q.title}`));
   if (a.understood.length) out.push("", "What you took as settled last turn:", ...a.understood.map((p) => `- ${p}`));
+  if (a.open?.length) out.push("", "What you said was still open last turn:", ...a.open.map((p) => `- ${p}`));
+  if (a.explained?.length) out.push("", `Words explained to them already (never again): ${a.explained.map((t) => `“${t}”`).join(", ")}`);
   if (a.clashes?.length) out.push("", "Words they used that the project's words say to avoid (ask which they mean, unless it's plain):", ...a.clashes.map((x) => `- “${x.word}”: the project says “${x.term}”`));
   if (a.proposed.length) out.push("", `Terms offered already in this conversation (never again): ${a.proposed.map((t) => `“${t}”`).join(", ")}`);
   if (a.askFirst) out.push("", "They'd rather be asked than have more looked up: ask, or say done. No lookups this turn.");
@@ -143,5 +154,6 @@ export function checkOf(a: AskingInT, o: Omit<TurnCheck, "asked" | "held" | "loo
     said: a.said,
     proposed: a.proposed,
     kinds: a.askFirst ? [] : o.kinds,
+    ...(a.explained?.length ? { explained: a.explained } : {}),
   };
 }

@@ -28,6 +28,8 @@ export interface AskingHost {
   status?(s: "thinking" | "looking"): void;
   /** Where the project's memory keeps this conversation's answers (src/memory/): which flow, its key, and what it's about. None: not remembered. */
   memory?(): { flow: AskedFlow; key: string; about: AskedAbout } | null;
+  /** How a round is paced for who's asking: at most this many questions, open ones first. None: every question it can ask now. */
+  pace?(): { cap?: number; openFirst?: boolean };
 }
 
 const posting = new Set<string>();
@@ -152,7 +154,7 @@ export async function goOn(h: AskingHost, signal: AbortSignal): Promise<Paused> 
     h.set(markRead);
     const t = await h.turn(h.get()!, signal);
     if (signal.aborted) throw new DOMException("Stopped", "AbortError");
-    h.set((x) => applyTurn(x, t, { now: Date.now(), id: newId }));
+    h.set((x) => applyTurn(x, t, { now: Date.now(), id: newId, ...(h.pace?.() ?? {}) }));
   }
 }
 
@@ -192,7 +194,7 @@ export const off = (h: AskingHost) => h.set(offPoint);
 /** The lookup put to them: yes, look it up; or ask me instead. */
 export function lookItUp(h: AskingHost, signal: AbortSignal): Promise<Paused> {
   const s = h.get();
-  if (s?.offer) h.set((x) => startLookup(x, { id: s.offer!.id, kind: s.offer!.kind ?? "web", query: s.offer!.query, waits: x.turns }, Date.now()));
+  if (s?.offer) h.set((x) => startLookup(x, { id: s.offer!.id, kind: s.offer!.kind ?? "web", query: s.offer!.query, ...(s.offer!.why ? { why: s.offer!.why } : {}), waits: x.turns }, Date.now()));
   return goOn(h, signal);
 }
 

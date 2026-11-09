@@ -30,9 +30,9 @@ export function Waiting({ lookups, onStop }: { lookups: readonly Lookup[]; onSto
       {running.map((l) => (
         <div key={l.id} className={clsx(r.chatStatus, "flex items-center gap-[6px] text-fg-muted")}>
           <Spinner size={12} />
-          <span className="min-w-0 flex-1 truncate">
+          <span className="min-w-0 flex-1 truncate" title={l.why}>
             Looking {WHERE[l.kind]}
-            {l.kind === "tools" ? ` for “${l.query}”: tick what to bring in, in the chat` : l.waits === "draft" ? " on it, for the draft" : `${l.query ? ` for “${l.query}”` : " for what people do about this"} while you answer`}
+            {l.why ? `: ${l.why.replace(/^\p{Lu}/u, (c) => c.toLowerCase())}` : l.kind === "tools" ? ` for “${l.query}”: tick what to bring in, in the chat` : l.waits === "draft" ? " on it, for the draft" : `${l.query ? ` for “${l.query}”` : " for what people do about this"} while you answer`}
           </span>
           <IconBtn size="sm" label="Stop this lookup" onClick={() => onStop(l.id)}>
             <X size={12} {...ICON} />
@@ -43,10 +43,18 @@ export function Waiting({ lookups, onStop }: { lookups: readonly Lookup[]; onSto
   );
 }
 
+/** How much the questions teach, with a way to change it (a consultant's): one step simpler, or one past the basics. */
+export interface LevelControl {
+  simpler?: () => void;
+  pastBasics?: () => void;
+}
+
 export interface AskRoundProps {
   state: AskingState;
   /** Shown beside the step counter. */
   title?: string;
+  /** Explain more / Skip the basics, where the flow pitches its questions to the person. */
+  level?: LevelControl;
   onKeep: (form: FlowState) => void;
   onSend: (form: FlowState) => void;
   onPicks: (form: FlowState) => void;
@@ -63,12 +71,12 @@ export function AskRound(p: AskRoundProps) {
   return (
     <div className="flex flex-col gap-[6px]">
       <Waiting lookups={p.state.lookups} onStop={p.onStopLookup} />
-      {offer && !round ? <Offer query={offer.query} kind={offer.kind ?? "web"} onYes={p.onLookItUp} onNo={p.onAskMe} onStop={() => p.onStop(null)} /> : round ? <RoundBox key={p.state.rounds.length} round={round} n={p.state.rounds.length} {...p} /> : null}
+      {offer && !round ? <Offer query={offer.query} why={offer.why} kind={offer.kind ?? "web"} onYes={p.onLookItUp} onNo={p.onAskMe} onStop={() => p.onStop(null)} /> : round ? <RoundBox key={`${p.state.rounds.length}:${round.questions.map((q) => q.id).join(",")}`} round={round} n={p.state.rounds.length} {...p} /> : null}
     </div>
   );
 }
 
-function RoundBox({ round, n, title, onKeep, onSend, onPicks, onStop }: AskRoundProps & { round: Round; n: number }) {
+function RoundBox({ round, n, title, level, onKeep, onSend, onPicks, onStop }: AskRoundProps & { round: Round; n: number }) {
   const questions = useMemo(() => round.questions.map(toQuestion), [round]);
   const [form, setForm] = useState<FlowState>(round.form);
   const recommends = round.questions.some((q) => q.recommended.length > 0 && q.options.length > 1);
@@ -94,18 +102,31 @@ function RoundBox({ round, n, title, onKeep, onSend, onPicks, onStop }: AskRound
         <button type="button" className={r.replyChip} onClick={() => onStop(form)}>
           Stop asking
         </button>
+        {level?.simpler && (
+          <button type="button" className={r.replyChip} title="Plainer words, an example with each question, and fewer at a time" onClick={level.simpler}>
+            Explain more
+          </button>
+        )}
+        {level?.pastBasics && (
+          <button type="button" className={r.replyChip} title="Your terms, no examples, and every question at once" onClick={level.pastBasics}>
+            Skip the basics
+          </button>
+        )}
       </div>
     </div>
   );
 }
 
 /** After two turns of only looking things up, the next lookup is theirs to say yes to. */
-function Offer({ query, kind, onYes, onNo, onStop }: { query: string; kind: "web" | "tools"; onYes: () => void; onNo: () => void; onStop: () => void }) {
+function Offer({ query, why, kind, onYes, onNo, onStop }: { query: string; why?: string; kind: "web" | "tools"; onYes: () => void; onNo: () => void; onStop: () => void }) {
   return (
     <div className="q-sheet flex flex-col gap-[8px] rounded-xl p-[12px]">
       <p className="flex items-start gap-[6px] text-body leading-[20px] text-fg">
         <Search size={14} {...ICON} className="mt-[3px] shrink-0 text-fg-muted" />
-        <span>{kind === "tools" ? `Look in your tools for “${query}” before asking you more? You pick what's brought in.` : `Look up “${query}” on the web too, before asking you more?`}</span>
+        <span>
+          {kind === "tools" ? `Look in your tools for “${query}” before asking you more? You pick what's brought in.` : `Look up “${query}” on the web too, before asking you more?`}
+          {why && <span className="block text-caption text-fg-muted">{why}</span>}
+        </span>
       </p>
       <div className="flex flex-wrap items-center gap-[4px]">
         <button type="button" className={r.replyChipPrimary} onClick={onYes}>

@@ -22,10 +22,11 @@ export async function researchAbout(store: OrgStore, about: string): Promise<str
  * What a draft hears about the company: its About, how the business works, the project's own words,
  * and the facts and competitors known beyond it. The market comes last, so a long market is what's cut.
  */
-export async function companyContext(store: OrgStore, o: { near?: string } = {}): Promise<string> {
+export async function companyContext(store: OrgStore, o: { near?: string; business?: false } = {}): Promise<string> {
   const org = store.info.name;
   const about = contextText(await store.getAbout(), `${org}:`);
-  const business = await businessFor(store, { for: "call", max: 600 });
+  // A call that reads the whole business page on its own (a consultant's turn) doesn't hear it twice.
+  const business = o.business === false ? "" : await businessFor(store, { for: "call", max: 600 });
   const words = termsText(await store.getTerms(), { max: 800, near: o.near });
   return [about, business, words, marketContext(await store.getMarket(), { org, told: about })].filter(Boolean).join("\n").slice(0, 2400);
 }

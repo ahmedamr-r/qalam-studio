@@ -1,9 +1,13 @@
 import { nanoid } from "nanoid";
 import { checkFirst, setAside, startReview, useReview } from "../../discovery/review";
 import { keptChallenges, useChallenges } from "../../discovery/challenges";
-import { planAhead, planLook, planPropose, planRoute, type PlanAsk } from "@/org/plan";
+import { planAhead, planLook, planPropose, planRoute, type ConsultTurn, type PlanAsk } from "@/org/plan";
 import { planOutline, planProposals } from "@/space/plan";
-import { answersOf, currentRound, decideChoice, decideTerm, emptyAsking, foundOf, fromBuckets, fromPlanRounds, loaded, looksOf, startLookup, theirWords } from "@/asking/engine";
+import { answersOf, currentRound, decideChoice, decideTerm, dropCurrentRound, emptyAsking, foundOf, fromBuckets, fromPlanRounds, loaded, looksOf, startLookup, theirWords } from "@/asking/engine";
+import { capFor } from "@/consult/pace";
+import type { PlaybookId } from "@/consult/playbooks.gen";
+import { levelOf, nextPlaybook, pastBasics, simpler, type Level } from "@/consult/situation";
+import { loadYou, setFluency, useYou, type Position } from "@/org/you";
 import { OPEN_ID, answered, answersRecord, openQuestion, type AskFor, type CardAnswers } from "@/discovery/questions";
 import { DUMP_ROLES } from "@/discovery/dump";
 import { sharedWords } from "@/discovery/near";
@@ -36,13 +40,13 @@ import { KIND_LABEL } from "@/discovery/kinds";
 import { backing } from "@/discovery/evidence";
 import { addCardIn, makeCardNode, moveCardsIn, newCard, updateCardIn } from "@/discovery/ops";
 import type { OstMetric } from "@/discovery/types";
-import { changeGoal, goalsNow } from "@/goals/client";
+import { changeGoal, goalsNow, setMe } from "@/goals/client";
 import { goalById } from "@/goals/tree";
 import { askOrganization } from "@/org/ask";
 import { captureIngested, decideFoundGoal, setSourceBasis } from "@/org/capture";
 import { currentOrg, orgFetch, orgJson } from "@/org/client";
 import type { Ingested } from "@/discovery/ingest/core";
-import { chatKey, chatOf, emptyChat, withJob, withTurn, type CanvasChat, type ChatDoc, type ChatJob, type ChatTurn, type FiledPage, type FocusGoal, type GoalForJob, type GoalForOn, type BriefState, type ScanJob, type ScanPlan, type TakenDoc, type WhoseJob, type PlanJob, type DraftJob, type KeptChallenge, type ToolsJob } from "@/space/chat";
+import { chatKey, chatOf, emptyChat, running, withJob, withTurn, type CanvasChat, type ChatDoc, type ChatJob, type ChatTurn, type FiledPage, type FocusGoal, type GoalForJob, type GoalForOn, type BriefState, type ScanJob, type ScanPlan, type TakenDoc, type WhoseJob, type PlanJob, type DraftJob, type KeptChallenge, type ToolsJob } from "@/space/chat";
 import { everywhereDb } from "@/org/everywhere";
 import type { StartHandoff } from "@/onboarding/handoff";
 
@@ -272,6 +276,7 @@ export async function runAs(at: string | null, said: string, mode: ChatMode, doc
   if (mode === "dump") return dumpIt(at, said, docs);
   if (mode === "scan") return scanIt(at, said);
   if (mode === "plan") return workOut(at, said);
+  if (mode === "consult") return consultOn(at, said);
   if (mode === "tools") return void (await lookInTools(at, said, { typed: true }));
 }
 
@@ -883,8 +888,61 @@ const planAsk = (id: string): PlanAsk | null => {
   // What a lookup found, and the words the challenges they kept rest on: what a card may rest on.
   const found = [...new Set([...(j.asking ? foundOf(j.asking).flatMap((l) => (l.piece ? [l.piece] : [])) : []), ...(j.kept ?? []).flatMap((k) => k.pieces)])];
   const kept = (j.kept ?? []).map(({ line, from }) => ({ line, from }));
-  return { said: t.said, outline: planOutline(studio().doc, useSpaceView.getState().things), rounds: j.rounds, looks: j.looks, ...(asking ? { asking } : {}), ...(found.length ? { found } : {}), ...(kept.length ? { kept } : {}) };
+  // Worked out with a consultant: how much they know (theirs over the read), who's asking, the playbook in use.
+  const consult = j.consult ? { mode: "consult" as const, consult: { level: levelNow(j), ...(j.consult.situation ? { situation: j.consult.situation } : {}), ...(j.consult.playbook ? { playbook: j.consult.playbook } : {}) } } : {};
+  return { said: t.said, outline: planOutline(studio().doc, useSpaceView.getState().things), rounds: j.rounds, looks: j.looks, ...(asking ? { asking } : {}), ...(found.length ? { found } : {}), ...(kept.length ? { kept } : {}), ...consult };
 };
+
+/** How much a consultant's turn teaches: what they set wins, then what the read found, then what's kept on this computer. */
+const levelNow = (j: PlanJob): Level => {
+  const f = useYou.getState().fluency;
+  return levelOf({ set: f, read: j.consult?.situation?.level ?? null });
+};
+
+/**
+ * What a consultant's turn brought besides its questions: who's asking (the first read, or an answer
+ * that settled it), the playbook from the next turn on (a switch holds a while), the level it was asked
+ * at, and the lines it noted on the business page, after the round whose answers said them. The first
+ * read's level is kept on this computer unless they set their own; their position, where they said it,
+ * once per project.
+ */
+function keepConsult(id: string, t: ConsultTurn) {
+  const j = canvasPlan(id);
+  if (!j?.consult) return;
+  const first = !j.consult.situation && !!t.situation;
+  const turn = (j.asking?.turns ?? 0) + 1;
+  const round = (j.asking?.rounds.length ?? 0) - 1;
+  setCanvasPlan(id, (x) => {
+    const c = x.consult ?? { noted: [] };
+    const situation = t.situation ?? c.situation;
+    const now = c.playbook ?? situation?.layer;
+    const next = now && t.picked ? nextPlaybook(now, t.picked, { turn, since: c.since ?? 1 }) : null;
+    return {
+      ...x,
+      consult: {
+        ...c,
+        ...(situation ? { situation } : {}),
+        ...(now ? { playbook: next?.playbook ?? now, since: next?.since ?? c.since ?? turn } : {}),
+        level: levelNow({ ...x, consult: { ...c, ...(situation ? { situation } : {}) } }),
+        noted: t.noted?.length ? [...c.noted, { round, lines: t.noted }] : c.noted,
+      },
+    };
+  });
+  if (first && t.situation) {
+    void setFluency(t.situation.level, "qalam").catch(() => {});
+    if (t.situation.position) void setMeOnce(t.situation.position);
+  }
+}
+
+/** Their position, said in their first words: kept for the project once, never over one they set. */
+async function setMeOnce(position: Position) {
+  try {
+    const now = await orgJson<{ me?: unknown }>("/goals");
+    if (!now.me) await setMe({ position });
+  } catch {
+    // Not kept: nothing depends on it.
+  }
+}
 
 /**
  * Plan mode on the interview (src/asking/): its state on the turn, each turn through the core, its
@@ -893,14 +951,26 @@ const planAsk = (id: string): PlanAsk | null => {
  */
 export const planHost = (id: string): AskingHost => ({
   key: id,
-  memory: () => ({ flow: "plan", key: id, about: { product: useSpaceView.getState().space ?? null } }),
+  memory: () => ({ flow: canvasPlan(id)?.consult ? "consult" : "plan", key: id, about: { product: useSpaceView.getState().space ?? null } }),
+  // A consultant paces its rounds to who's asking: a few at a time, open questions first, for someone new.
+  pace: () => {
+    const j = canvasPlan(id);
+    if (!j?.consult) return {};
+    const level = levelNow(j);
+    const cap = capFor(level);
+    return { ...(cap ? { cap } : {}), openFirst: level === "new" };
+  },
   // A plan from before the interview goes on as one: its rounds and looks become its state.
   get: () => {
     const j = canvasPlan(id);
     return j ? planAsking(j) : null;
   },
   set: (fn) => setCanvasPlan(id, (j) => ({ ...j, asking: fn(planAsking(j)) })),
-  turn: (_s, signal) => planAhead(planAsk(id)!, step(id), signal),
+  turn: async (_s, signal) => {
+    const t = await planAhead(planAsk(id)!, step(id), signal);
+    keepConsult(id, t);
+    return t;
+  },
   lookup: async (l, signal) => {
     if (l.kind === "tools") return toolsLookup(l, signal, { turn: id });
     if (l.kind === "project") return projectLookup(l);
@@ -951,6 +1021,39 @@ async function readQuestion(said: string) {
 function workOut(at: string | null, said: string) {
   const asking = startLookup(emptyAsking(), { id: "l0", kind: "web", query: "", waits: 1 }, Date.now());
   const id = jobAt(at, said, { kind: "plan", step: "thinking", rounds: [], looks: [], asking });
+  void runCanvasPlan(id, (signal) => goOn(planHost(id), signal));
+}
+
+/**
+ * Worked out with a consultant: no look before they've answered anything. Its first turn reads who's
+ * asking, then asks the way the playbook for where they came in says, paced to how much they know.
+ */
+function consultOn(at: string | null, said: string, o: { first?: "goal" | "problem"; playbook?: PlaybookId } = {}) {
+  void ensureYou();
+  const id = jobAt(at, said, { kind: "plan", step: "thinking", rounds: [], looks: [], asking: emptyAsking(), consult: { noted: [], ...(o.first ? { first: o.first } : {}), ...(o.playbook ? { playbook: o.playbook } : {}) } });
+  void runCanvasPlan(id, (signal) => goOn(planHost(id), signal));
+}
+
+/** How much they know, loaded once this window works something out with them. */
+let youLoading: Promise<void> | null = null;
+const ensureYou = () => (youLoading ??= loadYou().catch(() => void (youLoading = null)));
+
+/**
+ * Explain more, or Skip the basics: theirs from now on, on this computer. A round they haven't touched
+ * is asked again at the new level; one they've started answering keeps its questions, and the next round
+ * changes.
+ */
+export function relevel(id: string, way: "simpler" | "pastBasics") {
+  const j = canvasPlan(id);
+  if (!j?.consult || !j.asking) return;
+  const was = levelNow(j);
+  const level = way === "simpler" ? simpler(was) : pastBasics(was);
+  if (level === was) return;
+  void setFluency(level, "you").catch(() => {});
+  setCanvasPlan(id, (x) => (x.consult ? { ...x, consult: { ...x.consult, level } } : x));
+  const cur = currentRound(j.asking);
+  if (!cur || Object.keys(cur.form.answers).length || running(st().chat)?.id === id) return;
+  setCanvasPlan(id, (x) => (x.asking ? { ...x, asking: dropCurrentRound(x.asking), step: "thinking" } : x));
   void runCanvasPlan(id, (signal) => goOn(planHost(id), signal));
 }
 

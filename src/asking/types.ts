@@ -26,6 +26,8 @@ export type LookupKind = "project" | "web" | "online" | "tools";
 export interface AskQuestion extends PlanQuestion {
   after?: string[];
   by?: "code";
+  /** Held only to keep a round short for someone new: the next turn asks it, or drops it. */
+  later?: true;
 }
 
 /**
@@ -42,6 +44,8 @@ export interface AskRound {
   known?: true;
   /** Not asked: answered from what they said before (src/memory/gate.ts), each question keeping the answer it took as `known`. */
   from?: "memory";
+  /** What Qalam AI took as settled before asking it, and what's still open: shown before the round. */
+  reflect?: { so: string[]; open: string[] };
 }
 
 /** Something a lookup found, under the id turns and drafts cite it by. */
@@ -63,6 +67,8 @@ export interface Lookup {
   id: string;
   kind: LookupKind;
   query: string;
+  /** Why it's looked up rather than asked, in a line, as the thread shows it. */
+  why?: string;
   /** The turn that asked for it: the next turn waits for it. "draft": only the generation waits (a look in the background). */
   waits: number | "draft";
   state: "running" | "done" | "failed" | "stopped";
@@ -109,6 +115,10 @@ export interface AskingState {
   lookups: Lookup[];
   /** What the last turn took as settled. */
   understood: SettledPoint[];
+  /** What the last turn said was still open, a line each. */
+  open?: string[];
+  /** Words explained to them already in this conversation (lowercased): never again. */
+  explained?: string[];
   terms: TermProposal[];
   choices: ChoiceProposal[];
   /** How it ended: nothing left (`done`), a turn that brought nothing new, or they said to stop asking. */
@@ -116,7 +126,7 @@ export interface AskingState {
   /** Turns in a row that only looked things up: after two, a web lookup is put to them first. */
   quiet?: number;
   /** A lookup waiting for their go-ahead: a web lookup after quiet turns, or any look in their tools. */
-  offer?: { id: string; query: string; kind?: "web" | "tools" };
+  offer?: { id: string; query: string; kind?: "web" | "tools"; why?: string };
   /** They said to ask rather than look: the next turn asks or ends. */
   askFirst?: true;
   /** They saw what was settled and said go. */
@@ -128,9 +138,11 @@ export interface AskingState {
 /** One turn of Qalam AI's, as code kept it. */
 export interface AskTurn {
   questions: AskQuestion[];
-  lookups: { id: string; kind: LookupKind; query: string }[];
+  lookups: { id: string; kind: LookupKind; query: string; why?: string }[];
   done: boolean;
   understood: SettledPoint[];
+  /** What's still open that would change what's proposed (a consultant's turn). */
+  open?: string[];
   terms: { term: string; means: string; avoid: string[] }[];
   choices: { choice: string; why: string; instead: string }[];
 }

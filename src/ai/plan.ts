@@ -27,6 +27,10 @@ export interface PlanQuestion {
   tool?: ToolAsk;
   /** What was said before to a question like it (src/memory/known.ts): shown under it, with Use it. */
   known?: KnownAnswer[];
+  /** For someone new to this: an example of a useful answer, shown under it, never filled in. */
+  example?: string;
+  /** For someone new to this: a word the question uses, said plainly, the first time it's used. */
+  explain?: { term: string; plain: string };
 }
 
 export interface PlanGap {
