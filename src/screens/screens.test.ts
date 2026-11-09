@@ -5,7 +5,33 @@ import { gateOf } from "@/memory/gate";
 import { lineOf, linesFor, foldAsked } from "@/memory/fold";
 import { toQuestion } from "@/ui/ai/plan";
 import { SHOTS_MAX, addAnswerShots, answerOf, answerWords, knownAnswer, removeShot, summarize, validate, type Question } from "@/ui/ai/questionFlow";
-import { screenLines } from "./lines";
+import { keptScreens } from "@/consult/material";
+import { emptyAsking, lookupAgain, startLookup } from "@/asking/engine";
+import { reviewLines, screenLines } from "./lines";
+import type { ScreenReview } from "./types";
+
+describe("a look at the screens, as the next turn reads it", () => {
+  const review = (x: Partial<ScreenReview>): ScreenReview => ({ v: 1, id: "r1", at: 1, map: "org", focus: "People leave the basket", shots: [], findings: [], left: [], ...x });
+  it("reads each finding as Qalam AI's reading, the worst first, or says it couldn't look or found nothing", () => {
+    const lines = reviewLines("v1", review({ findings: [{ key: "k", shot: "h", name: "Basket", side: "customer", title: "The fee shows late", why: "People leave when it appears", change: { does: "replace", what: "Show the fee under the subtotal", insteadOf: "Delivery fee calculated at checkout" } }] }));
+    expect(lines).toEqual([{ ref: "v1-f1", text: "On Basket, from the customer's side: The fee shows late. People leave when it appears Change: Show the fee under the subtotal", from: "Qalam AI's look at their screens", whose: "Qalam AI's reading of their screens, not their words" }]);
+    expect(reviewLines("v1", review({ unseen: true }))[0].text).toMatch(/can't see pictures/);
+    expect(reviewLines("v1", review({}))[0].text).toMatch(/Nothing on these screens bears/);
+    expect(reviewLines("v1", null)).toEqual([]);
+  });
+
+  it("tells later conversations which screens are kept, a flow in order and the screens in none", () => {
+    expect(keptScreens([{ flows: [{ name: "Checkout", steps: ["a", "b"] }], screens: [{ key: "a", name: "Basket" }, { key: "b", name: "Pay" }, { key: "c", name: "Orders" }] }])).toEqual(["Checkout: Basket → Pay", "Screens on their own: Orders"]);
+  });
+
+  it("looks again at screens it stopped looking at, and at nothing else", () => {
+    let s = startLookup(emptyAsking(), { id: "v1", kind: "screens", query: "the basket", waits: 0, shots: [{ asset: "asset:1", title: "Basket" }] }, 1);
+    s = { ...s, lookups: s.lookups.map((l) => ({ ...l, state: "stopped" as const })) };
+    expect(lookupAgain(s, "v1", 2).lookups[0]).toMatchObject({ state: "running", waits: "later", shots: [{ asset: "asset:1", title: "Basket" }] });
+    const web = startLookup(emptyAsking(), { id: "l1", kind: "web", query: "x", waits: 0 }, 1);
+    expect(lookupAgain({ ...web, lookups: web.lookups.map((l) => ({ ...l, state: "stopped" as const })) }, "l1", 2).lookups[0].state).toBe("stopped");
+  });
+});
 
 const asked = (x: Record<string, unknown>) => ({ id: "see", title: "What does the basket look like today?", why: "", multi: false, options: [], recommended: [], allowOther: false, from: "screens", look_for: "the basket", ...x });
 const shot = (n: number, title = `Screen ${n}`) => ({ asset: `asset:${String(n).padStart(24, "0")}`, title });

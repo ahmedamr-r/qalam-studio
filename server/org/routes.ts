@@ -880,6 +880,11 @@ export function orgRoutes(): Hono<Env> {
     const tab = tabOf(c.req.raw.headers);
     return streamed(c.req.raw.signal, (emit, signal) => keepShots(store, { shots, product, about, emit, signal, ...(tab ? { tab } : {}) }));
   });
+  /** One look at screenshots, as it's kept (hub/seen/reviews). */
+  r.get("/api/org/:org/screens/reviews/:id", async (c) => {
+    const review = await c.get("store").getScreenReview(c.req.param("id"));
+    return review ? c.json({ review }) : c.json({ error: "not_found", message: "No such look" }, 404);
+  });
   /**
    * The same screenshots kept, then looked at for the problem they're working out (`focus`: what they said,
    * the question the screenshots answered, what they typed with them, what's settled), with their answers

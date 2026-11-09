@@ -3,7 +3,7 @@ import { checkFirst, setAside, startReview, useReview } from "../../discovery/re
 import { keptChallenges, useChallenges } from "../../discovery/challenges";
 import { planAhead, planLook, planPropose, planRoute, type ConsultTurn, type PlanAsk } from "@/org/plan";
 import { planOutline, planProposals } from "@/space/plan";
-import { answersOf, currentRound, decideChoice, decideTerm, dropCurrentRound, emptyAsking, foundOf, fromBuckets, fromPlanRounds, loaded, looksOf, scanSaid, startLookup, theirWords } from "@/asking/engine";
+import { answersOf, currentRound, decideChoice, decideTerm, dropCurrentRound, emptyAsking, foundOf, fromBuckets, fromPlanRounds, loaded, lookupAgain, looksOf, scanSaid, startLookup, theirWords } from "@/asking/engine";
 import { capFor } from "@/consult/pace";
 import type { PlaybookId } from "@/consult/playbooks.gen";
 import { levelOf, nextPlaybook, pastBasics, simpler, type Level, type Situation } from "@/consult/situation";
@@ -62,8 +62,8 @@ import { nowFrom, numberRound, targetFrom } from "@/goals/moves";
 import { goalsForProblem, lookForGoal, suggestGoalNumber } from "@/org/goal-work";
 import { loadMarket, useMarket } from "@/org/market";
 import { useSpaceView } from "@/space/view";
-import { keepScreens } from "@/org/screens";
-import { screenLines } from "@/screens/lines";
+import { reviewScreens } from "@/org/screens";
+import { reviewLines, screenLines } from "@/screens/lines";
 import { rememberRound, withKnownAnswers } from "@/org/memory";
 import { onOrgChange } from "@/org/live";
 import { needsDb } from "@/org/needs";
@@ -1018,7 +1018,7 @@ export const planHost = (id: string): AskingHost => ({
     if (l.kind === "tools") return toolsLookup(l, signal, { turn: id });
     if (l.kind === "project") return projectLookup(l);
     if (l.kind === "scan") return scanLookup(l, signal, { turn: id });
-    if (l.kind === "screens") return screensLookup(l, signal);
+    if (l.kind === "screens") return screensLookup(id, l, signal);
     const look = await planLook({ ...planAsk(id)!, ...(l.query ? { query: l.query } : {}) }, undefined, signal);
     setCanvasPlan(id, (j) => ({ ...j, looks: [...j.looks, { ...look, after: (j.asking?.rounds.length ?? 0) - 1 }] }));
     return { look, lines: look.lines.map((x, i) => ({ ref: `${l.id}-${i + 1}`, text: x.text, from: x.url ? hostOf(x.url) : "a page", whose: "a page online", ...(x.url ? { url: x.url } : {}), ...(x.quote ? { quote: x.quote } : {}) })) };
@@ -1161,10 +1161,21 @@ function scanTargetOf(query: string, id: string, j: PlanJob): ScanTarget | null 
  * (server/org/screens.ts): the lines the next turn reads, the flow they make and each screen with
  * what it shows and what's printed on it.
  */
-async function screensLookup(l: Pick<Lookup, "id" | "query" | "shots">, signal: AbortSignal): Promise<{ lines: FoundLine[] }> {
+async function screensLookup(id: string, l: Pick<Lookup, "id" | "query" | "shots" | "asked" | "typed">, signal: AbortSignal): Promise<{ lines: FoundLine[]; review?: string }> {
   if (!l.shots?.length) return { lines: [] };
-  const kept = await keepScreens({ shots: l.shots, product: useSpaceView.getState().space ?? null, about: l.query }, signal);
-  return { lines: screenLines(l.id, kept) };
+  // Looked at for what they're working out: how the conversation started, the question, their words with them, what's settled.
+  const s = canvasPlan(id)?.asking;
+  const focus = { said: turnOf(id)?.said ?? l.query, ...(l.asked ? { asked: l.asked } : {}), ...(l.typed ? { typed: l.typed } : {}), settled: (s?.understood ?? []).map((u) => u.text) };
+  const answers = s ? answersOf(s).filter((a) => a.how === "own" && a.text).map((a) => ({ q: a.question, a: a.text })) : [];
+  const { kept, review } = await reviewScreens({ shots: l.shots, product: useSpaceView.getState().space ?? null, about: l.query, focus, answers }, signal);
+  return { lines: [...screenLines(l.id, kept), ...reviewLines(l.id, review)], ...(review ? { review: review.id } : {}) };
+}
+
+/** A look at their screens that stopped or failed, run again: the next turn after it lands reads it. */
+export function lookAtScreensAgain(turn: string, lookup: string) {
+  const h = planHost(turn);
+  h.set((s) => lookupAgain(s, lookup, Date.now()));
+  startLookups(h);
 }
 
 async function scanLookup(l: Pick<Lookup, "id" | "query">, signal: AbortSignal, o: { turn: string }): Promise<{ lines: FoundLine[]; stopped?: true }> {

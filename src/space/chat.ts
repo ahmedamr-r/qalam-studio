@@ -568,6 +568,8 @@ function consultReply(t: ChatTurn, j: PlanJob, c: ConsultState): ChatPart[] {
     if (open && i === rounds.length - 1) return;
     if (reflect && r.reflect) out.push(part("consultReflect", { turn: t.id, round: i }));
     out.push(part("askAnswered", { turn: t.id, round: i }));
+    // The screenshots that round gave: kept, and looked at for the problem.
+    for (const l of s?.lookups ?? []) if (l.kind === "screens" && l.round === i) out.push(part("screenReview", { turn: t.id, lookup: l.id }));
     if (c.noted.some((n) => n.round === i && n.lines.length)) out.push(part("consultNoted", { turn: t.id, round: i }));
     out.push(...looks(i));
   });

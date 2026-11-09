@@ -69,7 +69,8 @@ export function askingIn(s: AskingState, o: { said: string; terms?: Terms; memor
     rounds,
     lookups: s.lookups
       .filter((l): l is Lookup & { kind: "project" | "web" | "tools" | "scan" | "screens" } => l.waits !== "draft" && l.kind !== "online")
-      .map((l) => ({ id: l.id, kind: l.kind, query: clip(one(l.query), 300), state: l.state, lines: (l.lines ?? []).slice(0, 8).map((x) => ({ ref: x.ref, text: clip(one(x.text), 600), from: clip(one(x.from), 200), ...(x.whose ? { whose: x.whose } : {}) })) })),
+      // A look at their screens says each screen and what it found on them: more lines than a search's.
+      .map((l) => ({ id: l.id, kind: l.kind, query: clip(one(l.query), 300), state: l.state, lines: (l.lines ?? []).slice(0, l.kind === "screens" ? 16 : 8).map((x) => ({ ref: x.ref, text: clip(one(x.text), 600), from: clip(one(x.from), 200), ...(x.whose ? { whose: x.whose } : {}) })) })),
     held: s.held.map((q) => ({ id: q.id, title: clip(one(q.title), 300), after: q.after ?? [], ...(q.later ? { later: true } : {}) })),
     understood: s.understood.map((p) => clip(p.text, 300)),
     ...(s.open?.length ? { open: s.open.map((x) => clip(x, 300)) } : {}),

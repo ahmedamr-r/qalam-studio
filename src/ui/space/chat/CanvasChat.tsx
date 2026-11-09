@@ -23,6 +23,7 @@ import { attachFiles, clearAttachments, docsCheck, readyDocs, useAttach } from "
 import { AttachmentChips, SourceMenu } from "../../chat/SourcePicker";
 import { toggleChat, useCurrentOrg, useWords } from "../../frame/store";
 import { SampleIntro } from "../../org/SampleIntro";
+import { ShotZoom } from "../../seen/Shot";
 import type { Space } from "../../frame/spaces";
 import { ASK_EVENT, takeAskNext } from "../../org/ask-next";
 import { PARTS } from "./parts";
@@ -228,6 +229,8 @@ export function CanvasChat({ space, over }: { space: Space; over?: boolean }) {
           }
         />
       </div>
+      {/* A screenshot in the thread, opened big with its marks. */}
+      <ShotZoom />
     </section>
   );
 }

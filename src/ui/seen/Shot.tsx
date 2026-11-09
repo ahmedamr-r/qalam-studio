@@ -11,7 +11,8 @@ import type { SeenQuestion } from "@/seen/types";
  * the words a question points at marked where they are on it (boxes from what this Mac read).
  */
 
-type Mark = SeenQuestion["marks"][number];
+/** Where words are on a screenshot (0..1, from the top left), and the number a list beside it gives them. */
+type Mark = Pick<SeenQuestion["marks"][number], "box"> & { label?: string };
 
 export function useShotURL(ref?: string): string | null {
   const [url, setUrl] = useState<string | null>(null);
@@ -35,7 +36,9 @@ function Marks({ marks }: { marks: Mark[] }) {
           aria-hidden
           className="pointer-events-none absolute rounded-[3px] bg-ai/15 shadow-[0_0_0_2px_var(--color-ai)]"
           style={{ left: `${m.box[0] * 100}%`, top: `${m.box[1] * 100}%`, width: `${m.box[2] * 100}%`, height: `${m.box[3] * 100}%` }}
-        />
+        >
+          {m.label && <span className="absolute -left-[6px] -top-[6px] grid min-w-[14px] place-items-center rounded-full bg-ai px-[3px] text-[9px] font-medium leading-[14px] text-panel tnum">{m.label}</span>}
+        </span>
       ))}
     </>
   );

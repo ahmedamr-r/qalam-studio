@@ -85,9 +85,12 @@ export interface Lookup {
   /** The turn that read what it found. */
   read?: number;
   at: number;
-  /** A screens lookup: the screenshots in the order given, and the question they answered. */
+  /** A screens lookup: the screenshots in the order given, the question they answered, the round it was in and what they typed with them; once it's looked, its review (hub/seen/reviews). */
   shots?: AnswerShot[];
   asked?: string;
+  round?: number;
+  typed?: string;
+  review?: string;
 }
 
 /** A point Qalam AI takes as settled, in its words, with the answers or lookups it rests on. */

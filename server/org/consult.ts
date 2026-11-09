@@ -8,7 +8,7 @@ import { noteLines } from "@/business/edit";
 import { sanitizeNotes } from "@/business/notes";
 import { businessText } from "@/business/text";
 import type { BusinessLine } from "@/business/types";
-import { consultMaterial } from "@/consult/material";
+import { consultMaterial, keptScreens } from "@/consult/material";
 import { PLAYBOOK_IDS, type PlaybookId } from "@/consult/playbooks.gen";
 import { consultRound } from "@/consult/round";
 import { LEVELS, sanitizeSituation, situationAfter, situationOf, type Level, type Situation } from "@/consult/situation";
@@ -92,6 +92,7 @@ export async function consultNext(store: OrgStore, b: { said: string; outline: O
     company: await companyContext(store, { near: b.said, business: false }),
     outline: b.outline,
     answered,
+    screens: keptScreens(await store.listSeen()),
   });
   // What's already known (src/memory/): other conversations' answers, their material, their best-backed pages, decisions.
   const known = await recallFor(store, a, { flow: "consult", words: [b.said, ...b.outline.map((c) => c.title)].join("\n"), broad: true, sent: base });

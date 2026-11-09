@@ -212,12 +212,20 @@ export function takePicks(qs: readonly AskQuestion[], form: FlowState): FlowStat
 }
 
 /** A lookup came back, failed or was stopped. */
-export function lookupLanded(s: AskingState, id: string, r: { lines?: FoundLine[]; look?: FocusLook; error?: string; stopped?: boolean }): AskingState {
-  return { ...s, lookups: s.lookups.map((l) => (l.id !== id || !running(l) ? l : { ...l, state: r.stopped ? "stopped" : r.error ? "failed" : "done", ...(r.lines ? { lines: r.lines } : {}), ...(r.look ? { look: r.look } : {}), ...(r.error ? { error: r.error } : {}) })) };
+export function lookupLanded(s: AskingState, id: string, r: { lines?: FoundLine[]; look?: FocusLook; review?: string; error?: string; stopped?: boolean }): AskingState {
+  return { ...s, lookups: s.lookups.map((l) => (l.id !== id || !running(l) ? l : { ...l, state: r.stopped ? "stopped" : r.error ? "failed" : "done", ...(r.lines ? { lines: r.lines } : {}), ...(r.look ? { look: r.look } : {}), ...(r.review ? { review: r.review } : {}), ...(r.error ? { error: r.error } : {}) })) };
 }
 
 /** A lookup they or code started, outside a turn (an opening look; one they said yes to). */
-export const startLookup = (s: AskingState, l: Pick<Lookup, "id" | "kind" | "query" | "waits" | "why" | "shots" | "asked">, now: number): AskingState => ({ ...s, offer: s.offer?.id === l.id ? undefined : s.offer, quiet: s.offer?.id === l.id ? 0 : s.quiet, lookups: [...s.lookups.filter((x) => x.id !== l.id), { ...l, state: "running", at: now }] });
+export const startLookup = (s: AskingState, l: Pick<Lookup, "id" | "kind" | "query" | "waits" | "why" | "shots" | "asked" | "round" | "typed">, now: number): AskingState => ({ ...s, offer: s.offer?.id === l.id ? undefined : s.offer, quiet: s.offer?.id === l.id ? 0 : s.quiet, lookups: [...s.lookups.filter((x) => x.id !== l.id), { ...l, state: "running", at: now }] });
+
+/** A screens lookup that stopped or failed, looked at again: what it finds is read by the next turn after it lands. */
+export function lookupAgain(s: AskingState, id: string, now: number): AskingState {
+  const l = s.lookups.find((x) => x.id === id);
+  if (!l || l.kind !== "screens" || l.state === "running") return s;
+  const { lines: _lines, error: _error, read: _read, review: _review, ...rest } = l;
+  return { ...s, lookups: s.lookups.map((x) => (x.id === id ? { ...rest, waits: "later", state: "running", at: now } : x)) };
+}
 
 /**
  * The screenshots the round just sent gave, as it goes: each answer's kept as the product's screens and
@@ -227,12 +235,13 @@ export const startLookup = (s: AskingState, l: Pick<Lookup, "id" | "kind" | "que
 export function lookAtShots(s: AskingState, now: number, id: (p: string) => string): AskingState {
   const r = s.rounds.at(-1);
   if (!r?.form.submitted) return s;
+  const round = s.rounds.length - 1;
   return answersOf({ rounds: [r] })
     .filter((a) => a.shots?.length)
     .reduce((x, a) => {
       const q = r.questions.find((y) => y.id === a.id);
       const about = (q?.tool?.lookFor || q?.title || a.question).replace(/\s+/g, " ").trim().slice(0, 120);
-      return startLookup(x, { id: id("v"), kind: "screens", query: about, waits: x.turns, shots: a.shots, asked: a.question }, now);
+      return startLookup(x, { id: id("v"), kind: "screens", query: about, waits: x.turns, shots: a.shots, asked: a.question, round, ...(a.typed ? { typed: a.typed } : {}) }, now);
     }, s);
 }
 

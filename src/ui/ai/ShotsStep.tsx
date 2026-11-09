@@ -1,12 +1,16 @@
-import { useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import clsx from "clsx";
 import { ImagePlus, X } from "lucide-react";
+import { sharedWords } from "@/discovery/near";
 import { putAsset } from "@/doc/assets";
+import type { SeenMap } from "@/seen/types";
+import { useSpaceView } from "@/space/view";
+import { seenMaps } from "../seen/client";
 import { Button, Spinner } from "../controls";
 import { Dictated } from "../voice/MicButton";
 import { Shot } from "../seen/Shot";
 import { droppedFiles, isScreenshotFile } from "../chat/dropped";
-import { SHOTS_MAX, addAnswerShots, removeShot, type Answer, type ShotsQuestion } from "./questionFlow";
+import { SHOTS_MAX, addAnswerShots, removeShot, type Answer, type AnswerShot, type ShotsQuestion } from "./questionFlow";
 
 /*
  * A question asking to see a screen: screenshots dropped, pasted or picked under it, in the order given
@@ -21,6 +25,49 @@ const nameOf = (f: File, n: number) => {
   const base = f.name.replace(/\.[a-z0-9]+$/i, "").trim();
   return !base || /^image$/i.test(base) ? `Screenshot ${n}` : base.slice(0, 120);
 };
+
+/** The maps kept in this project, read once a page load (a screens question is rare). */
+let maps: Promise<SeenMap[]> | null = null;
+const keptMaps = () => (maps ??= seenMaps().catch(() => ((maps = null), [])));
+
+/**
+ * What's kept already that a screens question could be answered with, at no cost: a flow of the space's
+ * product whose name shares a telling word with what it asks to see, else a screen that does. Used, its
+ * screenshots go in as they're kept, in the flow's order.
+ */
+function KeptHere({ about, onUse }: { about: string; onUse: (shots: AnswerShot[]) => void }) {
+  const [found, setFound] = useState<{ name: string; shots: AnswerShot[] } | null>(null);
+  useEffect(() => {
+    let live = true;
+    const key = useSpaceView.getState().space ?? "org";
+    void keptMaps().then((all) => {
+      const m = all.find((x) => x.key === key);
+      if (!live || !m) return;
+      const shotOf = (k: string) => m.screens.find((s) => s.key === k);
+      const flow = m.flows.find((f) => sharedWords(f.name, about) >= 1);
+      if (flow) {
+        const shots = flow.steps.flatMap((k) => (shotOf(k) ? [{ asset: shotOf(k)!.shots[0], title: shotOf(k)!.name }] : []));
+        return void setFound({ name: `${flow.name} · ${shots.length} screens`, shots: [...new Map(shots.map((s) => [s.asset, s])).values()] });
+      }
+      const screen = m.screens.find((s) => sharedWords(s.name, about) >= 1);
+      if (screen) setFound({ name: screen.name, shots: [{ asset: screen.shots[0], title: screen.name }] });
+    });
+    return () => {
+      live = false;
+    };
+  }, [about]);
+  if (!found) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-[6px] text-caption text-fg-muted" onKeyDown={(e) => e.stopPropagation()}>
+      <span className="min-w-0 truncate">
+        Already here: <span className="text-fg">{found.name}</span>
+      </span>
+      <button type="button" className="q-press rounded-md px-[6px] py-[2px] font-medium text-fg hover:bg-hover" onClick={() => onUse(found.shots)}>
+        Use {found.shots.length === 1 ? "it" : "these"}
+      </button>
+    </div>
+  );
+}
 
 export function ShotsStep({ q, a, onAnswer, textArea, onEnter }: { q: ShotsQuestion; a: Answer; onAnswer: (a: Answer) => void; textArea: RefObject<HTMLTextAreaElement | null>; onEnter: () => void }) {
   const input = useRef<HTMLInputElement>(null);
@@ -60,6 +107,7 @@ export function ShotsStep({ q, a, onAnswer, textArea, onEnter }: { q: ShotsQuest
 
   return (
     <div className="flex flex-col gap-[8px]">
+      {!shots.length && <KeptHere about={q.tool?.lookFor ?? q.title} onUse={(add) => onAnswer(addAnswerShots(latest.current, add, max))} />}
       {/* Its own keys: Enter on a button here isn't the card's Next. */}
       <div
         onKeyDown={(e) => e.stopPropagation()}
