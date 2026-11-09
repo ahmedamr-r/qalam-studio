@@ -38,6 +38,8 @@ const LOOKUP_WORDS: Record<LookupKind, string> = {
   online: "online (what people say in public)",
   tools: "tools (their connected tools, such as their docs, team chat, support conversations and analytics, searched for what isn't in the project yet; they pick what's brought in, so ask for it only when the project lookup can't have it)",
   scan: "scan (what people say in public about the product or idea they named: its app reviews and forum threads, read into problems with their quotes; it takes a few minutes, so it's offered to them once and nothing waits on it; ask for it only when what people complain about would change what you'd propose, with the product's or idea's name in their words as its query)",
+  // Never offered: code starts one when an answer comes with screenshots.
+  screens: "screens (the screenshots they showed)",
 };
 
 /** The rules every asking call carries, worded for who answers. Stable, so they're cached as their own block. */

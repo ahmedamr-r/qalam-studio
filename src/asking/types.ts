@@ -1,6 +1,6 @@
 import type { PlanQuestion } from "@/ai/plan";
 import type { FocusLook } from "@/goals/focus";
-import type { AnswerHow, FlowState } from "@/ui/ai/questionFlow";
+import type { AnswerHow, AnswerShot, FlowState } from "@/ui/ai/questionFlow";
 
 /*
  * Asking before generating (pure types): Qalam's form of the `grilling` interview. What's still open
@@ -21,7 +21,8 @@ export type AskWho = "person" | "team" | "builder" | "designer";
  * them first, and it lands with what they brought in.
  */
 /** `scan`: what people say online about what they named (src/scan/), offered to them first and run as its own job in the chat; nothing waits on it. */
-export type LookupKind = "project" | "web" | "online" | "tools" | "scan";
+/** `screens`: the screenshots an answer gave, kept as the product's screens and read (server/org/screens.ts); only code starts one, as the answer goes, and the next turn waits for it. */
+export type LookupKind = "project" | "web" | "online" | "tools" | "scan" | "screens";
 
 /** A question as the engine keeps it. `after`: the questions or lookups whose answers it waits on. `by: "code"`: code's own. */
 export interface AskQuestion extends PlanQuestion {
@@ -84,6 +85,9 @@ export interface Lookup {
   /** The turn that read what it found. */
   read?: number;
   at: number;
+  /** A screens lookup: the screenshots in the order given, and the question they answered. */
+  shots?: AnswerShot[];
+  asked?: string;
 }
 
 /** A point Qalam AI takes as settled, in its words, with the answers or lookups it rests on. */
@@ -166,6 +170,8 @@ export interface AskAnswer {
   /** What they typed themselves: the only words a card may quote as theirs. */
   typed: string;
   how: AnswerHow;
+  /** Screenshots they showed with it, in order: what's on them is never their words. */
+  shots?: AnswerShot[];
 }
 
-export type { AnswerHow };
+export type { AnswerHow, AnswerShot };

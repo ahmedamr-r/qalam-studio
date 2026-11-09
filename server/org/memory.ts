@@ -25,7 +25,7 @@ export const RememberBody = z.object({
   key: z.string().min(1).max(160),
   about: z.object({ product: z.string().max(120).nullable(), board: id, card: id, goal: id, topic: id, source: id }),
   answers: z
-    .array(z.object({ qid: z.string().min(1).max(80), q: z.string().max(400), a: z.string().max(1600), how: z.enum(["own", "pick", "unknown", "left"]), code: z.literal(true).optional() }))
+    .array(z.object({ qid: z.string().min(1).max(80), q: z.string().max(400), a: z.string().max(1600), how: z.enum(["own", "pick", "unknown", "left"]), code: z.literal(true).optional(), shots: z.array(z.string().max(160)).max(12).optional() }))
     .max(80),
 });
 export type RememberBodyT = z.infer<typeof RememberBody>;

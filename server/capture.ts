@@ -277,7 +277,7 @@ export async function placeIn(store: OrgStore, deps: FilingDeps, s: SourceRecord
 }
 
 /** Material as a new source of the organization's, nothing read from it yet. */
-function newSource(ing: Ingested, o: Pick<CaptureOpts, "product" | "basis">): SourceRecord {
+export function newSource(ing: Ingested, o: Pick<CaptureOpts, "product" | "basis">): SourceRecord {
   return {
     v: 1,
     id: nanoid(10),

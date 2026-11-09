@@ -19,14 +19,15 @@ const clip = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1
 /** How big the conversation may be in one request: a guard on size, not on how many rounds. */
 export const ASKING_MAX_CHARS = 60_000;
 
-const Answer = z.object({ id: z.string().max(80), title: z.string().max(400), answer: z.string().max(1600), how: z.enum(["own", "pick", "left", "unknown"]) });
+/** `shots`: the screenshots shown with it, by name; what's on them comes as a screens lookup's lines. */
+const Answer = z.object({ id: z.string().max(80), title: z.string().max(400), answer: z.string().max(1600), how: z.enum(["own", "pick", "left", "unknown"]), shots: z.array(z.string().max(160)).max(12).optional() });
 const Line = z.object({ ref: z.string().max(40), text: z.string().max(800), from: z.string().max(300), whose: z.string().max(60).optional() });
 
 export const AskingIn = z
   .object({
     /** `by`: code's own questions, or what they said before in another conversation, not asked now. */
     rounds: z.array(z.object({ by: z.enum(["code", "memory"]).optional(), asked: z.array(Answer) })),
-    lookups: z.array(z.object({ id: z.string().max(40), kind: z.enum(["project", "web", "tools", "scan"]), query: z.string().max(400), state: z.enum(["running", "done", "failed", "stopped"]), lines: z.array(Line) })),
+    lookups: z.array(z.object({ id: z.string().max(40), kind: z.enum(["project", "web", "tools", "scan", "screens"]), query: z.string().max(400), state: z.enum(["running", "done", "failed", "stopped"]), lines: z.array(Line) })),
     /** Reading what people say online, offered once: still waiting on them, or what they said. */
     scan: z.object({ query: z.string().max(400), said: z.enum(["offered", "yes", "no"]) }).optional(),
     held: z.array(z.object({ id: z.string().max(80), title: z.string().max(400), after: z.array(z.string().max(80)), later: z.boolean().optional() })),
@@ -61,13 +62,13 @@ export function askingIn(s: AskingState, o: { said: string; terms?: Terms; memor
     ...(r.from === "memory" ? { by: "memory" as const } : r.questions.every((q) => q.by === "code") ? { by: "code" as const } : {}),
     asked: answers
       .filter((a) => a.round === i)
-      .map((a) => ({ id: a.id, title: clip(one(a.question), 300), answer: clip(one(a.text), i >= last ? 1500 : 200), how: a.how })),
+      .map((a) => ({ id: a.id, title: clip(one(a.question), 300), answer: clip(one(a.text), i >= last ? 1500 : 200), how: a.how, ...(a.shots?.length ? { shots: a.shots.map((x) => clip(one(x.title), 120)) } : {}) })),
   }));
   const said = [one(o.said), theirWords(s)].filter(Boolean).join("\n");
   const out: AskingInT = {
     rounds,
     lookups: s.lookups
-      .filter((l): l is Lookup & { kind: "project" | "web" | "tools" | "scan" } => l.waits !== "draft" && l.kind !== "online")
+      .filter((l): l is Lookup & { kind: "project" | "web" | "tools" | "scan" | "screens" } => l.waits !== "draft" && l.kind !== "online")
       .map((l) => ({ id: l.id, kind: l.kind, query: clip(one(l.query), 300), state: l.state, lines: (l.lines ?? []).slice(0, 8).map((x) => ({ ref: x.ref, text: clip(one(x.text), 600), from: clip(one(x.from), 200), ...(x.whose ? { whose: x.whose } : {}) })) })),
     held: s.held.map((q) => ({ id: q.id, title: clip(one(q.title), 300), after: q.after ?? [], ...(q.later ? { later: true } : {}) })),
     understood: s.understood.map((p) => clip(p.text, 300)),
@@ -89,12 +90,24 @@ export function askingIn(s: AskingState, o: { said: string; terms?: Terms; memor
   return out;
 }
 
-const KIND_WORD: Record<LookupKind, string> = { project: "their project", web: "the web", online: "people online", tools: "their tools (what they brought in)", scan: "what people say online (problems people raise, and their quotes)" };
+const KIND_WORD: Record<LookupKind, string> = {
+  project: "their project",
+  web: "the web",
+  online: "people online",
+  tools: "their tools (what they brought in)",
+  scan: "what people say online (problems people raise, and their quotes)",
+  screens: "the screenshots they showed (each screen's printed words, read on this computer, and what it shows: the product's own screen, never anyone's words)",
+};
+
+/** Screenshots shown with an answer, by name: what's on them is under the screens lookup. */
+const shownLine = (shots: readonly string[]) => `showed ${shots.length === 1 ? "a screenshot" : `${shots.length} screenshots`}, in order (${shots.map((s) => `“${s}”`).join(", ")}; what's on them is under the screens lookup)`;
 
 const answerLine = (a: AskingInT["rounds"][number]["asked"][number]) =>
   `- ${a.id} · ${a.title} → ${
-    a.how === "own"
-      ? `“${a.answer}”`
+    a.how === "own" && a.shots?.length
+      ? [a.answer ? `“${a.answer}”` : "", shownLine(a.shots)].filter(Boolean).join(", and ")
+      : a.how === "own"
+        ? `“${a.answer}”`
       : a.how === "pick"
         ? `your recommendation, which they agreed to with one press: “${a.answer}” (agreement, not their words)`
         : a.how === "unknown"

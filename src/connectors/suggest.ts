@@ -10,11 +10,12 @@ import type { Hit } from "./recipes";
  * What comes back goes in the answer, for the person to read and change before it's sent.
  */
 
-export type ToolKind = "numbers" | "docs";
+/** `screens`: what a screen or step of their app or site looks like, shown with screenshots rather than told (server/org/screens.ts). */
+export type ToolKind = "numbers" | "docs" | "screens";
 
 export interface ToolAsk {
   kind: ToolKind;
-  /** Words to search the tool for. */
+  /** Words to search the tool for; for screens, the screen or step to show. */
   lookFor?: string;
 }
 
@@ -22,15 +23,15 @@ export interface ToolAsk {
 export const TOOL_FIELDS = {
   from: {
     type: "string",
-    enum: ["none", "numbers", "docs"],
-    description: "Where a better answer than their memory lives, if anywhere: \"numbers\" when the answer is a figure their tools track (a rate, a count or a funnel in product analytics; revenue, orders, refunds or margin in their own database), \"docs\" when it's likely written down in their docs or notes (a strategy, a research summary, a spec). \"none\" for what only they can say: an opinion, a choice, a preference",
+    enum: ["none", "numbers", "docs", "screens"],
+    description: "Where a better answer than their memory lives, if anywhere: \"numbers\" when the answer is a figure their tools track (a rate, a count or a funnel in product analytics; revenue, orders, refunds or margin in their own database), \"docs\" when it's likely written down in their docs or notes (a strategy, a research summary, a spec), \"screens\" when it's how a screen or a step of their app or website looks today, which screenshots show better than words. \"none\" for what only they can say: an opinion, a choice, a preference",
   },
-  look_for: { type: "string", description: "With \"numbers\" or \"docs\": 2 to 5 words to search that tool for. Otherwise empty" },
+  look_for: { type: "string", description: "With \"numbers\" or \"docs\": 2 to 5 words to search that tool for. With \"screens\": the screen or step to show, in 1 to 4 of their words. Otherwise empty" },
 } as const;
 
-/** The model's fields, checked. */
-export function toolAsk(from: unknown, lookFor: unknown): ToolAsk | undefined {
-  if (from !== "numbers" && from !== "docs") return undefined;
+/** The model's fields, checked. `screens`: only where the flow asks to see screens (the consultant on a page or a step); anywhere else it's an ordinary question. */
+export function toolAsk(from: unknown, lookFor: unknown, o: { screens?: boolean } = {}): ToolAsk | undefined {
+  if (from !== "numbers" && from !== "docs" && !(from === "screens" && o.screens)) return undefined;
   const words = typeof lookFor === "string" ? lookFor.replace(/\s+/g, " ").trim().slice(0, 80) : "";
   return { kind: from, ...(words ? { lookFor: words } : {}) };
 }
@@ -39,7 +40,9 @@ export const toolConnected = (c: Pick<ConnectorState, "via" | "tone">) => !!c.vi
 
 /** The tools to offer for it: connected ones first, then those Claude Code has, then the rest; never one this copy of Qalam can't reach. */
 export function toolsForAsk(ask: ToolAsk, connectors: readonly ConnectorState[]): ConnectorState[] {
-  const fits = (c: ConnectorState) => connectorShown(c.group) && (ask.kind === "numbers" ? c.numbers : c.group === "docs" && c.imports) && (!c.needsClient || !!c.via);
+  // Screenshots come from them, dropped in the question: no tool for it yet.
+  if (ask.kind === "screens") return [];
+  const fits =(c: ConnectorState) => connectorShown(c.group) && (ask.kind === "numbers" ? c.numbers : c.group === "docs" && c.imports) && (!c.needsClient || !!c.via);
   const rank = (c: ConnectorState) => (toolConnected(c) ? 0 : c.claudeCode?.status === "connected" ? 1 : 2);
   return connectors
     .map((c, i) => ({ c, i }))
@@ -122,6 +125,7 @@ export function nearPassages(text: string, asked: string, count = 2): string[] {
  * their numbers. Nothing is kept and nothing is put in the answer: the person picks.
  */
 export async function findIn(c: Pick<ConnectorState, "id" | "label">, ask: ToolAsk, question: string, d: FindDeps): Promise<ToolFind[]> {
+  if (ask.kind === "screens") return [];
   const query = (ask.lookFor || question).slice(0, 120);
   if (ask.kind === "docs") {
     const hits = (await d.browse(c.id, query)).filter((h) => !h.folder && h.type !== "other").slice(0, PAGES);

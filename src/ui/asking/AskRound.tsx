@@ -10,6 +10,7 @@ import { r } from "../recipes";
 import { Questionnaire } from "../ai/Questionnaire";
 import { toQuestion } from "../ai/plan";
 import type { FlowState } from "../ai/questionFlow";
+import { Shot } from "../seen/Shot";
 
 /*
  * The interview's parts, the same wherever a flow asks before it generates (src/asking/): the round in
@@ -19,7 +20,17 @@ import type { FlowState } from "../ai/questionFlow";
 
 const ICON = { absoluteStrokeWidth: true, strokeWidth: 1.25 } as const;
 
-const WHERE = { project: "in your project", web: "on the web", online: "at what people say online", tools: "in your tools", scan: "at what people say online" } as const;
+const WHERE = { project: "in your project", web: "on the web", online: "at what people say online", tools: "in your tools", scan: "at what people say online", screens: "at your screenshots" } as const;
+
+/** What a running lookup is doing, in a line. */
+function waitingLine(l: Lookup) {
+  if (l.kind === "scan") return `Reading what people say online about ${l.query} while you answer`;
+  if (l.kind === "screens") {
+    const n = l.shots?.length ?? 0;
+    return `Looking at your ${n === 1 ? "screenshot" : `${n || ""} screenshots`.trim()}${l.query ? ` of ${l.query}` : ""}`;
+  }
+  return null;
+}
 
 /** The lookups running for the next turn, each with Stop: what waited on one is asked again without it. A look in the background only the draft waits on says so. */
 export function Waiting({ lookups, onStop }: { lookups: readonly Lookup[]; onStop: (id: string) => void }) {
@@ -31,8 +42,8 @@ export function Waiting({ lookups, onStop }: { lookups: readonly Lookup[]; onSto
         <div key={l.id} className={clsx(r.chatStatus, "flex items-center gap-[6px] text-fg-muted")}>
           <Spinner size={12} />
           <span className="min-w-0 flex-1 truncate" title={l.why}>
-            {l.kind === "scan" ? `Reading what people say online about ${l.query} while you answer` : <>Looking {WHERE[l.kind]}</>}
-            {l.kind === "scan" ? null : l.why ? `: ${l.why.replace(/^\p{Lu}/u, (c) => c.toLowerCase())}` : l.kind === "tools" ? ` for “${l.query}”: tick what to bring in, in the chat` : l.waits === "draft" ? " on it, for the draft" : `${l.query ? ` for “${l.query}”` : " for what people do about this"} while you answer`}
+            {waitingLine(l) ?? <>Looking {WHERE[l.kind]}</>}
+            {waitingLine(l) ? null : l.why ? `: ${l.why.replace(/^\p{Lu}/u, (c) => c.toLowerCase())}` : l.kind === "tools" ? ` for “${l.query}”: tick what to bring in, in the chat` : l.waits === "draft" ? " on it, for the draft" : `${l.query ? ` for “${l.query}”` : " for what people do about this"} while you answer`}
           </span>
           <IconBtn size="sm" label="Stop this lookup" onClick={() => onStop(l.id)}>
             <X size={12} {...ICON} />
@@ -166,6 +177,13 @@ export function AnsweredRound({ state, index }: { state: AskingState; index: num
           <div key={i} className="flex flex-col gap-[2px]">
             <dt className="text-fg-subtle">{a.question}</dt>
             <dd className={a.how === "left" || (a.how === "unknown" && !a.text) ? "text-fg-subtle" : "text-fg"} dir="auto">
+              {a.shots?.length ? (
+                <span className="mb-[4px] flex flex-wrap items-start gap-[6px]">
+                  {a.shots.map((s) => (
+                    <Shot key={s.asset} shot={s.asset} label={s.title} w={44} />
+                  ))}
+                </span>
+              ) : null}
               {a.how === "left" ? HOW_NOTE.left : a.how === "unknown" && !a.text ? HOW_NOTE.unknown : a.text}
               {a.how === "pick" && <span className="ml-[6px] text-micro text-fg-muted">· {HOW_NOTE.pick}</span>}
               {a.how === "unknown" && a.text && <span className="ml-[6px] text-micro text-fg-muted">· {HOW_NOTE.unknown}</span>}

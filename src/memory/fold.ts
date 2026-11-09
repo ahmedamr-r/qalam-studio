@@ -69,6 +69,7 @@ export function lineOf(raw: unknown): AskedLine | null {
     ...(x.code === true ? { code: true as const } : {}),
     how,
     a: str(x.a),
+    ...(Array.isArray(x.shots) && x.shots.some((s) => str(s)) ? { shots: x.shots.map(str).filter(Boolean).slice(0, 12) } : {}),
   };
 }
 
@@ -104,9 +105,10 @@ export function linesFor(o: { flow: AskedFlow; key: string; about: AskedAbout; a
     if (!q || !x.qid) continue;
     const id = askedId(o.flow, o.key, x.qid);
     const a = x.a.replace(/\s+/g, " ").trim().slice(0, 1600);
+    const shots = (x.shots ?? []).map((s) => s.replace(/\s+/g, " ").trim().slice(0, 160)).filter(Boolean);
     const was = known.get(id);
-    if (was && was.a === a && was.how === x.how) continue;
-    const e: AskedEntry = { v: 1, id, at: o.at + step++, by: o.by, flow: o.flow, key: o.key, about: o.about, qid: x.qid, q, ...(x.code ? { code: true as const } : {}), how: x.how, a };
+    if (was && was.a === a && was.how === x.how && (was.shots ?? []).join("\n") === shots.join("\n")) continue;
+    const e: AskedEntry = { v: 1, id, at: o.at + step++, by: o.by, flow: o.flow, key: o.key, about: o.about, qid: x.qid, q, ...(x.code ? { code: true as const } : {}), how: x.how, a, ...(shots.length ? { shots } : {}) };
     (sharedHow(x.how) ? shared : local).push(e);
   }
   return { shared, local };

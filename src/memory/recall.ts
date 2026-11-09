@@ -97,6 +97,9 @@ const whoSaid = (e: AskedEntry, me: string, solo: boolean) => (e.by.id === me ||
 
 function answerLine(e: AskedEntry, me: string, solo: boolean): string {
   const who = whoSaid(e, me, solo);
+  // Screenshots shown: by name only, kept with the product's screens; what's on them isn't anyone's words.
+  const shown = e.shots?.length ? `showed screenshots (${e.shots.map((s) => `“${clip(s)}”`).join(", ")})` : "";
+  if (e.how === "own" && shown) return e.a ? `${who} said “${clip(e.a)}” and ${shown}` : `${who} ${shown}`;
   if (e.how === "own") return `${who} said “${clip(e.a)}”`;
   if (e.how === "pick") return `${who} agreed to your recommendation “${clip(e.a)}” (agreement, not their words)`;
   return `${who} said they don't know${e.a ? ` (“${clip(e.a)}”)` : ""}`;

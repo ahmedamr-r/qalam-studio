@@ -1,4 +1,4 @@
-import { answersOf, applyTurn, askInstead, awaitsConfirm, closeRound, confirmed, currentRound, endNow, forDraft, lookupLanded, markRead, nextAfter, offPoint, saveRound, startLookup, takePicks, waitedOn } from "@/asking/engine";
+import { answersOf, applyTurn, askInstead, awaitsConfirm, closeRound, confirmed, currentRound, endNow, forDraft, lookAtShots, lookupLanded, markRead, nextAfter, offPoint, saveRound, startLookup, takePicks, waitedOn } from "@/asking/engine";
 import type { AskTurn, AskingState, FoundLine, Lookup } from "@/asking/types";
 import type { FocusLook } from "@/goals/focus";
 import type { AskedAbout, AskedFlow, RoundAnswer } from "@/memory/types";
@@ -65,7 +65,7 @@ export async function remember(h: AskingHost): Promise<void> {
     // What they said before isn't said again: remembered anew, an old answer would look fresh.
     if (r.from === "memory") return [];
     const code = new Set(r.questions.filter((q) => q.by === "code").map((q) => q.id));
-    return answersOf({ rounds: [r] }).map((a) => ({ qid: a.id, q: a.question, a: a.text, how: a.how, ...(code.has(a.id) ? { code: true as const } : {}) }));
+    return answersOf({ rounds: [r] }).map((a) => ({ qid: a.id, q: a.question, a: a.text, how: a.how, ...(code.has(a.id) ? { code: true as const } : {}), ...(a.shots?.length ? { shots: a.shots.map((x) => x.title) } : {}) }));
   });
   posting.add(h.key);
   try {
@@ -161,9 +161,9 @@ export async function goOn(h: AskingHost, signal: AbortSignal): Promise<Paused> 
 /** A round's answers kept as they're given. */
 export const keepRound = (h: AskingHost, form: FlowState) => h.set((s) => saveRound(s, form));
 
-/** A round sent: on to what comes next. */
+/** A round sent: on to what comes next. Screenshots it gave are kept and read first: the next turn waits for them. */
 export function answer(h: AskingHost, form: FlowState, signal: AbortSignal): Promise<Paused> {
-  h.set((s) => closeRound(s, form));
+  h.set((s) => lookAtShots(closeRound(s, form), Date.now(), newId));
   // goOn remembers the round as it starts.
   return goOn(h, signal);
 }

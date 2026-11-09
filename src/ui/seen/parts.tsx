@@ -1,4 +1,4 @@
-import { useRef, useState, type DragEvent } from "react";
+import { useRef, useState } from "react";
 import clsx from "clsx";
 import { ImagePlus, RotateCcw } from "lucide-react";
 import { seenHref } from "@/projects/model";
@@ -9,35 +9,13 @@ import type { PartData } from "../chat/types";
 import { r } from "../recipes";
 import { addShots, answer, dropReading, sendAnswers, unanswer, useSeen } from "./client";
 import { Shot } from "./Shot";
+import { droppedFiles } from "../chat/dropped";
 
 /*
  * The parts of the reading's conversation (./thread.ts names them): where screenshots go in, the
  * screenshots added, Qalam AI at work, a question with the screens it's about and why it asks, the
  * round going back, the review, and what's next once it's in.
  */
-
-/** Files from a drop, folders opened (one level is enough for a batch of screenshots). */
-async function droppedFiles(e: DragEvent): Promise<File[]> {
-  const items = [...e.dataTransfer.items];
-  const entries = items.map((i) => i.webkitGetAsEntry?.()).filter((x): x is FileSystemEntry => !!x);
-  if (!entries.some((x) => x.isDirectory)) return [...e.dataTransfer.files];
-  const out: File[] = [];
-  const fileOf = (f: FileSystemFileEntry) => new Promise<File>((ok, no) => f.file(ok, no));
-  for (const entry of entries) {
-    if (entry.isFile) out.push(await fileOf(entry as FileSystemFileEntry));
-    else if (entry.isDirectory) {
-      const reader = (entry as FileSystemDirectoryEntry).createReader();
-      const all: FileSystemEntry[] = [];
-      for (;;) {
-        const batch = await new Promise<FileSystemEntry[]>((ok, no) => reader.readEntries(ok, no));
-        if (!batch.length) break;
-        all.push(...batch);
-      }
-      for (const f of all.filter((x) => x.isFile && !x.name.startsWith("."))) out.push(await fileOf(f as FileSystemFileEntry));
-    }
-  }
-  return out;
-}
 
 export function DropArea({ compact }: { compact?: boolean }) {
   const input = useRef<HTMLInputElement>(null);

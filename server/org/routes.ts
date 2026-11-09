@@ -31,6 +31,7 @@ import { isBasis } from "@/discovery/basis";
 import { captureSource, changeBasis, decideFoundGoal, fileSources, readAsOwn, splitSetupSource } from "../capture";
 import { readPdfPictures } from "../pictures";
 import { IMAGE_MAX, readImage, type ImageInput } from "../image";
+import { KEEP_MAX, keepShots } from "./screens";
 import { imageFrom } from "@/discovery/ingest/image";
 import { MAX_FILE, type Ingested } from "@/discovery/ingest/core";
 import type { Proposal } from "@/discovery/proposals";
@@ -859,6 +860,25 @@ export function orgRoutes(): Hono<Env> {
       input = { bytes, type, name };
     }
     return streamed(c.req.raw.signal, (emit, signal) => readImage(store, input, { emit, signal }));
+  });
+  /**
+   * The screenshots a question's answer gave, kept as the product's screens and read (server/org/screens.ts):
+   * what the next turn reads about them. Each is an asset the project keeps already. Saying how it's going
+   * (NDJSON); stopped when the request goes.
+   */
+  r.post("/api/org/:org/screens/keep", async (c) => {
+    if (rateLimited(c.req.raw)) return c.json({ error: "rate_limited", message: "Too many requests, try again in a few minutes." }, 429);
+    const store = c.get("store");
+    const b = (await c.req.json().catch(() => null)) as { shots?: unknown; product?: unknown; about?: unknown } | null;
+    const shots = (Array.isArray(b?.shots) ? b.shots : []).flatMap((s: unknown) => {
+      const x = (s && typeof s === "object" ? s : {}) as { asset?: unknown; title?: unknown };
+      return typeof x.asset === "string" && typeof x.title === "string" ? [{ asset: x.asset.slice(0, 40), title: x.title.slice(0, 160) }] : [];
+    });
+    if (!shots.length || shots.length > KEEP_MAX) return bad(shots.length ? `Up to ${KEEP_MAX} screenshots at a time.` : "Which screenshots?");
+    const product = typeof b?.product === "string" && b.product ? b.product.slice(0, 120) : null;
+    const about = typeof b?.about === "string" ? b.about.slice(0, 200) : "";
+    const tab = tabOf(c.req.raw.headers);
+    return streamed(c.req.raw.signal, (emit, signal) => keepShots(store, { shots, product, about, emit, signal, ...(tab ? { tab } : {}) }));
   });
   /**
    * A PDF read here rather than in the window, so what's inside its pictures can be read and checked

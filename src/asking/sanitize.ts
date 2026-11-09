@@ -42,6 +42,8 @@ export interface TurnCheck {
   decisions?: boolean;
   /** A flow's own say over each question (null: left out). */
   tweak?: (q: AskQuestion) => AskQuestion | null;
+  /** A question may ask to see their screens (the consultant on a page or a step of their app or site): its screenshots answer it. Elsewhere it's an ordinary question. */
+  screens?: boolean;
   /** Every lookup needs a line saying why it's looked up rather than asked: one without is dropped. */
   why?: boolean;
   /** Someone new to this: a question may carry an example of a useful answer, and explain a word it uses. */
@@ -100,7 +102,7 @@ function explainOf(raw: unknown, q: AskQuestion, hay: string, explained: Readonl
  */
 export function keepQuestions(
   raw: readonly unknown[],
-  c: Pick<TurnCheck, "who" | "asked" | "held" | "lookups" | "tweak" | "streak" | "teach" | "explained"> & { taken?: Set<string>; lookupIds?: ReadonlyMap<string, string>; readable?: (q: AskQuestion) => AskQuestion; hay?: string },
+  c: Pick<TurnCheck, "who" | "asked" | "held" | "lookups" | "tweak" | "streak" | "teach" | "explained" | "screens"> & { taken?: Set<string>; lookupIds?: ReadonlyMap<string, string>; readable?: (q: AskQuestion) => AskQuestion; hay?: string },
   dropped?: (why: string, item: unknown) => void,
 ): { questions: AskQuestion[]; questionIds: Map<string, string> } {
   const drop = (why: string, item: unknown) => void dropped?.(why, item);
@@ -113,7 +115,7 @@ export function keepQuestions(
   const explained = new Set(c.explained ?? []);
   for (const item of raw) {
     const x = rec(item);
-    const kept = (c.who === "designer" ? sanitizeQuestions([item], { max: 1 }) : sanitizeAsked([item], { max: 1 }))[0];
+    const kept = (c.who === "designer" ? sanitizeQuestions([item], { max: 1 }) : sanitizeAsked([item], { max: 1, screens: c.screens }))[0];
     if (!kept) {
       drop("not a question the questionnaire can ask", item);
       continue;
@@ -129,7 +131,8 @@ export function keepQuestions(
       continue;
     }
     // Several don't-knows in a row: a fact (one their numbers or docs would hold) waits; what they can decide doesn't.
-    if ((c.streak ?? 0) >= DONT_KNOW_STREAK && q.tool) {
+    // Showing a screen isn't a fact they'd have to know: it's never held back.
+    if ((c.streak ?? 0) >= DONT_KNOW_STREAK && q.tool && q.tool.kind !== "screens") {
       drop("they've said they don't know several things in a row: facts wait", item);
       continue;
     }

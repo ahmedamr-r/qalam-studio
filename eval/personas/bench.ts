@@ -119,6 +119,8 @@ export interface ScanRun {
 function formAnswer(raw: AskQuestion, text: string): Answer {
   const q = toQuestion(raw);
   if (q.kind === "text") return { kind: "text", text };
+  // A person on the bench has no screenshots to give: they say it in words.
+  if (q.kind === "shots") return { kind: "shots", shots: [], text };
   if (q.kind === "single") {
     const o = q.options.find((x) => x.label === text);
     return o ? { kind: "single", value: o.value } : { kind: "single", value: OTHER, other: text };

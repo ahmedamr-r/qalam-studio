@@ -192,6 +192,12 @@ export interface SourceRecord {
   setup?: SetupSession;
   /** The person's answers about one card, asked before its draft (src/discovery/questions.ts): a `dump`, never a brain dump to continue. */
   answers?: CardAnswers;
+  /**
+   * A screenshot of their product kept as one of its screens (What people see, server/org/screens.ts):
+   * which map and which screen. What's printed on it is the product's own copy, so it's never read for
+   * anyone's words or filed.
+   */
+  screen?: { map: string; key: string };
 }
 
 /** What a source is, for a person: its kind, "Your answers" for the answers to a card's questions, or "Your file" for a file read for a card. */

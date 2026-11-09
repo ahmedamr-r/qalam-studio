@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { answersOf, applyTurn, askInstead, awaitsConfirm, closeRound, currentRound, emptyAsking, endNow, forDraft, foundOf, fromPlanRounds, loaded, lookupLanded, markRead, nextAfter, offPoint, scanSaid, settledOf, startLookup, takePicks } from "./engine";
+import { answersOf, applyTurn, askInstead, awaitsConfirm, closeRound, currentRound, emptyAsking, endNow, forDraft, foundOf, fromPlanRounds, loaded, lookAtShots, lookupLanded, markRead, nextAfter, offPoint, scanSaid, settledOf, startLookup, takePicks } from "./engine";
 import { askingIn } from "./wire";
 import type { AskQuestion, AskTurn, AskingState } from "./types";
 
@@ -201,5 +201,42 @@ describe("reading what people say online, offered once beside the rounds", () =>
     expect(read.lookups[0].read).toBe(after.turns + 1);
     expect(askingIn(read, { said: "x" }).lookups[0]).toMatchObject({ kind: "scan", state: "done" });
     expect(applyTurn(read, turn({ done: true }), o).end?.by).toBe("done");
+  });
+});
+
+describe("screenshots given as an answer", () => {
+  const screens = (id: string, title: string) => q(id, title, { tool: { kind: "screens", lookFor: "the basket" } });
+  const shots = [
+    { asset: "asset:000000000000000000000001", title: "Basket" },
+    { asset: "asset:000000000000000000000002", title: "Pay" },
+  ];
+
+  it("starts a screens lookup as the round goes, and the next turn waits for what's on them", () => {
+    let s = applyTurn(emptyAsking(), turn({ questions: [screens("see", "What does the basket look like today?"), q("when", "Since when?")] }), o);
+    s = lookAtShots(send(s, { see: { kind: "shots", shots, text: "after they add items" }, when: { kind: "text", text: "March" } }), 5, o.id);
+    expect(s.lookups).toHaveLength(1);
+    expect(s.lookups[0]).toMatchObject({ kind: "screens", query: "the basket", state: "running", waits: s.turns, shots, asked: "What does the basket look like today?" });
+    expect(nextAfter(s)).toBe("wait");
+    // What they typed is theirs; the screenshots go apart from their words.
+    const a = answersOf(s).find((x) => x.id === "see")!;
+    expect(a).toMatchObject({ text: "after they add items", typed: "after they add items", how: "own", shots });
+  });
+
+  it("starts nothing for a round with no screenshots, and an answer of screenshots alone is still theirs", () => {
+    let s = applyTurn(emptyAsking(), turn({ questions: [screens("see", "What does it look like?")] }), o);
+    expect(lookAtShots(send(s, { see: { kind: "shots", shots: [], text: "It's a list" } }), 5, o.id).lookups).toEqual([]);
+    s = lookAtShots(send(s, { see: { kind: "shots", shots, text: "" } }), 5, o.id);
+    expect(answersOf(s)[0]).toMatchObject({ how: "own", text: "", shots });
+    const wired = askingIn(s, { said: "x" });
+    expect(wired.rounds[0].asked[0]).toMatchObject({ how: "own", shots: ["Basket", "Pay"] });
+    // The screenshots' words aren't theirs: only what they typed is.
+    expect(wired.said).toBe("x");
+    expect(wired.lookups[0]).toMatchObject({ kind: "screens", state: "running" });
+  });
+
+  it("finds a screens lookup stopped after a reload, like any lookup a turn waits on", () => {
+    let s = applyTurn(emptyAsking(), turn({ questions: [screens("see", "What does it look like?")] }), o);
+    s = lookAtShots(send(s, { see: { kind: "shots", shots, text: "" } }), 5, o.id);
+    expect(loaded(s).lookups[0].state).toBe("stopped");
   });
 });

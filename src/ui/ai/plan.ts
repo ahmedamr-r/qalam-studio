@@ -4,7 +4,7 @@ import type { ResearchInfo } from "@/ai/research-shared";
 import { toolAsk, type ToolAsk } from "@/connectors/suggest";
 import { MAX_SCREENS } from "@/ai/screen-count";
 import { PLATFORMS, PLATFORM_IDS, isPlatform, type Platform } from "@/design-system/platform";
-import { OTHER, REVIEW, initialFlow, resolvedAnswers, type Answer, type FlowState, type Question } from "./questionFlow";
+import { OTHER, REVIEW, SHOTS_MAX, initialFlow, resolvedAnswers, type Answer, type FlowState, type Question } from "./questionFlow";
 import type { ChatTurn } from "./chatTypes";
 import { FREEFORM_ID } from "@/design-system/freeform";
 
@@ -82,7 +82,7 @@ const withTool = (tool: ToolAsk | undefined) => (tool ? { tool } : {});
  * question; recommendations that point at an option; at most `max` (BUCKET_MAX unless the caller asks
  * every question it can, as the asking engine does).
  */
-export function sanitizeQuestions(raw: unknown, o: { max?: number } = {}): PlanQuestion[] {
+export function sanitizeQuestions(raw: unknown, o: { max?: number; screens?: boolean } = {}): PlanQuestion[] {
   const ids = new Set<string>([PLATFORM_Q, REVIEW]);
   return (Array.isArray(raw) ? raw : [])
     .map((q: Record<string, unknown>, i: number) => {
@@ -111,7 +111,7 @@ export function sanitizeQuestions(raw: unknown, o: { max?: number } = {}): PlanQ
         options: options.map(({ value, label, description }: { value: string; label: string; description: string }) => ({ value, label, description })),
         recommended: rec,
         allowOther: !!q?.allowOther,
-        ...withTool(toolAsk(q?.from, q?.look_for)),
+        ...withTool(toolAsk(q?.from, q?.look_for, { screens: o.screens })),
       };
     })
     // A single option is no choice; no options at all is an open question.
@@ -181,7 +181,7 @@ export function isNumberRanges(options: readonly { label: string }[]): boolean {
 export const openNumbers = (q: PlanQuestion): PlanQuestion => (isNumberRanges(q.options) ? { ...q, multi: false, options: [], recommended: [], allowOther: false } : q);
 
 /** Questions about someone's own work, as code keeps them. The design side's plan has choices of its own: `sanitizeQuestions`. */
-export const sanitizeAsked = (raw: unknown, o: { max?: number } = {}): PlanQuestion[] => sanitizeQuestions(raw, o).map(openNumbers);
+export const sanitizeAsked = (raw: unknown, o: { max?: number; screens?: boolean } = {}): PlanQuestion[] => sanitizeQuestions(raw, o).map(openNumbers);
 
 /**
  * A question about someone's own work, as the questionnaire asks it. Their answers become what cards
@@ -195,6 +195,8 @@ export function toQuestion(q: PlanQuestion): Question {
   // About their own work, "I don't know" is an answer of its own: never a quote, never asked again.
   // What they said before to one like it shows under it (src/memory/known.ts).
   const base = { id: q.id, title: q.title, why: q.why || undefined, source: "ai" as const, optional: true, dontKnow: true, ...(q.known?.length ? { known: q.known } : {}), ...(q.example ? { example: q.example } : {}), ...(q.explain ? { explain: q.explain } : {}) };
+  // Asking to see a screen: screenshots dropped or pasted in, with words if they like (choices make no sense here).
+  if (q.tool?.kind === "screens") return { ...base, kind: "shots", placeholder: "Or say it in words", maxLength: 1200, max: SHOTS_MAX, ...tool };
   if (!q.options.length) return { ...base, kind: "text", placeholder: "Answer in your own words, or skip", maxLength: q.tool ? 1200 : 600, ...tool };
   if (q.multi) return { ...base, kind: "multi", groups: [{ id: "picks", label: "Pick any", options: q.options, ...(open ? { custom: { placeholder: "Add your own" } } : {}) }], ...(q.recommended.length ? { suggested: [...q.recommended] } : {}), ...tool };
   return {

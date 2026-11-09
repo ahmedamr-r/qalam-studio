@@ -81,13 +81,34 @@ export interface TextQuestion extends QBase {
   default?: string;
 }
 
-export type Question = SingleQuestion | MultiQuestion | TextQuestion;
+/** Asking to see a screen or a step: screenshots dropped, pasted or picked under it (each kept as an asset as it lands), with words if they like. */
+export interface ShotsQuestion extends QBase {
+  kind: "shots";
+  placeholder?: string;
+  maxLength?: number;
+  /** Most screenshots one answer takes. */
+  max?: number;
+  default?: string;
+}
+
+export type Question = SingleQuestion | MultiQuestion | TextQuestion | ShotsQuestion;
+
+/** Most screenshots one answer takes: more can go in another answer. */
+export const SHOTS_MAX = 6;
+
+/** A screenshot given as an answer: the asset it's kept as ("asset:<hash>") and its name (the file's, or "Screenshot 2"). */
+export interface AnswerShot {
+  asset: string;
+  title: string;
+}
 
 /** `pick`: Qalam AI's recommendation, taken with one press for the whole round, and not changed since. */
 export type Answer =
   | { kind: "single"; value: string; other?: string; pick?: true }
   | { kind: "multi"; values: string[]; custom: string[]; pick?: true }
   | { kind: "text"; text: string }
+  /** Screenshots in the order given, and what they typed beside them: only the typed words are theirs to quote. */
+  | { kind: "shots"; shots: AnswerShot[]; text: string }
   /** Left, or (`unknown`) "I don't know": nothing they said, so nothing to quote. */
   | { kind: "skipped"; unknown?: true };
 export type Answers = Record<string, Answer>;
@@ -142,6 +163,8 @@ export function answerOf(q: Question, answers: Answers): Answer {
       return { kind: "multi", values: [...(q.default?.values ?? [])], custom: [...(q.default?.custom ?? [])] };
     case "text":
       return { kind: "text", text: q.default ?? "" };
+    case "shots":
+      return { kind: "shots", shots: [], text: q.default ?? "" };
   }
 }
 
@@ -161,6 +184,10 @@ export function validate(q: Question, a: Answer): string | null {
     return null;
   }
   if (a.kind === "text" && q.kind === "text") return a.text.trim() || q.optional ? null : "Type an answer.";
+  if (a.kind === "shots" && q.kind === "shots") {
+    if (q.max !== undefined && a.shots.length > q.max) return `Up to ${q.max} screenshots in one answer.`;
+    return a.shots.length || a.text.trim() || q.optional ? null : "Add a screenshot, or say it in words.";
+  }
   return "Answer this one to go on.";
 }
 
@@ -289,7 +316,7 @@ export type AnswerHow = "own" | "pick" | "left" | "unknown";
  * know (the control, or words or a choice saying it, `saysDontKnow`) is that: its words are kept to
  * read, never as words of theirs a card may quote.
  */
-export function answerWords(q: Question, a: Answer | undefined): { text: string; typed: string; how: AnswerHow } {
+export function answerWords(q: Question, a: Answer | undefined): { text: string; typed: string; how: AnswerHow; shots?: AnswerShot[] } {
   const left = { text: "", typed: "", how: "left" as const };
   const unknown = (text: string) => ({ text, typed: "", how: "unknown" as const });
   if (!a) return left;
@@ -297,6 +324,12 @@ export function answerWords(q: Question, a: Answer | undefined): { text: string;
   if (a.kind === "text") {
     const t = a.text.trim();
     return !t ? left : saysDontKnow(t) ? unknown(t) : { text: t, typed: t, how: "own" };
+  }
+  // Screenshots are what they showed, apart from their words: what's printed on a screen is never words of theirs.
+  if (a.kind === "shots") {
+    const t = a.text.trim();
+    if (!a.shots.length) return !t ? left : saysDontKnow(t) ? unknown(t) : { text: t, typed: t, how: "own" };
+    return { text: t, typed: t, how: "own", shots: a.shots.map((s) => ({ asset: s.asset, title: s.title })) };
   }
   if (a.kind === "single" && q.kind === "single") {
     if (a.value === OTHER) {
@@ -332,6 +365,7 @@ export function summarize(q: Question, a: Answer): string {
     return labels.length > 4 ? `${labels.slice(0, 4).join(", ")} +${labels.length - 4} more` : labels.join(", ");
   }
   if (a.kind === "text") return a.text.trim() || "—";
+  if (a.kind === "shots") return [a.shots.length ? (a.shots.length === 1 ? "1 screenshot" : `${a.shots.length} screenshots`) : "", a.text.trim()].filter(Boolean).join(" · ") || "—";
   return "—";
 }
 
@@ -367,6 +401,7 @@ export function addCustom(a: Multi, name: string): Multi {
 export function fillAnswer(q: Question, a: Answer, line: string): Answer {
   const add = (had: string | undefined, max: number) => [had?.trim(), line].filter(Boolean).join("\n").slice(0, max);
   if (q.kind === "text") return { kind: "text", text: add(a.kind === "text" ? a.text : "", q.maxLength ?? Infinity) };
+  if (q.kind === "shots") return { kind: "shots", shots: a.kind === "shots" ? a.shots : [], text: add(a.kind === "shots" ? a.text : "", q.maxLength ?? Infinity) };
   if (q.kind === "single") return { kind: "single", value: OTHER, other: add(a.kind === "single" && a.value === OTHER ? a.other : "", 1200) };
   const multi: Multi = a.kind === "multi" ? a : { kind: "multi", values: [], custom: [] };
   return { ...multi, custom: [...multi.custom, line.slice(0, 1200)] };
@@ -396,8 +431,21 @@ export function knownAnswer(q: Question, k: { text: string; how: AnswerHow }): A
     if (custom.length && !q.groups.some((g) => g.custom)) return null;
     return { kind: "multi", values, custom };
   }
+  // Words said before can answer it in words; the screenshots are shown again from what's kept, never from memory.
+  if (q.kind === "shots") return pick ? null : { kind: "shots", shots: [], text: text.slice(0, q.maxLength ?? 1200) };
   return pick ? null : { kind: "text", text: text.slice(0, q.maxLength ?? 1200) };
 }
+
+/** Screenshots added to an answer, after what it has, each once, up to the most it takes. */
+export function addAnswerShots(a: Answer, add: readonly AnswerShot[], max = SHOTS_MAX): Extract<Answer, { kind: "shots" }> {
+  const had = a.kind === "shots" ? a : { kind: "shots" as const, shots: [], text: a.kind === "text" ? a.text : "" };
+  const shots = [...had.shots];
+  for (const s of add) if (!shots.some((x) => x.asset === s.asset) && shots.length < max) shots.push(s);
+  return { ...had, shots };
+}
+
+/** A screenshot taken off an answer. */
+export const removeShot = (a: Extract<Answer, { kind: "shots" }>, asset: string): Extract<Answer, { kind: "shots" }> => ({ ...a, shots: a.shots.filter((s) => s.asset !== asset) });
 
 export function removeCustom(a: Multi, name: string): Multi {
   return { ...a, custom: a.custom.filter((c) => c !== name) };

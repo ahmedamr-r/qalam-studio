@@ -6,7 +6,8 @@ import { stepRef } from "@/code/map";
 import { foldPins } from "@/code/steps";
 import { goalsText } from "@/goals/text";
 import { contextText } from "@/org/context-md";
-import { answersOf, placeMaterial, proposalOf, sanitizePlace } from "@/seen/place";
+import { answersOf, placeMaterial, proposalOf, sanitizePlace, type NodeRef, type PlaceKept } from "@/seen/place";
+import { NEAR_WORDS, nearPairs } from "@/seen/measure";
 import { readMaterial, sanitizeRead } from "@/seen/read";
 import { ORG_SEEN, SEEN_KEY, SEEN_LIMITS, type SeenAnswer, type SeenMap, type SeenReading, type SeenScreen, type SeenText, type Shot, type ShotNote } from "@/seen/types";
 import { prepShot, readShots, seeAvailable } from "../see";
@@ -44,7 +45,8 @@ const IMAGE = /^image\/(png|jpeg|webp|gif)$/;
 const READ_SIDE = 1568;
 const THUMB_SIDE = 768;
 
-async function productOf(store: OrgStore, key: string): Promise<string | null> {
+/** The product a map is for (null: the organization's own), or not found. */
+export async function productOf(store: OrgStore, key: string): Promise<string | null> {
   if (!SEEN_KEY.test(key)) throw new NotFoundError("No such product");
   if (key === ORG_SEEN) return null;
   if (!(await store.listProducts()).some((p) => p.id === key)) throw new NotFoundError("No such product");
@@ -106,6 +108,76 @@ export async function startReading(store: OrgStore, key: string, shots: Shot[], 
   void run(store, key, deps, {});
   return r!;
 }
+
+/** A screenshot shown in answer to a question: a picture the project keeps, HEIC too (read on a Mac). */
+const SHOT_IMAGE = /^image\/(png|jpeg|webp|gif|heic|heif)$/;
+/** How long a screenshot shown waits on a reading of the same map, whose settling writes its screens whole. */
+const WAIT_FOR_READING = 60_000;
+
+/**
+ * Screenshots kept as screens straight away (a question's answer, server/org/screens.ts), with no
+ * reading rounds. Each is its own screen unless it looks like one kept already, or like one shown just
+ * before it (one screen in another state); together, in the order given, they're one flow, named for
+ * what was asked, which takes the place of a flow of that name. What a screen is called and what's on it
+ * come from the picture's own reading (`notes`). A screenshot, or a flow, taken out of the map before
+ * comes back: showing it again is the person's choice.
+ */
+export async function addShots(store: OrgStore, key: string, shots: readonly Shot[], o: { flow: string; notes: Record<string, ShotNote>; tab?: string; deps?: SeenDeps }): Promise<{ map: SeenMap; screenOf: Record<string, string>; flow?: string }> {
+  const product = await productOf(store, key);
+  const deps = o.deps ?? depsFor(store);
+  const valid = shots.filter((s, i) => {
+    const a = /^asset:[0-9a-f]{24}$/.test(s.ref) ? store.getAsset(hashOf(s.ref)) : null;
+    return !!a && SHOT_IMAGE.test(a.type) && shots.findIndex((x) => x.ref === s.ref) === i;
+  });
+  if (!valid.length) throw new Error("None of these is a screenshot Qalam keeps (PNG, JPEG, WebP, GIF, or HEIC on a Mac).");
+  for (const until = Date.now() + WAIT_FOR_READING; running.has(`${store.dir}|${key}`); ) {
+    if (Date.now() > until) throw new Error("Qalam AI is still reading other screenshots of this product: show these again once it's done.");
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  const before = await store.getSeen(key);
+  const refs = valid.map((s) => s.ref);
+  const texts = await wordsFor(store, deps, [...new Set([...refs, ...(before?.screens ?? []).map((s) => s.shots[0])])]);
+  // One screen in two states only by its words: two sparse screens (white, a button at the foot) hash alike.
+  const pairs = nearPairs(texts).filter((p) => p.overlap >= NEAR_WORDS);
+  const name = flowName(o.flow);
+  const map = await store.changeSeen(
+    key,
+    (m) => {
+      const keptBy = new Map((m?.screens ?? []).map((s) => [s.shots[0], s.key]));
+      // A screenshot kept before stays the screen it's part of.
+      const keptAs = new Map((m?.screens ?? []).flatMap((s) => s.shots.map((x) => [x, s.key] as const)));
+      // Each in order: with the kept screen it's part of or closest to, else with a screenshot shown before it, else on its own.
+      const groupOf = new Map<string, NodeRef[]>();
+      const groups: NodeRef[][] = [];
+      for (const ref of refs) {
+        const near = pairs.filter((p) => p.a === ref || p.b === ref).map((p) => (p.a === ref ? p.b : p.a));
+        const kept = keptAs.get(ref) ?? near.map((r) => keptBy.get(r)).find(Boolean);
+        const earlier = near.find((r) => groupOf.has(r));
+        const keptGroup = kept ? groups.find((g) => g[0] === `screen:${kept}`) : undefined;
+        const g = keptGroup ?? (kept ? [`screen:${kept}`] : earlier ? groupOf.get(earlier)! : []);
+        if (!groups.includes(g)) groups.push(g);
+        g.push(ref);
+        groupOf.set(ref, g);
+      }
+      const was = m?.flows.find((f) => f.name.trim().toLowerCase() === name.toLowerCase())?.key;
+      const kept: PlaceKept = { groups, states: {}, flows: [{ name, aim: "", steps: refs, moves: [], notShown: [], ...(was ? { was } : {}) }], code: {}, questions: [], ready: true };
+      const next = proposalOf(m, kept, { key, product, notes: o.notes, shots: valid, now: Date.now() }).map;
+      const flowKey = next.flows.find((f) => f.name === name)?.key;
+      return { ...next, gone: next.gone.filter((g) => !refs.includes(g) && g !== `flow:${flowKey}`) };
+    },
+    { tab: o.tab },
+  );
+  if (!map) throw new Error("The screens couldn't be kept.");
+  const screenOf = Object.fromEntries(refs.flatMap((ref) => map.screens.filter((s) => s.shots.includes(ref)).map((s) => [ref, s.key] as const)));
+  const flow = map.flows.find((f) => f.name === name)?.key;
+  return { map, screenOf, ...(flow ? { flow } : {}) };
+}
+
+/** A flow's name from what was asked about ("the basket page" → "The basket page"). */
+export const flowName = (about: string) => {
+  const s = about.replace(/\s+/g, " ").trim().slice(0, 80) || "Screens shown";
+  return s.charAt(0).toLocaleUpperCase() + s.slice(1);
+};
 
 /** The person's answers to the last round; the next round goes on in the core. `skip` stops asking and shows what's proposed. */
 export async function answerReading(store: OrgStore, key: string, answers: SeenAnswer[], opts: { tab?: string; skip?: boolean; deps?: SeenDeps } = {}): Promise<SeenReading> {

@@ -217,7 +217,24 @@ export function lookupLanded(s: AskingState, id: string, r: { lines?: FoundLine[
 }
 
 /** A lookup they or code started, outside a turn (an opening look; one they said yes to). */
-export const startLookup = (s: AskingState, l: Pick<Lookup, "id" | "kind" | "query" | "waits" | "why">, now: number): AskingState => ({ ...s, offer: s.offer?.id === l.id ? undefined : s.offer, quiet: s.offer?.id === l.id ? 0 : s.quiet, lookups: [...s.lookups.filter((x) => x.id !== l.id), { ...l, state: "running", at: now }] });
+export const startLookup = (s: AskingState, l: Pick<Lookup, "id" | "kind" | "query" | "waits" | "why" | "shots" | "asked">, now: number): AskingState => ({ ...s, offer: s.offer?.id === l.id ? undefined : s.offer, quiet: s.offer?.id === l.id ? 0 : s.quiet, lookups: [...s.lookups.filter((x) => x.id !== l.id), { ...l, state: "running", at: now }] });
+
+/**
+ * The screenshots the round just sent gave, as it goes: each answer's kept as the product's screens and
+ * read (server/org/screens.ts), and the next turn waits for it, so it asks about what's on them. Only
+ * code starts a screens lookup; a turn is never offered one.
+ */
+export function lookAtShots(s: AskingState, now: number, id: (p: string) => string): AskingState {
+  const r = s.rounds.at(-1);
+  if (!r?.form.submitted) return s;
+  return answersOf({ rounds: [r] })
+    .filter((a) => a.shots?.length)
+    .reduce((x, a) => {
+      const q = r.questions.find((y) => y.id === a.id);
+      const about = (q?.tool?.lookFor || q?.title || a.question).replace(/\s+/g, " ").trim().slice(0, 120);
+      return startLookup(x, { id: id("v"), kind: "screens", query: about, waits: x.turns, shots: a.shots, asked: a.question }, now);
+    }, s);
+}
 
 /** They'd rather be asked than have it looked up: the next turn asks, or ends. */
 export const askInstead = (s: AskingState): AskingState => ({ ...s, offer: undefined, quiet: 0, askFirst: true });

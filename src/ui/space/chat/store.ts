@@ -62,6 +62,8 @@ import { nowFrom, numberRound, targetFrom } from "@/goals/moves";
 import { goalsForProblem, lookForGoal, suggestGoalNumber } from "@/org/goal-work";
 import { loadMarket, useMarket } from "@/org/market";
 import { useSpaceView } from "@/space/view";
+import { keepScreens } from "@/org/screens";
+import { screenLines } from "@/screens/lines";
 import { rememberRound, withKnownAnswers } from "@/org/memory";
 import { onOrgChange } from "@/org/live";
 import { needsDb } from "@/org/needs";
@@ -1016,6 +1018,7 @@ export const planHost = (id: string): AskingHost => ({
     if (l.kind === "tools") return toolsLookup(l, signal, { turn: id });
     if (l.kind === "project") return projectLookup(l);
     if (l.kind === "scan") return scanLookup(l, signal, { turn: id });
+    if (l.kind === "screens") return screensLookup(l, signal);
     const look = await planLook({ ...planAsk(id)!, ...(l.query ? { query: l.query } : {}) }, undefined, signal);
     setCanvasPlan(id, (j) => ({ ...j, looks: [...j.looks, { ...look, after: (j.asking?.rounds.length ?? 0) - 1 }] }));
     return { look, lines: look.lines.map((x, i) => ({ ref: `${l.id}-${i + 1}`, text: x.text, from: x.url ? hostOf(x.url) : "a page", whose: "a page online", ...(x.url ? { url: x.url } : {}), ...(x.quote ? { quote: x.quote } : {}) })) };
@@ -1153,6 +1156,17 @@ function scanTargetOf(query: string, id: string, j: PlanJob): ScanTarget | null 
 }
 
 /** A conversation's scan, followed until it's read: the problems people raise and their words nearest it, for the next turn. */
+/**
+ * The screenshots an answer gave, kept as the space's product's screens and read in the core
+ * (server/org/screens.ts): the lines the next turn reads, the flow they make and each screen with
+ * what it shows and what's printed on it.
+ */
+async function screensLookup(l: Pick<Lookup, "id" | "query" | "shots">, signal: AbortSignal): Promise<{ lines: FoundLine[] }> {
+  if (!l.shots?.length) return { lines: [] };
+  const kept = await keepScreens({ shots: l.shots, product: useSpaceView.getState().space ?? null, about: l.query }, signal);
+  return { lines: screenLines(l.id, kept) };
+}
+
 async function scanLookup(l: Pick<Lookup, "id" | "query">, signal: AbortSignal, o: { turn: string }): Promise<{ lines: FoundLine[]; stopped?: true }> {
   const at = () => st().chat.turns.find((t) => t.job.kind === "scan" && t.job.lookup?.turn === o.turn && t.job.lookup.id === l.id);
   const settled = () => {

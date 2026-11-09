@@ -63,6 +63,8 @@ export interface AskedEntry {
   how: AskedHow;
   /** Their words, the pick's label, or what they said not knowing (empty when they pressed I don't know, or left it). */
   a: string;
+  /** The screenshots they showed with it, by name: what's on them is kept with the product's screens, never as their words. */
+  shots?: string[];
 }
 
 /** Taken off: Qalam AI won't bring it up when it asks. */
@@ -93,4 +95,6 @@ export interface RoundAnswer {
   a: string;
   how: AskedHow;
   code?: true;
+  /** The screenshots shown with it, by name (the pictures are kept with the product's screens, not here). */
+  shots?: string[];
 }

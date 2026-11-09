@@ -22,7 +22,8 @@ const FIND_OUT = [
 export const asksWhereToFind = (title: string) => FIND_OUT.some((re) => re.test(title));
 
 /** What a question asked again is answered with, if anything: their own exact answer, given lately. */
-export function gateOf(q: { title: string; known?: readonly KnownAnswer[] }, now: number): KnownAnswer | null {
-  if (!q.known?.length || asksWhereToFind(q.title)) return null;
+export function gateOf(q: { title: string; known?: readonly KnownAnswer[]; tool?: { kind: string } }, now: number): KnownAnswer | null {
+  // Asking to see a screen: a screen changes, so it's always asked (what's kept shows under it instead).
+  if (!q.known?.length || asksWhereToFind(q.title) || q.tool?.kind === "screens") return null;
   return q.known.find((k) => k.match === "exact" && k.mine && k.at <= now && now - k.at <= GATE_DAYS * DAY) ?? null;
 }
