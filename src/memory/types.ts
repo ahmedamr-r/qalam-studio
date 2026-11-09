@@ -15,13 +15,14 @@ export interface Who {
 export type AskedHow = "own" | "pick" | "unknown" | "left";
 
 /** Which part of Qalam asked. */
-export type AskedFlow = "plan" | "card" | "brief" | "scan" | "steer" | "interview" | "dump" | "find" | "focus" | "metrics";
+export type AskedFlow = "plan" | "consult" | "card" | "brief" | "scan" | "steer" | "interview" | "dump" | "find" | "focus" | "metrics";
 
-export const ASKED_FLOWS: readonly AskedFlow[] = ["plan", "card", "brief", "scan", "steer", "interview", "dump", "find", "focus", "metrics"];
+export const ASKED_FLOWS: readonly AskedFlow[] = ["plan", "consult", "card", "brief", "scan", "steer", "interview", "dump", "find", "focus", "metrics"];
 
 /** Where it was asked, as people read it. */
 export const FLOW_WORDS: Record<AskedFlow, string> = {
   plan: "Working it out",
+  consult: "Working it out with you",
   card: "Before a draft",
   brief: "Before a brief",
   scan: "What to build first",

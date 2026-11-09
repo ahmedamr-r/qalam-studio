@@ -1,5 +1,6 @@
 import type { AskWho, LookupKind } from "@/asking/types";
 import { questionItem } from "./plan";
+import { CONSULT_TASK } from "./consult";
 
 /*
  * How Qalam AI asks before it generates, wherever it generates (src/asking/): Qalam's form of the
@@ -83,13 +84,17 @@ export const ASK_TASK = {
   card: `They asked for a draft for a card on their canvas: solutions for a problem, the goals under a goal, a goal's problems, or tests of a solution's riskiest assumptions. Another step drafts it once you're done. Find out what would change the draft: who has it most, what they do today instead, how they know, which number would move, what they can build or run themselves, what's been tried. Never ask the person's job or position, and never ask what the card, what's above it, their words or the quotes found already settle. Also say what their own words in the first answer are to the tree (role), or none.`,
   interview: `They're starting a board (an Opportunity Solution Tree) for their product from a short interview: the outcome to move, who it's for, what customers said, what they've tried. Another step drafts the tree from their answers (one outcome, the customers' opportunities, solutions), quoting only their own words. Ask what's too vague to choose the outcome or the opportunities: which customers, which behaviour shows success, what customers actually said, which number would move. Never ask what their answers already settle.`,
   scan: `They read what people say in public about an idea or a product, and want to work out what to build first. Other steps then find who it's for (from people's words), a first goal and what to build first. Ask what public complaints can't tell and would change those: who they picture using it first (choices from the kinds of people the quotes show), whether they've seen the problem themselves, what they could build and try soon, what they've tried. Never ask what the material already says or what they told you while it read. Write in the language they wrote in.`,
+  consult: CONSULT_TASK,
   brief: `They asked for something written for a card on their canvas: a brief (a PRD) for whoever builds it, a plan for a message, or steps to run by hand. Another step writes it once you're done, from what's kept (the words below) and their answers. Ask only what that leaves open and the writing needs: who it's for first, what it must do first and what can wait, what they can build or run, what has to be true at the end of the first version, how they'll know it worked, what exists that it plugs into. Never ask a stack, a framework or a language: whoever builds it chooses. Never ask what the answers so far or the words below already settle.`,
 } as const;
 
 export type AskFlow = keyof typeof ASK_TASK;
 
-/** One turn of the interview: the shared rules (cached), the flow's task, and what it reads. */
-export function askTurnCall(o: { flow: AskFlow; who: AskWho; material: string; effort?: "low" | "medium"; extra?: Record<string, unknown> } & AskingOpts) {
+/**
+ * One turn of the interview: the shared rules (cached), the flow's task, and what it reads. A
+ * consultant's turn also carries the playbook it's following, as a third block cached apart.
+ */
+export function askTurnCall(o: { flow: AskFlow; who: AskWho; material: string; effort?: "low" | "medium"; extra?: Record<string, unknown>; playbook?: string } & AskingOpts) {
   const schema = obj({ ...askingFields(o.who, o), ...(o.extra ?? {}) });
-  return { kind: "ask-turn" as const, system: [askingRules(o.who, o), ASK_TASK[o.flow]], schema, effort: o.effort ?? ("low" as const), maxTokens: 6000, content: [{ type: "text" as const, text: o.material }] };
+  return { kind: "ask-turn" as const, system: [askingRules(o.who, o), ASK_TASK[o.flow], ...(o.playbook ? [o.playbook] : [])], schema, effort: o.effort ?? ("low" as const), maxTokens: 6000, content: [{ type: "text" as const, text: o.material }] };
 }

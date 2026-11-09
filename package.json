@@ -41,7 +41,8 @@
     "eval:memory": "tsx eval/memory/run.ts",
     "eval:tiers": "tsx eval/tiers/run.ts",
     "eval:loop": "tsx eval/loop/run.ts",
-    "eval:personas": "tsx eval/personas/run.ts"
+    "eval:personas": "tsx eval/personas/run.ts",
+    "gen:playbooks": "tsx scripts/playbooks.mts"
   },
   "dependencies": {
     "electron": "^45.0.0",
