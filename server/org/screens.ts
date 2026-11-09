@@ -44,6 +44,15 @@ const noteOf = (ing: Ingested): ShotNote => ({
   nav: [],
 });
 
+/** A word-whole cut. */
+const cutAt = (s: string, n: number) => (s.length <= n ? s : s.slice(0, n).replace(/\s+\S*$/, ""));
+
+/** With nothing said about them, a flow is named for where it starts and where it ends ("Basket to Payment"). */
+export const flowFrom = (names: readonly string[]) => {
+  const distinct = [...new Set(names.map((n) => n.replace(/\s+/g, " ").trim()).filter(Boolean))];
+  return distinct.length > 1 ? `${cutAt(distinct[0], 38)} to ${cutAt(distinct.at(-1)!, 38)}` : (distinct[0] ?? "");
+};
+
 /**
  * Keep the screenshots an answer gave: read each (its words on this Mac, one look by Qalam AI), keep
  * the screens in the product's map as one flow named for what was asked, and each as its source.
@@ -72,12 +81,13 @@ export async function keepShots(store: OrgStore, o: { shots: readonly ShownShot[
   const isScreen = (ing: Ingested) => !ing.image || ing.image.shows === "screen";
   const screens = shots.map((s, i) => ({ ...s, ing: read[i] })).filter((s) => isScreen(s.ing));
   o.emit?.("Keeping them with your screens");
+  const named = o.about.trim() || flowFrom(screens.map((x) => x.ing.title));
   const added = screens.length
     ? await addShots(
         store,
         map,
         screens.map((s) => ({ ref: `asset:${s.hash}`, name: s.title })),
-        { flow: o.about, notes: Object.fromEntries(screens.map((s) => [`asset:${s.hash}`, noteOf(s.ing)])), ...(o.tab ? { tab: o.tab } : {}), ...(o.deps?.seen ? { deps: o.deps.seen } : {}) },
+        { flow: named, notes: Object.fromEntries(screens.map((s) => [`asset:${s.hash}`, noteOf(s.ing)])), ...(o.tab ? { tab: o.tab } : {}), ...(o.deps?.seen ? { deps: o.deps.seen } : {}) },
       )
     : null;
 
@@ -101,8 +111,54 @@ export async function keepShots(store: OrgStore, o: { shots: readonly ShownShot[
     await store.putSource(rec, o.tab ? { tab: o.tab } : {});
     out.push({ ...base, source: rec.id, ...(screen ? { screen } : {}) });
   }
-  const flow = added?.flow ? { key: added.flow, name: added.map.flows.find((f) => f.key === added.flow)?.name ?? flowName(o.about) } : undefined;
+  const flow = added?.flow ? { key: added.flow, name: added.map.flows.find((f) => f.key === added.flow)?.name ?? flowName(named) } : undefined;
   return { map, ...(flow ? { flow } : {}), shots: out };
+}
+
+/**
+ * A picture kept as a screen of theirs that isn't one (they said so): its screen's source goes, and it's
+ * out of every map, its screen with it when that was its only screenshot, and it's not proposed again.
+ * What a look found on it went by its being theirs, so it's left out of that look, saying why: the looks
+ * changed come back.
+ */
+export async function notAScreen(store: OrgStore, hash: string, o: { tab?: string } = {}): Promise<ScreenReview[]> {
+  const ref = `asset:${hash}`;
+  const looks: ScreenReview[] = [];
+  for (const r of await store.listScreenReviews()) {
+    if (!r.shots.some((s) => s.asset === hash)) continue;
+    const next = await store.changeScreenReview(
+      r.id,
+      (x) =>
+        x && {
+          ...x,
+          shots: x.shots.filter((s) => s.asset !== hash),
+          findings: x.findings.filter((f) => f.shot !== hash),
+          left: [...x.left, ...x.findings.filter((f) => f.shot === hash).map((f) => ({ what: f.title, why: "It's on a picture you said isn't your product's screen" }))],
+        },
+      o,
+    );
+    if (next) looks.push(next);
+  }
+  for (const s of await store.listSources()) if (s.image?.asset === hash && s.screen) await store.removeSource(s.id, o);
+  for (const m of await store.listSeen()) {
+    if (!m.screens.some((s) => s.shots.includes(ref))) continue;
+    await store.changeSeen(
+      m.key,
+      (map) => {
+        if (!map) return map;
+        const screens = map.screens.flatMap((s) => {
+          if (!s.shots.includes(ref)) return [s];
+          const shots = s.shots.filter((x) => x !== ref);
+          return shots.length ? [{ ...s, shots, states: Object.fromEntries(Object.entries(s.states).filter(([k]) => k !== ref)) }] : [];
+        });
+        const keys = new Set(screens.map((s) => s.key));
+        const flows = map.flows.map((f) => ({ ...f, steps: f.steps.filter((k) => keys.has(k)), moves: f.moves.filter((mv) => keys.has(mv.from) && keys.has(mv.to)) })).filter((f) => new Set(f.steps).size >= 2);
+        return { ...map, screens, flows, gone: [...new Set([...map.gone, ref])] };
+      },
+      o,
+    );
+  }
+  return looks;
 }
 
 /** A finding taken onto the canvas or left out, kept on its look (null: no such look or finding). */

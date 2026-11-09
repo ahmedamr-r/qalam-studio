@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import type { Lookup } from "@/asking/types";
 import { loadScreenReview, useScreenReviews } from "@/org/screens";
 import type { ScreenFinding, ScreenReview } from "@/screens/types";
 import type { PartData } from "../../chat/types";
@@ -8,7 +7,16 @@ import { QalamAIGlyph } from "../../brand/ai-glyph";
 import { Spinner } from "../../controls";
 import { r } from "../../recipes";
 import { Shot } from "../../seen/Shot";
-import { lookAtScreensAgain, putScreensOnCanvas, useCanvasChat } from "./store";
+import { lookAtScreensAgain, lookAtTakenAgain, notAScreen, putScreensOnCanvas, useCanvasChat } from "./store";
+
+/*
+ * Screenshots of their own product in the thread: those a round's answer gave, under that round, and those
+ * dropped in the chat, under what was taken in. While they're looked at, then the look: each screen small
+ * with numbered marks where its findings point, and the findings ranked, each with its side and its one
+ * change. A click opens a screen big, marks and all.
+ */
+
+const SIDE = { customer: "Customer", business: "Business" } as const;
 
 /** A plan turn's interview, followed as the chat changes. */
 const usePlanAsking = (turn: unknown) =>
@@ -17,21 +25,23 @@ const usePlanAsking = (turn: unknown) =>
     return j?.kind === "plan" ? (j.asking ?? null) : null;
   });
 
-/*
- * The screenshots an answer gave, in the thread under that round: while they're looked at, then the look:
- * each screen small with numbered marks where its findings point, and the findings ranked, each with its
- * side and its one change. A click opens a screen big, marks and all.
- */
-
-const SIDE = { customer: "Customer", business: "Business" } as const;
+/** A look kept in the project, read once this window wants it. */
+function useReview(id: string | undefined) {
+  const review = useScreenReviews((s) => (id ? s.reviews[id] : undefined));
+  useEffect(() => {
+    if (id) void loadScreenReview(id);
+  }, [id]);
+  return review;
+}
 
 /** Each screen's marks: the findings that point at printed words on it, by their number. */
 function marksOn(findings: readonly ScreenFinding[], shot: string) {
   return findings.flatMap((f, i) => (f.shot === shot && f.on ? [{ box: f.on.box, label: String(i + 1) }] : []));
 }
 
-function Shots({ l, review }: { l: Lookup; review?: ScreenReview }) {
-  const shots = review?.shots.map((s) => ({ asset: `asset:${s.asset}`, title: s.name, hash: s.asset })) ?? (l.shots ?? []).map((s) => ({ ...s, hash: s.asset.replace(/^asset:/, "") }));
+type ShotRef = { asset: string; title: string };
+
+function Shots({ shots, review, onNotOurs }: { shots: readonly ShotRef[]; review?: ScreenReview; onNotOurs?: (s: ShotRef) => void }) {
   return (
     <ol className="flex flex-wrap items-start gap-[6px]" aria-label="The screens, in the order you showed them">
       {shots.map((s, i) => (
@@ -42,10 +52,20 @@ function Shots({ l, review }: { l: Lookup; review?: ScreenReview }) {
             </span>
           )}
           <span className="flex w-[64px] flex-col gap-[2px]">
-            <Shot shot={s.asset} label={s.title} w={64} marks={review ? marksOn(review.findings, s.hash) : []} />
+            <Shot shot={s.asset} label={s.title} w={64} marks={review ? marksOn(review.findings, s.asset.replace(/^asset:/, "")) : []} />
             <span className="truncate text-micro text-fg-subtle" title={s.title}>
               {s.title}
             </span>
+            {onNotOurs && (
+              <button
+                type="button"
+                title="Not a screen of your product: take it in as any picture"
+                className="self-start whitespace-nowrap text-micro text-fg-subtle underline decoration-fg/20 underline-offset-2 hover:text-fg"
+                onClick={() => onNotOurs(s)}
+              >
+                Not ours
+              </button>
+            )}
           </span>
         </li>
       ))}
@@ -116,37 +136,71 @@ function OnCanvas({ review }: { review: ScreenReview }) {
   );
 }
 
+const Head = ({ children }: { children: string }) => (
+  <p className="flex items-center gap-[6px] text-caption font-medium text-fg-muted">
+    <QalamAIGlyph size={12} />
+    {children}
+  </p>
+);
+
+/** A look at the screens: the screens with their marks, what bears on the problem, and on to the canvas. */
+function Look({ review, shots, onNotOurs }: { review: ScreenReview; shots: readonly ShotRef[]; onNotOurs?: (s: ShotRef) => void }) {
+  const n = review.shots.length;
+  return (
+    <>
+      <Head>{review.findings.length ? `On your ${n === 1 ? "screen" : `${n} screens`}, for what you're working out` : n === 1 ? "Your screen" : "Your screens"}</Head>
+      <Shots shots={shots} review={review} {...(onNotOurs ? { onNotOurs } : {})} />
+      {review.unseen ? (
+        <p className="text-caption text-fg-muted">I couldn&apos;t look at them for the problem: the engine here can&apos;t see pictures. They&apos;re kept with your screens.</p>
+      ) : !review.findings.length ? (
+        <p className="text-caption text-fg-muted">Nothing on {n === 1 ? "it" : "them"} bears on what you&apos;re working out, as far as I can see.</p>
+      ) : (
+        <ol className="flex flex-col gap-[10px]" aria-label="What bears on it, the most first">
+          {review.findings.map((f, i) => (
+            <Finding key={f.key} f={f} n={i + 1} />
+          ))}
+        </ol>
+      )}
+      {review.unread && <p className="text-micro text-fg-subtle">Nothing printed on them could be read on this computer, so nothing&apos;s marked or quoted.</p>}
+      {review.findings.length > 0 && <OnCanvas review={review} />}
+      {review.left.length > 0 && (
+        <details className="q-fold text-caption text-fg-muted">
+          <summary className="cursor-pointer list-none hover:text-fg [&::-webkit-details-marker]:hidden">Left out ({review.left.length})</summary>
+          <ul className="mt-[6px] flex flex-col gap-[4px]">
+            {review.left.map((x, i) => (
+              <li key={i} dir="auto">
+                {x.what}: {x.why.charAt(0).toLowerCase() + x.why.slice(1)}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </>
+  );
+}
+
 /** The screenshots a round gave, looked at for the problem. */
 export function ScreenReviewPart({ data }: { data: PartData }) {
   const state = usePlanAsking(data.turn);
   const l = state?.lookups.find((x) => x.id === data.lookup);
-  const id = l?.review;
-  const review = useScreenReviews((s) => (id ? s.reviews[id] : undefined));
-  useEffect(() => {
-    if (id) void loadScreenReview(id);
-  }, [id]);
+  const review = useReview(l?.review);
   if (!l) return null;
-  const n = l.shots?.length ?? 0;
-  const head = (words: string) => (
-    <p className="flex items-center gap-[6px] text-caption font-medium text-fg-muted">
-      <QalamAIGlyph size={12} />
-      {words}
-    </p>
-  );
+  const shots = l.shots ?? [];
+  const n = shots.length;
   return (
     <div className="q-sheet flex flex-col gap-[10px] rounded-xl p-[12px]">
       {l.state === "running" ? (
         <>
-          {head(`Looking at your ${n === 1 ? "screen" : `${n} screens`} for what you're working out`)}
-          <Shots l={l} />
+          <Head>{`Looking at your ${n === 1 ? "screen" : `${n} screens`} for what you're working out`}</Head>
+          <Shots shots={shots} />
           <p className="flex items-center gap-[6px] text-caption text-fg-muted">
-            <Spinner size={12} /> Keeping them with your screens, then looking
+            <Spinner size={12} /> {n === 1 ? "Keeping it with your screens, then looking" : "Keeping them with your screens, then looking"}
           </p>
         </>
       ) : l.state !== "done" ? (
         <>
-          {head(n === 1 ? "Your screen" : "Your screens")}
-          <Shots l={l} />
+          <Head>{n === 1 ? "Your screen" : "Your screens"}</Head>
+          <Shots shots={shots} />
           <p className="text-caption text-fg-muted">{l.state === "failed" ? `I couldn't look at them: ${l.error ?? "something went wrong"}` : "You stopped the look at them."}</p>
           <ReplyChips>
             <button type="button" className={r.replyChip} onClick={() => lookAtScreensAgain(String(data.turn), l.id)}>
@@ -156,38 +210,56 @@ export function ScreenReviewPart({ data }: { data: PartData }) {
         </>
       ) : !review ? (
         <>
-          {head(n === 1 ? "Kept with your screens" : `Kept ${n} screens with your screens`)}
-          <Shots l={l} />
+          <Head>{n === 1 ? "Kept with your screens" : `Kept ${n} screens with your screens`}</Head>
+          <Shots shots={shots} />
         </>
       ) : (
+        <Look review={review} shots={shots} />
+      )}
+    </div>
+  );
+}
+
+/** Screenshots of their product dropped in the chat: kept as its screens, and looked at when there's something to look at them for. */
+export function TakenScreensPart({ data }: { data: PartData }) {
+  const j = useCanvasChat((s) => s.chat.turns.find((t) => t.id === data.turn)?.job);
+  const screens = j?.kind === "take" ? j.screens : undefined;
+  const review = useReview(screens?.review);
+  if (!screens) return null;
+  const shots = screens.shots.filter((s) => !screens.other?.includes(s.asset));
+  const n = shots.length;
+  const notOurs = (s: ShotRef) => void notAScreen(String(data.turn), s).catch(() => {});
+  if (!n) return null;
+  return (
+    <div className="q-sheet flex flex-col gap-[10px] rounded-xl p-[12px]">
+      {screens.state === "keeping" || screens.state === "looking" ? (
         <>
-          {head(review.findings.length ? `On your ${review.shots.length === 1 ? "screen" : `${review.shots.length} screens`}, for what you're working out` : n === 1 ? "Your screen" : "Your screens")}
-          <Shots l={l} review={review} />
-          {review.unseen ? (
-            <p className="text-caption text-fg-muted">I couldn&apos;t look at them for the problem: the engine here can&apos;t see pictures. They&apos;re kept with your screens.</p>
-          ) : !review.findings.length ? (
-            <p className="text-caption text-fg-muted">Nothing on {review.shots.length === 1 ? "it" : "them"} bears on what you&apos;re working out, as far as I can see.</p>
-          ) : (
-            <ol className="flex flex-col gap-[10px]" aria-label="What bears on it, the most first">
-              {review.findings.map((f, i) => (
-                <Finding key={f.key} f={f} n={i + 1} />
-              ))}
-            </ol>
-          )}
-          {review.unread && <p className="text-micro text-fg-subtle">Nothing printed on them could be read on this computer, so nothing&apos;s marked or quoted.</p>}
-          {review.findings.length > 0 && <OnCanvas review={review} />}
-          {review.left.length > 0 && (
-            <details className="q-fold text-caption text-fg-muted">
-              <summary className="cursor-pointer list-none hover:text-fg [&::-webkit-details-marker]:hidden">Left out ({review.left.length})</summary>
-              <ul className="mt-[6px] flex flex-col gap-[4px]">
-                {review.left.map((x, i) => (
-                  <li key={i} dir="auto">
-                    {x.what}: {x.why.charAt(0).toLowerCase() + x.why.slice(1)}
-                  </li>
-                ))}
-              </ul>
-            </details>
-          )}
+          <Head>{screens.state === "looking" ? `Looking at your ${n === 1 ? "screen" : `${n} screens`} for what you're working out` : `Keeping ${n === 1 ? "it" : "them"} with your screens`}</Head>
+          <Shots shots={shots} />
+          <p className="flex items-center gap-[6px] text-caption text-fg-muted">
+            <Spinner size={12} /> {screens.state === "looking" ? `Keeping ${n === 1 ? "it" : "them"} with your screens, then looking` : `Reading what's on ${n === 1 ? "it" : "them"}`}
+          </p>
+        </>
+      ) : screens.state === "failed" ? (
+        <>
+          <Head>{n === 1 ? "Your screen" : "Your screens"}</Head>
+          <Shots shots={shots} onNotOurs={notOurs} />
+          <p className="text-caption text-fg-muted" dir="auto">
+            {screens.error ?? "Something went wrong as I looked at them."}
+          </p>
+          <ReplyChips>
+            <button type="button" className={r.replyChip} onClick={() => void lookAtTakenAgain(String(data.turn))}>
+              Look again
+            </button>
+          </ReplyChips>
+        </>
+      ) : review ? (
+        <Look review={review} shots={shots} onNotOurs={notOurs} />
+      ) : (
+        <>
+          <Head>{n === 1 ? "Kept with your screens" : `Kept ${n} screens with your screens`}</Head>
+          <Shots shots={shots} onNotOurs={notOurs} />
+          {screens.state === "kept" && <p className="text-caption text-fg-muted">Say what&apos;s going wrong on {n === 1 ? "it" : "them"}, and I&apos;ll look at {n === 1 ? "it" : "them"} for that.</p>}
         </>
       )}
     </div>

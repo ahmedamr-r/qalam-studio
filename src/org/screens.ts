@@ -55,6 +55,14 @@ export async function reviewScreens(o: { shots: readonly ShownShot[]; product: s
   return out;
 }
 
+/** A picture taken for a screen of theirs that isn't one: out of their screens (its source too), and out of the looks at them, so it can be taken in as any picture. */
+export async function notOurScreen(hash: string): Promise<void> {
+  const r = await orgFetch("/screens/not-ours", { method: "POST", json: { asset: hash } });
+  if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { message?: string } | null)?.message ?? `It couldn't be taken out of your screens (${r.status}).`);
+  const { reviews = [] } = (await r.json().catch(() => ({}))) as { reviews?: ScreenReview[] };
+  if (reviews.length) useScreenReviews.setState((s) => ({ reviews: { ...s.reviews, ...Object.fromEntries(reviews.map((x) => [x.id, x])) } }));
+}
+
 /** A finding taken onto the canvas or left out: its look remembers. */
 export async function decideFinding(review: string, key: string, decision: "accepted" | "discarded"): Promise<void> {
   const r = await orgFetch(`/screens/reviews/${encodeURIComponent(review)}/findings`, { method: "PUT", json: { key, decision } });

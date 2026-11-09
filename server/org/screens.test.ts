@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ADDRESS, CART, CART_COUPON, PAY } from "@/seen/fixtures";
 import type { SeenText } from "@/seen/types";
 import type { ImageDeps } from "../image";
-import { keepShots, reviewShots, type ReviewDeps } from "./screens";
+import { flowFrom, keepShots, notAScreen, reviewShots, type ReviewDeps } from "./screens";
 import type { SeenDeps } from "./seen";
 import { OrgStore } from "./store";
 
@@ -151,10 +151,75 @@ describe("keeping the screenshots an answer gave", () => {
     expect(map.screens).toHaveLength(1);
   });
 
+  it("names a flow for where it starts and where it ends when nothing was said about it", async () => {
+    const [cart, address, pay] = [await shot("Basket.png", CART), await shot("Address.png", ADDRESS), await shot("Payment.png", PAY)];
+    const kept = await keepShots(store, { shots: [cart, address, pay], product: "grocery", about: "", deps: { image: image(), seen } });
+
+    expect(kept.flow?.name).toBe("Basket to Payment");
+    expect(flowFrom(["The basket with everything in it and its total", "Basket again"])).toBe("The basket with everything in it and to Basket again");
+    expect(flowFrom(["Basket", "Basket"])).toBe("Basket");
+  });
+
   it("keeps the organization's own when the space has no product, and refuses one that isn't there", async () => {
     const cart = await shot("cart.png", CART);
     expect((await keepShots(store, { shots: [cart], product: null, about: "the basket", deps: { image: image(), seen } })).map).toBe("org");
     await expect(keepShots(store, { shots: [cart], product: "gone", about: "x", deps: { image: image(), seen } })).rejects.toThrow("No such product");
+  });
+});
+
+describe("a picture that isn't one of their screens", () => {
+  it("takes it out of their screens: its source, its screen and its step, and it isn't proposed again", async () => {
+    const [cart, address, pay] = [await shot("Basket.png", CART), await shot("Address.png", ADDRESS), await shot("Payment.png", PAY)];
+    const kept = await keepShots(store, { shots: [cart, address, pay], product: "grocery", about: "checkout", deps: { image: image(), seen } });
+    await notAScreen(store, pay.hash);
+
+    const screens = (await store.listSources()).filter((x) => x.screen);
+    expect(screens.map((x) => x.id).sort()).toEqual([kept.shots[0].source, kept.shots[1].source].sort());
+    const map = (await store.getSeen("grocery"))!;
+    expect(map.screens.map((x) => x.key)).toEqual([kept.shots[0].screen!.key, kept.shots[1].screen!.key]);
+    expect(map.flows[0].steps).toEqual([kept.shots[0].screen!.key, kept.shots[1].screen!.key]);
+    expect(map.gone).toContain(pay.asset);
+    // Its picture stays in the project, to be taken in as any picture is.
+    expect(store.getAsset(pay.hash)).toBeTruthy();
+  });
+
+  it("leaves what a look found on it out of that look, saying why, and hands back the looks it changed", async () => {
+    const [cart, pay] = [await shot("Basket.png", CART), await shot("Payment.png", PAY)];
+    const kept = await keepShots(store, { shots: [cart, pay], product: "grocery", about: "checkout", deps: { image: image(), seen } });
+    const finding = (s: (typeof kept.shots)[number], title: string) => ({ key: `${s.asset}:${title}`, shot: s.asset, name: s.title, side: "customer" as const, title, why: "It bears on leaving." });
+    await store.changeScreenReview("look001", () => ({
+      v: 1,
+      id: "look001",
+      at: 1,
+      map: "grocery",
+      focus: "people leave",
+      shots: kept.shots.map((s) => ({ asset: s.asset, name: s.title, source: s.source })),
+      findings: [finding(kept.shots[0], "The fee shows late"), finding(kept.shots[1], "Paying asks for the card again")],
+      left: [],
+    }));
+    const looks = await notAScreen(store, pay.hash);
+
+    expect(looks.map((r) => r.id)).toEqual(["look001"]);
+    const r = (await store.getScreenReview("look001"))!;
+    expect(r.findings.map((f) => f.title)).toEqual(["The fee shows late"]);
+    expect(r.shots.map((s) => s.asset)).toEqual([cart.hash]);
+    expect(r.left).toEqual([{ what: "Paying asks for the card again", why: "It's on a picture you said isn't your product's screen" }]);
+    // A look with nothing on it is left as it was.
+    expect(await notAScreen(store, pay.hash)).toEqual([]);
+  });
+
+  it("keeps a screen's other state, and leaves no flow of one screen", async () => {
+    const [cart, coupon, pay] = [await shot("cart.png", CART), await shot("cart coupon.png", CART_COUPON), await shot("pay.png", PAY)];
+    const kept = await keepShots(store, { shots: [cart, coupon, pay], product: "grocery", about: "checkout", deps: { image: image(), seen } });
+    await notAScreen(store, coupon.hash);
+
+    let map = (await store.getSeen("grocery"))!;
+    expect(map.screens.find((x) => x.key === kept.shots[0].screen!.key)?.shots).toEqual([cart.asset]);
+    expect(map.flows).toHaveLength(1);
+    await notAScreen(store, pay.hash);
+    map = (await store.getSeen("grocery"))!;
+    expect(map.screens).toHaveLength(1);
+    expect(map.flows).toHaveLength(0);
   });
 });
 

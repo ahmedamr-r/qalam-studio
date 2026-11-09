@@ -217,6 +217,23 @@ describe("short statements and what came of them", () => {
     expect(reply({ pages: [{ id: "p", title: "Leaving at payment" }] })).toEqual([{ type: "data", name: "taken", data: { turn: "t" } }, { type: "text", text: "It went into this problem's page:" }, { type: "data", name: "pages", data: { turn: "t" } }]);
   });
 
+  it("shows screenshots of their product under what was taken in, and a look the page closed on as one to run again", () => {
+    const screens = { shots: [{ asset: "asset:aaa", title: "Basket" }], state: "looking" as const, focus: "people leave the basket" };
+    const names = (j: Partial<Extract<ChatTurn["job"], { kind: "take" }>>) =>
+      threadOf(withTurn(emptyChat(), turn("t", { kind: "take", state: "done", sources: [], pages: [], quotes: 0, ...j }, "")))
+        .at(-1)!
+        .parts.map((p) => (p.type === "data" ? p.name : p.text));
+    expect(names({ docs: [], screens: { ...screens, state: "done", review: "r1" } })).toEqual(["takenScreens"]);
+    // With a doc taken in beside them, both.
+    expect(names({ sources: ["a"], docs: [{ source: "a", title: "Funnel", points: {} }], screens: { ...screens, state: "done" } })).toEqual(["taken", "takenScreens"]);
+
+    // The page closed on the look: the screens say so, and nothing else does.
+    const c = chatOf({ v: 1, turns: [turn("t", { kind: "take", state: "taking", sources: [], pages: [], quotes: 0, screens })] });
+    const j = c.turns[0].job as Extract<ChatTurn["job"], { kind: "take" }>;
+    expect(j.screens).toMatchObject({ state: "failed", error: "The page closed before I'd looked at them." });
+    expect(threadOf(c).at(-1)!.parts).toEqual([{ type: "data", name: "takenScreens", data: { turn: "t" } }]);
+  });
+
   it("says a doc read as their own thinking before its brain dump's reply", () => {
     const parts = threadOf(withTurn(emptyChat(), turn("t", { kind: "dump", source: "s", asOwn: { title: "Strategy" } }, ""))).at(-1)!.parts;
     expect(parts[0]).toEqual({ type: "data", name: "asOwn", data: { turn: "t" } });

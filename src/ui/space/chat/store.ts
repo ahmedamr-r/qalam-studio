@@ -47,7 +47,7 @@ import { askOrganization } from "@/org/ask";
 import { captureIngested, decideFoundGoal, setSourceBasis } from "@/org/capture";
 import { currentOrg, orgFetch, orgJson } from "@/org/client";
 import type { Ingested } from "@/discovery/ingest/core";
-import { chatKey, chatOf, emptyChat, running, withJob, withTurn, type CanvasChat, type ChatDoc, type ChatJob, type ChatTurn, type FiledPage, type FocusGoal, type GoalForJob, type GoalForOn, type BriefState, type ScanJob, type ScanPlan, type TakenDoc, type WhoseJob, type PlanJob, type DraftJob, type KeptChallenge, type ToolsJob } from "@/space/chat";
+import { chatKey, chatOf, emptyChat, running, withJob, withTurn, type CanvasChat, type ChatDoc, type ChatJob, type ChatTurn, type FiledPage, type FocusGoal, type GoalForJob, type GoalForOn, type BriefState, type ScanJob, type ScanPlan, type TakenDoc, type TakenScreens, type WhoseJob, type PlanJob, type DraftJob, type KeptChallenge, type ToolsJob } from "@/space/chat";
 import { everywhereDb } from "@/org/everywhere";
 import type { StartHandoff } from "@/onboarding/handoff";
 
@@ -62,7 +62,7 @@ import { nowFrom, numberRound, targetFrom } from "@/goals/moves";
 import { goalsForProblem, lookForGoal, suggestGoalNumber } from "@/org/goal-work";
 import { loadMarket, useMarket } from "@/org/market";
 import { useSpaceView } from "@/space/view";
-import { reviewScreens, useScreenReviews } from "@/org/screens";
+import { keepScreens, notOurScreen, reviewScreens, useScreenReviews } from "@/org/screens";
 import { screensProposals } from "@/screens/proposals";
 import { reviewLines, screenLines } from "@/screens/lines";
 import { rememberRound, withKnownAnswers } from "@/org/memory";
@@ -253,6 +253,13 @@ function end(id: string) {
 export function send(text: string, docs: readonly SentDoc[]): boolean {
   const said = text.trim();
   const mode = useCompose.getState().mode;
+  // Short words right after screenshots kept with nothing to look at them for: what's going wrong on them.
+  const last = st().chat.turns.at(-1);
+  if (said && !docs.length && !mode && last?.job.kind === "take" && last.job.screens?.state === "kept" && wordsIn(said) < DUMP_WORDS) {
+    useCompose.setState({ text: "", mode: null });
+    void lookAtKept(last.id, said);
+    return true;
+  }
   const routed = routeOf({ text: said, docs, pasted: said ? guessVoice({ text: said, title: "" }) : undefined, mode });
   if (!routed) return false;
   // Sent: the box's text and mode are spent (the box drawn again after a round of questions starts empty).
@@ -2090,6 +2097,7 @@ async function takeIn(at: string | null, said: string, docs: readonly TakeDoc[])
   const held: SentDoc[] = [];
   const left: { title: string; why: string }[] = [];
   const pages = new Map<string, FiledPage>();
+  const shots: { asset: string; title: string }[] = [];
   let quotes = 0;
   try {
     for (const p of parts) {
@@ -2104,6 +2112,11 @@ async function takeIn(at: string | null, said: string, docs: readonly TakeDoc[])
         continue;
       }
       sourceCame(ing.title);
+      // A screenshot of their own product: kept as one of its screens, never read for anyone's words (server/org/screens.ts).
+      if (lab("screens") && ing.image?.shows === "screen") {
+        shots.push({ asset: `asset:${ing.image.asset}`, title: ing.title });
+        continue;
+      }
       const r = await captureIngested(ing, { product: st().space, own: p.own, ...(p.basis ? { basis: p.basis } : {}), holdOwn: !!p.doc && !p.basis, proposeGoals: !!p.doc, onActivity: step(id), signal: ctrl.signal });
       if (r.heldOwn) {
         held.push(p.doc!);
@@ -2115,7 +2128,8 @@ async function takeIn(at: string | null, said: string, docs: readonly TakeDoc[])
       for (const f of r.filed?.pages ?? []) if (f.kind === "need") pages.set(f.id, { id: f.id, title: f.title });
       change((c) => withJob(c, id, (j) => (j.kind === "take" ? { ...j, sources: [...sources], pages: [...pages.values()], quotes, docs: [...taken] } : j)));
     }
-    change((c) => withJob(c, id, (j) => (j.kind === "take" ? (left.length && !sources.length && !held.length ? { ...j, state: "failed", error: "Nothing could be taken in." } : { ...j, state: "done" }) : j)));
+    if (shots.length) await lookAtTaken(id, said, shots, ctrl.signal);
+    change((c) => withJob(c, id, (j) => (j.kind === "take" ? (left.length && !sources.length && !held.length && !shots.length ? { ...j, state: "failed", error: "Nothing could be taken in." } : { ...j, state: "done", ...(shots.length ? { docs: j.docs ?? [] } : {}) }) : j)));
   } catch (e) {
     const stopped = (e as Error).name === "AbortError";
     change((c) => withJob(c, id, (j) => (j.kind === "take" ? { ...j, state: "failed", error: stopped ? `You stopped it${sources.length ? `, after keeping ${sources.length}` : ""}.` : `It couldn't be taken in: ${message(e)}` } : j)));
@@ -2124,6 +2138,84 @@ async function takeIn(at: string | null, said: string, docs: readonly TakeDoc[])
   }
   // What reads as their own thinking gets a brain dump's conversation: in this turn when it's all there was.
   for (const [i, d] of held.entries()) void dumpIt(i === 0 && !taken.length ? id : null, i === 0 && !taken.length ? said : `“${d.title}”`, [d], true);
+}
+
+const setScreens = (id: string, fn: (s: TakenScreens) => TakenScreens) => change((c) => withJob(c, id, (j) => (j.kind === "take" && j.screens ? { ...j, screens: fn(j.screens) } : j)));
+
+/**
+ * Screenshots of their own product taken in from the chat: kept as its screens, and looked at for what
+ * they said with them, else the card picked, else the conversation under way. With none of those,
+ * they're kept, and the chat asks what to look at them for.
+ */
+async function lookAtTaken(id: string, said: string, shots: { asset: string; title: string }[], signal: AbortSignal) {
+  const open = st().chat.turns.findLast((t) => t.job.kind === "plan" && !!t.job.consult && t.job.step !== "placed" && t.job.step !== "failed" && t.id !== id);
+  const focus = (said.trim() && wordsIn(said) < DUMP_WORDS ? said.trim() : "") || aboutNow() || open?.said || "";
+  // Their words say what they are working out, not what the screens are: a flow dropped in is named for its screens (server/org/screens.ts).
+  const about = "";
+  change((c) => withJob(c, id, (j) => (j.kind === "take" ? { ...j, screens: { shots, state: focus ? "looking" : "keeping", ...(focus ? { focus } : {}) } } : j)));
+  try {
+    if (focus) {
+      const { review } = await reviewScreens({ shots, product: st().space ?? null, about, focus: { said: focus, settled: [] }, answers: [] }, signal, step(id));
+      setScreens(id, (s) => ({ ...s, state: "done", ...(review ? { review: review.id } : {}) }));
+    } else {
+      await keepScreens({ shots, product: st().space ?? null, about }, signal, step(id));
+      setScreens(id, (s) => ({ ...s, state: "kept" }));
+    }
+  } catch (e) {
+    const stopped = (e as Error).name === "AbortError";
+    setScreens(id, (s) => ({ ...s, state: "failed", error: stopped ? "You stopped it." : message(e) }));
+    if (stopped) throw e;
+  }
+}
+
+/** Screenshots kept with nothing to look at them for, then what's going wrong on them said: looked at for that, in its own turn. */
+async function lookAtKept(from: string, said: string) {
+  const t = turnOf(from);
+  if (t?.job.kind !== "take" || t.job.screens?.state !== "kept") return;
+  const other = t.job.screens.other ?? [];
+  const shots = t.job.screens.shots.filter((s) => !other.includes(s.asset));
+  if (!shots.length) return;
+  // The ask under them is answered.
+  setScreens(from, (s) => ({ ...s, state: "done" }));
+  const id = jobAt(null, said, { kind: "take", state: "taking", sources: [], pages: [], quotes: 0 });
+  const ctrl = begin(id);
+  try {
+    await lookAtTaken(id, said, shots, ctrl.signal);
+    change((c) => withJob(c, id, (j) => (j.kind === "take" ? { ...j, state: "done", docs: [] } : j)));
+  } catch {
+    change((c) => withJob(c, id, (j) => (j.kind === "take" ? { ...j, state: "failed", error: "You stopped it." } : j)));
+  } finally {
+    end(id);
+  }
+}
+
+/** Screenshots dropped in the chat whose look stopped, failed or went with the page: kept and looked at again, for what's open now. */
+export async function lookAtTakenAgain(turn: string) {
+  const t = turnOf(turn);
+  if (t?.job.kind !== "take" || !t.job.screens || ctrls.has(turn)) return;
+  const other = t.job.screens.other ?? [];
+  const shots = t.job.screens.shots.filter((s) => !other.includes(s.asset));
+  if (!shots.length) return;
+  const ctrl = begin(turn);
+  try {
+    await lookAtTaken(turn, t.said, shots, ctrl.signal);
+    // Taken in after all: what the page closing cut off is done.
+    change((c) => withJob(c, turn, (j) => (j.kind === "take" && j.state === "failed" && j.screens?.state !== "failed" ? { ...j, state: "done", docs: j.docs ?? [] } : j)));
+  } catch {
+    // Stopped: lookAtTaken said so on the screens.
+  } finally {
+    end(turn);
+  }
+}
+
+/** A picture taken for a screen of theirs that isn't one: out of their screens, and taken in as any picture is. */
+export async function notAScreen(turn: string, shot: { asset: string; title: string }) {
+  const hash = shot.asset.replace(/^asset:/, "");
+  await notOurScreen(hash);
+  setScreens(turn, (s) => ({ ...s, other: [...(s.other ?? []), shot.asset] }));
+  const ing = await import("../../discovery/ingest").then((m) => m.readHeldImage(hash, shot.title));
+  const r = await captureIngested(ing, { product: st().space, own: false });
+  change((c) => withJob(c, turn, (j) => (j.kind === "take" ? { ...j, sources: [...j.sources, r.sourceId], docs: [...(j.docs ?? []), { source: r.sourceId, title: r.title, ...(r.about ? { about: r.about } : {}), points: r.points ?? {}, image: hash }] } : j)));
 }
 
 /** The numbers a document measured for goals, by the goals' words (a goal since gone is left out). */

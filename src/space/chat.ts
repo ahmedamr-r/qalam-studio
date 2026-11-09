@@ -57,6 +57,21 @@ export interface TakenDoc {
   image?: string;
 }
 
+/**
+ * Screenshots of their own product among what was taken in (server/org/screens.ts): kept as its screens,
+ * never read for anyone's words, and looked at for what they said with them, the card picked or the
+ * conversation under way. With none of those, they're kept until there's something to look at them for.
+ */
+export interface TakenScreens {
+  shots: { asset: string; title: string }[];
+  state: "keeping" | "looking" | "kept" | "done" | "failed";
+  focus?: string;
+  review?: string;
+  error?: string;
+  /** Taken as something else after all (an ordinary picture), by asset. */
+  other?: string[];
+}
+
 /** A problem page material went into. */
 export interface FiledPage {
   id: string;
@@ -77,7 +92,7 @@ export type ChatJob =
    */
   | { kind: "add"; what: "goal" | "problem"; card: string; under: string | null; state?: "suggesting" | "suggested"; suggestion?: string; why?: string }
   /** Material taken in as sources: read for what it states, filed into problem pages, placed where it fits. `docs`: what each was read as (none: a turn from before). */
-  | { kind: "take"; state: "taking" | "done" | "failed"; sources: string[]; pages: FiledPage[]; quotes: number; docs?: TakenDoc[]; error?: string; /** Docs that couldn't be read or kept, each with why: the rest went on. */ left?: { title: string; why: string }[] }
+  | { kind: "take"; state: "taking" | "done" | "failed"; sources: string[]; pages: FiledPage[]; quotes: number; docs?: TakenDoc[]; error?: string; /** Docs that couldn't be read or kept, each with why: the rest went on. */ left?: { title: string; why: string }[]; screens?: TakenScreens }
   /**
    * Their own thinking as a brain dump: its source's session is how it's going (`error`: it never
    * started; `find`: it answers "Help me find one", with what they said to code's questions;
@@ -355,7 +370,11 @@ export const emptyChat = (): CanvasChat => ({ v: 1, turns: [] });
 function stopped(j: ChatJob): ChatJob {
   if (j.kind === "ask" && j.state === "asking") return { ...j, state: "failed", error: "It stopped when the page closed. Ask again." };
   // Capture goes on in the core: what was taken in shows up on the canvas and in its panel.
-  if (j.kind === "take" && j.state === "taking") return { ...j, state: "failed", error: "The page closed while it was being taken in. What was kept is in the sources." };
+  if (j.kind === "take" && j.state === "taking") {
+    // Screenshots being kept or looked at: the look went with the page, and can run again.
+    const cut = j.screens && (j.screens.state === "keeping" || j.screens.state === "looking");
+    return { ...j, state: "failed", error: "The page closed while it was being taken in. What was kept is in the sources.", ...(cut ? { screens: { ...j.screens!, state: "failed" as const, error: "The page closed before I'd looked at them." } } : {}) };
+  }
   // A wording still being worked out when the page went: their own words, to add as they are.
   if (j.kind === "add" && j.state === "suggesting") return { ...j, state: "suggested" };
   // Questions still being worked out when the page went: code's own are asked instead.
@@ -639,11 +658,15 @@ function replyTo(t: ChatTurn, dumpOf: DumpOf): ChatPart[] {
       return [part("added", id)];
     case "take": {
       const left = j.left?.length ? [text(j.left.map((l) => `I couldn't take “${l.title}”: ${l.why}`).join("\n"))] : [];
-      if (j.state === "taking") return [...left, part("working", id)];
-      if (j.state === "failed") return [...left, text(j.error ?? "It couldn't be taken in.")];
+      // Their screens among it: kept as screens, and looked at.
+      const screens = j.screens ? [part("takenScreens", id)] : [];
+      if (j.state === "taking") return [...left, ...screens, part("working", id)];
+      // Nothing but screenshots: what happened to them is said on them.
+      if (j.state === "failed") return [...left, ...screens, ...(j.screens && !j.sources.length ? [] : [text(j.error ?? "It couldn't be taken in.")])];
       if (j.docs)
         return [
-          part("taken", id),
+          ...(j.docs.length || !j.screens ? [part("taken", id)] : []),
+          ...screens,
           ...(j.pages.length ? [text(`It went into ${j.pages.length === 1 ? "this problem's page" : "these problems' pages"}:`), part("pages", id)] : []),
           ...left,
         ];

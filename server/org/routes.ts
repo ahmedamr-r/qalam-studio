@@ -31,7 +31,7 @@ import { isBasis } from "@/discovery/basis";
 import { captureSource, changeBasis, decideFoundGoal, fileSources, readAsOwn, splitSetupSource } from "../capture";
 import { readPdfPictures } from "../pictures";
 import { IMAGE_MAX, readImage, type ImageInput } from "../image";
-import { KEEP_MAX, decideFinding, keepShots, reviewShots } from "./screens";
+import { KEEP_MAX, decideFinding, keepShots, notAScreen, reviewShots } from "./screens";
 import { imageFrom } from "@/discovery/ingest/image";
 import { MAX_FILE, type Ingested } from "@/discovery/ingest/core";
 import type { Proposal } from "@/discovery/proposals";
@@ -879,6 +879,13 @@ export function orgRoutes(): Hono<Env> {
     const about = typeof b?.about === "string" ? b.about.slice(0, 200) : "";
     const tab = tabOf(c.req.raw.headers);
     return streamed(c.req.raw.signal, (emit, signal) => keepShots(store, { shots, product, about, emit, signal, ...(tab ? { tab } : {}) }));
+  });
+  /** A picture kept as a screen of theirs that isn't one (`{asset}`: its hash): out of their screens, its source too. */
+  r.post("/api/org/:org/screens/not-ours", async (c) => {
+    const b = (await c.req.json().catch(() => null)) as { asset?: unknown } | null;
+    if (typeof b?.asset !== "string" || !/^[0-9a-f]{24}$/.test(b.asset)) return bad("Which picture?");
+    const reviews = await notAScreen(c.get("store"), b.asset, { tab: tabOf(c.req.raw.headers) });
+    return c.json({ ok: true, reviews });
   });
   /** The looks with something found on one screenshot (`shot`: the asset's hash), the latest first. */
   r.get("/api/org/:org/screens/reviews", async (c) => {

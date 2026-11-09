@@ -49,7 +49,7 @@ import { moreLine } from "@/onboarding/start";
 import { readScan, skipScan, withFixes, answerWhose, goalForTopProblem, anotherFile, briefAgain, briefStart, changeDocBasis, chooseDraft, decideDocGoal, dropTurn, leaveFile, leaveFit, lookPastFits, openProblems, pickAudience, placeFirstBuild, placeStatement, planAgain, planFirst, planOf, planStart, retake, retryGoalFor, scanAgain, scanHere, scanInNewProject, scanIsMine, scanOtherWay, setPlanGoal, settleNumber, steerOff, stopTurn, takeAsBasis, takeFit, takeGoalNumber, takeIdea, turnOf, useCanvasChat, retryCanvasPlan, runAs, showCanvasPlan, stopAskingPlan, confirmCanvasPlan, offCanvasPlan, reproposeCanvasPlan, decidePlanTerm, confirmDraft, decideDraftTerm, draftGo, draftNow, offDraft, retryDraft, confirmBrief, offBrief, decideBriefTerm, confirmScan, offScan, decideScanTerm, decidePlanChoice, decideDraftChoice, decideBriefChoice, decideScanChoice } from "./store";
 import { AnsweredRound, FoundInProject, SettledCard } from "../../asking/AskRound";
 import { LookToolsPart, ToolsAgainPart, ToolsBroughtPart, ToolsFoundPart, ToolsLookingPart } from "./tools-parts";
-import { ScreenReviewPart } from "./screens-parts";
+import { ScreenReviewPart, TakenScreensPart } from "./screens-parts";
 import { titleFrom } from "@/space/route";
 import { otherReading, projectName } from "@/scan/input";
 import { firstGoal, GOAL_ACTIONS, riskiest, type GoalAction, type ScanAudience } from "@/scan/plan";
@@ -2067,6 +2067,7 @@ export const PARTS: Record<string, PartComponent> = {
   planSkip: PlanSkipPart,
   askAnswered: AskAnsweredPart,
   screenReview: ScreenReviewPart,
+  takenScreens: TakenScreensPart,
   consultReflect: ConsultReflectPart,
   consultScan: ConsultScanPart,
   consultFirst: ConsultFirstPart,

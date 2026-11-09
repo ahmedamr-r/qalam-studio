@@ -23,6 +23,8 @@ export interface KeptImage {
   about?: string;
   reading: string[];
   product?: string;
+  /** A screen's title, as printed on it. */
+  screen?: string;
   said: { who?: string; words: string }[];
   left: { said: string; why: string }[];
 }
@@ -56,6 +58,11 @@ export function sanitizeImage(raw: unknown, read: ShotRead | null): KeptImage {
   const named = one(a.product, IMAGE_LIMITS.product);
   const product = named && read ? onScreen(named, read, IMAGE_LIMITS.product) : null;
   if (named && !product) left.push({ said: named, why: read ? "That name isn't printed on the picture" : "Whether it's printed couldn't be checked here" });
+  // A screen's name is its title as printed on it, whole words, never Qalam AI's wording.
+  const titled = shows === "screen" ? one(a.screen, IMAGE_LIMITS.title) : "";
+  const printedTitle = titled && read ? onScreen(titled, read, IMAGE_LIMITS.title) : null;
+  const screen = printedTitle && !personal(printedTitle) ? printedTitle : null;
+  if (titled && !screen) left.push({ said: titled, why: read ? "That title isn't printed on the screen" : "Whether it's printed couldn't be checked here" });
   const said: KeptImage["said"] = [];
   for (const s of list(a.said).slice(0, IMAGE_LIMITS.said)) {
     const r = (s && typeof s === "object" ? s : {}) as Record<string, unknown>;
@@ -70,7 +77,7 @@ export function sanitizeImage(raw: unknown, read: ShotRead | null): KeptImage {
     const who = name && read ? onScreen(name, read, IMAGE_LIMITS.who) : null;
     said.push({ ...(who && !personal(who) ? { who } : {}), words: printed });
   }
-  return { shows, ...(about ? { about } : {}), reading, ...(product ? { product } : {}), said, left };
+  return { shows, ...(about ? { about } : {}), reading, ...(product ? { product } : {}), ...(screen ? { screen } : {}), said, left };
 }
 
 /**
@@ -92,9 +99,11 @@ export function imageText(read: ShotRead | null, kept: Pick<KeptImage, "said">):
 /** A camera's or a screenshot tool's name says nothing: such a picture takes its name from what it shows. */
 const GENERIC = /^(img|image|photo|pxl|dsc|screenshot|screen shot|capture|cleanshot|scr)[\s_-]?[\d\s._:at-]*$|^[\d\s._-]+$/i;
 
-export function imageTitle(name: string, kept: Pick<KeptImage, "about" | "product" | "shows">): string {
+export function imageTitle(name: string, kept: Pick<KeptImage, "about" | "product" | "shows" | "screen">): string {
   const stem = name.replace(/\.[a-z0-9]{2,5}$/i, "").replace(/[_]+/g, " ").trim();
   if (stem && !GENERIC.test(stem)) return stem.slice(0, 160);
+  // A screen goes by its printed title.
+  if (kept.screen) return kept.screen;
   const first = kept.about?.split(/(?<=[.!?])\s/)[0]?.replace(/[.!?]$/, "") ?? "";
   if (first) return first.length > IMAGE_LIMITS.title ? `${first.slice(0, IMAGE_LIMITS.title).replace(/\s+\S*$/, "")}…` : first;
   return kept.product ? `${kept.product} picture` : "Picture";

@@ -61,8 +61,20 @@ describe("a picture, as code keeps it", () => {
     expect(imageText(null, { said: [] })).toBe("");
   });
 
+  it("keeps a screen's title only as it's printed on the screen", () => {
+    const read = sureLines(READ);
+    expect(sanitizeImage({ shows: "screen", screen: "checkout" }, read).screen).toBe("Checkout");
+    const made = sanitizeImage({ shows: "screen", screen: "Payment details" }, read);
+    expect(made.screen).toBeUndefined();
+    expect(made.left).toEqual([{ said: "Payment details", why: "That title isn't printed on the screen" }]);
+    // Only a screen has one, and off a Mac nothing is claimed as printed.
+    expect(sanitizeImage({ shows: "chart", screen: "Checkout" }, read).screen).toBeUndefined();
+    expect(sanitizeImage({ shows: "screen", screen: "Checkout" }, null).screen).toBeUndefined();
+  });
+
   it("names a camera's or screenshot tool's file by what it shows", () => {
     expect(imageTitle("Checkout error.png", { shows: "screen" })).toBe("Checkout error");
+    expect(imageTitle("Screenshot 2026-11-09 at 10.12.33.png", { shows: "screen", screen: "Your basket", about: "The basket screen with three items." })).toBe("Your basket");
     expect(imageTitle("IMG_2041.HEIC", { shows: "screen", about: "Basket's checkout screen with a payment error. It gives no reason." })).toBe("Basket's checkout screen with a payment error");
     expect(imageTitle("Screenshot 2026-11-06 at 10.03.12.png", { shows: "screen", product: "Basket" })).toBe("Basket picture");
     expect(imageTitle("image.png", { shows: "other" })).toBe("Picture");
