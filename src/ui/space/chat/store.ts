@@ -2113,7 +2113,7 @@ async function takeIn(at: string | null, said: string, docs: readonly TakeDoc[])
       }
       sourceCame(ing.title);
       // A screenshot of their own product: kept as one of its screens, never read for anyone's words (server/org/screens.ts).
-      if (lab("screens") && ing.image?.shows === "screen") {
+      if (ing.image?.shows === "screen") {
         shots.push({ asset: `asset:${ing.image.asset}`, title: ing.title });
         continue;
       }

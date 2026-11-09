@@ -37,8 +37,6 @@ export const LAB_FEATURES = [
   "everywhere",
   /** The team's database, read-only: business numbers for goals and questions (Connections' Database, hub/metrics.md). */
   "database",
-  /** Screens in the conversation: a question asks to see a screen, and its screenshots are kept and reviewed for the problem (server/org/screens.ts). While it's built. */
-  "screens",
 ] as const;
 
 export type LabFeature = (typeof LAB_FEATURES)[number];
