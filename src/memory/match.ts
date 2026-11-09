@@ -3,12 +3,20 @@
  * question's telling words, numbers kept whole ("9%" is a word here, where other matching drops it),
  * question words and generic words out, plurals as one, Arabic written loosely, and the project's
  * avoided words read as its terms (`fold`). Exact: the same key. Near: two telling words or more in
- * common, most of the shorter one's, and no number one has that the other contradicts. Only exact may
- * stand in for a question; near only shows what was said beside it. `pnpm eval:memory` holds the
- * thresholds to a labelled set of question pairs from the bench.
+ * common besides the product itself (`PRODUCT`), most of the shorter one's, and no number one has that
+ * the other contradicts. Only exact may stand in for a question; near only shows what was said beside it.
+ * `pnpm eval:memory` holds the thresholds to a labelled set of question pairs from the bench.
  */
 
 export const MATCH = { nearShared: 2, nearShare: 0.75 } as const;
+
+/**
+ * The product itself, which every product's questions name: "Who orders from the app most?" and "How does
+ * the app earn on an order?" share only the app and its orders. It stays in a key, so an exact match still
+ * needs the same one (orders in the app aren't orders on the website), but it's never one of the two words
+ * in common a near match needs.
+ */
+const PRODUCT = new Set(["app", "apps", "application", "platform", "product", "website", "تطبيق", "تطبيقات", "منصه", "منصات", "منتج", "منتجات"]);
 
 /** Words that set where a question stands: a current number and a target one aren't the same question. */
 const STANCE = new Set(["target", "goal", "aim", "plan", "planned", "expect", "expected", "hope", "ideal", "future", "next", "previous", "last", "before", "past", "forecast", "budget", "هدف", "المستهدف", "مستهدف", "خطه", "القادم", "السابق"]);
@@ -70,7 +78,7 @@ export function matchQuestions(a: string, b: string, fold?: (s: string) => strin
   const nx = numbersOf(x);
   const ny = numbersOf(y);
   if (nx.length && ny.length && !nx.some((n) => ny.includes(n))) return null;
-  if (shared.length < MATCH.nearShared) return null;
+  if (shared.filter((w) => !PRODUCT.has(w)).length < MATCH.nearShared) return null;
   // A number both name is the surest sign they're about the same thing: it counts twice.
   const weight = shared.reduce((n, w) => n + (isNumber(w) ? 2 : 1), 0);
   return weight / Math.min(x.size, y.size) >= MATCH.nearShare ? "near" : null;

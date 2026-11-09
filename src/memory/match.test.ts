@@ -19,6 +19,17 @@ describe("whether two questions ask the same thing", () => {
     expect(matchQuestions("What have you tried?", "What would you try first?")).toBe(null);
   });
 
+  it("doesn't count the product itself among the words two questions share", () => {
+    // Every question about an app names it: these share only the app and its orders.
+    expect(matchQuestions("Who orders from the app most?", "How does the app earn on an order?")).toBe(null);
+    expect(matchQuestions("مين يطلب من التطبيق؟", "كم يكسب التطبيق لما الواحد يطلب؟")).toBe(null);
+    // It stays in the key: two other words and the app still make most of the shorter question.
+    expect(matchQuestions("Which parents reorder in the app?", "Which parents reorder in the app each month?")).toBe("near");
+    // And an exact match still needs the same one.
+    expect(matchQuestions("How many orders come through the app?", "How many orders come through the website?")).toBe(null);
+    expect(matchQuestions("How many orders come through the app?", "How many orders come through the app now?")).toBe("exact");
+  });
+
   it("keeps numbers whole, and reads Arabic written loosely", () => {
     expect([...questionKey("Is it 9% or 4.1% of ARR?")]).toEqual(["9%", "4.1%", "arr"]);
     expect(matchQuestions("ما أكثر أسباب فشل التسليم؟", "ما اكثر اسباب فشل التسليم عندكم الآن؟")).toBe("exact");

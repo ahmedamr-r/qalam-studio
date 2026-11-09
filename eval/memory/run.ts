@@ -4,10 +4,11 @@ import { matchQuestions } from "@/memory/match";
 
 /**
  * pnpm eval:memory: how the memory's question matcher (src/memory/match.ts) reads question pairs the
- * persona bench asked, each labelled by hand: the same question (in other words), a related one (same
- * subject, another ask), or a different one. No model calls. What matters: an exact match is only ever
- * the same question (only exact may stand in for asking), and a near one is rarely a different one
- * (near only shows what was said beside the question). Change the matcher only with this before and after.
+ * persona bench asked and a few seen in the app, each labelled by hand: the same question (in other
+ * words), a related one (same subject, another ask), or a different one. No model calls. What matters: an
+ * exact match is only ever the same question (only exact may stand in for asking), and a near one is
+ * rarely a different one (near only shows what was said beside the question). Change the matcher only
+ * with this before and after.
  */
 
 type Label = "same" | "related" | "different";
@@ -20,7 +21,7 @@ for (const p of pairs) {
   if ((m === "exact" && p.label !== "same") || (m !== "none" && p.label === "different")) wrong.push(`${m} on ${p.label}: “${p.a.slice(0, 70)}” / “${p.b.slice(0, 70)}”`);
 }
 const n = (l: Label, m: string) => table[l][m] ?? 0;
-console.log(`${pairs.length} pairs from the bench, labelled by hand\n`);
+console.log(`${pairs.length} pairs from the bench and the app, labelled by hand\n`);
 console.log("            exact   near   none");
 for (const l of ["same", "related", "different"] as const) console.log(`${l.padEnd(10)}  ${String(n(l, "exact")).padStart(5)}  ${String(n(l, "near")).padStart(5)}  ${String(n(l, "none")).padStart(5)}`);
 const exact = n("same", "exact") + n("related", "exact") + n("different", "exact");
