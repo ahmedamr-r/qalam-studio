@@ -28,6 +28,15 @@ describe("a page open in a canvas's panel", () => {
     expect(cardForPage({ goal: "g1" }, things)).toBe("out1");
     expect(cardForPage({ page: "need-a" }, things)).toBe("topic:g1:need-a");
     expect(cardForPage({ page: "need-b" }, things)).toBeUndefined();
+    expect(cardForPage({ business: true }, things)).toBeUndefined();
+  });
+
+  it("opens how the business works, behind a goal's or a topic page's address", () => {
+    expect(pageOf("?business=1&at=earns")).toEqual({ ref: { business: true }, at: "earns" });
+    expect(pageOf("?business=0")).toBeNull();
+    expect(pageOf("?goal=g1&business=1")?.ref).toEqual({ goal: "g1" });
+    expect(samePage({ business: true }, { business: true })).toBe(true);
+    expect(samePage({ business: true }, { page: "business" })).toBe(false);
   });
 });
 

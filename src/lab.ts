@@ -37,6 +37,8 @@ export const LAB_FEATURES = [
   "everywhere",
   /** The team's database, read-only: business numbers for goals and questions (Connections' Database, hub/metrics.md). */
   "database",
+  /** Qalam AI as a consultant while it's built: how the business works (business.md) and the conversation that fills it. */
+  "consult",
 ] as const;
 
 export type LabFeature = (typeof LAB_FEATURES)[number];

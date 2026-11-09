@@ -149,7 +149,8 @@ export function productLine(doc: Doc): string {
   return [contextFor(canvasProduct() ?? undefined, goals), doc.brief?.summary ?? "", outcomes.length ? `The outcomes the team wants to move (sub-outcomes under theirs):\n${outcomes.join("\n")}` : ""]
     .filter(Boolean)
     .join("\n")
-    .slice(0, 3000);
+    // The routes take at most 2,000 characters of it (src/ai/discovery.ts): more would be refused.
+    .slice(0, 2000);
 }
 
 async function pool<T>(items: T[], n: number, fn: (t: T) => Promise<void>) {

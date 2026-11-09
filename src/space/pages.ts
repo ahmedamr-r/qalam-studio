@@ -8,20 +8,24 @@ import type { SpaceThing } from "./compose";
 
 const ID = /^[A-Za-z0-9_~-]{1,64}$/;
 
-/** The page an address opens (?goal=<id> or ?page=<topic>) and the section it asks for (`at`); null when it opens none. */
+/** The page an address opens (?goal=<id>, ?page=<topic> or ?business=1) and the section it asks for (`at`); null when it opens none. */
 export function pageOf(search: string): { ref: PageRef; at: string | null } | null {
   const q = new URLSearchParams(search);
   const goal = q.get("goal");
   const page = q.get("page");
-  const ref: PageRef | null = goal && ID.test(goal) ? { goal } : page && ID.test(page) ? { page } : null;
+  const ref: PageRef | null = goal && ID.test(goal) ? { goal } : page && ID.test(page) ? { page } : q.get("business") === "1" ? { business: true } : null;
   return ref ? { ref, at: q.get("at") } : null;
 }
 
-/** The same page (a goal's, or a topic page's), however it was asked for. */
-export const samePage = (a: PageRef | null | undefined, b: PageRef | null | undefined) => !!a && !!b && ("goal" in a ? "goal" in b && a.goal === b.goal : "page" in b && a.page === b.page);
+/** A page's key: what it is, the same however it was asked for. */
+export const pageKey = (ref: PageRef) => ("goal" in ref ? `goal:${ref.goal}` : "page" in ref ? `page:${ref.page}` : "business");
 
-/** The card a page belongs to on the canvas: the goal's own, or the problem's page drawn faint there. */
+/** The same page (a goal's, a topic page's, or how the business works), however it was asked for. */
+export const samePage = (a: PageRef | null | undefined, b: PageRef | null | undefined) => !!a && !!b && pageKey(a) === pageKey(b);
+
+/** The card a page belongs to on the canvas: the goal's own, or the problem's page drawn faint there. How the business works has none. */
 export function cardForPage(ref: PageRef, things: ReadonlyMap<string, SpaceThing>): string | undefined {
+  if ("business" in ref) return undefined;
   for (const [id, t] of things) {
     if ("goal" in ref ? t.type === "goal" && t.goal === ref.goal : t.type === "problem" && t.topic === ref.page) return id;
   }

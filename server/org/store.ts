@@ -27,6 +27,8 @@ import { marketFromMarkdown, marketToMarkdown } from "@/market/market-md";
 import type { Market } from "@/market/types";
 import type { MarketSession } from "@/market/session";
 import { termsFromMarkdown, termsToMarkdown } from "@/terms/terms-md";
+import { businessFromMarkdown, businessToMarkdown } from "@/business/business-md";
+import type { Business } from "@/business/types";
 import { metricsFromMarkdown, metricsToMarkdown } from "@/database/metrics-md";
 import type { Metrics } from "@/database/types";
 import type { Approval, DatabaseLocal } from "@/database/local";
@@ -100,6 +102,8 @@ export type OrgEvent = { tab?: string } & (
   | { kind: "market"; session?: boolean }
   /** The project's words changed (hub/terms.md). */
   | { kind: "terms" }
+  /** How the business works changed (business.md). */
+  | { kind: "business" }
   /** The team's numbers from its database changed (hub/metrics.md), or this computer's connection to it (`local`). */
   | { kind: "metrics"; local?: boolean }
   /** What Qalam AI asked and how it was answered changed (hub/asked.jsonl, .qalam/local/asked.jsonl). */
@@ -127,6 +131,8 @@ export const GOALS = "goals.md";
 export const MARKET = "hub/market.md";
 /** The project's words: its terms, what each means, and the words to avoid. */
 export const TERMS = "hub/terms.md";
+/** How the business works: who it serves, how it earns, what it costs to run, the numbers that matter. At the root, beside the About and the goals. */
+export const BUSINESS = "business.md";
 /** The team's numbers from its own database: each in plain words, with the exact query that reads it. */
 export const METRICS = "hub/metrics.md";
 /** How long taking a change to a goal back counts as undoing it (as on a board). */
@@ -1076,6 +1082,29 @@ export class OrgStore {
     return next;
   }
 
+  // How the business works (business.md): changes are edits, and lines Qalam AI noted from someone's
+  // answers, made under its lock on the file as it is now, so a hand edit is never lost.
+
+  async getBusiness(): Promise<Business> {
+    return businessFromMarkdown(await readFile(this.abs(BUSINESS), "utf8").catch(() => ""));
+  }
+
+  async changeBusiness(fn: (b: Business) => Business, opts: { tab?: string } = {}): Promise<Business> {
+    const file = this.abs(BUSINESS);
+    let changed = false;
+    const next = await locked(file, async () => {
+      const was = businessFromMarkdown(await readFile(file, "utf8").catch(() => ""));
+      const b = fn(was);
+      // Nothing to write (a note that was there already): the file isn't touched.
+      if (b === was) return b;
+      changed = true;
+      await this.write(file, businessToMarkdown(b, { org: this.info.name }));
+      return b;
+    });
+    if (changed) this.emit({ kind: "business", tab: opts.tab });
+    return next;
+  }
+
   // The team's numbers (hub/metrics.md): definitions only, never data. Changes are edits, made under
   // its lock on the file as it is now, so a hand edit and one through the window never lose each other.
 
@@ -2003,6 +2032,8 @@ export class OrgStore {
       this.emit({ kind: "market" });
     } else if (rel === TERMS) {
       this.emit({ kind: "terms" });
+    } else if (rel === BUSINESS) {
+      this.emit({ kind: "business" });
     } else if (rel === METRICS) {
       this.emit({ kind: "metrics" });
     } else if (rel === "about.md") {

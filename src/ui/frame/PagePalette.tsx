@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import clsx from "clsx";
-import { Cable, Compass, ListChecks, Milestone, Moon, Network, NotebookText, PanelLeft, Search, Target, Workflow, type LucideIcon } from "lucide-react";
+import { Briefcase, Cable, Compass, ListChecks, Milestone, Moon, Network, NotebookText, PanelLeft, Search, Target, Workflow, type LucideIcon } from "lucide-react";
 import { useGoals } from "@/goals/client";
 import { runCommand } from "@/commands/registry";
 import { usePagePalette } from "@/commands/pages";
 import { listProjects } from "@/projects/library";
 import { useOrgContext } from "@/org/context";
 import { wordsFor } from "@/org/words";
-import { goalHref, projectHref, spaceHref, topicHref, type Project } from "@/projects/model";
+import { businessHref, goalHref, projectHref, spaceHref, topicHref, type Project } from "@/projects/model";
+import { lab } from "@/lab";
 import { TOPIC_KIND_LABEL } from "@/hub/topics";
 import { QalamAIGlyph } from "../brand";
 import { r } from "../recipes";
@@ -81,6 +82,7 @@ function Palette({ space }: { space: Space }) {
       const Icon = ICONS[p.id];
       add("Go to", `place:${p.id}`, p.label, <Icon {...ICON} />, () => navigate(spaceHref(space, p.id)));
     }
+    if (lab("consult")) add("Go to", "business", `How ${org?.name ?? "the business"} works`, <Briefcase {...ICON} />, () => navigate(businessHref()), "Business", ["business", "model", "earns", "revenue", "costs", "customers"]);
     if (q) for (const g of goals) add("Goals", `goal:${g.id}`, g.title, <Target {...ICON} />, () => navigate(goalHref(g.id)), "Goal");
     for (const b of boards.slice(0, q ? boards.length : 4)) add("Boards", `board:${b.id}`, b.name, <Network {...ICON} />, () => navigate(projectHref(b)), "Board");
     if (q) for (const t of topics ?? []) add("Problems and pages", `topic:${t.id}`, t.title, <NotebookText {...ICON} />, () => navigate(topicHref(t.id)), TOPIC_KIND_LABEL[t.kind]);

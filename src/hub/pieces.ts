@@ -4,6 +4,7 @@ import type { ProductMap } from "@/code/map";
 import type { SeenMap } from "@/seen/types";
 import type { Market } from "@/market/types";
 import type { Terms } from "@/terms/types";
+import { SECTION_LABEL, type Business } from "@/business/types";
 import type { Metrics } from "@/database/types";
 import { dayOf, type Decision } from "@/decisions/model";
 import { metricText } from "@/discovery/dump";
@@ -324,6 +325,26 @@ export function termPieces(t: Terms, orgName: string): Built {
     title: x.term,
     product: null,
     at: x.at,
+  }));
+  return { pieces, edges: [], entities: [] };
+}
+
+// ---------------------------------------------------------------------------
+// How the business works (business.md): each line a piece, so search and Ask find how the business
+// earns, who it serves and what it runs on. Context, never evidence.
+
+export const businessRef = (id: string) => `hub:business:${id}`;
+
+export function businessPieces(b: Business, orgName: string): Built {
+  const pieces: HubPiece[] = b.lines.map((l) => ({
+    ref: businessRef(l.id),
+    type: "context",
+    sub: "business",
+    text: `${SECTION_LABEL[l.section]}: ${l.text}`,
+    line: `How ${orgName} works, ${l.by === "qalam" ? "Qalam AI's reading of the team's answers" : "as the team says"}`,
+    title: SECTION_LABEL[l.section],
+    product: null,
+    at: l.at,
   }));
   return { pieces, edges: [], entities: [] };
 }

@@ -32,6 +32,7 @@ export type OrgChange = { tab?: string } & (
   | { kind: "map"; key: string; removed?: boolean }
   | { kind: "market"; session?: boolean }
   | { kind: "terms" }
+  | { kind: "business" }
   | { kind: "metrics"; local?: boolean }
   | { kind: "asked" }
   | { kind: "scan" }

@@ -1,6 +1,7 @@
 import { MARKET_SECTIONS, type MarketEdit } from "@/market/edit";
 import { nanoid } from "nanoid";
 import { editTerms, termsEditOf } from "@/terms/edit";
+import { businessEditOf, editBusiness } from "@/business/edit";
 import { AskCardBody, askCard } from "./ask-card";
 import { createReadStream } from "node:fs";
 import { readFile, rename, rm } from "node:fs/promises";
@@ -1321,6 +1322,14 @@ export function orgRoutes(): Hono<Env> {
     if (!edit) return bad("Say which word, and what it means");
     const terms = await c.get("store").changeTerms((t) => editTerms(t, edit, { now: Date.now(), id: () => `t${nanoid(8)}` }), { tab: tabOf(c.req.raw.headers) });
     return c.json({ terms });
+  });
+  // How the business works (business.md): a line added, fixed, kept as theirs or taken off.
+  r.get("/api/org/:org/business", async (c) => c.json({ business: await c.get("store").getBusiness() }));
+  r.put("/api/org/:org/business", async (c) => {
+    const edit = businessEditOf(await c.req.json().catch(() => null));
+    if (!edit) return bad("Say which line, and what it says");
+    const business = await c.get("store").changeBusiness((b) => editBusiness(b, edit, { now: Date.now(), id: () => `b${nanoid(8)}` }), { tab: tabOf(c.req.raw.headers) });
+    return c.json({ business });
   });
   r.post("/api/org/:org/statement", async (c) => {
     if (!aiConfigured()) return c.json({ statement: null });

@@ -61,8 +61,8 @@ export const linkOrgNow = () => linkOrg;
 /** The organization's home (the projects home when no organization is known yet). */
 export const orgHref = (org: string | null = linkOrg) => (org ? `/o/${org}` : "/");
 
-/** A goal's or a topic page's page, opened in a canvas's panel (src/ui/space/page.ts). */
-export type PageRef = { goal: string } | { page: string };
+/** A goal's or a topic page's page, or how the business works, opened in a canvas's panel (src/ui/space/page.ts). */
+export type PageRef = { goal: string } | { page: string } | { business: true };
 
 /** The canvas this window's page links open on (the window sets it to the one it's on; the server's are the organization's). */
 let linkSpace: () => string | null = () => null;
@@ -70,12 +70,15 @@ export const setLinkSpace = (f: () => string | null) => void (linkSpace = f);
 
 /** A goal's or topic page's page in a space's canvas panel; `at` scrolls it to a section (unknowns, funnel). */
 export function canvasPageHref(ref: PageRef, space: string | null, o: { org?: string | null; at?: string } = {}): string {
-  const q = "goal" in ref ? `goal=${encodeURIComponent(ref.goal)}` : `page=${encodeURIComponent(ref.page)}`;
+  const q = "goal" in ref ? `goal=${encodeURIComponent(ref.goal)}` : "page" in ref ? `page=${encodeURIComponent(ref.page)}` : "business=1";
   return `${spaceHref(space, "home", o.org === undefined ? linkOrg : o.org)}?${q}${o.at ? `&at=${encodeURIComponent(o.at)}` : ""}`;
 }
 
 /** A topic page of the organization (src/hub/topics.ts), on the canvas this window is on. */
 export const topicHref = (id: string, org: string | null = linkOrg) => canvasPageHref({ page: id }, linkSpace(), { org });
+
+/** How the business works (business.md), on the canvas this window is on; `at` scrolls it to a section. */
+export const businessHref = (org: string | null = linkOrg, at?: string) => canvasPageHref({ business: true }, linkSpace(), { org, at });
 
 /** A goal's page (goals.md, src/goals), on the canvas this window is on. */
 export const goalHref = (id: string, org: string | null = linkOrg, at?: string) => canvasPageHref({ goal: id }, linkSpace(), { org, at });

@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
-import { boardPieces, contextPieces, decisionPieces, goalPieces, mapPieces, marketPieces, meaningText, metricPieces, seenPieces, sourcePieces, termPieces, topicPieces, type Built, type HubPiece, type Names } from "@/hub/pieces";
+import { boardPieces, businessPieces, contextPieces, decisionPieces, goalPieces, mapPieces, marketPieces, meaningText, metricPieces, seenPieces, sourcePieces, termPieces, topicPieces, type Built, type HubPiece, type Names } from "@/hub/pieces";
 import { fold } from "@/hub/words";
 import type { Models } from "../models/client";
 import { contentHash, stableStringify } from "../org/fsx";
@@ -151,6 +151,7 @@ export class OrgIndex {
     else if (e.kind === "goal") this.queue.add("goals");
     else if (e.kind === "market" && !e.session) this.queue.add("market");
     else if (e.kind === "terms") this.queue.add("terms");
+    else if (e.kind === "business") this.queue.add("business");
     else if (e.kind === "metrics" && !e.local) this.queue.add("metrics");
     else if (e.kind === "map") this.queue.add(`map:${e.key}`);
     else if (e.kind === "seen" && !e.reading) this.queue.add(`seen:${e.key}`);
@@ -178,7 +179,7 @@ export class OrgIndex {
   }
 
   private async keys(): Promise<Set<string>> {
-    const keys = new Set<string>(["decisions", "context:org", "relations", "goals", "market", "terms", "metrics"]);
+    const keys = new Set<string>(["decisions", "context:org", "relations", "goals", "market", "terms", "business", "metrics"]);
     for (const p of this.store.listProjects()) if (p.type === "discovery") keys.add(`board:${p.id}`);
     for (const s of await this.store.listSources()) keys.add(`source:${s.id}`);
     for (const p of await this.store.listProducts()) keys.add(`context:${p.id}`);
@@ -220,6 +221,10 @@ export class OrgIndex {
       }
       case "terms": {
         const built = termPieces(await store.getTerms(), store.info.name);
+        return built.pieces.length ? built : null;
+      }
+      case "business": {
+        const built = businessPieces(await store.getBusiness(), store.info.name);
         return built.pieces.length ? built : null;
       }
       case "metrics": {

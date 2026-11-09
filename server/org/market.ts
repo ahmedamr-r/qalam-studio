@@ -20,6 +20,7 @@ import { nanoid } from "nanoid";
 import { readPage } from "./pages";
 import type { OrgStore } from "./store";
 import { recall, withKnown } from "./memory";
+import { businessFor } from "./company";
 
 /**
  * The first run's lookups, in the core: what the web says about the company (then, in turn, its
@@ -325,7 +326,7 @@ export async function suggestStatement(store: OrgStore, o: { what: StatementWhat
   const about = await store.getAbout();
   const market = await store.getMarket();
   const org = store.info.name;
-  const words = termsText(await store.getTerms(), { max: 600, near: o.said });
+  const words = [termsText(await store.getTerms(), { max: 600, near: o.said }), await businessFor(store, { for: "call", max: 600 })].filter(Boolean).join("\n\n");
   const m = statementMaterial({ what: o.what, said: o.said, org, about: [about.context, about.audience].filter((x) => x.trim()).join(" "), market: marketText(market, { org, domain: false }), above: o.above, words });
   const { data } = await deps.structured<unknown>(statementCall(m), signal);
   return sanitizeStatement(data, m);

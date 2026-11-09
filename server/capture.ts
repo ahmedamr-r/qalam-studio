@@ -1,5 +1,6 @@
 import { marketContext } from "@/market/text";
 import { termsText } from "@/terms/text";
+import { businessText } from "@/business/text";
 import { termsFold } from "@/terms/fold";
 import { basisCounts, basisOf, movedLines, reachesKnow, type Basis } from "@/discovery/basis";
 import { nanoid } from "nanoid";
@@ -102,6 +103,7 @@ export async function coreDeps(store: OrgStore): Promise<FilingDeps> {
   const market = await store.getMarket();
   const terms = await store.getTerms();
   const words = termsText(terms, { max: 1000 });
+  const business = businessText(await store.getBusiness(), { org: store.info.name, max: 800 });
   const fold = termsFold(terms);
   const names = new Map(products.map((p) => [p.id, p.name]));
   const ix = indexOf(store);
@@ -116,7 +118,7 @@ export async function coreDeps(store: OrgStore): Promise<FilingDeps> {
     about,
     productLine: (id) => {
       const p = products.find((x) => x.id === id);
-      return [p ? contextText(p, `The product (${p.name}):`) : "", contextText(about, "The organization:"), words, goalsText(goals, { product: id ?? null, productName: (x) => names.get(x) }), marketContext(market, { org: store.info.name, told: contextText(about, "") })].filter(Boolean).join("\n\n");
+      return [p ? contextText(p, `The product (${p.name}):`) : "", contextText(about, "The organization:"), words, goalsText(goals, { product: id ?? null, productName: (x) => names.get(x) }), business, marketContext(market, { org: store.info.name, told: contextText(about, "") })].filter(Boolean).join("\n\n");
     },
     listTopics: () => store.listTopics(),
     fold,

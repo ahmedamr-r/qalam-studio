@@ -8,6 +8,7 @@ import { sanitizeFindQuestions } from "@/space/find";
 import { readLinks, realDeps, type MarketDeps } from "./market";
 import { NotFoundError, type OrgStore } from "./store";
 import { recall, withKnown } from "./memory";
+import { researchAbout } from "./company";
 
 /**
  * Finding the problem to focus on for a goal, in the core (src/goals/focus.ts): a look on the web
@@ -37,7 +38,7 @@ export async function lookForGoal(store: OrgStore, goalId: string, o: { query?: 
   const known = before.flatMap((l) => l.lines);
   const seen = new Set(before.flatMap((l) => l.pages.map((p) => p.url)));
   emit(query ? `Looking on the web for “${query}”` : "Looking on the web for what usually gets in the way of goals like it");
-  const info = await deps.research({ purpose: "problems", task: focusTask({ org, about: aboutLine, product: product?.name, chain, goal, facts: market.company, query, said: o.said?.slice(0, FOCUS_LIMITS.said) }), connectors: ["web"] }, emit, signal);
+  const info = await deps.research({ purpose: "problems", task: focusTask({ org, about: await researchAbout(store, aboutLine), product: product?.name, chain, goal, facts: market.company, query, said: o.said?.slice(0, FOCUS_LIMITS.said) }), connectors: ["web"] }, emit, signal);
   let lines: MarketLine[] = [];
   let pages: OutsidePage[] = [];
   if (info && !signal.aborted) {

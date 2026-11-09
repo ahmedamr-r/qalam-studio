@@ -8,6 +8,8 @@ import { orgFetch, orgJson } from "./client";
 import { useMarket } from "./market";
 import { useTerms } from "./terms";
 import { termsText } from "@/terms/text";
+import { businessText } from "@/business/text";
+import { useBusiness } from "./business";
 
 /**
  * What the organization and its products are (about.md, products/*.md), loaded when a window
@@ -50,8 +52,8 @@ export async function saveAbout(about: ContextFields) {
 
 /**
  * What Qalam AI is told about a board's product (and the organization around it), or about the
- * organization alone, with the goals (a board's own goals, `goals`, and every goal above them, or
- * the product's) and what's known about the company and its competitors.
+ * organization alone, with how the business works, the goals (a board's own goals, `goals`, and every
+ * goal above them, or the product's) and what's known about the company and its competitors.
  */
 export function contextFor(productId: string | null | undefined, goals?: string[]): string {
   const { about, products } = useOrgContext.getState();
@@ -60,5 +62,7 @@ export function contextFor(productId: string | null | undefined, goals?: string[
   const aims = goalsText(goalsNow(), { product: productId ?? null, goals, productName: (id) => names.get(id) });
   const said = contextText(about, "The organization:");
   const market = useMarket.getState();
-  return [p ? contextText(p, `The product (${p.name}):`) : "", said, termsText(useTerms.getState().terms, { max: 1000 }), aims, market.org ? marketContext(market.market, { org: market.org, told: said }) : ""].filter(Boolean).join("\n\n");
+  // After the goals and before the market: a call that cuts its product text cuts the market first, then this.
+  const business = businessText(useBusiness.getState().business, { org: market.org || undefined, max: 500 });
+  return [p ? contextText(p, `The product (${p.name}):`) : "", said, termsText(useTerms.getState().terms, { max: 1000 }), aims, business, market.org ? marketContext(market.market, { org: market.org, told: said }) : ""].filter(Boolean).join("\n\n");
 }

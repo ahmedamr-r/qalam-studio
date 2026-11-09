@@ -9,6 +9,7 @@ import type { OrgStore } from "../org/store";
 import { withDatabase, type Opener } from "./connect";
 import { getDrafts, getLayout, putDrafts } from "./files";
 import { DatabaseError, type Runner } from "./runner";
+import { businessFor } from "../org/company";
 
 /*
  * Drafting a team's numbers from its database's layout, in the core. One call reads the layout, the
@@ -85,7 +86,8 @@ export async function draftMetrics(store: OrgStore, o: { answers?: DraftAnswer[]
   const named = answers.flatMap((a) => layout.tables.filter((t) => a.answer.toLowerCase().includes(t.name.toLowerCase())).map(tableKeyOf));
   const { sent, others } = tablesThatMatter(layout, { named });
   const leftBefore = before?.drafts ?? [];
-  const sentText = draftText({ layout, sent, others, about: [about.context, about.audience].filter((x) => x?.trim()).join(" "), goals, terms, kept: file.metrics.map((m) => m.name), gone: file.gone, answers });
+  const business = await businessFor(store, { for: "call", max: 600 });
+  const sentText = draftText({ layout, sent, others, about: [[about.context, about.audience].filter((x) => x?.trim()).join(" "), business].filter(Boolean).join("\n"), goals, terms, kept: file.metrics.map((m) => m.name), gone: file.gone, answers });
   o.emit?.("Reading how your database is laid out");
   const { data, model } = await structured<unknown>(metricsCall({ dialect: layout.dialect, text: sentText }), o.signal);
   const ctx = { layout, goalIds: new Set(goals.map((g) => g.id)), kept: file.metrics.map((m) => m.name), gone: file.gone, id: () => `d${nanoid(8)}` };

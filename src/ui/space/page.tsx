@@ -22,7 +22,7 @@ export function usePanelPage() {
 /** The canvas's address without the page (its other keys stay). */
 function withoutPage(): string {
   const u = new URL(window.location.href);
-  for (const k of ["goal", "page", "at"]) u.searchParams.delete(k);
+  for (const k of ["goal", "page", "business", "at"]) u.searchParams.delete(k);
   return `${u.pathname}${u.searchParams.size ? `?${u.searchParams}` : ""}${u.hash}`;
 }
 

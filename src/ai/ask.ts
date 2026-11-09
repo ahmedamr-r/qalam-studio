@@ -46,6 +46,7 @@ export const ASK_SYSTEM = `You are Qalam AI. You answer a product team's questio
 - boards/*.json: Opportunity Solution Trees (an outcome, customers' needs under it, solutions, tests) with each card's evidence.
 - decisions/*.md: what the team decided on its boards, and why.
 - about.md, products/*.md: what the organization and its products are.
+- business.md: how the business works, as the team tells it: who it serves, what they get, how it earns, what it costs to run, how customers find it, the numbers that matter and where it stands. A line marked as Qalam AI's reading is its reading of their answers, not their words. It's context, never what customers said.
 - hub/market.md: what's known about the company, its competitors and its domain, each line with the page it was read on, or the team's own say-so. It's context, never what customers said.
 - hub/terms.md: the project's own words: each term, what it means, and the words to avoid for it. A question using an avoided word probably means its term.
 - hub/metrics.md: how the team counts its business numbers in its own database: each number's name, what it means, what it takes for granted, and the exact query that reads it. Definitions only; a number's value is where a goal read it, in goals.md.

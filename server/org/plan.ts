@@ -15,7 +15,7 @@ import { termsFold } from "@/terms/fold";
 import { indexFor } from "../index/registry";
 import { labOn } from "../lab";
 import { lookupKinds } from "../connectors/everywhere";
-import { companyContext } from "./company";
+import { companyContext, researchAbout } from "./company";
 import { recallFor, subjectOf, withKnown } from "./memory";
 import { readLinks, realDeps, type MarketDeps } from "./market";
 import type { OrgStore } from "./store";
@@ -67,7 +67,7 @@ export async function lookForPlan(store: OrgStore, b: PlanBody & { query?: strin
   const query = one(b.query ?? "");
   emit(query ? `Looking on the web for “${query}”` : "Looking on the web for what people do about this");
   const own = answersFor(b).filter((a) => a.how === "own" && a.answer.trim());
-  const task = planTask({ org: store.info.name, about: await aboutLine(store), said: b.said, query, answers: own.map(({ question, answer }) => ({ question, answer })), outline: b.outline });
+  const task = planTask({ org: store.info.name, about: await researchAbout(store, await aboutLine(store)), said: b.said, query, answers: own.map(({ question, answer }) => ({ question, answer })), outline: b.outline });
   const info = await deps.research({ purpose: "plan", task, connectors: ["web"] }, emit, signal);
   let lines: MarketLine[] = [];
   let pages: OutsidePage[] = [];

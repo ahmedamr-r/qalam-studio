@@ -14,7 +14,7 @@ import { goalHref, placeHref, spaceHref, type Project } from "@/projects/model";
 import { importLegacy } from "@/projects/library";
 import type { SpaceInputs } from "@/space/session";
 import { useSpaceView } from "@/space/view";
-import { cardForPage, SECTION } from "@/space/pages";
+import { cardForPage, pageKey, SECTION } from "@/space/pages";
 import { Button, IconBtn, Tip } from "../controls";
 import LaneReader, { useReaderWidth } from "../discovery/LaneReader";
 import CordPicker from "../discovery/CordPicker";
@@ -74,6 +74,7 @@ const NONE: Bearing[] = [];
 
 // A goal's or a topic page's page, open in the panel (../space/page.tsx).
 const GoalView = lazy(() => import("../goals/GoalPage"));
+const BusinessView = lazy(() => import("../business/BusinessPage"));
 const TopicView = lazy(() => import("../topics/TopicPage"));
 /** How wide the panel is for a page. */
 const PAGE_W = 480;
@@ -130,7 +131,7 @@ export default function Home({ product: productId = null }: { product?: string |
 
   // A page opened (or asked for again): it takes the panel, its card comes into view without being picked.
   const open = usePanelPage();
-  const openKey = open ? ("goal" in open.ref ? `goal:${open.ref.goal}` : `page:${open.ref.page}`) : null;
+  const openKey = open ? pageKey(open.ref) : null;
   const moves = useMoves();
   useEffect(() => {
     if (!open) return;
@@ -290,7 +291,7 @@ export default function Home({ product: productId = null }: { product?: string |
                 }}
               >
                 <Suspense fallback={<div className={clsx(r.skeleton, "m-[16px] h-[120px] rounded-lg")} aria-hidden />}>
-                  {"goal" in open.ref ? <GoalView key={open.ref.goal} id={open.ref.goal} space={space} at={open.at} /> : <TopicView key={open.ref.page} id={open.ref.page} space={space} />}
+                  {"goal" in open.ref ? <GoalView key={open.ref.goal} id={open.ref.goal} space={space} at={open.at} /> : "page" in open.ref ? <TopicView key={open.ref.page} id={open.ref.page} space={space} /> : <BusinessView at={open.at} />}
                 </Suspense>
               </PanelPageProvider>
             ) : (

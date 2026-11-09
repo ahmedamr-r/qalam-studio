@@ -11,6 +11,7 @@ import type { OstMetric } from "@/discovery/types";
 import { termsFold } from "@/terms/fold";
 import { readLinks, realDeps, type MarketDeps } from "./market";
 import type { OrgStore } from "./store";
+import { researchAbout } from "./company";
 
 /**
  * The goal a problem could move, in the core (src/goals/moves.ts). First the goals on the canvas: a
@@ -77,7 +78,7 @@ export async function goalsForProblem(store: OrgStore, o: MovesAsked, emit: (lab
   const product = o.product ? (await store.listProducts()).find((p) => p.id === o.product) : undefined;
   const org = store.info.name;
   emit(targets.length ? "None of your goals fits, so I'm looking on the web for what companies like yours measure" : "Looking on the web for what companies like yours measure");
-  const info = await deps.research({ purpose: "moves", task: movesTask({ org, about, product: product?.name, facts: market.company, problem: o.title, words: o.words }), connectors: ["web"] }, emit, signal);
+  const info = await deps.research({ purpose: "moves", task: movesTask({ org, about: await researchAbout(store, about), product: product?.name, facts: market.company, problem: o.title, words: o.words }), connectors: ["web"] }, emit, signal);
   if (signal.aborted) throw new DOMException("Stopped", "AbortError");
   let pages: OutsidePage[] = [];
   if (info) {
@@ -113,7 +114,7 @@ async function reported(store: OrgStore, o: NumberAsked, emit: (label: string) =
   const about = await aboutLine(store);
   const stub: Goal = { id: "", title: o.goal, parent: null, product: null, metric: { ...o.metric, baseline: null, current: o.now, target: null }, status: "active", cites: [], by: "qalam", at: Date.now() };
   emit(`Looking on the web for what others report for ${o.metric.name}`);
-  const task = outsideTask({ org: store.info.name, about, chain: [], goal: stub });
+  const task = outsideTask({ org: store.info.name, about: await researchAbout(store, about), chain: [], goal: stub });
   const info = await deps.research({ purpose: "goals", task, connectors: ["web"] }, emit, signal);
   if (signal.aborted) throw new DOMException("Stopped", "AbortError");
   if (!info?.notes) return known;

@@ -6,6 +6,7 @@ import { captureSource, type CaptureOpts } from "../capture";
 import { flushBearings } from "./goals";
 import { readPosts } from "./pages";
 import { NotFoundError, type OrgStore } from "./store";
+import { businessFor } from "./company";
 
 /**
  * What people say online about a problem, in the core: the research step searches the web for
@@ -39,12 +40,14 @@ export async function aboutTopic(store: OrgStore, topicId: string): Promise<Onli
 /** Look online for a problem; what comes in is placed only where `scope` says (`{}`: nowhere), else where captures place things. */
 export async function lookOnline(store: OrgStore, about: OnlineAbout, emit: (label: string) => void, signal: AbortSignal, o: { scope?: CaptureOpts["scope"] } = {}): Promise<LookedOnline> {
   const org = await store.getAbout();
+  const business = await businessFor(store, { for: "research", max: 400 });
   const products = (await store.listProducts()).filter((p) => about.products.includes(p.id));
   const task = [
     `The problem: “${one(about.title)}”`,
     ...(about.lines.length ? ["What the team says about it:", ...about.lines.map((l) => `- ${one(l)}`)] : []),
     ...(products.length ? [`The product it's about: ${products.map((p) => `${p.name}${p.audience ? ` (for ${one(p.audience).slice(0, 200)})` : ""}`).join("; ")}`] : []),
     ...(org.context.trim() ? [`The organization: ${one(org.context).slice(0, 400)}`] : []),
+    ...(business ? [business] : []),
     "Find public pages where people describe this problem in their own words.",
   ].join("\n");
   const info = await research({ purpose: "posts", task, connectors: ["web"] }, emit, signal);

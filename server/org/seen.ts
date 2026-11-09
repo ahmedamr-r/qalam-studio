@@ -11,6 +11,7 @@ import { readMaterial, sanitizeRead } from "@/seen/read";
 import { ORG_SEEN, SEEN_KEY, SEEN_LIMITS, type SeenAnswer, type SeenMap, type SeenReading, type SeenScreen, type SeenText, type Shot, type ShotNote } from "@/seen/types";
 import { prepShot, readShots, seeAvailable } from "../see";
 import { NotFoundError, type OrgStore } from "./store";
+import { businessFor } from "./company";
 
 /**
  * What people see, in the core (src/seen/): a reading takes a batch of screenshots to the
@@ -192,7 +193,7 @@ async function placeRound(store: OrgStore, key: string, deps: SeenDeps, r: SeenR
   const tree = await store.getGoals();
   const product = products.find((p) => p.id === r.product);
   const names = new Map(products.map((p) => [p.id, p.name]));
-  const context = [product ? contextText(product, `The product (${product.name}):`) : "", contextText(await store.getAbout(), "The organization:"), goalsText(tree, { product: r.product, productName: (x) => names.get(x) })].filter(Boolean).join("\n\n");
+  const context = [product ? contextText(product, `The product (${product.name}):`) : "", contextText(await store.getAbout(), "The organization:"), await businessFor(store, { for: "call", max: 600 }), goalsText(tree, { product: r.product, productName: (x) => names.get(x) })].filter(Boolean).join("\n\n");
   const goals = tree.goals.filter((g) => g.status === "active" && (!r.product || !g.product || g.product === r.product)).slice(0, 30);
   const code = (await store.listMaps()).filter((m) => !r.product || !m.product || m.product === r.product).flatMap((m) => m.flows.flatMap((f) => f.steps.map((s) => ({ flow: f.name, ref: stepRef(m.key, s.key), step: s }))));
   const answers = r.rounds.flatMap((x) => x.answers);

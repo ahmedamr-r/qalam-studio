@@ -19,6 +19,7 @@ import { serveMcp, type McpTool } from "./mcp";
 import { inside } from "./org/fsx";
 import { GOALS, type OrgStore } from "./org/store";
 import { promptArgs, spawnCli } from "@/ai/commands";
+import { businessText } from "@/business/text";
 
 /**
  * Ask the organization: a product team's question, answered from what the organization knows.
@@ -117,6 +118,7 @@ function fileFound(store: OrgStore, rel: string, text: string, boardsOf: (source
   if (parts[0] === "decisions") return { text, label: `Decisions, ${path.basename(rel, ".md")}`, href: `${orgHref(org)}?tab=decisions` };
   if (parts[0] === "products") return { text, label: typeof front.name === "string" ? front.name : rel };
   if (rel === "about.md") return { text, label: `About ${store.info.name}` };
+  if (rel === "business.md") return { text, label: `How ${store.info.name} works` };
   return { text, label: rel };
 }
 
@@ -160,6 +162,8 @@ async function guide(store: OrgStore, q: AskRequest): Promise<Guide> {
   const name = (id: string | null | undefined) => (id ? (products.find((p) => p.id === id)?.name ?? id) : "the whole organization");
   const topics = await store.listTopics();
   const out: string[] = ["The organization:", contextText(await store.getAbout(), `${store.info.name}:`) || `${store.info.name} (not described yet)`, ...products.map((p) => contextText(p, `${p.name} (a product):`)).filter(Boolean)];
+  const business = businessText(await store.getBusiness(), { org: store.info.name, max: 1200 });
+  if (business) out.push("", `${business} (in business.md)`);
   const known = marketContext(await store.getMarket(), { org: store.info.name, told: out.join("\n") });
   if (known) out.push("", `${known} (in hub/market.md)`);
   const aims = goalsText(await store.getGoals(), { productName: (id) => products.find((p) => p.id === id)?.name, label: `Goals (in ${GOALS})` });

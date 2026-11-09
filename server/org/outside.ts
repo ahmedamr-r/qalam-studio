@@ -14,6 +14,7 @@ import type { PackedPiece } from "@/org/pack";
 import { readPage } from "./pages";
 import { wordsPieces, type DraftWords } from "./solutions";
 import { NotFoundError, type OrgStore } from "./store";
+import { researchAbout } from "./company";
 
 /**
  * A goal's look outside and its breakdown, in the core. What others aim for: the research step
@@ -36,7 +37,7 @@ export async function lookOutside(store: OrgStore, goalId: string, emit: (label:
   const { goal, tree } = await goalOf(store, goalId);
   const about = await store.getAbout();
   const product = goal.product ? (await store.listProducts()).find((p) => p.id === goal.product) : undefined;
-  const task = outsideTask({ org: store.info.name, about: [about.context, about.audience].filter((x) => x.trim()).join(" "), product: product?.name, chain: chainOf(tree, goalId), goal });
+  const task = outsideTask({ org: store.info.name, about: await researchAbout(store, [about.context, about.audience].filter((x) => x.trim()).join(" ")), product: product?.name, chain: chainOf(tree, goalId), goal });
   const info = await research({ purpose: "goals", task, connectors: ["web"] }, emit, signal);
   if (!info) return { kept: 0, read: 0, error: NO_WEB };
   if (!info.notes) return { kept: 0, read: 0, error: info.error ?? "The web had nothing on goals like this one." };
