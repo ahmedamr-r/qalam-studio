@@ -89,9 +89,22 @@ function Finding({ f, n }: { f: ScreenFinding; n: number }) {
         <p className="text-caption leading-[18px] text-fg-muted" dir="auto">
           {f.why}
         </p>
+        {f.weigh && (
+          <dl className="grid grid-cols-[auto_1fr] gap-x-[6px] text-caption leading-[18px]">
+            <dt className="text-fg-subtle">Customers</dt>
+            <dd className="text-fg-muted" dir="auto">
+              {f.weigh.customers}
+            </dd>
+            <dt className="text-fg-subtle">Business</dt>
+            <dd className="text-fg-muted" dir="auto">
+              {!f.weigh.known && <span className="text-fg-subtle">Not known yet: </span>}
+              {f.weigh.business}
+            </dd>
+          </dl>
+        )}
         {f.change && (
           <p className="text-caption leading-[18px] text-fg" dir="auto">
-            <span className="font-medium">Change:</span> {f.change.what}
+            <span className="font-medium">{f.weigh?.apart ? "Your call:" : "Change:"}</span> {f.change.what}
           </p>
         )}
       </div>
@@ -148,7 +161,7 @@ function Look({ review, shots, onNotOurs }: { review: ScreenReview; shots: reado
   const n = review.shots.length;
   return (
     <>
-      <Head>{review.findings.length ? `On your ${n === 1 ? "screen" : `${n} screens`}, for what you're working out` : n === 1 ? "Your screen" : "Your screens"}</Head>
+      <Head>{review.findings.length ? (review.first ? `A first look at your ${n === 1 ? "screen" : `${n} screens`}` : `On your ${n === 1 ? "screen" : `${n} screens`}, weighed for customers and the business`) : n === 1 ? "Your screen" : "Your screens"}</Head>
       <Shots shots={shots} review={review} {...(onNotOurs ? { onNotOurs } : {})} />
       {review.unseen ? (
         <p className="text-caption text-fg-muted">I couldn&apos;t look at them for the problem: the engine here can&apos;t see pictures. They&apos;re kept with your screens.</p>
@@ -162,7 +175,7 @@ function Look({ review, shots, onNotOurs }: { review: ScreenReview; shots: reado
         </ol>
       )}
       {review.unread && <p className="text-micro text-fg-subtle">Nothing printed on them could be read on this computer, so nothing&apos;s marked or quoted.</p>}
-      {review.findings.length > 0 && <OnCanvas review={review} />}
+      {review.findings.length > 0 && (review.first ? <p className="text-caption text-fg-muted">I'll ask what these screens are for, who uses them and what the business needs from them, then look again with both sides in mind.</p> : <OnCanvas review={review} />)}
       {review.left.length > 0 && (
         <details className="q-fold text-caption text-fg-muted">
           <summary className="cursor-pointer list-none hover:text-fg [&::-webkit-details-marker]:hidden">Left out ({review.left.length})</summary>

@@ -1,4 +1,4 @@
-import { answersOf, applyTurn, askInstead, awaitsConfirm, closeRound, confirmed, currentRound, endNow, forDraft, lookAtShots, lookupLanded, markRead, nextAfter, offPoint, saveRound, startLookup, takePicks, waitedOn } from "@/asking/engine";
+import { answersOf, applyTurn, askInstead, awaitsConfirm, closeRound, confirmed, currentRound, endNow, forDraft, lookAtShots, lookupLanded, markRead, nextAfter, offPoint, saveRound, startLookup, takePicks, waitedOn, weighAgain } from "@/asking/engine";
 import type { AskTurn, AskingState, FoundLine, Lookup } from "@/asking/types";
 import type { FocusLook } from "@/goals/focus";
 import type { AskedAbout, AskedFlow, RoundAnswer } from "@/memory/types";
@@ -21,7 +21,7 @@ export interface AskingHost {
   /** Qalam AI's turn, as the core kept it. */
   turn(s: AskingState, signal: AbortSignal): Promise<AskTurn>;
   /** A fact looked up (each lookup has its own signal: it runs on while they answer). `stopped`: they stopped it where it runs (a scan's job). `review`: a screens lookup's look, kept in the project. */
-  lookup(l: Lookup, signal: AbortSignal): Promise<{ lines?: FoundLine[]; look?: FocusLook; review?: string; stopped?: true }>;
+  lookup(l: Lookup, signal: AbortSignal): Promise<{ lines?: FoundLine[]; look?: FocusLook; review?: string; first?: boolean; stopped?: true }>;
   /** It ended and they said go, or nothing needed asking: the generation. */
   generate(s: AskingState, signal: AbortSignal): Promise<void>;
   /** What it's doing now, for the thread. */
@@ -163,7 +163,8 @@ export const keepRound = (h: AskingHost, form: FlowState) => h.set((s) => saveRo
 
 /** A round sent: on to what comes next. Screenshots it gave are kept and read first: the next turn waits for them. */
 export function answer(h: AskingHost, form: FlowState, signal: AbortSignal): Promise<Paused> {
-  h.set((s) => lookAtShots(closeRound(s, form), Date.now(), newId));
+  // Screenshots given in this round are looked at; a first look from before is looked at again, weighed, now that a round after it is answered.
+  h.set((s) => weighAgain(lookAtShots(closeRound(s, form), Date.now(), newId), Date.now(), newId));
   // goOn remembers the round as it starts.
   return goOn(h, signal);
 }

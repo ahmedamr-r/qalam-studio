@@ -2,7 +2,7 @@ import { normalizeForMatch, quoteFinder } from "@/discovery/quotes";
 import { withoutIds } from "@/goals/said";
 import type { SeenText } from "@/seen/types";
 import { boxOf, noteLine, onScreen, personal, textOf } from "@/seen/words";
-import { CHANGE_DOES, FINDING_SIDES, REVIEW_LIMITS, type ChangeDoes, type FindingRest, type FindingSide, type ScreenFinding } from "./types";
+import { CHANGE_DOES, FINDING_SIDES, REVIEW_LIMITS, type ChangeDoes, type FindingRest, type FindingSide, type FindingWeigh, type ScreenFinding } from "./types";
 
 /*
  * Looking at someone's screenshots for the problem they're working out (pure; the call is
@@ -50,6 +50,12 @@ export interface ReviewInput {
   goals: readonly string[];
   /** Their own answers so far. */
   answers: readonly { q: string; a: string }[];
+  /** What Qalam AI remembers of their earlier answers (src/memory/recall.ts: its block, m… ids, and the words it holds). */
+  remembered?: { block: string; hay: string };
+  /** What's known of the company: background, never what a finding rests on. */
+  company?: string;
+  /** A first look: what the screens are for, who uses them and what the business needs haven't been asked yet. */
+  first?: boolean;
 }
 
 const one = (s: unknown) => (typeof s === "string" ? s.replace(/\s+/g, " ").trim() : "");
@@ -87,17 +93,29 @@ export function reviewMaterial(i: ReviewInput): { intro: string; screens: { id: 
       out.push(`- ${id} · ${clip(one(l), 300)}`);
     });
   };
+  out.push(
+    "",
+    i.first
+      ? "This is a first look: they haven't said yet what these screens are for, who uses them, or what the business needs from them and won't change. Weigh each finding with what's known below, and where its business side depends on those, say what would need to be true (known: false); they'll be asked, and the screens looked at again."
+      : "They've been asked what these screens are for, who uses them and what the business needs from them (their answers below): weigh every finding against what they said.",
+  );
   listed("How their business works (a business finding rests on one of these, a goal or an answer):", "b", "business", i.business.slice(0, 30));
   listed("Their goals:", "g", "goal", i.goals.slice(0, 12));
   listed("Their answers so far:", "a", "answer", i.answers.slice(0, 20).map((x) => `${one(x.q)} → “${one(x.a)}”`));
   if (!i.business.length) out.push("", "Nothing is written down yet about how their business works: a business finding rests on a goal or what they said.");
+  // What they said before, in other conversations: a business side may rest on it (m…).
+  if (i.remembered?.block.trim()) {
+    out.push("", i.remembered.block.trim());
+    for (const m of i.remembered.block.matchAll(/^- (m\d+) · (.+)$/gm)) sent.set(m[1], { kind: "answer", text: clip(one(m[2]), 300) });
+  }
+  if (one(i.company)) out.push("", "What's known of the company (background, read on the web or told; nothing a finding rests on):", clip(i.company!.trim(), 1500));
   out.push("", i.flow ? `The screens, in the order they showed them (the “${one(i.flow)}” flow):` : "The screens, in the order they showed them:");
   const screens = i.screens.map((s, n) => ({
     id: s.id,
     head: `${s.id} · “${clip(one(s.name), 80)}”, screen ${n + 1} of ${i.screens.length}:`,
     words: s.read ? (s.read.lines.length ? `Printed on ${s.id}, as this computer read it, line by line:\n${s.read.lines.map((l) => l.text).join("\n")}` : `Nothing printed on ${s.id} could be read.`) : `What's printed on ${s.id} couldn't be read here: describe what you see, and quote nothing from it.`,
   }));
-  const also = [i.focus.said, i.focus.typed ?? "", ...i.answers.map((x) => x.a), ...i.business, ...i.goals].filter(Boolean).join("\n");
+  const also = [i.focus.said, i.focus.typed ?? "", ...i.answers.map((x) => x.a), ...i.business, ...i.goals, i.remembered?.hay ?? ""].filter(Boolean).join("\n");
   return { intro: out.join("\n"), screens, sent, also };
 }
 
@@ -117,7 +135,7 @@ export function sanitizeScreenReview(raw: unknown, c: { screens: readonly Review
   const perScreen = new Map<string, number>();
   const keys = new Set<string>();
   // People never see the call's ids: a screen's becomes its name, any other goes.
-  const named = (v: unknown) => withoutIds(one(v), (ref) => c.screens.find((x) => x.id === ref)?.name, "sbga");
+  const named = (v: unknown) => withoutIds(one(v), (ref) => c.screens.find((x) => x.id === ref)?.name, "sbgam");
   /** Its words as code keeps them: with what's printed to check against, quoted words and numbers printed or said; without, a description with its quote marks off. */
   const words = (v: unknown, max: number): string | null => {
     const text = fit(named(v), max);
@@ -176,11 +194,30 @@ export function sanitizeScreenReview(raw: unknown, c: { screens: readonly Review
     const onWords = s.read && one(f.on) ? onScreen(one(f.on), s.read, REVIEW_LIMITS.on) : null;
     const box = onWords ? boxOf(onWords, s.read ?? undefined) : null;
     const change = changeOf(f.change, s, { onWords, words: changeWords, taken, what, left });
+    const weigh = weighOf(f.weigh, { rests: rests.length, words, what, left });
     keys.add(key);
     perScreen.set(s.id, (perScreen.get(s.id) ?? 0) + 1);
-    findings.push({ key, shot: s.shot, ...(s.screen ? { screen: s.screen } : {}), name: s.name, side: side as FindingSide, title, why, ...(onWords && box ? { on: { words: onWords, box } } : {}), ...(change ? { change } : {}), ...(rests.length ? { rests } : {}) });
+    findings.push({ key, shot: s.shot, ...(s.screen ? { screen: s.screen } : {}), name: s.name, side: side as FindingSide, title, why, ...(onWords && box ? { on: { words: onWords, box } } : {}), ...(change ? { change } : {}), ...(rests.length ? { rests } : {}), ...(weigh ? { weigh } : {}) });
   }
   return { findings, none: !findings.length && r.none === true, left };
+}
+
+/**
+ * Both sides of a finding as code keeps them, or none: each side's words held as a finding's are. The
+ * business side is known only resting on what was sent of how the business works, a goal or what they
+ * said; else it's what would need to be known. They pull apart only where it's known.
+ */
+function weighOf(raw: unknown, o: { rests: number; words: (v: unknown, max: number) => string | null; what: string; left: { what: string; why: string }[] }): FindingWeigh | undefined {
+  const w = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  if (!one(w.customers) && !one(w.business)) return undefined;
+  const customers = o.words(w.customers, REVIEW_LIMITS.side)?.trim();
+  const said = o.words(w.business, REVIEW_LIMITS.side)?.trim();
+  if (!customers || !said) return void o.left.push({ what: `${o.what}: how it weighs`, why: "Its quoted words or numbers aren't printed on the screens or in what they said" });
+  const known = w.known === true && o.rests > 0;
+  // Shown as not known yet, a lead-in that says so again goes ("This would need to be true: …").
+  const bare = known ? said : said.replace(/^(?:this|it|that)\s+would\s+need\s+to\s+be\s+true(?:\s+that)?\s*[:,—-]?\s*/i, "");
+  const business = bare ? bare.charAt(0).toLocaleUpperCase() + bare.slice(1) : said;
+  return { customers, business, known, ...(known && w.apart === true ? { apart: true as const } : {}) };
 }
 
 /**

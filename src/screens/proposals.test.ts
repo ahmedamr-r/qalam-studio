@@ -35,6 +35,24 @@ describe("a look's findings on the canvas", () => {
     expect(price.card.kind).toBe("opportunity");
   });
 
+  it("carries both sides onto the problem, and a change the two sides pull apart on as their call", () => {
+    const sold = { key: "aaa:sold", shot: "aaaaaaaaaaaaaaaaaaaaaaaa", screen: "basket", name: "Basket", side: "customer" as const, title: "Sold-out rows come first", why: "People find little they can add", change: { does: "move" as const, what: "Move the sold-out rows to the end", insteadOf: "Sold out" } };
+    const ps = screensProposals(
+      review({
+        findings: [
+          { ...sold, weigh: { customers: "They scroll past what they can't buy", business: "The brand team keeps them in view on purpose", known: true, apart: true } },
+          { ...sold, key: "aaa:sold2", weigh: { customers: "They scroll past what they can't buy", business: "Whether they lead on purpose", known: false } },
+        ],
+      }),
+      { parentId: null, id, now: 5 },
+    );
+    const card = (p: (typeof ps)[number]) => (p.kind === "card" ? p.card : null);
+    expect(card(ps[0])?.description).toBe("People find little they can add\n\nFor customers: They scroll past what they can't buy\nFor the business: The brand team keeps them in view on purpose");
+    expect(card(ps[1])?.description).toBe("Your call: no change serves both sides. Move the sold-out rows to the end");
+    expect(card(ps[2])?.description).toContain("For the business (not known yet): Whether they lead on purpose");
+    expect(card(ps[3])?.description).toBe("Move the sold-out rows to the end");
+  });
+
   it("leaves out what was decided already", () => {
     expect(screensProposals(review({ decided: { "aaa:fee": "discarded" } }), { parentId: null, id, now: 5 }).map((p) => p.id)).toEqual(["screen:aaa:price"]);
   });

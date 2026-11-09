@@ -47,8 +47,12 @@ export interface ScreensFocus {
   settled: readonly string[];
 }
 
-/** Keep the screenshots, then look at them for the problem: what's kept and the look (none when nothing was a screen). */
-export async function reviewScreens(o: { shots: readonly ShownShot[]; product: string | null; about: string; focus: ScreensFocus; answers: readonly { q: string; a: string }[] }, signal?: AbortSignal, onStep?: (label: string) => void): Promise<{ kept: KeptShots; review: ScreenReview | null }> {
+/**
+ * Keep the screenshots, then look at them for the problem: what's kept and the look (none when nothing
+ * was a screen). `after`: the first look this one weighs again, now that they've said what the screens
+ * are for, who uses them and what the business needs.
+ */
+export async function reviewScreens(o: { shots: readonly ShownShot[]; product: string | null; about: string; focus: ScreensFocus; answers: readonly { q: string; a: string }[]; after?: string }, signal?: AbortSignal, onStep?: (label: string) => void): Promise<{ kept: KeptShots; review: ScreenReview | null }> {
   const res = await fetch(await orgPath("/screens/review"), { method: "POST", headers: { "content-type": "application/json", "x-qalam-tab": TAB }, body: JSON.stringify(o), signal });
   const out = await streamed<{ kept: KeptShots; review: ScreenReview | null }>(res, onStep);
   if (out.review) useScreenReviews.setState((s) => ({ reviews: { ...s.reviews, [out.review!.id]: out.review! } }));

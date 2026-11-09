@@ -39,6 +39,8 @@ Across the screens, in the order they were shown:
 - A cause that isn't on the screen at all: the price itself, a fee, a delivery time, stock. No layout fixes it; say so instead.
 - The screen before: where people leave is where it shows, not always where it starts.
 - Judging the screen by taste instead of by the problem.
+- Judging for one side: what helps customers can cut against what the business chose on purpose (its brand, a partner's place, a rule), and the other way round. Weigh each finding for both.
+- Assuming what the business needs: until it's known what the screens are for, who uses them and what it won't change, say what would need to be true instead of concluding.
 
 ## How to ask
 
@@ -58,3 +60,4 @@ How to point at what you found and word it:
 - Prefer taking away, rewording or moving over adding.
 - Never a redesign or a new screen, and never two changes on the same thing.
 - Where the fix isn't on the screen (the price itself), say so and propose no change there.
+- Where the two sides pull apart and no change serves both, say what each side gets and leave the choice to them.

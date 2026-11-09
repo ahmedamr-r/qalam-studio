@@ -1,5 +1,5 @@
 import type { FoundLine } from "@/asking/types";
-import type { KeptShots, ScreenReview } from "./types";
+import type { KeptShots, ScreenFinding, ScreenReview } from "./types";
 
 /*
  * What the next turn reads about the screenshots an answer gave (pure): the flow they make, then each
@@ -39,5 +39,10 @@ export function reviewLines(id: string, r: ScreenReview | null): FoundLine[] {
   const from = "Qalam AI's look at their screens";
   if (r.unseen) return [{ ref: `${id}-look`, text: "Qalam AI couldn't look at them for the problem: the engine here can't see pictures", from, whose }];
   if (!r.findings.length) return [{ ref: `${id}-look`, text: "Nothing on these screens bears on what they're working out, as Qalam AI looked", from, whose }];
-  return r.findings.slice(0, READ_FINDINGS).map((f, i) => ({ ref: `${id}-f${i + 1}`, text: `On ${f.name}, from the ${f.side}'s side: ${f.title}. ${f.why}${f.change ? ` Change: ${f.change.what}` : ""}`, from, whose }));
+  // A first look's findings wait on what the screens are for, who uses them and what the business needs: the turn hears so.
+  const look = r.first ? "a first look, before knowing what the screens are for, who uses them or what the business needs from them" : from;
+  return r.findings.slice(0, READ_FINDINGS).map((f, i) => ({ ref: `${id}-f${i + 1}`, text: `On ${f.name}, from the ${f.side}'s side: ${f.title}. ${f.why}${weighLine(f)}${f.change ? ` ${f.weigh?.apart ? "Their call" : "Change"}: ${f.change.what}` : ""}`, from: look, whose }));
 }
+
+/** Both sides of a finding, as a turn reads them: the business side said as not known where it isn't. */
+const weighLine = (f: ScreenFinding) => (f.weigh ? ` For customers: ${f.weigh.customers} For the business${f.weigh.known ? "" : " (not known yet)"}: ${f.weigh.business}` : "");

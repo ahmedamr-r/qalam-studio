@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { answersOf, applyTurn, askInstead, awaitsConfirm, closeRound, currentRound, emptyAsking, endNow, forDraft, foundOf, fromPlanRounds, loaded, lookAtShots, lookupLanded, markRead, nextAfter, offPoint, scanSaid, settledOf, startLookup, takePicks } from "./engine";
+import { answersOf, applyTurn, askInstead, awaitsConfirm, closeRound, currentRound, emptyAsking, endNow, forDraft, foundOf, fromPlanRounds, loaded, lookAtShots, lookupLanded, markRead, nextAfter, offPoint, scanSaid, settledOf, startLookup, takePicks, weighAgain } from "./engine";
 import { askingIn } from "./wire";
 import type { AskQuestion, AskTurn, AskingState } from "./types";
 
@@ -238,5 +238,28 @@ describe("screenshots given as an answer", () => {
     let s = applyTurn(emptyAsking(), turn({ questions: [screens("see", "What does it look like?")] }), o);
     s = lookAtShots(send(s, { see: { kind: "shots", shots, text: "" } }), 5, o.id);
     expect(loaded(s).lookups[0].state).toBe("stopped");
+  });
+
+  it("looks again, weighed, once a round after a first look is answered, and only once", () => {
+    let s = applyTurn(emptyAsking(), turn({ questions: [screens("see", "What does the basket look like today?")] }), o);
+    s = lookAtShots(send(s, { see: { kind: "shots", shots, text: "after they add items" } }), 5, o.id);
+    const first = s.lookups[0].id;
+    // The round that gave them closes with no first look yet: nothing to weigh.
+    expect(weighAgain(s, 6, o.id).lookups).toHaveLength(1);
+    s = lookupLanded(s, first, { lines: [], review: "look-first", first: true });
+    expect(s.lookups[0]).toMatchObject({ state: "done", review: "look-first", first: true });
+
+    // The next turn asks what the screens are for; answered, they're looked at again, weighed after the first look.
+    s = applyTurn(markRead(s), turn({ questions: [q("for", "What should people do on the basket?")] }), o);
+    s = weighAgain(send(s, { for: { kind: "text", text: "Place the order" } }), 7, o.id);
+    expect(s.lookups).toHaveLength(2);
+    expect(s.lookups[1]).toMatchObject({ kind: "screens", state: "running", after: "look-first", shots, round: 1, waits: s.turns, asked: "What does the basket look like today?", typed: "after they add items" });
+    expect(nextAfter(s)).toBe("wait");
+
+    // Weighed once: later rounds don't look again, and a look that wasn't a first one never does.
+    s = lookupLanded(s, s.lookups[1].id, { lines: [], review: "look-weighed" });
+    expect(s.lookups[1].first).toBeUndefined();
+    s = applyTurn(markRead(s), turn({ questions: [q("more", "Anything else?")] }), o);
+    expect(weighAgain(send(s, { more: { kind: "text", text: "No" } }), 8, o.id).lookups).toHaveLength(2);
   });
 });

@@ -91,6 +91,14 @@ export interface Lookup {
   round?: number;
   typed?: string;
   review?: string;
+  /**
+   * A first look, before what the screens are for, who uses them and what the business needs were
+   * asked: once a later round is answered, they're looked at again, weighed (`after`: the first look's review).
+   */
+  first?: true;
+  after?: string;
+  /** Screenshots dropped in the chat, looked at there and handed to the conversation: shown where they were dropped, not under a round. */
+  seeded?: true;
 }
 
 /** A point Qalam AI takes as settled, in its words, with the answers or lookups it rests on. */

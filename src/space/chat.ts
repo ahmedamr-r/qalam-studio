@@ -70,6 +70,8 @@ export interface TakenScreens {
   error?: string;
   /** Taken as something else after all (an ordinary picture), by asset. */
   other?: string[];
+  /** The consultant conversation their first look was handed to: it asks what the screens are for, who uses them and what the business needs, then they're looked at again. */
+  talk?: string;
 }
 
 /** A problem page material went into. */
@@ -588,7 +590,7 @@ function consultReply(t: ChatTurn, j: PlanJob, c: ConsultState): ChatPart[] {
     if (reflect && r.reflect) out.push(part("consultReflect", { turn: t.id, round: i }));
     out.push(part("askAnswered", { turn: t.id, round: i }));
     // The screenshots that round gave: kept, and looked at for the problem.
-    for (const l of s?.lookups ?? []) if (l.kind === "screens" && l.round === i) out.push(part("screenReview", { turn: t.id, lookup: l.id }));
+    for (const l of s?.lookups ?? []) if (l.kind === "screens" && l.round === i && !l.seeded) out.push(part("screenReview", { turn: t.id, lookup: l.id }));
     if (c.noted.some((n) => n.round === i && n.lines.length)) out.push(part("consultNoted", { turn: t.id, round: i }));
     out.push(...looks(i));
   });

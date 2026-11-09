@@ -212,12 +212,25 @@ export function takePicks(qs: readonly AskQuestion[], form: FlowState): FlowStat
 }
 
 /** A lookup came back, failed or was stopped. */
-export function lookupLanded(s: AskingState, id: string, r: { lines?: FoundLine[]; look?: FocusLook; review?: string; error?: string; stopped?: boolean }): AskingState {
-  return { ...s, lookups: s.lookups.map((l) => (l.id !== id || !running(l) ? l : { ...l, state: r.stopped ? "stopped" : r.error ? "failed" : "done", ...(r.lines ? { lines: r.lines } : {}), ...(r.look ? { look: r.look } : {}), ...(r.review ? { review: r.review } : {}), ...(r.error ? { error: r.error } : {}) })) };
+export function lookupLanded(s: AskingState, id: string, r: { lines?: FoundLine[]; look?: FocusLook; review?: string; first?: boolean; error?: string; stopped?: boolean }): AskingState {
+  return { ...s, lookups: s.lookups.map((l) => (l.id !== id || !running(l) ? l : { ...l, state: r.stopped ? "stopped" : r.error ? "failed" : "done", ...(r.lines ? { lines: r.lines } : {}), ...(r.look ? { look: r.look } : {}), ...(r.review ? { review: r.review } : {}), ...(r.review && r.first ? { first: true as const } : {}), ...(r.error ? { error: r.error } : {}) })) };
+}
+
+/**
+ * After a first look at their screens, once a round asked after it is answered (what the screens are
+ * for, who uses them, what the business needs, as the turn that read it asked): the same screenshots
+ * looked at again, weighed with all they've said. Once a first look; the next turn waits for it.
+ */
+export function weighAgain(s: AskingState, now: number, id: (p: string) => string): AskingState {
+  const closed = s.rounds.length - 1;
+  if (!s.rounds.at(-1)?.form.submitted) return s;
+  return s.lookups
+    .filter((l) => l.kind === "screens" && l.state === "done" && l.first && l.review && l.shots?.length && (l.round ?? -1) < closed && !s.lookups.some((x) => x.after === l.review))
+    .reduce((x, l) => startLookup(x, { id: id("v"), kind: "screens", query: l.query, waits: x.turns, shots: l.shots, ...(l.asked ? { asked: l.asked } : {}), round: closed, ...(l.typed ? { typed: l.typed } : {}), after: l.review }, now), s);
 }
 
 /** A lookup they or code started, outside a turn (an opening look; one they said yes to). */
-export const startLookup = (s: AskingState, l: Pick<Lookup, "id" | "kind" | "query" | "waits" | "why" | "shots" | "asked" | "round" | "typed">, now: number): AskingState => ({ ...s, offer: s.offer?.id === l.id ? undefined : s.offer, quiet: s.offer?.id === l.id ? 0 : s.quiet, lookups: [...s.lookups.filter((x) => x.id !== l.id), { ...l, state: "running", at: now }] });
+export const startLookup = (s: AskingState, l: Pick<Lookup, "id" | "kind" | "query" | "waits" | "why" | "shots" | "asked" | "round" | "typed" | "after">, now: number): AskingState => ({ ...s, offer: s.offer?.id === l.id ? undefined : s.offer, quiet: s.offer?.id === l.id ? 0 : s.quiet, lookups: [...s.lookups.filter((x) => x.id !== l.id), { ...l, state: "running", at: now }] });
 
 /** A screens lookup that stopped or failed, looked at again: what it finds is read by the next turn after it lands. */
 export function lookupAgain(s: AskingState, id: string, now: number): AskingState {

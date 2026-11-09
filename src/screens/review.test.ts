@@ -146,6 +146,29 @@ describe("what code keeps of a look at the screens", () => {
     expect(kept.left[0]).toEqual({ what: "Elsewhere", why: "It names a screen it wasn't shown" });
     expect(kept.left.filter((l) => l.why === "Past the most one look keeps")).toHaveLength(2);
   });
+
+  it("weighs both sides: the business side known only resting on what was sent, apart only where it's known", () => {
+    const GROCERY = screen(["Bakeries & Pastries", "Sold out", "Sold out", "5 Mini Shami Bread", "Add"]);
+    const weighs = (weigh: Record<string, unknown>, cites: string[] = []) =>
+      sanitizeScreenReview({ findings: [f({ title: "Sold-out bread fills the first rows", why: "People find little they can add", on: "Sold out", cites, weigh, change: { does: "move", what: "Move “Sold out” products to the end", instead_of: "Sold out" } })], none: false }, ctx([s("s1", GROCERY, "Bakeries")])).findings[0];
+
+    // Nothing sent says why sold-out items come first: whatever it claims, the business side isn't known.
+    const guessed = weighs({ customers: "They scroll past what they can't buy", business: "Whether sold-out items lead on purpose, to show the range, isn't known", known: true, apart: true });
+    expect(guessed.weigh).toEqual({ customers: "They scroll past what they can't buy", business: "Whether sold-out items lead on purpose, to show the range, isn't known", known: false });
+
+    // Resting on what they said, it's known, and the two may pull apart.
+    const told = weighs({ customers: "They scroll past what they can't buy", business: "The team keeps sold-out items in view to show the range", known: true, apart: true }, ["a1"]);
+    expect(told.weigh).toEqual({ customers: "They scroll past what they can't buy", business: "The team keeps sold-out items in view to show the range", known: true, apart: true });
+    expect(told.rests).toEqual([sent.get("a1")]);
+
+    // Shown as not known yet, it doesn't say so twice.
+    expect(weighs({ customers: "They scroll past what they can't buy", business: "This would need to be true: the range is shown on purpose.", known: false }).weigh?.business).toBe("The range is shown on purpose.");
+
+    // Its words are held as a finding's: a number that isn't printed or said loses the weighing, not the finding.
+    const loose = weighs({ customers: "Five of six rows are sold out", business: "Sold-out rows cost “12%” of orders", known: false, apart: false });
+    expect(loose.weigh).toBeUndefined();
+    expect(loose.title).toBe("Sold-out bread fills the first rows");
+  });
 });
 
 describe("what the look is sent", () => {
@@ -167,5 +190,19 @@ describe("what the look is sent", () => {
     expect(m.screens[0].words).toContain("Delivery fee calculated at checkout");
     expect(m.screens[1].words).toBe("What's printed on s2 couldn't be read here: describe what you see, and quote nothing from it.");
     expect(m.also).toContain("March");
+  });
+
+  it("says whether it's a first look, and names what they said before as what a business side may rest on", () => {
+    const input = { screens: [s("s1", BASKET, "Basket")], focus: { said: "People leave the basket", settled: [] }, business: [], goals: [], answers: [] };
+    const block = "What's already known (m1…):\n\nAsked before, in other conversations (id · where, when · the question → the answer):\n- m1 · Working it out with you, 2 Nov · Why do sold-out items show first? → “The brand team wants the whole range seen”";
+    const first = reviewMaterial({ ...input, first: true, remembered: { block, hay: "The brand team wants the whole range seen" }, company: "Basket delivers groceries in Cairo." });
+    expect(first.intro).toContain("This is a first look");
+    expect(first.intro).toContain("- m1 · Working it out with you, 2 Nov");
+    expect(first.sent.get("m1")).toEqual({ kind: "answer", text: "Working it out with you, 2 Nov · Why do sold-out items show first? → “The brand team wants the whole range seen”" });
+    expect(first.intro).toContain("What's known of the company (background, read on the web or told; nothing a finding rests on):\nBasket delivers groceries in Cairo.");
+    // The company is background: nothing a finding may quote from.
+    expect(first.also).toContain("The brand team wants the whole range seen");
+    expect(first.also).not.toContain("Cairo");
+    expect(reviewMaterial({ ...input, first: false }).intro).toContain("They've been asked what these screens are for");
   });
 });

@@ -17,6 +17,8 @@ import { KEEP_MAX, REVIEW_LIMITS, type KeptShot, type KeptShots, type ScreenRevi
 import { captureSource, newSource } from "../capture";
 import { NO_IMAGE_READER, readImage, type ImageDeps } from "../image";
 import { prepShot, readShots, seeAvailable } from "../see";
+import { companyContext } from "./company";
+import { recall } from "./memory";
 import { addShots, flowName, productOf, type SeenDeps } from "./seen";
 import type { OrgStore } from "./store";
 
@@ -208,12 +210,14 @@ const PICTURE = /^image\/(png|jpeg|webp|gif)$/;
  */
 export async function reviewShots(
   store: OrgStore,
-  o: { kept: KeptShots; focus: ReviewFocus; product: string | null; answers?: readonly { q: string; a: string }[]; emit?: (label: string) => void; signal?: AbortSignal; tab?: string; deps?: Partial<ReviewDeps> },
+  o: { kept: KeptShots; focus: ReviewFocus; product: string | null; answers?: readonly { q: string; a: string }[]; after?: string; emit?: (label: string) => void; signal?: AbortSignal; tab?: string; deps?: Partial<ReviewDeps> },
 ): Promise<ScreenReview | null> {
   const d = { ...reviewDeps, ...o.deps };
   const shown = o.kept.shots.filter((s) => s.screen).slice(0, REVIEW_LIMITS.screens);
   if (!shown.length) return null;
-  const base = { v: 1 as const, id: nanoid(10), at: Date.now(), map: o.kept.map, ...(o.kept.flow ? { flow: o.kept.flow } : {}), focus: o.focus.said.replace(/\s+/g, " ").trim().slice(0, 600), shots: shown.map((s) => ({ asset: s.asset, name: s.screen!.name, screen: s.screen!.key, source: s.source })), findings: [], left: [] };
+  // A first look, unless it follows one once they've said what the screens are for, who uses them and what the business needs.
+  const first = !o.after;
+  const base = { v: 1 as const, id: nanoid(10), at: Date.now(), map: o.kept.map, ...(o.kept.flow ? { flow: o.kept.flow } : {}), focus: o.focus.said.replace(/\s+/g, " ").trim().slice(0, 600), ...(first ? { first: true as const } : { after: o.after! }), shots: shown.map((s) => ({ asset: s.asset, name: s.screen!.name, screen: s.screen!.key, source: s.source })), findings: [], left: [] };
   const keep = (r: ScreenReview) => store.changeScreenReview(r.id, () => r, o.tab ? { tab: o.tab } : {}).then(() => r);
   if (!d.sees()) return keep({ ...base, unseen: true });
 
@@ -234,7 +238,11 @@ export async function reviewShots(
   const business = (await store.getBusiness())?.lines.map((l) => `${SECTION_LABEL[l.section]}: ${l.text}${l.by === "qalam" ? " (Qalam AI's reading of their answers)" : ""}`) ?? [];
   const tree = await store.getGoals();
   const goals = tree.goals.filter((g) => g.status === "active" && (!o.product || !g.product || g.product === o.product)).slice(0, 8).map((g) => goalLine(tree, g.id));
-  const m = reviewMaterial({ screens, focus: o.focus, ...(o.kept.flow ? { flow: o.kept.flow.name } : {}), business, goals, answers: o.answers ?? [] });
+  // What Qalam AI remembers of their earlier answers, and what's known of the company: both sides are weighed with all that's known.
+  const words = [o.focus.said, o.focus.asked ?? "", o.focus.typed ?? "", ...shown.map((s) => s.screen!.name)].filter(Boolean).join("\n");
+  const remembered = await recall(store, { flow: "consult", key: "", about: { product: o.product }, words }).catch(() => null);
+  const company = await companyContext(store, { near: o.focus.said, business: false }).catch(() => "");
+  const m = reviewMaterial({ screens, focus: o.focus, ...(o.kept.flow ? { flow: o.kept.flow.name } : {}), business, goals, answers: o.answers ?? [], first, ...(remembered?.block ? { remembered: { block: remembered.block, hay: remembered.hay } } : {}), ...(company ? { company } : {}) });
   const call = screensCall({ intro: m.intro, screens: m.screens.map((s, i) => ({ head: s.head, words: s.words, image: images.find((x) => x.hash === screens[i].shot)?.image ?? null })) });
   const { data, model } = await d.call(call, o.signal);
   if (o.signal?.aborted) throw new DOMException("Stopped", "AbortError");

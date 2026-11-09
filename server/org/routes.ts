@@ -914,7 +914,7 @@ export function orgRoutes(): Hono<Env> {
   r.post("/api/org/:org/screens/review", async (c) => {
     if (rateLimited(c.req.raw)) return c.json({ error: "rate_limited", message: "Too many requests, try again in a few minutes." }, 429);
     const store = c.get("store");
-    const b = (await c.req.json().catch(() => null)) as { shots?: unknown; product?: unknown; about?: unknown; focus?: unknown; answers?: unknown } | null;
+    const b = (await c.req.json().catch(() => null)) as { shots?: unknown; product?: unknown; about?: unknown; focus?: unknown; answers?: unknown; after?: unknown } | null;
     const text = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : "");
     const shots = (Array.isArray(b?.shots) ? b.shots : []).flatMap((s: unknown) => {
       const x = (s && typeof s === "object" ? s : {}) as { asset?: unknown; title?: unknown };
@@ -934,7 +934,8 @@ export function orgRoutes(): Hono<Env> {
     return streamed(c.req.raw.signal, async (emit, signal) => {
       // Kept untagged, so every window lists the new sources, this one included; the look is this tab's.
       const kept = await keepShots(store, { shots, product, about, emit, signal });
-      const review = await reviewShots(store, { kept, focus, product, answers, emit, signal, ...(tab ? { tab } : {}) });
+      const after = typeof b?.after === "string" && /^[A-Za-z0-9_-]{6,40}$/.test(b.after) ? b.after : undefined;
+      const review = await reviewShots(store, { kept, focus, product, answers, ...(after ? { after } : {}), emit, signal, ...(tab ? { tab } : {}) });
       return { kept, review };
     });
   });

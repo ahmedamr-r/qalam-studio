@@ -53,10 +53,23 @@ export interface FindingChange {
   insteadOf?: string;
 }
 
-/** What a finding rests on beside the screen: how their business works, a goal, or what they said. */
+/** What a finding rests on beside the screen: how their business works, a goal, or what they said (now, or remembered from before). */
 export interface FindingRest {
   kind: "business" | "goal" | "answer";
   text: string;
+}
+
+/**
+ * A finding weighed for both sides: what it means for the people using the screen, what changing it
+ * means for the business, and whether the two pull apart. The business side is `known` only resting on
+ * how their business works, a goal or what they said; else it says what would need to be known.
+ */
+export interface FindingWeigh {
+  customers: string;
+  business: string;
+  known: boolean;
+  /** No change serves both: the change is theirs to weigh. Only where the business side is known. */
+  apart?: true;
 }
 
 export interface ScreenFinding {
@@ -76,6 +89,8 @@ export interface ScreenFinding {
   /** Left out when it would add to the screen without taking anything away, or acts on what isn't printed there. */
   change?: FindingChange;
   rests?: FindingRest[];
+  /** Both sides of it (looks from before this have none). */
+  weigh?: FindingWeigh;
 }
 
 export interface ScreenReview {
@@ -87,6 +102,12 @@ export interface ScreenReview {
   flow?: { key: string; name: string };
   /** What it was looked at for: the problem they're working out, as they put it. */
   focus: string;
+  /**
+   * A first look: before what these screens are for, who uses them and what the business needs from
+   * them were asked. A weighed look follows once they've answered (`after`: the first look it follows).
+   */
+  first?: true;
+  after?: string;
   shots: { asset: string; name: string; screen?: string; source: string }[];
   /** Ranked: what costs the problem most first. */
   findings: ScreenFinding[];
@@ -103,4 +124,7 @@ export interface ScreenReview {
 }
 
 /** A review's guards on size: every finding that bears on the problem is kept, ranked, up to these. */
-export const REVIEW_LIMITS = { perScreen: 12, all: 24, title: 90, why: 220, what: 200, on: 120, screens: 6 } as const;
+export const REVIEW_LIMITS = { perScreen: 12, all: 24, title: 90, why: 220, what: 200, on: 120, screens: 6, side: 220 } as const;
+
+/** What a look needs to know before it can weigh both sides, asked between a first look and a weighed one. */
+export const MUST_KNOW = ["what these screens are for: what people should do on them, and the number that moves when they do", "who uses them: which customers come through them, and what they came for", "what the business needs from them, and what it won't change: how it earns there, its brand, partners, rules or decisions already made"] as const;

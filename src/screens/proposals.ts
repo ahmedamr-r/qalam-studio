@@ -31,10 +31,13 @@ export function screensProposals(r: ScreenReview, o: { parentId: string | null; 
   for (const f of r.findings) {
     if (r.decided?.[f.key]) continue;
     const cardId = o.id();
-    const card = newCard("opportunity", { title: f.title, createdBy: "ai", came: "seen", description: f.why });
+    // Both sides go with it: what it means for customers, and for the business (or what isn't known of it yet).
+    const sides = f.weigh ? `\n\nFor customers: ${f.weigh.customers}\nFor the business${f.weigh.known ? "" : " (not known yet)"}: ${f.weigh.business}` : "";
+    const card = newCard("opportunity", { title: f.title, createdBy: "ai", came: "seen", description: `${f.why}${sides}` });
     out.push({ id: `screen:${f.key}`, kind: "card", cardId, parentId: o.parentId, card, backing: { quotes: [], words: [screenEvidence(r, f, { id: o.id(), now: o.now })] }, why: f.why });
     if (!f.change) continue;
-    const change = newCard("solution", { title: fit(f.change.what, 90), createdBy: "ai", came: "seen", solutionType: "change", description: f.change.what, ...(f.change.insteadOf ? { how: `In place of “${f.change.insteadOf}”` } : {}) });
+    // Where the two sides pull apart, the change is theirs to weigh, and says so.
+    const change = newCard("solution", { title: fit(f.change.what, 90), createdBy: "ai", came: "seen", solutionType: "change", description: f.weigh?.apart ? `Your call: no change serves both sides. ${f.change.what}` : f.change.what, ...(f.change.insteadOf ? { how: `In place of “${f.change.insteadOf}”` } : {}) });
     out.push({ id: `change:${f.key}`, kind: "card", cardId: o.id(), parentId: cardId, card: change, backing: { quotes: [], words: [] }, why: "" });
   }
   return out;

@@ -63,7 +63,7 @@ import { goalsForProblem, lookForGoal, suggestGoalNumber } from "@/org/goal-work
 import { loadMarket, useMarket } from "@/org/market";
 import { useSpaceView } from "@/space/view";
 import { keepScreens, notOurScreen, reviewScreens, useScreenReviews } from "@/org/screens";
-import type { KeptShots } from "@/screens/types";
+import type { KeptShots, ScreenReview } from "@/screens/types";
 import { screensProposals } from "@/screens/proposals";
 import { reviewLines, screenLines } from "@/screens/lines";
 import { rememberRound, withKnownAnswers } from "@/org/memory";
@@ -286,7 +286,7 @@ export async function runAs(at: string | null, said: string, mode: ChatMode, doc
   if (mode === "dump") return dumpIt(at, said, docs);
   if (mode === "scan") return scanIt(at, said);
   if (mode === "plan") return workOut(at, said);
-  if (mode === "consult") return consultOn(at, said, { ...(o.first ? { first: o.first } : {}), ...(o.offer || isAppLink(said) ? { offer: said } : {}) });
+  if (mode === "consult") return void consultOn(at, said, { ...(o.first ? { first: o.first } : {}), ...(o.offer || isAppLink(said) ? { offer: said } : {}) });
   if (mode === "tools") return void (await lookInTools(at, said, { typed: true }));
 }
 
@@ -392,7 +392,7 @@ async function scanIt(at: string | null, said: string, target: ScanTarget | null
   void saveNow();
   // Nothing named to read about: reading would go on their sentence, so it's worked out with them instead.
   // (`read`: the start page's box read them already, `readFirst`.)
-  if (target.kind === "idea" && !told?.length && !read && !(await namesSomething(words))) return consultOn(id, words);
+  if (target.kind === "idea" && !told?.length && !read && !(await namesSomething(words))) return void consultOn(id, words);
   try {
     const session = await startScan({ ...requestOf(target, words, typeof navigator === "undefined" ? "" : navigator.language), ...(told?.length ? { told: [...told] } : {}) });
     change((c) => withJob(c, id, (j) => (j.kind === "scan" ? { ...j, session } : j)));
@@ -1086,13 +1086,33 @@ function workOut(at: string | null, said: string) {
  * Worked out with a consultant: no look before they've answered anything. Its first turn reads who's
  * asking, then asks the way the playbook for where they came in says, paced to how much they know.
  */
-function consultOn(at: string | null, said: string, o: { first?: "goal" | "problem"; playbook?: PlaybookId; situation?: Situation; offer?: string; quiet?: true } = {}) {
+function consultOn(at: string | null, said: string, o: { first?: "goal" | "problem"; playbook?: PlaybookId; situation?: Situation; offer?: string; quiet?: true; screens?: Lookup } = {}): string {
   void ensureYou();
   // An app's link: reading its reviews is offered from the start, beside the first round, never read unasked.
-  const asking = o.offer ? { ...emptyAsking(), scan: { id: "scan-0", query: o.offer, why: "Its reviews show what the people using it run into." } } : emptyAsking();
+  const opening = o.offer ? { ...emptyAsking(), scan: { id: "scan-0", query: o.offer, why: "Its reviews show what the people using it run into." } } : emptyAsking();
+  // Screenshots looked at in the chat first: the conversation starts from that first look.
+  const asking = o.screens ? { ...opening, lookups: [...opening.lookups, o.screens] } : opening;
   const job: PlanJob = { kind: "plan", step: "thinking", rounds: [], looks: [], asking, consult: { noted: [], ...(o.first ? { first: o.first } : {}), ...(o.playbook ? { playbook: o.playbook } : {}), ...(o.situation ? { situation: o.situation } : {}) } };
   const id = o.quiet ? addTurn(said, job, undefined, { quiet: true }) : jobAt(at, said, job);
   void runCanvasPlan(id, (signal) => goOn(planHost(id), signal));
+  return id;
+}
+
+/**
+ * A first look at screenshots dropped in the chat judges them without knowing what they're for, who
+ * uses them or what the business needs: it's handed to the consultant, which asks what isn't known
+ * of those (its rules), and once that round is answered they're looked at again, weighed (`weighAgain`).
+ * The conversation under way takes it; else one starts from it, its words those that came with them.
+ */
+function talkAboutScreens(take: string, said: string, kept: KeptShots, review: ScreenReview, open: ChatTurn | undefined) {
+  const lid = `v${nanoid(6)}`;
+  const shots = kept.shots.filter((s) => s.screen).map((s) => ({ asset: `asset:${s.asset}`, title: s.screen!.name }));
+  if (!shots.length) return;
+  const lookup = (round: number): Lookup => ({ id: lid, kind: "screens", query: (kept.flow?.name ?? said).slice(0, 120), waits: "later", state: "done", lines: [...screenLines(lid, kept), ...reviewLines(lid, review)], review: review.id, first: true, seeded: true, shots, round, at: Date.now() });
+  const talk = open?.job.kind === "plan" ? open.id : null;
+  if (talk) planHost(talk).set((s) => ({ ...s, lookups: [...s.lookups, lookup(s.rounds.length - 1)] }));
+  const id = talk ?? consultOn(null, said, { quiet: true, screens: lookup(-1) });
+  setScreens(take, (s) => ({ ...s, talk: id }));
 }
 
 /**
@@ -1173,14 +1193,15 @@ function scanTargetOf(query: string, id: string, j: PlanJob): ScanTarget | null 
  * (server/org/screens.ts): the lines the next turn reads, the flow they make and each screen with
  * what it shows and what's printed on it.
  */
-async function screensLookup(id: string, l: Pick<Lookup, "id" | "query" | "shots" | "asked" | "typed">, signal: AbortSignal): Promise<{ lines: FoundLine[]; review?: string }> {
+async function screensLookup(id: string, l: Pick<Lookup, "id" | "query" | "shots" | "asked" | "typed" | "after">, signal: AbortSignal): Promise<{ lines: FoundLine[]; review?: string; first?: boolean }> {
   if (!l.shots?.length) return { lines: [] };
   // Looked at for what they're working out: how the conversation started, the question, their words with them, what's settled.
   const s = canvasPlan(id)?.asking;
   const focus = { said: turnOf(id)?.said ?? l.query, ...(l.asked ? { asked: l.asked } : {}), ...(l.typed ? { typed: l.typed } : {}), settled: (s?.understood ?? []).map((u) => u.text) };
   const answers = s ? answersOf(s).filter((a) => a.how === "own" && a.text).map((a) => ({ q: a.question, a: a.text })) : [];
-  const { kept, review } = await reviewScreens({ shots: l.shots, product: useSpaceView.getState().space ?? null, about: l.query, focus, answers }, signal);
-  return { lines: [...screenLines(l.id, kept), ...reviewLines(l.id, review)], ...(review ? { review: review.id } : {}) };
+  // A weighed look follows a first one (`after`), with all they've said since; a first look is looked at again once they've answered.
+  const { kept, review } = await reviewScreens({ shots: l.shots, product: useSpaceView.getState().space ?? null, about: l.query, focus, answers, ...(l.after ? { after: l.after } : {}) }, signal);
+  return { lines: [...screenLines(l.id, kept), ...reviewLines(l.id, review)], ...(review ? { review: review.id } : {}), ...(review?.first && !review.unseen ? { first: true } : {}) };
 }
 
 /**
@@ -2166,6 +2187,9 @@ async function lookAtTaken(id: string, said: string, shots: { asset: string; tit
       const { kept, review } = await reviewScreens({ shots, product: st().space ?? null, about, focus: { said: focus, settled: [] }, answers: [] }, signal, step(id));
       came(kept);
       setScreens(id, (s) => ({ ...s, state: "done", ...(review ? { review: review.id } : {}) }));
+      // A first look goes to the consultant once, to ask what it didn't know; words of their own with the screenshots start a conversation of their own.
+      const t = turnOf(id);
+      if (review?.first && !review.unseen && !(t?.job.kind === "take" && t.job.screens?.talk)) talkAboutScreens(id, focus, kept, review, said.trim() ? undefined : open);
     } else {
       came(await keepScreens({ shots, product: st().space ?? null, about }, signal, step(id)));
       setScreens(id, (s) => ({ ...s, state: "kept" }));
